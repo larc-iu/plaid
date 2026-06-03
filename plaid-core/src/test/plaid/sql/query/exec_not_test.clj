@@ -86,6 +86,30 @@
         ;; t0 (NOUN) and t1 (VERB) are excluded by De Morgan; only t2 remains
         (is (= [[(str t2)]] (tuples r)))))))
 
+(deftest not-reconstrains-outer-var-begin
+  (let [{:keys [t1 t2]} (build!)]
+    (testing "a :not that re-states an already-bound outer var negates only that attribute"
+      ;; tokens that do NOT begin at offset 0 — t0@0 excluded, t1@3 and t2@6 kept.
+      ;; (Regression: the inner `{begin 0}` must land inside the NOT EXISTS as a
+      ;; correlated predicate, not be ANDed onto the outer alias.)
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?t"]
+                       "where" [["token" "?t" {"layer" "NotProj/words"}]
+                                ["not" ["token" "?t" {"begin" 0}]]]})]
+        (is (= 2 (:count r)))
+        (is (= #{(str t1) (str t2)} (set (map first (tuples r)))))))))
+
+(deftest not-reconstrains-outer-var-value
+  (let [_ (build!)]
+    (testing "NOUN span that is not (also) VERB — same span correlated, value negated"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?s"]
+                       "where" [["span" "?s" {"layer" "NotProj/pos" "value" "NOUN"}]
+                                ["not" ["span" "?s" {"layer" "NotProj/pos" "value" "VERB"}]]]})]
+        ;; the one NOUN span survives (it is not VERB); the leak would AND
+        ;; value=NOUN AND value=VERB onto the outer alias and return nothing.
+        (is (= 1 (:count r)))))))
+
 (deftest double-negation-is-existence
   (let [{:keys [t0]} (build!)]
     (testing "NOT(NOT(covered by NOUN)) = covered by NOUN"

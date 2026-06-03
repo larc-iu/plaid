@@ -82,24 +82,24 @@
 ;; ---------------------------------------------------------------------------
 
 (defn- collect-entity-constraints
-  "Map of var -> VECTOR of the constraint maps from every entity clause (including
-  those nested inside :not groups). Each clause contributes its own map and the
-  compiler ANDs them all: a var that appears in two entity clauses must satisfy
-  both. (Merging them last-wins would silently drop the earlier constraint and
-  return a wrong, larger result — e.g. `value NOUN` AND `value VERB` must be
-  unsatisfiable, not just `VERB`.)"
-  [where]
-  (letfn [(collect [acc clauses]
-            (reduce
-             (fn [acc clause]
-               (let [[head v cmap] clause]
-                 (cond
-                   (contains? entity-table head) (update acc v (fnil conj []) (or cmap {}))
-                   (contains? layer-entity-table head) (update acc v (fnil conj []) (or cmap {}))
-                   (= head :not) (collect acc (rest clause))
-                   :else acc)))
-             acc clauses))]
-    (collect {} where)))
+  "Map of var -> VECTOR of the constraint maps from each entity clause at THIS
+  clause level. It does NOT descend into `:not` groups: a negated clause's
+  constraints belong inside its own NOT EXISTS subquery (built by `compile-not!`
+  from the body's own constraints), never ANDed onto the outer alias. Folding a
+  `:not` body's constraint onto the outer var would both corrupt the outer
+  predicate and lose the negation — e.g. `[:token ?t {:value NOUN}]` plus
+  `[:not [:token ?t {:begin 0}]]` would wrongly become `value=NOUN AND begin=0`.
+  Two entity clauses naming the same var at one level still AND (same-layer join):
+  `value NOUN` AND `value VERB` must be unsatisfiable, not last-wins."
+  [clauses]
+  (reduce
+   (fn [acc clause]
+     (let [[head v cmap] clause]
+       (cond
+         (contains? entity-table head) (update acc v (fnil conj []) (or cmap {}))
+         (contains? layer-entity-table head) (update acc v (fnil conj []) (or cmap {}))
+         :else acc)))
+   {} clauses))
 
 ;; ---------------------------------------------------------------------------
 ;; Pass B: ensure every var has a table + scope predicate + filters
@@ -112,6 +112,20 @@
   (if (vector? v)
     [:in col (mapv enc v)]
     [:= col (enc v)]))
+
+(defn- emit-entity-filters!
+  "Emit the value/form/doc/begin/end predicates from one entity constraint map
+  against table alias `a`. Kept separate from `ensure-var!` (which only allocates
+  the table + scope predicate, idempotently) so these filters can be emitted in
+  the RIGHT query scope: a constraint that re-states an outer var inside a `:not`
+  must land inside that NOT EXISTS subquery as a correlated predicate, not on the
+  outer alias."
+  [st a cmap]
+  (when (contains? cmap :value) (add-where! st (atomic-pred (col a :value) (:value cmap) psc/write-json)))
+  (when (contains? cmap :form)  (add-where! st (atomic-pred (col a :form) (:form cmap) identity)))
+  (when (contains? cmap :doc)   (add-where! st (atomic-pred (col a :document_id) (:doc cmap) str)))
+  (when (contains? cmap :begin) (add-where! st (atomic-pred (col a :begin) (:begin cmap) identity)))
+  (when (contains? cmap :end)   (add-where! st (atomic-pred (col a :end_) (:end cmap) identity))))
 
 (defn- ensure-layer-var!
   "Allocate a layer-table alias for a LAYER variable `v` of `kind`, emit its scope
@@ -184,19 +198,11 @@
                 (add-from! st [lt-table lt])
                 (add-where! st [:= (col a (layer-fk kind)) (col lt :id)])
                 (add-where! st [:in (col lt :project_id) (:scope @st)])))
-            (swap! st update :scoped conj v)
-            ;; --- non-scope filters, ANDed across every clause on this var ---
-            (doseq [cs cmaps]
-              (when (contains? cs :value)
-                (add-where! st (atomic-pred (col a :value) (:value cs) psc/write-json)))
-              (when (contains? cs :form)          ; vocab_items.form — plain TEXT, not JSON
-                (add-where! st (atomic-pred (col a :form) (:form cs) identity)))
-              (when (contains? cs :doc)
-                (add-where! st (atomic-pred (col a :document_id) (:doc cs) str)))
-              (when (contains? cs :begin)
-                (add-where! st (atomic-pred (col a :begin) (:begin cs) identity)))
-              (when (contains? cs :end)
-                (add-where! st (atomic-pred (col a :end_) (:end cs) identity))))))))
+            ;; Attribute filters (value/form/doc/begin/end) are NOT emitted here —
+            ;; `compile-query` Pass B and `compile-not!` emit them per-clause via
+            ;; `emit-entity-filters!` so a re-stated outer var inside a `:not`
+            ;; gets its predicate in the subquery, not on the outer alias.
+            (swap! st update :scoped conj v)))))
     (get-in @st [:var->alias v])))
 
 ;; ---------------------------------------------------------------------------
@@ -327,16 +333,25 @@
   has its own :from/:where."
   [outer-st constraints clause]
   (let [inner (rest clause)
+        ;; the :not body's OWN constraints (used to scope inner-only vars). Outer
+        ;; vars re-stated inside the body are correlated, so their predicates are
+        ;; emitted against the outer alias INSIDE this subquery (see below).
+        inner-cons (collect-entity-constraints inner)
         sub-st (atom (assoc @outer-st :from [] :where [] :scoped #{}))]
     ;; existential (inner-only) vars get a table + scope here; correlated (outer)
     ;; vars are already in var->alias, so ensure-var! no-ops for them. (A nested
     ;; :not's own vars are handled by its recursive compile-not! call, not here.)
     (doseq [v (distinct (mapcat ast/clause-vars inner))]
-      (ensure-var! sub-st v constraints))
+      (ensure-var! sub-st v inner-cons))
     (doseq [c inner]
       (cond
         (= :not (first c)) (compile-not! sub-st constraints c)   ; nested NOT EXISTS
-        (contains? entity-table (first c)) (compile-relation-inline! sub-st constraints c)
+        (contains? entity-table (first c))
+        (let [[_ v cmap] c]
+          ;; emit this clause's attribute filters INSIDE the subquery — for a
+          ;; correlated outer var this is the negated predicate's correct home.
+          (emit-entity-filters! sub-st (get-in @sub-st [:var->alias v]) (or cmap {}))
+          (compile-relation-inline! sub-st inner-cons c))
         :else (compile-rel! sub-st constraints c)))
     (let [subq (cond-> {:select [1] :where (into [:and] (:where @sub-st))}
                  (seq (:from @sub-st)) (assoc :from (:from @sub-st)))]
@@ -379,6 +394,12 @@
     ;; subquery and are allocated there by compile-not!, not in the outer query.
     (doseq [v (ast/positive-binding-vars (:where resolved))]
       (ensure-var! st v constraints))
+    ;; emit each positive entity clause's attribute filters (value/doc/begin/end/
+    ;; form) against its var's alias — per-clause so two clauses on one var AND.
+    (doseq [clause (:where resolved)]
+      (when (contains? entity-table (first clause))
+        (let [[_ v cmap] clause]
+          (emit-entity-filters! st (get-in @st [:var->alias v]) (or cmap {})))))
     ;; Pass C: relationship clauses, inline relation source/target, and negation.
     (doseq [clause (:where resolved)]
       (cond
