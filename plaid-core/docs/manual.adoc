@@ -59,10 +59,11 @@ projects = client.projects.list()
 print("Available projects:", projects)
 
 first_project_id = projects[0]["id"]
-first_project = client.projects.get(first_project_id, include_documents=True)
+first_project = client.projects.get(first_project_id)
 print("First project:", first_project)
 
-first_document_id = first_project["documents"][0]["id"]
+documents = client.projects.list_documents(first_project_id)
+first_document_id = documents[0]["id"]
 first_document = client.documents.get(first_document_id, include_body=True)
 print("First document:", first_document)
 ----
@@ -77,13 +78,24 @@ projects = client.projects.list()
 console.log("Available projects:", projects)
 
 firstProjectId = projects[0].id
-firstProject= client.projects.get(firstProjectId, true)
+firstProject = client.projects.get(firstProjectId)
 console.log("First project:", firstProject)
 
-firstDocumentId = firstProject.documents[0].id
-firstDocument= client.documents.get(firstDocumentId, true)
+documents = await client.projects.listDocuments(firstProjectId)
+firstDocumentId = documents[0].id
+firstDocument = client.documents.get(firstDocumentId, true)
 console.log("First document:", firstDocument)
 ----
+
+=== Pagination
+
+Collection endpoints (documents, users, API tokens, audit, and similar lists) are paginated.
+Over raw HTTP they return an envelope of the form `{"entries": [...], "next-cursor": "..."}`, where each page holds at most 100 entries by default (1000 maximum, set via `?limit=`).
+To fetch the next page, pass the opaque `next-cursor` value back verbatim as `?cursor=` (it is `null` on the final page).
+The cursors are keyset-based, so pages stay stable under concurrent inserts.
+
+The official Python and JavaScript clients handle this for you: their `.list()`-style methods (e.g. `projects.list()`, `projects.list_documents(...)` / `listDocuments(...)`) transparently follow the cursors and return the full flat list.
+Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are available when you want to drive pagination yourself.
 
 == Audit Log
 
@@ -906,6 +918,23 @@ A relation's two ends can be written right on the relation, or as separate `sour
 ["relation", "?r", { layer: "dep", value: "nsubj" }],
 ["source", "?r", "?head"], ["target", "?r", "?dependent"]
 ----
+
+So far a name has stood for an *entity*--a span, a token. A name can also stand for a *value*: write one where a condition's value would go, and instead of filtering, it remembers what it found, so that the same name elsewhere has to match.
+This is how you ask for two things that agree without naming the value yourself--two words with the same lemma, say:
+
+[,javascript]
+----
+where: [
+  ["span", "?a", { layer: "lemma", value: "?v" }],
+  ["span", "?b", { layer: "lemma", value: "?v" }],   // the same ?v -- so the same lemma
+  ["!=", "?a", "?b"],                                  // but two different spans
+]
+----
+
+That last line is a third kind of clause: a comparison.
+You write it as `[comparison, a, b]`, and it relates two things you have already named.
+Between two entities only `"="` and `"!="` make sense--"the very same one" or "a different one"--and the `"!="` above is what keeps a span from pairing with itself.
+Between values you may also use `"<"`, `">"`, `"<="`, and `">="`, so binding a token's `begin` to a name and writing `["<", "?n", 5]` finds the tokens that start before the fifth character.
 
 [NOTE]
 ====

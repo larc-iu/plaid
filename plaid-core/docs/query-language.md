@@ -145,6 +145,20 @@ readable projects (§8). A few examples:
 > expect. Patterns are POSIX-compatible; stick to common syntax (`. * + ? [] ^ $
 > |`) for portability. A malformed pattern is a `400`.
 
+> **Value variables (join on a value).** Put a variable where a literal would go
+> — `{"value": "?v"}` — and it *binds* the column instead of filtering it. The
+> same variable in two clauses joins them, so you can ask for two entities that
+> share a value without knowing the value up front:
+> ```python
+> # two DISTINCT spans on the same layer with the same value
+> ["span", "?a", {"layer": "?L", "value": "?v"}],
+> ["span", "?b", {"layer": "?L", "value": "?v"}],
+> ["!=", "?a", "?b"]
+> ```
+> Value variables work on `value`, `form`, `begin`, `end`, and `doc`. They are
+> join/comparison helpers only — they can't appear in `find` (return the entity
+> and read its value). A bare `"?"` is a literal, not a variable.
+
 ---
 
 ## 4. Relationship clauses
@@ -192,6 +206,24 @@ separate edges:
 ["source", "?r", "?h"]
 ["target", "?r", "?d"]
 ```
+
+### 4.5 Predicate clauses
+
+A predicate clause compares two already-bound terms: `[op, a, b]` where `op` is
+one of `"="`, `"!="`, `"<"`, `">"`, `"<="`, `">="`, and each term is a variable
+or a literal.
+
+```python
+["!=", "?s1", "?s2"]     # two DIFFERENT spans (compares entity ids)
+["=",  "?v1", "?v2"]     # two value variables that must be equal
+["<",  "?n", 5]          # a value variable bound to begin, compared to a literal
+```
+
+- On **entity** variables only `"="` / `"!="` are allowed (ids have no order);
+  this is how you say "two distinct matches" and avoid an entity matching itself.
+- On **value variables** and literals, all six operators work.
+- Both sides must be bound elsewhere in `where`; a predicate filters, it never
+  introduces a new variable. (Predicates aren't allowed inside `not` yet.)
 
 ---
 

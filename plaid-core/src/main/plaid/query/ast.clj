@@ -44,6 +44,16 @@
     (and (string? x) (str/starts-with? x "?")) (symbol x)
     :else x))
 
+(def ^:private value-var-re #"\?[\p{L}_][\p{L}\p{N}_-]*")
+
+(defn- value-var
+  "In a constraint VALUE position, a string that is a proper var name (`?` then an
+  identifier) is a scalar variable; coerce it to a symbol. A bare `\"?\"` or any
+  other literal (e.g. a `\"?\"` gloss) is left untouched. Stricter than `->var`
+  precisely so literal glosses keep working."
+  [x]
+  (if (and (string? x) (re-matches value-var-re x)) (symbol x) x))
+
 ;; ---------------------------------------------------------------------------
 ;; Clause vocabulary
 ;; ---------------------------------------------------------------------------
@@ -64,6 +74,18 @@
 ;; (compiles to a REGEXP match). Text-valued keys only.
 (def ^:private regex-keys #{:value :form})
 (def ^:private regex-max-len 512)
+
+;; Constraint keys whose value may be a SCALAR VARIABLE: `{:value "?v"}` binds
+;; `?v` to that column instead of filtering, so the same `?v` in two clauses is a
+;; column-equality join (e.g. two spans with the *same* value). Scalar vars are a
+;; distinct kind (`:scalar`) — not an entity, not selectable in :find (v0).
+(def ^:private scalar-keys #{:value :form :begin :end :doc})
+
+;; Predicate clauses compare two already-bound terms: `[:= ?a ?b]`, `[:!= ?s1 ?s2]`,
+;; `[:< ?n 5]`. A term is a var or a literal. Entity-var comparisons are := / :!=
+;; only (ids are unordered); scalar/literal terms allow the ordering ops too.
+(def ^:private pred-ops #{:= :!= :< :> :<= :>=})
+(def ^:private order-pred-ops #{:< :> :<= :>=})
 
 ;; Layer-constraint clauses: [:span-layer ?sl {constraint-map}]. The head IS the
 ;; layer kind; binds/constrains a LAYER variable. Value = allowed constraint keys.
@@ -139,6 +161,8 @@
                                 (#{:source :target :layer} k) (->var v)
                                 ;; a map value is a regex spec — keyword-ize its keys
                                 (map? v) (reduce-kv (fn [a ik iv] (assoc a (->kw ik) iv)) {} v)
+                                ;; a proper "?name" in a scalar-key value binds a scalar var
+                                (scalar-keys k) (value-var v)
                                 :else v))))
              {} m))
 
@@ -208,6 +232,8 @@
       (= head :seq) (normalize-seq-clause (rest clause))
       (= head :or)  (normalize-or-clause (rest clause))
       (= head :not) (normalize-not-clause (rest clause))
+      ;; predicate: terms are vars or literals (numbers/strings pass through)
+      (pred-ops head) (into [head] (map ->var) (rest clause))
       :else (into [head]
                   (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
                   (rest clause)))))
@@ -275,13 +301,18 @@
             ;; a var in :layer position binds a layer var of the matching kind
             kinds (if (var? (:layer cmap))
                     (assoc-kind kinds (:layer cmap) (entity->layer-kind head))
-                    kinds)]
-        ;; :relation's :source/:target inline vars are spans
-        (reduce (fn [kk rk]
-                  (if-let [sv (get cmap rk)]
-                    (assoc-kind kk sv :span)
-                    kk))
-                kinds [:source :target]))
+                    kinds)
+            ;; :relation's :source/:target inline vars are spans
+            kinds (reduce (fn [kk rk]
+                            (if-let [sv (get cmap rk)]
+                              (assoc-kind kk sv :span)
+                              kk))
+                          kinds [:source :target])]
+        ;; a var in a scalar-key value (:value/:form/:begin/:end/:doc) is a scalar var
+        (reduce (fn [kk sk]
+                  (let [x (get cmap sk)]
+                    (if (var? x) (assoc-kind kk x :scalar) kk)))
+                kinds scalar-keys))
 
       (= head :covers)     (-> kinds (assoc-kind (first args) :span)  (assoc-kind (second args) :token))
       (= head :precedes)   (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
@@ -308,7 +339,7 @@
       (contains? entity-clauses head)
       (let [[v cmap] args]
         (into (if (var? v) [v] [])
-              (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target :layer])))
+              (keep #(let [x (get cmap %)] (when (var? x) x)) (concat [:source :target :layer] scalar-keys))))
       (contains? rel-clauses head) (filterv var? args)
       (contains? layer-clauses head) (if (var? (first args)) [(first args)] [])
       :else [])))
@@ -442,10 +473,20 @@
             (err! :validate (str "Unknown constraint key(s) " (vec unknown) " on :" (name head)
                                  " (allowed: " (vec (sort allowed)) ")")))))
 
+      (pred-ops head)
+      (do
+        (when-not (= (count args) 2)
+          (err! :validate (str "Predicate :" (name head) " takes exactly 2 terms, got " (count args))))
+        (doseq [t args]
+          (when (and (symbol? t) (not (var? t)))
+            (err! :validate (str "Predicate :" (name head) " term " (pr-str t) " is not a var or literal")))))
+
       (= head :not)
       (do
         (when (empty? args)
           (err! :validate ":not needs at least one clause to negate"))
+        (when (some #(pred-ops (first %)) args)
+          (err! :validate "Predicate clauses are not supported inside :not (v0)"))
         ;; recurse: the negated body is entity/relationship clauses and nested
         ;; :not (a nested NOT EXISTS); any :or/:seq inside a :not were already
         ;; De-Morganed away by `expand`.
@@ -469,6 +510,22 @@
       (err! :validate (str "Var(s) " (vec find-unbound) " in :find are never positively bound "
                            "(a var that appears only inside :not is not bound)")
             {:vars (vec find-unbound)}))
+    ;; scalar vars are join/predicate helpers; they bind a value, not an entity,
+    ;; so they cannot be returned (v0).
+    (doseq [v (:find ast)]
+      (when (= :scalar (get kinds v))
+        (err! :validate (str "Var " v " binds a value (not an entity) and cannot be a :find var"))))
+    ;; predicate clauses: every var term must be positively bound; entity-var
+    ;; comparisons are := / :!= only (ids have no order).
+    (doseq [clause (:where ast) :when (pred-ops (first clause))]
+      (let [[op a b] clause]
+        (doseq [t [a b] :when (var? t)]
+          (when-not (positive t)
+            (err! :validate (str "Predicate :" (name op) " references unbound var " t))))
+        (when (and (order-pred-ops op)
+                   (some #(and (var? %) (#{:span :token :relation :vocab} (get kinds %))) [a b]))
+          (err! :validate (str "Predicate :" (name op) " cannot order entity variables "
+                               "(ids are unordered); use := or :!=")))))
     (doseq [[v attr _] (:order-by ast)]
       (let [k (get kinds v)
             allowed (order-attrs k)]

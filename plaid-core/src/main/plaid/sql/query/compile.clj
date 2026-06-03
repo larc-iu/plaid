@@ -62,6 +62,7 @@
          :scope (vec scope)
          :kinds kinds
          :var->alias {}
+         :scalar-col {}   ; scalar var -> {:sql <col-ref> :enc <fn>}: its bound column
          :from []
          :where []
          :scoped #{}}))   ; entity vars that have received a scope predicate
@@ -138,6 +139,26 @@
                 (regex-pred regex-col (:regex v) (boolean (some-> (:flags v) (str/includes? "i"))))
                 (atomic-pred col v enc))))
 
+(defn- bind-scalar!
+  "Bind scalar var `v` to column `col-ref` (with literal-encoder `enc`). The first
+  binding records the column; a later binding of the SAME var emits a
+  column-equality join — that is how `{:value ?x}` on two clauses means \"same
+  value\". (Inside a `:not`, sub-st inherits the outer :scalar-col, so a re-use
+  there joins to the outer column as a correlated predicate.)"
+  [st v col-ref enc]
+  (if-let [bound (get-in @st [:scalar-col v])]
+    (add-where! st [:= (:sql bound) col-ref])
+    (swap! st assoc-in [:scalar-col v] {:sql col-ref :enc enc})))
+
+(defn- emit-field!
+  "One scalar-key constraint: a var value BINDS a scalar var (join); otherwise it
+  filters via `emit-match!` (= / IN / regex). `regex-col` is the expression a
+  regex runs against (may differ from `col`, e.g. the JSON-decoded value)."
+  [st col v enc regex-col]
+  (if (ast/var? v)
+    (bind-scalar! st v col enc)
+    (emit-match! st col v enc regex-col)))
+
 (defn- emit-entity-filters!
   "Emit the value/form/doc/begin/end predicates from one entity constraint map
   against table alias `a`. Kept separate from `ensure-var!` (which only allocates
@@ -149,14 +170,14 @@
   ;; :value is stored JSON-encoded; a regex matches the DECODED scalar
   ;; (json_extract '$') so patterns aren't fighting the surrounding quotes.
   (when (contains? cmap :value)
-    (emit-match! st (col a :value) (:value cmap) psc/write-json
+    (emit-field! st (col a :value) (:value cmap) psc/write-json
                  [:json_extract (col a :value) [:inline "$"]]))
   ;; :form (vocab_items.form) is plain TEXT — regex runs on the column directly.
   (when (contains? cmap :form)
-    (emit-match! st (col a :form) (:form cmap) identity (col a :form)))
-  (when (contains? cmap :doc)   (add-where! st (atomic-pred (col a :document_id) (:doc cmap) str)))
-  (when (contains? cmap :begin) (add-where! st (atomic-pred (col a :begin) (:begin cmap) identity)))
-  (when (contains? cmap :end)   (add-where! st (atomic-pred (col a :end_) (:end cmap) identity))))
+    (emit-field! st (col a :form) (:form cmap) identity (col a :form)))
+  (when (contains? cmap :doc)   (emit-field! st (col a :document_id) (:doc cmap) str (col a :document_id)))
+  (when (contains? cmap :begin) (emit-field! st (col a :begin) (:begin cmap) identity (col a :begin)))
+  (when (contains? cmap :end)   (emit-field! st (col a :end_) (:end cmap) identity (col a :end_))))
 
 (defn- ensure-layer-var!
   "Allocate a layer-table alias for a LAYER variable `v` of `kind`, emit its scope
@@ -195,7 +216,9 @@
   (let [kind (get-in @st [:kinds v])]
     (when (nil? kind)
       (err-500! (str "No inferred kind for var " v) {:var v}))
-    (when-not (get-in @st [:var->alias v])
+    ;; scalar vars are NOT tables — they bind a column of their host entity
+    ;; clause (emit-entity-filters! does the binding/join). Skip allocation.
+    (when (and (not= :scalar kind) (not (get-in @st [:var->alias v])))
       (if (layer-kind? kind)
         (ensure-layer-var! st v kind constraints)
         (let [a (next-alias! st (alias-prefix kind))]
@@ -393,6 +416,44 @@
     (swap! outer-st update :scoped into (:scoped @sub-st))))
 
 ;; ---------------------------------------------------------------------------
+;; Predicate clauses: [op a b] over already-bound terms
+;; ---------------------------------------------------------------------------
+
+(def ^:private pred-honeysql-op
+  {:=  :=
+   :!= :<>
+   :<  :<
+   :>  :>
+   :<= :<=
+   :>= :>=})
+
+(defn- resolve-term
+  "Resolve a predicate term to {:sql expr :enc enc} (a bound var: entity -> its
+  .id, scalar -> its bound column) or {:lit v} (a literal)."
+  [st t]
+  (if (ast/var? t)
+    (let [kind (get-in @st [:kinds t])]
+      (if (= :scalar kind)
+        (or (get-in @st [:scalar-col t])
+            (err-500! (str "Scalar var " t " used in a predicate was never bound") {:var t}))
+        {:sql (col (or (get-in @st [:var->alias t])
+                       (err-500! (str "Entity var " t " in a predicate was never bound") {:var t}))
+                   :id)
+         :enc str}))
+    {:lit t}))
+
+(defn- compile-pred!
+  "Compile `[op a b]` to a WHERE comparison. A literal is encoded with the OTHER
+  term's encoder, so a literal compared to a JSON-encoded :value column is itself
+  JSON-encoded; comparing two entity vars compares their ids."
+  [st clause]
+  (let [[op a b] clause
+        ta (resolve-term st a)
+        tb (resolve-term st b)
+        side (fn [t other] (if (contains? t :lit) ((or (:enc other) identity) (:lit t)) (:sql t)))]
+    (add-where! st [(pred-honeysql-op op) (side ta tb) (side tb ta)])))
+
+;; ---------------------------------------------------------------------------
 ;; Assemble
 ;; ---------------------------------------------------------------------------
 
@@ -466,6 +527,7 @@
         ;; layer-constraint clauses are fully handled by ensure-layer-var! in Pass B
         (contains? layer-entity-table (first clause)) nil
         (contains? entity-table (first clause)) (compile-relation-inline! st constraints clause)
+        (pred-honeysql-op (first clause)) (compile-pred! st clause)
         :else (compile-rel! st constraints clause)))
     (assert-acl-invariant! st)
     (let [order-pairs (order-projection st (:order-by resolved))

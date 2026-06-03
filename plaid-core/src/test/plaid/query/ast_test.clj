@@ -260,12 +260,18 @@
   (testing "a duplicate var in :find is a 400 (would emit a duplicate result column)"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s" "?s"] "where" [["span" "?s" {}]]}))))))
 
-(deftest constraint-values-stay-literal
-  (testing "a constraint value that looks like a var is kept as a literal string"
+(deftest constraint-value-vars
+  (testing "a proper var name in value position binds a scalar variable (symbol)"
     (let [clause (first (:where (ast/parse {"find" ["?s"] "where" [["span" "?s" {"value" "?x"}]]})))
           v (:value (nth clause 2))]
-      (is (= "?x" v))
-      (is (string? v) "value must NOT be coerced into a query symbol")))
+      (is (= (symbol "?x") v))
+      (is (symbol? v) "a ?-prefixed identifier in value position is a scalar var")))
+  (testing "a bare \"?\" (or other literal) in value position stays a literal string"
+    (doseq [lit ["?" "NOUN" "??"]]
+      (let [clause (first (:where (ast/parse {"find" ["?s"] "where" [["span" "?s" {"value" lit}]]})))
+            v (:value (nth clause 2))]
+        (is (= lit v))
+        (is (string? v) (str (pr-str lit) " must stay a literal, not a scalar var")))))
   (testing "inline relation :source/:target ARE var-ized"
     (let [clause (first (:where (ast/parse {"find" ["?r"]
                                             "where" [["relation" "?r" {"source" "?h" "target" "?d"}]]})))
