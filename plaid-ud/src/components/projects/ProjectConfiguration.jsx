@@ -11,7 +11,7 @@ import {
   getUdLayerInfo
 } from '../../utils/udLayerUtils.js';
 import {
-  UPOS_TAGS, UNIVERSAL_DEPRELS, autoColor, colorMapToPairs, baseRel
+  UPOS_TAGS, UNIVERSAL_DEPRELS, autoColor, cleanColorMap, baseRel
 } from '../../utils/udVocab.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
@@ -230,8 +230,8 @@ export const ProjectConfiguration = ({ embedded = false }) => {
 
   // Persist vocab lists + color maps + feature inventory. Each setConfig is a
   // PUT (full replace), so this is naturally idempotent and safe to re-run.
-  // Colors/inventory are written as ARRAYS OF PAIRS so object keys never get
-  // camelCased on read by the client transform (see udVocab.js).
+  // Colors are a plain {label: '#hex'} map; the client treats `config` as opaque
+  // and never re-cases its keys, so labels are safe as object keys (see udVocab.js).
   const handleSaveExtras = async () => {
     setSavingExtras(true);
     try {
@@ -249,11 +249,11 @@ export const ProjectConfiguration = ({ embedded = false }) => {
       }
       if (info.relationLayer) {
         await client.relationLayers.setConfig(info.relationLayer.id, UD_NAMESPACE, 'vocab', deprelVocab);
-        await client.relationLayers.setConfig(info.relationLayer.id, UD_NAMESPACE, 'colors', colorMapToPairs(deprelColors));
+        await client.relationLayers.setConfig(info.relationLayer.id, UD_NAMESPACE, 'colors', cleanColorMap(deprelColors));
       }
       if (info.uposLayer) {
         await client.spanLayers.setConfig(info.uposLayer.id, UD_NAMESPACE, 'vocab', uposVocab);
-        await client.spanLayers.setConfig(info.uposLayer.id, UD_NAMESPACE, 'colors', colorMapToPairs(uposColors));
+        await client.spanLayers.setConfig(info.uposLayer.id, UD_NAMESPACE, 'colors', cleanColorMap(uposColors));
       }
       if (info.featuresLayer) {
         const inventory = featureInventory

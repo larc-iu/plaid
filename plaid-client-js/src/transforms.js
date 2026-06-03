@@ -19,9 +19,17 @@ export function transformKeyFromCamel(key) {
   return key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
 }
 
+// `metadata` and `config` are opaque, client-agnostic buckets: their contents
+// are arbitrary user/application data whose keys must NOT vary by client. We
+// pass their values through verbatim (no recursion) so object keys inside them
+// are never re-cased or namespace-stripped — a label like `case-marker` used as
+// a map key survives intact. Everything else is API envelope and gets the
+// usual case conversion.
+const OPAQUE_KEYS = new Set(['metadata', 'config']);
+
 /**
  * Recursively transform request object keys from camelCase to kebab-case.
- * Preserves metadata contents without transformation.
+ * Preserves `metadata` and `config` contents without transformation.
  */
 export function transformRequest(obj) {
   if (obj === null || obj === undefined) return obj;
@@ -31,7 +39,7 @@ export function transformRequest(obj) {
   const transformed = {};
   for (const [key, value] of Object.entries(obj)) {
     const newKey = transformKeyFromCamel(key);
-    if (key === 'metadata' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    if (OPAQUE_KEYS.has(key) && typeof value === 'object' && value !== null && !Array.isArray(value)) {
       transformed[newKey] = value;
     } else {
       transformed[newKey] = transformRequest(value);
@@ -42,7 +50,7 @@ export function transformRequest(obj) {
 
 /**
  * Recursively transform response object keys from kebab-case/namespaced to camelCase.
- * Preserves metadata contents without transformation.
+ * Preserves `metadata` and `config` contents without transformation.
  */
 export function transformResponse(obj) {
   if (obj === null || obj === undefined) return obj;
@@ -52,7 +60,7 @@ export function transformResponse(obj) {
   const transformed = {};
   for (const [key, value] of Object.entries(obj)) {
     const newKey = transformKeyToCamel(key);
-    if (newKey === 'metadata' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    if (OPAQUE_KEYS.has(newKey) && typeof value === 'object' && value !== null && !Array.isArray(value)) {
       transformed[newKey] = value;
     } else {
       transformed[newKey] = transformResponse(value);

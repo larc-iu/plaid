@@ -2,12 +2,12 @@
 // for Plaid UD. Pure module — no React, no client calls — so it is safe to
 // import anywhere (components, utils, tests) and trivial to unit-test.
 //
-// Storage shape (all under the `ud` config namespace, verified to round-trip
-// through the backend + JS client): vocab lists are plain string arrays; color
-// maps and the feature inventory are stored as ARRAYS OF PAIRS, never objects
-// keyed by label. The client's response transform recursively camelCases object
-// KEYS on read (so an object keyed by a hyphenated deprel would mangle), but
-// never touches string VALUES — so arrays of pairs are immune. See readColorMap.
+// Storage shape (all under the `ud` config namespace): vocab lists are plain
+// string arrays; color maps are objects keyed by label (`{label: '#hex'}`); the
+// feature inventory is an ordered list of `{key, values}` records (a list
+// because the picker UI cares about order). The JS client treats `config` as an
+// opaque bucket and passes it through verbatim — no key re-casing — so labels
+// can safely be object keys, even hyphenated custom ones.
 
 const UD_NAMESPACE = 'ud';
 
@@ -95,19 +95,11 @@ export const readVocab = (config, { fallback = [] } = {}) => {
   return Array.isArray(v) && v.length ? v : fallback;
 };
 
-// Normalize the stored colors (array of {rel,color}) to a fast {label:'#hex'}
-// lookup. Tolerates a legacy object shape defensively.
+// Read the stored colors — a plain {label: '#hex'} map — returning a fresh copy
+// so callers can't mutate the layer config in place.
 export const readColorMap = (config) => {
   const raw = config?.[UD_NAMESPACE]?.colors;
-  const map = {};
-  if (Array.isArray(raw)) {
-    for (const entry of raw) {
-      if (entry && entry.rel && entry.color) map[entry.rel] = entry.color;
-    }
-  } else if (raw && typeof raw === 'object') {
-    Object.assign(map, raw);
-  }
-  return map;
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
 };
 
 // Returns { list, map } — `list` is the array-of-{key,values} for the config UI,
@@ -124,10 +116,10 @@ export const readFeatureInventory = (config) => {
 
 // ---- config write payload shapes (define write-shape next to read-shape) ----
 
-// {label: '#hex'} → [{rel,color}], dropping empty assignments. Pass to setConfig.
-export const colorMapToPairs = (colorMap) =>
-  Object.entries(colorMap || {})
-    .filter(([rel, color]) => rel && color)
-    .map(([rel, color]) => ({ rel, color }));
+// Drop empty assignments before persisting a {label: '#hex'} map. Pass to setConfig.
+export const cleanColorMap = (colorMap) =>
+  Object.fromEntries(
+    Object.entries(colorMap || {}).filter(([label, color]) => label && color)
+  );
 
 export { UD_NAMESPACE };
