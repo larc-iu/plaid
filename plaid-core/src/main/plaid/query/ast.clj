@@ -317,6 +317,7 @@
       (= head :overlaps)    (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
       (= head :contains)    (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
       (= head :coextensive) (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
+      (= head :related*)    (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
       (= head :source)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :target)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :vocab-link) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :vocab))
@@ -340,6 +341,7 @@
             (into (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target :layer]))
             (into (keep #(let [x (get cmap %)] (when (and (map? x) (var? (:var x))) (:var x))) scalar-keys))))
       (contains? rel-clauses head) (filterv var? args)
+      (= head :related*) (filterv var? args)   ; two span vars (the trailing map filters out)
       (contains? layer-clauses head) (if (var? (first args)) [(first args)] [])
       :else [])))
 
@@ -487,6 +489,21 @@
           (when (seq unknown)
             (err! :validate (str "Unknown constraint key(s) " (vec unknown) " on :" (name head)
                                  " (allowed: " (vec (sort allowed)) ")")))))
+
+      (= head :related*)
+      (let [[a b cmap] args]
+        (when-not (and (var? a) (var? b))
+          (err! :validate ":related* takes two span variables, got: " (pr-str [a b])))
+        (when (> (count args) 3)
+          (err! :validate ":related* takes two span vars and a constraint map"))
+        (when-not (and (map? cmap) (contains? cmap :layer))
+          (err! :validate ":related* requires a constraint map with a :layer (the relation layer to follow)"))
+        (let [allowed #{:layer :value}
+              unknown (remove allowed (keys cmap))]
+          (when (seq unknown)
+            (err! :validate (str ":related* constraints may only be :layer and :value, got: " (vec unknown))))
+          (when (symbol? (:layer cmap))
+            (err! :validate ":related* :layer must be a relation-layer reference, not a variable"))))
 
       (pred-ops head)
       (do

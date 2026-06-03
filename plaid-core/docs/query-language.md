@@ -180,12 +180,21 @@ This is where the graph structure comes from.
 | `["coextensive", "?a", "?b"]` | the two **spans** cover exactly the same tokens |
 | `["source", "?relation", "?span"]` | the relation's source endpoint |
 | `["target", "?relation", "?span"]` | the relation's target endpoint |
+| `["related*", "?a", "?b", {layer: L}]` | span `?b` is reachable from `?a` by **following ≥1** relation edge (source→target) on layer `L` |
 | `["vocab-link", "?token", "?vocab"]` | the token is linked to that vocab item |
 
 **Token order** for `precedes`/`precedes*` is the canonical Plaid order:
 `(begin, precedence, end, id)` — the same order tokens appear in when you read a
 document. `precedes` is the *immediate* next token in that order; `precedes*` is
 "anywhere after."
+
+**`related*`** is transitive reachability over a relation layer: `?b` is reached
+from `?a` by following one or more `source → target` edges on the given layer.
+Both vars are **spans**; the trailing map is required and names the relation
+`layer` (and optionally a `value` each edge must have). It's the tool for
+dependency-tree ancestry/descent — `["related*", "?head", "?node", {layer: "dep"}]`
+finds every node in `?head`'s subtree, at any depth. (It is `*` in the
+`precedes*` sense: one-or-more hops, never zero.)
 
 **`overlaps`/`contains`/`coextensive`** relate two **spans** by the *set of tokens*
 each covers (a span can be discontinuous, so this is set logic, not offsets).

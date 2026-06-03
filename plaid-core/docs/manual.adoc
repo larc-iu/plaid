@@ -890,6 +890,7 @@ The second sort of clause relates two named things to each other. You write it a
 * `["overlaps", "?a", "?b"]`--two spans share at least one of the tokens they cover;
 * `["contains", "?a", "?b"]`--span `?a` covers every token that span `?b` does;
 * `["coextensive", "?a", "?b"]`--two spans cover exactly the same tokens (a span on one layer lining up with a span on another);
+* `["related*", "?a", "?b", { layer: "dep" }]`--span `?b` can be reached from `?a` by following one or more relation edges (from source to target) on the named layer; this is how you ask about reachability in a dependency tree at any depth--an ancestor and any of its descendants;
 * `["source", "?relation", "?span"]` and `["target", "?relation", "?span"]`--the two ends of a relation;
 * `["vocab-link", "?token", "?vocab"]`--the token is linked to that vocab item.
 

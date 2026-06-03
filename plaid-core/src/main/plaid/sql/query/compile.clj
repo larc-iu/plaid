@@ -399,6 +399,31 @@
                      (add-where! st [:<> (col sa :id) (col sb :id)])
                      (add-where! st (span-superset-pred st (col sa :id) (col sb :id)))
                      (add-where! st (span-superset-pred st (col sb :id) (col sa :id))))
+      :related*    (let [sa (av a) sb (av b)
+                         cmap (nth clause 3)
+                         layer-ids (vec (::qr/layer-ids cmap))
+                         r0 (next-alias! st "rc0")
+                         r1 (next-alias! st "rc1")
+                         ;; per-hop relation filter: in the (scoped) layer set, and
+                         ;; the optional :value. Correlates scope via layer-ids.
+                         hop (fn [r]
+                               (cond-> [:and [:in (col r :relation_layer_id) layer-ids]]
+                                 (contains? cmap :value)
+                                 (conj (atomic-pred (col r :value) (:value cmap) psc/write-json))))]
+                     ;; transitive reachability over source_span_id -> target_span_id,
+                     ;; via a correlated recursive CTE inside EXISTS (>=1 hop).
+                     (add-where! st
+                                 [:exists
+                                  {:with-recursive
+                                   [[[:reach {:columns [:rid]}]
+                                     {:union
+                                      [{:select [(col r0 :target_span_id)]
+                                        :from [[:relations r0]]
+                                        :where (conj (hop r0) [:= (col r0 :source_span_id) (col sa :id)])}
+                                       {:select [(col r1 :target_span_id)]
+                                        :from [[:relations r1] :reach]
+                                        :where (conj (hop r1) [:= (col r1 :source_span_id) :reach.rid])}]}]]
+                                   :select [1] :from [:reach] :where [:= :reach.rid (col sb :id)]}]))
       :source   (let [r (av a) s (av b)]
                   (add-where! st [:= (col r :source_span_id) (col s :id)]))
       :target   (let [r (av a) s (av b)]
