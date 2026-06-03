@@ -22,6 +22,7 @@
   tail makes the order total, so adjacency is well-defined even among tokens that
   share a begin offset."
   (:require [clojure.set :as set]
+            [clojure.string :as str]
             [plaid.query.ast :as ast]
             [plaid.sql.common :as psc]
             [plaid.sql.query.resolve :as qr]))
@@ -113,6 +114,30 @@
     [:in col (mapv enc v)]
     [:= col (enc v)]))
 
+(defn- regex-pred
+  "Portable case-(in)sensitive regex match of `col` against `pattern`.
+  *** Dialect seam *** — the ONE place a regex predicate is emitted:
+    SQLite:   REGEXP(pattern, col) — a UDF registered per query connection in
+              exec.clj (Java Pattern under the hood). Case-insensitivity is an
+              inline `(?i)` on the pattern.
+    Postgres: would be `col ~ pattern` / `col ~* pattern` — change THIS fn only."
+  [col pattern case-insensitive?]
+  ;; HoneySQL renders :regexp as the infix `col REGEXP pattern`, which SQLite
+  ;; maps to `regexp(pattern, col)` — exactly our UDF's (pattern, value) arg order.
+  [:regexp col (if case-insensitive? (str "(?i)" pattern) pattern)])
+
+(defn- emit-match!
+  "Emit one text-match predicate: a regex spec `{:regex .. :flags}` -> REGEXP
+  against `regex-col`; a vector -> IN; a scalar -> `=` (both against `col`, with
+  literals `enc`oded). `regex-col` may differ from `col` so a regex can run on
+  the decoded text (e.g. JSON-extracted span value) while equality compares the
+  stored form."
+  [st col v enc regex-col]
+  (add-where! st
+              (if (and (map? v) (contains? v :regex))
+                (regex-pred regex-col (:regex v) (boolean (some-> (:flags v) (str/includes? "i"))))
+                (atomic-pred col v enc))))
+
 (defn- emit-entity-filters!
   "Emit the value/form/doc/begin/end predicates from one entity constraint map
   against table alias `a`. Kept separate from `ensure-var!` (which only allocates
@@ -121,8 +146,14 @@
   must land inside that NOT EXISTS subquery as a correlated predicate, not on the
   outer alias."
   [st a cmap]
-  (when (contains? cmap :value) (add-where! st (atomic-pred (col a :value) (:value cmap) psc/write-json)))
-  (when (contains? cmap :form)  (add-where! st (atomic-pred (col a :form) (:form cmap) identity)))
+  ;; :value is stored JSON-encoded; a regex matches the DECODED scalar
+  ;; (json_extract '$') so patterns aren't fighting the surrounding quotes.
+  (when (contains? cmap :value)
+    (emit-match! st (col a :value) (:value cmap) psc/write-json
+                 [:json_extract (col a :value) [:inline "$"]]))
+  ;; :form (vocab_items.form) is plain TEXT — regex runs on the column directly.
+  (when (contains? cmap :form)
+    (emit-match! st (col a :form) (:form cmap) identity (col a :form)))
   (when (contains? cmap :doc)   (add-where! st (atomic-pred (col a :document_id) (:doc cmap) str)))
   (when (contains? cmap :begin) (add-where! st (atomic-pred (col a :begin) (:begin cmap) identity)))
   (when (contains? cmap :end)   (add-where! st (atomic-pred (col a :end_) (:end cmap) identity))))

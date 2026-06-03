@@ -60,6 +60,11 @@
 ;; layer vars) or :source/:target (vars).
 (def ^:private alternation-keys #{:value :form :doc :begin :end})
 
+;; Constraint keys whose value may be a regex spec `{:regex "..." :flags "i"?}`
+;; (compiles to a REGEXP match). Text-valued keys only.
+(def ^:private regex-keys #{:value :form})
+(def ^:private regex-max-len 512)
+
 ;; Layer-constraint clauses: [:span-layer ?sl {constraint-map}]. The head IS the
 ;; layer kind; binds/constrains a LAYER variable. Value = allowed constraint keys.
 (def ^:private layer-clauses
@@ -130,7 +135,11 @@
     (err! :parse (str "Clause constraint must be a map, got: " (pr-str m))))
   (reduce-kv (fn [acc k v]
                (let [k (->kw k)]
-                 (assoc acc k (if (#{:source :target :layer} k) (->var v) v))))
+                 (assoc acc k (cond
+                                (#{:source :target :layer} k) (->var v)
+                                ;; a map value is a regex spec — keyword-ize its keys
+                                (map? v) (reduce-kv (fn [a ik iv] (assoc a (->kw ik) iv)) {} v)
+                                :else v))))
              {} m))
 
 ;; --- :seq sugar (CQP-style token sequences) --------------------------------
@@ -357,6 +366,27 @@
           (err! :validate (str ":order-by direction must be asc or desc, got: " (pr-str dir)))))))
   ast)
 
+(defn- validate-regex-spec!
+  "Validate a `{:regex \"...\" :flags \"i\"?}` constraint value. Compiles the
+  pattern so a malformed regex is a 400 here, not a runtime error in the UDF."
+  [head k spec]
+  (when-not (regex-keys k)
+    (err! :validate (str ":" (name head) " constraint :" (name k)
+                         " does not support a regex (allowed on " (vec (sort regex-keys)) ")")))
+  (let [{:keys [regex flags]} spec
+        extra (remove #{:regex :flags} (keys spec))]
+    (when (seq extra)
+      (err! :validate (str "regex spec has unknown key(s) " (vec extra) " (allowed :regex, :flags)")))
+    (when-not (string? regex)
+      (err! :validate (str ":" (name k) " regex must be a string, got: " (pr-str regex))))
+    (when (> (count regex) regex-max-len)
+      (err! :validate (str ":" (name k) " regex is too long (max " regex-max-len " chars)")))
+    (when (and flags (or (not (string? flags)) (not (re-matches #"i*" flags))))
+      (err! :validate (str ":" (name k) " regex flags " (pr-str flags) " unsupported (only \"i\")")))
+    (try (re-pattern regex)
+         (catch java.util.regex.PatternSyntaxException e
+           (err! :validate (str ":" (name k) " has an invalid regex: " (.getMessage e)))))))
+
 (defn- validate-clause!
   [clause]
   (let [[head & args] clause]
@@ -378,16 +408,20 @@
           (when (seq unknown)
             (err! :validate (str "Unknown constraint key(s) " (vec unknown) " on :" (name head)
                                  " (allowed: " (vec (sort allowed)) ")"))))
-        ;; value alternation: a vector value means "one of" -> IN. Allowed only on
-        ;; the literal-match keys; non-empty.
+        ;; value shapes: a vector value means "one of" -> IN (alternation, on the
+        ;; literal-match keys only); a map value means a regex spec (regex-keys
+        ;; only). A scalar is plain equality.
         (doseq [[k v] cmap]
-          (when (vector? v)
-            (when-not (alternation-keys k)
-              (err! :validate (str ":" (name head) " constraint :" (name k)
-                                   " does not support a list value (alternation is allowed on "
-                                   (vec (sort alternation-keys)) ")")))
-            (when (empty? v)
-              (err! :validate (str ":" (name head) " constraint :" (name k) " list must be non-empty"))))))
+          (cond
+            (vector? v)
+            (do (when-not (alternation-keys k)
+                  (err! :validate (str ":" (name head) " constraint :" (name k)
+                                       " does not support a list value (alternation is allowed on "
+                                       (vec (sort alternation-keys)) ")")))
+                (when (empty? v)
+                  (err! :validate (str ":" (name head) " constraint :" (name k) " list must be non-empty"))))
+            (map? v)
+            (validate-regex-spec! head k v))))
 
       (contains? rel-clauses head)
       (let [arity (rel-clauses head)]

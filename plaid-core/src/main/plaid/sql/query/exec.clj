@@ -32,7 +32,54 @@
             [plaid.sql.token :as token]
             [plaid.sql.relation :as relation]
             [plaid.sql.vocab-item :as vocab-item])
-  (:import [org.sqlite SQLiteConnection]))
+  (:import [org.sqlite SQLiteConnection Function]
+           [java.lang.reflect Method]
+           [java.util.regex Pattern]
+           [java.util.concurrent ConcurrentHashMap]))
+
+;; --- REGEXP UDF (SQLite-specific) -----------------------------------------
+;; SQLite ships no REGEXP operator; Xerial lets us register one per connection.
+;; We register it on each query connection (in `run-bounded`) so the query
+;; language's regex value-matching works. Postgres has native `~`/`~*`, so this
+;; whole block is SQLite-only — the portability seam is `regex-pred` in
+;; compile.clj, the single place that emits the predicate.
+;;
+;; org.sqlite.Function's arg/result accessors are `protected`; a Clojure proxy
+;; body can't reach a protected supermethod, so we go through reflection with
+;; setAccessible (verified working on the Xerial driver in use).
+(def ^:private ^Method m-value-text
+  (doto (.getDeclaredMethod Function "value_text" (into-array Class [Integer/TYPE]))
+    (.setAccessible true)))
+(def ^:private ^Method m-result-int
+  (doto (.getDeclaredMethod Function "result" (into-array Class [Integer/TYPE]))
+    (.setAccessible true)))
+
+(def ^:private ^ConcurrentHashMap pattern-cache (ConcurrentHashMap.))
+(def ^:private pattern-cache-max 256)
+
+(defn- cached-pattern ^Pattern [^String p]
+  (or (.get pattern-cache p)
+      (let [compiled (Pattern/compile p)]
+        ;; bounded: stop caching past the cap (patterns past it still compile,
+        ;; just uncached) so adversarial distinct patterns can't grow it forever
+        (when (< (.size pattern-cache) pattern-cache-max)
+          (.putIfAbsent pattern-cache p compiled))
+        compiled)))
+
+(defn- regexp-function
+  "A REGEXP(pattern, value) UDF: 1 if `value` contains a match for the Java
+  regex `pattern`, else 0. Compiled patterns are cached. Patterns are validated
+  for syntax at query-validation time, so compile here won't see a bad one."
+  []
+  (proxy [Function] []
+    (xFunc []
+      (let [pat (.invoke m-value-text this (object-array [(int 0)]))
+            s   (.invoke m-value-text this (object-array [(int 1)]))
+            hit (if (and pat s (.find (.matcher (cached-pattern pat) s))) 1 0)]
+        (.invoke m-result-int this (object-array [(int hit)]))))))
+
+(defn- register-regexp! [^SQLiteConnection sqlite]
+  (Function/create sqlite "REGEXP" (regexp-function)))
 
 (def ^:private default-limit
   "Rows returned when the query specifies no :limit."
@@ -69,7 +116,9 @@
   throws a 408 `ex-info` on timeout. Any other SQL error propagates as its cause."
   [db f]
   (with-open [conn (jdbc/get-connection db)]
-    (let [ndb (.getDatabase (.unwrap conn SQLiteConnection))
+    (let [sqlite (.unwrap conn SQLiteConnection)
+          ndb (.getDatabase sqlite)
+          _ (register-regexp! sqlite)            ; make REGEXP() available for this query
           done (atom false)
           fut (future (try (f conn) (finally (reset! done true))))
           watchdog (future (Thread/sleep *query-timeout-ms*)

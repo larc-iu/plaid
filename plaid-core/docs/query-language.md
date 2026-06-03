@@ -134,6 +134,17 @@ readable projects (§8). A few examples:
 > `{"value": ["NOUN", "PROPN"]}` → `value IN (…)`. (Not `layer`, which must
 > resolve to a single layer — §6.)
 
+> **Regex.** `value` and `form` also accept a regex spec
+> `{"regex": "<pattern>", "flags": "i"?}`:
+> ```python
+> ["span",  "?s", {"layer": "Lemma", "value": {"regex": "^walk"}}]   # walk, walks, walking…
+> ["vocab", "?v", {"form": {"regex": "ция$", "flags": "i"}}]          # case-insensitive suffix
+> ```
+> The only supported flag is `"i"` (case-insensitive). For `value`, the pattern
+> is matched against the *decoded* string, so anchors (`^` / `$`) behave as you'd
+> expect. Patterns are POSIX-compatible; stick to common syntax (`. * + ? [] ^ $
+> |`) for portability. A malformed pattern is a `400`.
+
 ---
 
 ## 4. Relationship clauses

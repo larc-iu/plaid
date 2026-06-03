@@ -854,6 +854,20 @@ The first sort describes one entity and gives it a name. You write it as `[kind,
 
 You may give as many or as few of these conditions as you like, or none at all.
 
+A `value` (on a span or relation) or a `form` (on a vocabulary item) can be matched in three ways.
+Give it a plain string for an exact match; give it a list, like `value: ["NOUN", "PROPN"]`, to mean "any of these"; or give it a pattern to match part of the text:
+
+[,javascript]
+----
+// lemmas that start with "walk" -- walk, walks, walking, walked …
+["span", "?s", { layer: "lemma", value: { regex: "^walk" } }]
+// the same, ignoring upper/lower case
+["span", "?s", { layer: "lemma", value: { regex: "^walk", flags: "i" } }]
+----
+
+The pattern is an ordinary regular expression; the one option, `flags: "i"`, makes it ignore case.
+This is the tool to reach for when you want a family of forms--a prefix, a suffix, a stem--rather than one exact string.
+
 The second sort of clause relates two named things to each other. You write it as `[relationship, "?a", "?b"]`:
 
 * `["covers", "?span", "?token"]`--the span includes that token;
