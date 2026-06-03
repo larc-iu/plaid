@@ -39,6 +39,7 @@ jobs:
         mkdir -p _site
         asciidoctor -o _site/index.html plaid-core/docs/index.adoc
         asciidoctor -o _site/manual.html plaid-core/docs/manual.adoc
+        asciidoctor -o _site/query.html plaid-core/docs/query.adoc
         asciidoctor -o _site/dev.html plaid-core/docs/dev.adoc
         node plaid-core/docs/extract-api-docs.js
         

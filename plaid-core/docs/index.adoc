@@ -37,6 +37,6 @@ To get a feel for how to program an app with Plaid, it may be helpful to see htt
 
 == Learn More
 
-See link:manual.html[the manual] for a comprehensive introduction to Plaid.
+See link:manual.html[the manual] for a comprehensive introduction to Plaid, and link:query.html[the query language reference] for searching annotation data.
 
 Also see the client libraries for https://github.com/larc-iu/plaid/tree/master/plaid-client-js[JavaScript] and https://github.com/larc-iu/plaid/tree/master/plaid-client-py[Python], as well as the API documentation for link:api-js.html[JS] and link:api-py.html[Python].
