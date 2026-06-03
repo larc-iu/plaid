@@ -101,12 +101,16 @@ jobs:
       - name: Build plaid-ud
         working-directory: plaid-ud
         run: |
-          npm ci
+          # `npm install`, not `npm ci`: this repo gitignores package-lock.json,
+          # so there's no lockfile to clean-install from in a fresh checkout.
+          npm install
           npm run build
       - name: Build plaid-igt
         working-directory: plaid-igt
         run: |
-          npm ci
+          # `npm install`, not `npm ci`: this repo gitignores package-lock.json,
+          # so there's no lockfile to clean-install from in a fresh checkout.
+          npm install
           npm run build
       - name: Bundle SPAs + version.edn into plaid-core resources
         run: |
