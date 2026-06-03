@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.vocab-layer
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
+            [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
             [plaid.sql.vocab-layer :as vocab]))
 
@@ -14,9 +15,11 @@
 
    [""
     {:get {:summary "List all vocab layers accessible to user"
-           :handler (fn [{db :db user-id :user/id :as req}]
-                      {:status 200
-                       :body (vocab/get-accessible db user-id)})}
+           :parameters {:query (into [:map] pagination/query-params)}
+           :handler (fn [{db :db user-id :user/id {query :query} :parameters}]
+                      (pagination/list-response
+                       query
+                       (fn [opts] (vocab/get-accessible db user-id opts))))}
      :post {:summary "Create a new vocab layer. Note: this also registers the user as a maintainer."
             :parameters {:body {:name string?}}
             :handler (fn [{{{:keys [name]} :body} :parameters db :db user-id :user/id :as req}]

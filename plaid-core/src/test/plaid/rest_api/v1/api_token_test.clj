@@ -66,8 +66,8 @@
       (testing "list shows the token but never the signed secret"
         (let [lr (api-call user1-request {:method :get :path (tokens-path "user1@example.com")})]
           (assert-ok lr)
-          (is (= 1 (count (:body lr))))
-          (let [t (first (:body lr))]
+          (is (= 1 (count (:entries (:body lr)))))
+          (let [t (first (:entries (:body lr)))]
             (is (= tid (:api-token/id t)))
             (is (= "svc" (:api-token/name t)))
             (is (nil? (:api-token/revoked-at t)))
@@ -89,7 +89,7 @@
       (is (= 401 (:status (api-call (token-req-fn tok)
                                     {:method :get :path (tokens-path "user1@example.com")})))))
     (testing "revoked token still listed with revoked-at set"
-      (let [t (first (:body (api-call user1-request {:method :get :path (tokens-path "user1@example.com")})))]
+      (let [t (first (:entries (:body (api-call user1-request {:method :get :path (tokens-path "user1@example.com")}))))]
         (is (some? (:api-token/revoked-at t)))))))
 
 (deftest revoke-unknown-404
@@ -151,12 +151,12 @@
     ;; Read the audit log as admin (admin bypasses project ACL); the token_id
     ;; enrichment is independent of who reads it.
     (testing "token-created project's create op carries :audit/api-token"
-      (let [entries (:body (h/get-project-audit admin-request proj))
+      (let [entries (:entries (:body (h/get-project-audit admin-request proj)))
             create-entry (first (filter #(= :project/create (-> % :audit/ops first :op/type)) entries))]
         (is (some? create-entry))
         (is (= "auditbot" (-> create-entry :audit/api-token :token/name)))))
     (testing "session-created project's create op has NO :audit/api-token"
-      (let [entries (:body (h/get-project-audit admin-request sess-proj))
+      (let [entries (:entries (:body (h/get-project-audit admin-request sess-proj)))
             create-entry (first (filter #(= :project/create (-> % :audit/ops first :op/type)) entries))]
         (is (some? create-entry))
         (is (nil? (:audit/api-token create-entry)))))))

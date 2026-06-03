@@ -1,0 +1,22 @@
+-- Covering indexes for the keyset-paginated list endpoints (plaid.sql.pagination).
+-- Keyset pagination's whole point is index-backed seeks: `WHERE scope = ?
+-- ORDER BY (k1, k2) LIMIT n` should walk an index range, not filter-then-filesort
+-- the whole scoped set on every page.
+--
+-- documents: `GET /projects/:id/documents` filters by project_id, orders by
+-- (name, id). The pre-existing idx_documents_project(project_id) only covers the
+-- filter, forcing a temp B-tree sort of the project's full document set per page.
+CREATE INDEX IF NOT EXISTS idx_documents_project_name_id ON documents(project_id, name, id);
+--;;
+-- api_tokens: `GET /users/:id/tokens` filters by user_id, orders by
+-- (created_at, id). The pre-existing idx_api_tokens_user(user_id) only covers the
+-- filter.
+CREATE INDEX IF NOT EXISTS idx_api_tokens_user_created_id ON api_tokens(user_id, created_at, id);
+-- users (ORDER BY username) is already index-backed via the UNIQUE(username)
+-- constraint; projects/vocab-layers paginate in-memory (paginate-coll) so need no
+-- new index. The audit (operations) keyset orders by (ts, id) and uses
+-- idx_operations_{project,document,user}_ts(col, ts) for the scope+ts seek; the
+-- trailing `id` tiebreaker is NOT in those indexes, so EXPLAIN shows a residual
+-- "USE TEMP B-TREE FOR RIGHT PART OF ORDER BY". This is harmless in practice —
+-- operations.ts is nanosecond-precision (effectively unique), so each temp sort
+-- spans ~1 row — and not worth widening three hot indexes to (col, ts, id).

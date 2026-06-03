@@ -43,14 +43,15 @@
         (is (= body {:error "User not found"}))))
 
     (testing "List all users"
-      ;; GET /users returns a bare array of users (admin-only, task #95).
-      ;; Pagination intentionally deferred — keep this a plain seq.
+      ;; GET /users returns the uniform {:entries :next-cursor} pagination
+      ;; envelope (admin-only, task #95 + #99).
       (let [req (admin-request :get "/api/v1/users")
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 200))
-        (is (sequential? body))
-        (is (some #(= (:user/username %) "a@b.com") body))))
+        (is (contains? body :entries))
+        (is (contains? body :next-cursor))
+        (is (some #(= (:user/username %) "a@b.com") (:entries body)))))
 
     #_(testing "Patch on password works"
         (let [req (-> (admin-request :patch "/api/v1/users/a@b.com")

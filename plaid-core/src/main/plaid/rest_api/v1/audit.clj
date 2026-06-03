@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.audit
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.audit :as audit]
             [plaid.sql.document :as doc]))
 
@@ -15,21 +16,16 @@
         document (doc/get db document-id)]
     (:document/project document)))
 
-;; Pagination query schema: shared by all three audit endpoints. `:limit`
-;; is bounded by `audit/max-limit` (see plaid.sql.audit) to keep a single
-;; request's result set bounded. `:cursor` is the `:op/id` (= operations.id)
-;; UUID of the last row from the previous page.
+;; Pagination query schema: shared by all three audit endpoints. The audit
+;; log is always paginated into the uniform `{:entries :next-cursor}`
+;; envelope (default page 100, max 1000); `:cursor` is the opaque token from
+;; the previous page's `:next-cursor`. Adds the audit-only time-window
+;; params on top of the shared `?limit`/`?cursor`.
 (def ^:private pagination-query
-  [:map
-   [:start-time {:optional true} inst?]
-   [:end-time {:optional true} inst?]
-   [:limit {:optional true} [:int {:min 1 :max audit/max-limit}]]
-   [:cursor {:optional true} :uuid]])
-
-(defn- ->opts [query]
-  (-> {}
-      (cond-> (:limit query)  (assoc :limit (:limit query)))
-      (cond-> (:cursor query) (assoc :cursor (:cursor query)))))
+  (into [:map
+         [:start-time {:optional true} inst?]
+         [:end-time {:optional true} inst?]]
+        pagination/query-params))
 
 (def audit-routes
   [["/projects/:project-id/audit"
@@ -38,8 +34,9 @@
            :middleware [[pra/wrap-reader-required get-project-id-from-audit-path]]
            :parameters {:query pagination-query}
            :handler    (fn [{{{:keys [project-id]} :path {:keys [start-time end-time] :as query} :query} :parameters db :db}]
-                         (let [result (audit/get-project-audit-log db project-id start-time end-time (->opts query))]
-                           {:status 200 :body result}))}}]
+                         (pagination/list-response
+                          query
+                          (fn [opts] (audit/get-project-audit-log db project-id start-time end-time opts))))}}]
 
    ["/documents/:document-id/audit"
     {:parameters {:path [:map [:document-id :uuid]]}
@@ -47,8 +44,9 @@
            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
            :parameters {:query pagination-query}
            :handler    (fn [{{{:keys [document-id]} :path {:keys [start-time end-time] :as query} :query} :parameters db :db}]
-                         (let [result (audit/get-document-audit-log db document-id start-time end-time (->opts query))]
-                           {:status 200 :body result}))}}]
+                         (pagination/list-response
+                          query
+                          (fn [opts] (audit/get-document-audit-log db document-id start-time end-time opts))))}}]
 
    ["/users/:user-id/audit"
     {:parameters {:path [:map [:user-id string?]]}
@@ -56,5 +54,6 @@
                   :middleware [[pra/wrap-admin-required]]  ; Only admins can view other users' audit logs
                   :parameters {:query pagination-query}
                   :handler    (fn [{{{:keys [user-id]} :path {:keys [start-time end-time] :as query} :query} :parameters db :db}]
-                                (let [result (audit/get-user-audit-log db user-id start-time end-time (->opts query))]
-                                  {:status 200 :body result}))}}]])
+                                (pagination/list-response
+                                 query
+                                 (fn [opts] (audit/get-user-audit-log db user-id start-time end-time opts))))}}]])

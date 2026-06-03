@@ -32,10 +32,14 @@ export const DocumentList = () => {
         throw new Error('Not authenticated');
       }
 
-      // Fetch project with documents
-      const projectData = await client.projects.get(projectId, true);
+      // Fetch project and its documents (documents are no longer embedded
+      // on the project; they come from the dedicated listDocuments endpoint).
+      const [projectData, docsList] = await Promise.all([
+        client.projects.get(projectId),
+        client.projects.listDocuments(projectId),
+      ]);
       setProject(projectData);
-      setDocuments(projectData.documents || []);
+      setDocuments(docsList || []);
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {

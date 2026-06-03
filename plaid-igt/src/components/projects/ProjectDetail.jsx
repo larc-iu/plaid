@@ -51,11 +51,14 @@ export const ProjectDetail = () => {
       
       // Fetch project data (with documents if requested)
       if (includeProject) {
-        const projectData = await client.projects.get(projectId, includeDocuments);
+        const [projectData, docsList] = await Promise.all([
+          client.projects.get(projectId),
+          includeDocuments ? client.projects.listDocuments(projectId) : Promise.resolve(null),
+        ]);
         setProject(projectData);
-        
+
         if (includeDocuments) {
-          setDocuments(projectData.documents || []);
+          setDocuments(docsList || []);
         }
       }
       

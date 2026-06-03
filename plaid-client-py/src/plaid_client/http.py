@@ -48,6 +48,140 @@ def extract_document_versions(client, response_headers, response_body=None):
             client.document_versions[doc_id] = doc_version
 
 
+def _merge_query(query, **extra):
+    """Merge a base query dict with extra paging params, dropping None values."""
+    merged = dict(query) if query else {}
+    for k, v in extra.items():
+        if v is not None:
+            merged[k] = v
+    return merged
+
+
+def list_page(client, path, *, limit=None, cursor=None, query=None):
+    """Fetch a single page from a paginated collection endpoint.
+
+    Returns the transformed envelope dict ``{"entries": [...],
+    "next_cursor": <opaque-string-or-None>}`` exactly as the server returns it
+    (after the client's response transform, which snake_cases ``next-cursor``
+    to ``next_cursor``).
+
+    Args:
+        client: PlaidClient instance.
+        path: Collection path, e.g. ``/api/v1/projects``.
+        limit: Page size (1..1000). ``None`` lets the server use its default.
+        cursor: Opaque cursor from a previous page's ``next_cursor``.
+        query: Extra query params (e.g. ``{"as-of": ...}``).
+    """
+    qp = _merge_query(query, limit=limit, cursor=cursor)
+    return make_request(client, 'GET', path, query_params=qp or None)
+
+
+def iter_pages(client, path, *, page_size=1000, query=None):
+    """Generator yielding each page's ``entries`` list, following cursors.
+
+    Each yielded value is the list of entries for one page. Iteration stops
+    when the server reports ``next_cursor`` of ``None``.
+
+    NOTE: This auto-paginates and therefore CANNOT be used inside a batch — each
+    page's request needs the previous page's ``next_cursor``, which doesn't
+    exist until the batch executes. It raises ``RuntimeError`` immediately when
+    the client is in batch mode. Use ``list_page`` for a single page inside a
+    batch.
+
+    Args:
+        client: PlaidClient instance.
+        path: Collection path, e.g. ``/api/v1/projects``.
+        page_size: Page size requested as ``limit`` (1..1000).
+        query: Extra query params (e.g. ``{"as-of": ...}``).
+    """
+    if client.is_batching:
+        raise RuntimeError(
+            f'Cannot auto-paginate {path} inside a batch: list methods follow '
+            'cursors across multiple requests, which a batch cannot do. Use '
+            'list_page() for a single page inside a batch, or call the list '
+            'method outside the batch.'
+        )
+    cursor = None
+    while True:
+        page = list_page(client, path, limit=page_size, cursor=cursor, query=query)
+        entries = page.get('entries', []) or []
+        # Suppress the trailing empty page that the server emits when a
+        # collection's size is an exact multiple of the page size (a final full
+        # page with a non-null cursor, then an empty page). Still follow the
+        # cursor below.
+        if entries:
+            yield entries
+        prev_cursor = cursor
+        cursor = page.get('next_cursor')
+        if cursor is None:
+            break
+        # Guard against a buggy server/proxy that returns a constant non-null
+        # cursor, which would otherwise loop forever.
+        if cursor == prev_cursor:
+            raise RuntimeError(
+                'Pagination cursor did not advance; aborting to avoid an '
+                'infinite loop.'
+            )
+
+
+def list_all(client, path, *, page_size=1000, query=None):
+    """Fetch the full flat list from a paginated collection endpoint.
+
+    Transparently follows ``next_cursor`` until exhausted and concatenates
+    every page's ``entries``. An empty first page yields ``[]``. This is the
+    backward-compatible shape the old ``.list()`` methods returned before the
+    server moved to a paginated envelope.
+
+    NOTE: This auto-paginates and therefore CANNOT be used inside a batch — each
+    page's request needs the previous page's ``next_cursor``, which doesn't
+    exist until the batch executes. It raises ``RuntimeError`` immediately when
+    the client is in batch mode. Use ``list_page`` for a single page inside a
+    batch.
+
+    Args:
+        client: PlaidClient instance.
+        path: Collection path, e.g. ``/api/v1/projects``.
+        page_size: Page size requested as ``limit`` (1..1000).
+        query: Extra query params (e.g. ``{"as-of": ...}``).
+    """
+    if client.is_batching:
+        raise RuntimeError(
+            f'Cannot auto-paginate {path} inside a batch: list methods follow '
+            'cursors across multiple requests, which a batch cannot do. Use '
+            'list_page() for a single page inside a batch, or call the list '
+            'method outside the batch.'
+        )
+    results = []
+    cursor = None
+    prev_cursor = None
+    while True:
+        page = list_page(client, path, limit=page_size, cursor=cursor, query=query)
+        # Compatibility shim: a non-paginated server (or proxy) may return a
+        # bare list. Treat it as a terminal full result with no further paging.
+        if isinstance(page, list):
+            results.extend(page)
+            break
+        if isinstance(page, dict) and 'entries' in page:
+            results.extend(page.get('entries') or [])
+        else:
+            raise ValueError(
+                "Unexpected list response shape (no 'entries'); server may be "
+                "incompatible."
+            )
+        prev_cursor = cursor
+        cursor = page.get('next_cursor')
+        if cursor is None:
+            break
+        # Guard against a buggy server/proxy that returns a constant non-null
+        # cursor, which would otherwise loop forever.
+        if cursor == prev_cursor:
+            raise RuntimeError(
+                'Pagination cursor did not advance; aborting to avoid an '
+                'infinite loop.'
+            )
+    return results
+
+
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, skip_response_transform=False,
                  no_auth=False, binary_response=False):

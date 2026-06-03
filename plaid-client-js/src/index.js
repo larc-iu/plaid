@@ -4,6 +4,7 @@
 
 import { transformRequest, transformResponse } from './transforms.js';
 import { makeRequest, extractDocumentVersions } from './http.js';
+import { listAll, listPage, iterPages } from './pagination.js';
 import { createSSEConnection } from './sse.js';
 import {
   discoverServices,
@@ -129,13 +130,33 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * List all vocab layers accessible to user
+       * List all vocab layers accessible to user. Transparently follows
+       * pagination cursors and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} [asOf] - Temporal query timestamp
        */
       list: (asOf) =>
-        this._request('GET', '/api/v1/vocab-layers', {
-          queryParams: { 'as-of': asOf },
-        }),
+        listAll(this, '/api/v1/vocab-layers', { query: { 'as-of': asOf } }),
+      /**
+       * Fetch a single page of vocab layers.
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {string} [opts.asOf] - Temporal query timestamp
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listPage: ({ limit, cursor, asOf } = {}) =>
+        listPage(this, '/api/v1/vocab-layers', { limit, cursor, query: { 'as-of': asOf } }),
+      /**
+       * Async-iterate vocab layers page by page; yields each page's entries array.
+       * @param {object} [opts]
+       * @param {number} [opts.pageSize] - Per-request page size
+       * @param {string} [opts.asOf] - Temporal query timestamp
+       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterPages: ({ pageSize, asOf } = {}) =>
+        iterPages(this, '/api/v1/vocab-layers', { pageSize, query: { 'as-of': asOf } }),
       /**
        * Create a new vocab layer. Note: this also registers the user as a maintainer.
        * @param {string} name - The name
@@ -463,13 +484,33 @@ class PlaidClient {
 
     this.users = {
       /**
-       * List all users
+       * List all users. Transparently follows pagination cursors and returns
+       * the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} [asOf] - Temporal query timestamp
        */
       list: (asOf) =>
-        this._request('GET', '/api/v1/users', {
-          queryParams: { 'as-of': asOf },
-        }),
+        listAll(this, '/api/v1/users', { query: { 'as-of': asOf } }),
+      /**
+       * Fetch a single page of users.
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {string} [opts.asOf] - Temporal query timestamp
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listPage: ({ limit, cursor, asOf } = {}) =>
+        listPage(this, '/api/v1/users', { limit, cursor, query: { 'as-of': asOf } }),
+      /**
+       * Async-iterate users page by page; yields each page's entries array.
+       * @param {object} [opts]
+       * @param {number} [opts.pageSize] - Per-request page size
+       * @param {string} [opts.asOf] - Temporal query timestamp
+       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterPages: ({ pageSize, asOf } = {}) =>
+        iterPages(this, '/api/v1/users', { pageSize, query: { 'as-of': asOf } }),
       /**
        * Create a new user
        * @param {string} username - The username
@@ -481,15 +522,17 @@ class PlaidClient {
           body: bodyOf({ username, password, 'is-admin': isAdmin }),
         }),
       /**
-       * Get audit log for a user's actions
+       * Get audit log for a user's actions. Transparently follows pagination
+       * cursors and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} userId - The user ID
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
        * @param {string} [asOf] - Temporal query timestamp
        */
       audit: (userId, startTime, endTime, asOf) =>
-        this._request('GET', `/api/v1/users/${userId}/audit`, {
-          queryParams: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
+        listAll(this, `/api/v1/users/${userId}/audit`, {
+          query: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
         }),
       /**
        * Get a user by ID
@@ -525,10 +568,33 @@ class PlaidClient {
       /**
        * List a user's named API tokens. Never includes the signed token
        * string itself — that is only returned once, by create().
+       * Transparently follows pagination cursors and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} userId - The user ID who owns the tokens
        */
       list: (userId) =>
-        this._request('GET', `/api/v1/users/${userId}/tokens`),
+        listAll(this, `/api/v1/users/${userId}/tokens`),
+      /**
+       * Fetch a single page of a user's named API tokens.
+       * @param {string} userId - The user ID who owns the tokens
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listPage: (userId, { limit, cursor } = {}) =>
+        listPage(this, `/api/v1/users/${userId}/tokens`, { limit, cursor }),
+      /**
+       * Async-iterate a user's named API tokens page by page; yields each
+       * page's entries array.
+       * @param {string} userId - The user ID who owns the tokens
+       * @param {object} [opts]
+       * @param {number} [opts.pageSize] - Per-request page size
+       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterPages: (userId, { pageSize } = {}) =>
+        iterPages(this, `/api/v1/users/${userId}/tokens`, { pageSize }),
       /**
        * Mint a named API token for a user. The returned `token` is the signed
        * credential and is shown ONLY here — store it immediately. API tokens
@@ -689,15 +755,17 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * Get audit log for a document
+       * Get audit log for a document. Transparently follows pagination cursors
+       * and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} documentId - The document ID
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
        * @param {string} [asOf] - Temporal query timestamp
        */
       audit: (documentId, startTime, endTime, asOf) =>
-        this._request('GET', `/api/v1/documents/${documentId}/audit`, {
-          queryParams: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
+        listAll(this, `/api/v1/documents/${documentId}/audit`, {
+          query: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
         }),
       /**
        * Get a document. Set `includeBody` to true to include all data.
@@ -801,15 +869,17 @@ class PlaidClient {
       removeMaintainer: (id, userId) =>
         this._request('DELETE', `/api/v1/projects/${id}/maintainers/${userId}`),
       /**
-       * Get audit log for a project
+       * Get audit log for a project. Transparently follows pagination cursors
+       * and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} projectId - The project ID
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
        * @param {string} [asOf] - Temporal query timestamp
        */
       audit: (projectId, startTime, endTime, asOf) =>
-        this._request('GET', `/api/v1/projects/${projectId}/audit`, {
-          queryParams: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
+        listAll(this, `/api/v1/projects/${projectId}/audit`, {
+          query: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
         }),
       /**
        * Link a vocabulary to a project.
@@ -826,15 +896,53 @@ class PlaidClient {
       unlinkVocab: (id, vocabId) =>
         this._request('DELETE', `/api/v1/projects/${id}/vocabs/${vocabId}`),
       /**
-       * Get a project by ID.
+       * Get a project by ID. To fetch the project's documents, use
+       * listDocuments(id) — the include-documents flag has been removed.
        * @param {string} id - The resource ID
-       * @param {boolean} [includeDocuments] - Include document IDs and names
        * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (id, includeDocuments, asOf) =>
+      get: (id, asOf) =>
         this._request('GET', `/api/v1/projects/${id}`, {
-          queryParams: { 'include-documents': includeDocuments, 'as-of': asOf },
+          queryParams: { 'as-of': asOf },
         }),
+      /**
+       * List all documents in a project. Transparently follows pagination
+       * cursors and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
+       *
+       * Note: this endpoint does not support temporal (`as-of`) queries; the
+       * server rejects `?as-of=` on the documents-list route with a 400.
+       * @param {string} id - The project ID
+       */
+      listDocuments: (id) =>
+        listAll(this, `/api/v1/projects/${id}/documents`),
+      /**
+       * Fetch a single page of a project's documents.
+       *
+       * Note: this endpoint does not support temporal (`as-of`) queries; the
+       * server rejects `?as-of=` on the documents-list route with a 400.
+       * @param {string} id - The project ID
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listDocumentsPage: (id, { limit, cursor } = {}) =>
+        listPage(this, `/api/v1/projects/${id}/documents`, { limit, cursor }),
+      /**
+       * Async-iterate a project's documents page by page; yields each page's
+       * entries array.
+       *
+       * Note: this endpoint does not support temporal (`as-of`) queries; the
+       * server rejects `?as-of=` on the documents-list route with a 400.
+       * @param {string} id - The project ID
+       * @param {object} [opts]
+       * @param {number} [opts.pageSize] - Per-request page size
+       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterDocuments: (id, { pageSize } = {}) =>
+        iterPages(this, `/api/v1/projects/${id}/documents`, { pageSize }),
       /**
        * Delete a project.
        * @param {string} id - The resource ID
@@ -851,13 +959,33 @@ class PlaidClient {
           body: bodyOf({ name }),
         }),
       /**
-       * List all projects accessible to user
+       * List all projects accessible to user. Transparently follows pagination
+       * cursors and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} [asOf] - Temporal query timestamp
        */
       list: (asOf) =>
-        this._request('GET', '/api/v1/projects', {
-          queryParams: { 'as-of': asOf },
-        }),
+        listAll(this, '/api/v1/projects', { query: { 'as-of': asOf } }),
+      /**
+       * Fetch a single page of projects.
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {string} [opts.asOf] - Temporal query timestamp
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listPage: ({ limit, cursor, asOf } = {}) =>
+        listPage(this, '/api/v1/projects', { limit, cursor, query: { 'as-of': asOf } }),
+      /**
+       * Async-iterate projects page by page; yields each page's entries array.
+       * @param {object} [opts]
+       * @param {number} [opts.pageSize] - Per-request page size
+       * @param {string} [opts.asOf] - Temporal query timestamp
+       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterPages: ({ pageSize, asOf } = {}) =>
+        iterPages(this, '/api/v1/projects', { pageSize, query: { 'as-of': asOf } }),
       /**
        * Create a new project. Note: this also registers the user as a maintainer.
        * @param {string} name - The name

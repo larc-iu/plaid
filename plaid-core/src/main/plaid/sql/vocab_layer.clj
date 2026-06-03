@@ -8,6 +8,7 @@
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.sql.pagination :as pagination]
             [plaid.sql.user :as user])
   (:refer-clojure :exclude [get merge]))
 
@@ -169,13 +170,20 @@
 
 (defn get-accessible
   "Hydrated vocab records accessible to `user-id`."
-  [db user-id]
-  (let [ids (get-accessible-ids db user-id)]
-    ;; Was `(mapv #(get db %) ids)` — N+1 over `ids` with each `get`
-    ;; firing fetch-by-id + attach-maintainers (~2 queries per vocab).
-    ;; Now a constant number of bulk SELECTs regardless of vocab count
-    ;; (#67, mirrors project/batch-hydrate-projects).
-    (batch-hydrate-vocab-layers db ids)))
+  ([db user-id]
+   (let [ids (get-accessible-ids db user-id)]
+     ;; Was `(mapv #(get db %) ids)` — N+1 over `ids` with each `get`
+     ;; firing fetch-by-id + attach-maintainers (~2 queries per vocab).
+     ;; Now a constant number of bulk SELECTs regardless of vocab count
+     ;; (#67, mirrors project/batch-hydrate-projects).
+     (batch-hydrate-vocab-layers db ids)))
+  ([db user-id {:keys [limit cursor-vals]}]
+   ;; Paginated arity: shape the (bounded, per-user) accessible set into the
+   ;; uniform {:entries :next-cursor} envelope. Sorted by (name, id) —
+   ;; :vocab/id is the unique tiebreaker.
+   (pagination/paginate-coll (get-accessible db user-id)
+                             [:vocab/name :vocab/id]
+                             limit cursor-vals)))
 
 ;; ============================================================
 ;; Writes: create / merge / delete

@@ -5,7 +5,10 @@ from typing import Any
 
 import requests as req_lib
 
-from plaid_client.http import PlaidAPIError, make_request, extract_document_versions
+from plaid_client.http import (
+    PlaidAPIError, make_request, extract_document_versions,
+    list_all, list_page, iter_pages,
+)
 from plaid_client.transforms import transform_response
 from plaid_client.sse import SSEConnection
 from plaid_client import services as svc
@@ -144,11 +147,40 @@ class VocabLayersResource(_Resource):
     def list(self, *, as_of: str | None = None) -> Any:
         """List all vocab layers accessible to the current user.
 
+        Transparently follows server-side pagination cursors and returns the
+        full flat list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
         Args:
             as_of: Temporal query timestamp
         """
-        return self._request('GET', '/api/v1/vocab-layers',
-                             query_params={'as-of': as_of})
+        return list_all(self._client, '/api/v1/vocab-layers',
+                        query={'as-of': as_of})
+
+    def list_page(self, *, limit: int | None = None, cursor: str | None = None,
+                  as_of: str | None = None) -> Any:
+        """List one page of vocab layers.
+
+        Args:
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+            as_of: Temporal query timestamp
+        """
+        return list_page(self._client, '/api/v1/vocab-layers',
+                         limit=limit, cursor=cursor, query={'as-of': as_of})
+
+    def iter_pages(self, *, page_size: int = 1000, as_of: str | None = None):
+        """Iterate over pages of vocab layers, yielding each page's entries list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            page_size: Page size (1..1000)
+            as_of: Temporal query timestamp
+        """
+        return iter_pages(self._client, '/api/v1/vocab-layers',
+                          page_size=page_size, query={'as-of': as_of})
 
     def create(self, name: str) -> Any:
         """Create a new vocab layer.
@@ -523,11 +555,40 @@ class UsersResource(_Resource):
     def list(self, *, as_of: str | None = None) -> Any:
         """List all users.
 
+        Transparently follows server-side pagination cursors and returns the
+        full flat list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
         Args:
             as_of: Temporal query timestamp
         """
-        return self._request('GET', '/api/v1/users',
-                             query_params={'as-of': as_of})
+        return list_all(self._client, '/api/v1/users',
+                        query={'as-of': as_of})
+
+    def list_page(self, *, limit: int | None = None, cursor: str | None = None,
+                  as_of: str | None = None) -> Any:
+        """List one page of users.
+
+        Args:
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+            as_of: Temporal query timestamp
+        """
+        return list_page(self._client, '/api/v1/users',
+                         limit=limit, cursor=cursor, query={'as-of': as_of})
+
+    def iter_pages(self, *, page_size: int = 1000, as_of: str | None = None):
+        """Iterate over pages of users, yielding each page's entries list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            page_size: Page size (1..1000)
+            as_of: Temporal query timestamp
+        """
+        return iter_pages(self._client, '/api/v1/users',
+                          page_size=page_size, query={'as-of': as_of})
 
     def create(self, username: str, password: str, is_admin: bool) -> Any:
         """Create a new user.
@@ -581,14 +642,19 @@ class UsersResource(_Resource):
               as_of: str | None = None) -> Any:
         """Get audit log for a user's actions.
 
+        Transparently follows server-side pagination cursors and returns the
+        full flat list of audit entries.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
         Args:
             user_id: The user ID
             start_time: Start of time range
             end_time: End of time range
             as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/users/{user_id}/audit',
-                             query_params={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
+        return list_all(self._client, f'/api/v1/users/{user_id}/audit',
+                        query={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
 
 
 class ApiTokensResource(_Resource):
@@ -596,12 +662,39 @@ class ApiTokensResource(_Resource):
         """List a user's named API tokens.
 
         Never includes the signed token string itself — that is only returned
-        once, by create().
+        once, by create(). Transparently follows server-side pagination cursors
+        and returns the full flat list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
 
         Args:
             user_id: The user ID who owns the tokens
         """
-        return self._request('GET', f'/api/v1/users/{user_id}/tokens')
+        return list_all(self._client, f'/api/v1/users/{user_id}/tokens')
+
+    def list_page(self, user_id: str, *, limit: int | None = None,
+                  cursor: str | None = None) -> Any:
+        """List one page of a user's named API tokens.
+
+        Args:
+            user_id: The user ID who owns the tokens
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/users/{user_id}/tokens',
+                         limit=limit, cursor=cursor)
+
+    def iter_pages(self, user_id: str, *, page_size: int = 1000):
+        """Iterate over pages of a user's API tokens, yielding each page's entries.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            user_id: The user ID who owns the tokens
+            page_size: Page size (1..1000)
+        """
+        return iter_pages(self._client, f'/api/v1/users/{user_id}/tokens',
+                          page_size=page_size)
 
     def create(self, user_id: str, name: str) -> Any:
         """Mint a named API token for a user.
@@ -851,14 +944,19 @@ class DocumentsResource(_Resource):
               end_time: str | None = None, as_of: str | None = None) -> Any:
         """Get audit log for a document.
 
+        Transparently follows server-side pagination cursors and returns the
+        full flat list of audit entries.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
         Args:
             document_id: The document ID
             start_time: Start of time range
             end_time: End of time range
             as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/documents/{document_id}/audit',
-                             query_params={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
+        return list_all(self._client, f'/api/v1/documents/{document_id}/audit',
+                        query={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
 
 
 class MessagesResource(_Resource):
@@ -961,26 +1059,100 @@ class ProjectsResource(_Resource):
     def list(self, *, as_of: str | None = None) -> Any:
         """List all projects accessible to the current user.
 
+        Transparently follows server-side pagination cursors and returns the
+        full flat list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
         Args:
             as_of: Temporal query timestamp
         """
-        return self._request('GET', '/api/v1/projects',
-                             query_params={'as-of': as_of})
+        return list_all(self._client, '/api/v1/projects',
+                        query={'as-of': as_of})
 
-    def get(self, id: str, *, include_documents: bool | None = None,
-            as_of: str | None = None) -> Any:
+    def list_page(self, *, limit: int | None = None, cursor: str | None = None,
+                  as_of: str | None = None) -> Any:
+        """List one page of projects.
+
+        Args:
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+            as_of: Temporal query timestamp
+        """
+        return list_page(self._client, '/api/v1/projects',
+                         limit=limit, cursor=cursor, query={'as-of': as_of})
+
+    def iter_pages(self, *, page_size: int = 1000, as_of: str | None = None):
+        """Iterate over pages of projects, yielding each page's entries list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            page_size: Page size (1..1000)
+            as_of: Temporal query timestamp
+        """
+        return iter_pages(self._client, '/api/v1/projects',
+                          page_size=page_size, query={'as-of': as_of})
+
+    def list_documents(self, id: str) -> Any:
+        """List all documents (IDs and names) in a project.
+
+        Transparently follows server-side pagination cursors and returns the
+        full flat list. Replaces the removed ``include_documents`` param on
+        ``get``.
+
+        Note: this endpoint does not support temporal (``as-of``) queries; the
+        server rejects ``?as-of=`` on the documents-list route with a 400.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            id: The project ID
+        """
+        return list_all(self._client, f'/api/v1/projects/{id}/documents')
+
+    def list_documents_page(self, id: str, *, limit: int | None = None,
+                            cursor: str | None = None) -> Any:
+        """List one page of a project's documents.
+
+        Note: this endpoint does not support temporal (``as-of``) queries; the
+        server rejects ``?as-of=`` on the documents-list route with a 400.
+
+        Args:
+            id: The project ID
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/projects/{id}/documents',
+                         limit=limit, cursor=cursor)
+
+    def iter_documents(self, id: str, *, page_size: int = 1000):
+        """Iterate over pages of a project's documents, yielding each page's entries.
+
+        Note: this endpoint does not support temporal (``as-of``) queries; the
+        server rejects ``?as-of=`` on the documents-list route with a 400.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            id: The project ID
+            page_size: Page size (1..1000)
+        """
+        return iter_pages(self._client, f'/api/v1/projects/{id}/documents',
+                          page_size=page_size)
+
+    def get(self, id: str, *, as_of: str | None = None) -> Any:
         """Get a project by ID.
 
-        Set ``include_documents`` to true to also include document IDs and
-        names.
+        To fetch the project's document IDs and names, use ``list_documents``
+        (the former ``include_documents`` param has been removed server-side).
 
         Args:
             id: The resource ID
-            include_documents: Include document IDs and names
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/projects/{id}',
-                             query_params={'include-documents': include_documents, 'as-of': as_of})
+                             query_params={'as-of': as_of})
 
     def delete(self, id: str) -> Any:
         """Delete a project.
@@ -1081,14 +1253,19 @@ class ProjectsResource(_Resource):
               end_time: str | None = None, as_of: str | None = None) -> Any:
         """Get audit log for a project.
 
+        Transparently follows server-side pagination cursors and returns the
+        full flat list of audit entries.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
         Args:
             project_id: The project ID
             start_time: Start of time range
             end_time: End of time range
             as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/projects/{project_id}/audit',
-                             query_params={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
+        return list_all(self._client, f'/api/v1/projects/{project_id}/audit',
+                        query={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
 
     def link_vocab(self, id: str, vocab_id: str) -> Any:
         """Link a vocabulary to a project.

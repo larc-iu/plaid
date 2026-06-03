@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.user
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
             [plaid.sql.user :as user]))
 
@@ -9,18 +10,18 @@
     :middleware [pra/wrap-login-required]}
 
    [""
-    {:get {:summary "List all users (admin-only)"
+    {:get {:summary "List all users (admin-only), keyset-paginated by username"
            ;; Task #95: previously returned the full user roster to any
            ;; authenticated caller — a needless enumeration surface for
            ;; account-spraying / password-spray attacks. Locked down to
            ;; admins; non-admins get 403 (no special-case "your own
            ;; record" payload — they already know who they are via /me).
-           ;; Returns a bare array of users (pagination intentionally
-           ;; deferred — see the note in plaid.sql.user/get-all).
+           ;; Returns the uniform {:entries :next-cursor} pagination
+           ;; envelope (default page 100, max 1000).
            :middleware [pra/wrap-admin-required]
-           :handler (fn [{db :db}]
-                      {:status 200
-                       :body (user/get-all db)})}
+           :parameters {:query (into [:map] pagination/query-params)}
+           :handler (fn [{db :db {query :query} :parameters}]
+                      (pagination/list-response query (fn [opts] (user/get-all db opts))))}
      :post {:summary "Create a new user"
             :middleware [pra/wrap-admin-required]
             :parameters {:body {:username string? :password string? :is-admin boolean?}}

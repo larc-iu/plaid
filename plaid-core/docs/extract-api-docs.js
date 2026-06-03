@@ -705,8 +705,8 @@ const project = await client.projects.create('My Project');
 // Create a document
 const doc = await client.documents.create(project.id, 'Document 1');
 
-// Get a project with its documents
-const full = await client.projects.get(project.id, true);
+// List a project's documents (paginated; the client returns the full list)
+const docs = await client.projects.listDocuments(project.id);
 
 // Batch multiple operations atomically
 client.beginBatch();
@@ -726,8 +726,8 @@ project = client.projects.create("My Project")
 # Create a document
 doc = client.documents.create(project["id"], "Document 1")
 
-# Get a project with its documents
-full = client.projects.get(project["id"], include_documents=True)
+# List a project's documents
+docs = client.projects.list_documents(project["id"])
 
 # Batch multiple operations atomically
 client.begin_batch()

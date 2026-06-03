@@ -9,7 +9,8 @@
   To preserve the v2 API shape for REST consumers, this namespace projects
   each operations row into the v2 audit-entry shape (single-element
   :audit/ops vector, single-project / single-document lists)."
-  (:require [plaid.sql.common :as psc]))
+  (:require [plaid.sql.common :as psc]
+            [plaid.sql.pagination :as pagination]))
 
 (defn- batch-fetch-by-ids
   "Returns a map of id → row for the given table + ids (distinct, non-nil)."
@@ -79,84 +80,40 @@
       from (conj [:>= :ts from])
       to   (conj [:<= :ts to]))))
 
-(def ^:const default-limit
-  "Default page size when no `:limit` is supplied. Keeps a long-lived
-  project's audit response bounded for clients that just want the first
-  page."
-  100)
-
-(def ^:const max-limit
-  "Hard ceiling on `:limit`. Larger values are silently clamped at the
-  SQL layer (REST validation also rejects them up front)."
-  1000)
-
-(defn- clamp-limit
-  "Resolve an effective LIMIT from a user-supplied value. nil → default;
-  values outside (0, max] are clamped into range. Always returns a
-  positive integer."
-  [limit]
-  (let [n (cond
-            (nil? limit) default-limit
-            (integer? limit) limit
-            :else (try (Long/parseLong (str limit))
-                       (catch Exception _ default-limit)))]
-    (cond
-      (<= n 0) default-limit
-      (> n max-limit) max-limit
-      :else n)))
-
-(defn- cursor-row
-  "Resolve a cursor (operations.id) into the (ts, id) tuple needed for
-  the seek-style keyset pagination predicate. Returns nil if the cursor
-  doesn't exist (caller should treat as `no further pages`)."
-  [db cursor]
-  (when cursor
-    (psc/q1 db {:select [:ts :id] :from [:operations] :where [:= :id cursor]})))
-
 (defn- query-ops
-  "Fetch a page of operations rows ordered deterministically by (ts, id).
+  "Fetch a keyset page of operations rows ordered deterministically by
+  (ts, id) — both TEXT columns, so the shared lexicographic seek applies.
 
-  - `base-where` — caller-supplied scoping clause (e.g. `[:= :project_id pid]`).
-  - `time-range` — `[start end]` ISO-string range; either may be nil.
-  - `opts`       — `{:limit n :cursor op-id}`. `:cursor` is the op-id of
-                   the LAST row from the previous page; results start
-                   strictly after it (under the (ts, id) total order)."
-  ([db base-where time-range]
-   (query-ops db base-where time-range nil))
-  ([db base-where time-range {:keys [limit cursor]}]
-   (let [ts-clauses (ts-where (first time-range) (second time-range))
-         eff-limit (clamp-limit limit)
-         cur (cursor-row db cursor)
-         ;; Keyset predicate: (ts, id) > (cur-ts, cur-id). Falls back to
-         ;; a degenerate FALSE if the cursor was unknown so callers see
-         ;; an empty page rather than the full result set.
-         cursor-clauses (cond
-                          (nil? cursor) []
-                          (nil? cur) [[:= 1 0]]
-                          :else [[:or
-                                  [:> :ts (:ts cur)]
-                                  [:and [:= :ts (:ts cur)] [:> :id (:id cur)]]]])
-         all-extra (concat ts-clauses cursor-clauses)
-         where (if (seq all-extra)
-                 (into [:and base-where] all-extra)
-                 base-where)]
-     ;; No `:limit` supplied → return the full (time-windowed) set with
-     ;; no LIMIT clause. A caller paging a huge log opts in via `?limit=`;
-     ;; the `?cursor=` keyset still seeks off the last returned op-id.
-     (psc/q db (cond-> {:select [:*]
-                        :from [:operations]
-                        :where where
-                        :order-by [:ts :id]}
-                 limit (assoc :limit eff-limit))))))
+  - `base-where`  — caller-supplied scoping clause (e.g. `[:= :project_id pid]`).
+  - `time-range`  — `[start end]` ISO-string range; either may be nil.
+  - `eff-limit`   — already-clamped page size.
+  - `cursor-vals` — `[ts id]` of the LAST row from the previous page (or
+                    nil for the first page); results start strictly after it."
+  [db base-where time-range eff-limit cursor-vals]
+  (let [ts-clauses (ts-where (first time-range) (second time-range))
+        seek (pagination/keyset-where [:ts :id] cursor-vals)
+        all-extra (cond-> (vec ts-clauses) seek (conj seek))
+        where (if (seq all-extra)
+                (into [:and base-where] all-extra)
+                base-where)]
+    (psc/q db {:select [:*]
+               :from [:operations]
+               :where where
+               :order-by [:ts :id]
+               :limit eff-limit})))
 
-(defn- format-audit
-  "Enrich a fetched page of operations rows into the external audit-entry
-  shape. Returns a BARE vector (pagination intentionally deferred — when
-  it's added back, wrap every list endpoint in the same envelope, not
-  just this one). `?limit`/`?cursor` still work for callers paging a
-  large log: the cursor is simply the `:audit/id` of the last entry."
-  [db rows]
-  (enrich-ops db rows))
+(defn- audit-page
+  "Fetch + enrich one keyset page into the uniform envelope
+  `{:entries [...] :next-cursor [ts id]-or-nil}`. `opts` carries
+  `{:limit n :cursor-vals [ts id]}`; the audit log is now always
+  paginated (default page 100, max 1000)."
+  [db base-where time-range {:keys [limit cursor-vals]}]
+  (let [eff (pagination/clamp-limit limit)
+        rows (query-ops db base-where time-range eff cursor-vals)
+        next-cursor (when (= (count rows) eff)
+                      (let [r (peek (vec rows))] [(:ts r) (:id r)]))]
+    {:entries (enrich-ops db rows)
+     :next-cursor next-cursor}))
 
 (defn get-project-audit-log
   ([db project-id]
@@ -164,8 +121,7 @@
   ([db project-id start-time end-time]
    (get-project-audit-log db project-id start-time end-time nil))
   ([db project-id start-time end-time opts]
-   (let [rows (query-ops db [:= :project_id project-id] [start-time end-time] opts)]
-     (format-audit db rows))))
+   (audit-page db [:= :project_id project-id] [start-time end-time] opts)))
 
 (defn get-document-audit-log
   "Audit entries that affect `document-id`. Returns ops whose
@@ -193,9 +149,8 @@
                                :where [:and
                                        [:= :audit_writes.op_id :operations.id]
                                        [:= :audit_writes.target_table "documents"]
-                                       [:= :audit_writes.target_id document-id]]}]]
-         rows (query-ops db base-where [start-time end-time] opts)]
-     (format-audit db rows))))
+                                       [:= :audit_writes.target_id document-id]]}]]]
+     (audit-page db base-where [start-time end-time] opts))))
 
 (defn get-user-audit-log
   ([db user-id]
@@ -203,5 +158,4 @@
   ([db user-id start-time end-time]
    (get-user-audit-log db user-id start-time end-time nil))
   ([db user-id start-time end-time opts]
-   (let [rows (query-ops db [:= :user_id user-id] [start-time end-time] opts)]
-     (format-audit db rows))))
+   (audit-page db [:= :user_id user-id] [start-time end-time] opts)))

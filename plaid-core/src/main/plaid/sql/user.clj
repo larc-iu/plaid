@@ -9,7 +9,8 @@
   (:require [buddy.hashers :as hashers]
             [clojure.string]
             [plaid.sql.common :as psc]
-            [plaid.sql.operation :as op :refer [submit-operation!]])
+            [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.sql.pagination :as pagination])
   (:refer-clojure :exclude [get merge])
   (:import [java.sql SQLException]))
 
@@ -51,16 +52,25 @@
 
 (defn get-all
   "Get all users formatted for external consumption, ordered by
-  `:username`. Returns a bare seq of `{:user/id :user/username
-  :user/is-admin}` maps.
+  `:username`.
 
-  Pagination was intentionally deferred (the REST surface returns this
-  bare list); when it's added back, keyset-paginate on `:username` and
-  give every list endpoint the same envelope rather than just this one."
-  [db]
-  (->> (psc/q db {:select [:*] :from [:users] :order-by [:username]})
-       (map row->user)
-       (map #(select-keys % [:user/id :user/username :user/is-admin]))))
+  Bare arity `([db])` returns a plain seq of `{:user/id :user/username
+  :user/is-admin}` maps (used by admin seeding in `server/sql.clj`).
+
+  Paginated arity `([db opts])` keyset-paginates on `:username` (a
+  unique column, so a sufficient total order on its own) and returns the
+  uniform `{:entries [...] :next-cursor <raw-vals-or-nil>}` envelope."
+  ([db]
+   (->> (psc/q db {:select [:*] :from [:users] :order-by [:username]})
+        (map row->user)
+        (map #(select-keys % [:user/id :user/username :user/is-admin]))))
+  ([db {:keys [limit cursor-vals]}]
+   (pagination/paginate db {:from :users
+                            :order-by [:username]
+                            :limit limit
+                            :cursor-vals cursor-vals
+                            :row->entity (fn [row] (-> (row->user row)
+                                                       (select-keys [:user/id :user/username :user/is-admin])))})))
 
 (defn find-by-username
   "Find a user by username. Returns full internal record."

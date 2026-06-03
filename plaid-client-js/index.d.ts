@@ -1,3 +1,9 @@
+/** A single page of a cursor-paginated collection. */
+interface Page<T = any> {
+  entries: T[];
+  nextCursor: string | null;
+}
+
 interface ServiceInfo {
   serviceId: string;
   serviceName: string;
@@ -44,7 +50,9 @@ interface VocabLayersBundle {
   update(id: string, name: string): Promise<any>;
   setConfig(id: string, namespace: string, configKey: string, configValue: any): Promise<any>;
   deleteConfig(id: string, namespace: string, configKey: string): Promise<any>;
-  list(asOf?: string): Promise<any>;
+  list(asOf?: string): Promise<any[]>;
+  listPage(opts?: { limit?: number; cursor?: string; asOf?: string }): Promise<Page>;
+  iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
   create(name: string): Promise<any>;
   addMaintainer(id: string, userId: string): Promise<any>;
   removeMaintainer(id: string, userId: string): Promise<any>;
@@ -99,16 +107,20 @@ interface TextsBundle {
 }
 
 interface UsersBundle {
-  list(asOf?: string): Promise<any>;
+  list(asOf?: string): Promise<any[]>;
+  listPage(opts?: { limit?: number; cursor?: string; asOf?: string }): Promise<Page>;
+  iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
   create(username: string, password: string, isAdmin: boolean): Promise<any>;
-  audit(userId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any>;
+  audit(userId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any[]>;
   get(id: string, asOf?: string): Promise<any>;
   delete(id: string): Promise<any>;
   update(id: string, password?: string, username?: string, isAdmin?: boolean): Promise<any>;
 }
 
 interface ApiTokensBundle {
-  list(userId: string): Promise<any>;
+  list(userId: string): Promise<any[]>;
+  listPage(userId: string, opts?: { limit?: number; cursor?: string }): Promise<Page>;
+  iterPages(userId: string, opts?: { pageSize?: number }): AsyncGenerator<any[]>;
   create(userId: string, name: string): Promise<{ id: string; name: string; token: string }>;
   revoke(userId: string, tokenId: string): Promise<any>;
 }
@@ -132,7 +144,7 @@ interface DocumentsBundle {
   deleteMedia(documentId: string): Promise<any>;
   setMetadata(documentId: string, body: any): Promise<any>;
   deleteMetadata(documentId: string): Promise<any>;
-  audit(documentId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any>;
+  audit(documentId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any[]>;
   get(documentId: string, includeBody?: boolean, asOf?: string): Promise<any>;
   delete(documentId: string): Promise<any>;
   update(documentId: string, name: string): Promise<any>;
@@ -158,13 +170,18 @@ interface ProjectsBundle {
   deleteConfig(id: string, namespace: string, configKey: string): Promise<any>;
   addMaintainer(id: string, userId: string): Promise<any>;
   removeMaintainer(id: string, userId: string): Promise<any>;
-  audit(projectId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any>;
+  audit(projectId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any[]>;
   linkVocab(id: string, vocabId: string): Promise<any>;
   unlinkVocab(id: string, vocabId: string): Promise<any>;
-  get(id: string, includeDocuments?: boolean, asOf?: string): Promise<any>;
+  get(id: string, asOf?: string): Promise<any>;
+  listDocuments(id: string): Promise<any[]>;
+  listDocumentsPage(id: string, opts?: { limit?: number; cursor?: string }): Promise<Page>;
+  iterDocuments(id: string, opts?: { pageSize?: number }): AsyncGenerator<any[]>;
   delete(id: string): Promise<any>;
   update(id: string, name: string): Promise<any>;
-  list(asOf?: string): Promise<any>;
+  list(asOf?: string): Promise<any[]>;
+  listPage(opts?: { limit?: number; cursor?: string; asOf?: string }): Promise<Page>;
+  iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
   create(name: string): Promise<any>;
 }
 

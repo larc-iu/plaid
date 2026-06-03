@@ -173,7 +173,7 @@
       (is (>= (:status response) 400))
       (let [list-docs-req (admin-request :get (str "/api/v1/projects/" project-id "/documents"))
             list-resp (rest-handler list-docs-req)
-            all-docs (if (= 200 (:status list-resp)) (parse-response-body list-resp) [])]
+            all-docs (if (= 200 (:status list-resp)) (:entries (parse-response-body list-resp)) [])]
         (is (or (nil? all-docs) (empty? all-docs))
             "No documents should exist after rollback")))))
 

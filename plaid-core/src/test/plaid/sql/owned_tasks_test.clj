@@ -51,13 +51,13 @@
           _ (doseq [tid token-ids]
               (assert-created (create-vocab-link admin-request item-id [tid])))
           ;; Sanity: per-doc audit before vocab/delete already has rows.
-          before (count (:body (get-document-audit admin-request (first doc-ids))))
+          before (count (:entries (:body (get-document-audit admin-request (first doc-ids)))))
           _ (assert-no-content (delete-vocab-layer admin-request vocab-id))
           ;; Fetch the per-doc audit for doc1 — must include both the
           ;; vocab/delete parent op AND the doc-version-bump row.
           after-resp (get-document-audit admin-request (first doc-ids))
           _ (assert-ok after-resp)
-          entries (:body after-resp)
+          entries (:entries (:body after-resp))
           op-types (mapv (fn [e] (-> e :audit/ops first :op/type)) entries)]
       (is (> (count entries) before)
           (str "Expected new audit rows after vocab/delete; before=" before
@@ -73,29 +73,33 @@
 (deftest list-users-admin-only
   (testing "Non-admins cannot enumerate users"
     (assert-forbidden (api-call user1-request {:method :get :path "/api/v1/users"})))
-  (testing "Admins get the list (bare array)"
+  (testing "Admins get the list (paginated envelope)"
     (let [resp (api-call admin-request {:method :get :path "/api/v1/users"})]
       (assert-ok resp)
-      (is (sequential? (:body resp))))))
+      (is (sequential? (:entries (:body resp)))))))
 
 ;; ============================================================
-;; /users list shape — bare array (pagination intentionally deferred)
+;; /users list shape — paginated {:entries :next-cursor} envelope
 ;; ============================================================
 
-(deftest list-users-returns-bare-array
-  (testing "GET /users returns a plain, username-ordered array of all users"
+(deftest list-users-returns-paginated-envelope
+  (testing "GET /users returns the {:entries :next-cursor} envelope with a
+            username-ordered entries array"
     ;; with-admin/with-test-users give us admin@, user1@, user2@; add 4 more.
     (doseq [u ["zz-aaa@example.com" "zz-bbb@example.com" "zz-ccc@example.com" "zz-ddd@example.com"]]
       (user/create db u false "password"))
     (let [r (api-call admin-request {:method :get :path "/api/v1/users"})
           _ (assert-ok r)
-          body (:body r)]
-      (is (sequential? body) "bare array, not an {:entries ...} envelope")
+          body (:body r)
+          entries (:entries body)]
+      (is (contains? body :entries) "paginated envelope, not a bare array")
+      (is (contains? body :next-cursor))
+      (is (sequential? entries))
       ;; all 7 users present (3 standing + 4 created), none dropped by a cap
-      (is (>= (count body) 7) (str "expected the full roster, got " (count body)))
-      (is (every? #(contains? % :user/username) body))
-      (is (= (map :user/username body)
-             (sort (map :user/username body)))
+      (is (>= (count entries) 7) (str "expected the full roster, got " (count entries)))
+      (is (every? #(contains? % :user/username) entries))
+      (is (= (map :user/username entries)
+             (sort (map :user/username entries)))
           "ordered by username"))))
 
 ;; ============================================================

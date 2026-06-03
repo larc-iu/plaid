@@ -6,10 +6,13 @@ def main():
 
     projects = client.projects.list()
     print("Projects:", projects)
-    project = client.projects.get(projects[0]["id"], include_documents=True)
+    project = client.projects.get(projects[0]["id"])
     print("Project:", project)
 
-    document = client.documents.get(project["documents"][0]["id"], include_body=True)
+    documents = client.projects.list_documents(projects[0]["id"])
+    print("Documents:", documents)
+
+    document = client.documents.get(documents[0]["id"], include_body=True)
     print("Document:", document)
 
 if __name__ == '__main__':

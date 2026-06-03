@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.project
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
+            [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
             [plaid.sql.project :as prj]))
 
@@ -12,9 +13,11 @@
 
    [""
     {:get {:summary "List all projects accessible to user"
-           :handler (fn [{db :db user-id :user/id :as req}]
-                      {:status 200
-                       :body (prj/get-accessible db user-id)})}
+           :parameters {:query (into [:map] pagination/query-params)}
+           :handler (fn [{db :db user-id :user/id {query :query} :parameters}]
+                      (pagination/list-response
+                       query
+                       (fn [opts] (prj/get-accessible db user-id opts))))}
      :post {:summary "Create a new project. Note: this also registers the user as a maintainer."
             :parameters {:body {:name string?}}
             :handler (fn [{{{:keys [name]} :body} :parameters db :db user-id :user/id :as req}]
@@ -28,13 +31,11 @@
 
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}
-     :get {:summary "Get a project by ID. If <query>include-documents</query> is true, also include document IDs and names."
+     :get {:summary "Get a project by ID."
            :middleware [[pra/wrap-reader-required get-project-id]]
-           :parameters {:query [:map [:include-documents {:optional true} boolean?]]}
-           :handler (fn [{{{:keys [id]} :path
-                           {:keys [include-documents]} :query} :parameters
+           :handler (fn [{{{:keys [id]} :path} :parameters
                           db :db}]
-                      (let [project (prj/get db id include-documents)]
+                      (let [project (prj/get db id)]
                         (if (some? project)
                           {:status 200
                            :body project}
@@ -59,6 +60,18 @@
                            (if success
                              {:status 204}
                              {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+
+   ;; Documents (keyset-paginated)
+   ["/:id/documents"
+    {:get {:summary "List documents in a project."
+           :openapi {:x-client-method "list-documents"}
+           :middleware [[pra/wrap-reader-required get-project-id]]
+           :parameters {:path [:map [:id :uuid]]
+                        :query (into [:map] pagination/query-params)}
+           :handler (fn [{{{:keys [id]} :path query :query} :parameters db :db}]
+                      (pagination/list-response
+                       query
+                       (fn [opts] (prj/get-documents-page db id opts))))}}]
 
    ;; Access management endpoints
    ["/:id"

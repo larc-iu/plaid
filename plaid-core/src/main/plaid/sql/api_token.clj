@@ -14,7 +14,8 @@
   Mirrors the read/write shape of `plaid.sql.user`: `db` is a DataSource
   (reads) or an in-tx Connection (writes via `submit-operation!`)."
   (:require [plaid.sql.common :as psc]
-            [plaid.sql.operation :as op :refer [submit-operation!]])
+            [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.sql.pagination :as pagination])
   (:refer-clojure :exclude [get list]))
 
 (def attr-keys
@@ -56,13 +57,27 @@
 
 (defn list-for-user
   "All tokens owned by `user-id`, oldest-first, in external shape. Includes
-  revoked tokens (the UI shows them as revoked rather than hiding them)."
-  [db user-id]
-  (->> (psc/q db {:select [:*]
-                  :from [:api_tokens]
-                  :where [:= :user_id user-id]
-                  :order-by [:created_at]})
-       (mapv row->api-token)))
+  revoked tokens (the UI shows them as revoked rather than hiding them).
+
+  Ordered by `(created_at, id)` — `:id` is the unique tiebreaker that makes
+  the order a deterministic total order (required for keyset pagination).
+
+  Bare arity `([db user-id])` returns a plain vector. Paginated arity
+  `([db user-id opts])` returns the uniform `{:entries :next-cursor}`
+  envelope."
+  ([db user-id]
+   (->> (psc/q db {:select [:*]
+                   :from [:api_tokens]
+                   :where [:= :user_id user-id]
+                   :order-by [:created_at :id]})
+        (mapv row->api-token)))
+  ([db user-id {:keys [limit cursor-vals]}]
+   (pagination/paginate db {:from :api_tokens
+                            :base-where [:= :user_id user-id]
+                            :order-by [:created_at :id]
+                            :limit limit
+                            :cursor-vals cursor-vals
+                            :row->entity row->api-token})))
 
 (defn active?
   "True iff a token with `id` exists AND has not been revoked. This is the

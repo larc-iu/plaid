@@ -3,6 +3,7 @@
   `/users/:user-id/tokens`. A user manages their own tokens; a global admin
   may manage anyone's. Minting returns the signed JWT exactly ONCE."
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.api-token :as api-token]
             [plaid.sql.user :as user]
             [reitit.coercion.malli]))
@@ -27,12 +28,12 @@
     :middleware [pra/wrap-login-required wrap-self-or-admin]}
 
    [""
-    {:get {:summary "List a user's named API tokens (never includes the signed token itself)."
+    {:get {:summary "List a user's named API tokens (never includes the signed token itself); keyset-paginated."
            :openapi {:x-client-bundle "apiTokens"
                      :x-client-method "list"}
-           :handler (fn [{{{:keys [user-id]} :path} :parameters db :db}]
-                      {:status 200
-                       :body (api-token/list-for-user db user-id)})}
+           :parameters {:query (into [:map] pagination/query-params)}
+           :handler (fn [{{{:keys [user-id]} :path query :query} :parameters db :db}]
+                      (pagination/list-response query (fn [opts] (api-token/list-for-user db user-id opts))))}
      :post {:summary (str "Mint a named API token for the user. The signed token string is "
                           "returned ONCE in the response and never again — store it securely. "
                           "API tokens do not expire and survive password changes / logout; "
