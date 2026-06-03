@@ -887,6 +887,9 @@ The second sort of clause relates two named things to each other. You write it a
 * `["precedes*", "?t1", "?t2"]`--`?t1` comes somewhere before `?t2`;
 * `["within", "?child", "?parent"]`--the child token sits inside the parent's stretch of text (this is how you walk the <<Token Layer Hierarchy,token hierarchy>>);
 * `["first-in", "?token", "?container"]`--the token is the first one of its layer inside the container;
+* `["overlaps", "?a", "?b"]`--two spans share at least one of the tokens they cover;
+* `["contains", "?a", "?b"]`--span `?a` covers every token that span `?b` does;
+* `["coextensive", "?a", "?b"]`--two spans cover exactly the same tokens (a span on one layer lining up with a span on another);
 * `["source", "?relation", "?span"]` and `["target", "?relation", "?span"]`--the two ends of a relation;
 * `["vocab-link", "?token", "?vocab"]`--the token is linked to that vocab item.
 

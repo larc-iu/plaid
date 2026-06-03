@@ -333,6 +333,43 @@
              (within-pred fi container)
              (precedes*-pred fi t)]}))
 
+;; --- span↔span topology (token-set semantics) -----------------------------
+;; A span is the SET of tokens it covers (possibly discontinuous). So:
+;;   overlaps     A,B share a covered token
+;;   contains     every token B covers is also covered by A (B ⊆ A)
+;;   coextensive  A and B cover exactly the same tokens (A ⊆ B and B ⊆ A)
+;; All carry an id<>id guard (like `within`) so a span isn't trivially related to
+;; itself. The span_tokens helper aliases correlate to already-scoped span ids,
+;; so they need no scope predicate of their own.
+
+(defn- span-overlap-pred
+  "EXISTS a token covered by both spans `a-id` and `b-id`."
+  [st a-id b-id]
+  (let [sta (next-alias! st "sta")
+        stb (next-alias! st "stb")]
+    [:exists {:select [1]
+              :from [[:span_tokens sta] [:span_tokens stb]]
+              :where [:and
+                      [:= (col sta :span_id) a-id]
+                      [:= (col stb :span_id) b-id]
+                      [:= (col sta :token_id) (col stb :token_id)]]}]))
+
+(defn- span-superset-pred
+  "`super-id` covers every token `sub-id` covers (super ⊇ sub): NOT EXISTS a token
+  of `sub` that `super` does not also cover."
+  [st super-id sub-id]
+  (let [sub (next-alias! st "stsub")
+        sup (next-alias! st "stsup")]
+    [:not [:exists {:select [1]
+                    :from [[:span_tokens sub]]
+                    :where [:and
+                            [:= (col sub :span_id) sub-id]
+                            [:not [:exists {:select [1]
+                                            :from [[:span_tokens sup]]
+                                            :where [:and
+                                                    [:= (col sup :span_id) super-id]
+                                                    [:= (col sup :token_id) (col sub :token_id)]]}]]]}]]))
+
 (defn- compile-rel!
   [st constraints clause]
   (let [[head a b] clause
@@ -352,6 +389,16 @@
       :first-in  (let [t (av a) cont (av b)]
                    (add-where! st (within-pred t cont))
                    (add-where! st [:not [:exists (first-in-subquery st t cont)]]))
+      :overlaps    (let [sa (av a) sb (av b)]
+                     (add-where! st [:<> (col sa :id) (col sb :id)])
+                     (add-where! st (span-overlap-pred st (col sa :id) (col sb :id))))
+      :contains    (let [sa (av a) sb (av b)]
+                     (add-where! st [:<> (col sa :id) (col sb :id)])
+                     (add-where! st (span-superset-pred st (col sa :id) (col sb :id))))
+      :coextensive (let [sa (av a) sb (av b)]
+                     (add-where! st [:<> (col sa :id) (col sb :id)])
+                     (add-where! st (span-superset-pred st (col sa :id) (col sb :id)))
+                     (add-where! st (span-superset-pred st (col sb :id) (col sa :id))))
       :source   (let [r (av a) s (av b)]
                   (add-where! st [:= (col r :source_span_id) (col s :id)]))
       :target   (let [r (av a) s (av b)]

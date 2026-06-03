@@ -173,6 +173,9 @@ This is where the graph structure comes from.
 | `["precedes*", "?t1", "?t2"]` | `?t1` comes **somewhere before** `?t2` (transitive) |
 | `["within", "?child", "?parent"]` | `?child`'s extent sits inside `?parent`'s (token hierarchy by offsets) |
 | `["first-in", "?token", "?container"]` | `?token` is within `?container` and is the **first** token of its layer there |
+| `["overlaps", "?a", "?b"]` | the two **spans** share at least one covered token |
+| `["contains", "?a", "?b"]` | span `?a` covers every token span `?b` covers (`?b ⊆ ?a`) |
+| `["coextensive", "?a", "?b"]` | the two **spans** cover exactly the same tokens |
 | `["source", "?relation", "?span"]` | the relation's source endpoint |
 | `["target", "?relation", "?span"]` | the relation's target endpoint |
 | `["vocab-link", "?token", "?vocab"]` | the token is linked to that vocab item |
@@ -181,6 +184,14 @@ This is where the graph structure comes from.
 `(begin, precedence, end, id)` — the same order tokens appear in when you read a
 document. `precedes` is the *immediate* next token in that order; `precedes*` is
 "anywhere after."
+
+**`overlaps`/`contains`/`coextensive`** relate two **spans** by the *set of tokens*
+each covers (a span can be discontinuous, so this is set logic, not offsets).
+`overlaps` is a shared token; `contains` is token-set superset; `coextensive` is
+equal token sets. All three exclude a span from matching itself, so
+`["coextensive", "?a", "?b"]` finds two *different* spans over the same tokens
+(e.g. a POS span and an NER span that align) — add nothing extra for that, but use
+`["!=", ...]` if you need distinctness on operators that don't already imply it.
 
 **`within`/`first-in`** are pure offset containment — a child is within a parent
 when the parent's `[begin, end]` covers the child's. Pin the child and parent to

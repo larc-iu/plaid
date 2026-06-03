@@ -104,6 +104,9 @@
    :target     2     ; [:target ?rel ?span]
    :within     2     ; [:within ?child ?parent] offset containment
    :first-in   2     ; [:first-in ?token ?container]
+   :overlaps    2    ; [:overlaps ?a ?b]     spans share a covered token
+   :contains    2    ; [:contains ?a ?b]     span ?a covers every token ?b does
+   :coextensive 2    ; [:coextensive ?a ?b]  spans cover the same tokens
    :vocab-link 2})   ; [:vocab-link ?token ?vocab]
 
 ;; Clause heads accepted by the grammar but not implemented until a later
@@ -319,6 +322,9 @@
       (= head :precedes*)  (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
       (= head :within)     (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
       (= head :first-in)   (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
+      (= head :overlaps)    (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
+      (= head :contains)    (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
+      (= head :coextensive) (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
       (= head :source)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :target)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :vocab-link) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :vocab))
