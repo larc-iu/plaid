@@ -933,3 +933,24 @@
              (some? (async/poll! @done-chan)))
      (run-loop! ds node (olap/olap-config)))
    (olap/cursor-read node)))
+
+(defn simulate-stall!
+  "DEV-ONLY: force the tailer into `:stalled` without an actual bad row.
+
+  Writes `:tailer-status :stalled` onto the cursor doc; the running loop
+  notices on its next poll and exits, exactly as a real structural stall
+  does. `/health` then reports stalled and `?as-of=` document reads return
+  503. This is a FAKE stall — the data is fine, the cursor doesn't move —
+  so a server restart auto-clears it (`clear-stale-stall-on-start!`) and
+  the loop runs clean again. For a stall that re-asserts on restart,
+  corrupt an unconsumed `audit_writes.post_image` instead.
+
+  Recover with `(resume!)` (no skip needed — the cursor never moved).
+
+  0-arity reads the mounted `olap/node`; 1-arity takes an explicit node
+  for tests that haven't started the mount defstates."
+  ([] (simulate-stall! olap/node))
+  ([node]
+   (when-not node
+     (throw (ex-info "OLAP node is nil — cannot stall" {:type :tailer/not-enabled})))
+   (olap/set-stalled! node {:op-id nil :seq nil :reason "simulated dev stall"})))
