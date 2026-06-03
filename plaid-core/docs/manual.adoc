@@ -809,6 +809,260 @@ Fortunately, we think this is not an onerous imposition in most real-world circu
 
 NOTE: The token layer constraints described in <<Token Layer Constraints>> are the exception to this caveat. Because they are enforced on the server, they cannot be circumvented by a malicious client, and they hold no matter how a request is crafted.
 
+= Querying
+
+So far we have retrieved data by asking for it directly: a document by its id, a project's documents, and so on.
+Often, though, you want to find data by its _shape_ rather than its name--every place a particular word form occurs, every noun immediately followed by a verb, every word that has not been given a part-of-speech tag yet.
+Answering questions like these is what Plaid's **querying** is for: you write down a **pattern**--a description of the entities you are looking for and how they relate to one another--and Plaid hands back every place in your data that matches it.
+This happens in a single request, and it searches across every project you are allowed to read.
+
+A pattern is built out of ordinary data--objects and arrays, the same kind of JSON you have seen throughout this manual--and you run it with the client's `query` method.
+The examples here are written in JavaScript; the Python client takes the very same pattern, only with Python's punctuation (a `dict` of lists rather than an object of arrays).
+They reuse the little part-of-speech project from <<An Example>> (the "Fido barks" project), whose word layer we will call `words` and whose tag layer we will call `pos`.
+
+== A First Query
+
+The smallest useful query says what to **find**, and lists in **where** the conditions a match must satisfy:
+
+[,javascript]
+----
+const result = await client.query({
+  find: ["?s"],
+  where: [["span", "?s", { layer: "pos", value: "NOUN" }]],
+});
+// result.results is a list of matches, one row each:
+//   [ ["<a span's id>"], ["<another span's id>"], ... ]
+----
+
+It helps to read that `where` line aloud, as a sentence: "a span--call it `?s`--that is on the `pos` layer and whose value is `NOUN`."
+The query returns every span for which that sentence is true. Each match is a row, and each row carries one id for every name you listed in `find`.
+
+The `?s` is a **variable**: any name you like, written with a question mark in front.
+You make the names up. What makes them useful is a single rule: writing the same name twice means "the same thing in both places."
+That rule is the whole of how you relate one entity to another, which is where querying starts to earn its keep.
+
+== Describing a Pattern
+
+Everything inside `where` is a **clause**, and there are two sorts of them.
+
+The first sort describes one entity and gives it a name. You write it as `[kind, "?name", { ...conditions... }]`: the kind is what sort of entity you want, and the conditions narrow it down. Which conditions are available depends on the kind:
+
+* a `span` has a `layer`, a `value`, and the `doc` it belongs to;
+* a `token` has a `layer`, a `doc`, and its `begin` and `end` character offsets;
+* a `relation` has a `layer`, a `value`, a `doc`, and its `source` and `target` spans;
+* a `vocab` item has a `layer` and a `form`.
+
+You may give as many or as few of these conditions as you like, or none at all.
+
+The second sort of clause relates two named things to each other. You write it as `[relationship, "?a", "?b"]`:
+
+* `["covers", "?span", "?token"]`--the span includes that token;
+* `["precedes", "?t1", "?t2"]`--`?t2` is the very next token after `?t1`;
+* `["precedes*", "?t1", "?t2"]`--`?t1` comes somewhere before `?t2`;
+* `["within", "?child", "?parent"]`--the child token sits inside the parent's stretch of text (this is how you walk the <<Token Layer Hierarchy,token hierarchy>>);
+* `["first-in", "?token", "?container"]`--the token is the first one of its layer inside the container;
+* `["source", "?relation", "?span"]` and `["target", "?relation", "?span"]`--the two ends of a relation;
+* `["vocab-link", "?token", "?vocab"]`--the token is linked to that vocab item.
+
+With both sorts in hand we can ask for something with structure. Here is "a noun immediately followed by a verb":
+
+[,javascript]
+----
+await client.query({
+  find: ["?noun", "?verb"],
+  where: [
+    ["span", "?noun", { layer: "pos", value: "NOUN" }],
+    ["span", "?verb", { layer: "pos", value: "VERB" }],
+    ["covers", "?noun", "?t1"], ["covers", "?verb", "?t2"],
+    ["precedes", "?t1", "?t2"],
+  ],
+});
+----
+
+Each POS span `covers` the token it tags, and we ask for those two tokens to be adjacent with `precedes`.
+The names `?t1` and `?t2` each appear in two clauses, and it is that repetition--the same token covered by the noun span, standing just before the token covered by the verb span--that ties the whole thing into one requirement.
+
+A relation's two ends can be written right on the relation, or as separate `source`/`target` clauses; the two are equivalent:
+
+[,javascript]
+----
+// on the relation:
+["relation", "?r", { layer: "dep", value: "nsubj", source: "?head", target: "?dependent" }]
+// as separate clauses:
+["relation", "?r", { layer: "dep", value: "nsubj" }],
+["source", "?r", "?head"], ["target", "?r", "?dependent"]
+----
+
+[NOTE]
+====
+"Next" and "before"--what `precedes` and `precedes*` mean--follow the same order in which tokens are read in a document: by where each one begins, and then, for tokens that begin together, by their `precedence` (see <<Tokens>>).
+`precedes` is the immediately following token; `precedes*` is any token further along.
+Neither ever reaches across two documents, or across two token layers.
+
+`within` and `first-in` compare tokens purely by their offsets, so a child is "within" a parent whenever the parent's stretch of text covers the child's.
+Name the child and parent on different token layers--a morpheme within a word within a sentence--to climb the <<Token Layer Hierarchy,hierarchy>>.
+====
+
+== Sequences
+
+"This token, then that one" comes up so often that there is a shorthand for it.
+A `seq` clause walks along a single token layer, matching each token in turn, each one immediately after the last:
+
+[,javascript]
+----
+["seq", { layer: "words" },
+ ["span", { layer: "pos", value: "DET" }, "as", "?det"],
+ ["span", { layer: "pos", value: "NOUN" }, "as", "?noun"]]
+----
+
+That matches a determiner immediately followed by a noun. Each line describes the token at the next position--here, by the POS span that tags it--and you can capture a position into a name by adding `"as"` and the name.
+
+A position can be made optional, or allowed to repeat, by wrapping it: `["?", ...]` means "zero or one of these," and `["rep", n, m, ...]` means "between _n_ and _m_ of these."
+
+[,javascript]
+----
+// a determiner, an optional adjective, then a noun
+["seq", { layer: "words" },
+ ["span", { layer: "pos", value: "DET" }, "as", "?det"],
+ ["?", ["span", { layer: "pos", value: "ADJ" }]],
+ ["span", { layer: "pos", value: "NOUN" }, "as", "?noun"]]
+----
+
+Only the fixed positions--the ones you know will be there--may be captured with `"as"`.
+
+== Saying "and", "or", and "not"
+
+By default, listing several clauses in `where` means all of them must hold at once: the conditions are joined by "and."
+When you want alternatives, or exceptions, you ask for them explicitly.
+
+For "either this or that," wrap the alternatives in an `or` clause. Each alternative is itself a little list of clauses, and a match needs only one of the alternatives to hold:
+
+[,javascript]
+----
+// a span tagged either NOUN or VERB
+["or", [["span", "?s", { layer: "pos", value: "NOUN" }]],
+       [["span", "?s", { layer: "pos", value: "VERB" }]]]
+----
+
+When the only thing that differs between the alternatives is a single value--a tag that may be any of several--there is a shorter way to write it. Give a list of values, meaning "any of these":
+
+[,javascript]
+----
+["span", "?s", { layer: "pos", value: ["NOUN", "PROPN"] }]
+----
+
+For "there is no such thing," use a `not` clause. It holds exactly when the pattern inside it matches nothing at all:
+
+[,javascript]
+----
+// words that have not been given a POS tag
+await client.query({
+  find: ["?t"],
+  where: [
+    ["token", "?t", { layer: "words" }],
+    ["not", ["covers", "?s", "?t"], ["span", "?s", { layer: "pos" }]],
+  ],
+});
+----
+
+A name used inside a `not` is read in one of two ways, and it is worth being clear about which.
+If you have already named the thing in the ordinary (non-`not`) part of the query--`?t`, the token, above--then the `not` is a statement about that particular thing: "this token has no POS span covering it."
+A name that appears _only_ inside the `not`--`?s`, the span--is read as "there is no such span at all," and for that reason it cannot be one of the names you `find` (there would be nothing to hand back).
+
+These three--listing for "and", `or`, and `not`--may be nested inside one another without limit. An `or` may sit inside a `not`, a `not` inside one branch of an `or`, and so on, so any combination of conditions you can state in words, you can write as a query.
+
+== Naming Layers
+
+Several of the examples above wrote `layer: "pos"`. There are three ways to name a layer, and Plaid tries them in this order:
+
+* an **alias**--a short label you set on the layer's `config` (see <<Metadata and Config>>), useful when the same kind of layer turns up across many projects under a shared label;
+* a **path**, written `"ProjectName/LayerName"`;
+* the layer's **id**, which is always unambiguous.
+
+A name has to point at exactly one layer. Layer names and aliases are not guaranteed to be unique--two different projects might each have a layer called `pos`--so when a name could mean several layers at once, Plaid stops and says so, rather than quietly searching all of them:
+
+[,javascript]
+----
+// error: the reference "pos" is ambiguous -- it matches 3 layers you can read
+["span", "?s", { layer: "pos" }]
+----
+
+Inside a program it is usually best to name layers by id: you already hold the id of whatever you have loaded, and an id can never be ambiguous.
+If you would like Plaid to _insist_ on ids, add `strictLayers: true` to the query; with that on, a layer named by anything other than an id (or a layer variable, just below) is refused.
+A tool that builds queries on a user's behalf can switch this on to be certain its queries are never ambiguous.
+
+=== When the Layer Itself Is the Question
+
+Sometimes the layer is not something you want to settle in advance--which layer it is, is part of what you are asking. For that, the `layer` slot can hold a variable, exactly as an entity can.
+
+Naming the same layer variable in two clauses requires both entities to be on the _same_ layer, whichever one that turns out to be:
+
+[,javascript]
+----
+// a NOUN and a VERB span that sit on the same layer, no matter which
+["span", "?a", { layer: "?sl", value: "NOUN" }],
+["span", "?b", { layer: "?sl", value: "VERB" }]
+----
+
+You can also put a layer variable in `find`, to get the layer itself back; and you can describe the layer with a clause of its own. This last point is how you _deliberately_ ask across many projects at once--the very thing a plain name refuses to do:
+
+[,javascript]
+----
+// every NOUN span on any layer named "pos", in all the projects you can read
+await client.query({
+  find: ["?s"],
+  where: [
+    ["span", "?s", { layer: "?sl", value: "NOUN" }],
+    ["span-layer", "?sl", { name: "pos" }],
+  ],
+});
+----
+
+The describing clause is named after the kind of layer--`span-layer`, `token-layer`, `relation-layer`, or `vocab-layer`--and you constrain it by `name` or `alias`.
+(Naming one layer variable as, say, a span's layer in one clause and a token's layer in another is a mistake, and Plaid will tell you so.)
+
+== Which Data a Query Sees
+
+A query only ever looks at projects you are allowed to read. This is decided on the server, from who you are, and nothing in a query can widen it. With no further instruction, a query searches every project you can read.
+
+To search fewer, give a `scope`:
+
+[,javascript]
+----
+await client.query({
+  find: ["?s"],
+  where: [["span", "?s", { layer: "pos", value: "NOUN" }]],
+  scope: { projectIds: ["<a project's id>", "<another's>"] },
+});
+----
+
+Whatever you put in `scope` is narrowed down to what you can already read, so `scope` can only ever restrict a search--never grant access to something new.
+(Vocab layers are shared between projects, so a vocab item is visible to you when any project in your scope has been given its layer.)
+
+== What Comes Back
+
+By default a query gives you ids, but you can ask for more by setting `return`:
+
+* `"ids"` (the default)--for each match, the id of every entity you named in `find`;
+* `"entities"`--the same matches, but each one expanded into the full entity (a span with its value and its tokens, and so on), exactly as the ordinary `get` for that entity would return it;
+* `"count"`--just a number: how many distinct matches there are.
+
+[,javascript]
+----
+await client.query({ find: ["?s"], where: [/* ... */], return: "count" });
+// -> { return: "count", count: 38 }
+----
+
+So that a very broad query cannot overwhelm the server, results are capped.
+An `ids` or `entities` query returns at most a hundred matches by default--and at most a thousand even if you ask for more with `limit`.
+When there are more matches than were returned, the result's `truncated` flag is set, so you know it was cut short.
+And a query that takes too long to run is stopped rather than allowed to run away; if that happens, the pattern is too broad, and the remedy is to add a condition that pins it down further, or to narrow the `scope`.
+
+[NOTE]
+====
+Querying reads the **current** state of your data. It changes nothing, and it does not look into the past; for the history of a document--who changed what, and when--see the <<Audit Log>>.
+====
+
 = Development
 
 For information on how to work on **Plaid itself** (not an app which uses Plaid), see link:dev.html[the development  guide].
