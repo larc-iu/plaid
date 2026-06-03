@@ -1,16 +1,31 @@
 .entry {
-  border-bottom: 1px solid var(--mantine-color-gray-1);
   cursor: pointer;
-  transition: background-color 100ms ease;
 }
-.entry:hover {
-  background: var(--mantine-color-gray-0);
+
+/* Base card shared by every row — lone entries, group headers, and expanded
+   children all sit in one of these so they read consistently. Card-to-card
+   gaps (via margin) replace the old per-row bottom border as the separator. */
+/* Card height + margins must sum to ITEM_HEIGHT (104). The roomy bottom margin
+   is the gutter the group "stack" sheets peek into — kept large enough that the
+   sheets stay fully within the row and never get clipped at the row boundary. */
+.cardContent {
+  height: calc(100% - 14px);
+  margin: 1px 2px 13px 2px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--mantine-color-white);
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-sm);
+  transition: box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease;
 }
-.entry[data-selected='true'] {
+.entry:hover .cardContent {
+  border-color: var(--mantine-color-gray-4);
+}
+.entry[data-selected='true'] .cardContent {
+  border-color: var(--mantine-color-blue-4);
   background: var(--mantine-color-blue-0);
-}
-.entry[data-selected='true']:hover {
-  background: var(--mantine-color-blue-1);
 }
 
 /* Two-line clamp for the operation description. */
@@ -25,4 +40,87 @@
   font-weight: 500;
   color: var(--mantine-color-gray-9);
   word-break: break-word;
+}
+
+/* Inline pill for a layer name resolved from a UUID in an op description. */
+.layerTag {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--mantine-color-gray-1);
+  border: 1px solid var(--mantine-color-gray-3);
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--mantine-color-gray-7);
+  line-height: 1.4;
+  vertical-align: text-bottom;
+  white-space: nowrap;
+}
+
+/* Single-line clamp for the group header (room is tighter with the count line). */
+.clampOne {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--mantine-color-gray-9);
+}
+
+/* ---- Collapsed group of near-simultaneous entries ---- */
+
+/* Same base card as a lone entry, but two full card-outlines fan out behind it
+   to the bottom-right so it reads as a pile of entries. They're pseudo-elements
+   offset by transform; the extra right margin and the row's bottom gutter (see
+   .cardContent / ITEM_HEIGHT) reserve room so the offsets never reach the scroll
+   container edge or the next row and get clipped. */
+.groupContent {
+  position: relative;
+  margin-right: 11px;
+  border-color: var(--mantine-color-gray-3);
+}
+.groupContent::before,
+.groupContent::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--mantine-color-white);
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: var(--mantine-radius-sm);
+  z-index: -1;
+}
+.groupContent::before {
+  transform: translate(4px, 4px);
+}
+.groupContent::after {
+  transform: translate(8px, 8px);
+}
+
+/* When expanded, drop the stacked look — it's now a plain header above its children. */
+.groupEntry[data-expanded='true'] .groupContent {
+  margin-right: 2px;
+  background: var(--mantine-color-blue-0);
+  border-color: var(--mantine-color-blue-3);
+}
+.groupEntry[data-expanded='true'] .groupContent::before,
+.groupEntry[data-expanded='true'] .groupContent::after {
+  display: none;
+}
+
+.chevron {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--mantine-color-gray-6);
+  transition: transform 150ms ease;
+}
+.groupEntry[data-expanded='true'] .chevron {
+  transform: rotate(90deg);
+}
+
+/* ---- Expanded children ---- */
+.childEntry .cardContent {
+  margin-left: 18px;
+  border-left: 3px solid var(--mantine-color-blue-2);
+  background: var(--mantine-color-gray-0);
 }

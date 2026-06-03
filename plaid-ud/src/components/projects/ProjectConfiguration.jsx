@@ -11,8 +11,14 @@ import {
   getUdLayerInfo
 } from '../../utils/udLayerUtils.js';
 import {
+  UPOS_TAGS, UNIVERSAL_DEPRELS, autoColor, colorMapToPairs, baseRel
+} from '../../utils/udVocab.js';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import {
   Container, Title, Text, Button, Group, Stack, Alert, Paper, Radio, Select, TextInput, List, Center, Loader,
+  TagsInput, ColorInput, ActionIcon, Divider, SimpleGrid,
 } from '@mantine/core';
+import { IconTrash, IconRestore } from '@tabler/icons-react';
 
 // Span layers, in creation order, all attached to the morpheme token layer.
 const SPAN_KEYS_IN_ORDER = ['form', 'lemma', 'upos', 'xpos', 'features'];
@@ -24,7 +30,7 @@ const SPAN_LAYER_NAMES = {
   features: 'Features'
 };
 
-export const ProjectConfiguration = () => {
+export const ProjectConfiguration = ({ embedded = false }) => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { getClient, user } = useAuth();
@@ -40,6 +46,16 @@ export const ProjectConfiguration = () => {
     selectedTextLayerId: '',
     newTextLayerName: 'Text'
   });
+
+  // Controlled-vocabulary + color state (seeded from layer config once configured).
+  const [uposVocab, setUposVocab] = useState([]);
+  const [xposVocab, setXposVocab] = useState([]);
+  const [deprelVocab, setDeprelVocab] = useState([]);
+  const [deprelColors, setDeprelColors] = useState({}); // { baseRel: '#hex' }
+  const [uposColors, setUposColors] = useState({});     // { UPOS: '#hex' }
+  const [featureInventory, setFeatureInventory] = useState([]); // [{key, values}]
+  const [tokenizerLocale, setTokenizerLocale] = useState(''); // BCP-47, '' = 'und'
+  const [savingExtras, setSavingExtras] = useState(false);
 
   const fetchProject = async () => {
     try {
@@ -88,6 +104,28 @@ export const ProjectConfiguration = () => {
       newTextLayerName: 'Text'
     });
   }, [project]);
+
+  // Seed vocab/color editors from the project's current layer config.
+  useEffect(() => {
+    if (!project) return;
+    const info = getUdLayerInfo(project);
+    setUposVocab(info.vocab.upos || []);
+    setXposVocab(info.vocab.xpos || []);
+    setDeprelVocab(info.vocab.deprel || []);
+    setDeprelColors(info.colors.deprel || {});
+    setUposColors(info.colors.upos || {});
+    setFeatureInventory(info.vocab.featureInventory.list.map(e => ({ key: e.key, values: [...e.values] })));
+    setTokenizerLocale(info.textLayer?.config?.[UD_NAMESPACE]?.tokenizerLocale || '');
+  }, [project]);
+
+  // Set/clear a single color in a {label: '#hex'} map (clearing falls back to auto).
+  const setColorIn = (setter) => (key, value) => {
+    setter(prev => {
+      const next = { ...prev };
+      if (value) next[key] = value; else delete next[key];
+      return next;
+    });
+  };
 
   const validateForm = () => {
     if (formData.textLayerType === 'existing' && !formData.selectedTextLayerId) {
@@ -196,6 +234,50 @@ export const ProjectConfiguration = () => {
     }
   };
 
+  // Persist vocab lists + color maps + feature inventory. Each setConfig is a
+  // PUT (full replace), so this is naturally idempotent and safe to re-run.
+  // Colors/inventory are written as ARRAYS OF PAIRS so object keys never get
+  // camelCased on read by the client transform (see udVocab.js).
+  const handleSaveExtras = async () => {
+    setSavingExtras(true);
+    try {
+      const client = getClient();
+      if (!client) throw new Error('Not authenticated');
+      const info = getUdLayerInfo(project);
+
+      if (info.textLayer) {
+        const loc = tokenizerLocale.trim();
+        if (loc) await client.textLayers.setConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale', loc);
+        else await client.textLayers.deleteConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale');
+      }
+      if (info.xposLayer) {
+        await client.spanLayers.setConfig(info.xposLayer.id, UD_NAMESPACE, 'vocab', xposVocab);
+      }
+      if (info.relationLayer) {
+        await client.relationLayers.setConfig(info.relationLayer.id, UD_NAMESPACE, 'vocab', deprelVocab);
+        await client.relationLayers.setConfig(info.relationLayer.id, UD_NAMESPACE, 'colors', colorMapToPairs(deprelColors));
+      }
+      if (info.uposLayer) {
+        await client.spanLayers.setConfig(info.uposLayer.id, UD_NAMESPACE, 'vocab', uposVocab);
+        await client.spanLayers.setConfig(info.uposLayer.id, UD_NAMESPACE, 'colors', colorMapToPairs(uposColors));
+      }
+      if (info.featuresLayer) {
+        const inventory = featureInventory
+          .filter(e => e.key.trim())
+          .map(e => ({ key: e.key.trim(), values: (e.values || []).map(v => v.trim()).filter(Boolean) }));
+        await client.spanLayers.setConfig(info.featuresLayer.id, UD_NAMESPACE, 'inventory', inventory);
+      }
+
+      await fetchProject();
+      notifySuccess('Vocabulary and colors saved.');
+    } catch (err) {
+      console.error('Failed to save vocabulary settings:', err);
+      notifyError(err.message || 'Failed to save vocabulary settings.');
+    } finally {
+      setSavingExtras(false);
+    }
+  };
+
   if (loading) {
     return <Center py={48}><Loader /></Center>;
   }
@@ -209,24 +291,31 @@ export const ProjectConfiguration = () => {
     ? info.missingLayers.map(key => UD_LAYER_LABELS[key] || key).join(', ')
     : '';
 
+  const Wrapper = ({ children }) =>
+    embedded ? <>{children}</> : <Container size="lg" py="xl">{children}</Container>;
+
+  const statusLine = info.isConfigured ? (
+    <Text size="sm" c="green">All Universal Dependencies layers are configured.</Text>
+  ) : (
+    missingLabels && <Text size="sm" c="orange">Missing configuration detected for: {missingLabels}</Text>
+  );
+
   return (
-    <Container size="lg" py="xl">
-      <Group justify="space-between" align="flex-start" mb="lg">
-        <div>
-          <Title order={1}>Configure UD Layers</Title>
-          <Text c="dimmed" mt={4}>Project: {project.name}</Text>
-          {info.isConfigured ? (
-            <Text size="sm" c="green" mt="xs">All Universal Dependencies layers are configured.</Text>
-          ) : (
-            missingLabels && (
-              <Text size="sm" c="orange" mt="xs">Missing configuration detected for: {missingLabels}</Text>
-            )
-          )}
-        </div>
-        <Button component={Link} to={`/projects/${projectId}/documents`} variant="default">
-          Back to Documents
-        </Button>
-      </Group>
+    <Wrapper>
+      {embedded ? (
+        statusLine && <div style={{ marginBottom: 'var(--mantine-spacing-md)' }}>{statusLine}</div>
+      ) : (
+        <Group justify="space-between" align="flex-start" mb="lg">
+          <div>
+            <Title order={1}>Configure UD Layers</Title>
+            <Text c="dimmed" mt={4}>Project: {project.name}</Text>
+            <div style={{ marginTop: 'var(--mantine-spacing-xs)' }}>{statusLine}</div>
+          </div>
+          <Button component={Link} to={`/projects/${projectId}/documents`} variant="default">
+            Back to Documents
+          </Button>
+        </Group>
+      )}
 
       <form onSubmit={handleSubmit}>
         <Stack gap="xl">
@@ -291,6 +380,188 @@ export const ProjectConfiguration = () => {
           </Group>
         </Stack>
       </form>
-    </Container>
+
+      <Stack gap="xl" mt="xl">
+        <Divider label="Annotation vocabularies & colors" labelPosition="center" />
+
+        {!info.isConfigured ? (
+          <Alert color="gray" variant="light">
+            Save the layer configuration above first — vocabulary and color settings attach to the annotation layers.
+          </Alert>
+        ) : (
+          <>
+            <Paper withBorder p="lg" radius="md">
+              <Title order={2} size="h4" mb="xs">Tokenizer locale</Title>
+              <Text size="sm" c="dimmed" mb="md">
+                Language tag used for whitespace/word tokenization (<code>Intl.Segmenter</code>). Drives
+                script-specific segmentation — especially <code>ja</code>, <code>zh</code>, <code>th</code>, which
+                are segmented by dictionary lookup when given the locale. A BCP-47 tag (e.g. <code>en</code>,
+                <code> ja</code>, <code>zh-Hans</code>); leave empty for generic (<code>und</code>).
+              </Text>
+              <TextInput
+                value={tokenizerLocale}
+                onChange={(e) => setTokenizerLocale(e.target.value)}
+                placeholder="und"
+                w={220}
+              />
+            </Paper>
+
+            <Paper withBorder p="lg" radius="md">
+              <Group justify="space-between" align="center" mb="xs">
+                <Title order={2} size="h4">UPOS tags</Title>
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  leftSection={<IconRestore size={14} />}
+                  onClick={() => setUposVocab([...UPOS_TAGS])}
+                >
+                  Reset to universal 17
+                </Button>
+              </Group>
+              <Text size="sm" c="dimmed" mb="md">
+                Universal part-of-speech tags suggested while annotating. Defaults to the 17 universal tags; edit them
+                for project-specific needs. Annotators may still type values outside this list.
+              </Text>
+              <TagsInput
+                value={uposVocab}
+                onChange={setUposVocab}
+                placeholder="Add a UPOS tag and press Enter"
+                clearable
+              />
+            </Paper>
+
+            <Paper withBorder p="lg" radius="md">
+              <Title order={2} size="h4" mb="xs">XPOS tags</Title>
+              <Text size="sm" c="dimmed" mb="md">
+                Language-specific part-of-speech tags suggested while annotating. Annotators may still type values
+                outside this list.
+              </Text>
+              <TagsInput
+                value={xposVocab}
+                onChange={setXposVocab}
+                placeholder="Add an XPOS tag and press Enter"
+                clearable
+              />
+            </Paper>
+
+            <Paper withBorder p="lg" radius="md">
+              <Group justify="space-between" align="center" mb="xs">
+                <Title order={2} size="h4">Dependency relations</Title>
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  leftSection={<IconRestore size={14} />}
+                  onClick={() => setDeprelVocab([...UNIVERSAL_DEPRELS])}
+                >
+                  Reset to universal 37
+                </Button>
+              </Group>
+              <Text size="sm" c="dimmed" mb="md">
+                Relations suggested when labeling edges. Subtypes (e.g. <code>nsubj:pass</code>) are allowed.
+              </Text>
+              <TagsInput
+                value={deprelVocab}
+                onChange={setDeprelVocab}
+                placeholder="Add a relation and press Enter"
+                clearable
+              />
+            </Paper>
+
+            <Paper withBorder p="lg" radius="md">
+              <Title order={2} size="h4" mb="xs">Relation colors</Title>
+              <Text size="sm" c="dimmed" mb="md">
+                Dependency edges are colored by their base relation. Each shows its current color (an automatic one
+                by default); pick a color to override, or clear the field to revert to automatic.
+              </Text>
+              <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
+                {[...new Set(deprelVocab.map(baseRel))].sort().map(rel => (
+                  <ColorInput
+                    key={rel}
+                    label={rel}
+                    size="xs"
+                    format="hex"
+                    value={deprelColors[rel] || autoColor(rel)}
+                    onChange={(v) => setColorIn(setDeprelColors)(rel, v)}
+                  />
+                ))}
+              </SimpleGrid>
+            </Paper>
+
+            <Paper withBorder p="lg" radius="md">
+              <Title order={2} size="h4" mb="xs">UPOS colors</Title>
+              <Text size="sm" c="dimmed" mb="md">
+                The UPOS tags above, colored in the annotation grid. Each shows its current color; pick one to
+                override, or clear the field to revert to automatic.
+              </Text>
+              <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
+                {[...new Set(uposVocab)].map(tag => (
+                  <ColorInput
+                    key={tag}
+                    label={tag}
+                    size="xs"
+                    format="hex"
+                    value={uposColors[tag] || autoColor(tag)}
+                    onChange={(v) => setColorIn(setUposColors)(tag, v)}
+                  />
+                ))}
+              </SimpleGrid>
+            </Paper>
+
+            <Paper withBorder p="lg" radius="md">
+              <Title order={2} size="h4" mb="xs">Feature inventory</Title>
+              <Text size="sm" c="dimmed" mb="md">
+                Feature names and values offered in the FEATS picker. New keys/values are still allowed while annotating.
+              </Text>
+              <Stack gap="xs">
+                {featureInventory.map((entry, i) => (
+                  <Group key={i} align="flex-end" wrap="nowrap" gap="xs">
+                    <TextInput
+                      label={i === 0 ? 'Feature' : undefined}
+                      value={entry.key}
+                      w={150}
+                      placeholder="e.g. Number"
+                      onChange={(e) => setFeatureInventory(prev =>
+                        prev.map((x, j) => j === i ? { ...x, key: e.target.value } : x))}
+                    />
+                    <TagsInput
+                      label={i === 0 ? 'Values' : undefined}
+                      value={entry.values}
+                      style={{ flex: 1 }}
+                      placeholder="Add a value"
+                      onChange={(vals) => setFeatureInventory(prev =>
+                        prev.map((x, j) => j === i ? { ...x, values: vals } : x))}
+                    />
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      mb={4}
+                      aria-label={`Remove ${entry.key || 'feature'}`}
+                      onClick={() => setFeatureInventory(prev => prev.filter((_, j) => j !== i))}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Group>
+                ))}
+                <Group>
+                  <Button
+                    variant="light"
+                    size="xs"
+                    onClick={() => setFeatureInventory(prev => [...prev, { key: '', values: [] }])}
+                  >
+                    Add feature
+                  </Button>
+                </Group>
+              </Stack>
+            </Paper>
+
+            <Group justify="flex-end">
+              <Button color="dark" loading={savingExtras} onClick={handleSaveExtras}>
+                Save vocabularies &amp; colors
+              </Button>
+            </Group>
+          </>
+        )}
+      </Stack>
+    </Wrapper>
   );
 };

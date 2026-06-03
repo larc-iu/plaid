@@ -46,6 +46,24 @@
   align-items: center;
 }
 
+.row-label--toggle {
+  cursor: pointer;
+  user-select: none;
+  border-radius: 2px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.row-label--toggle:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+.row-label__chevron {
+  flex: 0 0 auto;
+  margin-right: 2px;
+  color: #6b7280;
+}
+
 /* Token form (baseline) */
 .token-form {
   text-align: center;
@@ -113,6 +131,7 @@
 }
 
 .feature-tag {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -140,8 +159,14 @@
 }
 
 .feature-delete-btn {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
   color: #EF4444;
   font-size: 10px;
+  line-height: 1;
+  padding: 0;
   border: none;
   background: none;
   cursor: pointer;
@@ -164,11 +189,17 @@
 
 .feature-input {
   flex: 1;
+  min-width: 0;
   font-size: 10px;
   border: 1px solid #A855F7;
   border-radius: 2px;
   padding: 1px 3px;
   outline: none;
+}
+
+.feature-eq {
+  font-size: 10px;
+  color: #777;
 }
 
 .feature-add-btn {

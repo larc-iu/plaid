@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Tabs, Breadcrumbs, Anchor, Text } from '@mantine/core';
+import { Tabs, Breadcrumbs, Anchor, Text, Group } from '@mantine/core';
+import { EntityAvatar } from '../common/EntityAvatar.jsx';
 
 export const DocumentTabs = ({ projectId, documentId, project, document }) => {
   const location = useLocation();
@@ -17,9 +18,15 @@ export const DocumentTabs = ({ projectId, documentId, project, document }) => {
       <Breadcrumbs mb="md">
         <Anchor component={Link} to="/projects" size="sm">Projects</Anchor>
         <Anchor component={Link} to={`/projects/${projectId}/documents`} size="sm">
-          {project?.name || 'Loading...'}
+          <Group gap={6} wrap="nowrap">
+            <EntityAvatar id={projectId} size={16} />
+            {project?.name || 'Loading...'}
+          </Group>
         </Anchor>
-        <Text size="sm" c="dimmed">{document?.name || 'Loading...'}</Text>
+        <Group gap={6} wrap="nowrap">
+          <EntityAvatar id={documentId} size={16} />
+          <Text size="sm" c="dimmed">{document?.name || 'Loading...'}</Text>
+        </Group>
       </Breadcrumbs>
 
       <Tabs value={active} onChange={(value) => navigate(`${base}/${value}`)} mb="lg">

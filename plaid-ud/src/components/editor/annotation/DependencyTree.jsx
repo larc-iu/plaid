@@ -1,15 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
+import { resolveColor, baseRel } from '../../../utils/udVocab.js';
+import { DeprelEditor } from './DeprelEditor.jsx';
 import './DependencyTree.css';
 
 export const DependencyTree = ({
-  tokens, 
-  relations, 
+  tokens,
+  relations,
   lemmaSpans,
   onRelationCreate,
   onRelationUpdate,
   onRelationDelete,
   textContent,
-  tokenPositions = [] 
+  tokenPositions = [],
+  deprelColors,
+  deprelVocab
 }) => {
   const [selectedSource, setSelectedSource] = useState(null);
   const [hoveredToken, setHoveredToken] = useState(null);
@@ -22,11 +26,6 @@ export const DependencyTree = ({
   const [positionsInitialized, setPositionsInitialized] = useState(false);
   const svgRef = useRef(null);
   const labelRefs = useRef(new Map());
-  // Set true only by Enter (commit-and-stay), so its synchronous blur restores
-  // focus to the label. Every other exit — pointer click-away, Escape, Tab
-  // (which does its own focus-next) — leaves it false so the label releases
-  // instead of snapping focus back. Consumed/reset in the label's onBlur.
-  const exitViaKeyboardRef = useRef(false);
 
   // Constants for layout (back to original working version)
   const TOKEN_SPACING = 80;
@@ -46,6 +45,16 @@ export const DependencyTree = ({
       return true;
     }
     return position.token?.id === spanId;
+  };
+
+  // When re-pointing a token's head (it already has an incoming arc), keep its
+  // existing deprel instead of resetting to 'dep'. A root self-loop is excluded
+  // (a non-root head shouldn't inherit 'root').
+  const incomingDeprel = (targetPosition) => {
+    const prev = relations.find(rel =>
+      positionMatchesSpanId(targetPosition, rel.target) && rel.source !== rel.target
+    );
+    return prev?.value || 'dep';
   };
 
   // Use passed token positions for X coordinates, but keep original Y logic
@@ -175,12 +184,12 @@ export const DependencyTree = ({
           setEditingRelation(existingRelation);
         } else {
           if (sourceId && targetId) {
-            onRelationCreate(sourceId, targetId, 'dep');
+            onRelationCreate(sourceId, targetId, incomingDeprel(targetPosition));
           }
         }
       }
     }
-    
+
     // Reset drag state
     setDragOrigin(null);
     setDragCurrent(null);
@@ -270,10 +279,10 @@ export const DependencyTree = ({
         setEditingRelation(existingRelation);
       } else {
         if (sourceId && targetId) {
-          onRelationCreate(sourceId, targetId, 'dep');
+          onRelationCreate(sourceId, targetId, incomingDeprel(targetPosition));
         }
       }
-      
+
       setSelectedSource(null);
     }
   };
@@ -431,11 +440,18 @@ export const DependencyTree = ({
       labelX = midX;
     }
     
-    const color = isSelected || isHovered || isFocused ? '#2563eb' : '#666';
+    // At rest, color by the base DEPREL (configured map → deterministic auto);
+    // selection/hover/focus keep the highlight blue. `color` drives the arc
+    // stroke, arrowhead fill, and resting label fill, so the label matches.
+    const restColor = resolveColor(baseRel(relation.value || 'dep'), deprelColors);
+    const color = isSelected || isHovered || isFocused ? '#2563eb' : restColor;
     const strokeWidth = isSelected || isHovered || isFocused ? 2 : 1;
     
-    return (
-      <g key={relation.id}>
+    // Split into `body` (arc + arrowhead) and `label` so the caller can paint
+    // ALL bodies first and ALL labels after — in SVG, later = on top, so every
+    // deprel label sits above every arc (no arc overdrawing a label).
+    const body = (
+      <>
         {/* Arc path */}
         <path
           id={pathId}
@@ -449,136 +465,57 @@ export const DependencyTree = ({
             setEditingRelation(relation);
           }}
         />
-        
+
         {/* Arrow polygon */}
-        <polygon 
-          points={`${arrowX-3},${arrowY - 3} ${arrowX+3},${arrowY - 3} ${arrowX},${arrowY + 2}`} 
+        <polygon
+          points={`${arrowX-3},${arrowY - 3} ${arrowX+3},${arrowY - 3} ${arrowX},${arrowY + 2}`}
           fill={color}
           className="tree-arc-arrow"
           onClick={() => {
             setEditingRelation(relation);
           }}
         />
-        
+      </>
+    );
+
+    const label = (
+      <>
         {/* DEPREL label */}
         {editingRelation?.id === relation.id ? (
           <foreignObject
-            x={labelX - 40}
-            y={labelY - 10}
-            width="80"
-            height="20"
+            x={labelX - 50}
+            y={labelY - 12}
+            width="100"
+            height="26"
+            style={{ overflow: 'visible' }}
           >
-            <div
-              contentEditable
-              suppressContentEditableWarning
-              className="tree-deprel-edit"
-              onBlur={(e) => {
-                const newValue = e.target.textContent.trim();
-                const currentValue = relation.value || 'dep';
-                if (newValue && newValue !== currentValue) {
-                  onRelationUpdate(relation.id, newValue);
-                }
+            <DeprelEditor
+              relation={relation}
+              suggestions={deprelVocab}
+              onCommit={(v) => {
+                const t = (v || '').trim();
+                if (t && t !== (relation.value || 'dep')) onRelationUpdate(relation.id, t);
                 setEditingRelation(null);
-
-                // A pointer click-away (or Escape) should release the label,
-                // not snap focus back into it — otherwise the label re-focuses,
-                // re-enters edit mode, and you can't click out. Only keyboard
-                // navigation (Tab/Enter) restores focus to keep traversal alive.
-                const exitViaKeyboard = exitViaKeyboardRef.current;
-                exitViaKeyboardRef.current = false;
-                if (!exitViaKeyboard) {
-                  setFocusedRelation(null);
-                  return;
-                }
-
-                // Only restore focus if the user isn't focusing on something else
-                // Check if the related target has a tabIndex (indicating it's an EditableCell or other focusable element)
-                const relatedTarget = e.relatedTarget;
-                const isMovingToEditableCell = relatedTarget && relatedTarget.getAttribute && relatedTarget.getAttribute('tabIndex') !== null && relatedTarget.getAttribute('tabIndex') !== '-1';
-
-                if (!isMovingToEditableCell) {
-                  // Restore focus to the label after editing
-                  setTimeout(() => {
-                    const labelElement = labelRefs.current.get(relation.id);
-                    if (labelElement) {
-                      labelElement.focus();
-                      setFocusedRelation(relation.id);
-                    }
-                  }, 0);
-                } else {
-                  // Clear focus state when moving to another element
-                  setFocusedRelation(null);
-                }
+                setFocusedRelation(null);
               }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  exitViaKeyboardRef.current = true;
-                  e.target.blur();
-                } else if (e.key === 'Escape') {
-                  e.target.textContent = relation.value || 'dep';
-                  setEditingRelation(null);
-                  setFocusedRelation(null);
-                } else if (e.key === 'Delete' && e.shiftKey) {
-                  e.preventDefault();
-                  onRelationDelete(relation.id);
-                  setEditingRelation(null);
-                  setFocusedRelation(null);
-                } else if (e.key === 'Tab') {
-                  // Handle tab navigation during editing. Tab does its own
-                  // focus-the-next-label below, so it must NOT set the
-                  // keyboard-restore flag — on a single relation the blur never
-                  // fires to consume it, and the leaked flag would then make the
-                  // next pointer click-away refocus instead of release.
-                  e.preventDefault();
-                  const newValue = e.target.textContent.trim();
-                  const currentValue = relation.value || 'dep';
-                  
-                  // Save changes if different
-                  if (newValue && newValue !== currentValue) {
-                    onRelationUpdate(relation.id, newValue);
-                  }
-                  
-                  // Navigate to next/previous relation
-                  setEditingRelation(null);
-                  const currentIndex = sortedRelations.findIndex(r => r.id === relation.id);
-                  
-                  if (e.shiftKey) {
-                    // Shift+Tab: Previous relation
-                    const prevIndex = currentIndex > 0 ? currentIndex - 1 : sortedRelations.length - 1;
-                    if (sortedRelations[prevIndex]) {
-                      setTimeout(() => {
-                        setFocusedRelation(sortedRelations[prevIndex].id);
-                        const labelElement = labelRefs.current.get(sortedRelations[prevIndex].id);
-                        labelElement?.focus();
-                      }, 0);
-                    }
-                  } else {
-                    // Tab: Next relation
-                    const nextIndex = currentIndex < sortedRelations.length - 1 ? currentIndex + 1 : 0;
-                    if (sortedRelations[nextIndex]) {
-                      setTimeout(() => {
-                        setFocusedRelation(sortedRelations[nextIndex].id);
-                        const labelElement = labelRefs.current.get(sortedRelations[nextIndex].id);
-                        labelElement?.focus();
-                      }, 0);
-                    }
-                  }
-                }
+              onCancel={() => { setEditingRelation(null); setFocusedRelation(null); }}
+              onDelete={() => {
+                onRelationDelete(relation.id);
+                setEditingRelation(null);
+                setFocusedRelation(null);
               }}
-              autoFocus
-              ref={(el) => {
-                if (el) {
-                  el.textContent = relation.value || 'dep';
-                  // Select all text
-                  const range = document.createRange();
-                  range.selectNodeContents(el);
-                  const sel = window.getSelection();
-                  sel.removeAllRanges();
-                  sel.addRange(range);
-                }
+              onTab={(v, shiftKey) => {
+                const t = (v || '').trim();
+                if (t && t !== (relation.value || 'dep')) onRelationUpdate(relation.id, t);
+                const idx = sortedRelations.findIndex(r => r.id === relation.id);
+                const nextIdx = shiftKey
+                  ? (idx > 0 ? idx - 1 : sortedRelations.length - 1)
+                  : (idx < sortedRelations.length - 1 ? idx + 1 : 0);
+                const next = sortedRelations[nextIdx];
+                setEditingRelation(next || null);
+                setFocusedRelation(next?.id || null);
               }}
-            >{relation.value || 'dep'}</div>
+            />
           </foreignObject>
         ) : (
           <text
@@ -614,8 +551,10 @@ export const DependencyTree = ({
             {relation.value || 'dep'}
           </text>
         )}
-      </g>
+      </>
     );
+
+    return { key: relation.id, body, label };
   };
 
   // Render drag arrow during mouse drag
@@ -712,21 +651,24 @@ export const DependencyTree = ({
           onMouseLeave={() => setHoveredToken(null)}
         />
         
-        {/* Render existing relations - only when positions are initialized */}
-        {positionsInitialized && relations.map((relation, index) => renderArc(relation, index))}
+        {/* Render existing relations - only when positions are initialized.
+            Paint all arc bodies first, then all labels, so every deprel label
+            sits above every arc (SVG paint order = document order). */}
+        {positionsInitialized && (() => {
+          const arcs = relations.map((relation, index) => renderArc(relation, index)).filter(Boolean);
+          return (
+            <>
+              {arcs.map(a => <g key={a.key}>{a.body}</g>)}
+              {arcs.map(a => <g key={`${a.key}-label`}>{a.label}</g>)}
+            </>
+          );
+        })()}
         
         {/* Render drag arc - only when positions are initialized */}
         {positionsInitialized && renderDragArc()}
         
         {/* Invisible token click areas */}
         {adjustedTokenPositions.map((position) => {
-          const positionSpanId = getEffectiveSpanId(position);
-          const isSource = selectedSource?.spanId === positionSpanId;
-          const isHovered = hoveredToken?.lemmaSpanId
-            ? hoveredToken.lemmaSpanId === positionSpanId
-            : hoveredToken?.token?.id === position.token?.id;
-          const isDragSource = dragSourceId === positionSpanId;
-          
           // Use token width if available, otherwise default to 60px
           const tokenWidth = position.width || 60;
           const tokenHeight = 30;

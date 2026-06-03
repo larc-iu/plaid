@@ -1,3 +1,7 @@
+import {
+  UPOS_TAGS, UNIVERSAL_DEPRELS, readVocab, readColorMap, readFeatureInventory
+} from './udVocab.js';
+
 const UD_NAMESPACE = 'ud';
 
 // Half-open containment: a child is contained in a parent iff its range fits
@@ -94,6 +98,13 @@ export const getUdLayerInfo = (document) => {
       xposLayer: null,
       featuresLayer: null,
       relationLayer: null,
+      vocab: {
+        upos: UPOS_TAGS,
+        xpos: [],
+        deprel: UNIVERSAL_DEPRELS,
+        featureInventory: readFeatureInventory(null)
+      },
+      colors: { upos: {}, deprel: {} },
       missingLayers: [...EMPTY_MISSING],
       isConfigured: false
     };
@@ -153,6 +164,20 @@ export const getUdLayerInfo = (document) => {
     xposLayer,
     featuresLayer,
     relationLayer,
+    // Controlled vocabularies + color maps, parsed from each layer's `.config`.
+    // UPOS is the fixed universal set; DEPREL falls back to the universal 37.
+    // Rides the per-version layerInfo cache, so identity is stable across renders.
+    vocab: {
+      // UPOS defaults to the universal 17 but is project-configurable like the rest.
+      upos: readVocab(uposLayer?.config, { fallback: UPOS_TAGS }),
+      xpos: readVocab(xposLayer?.config, { fallback: [] }),
+      deprel: readVocab(relationLayer?.config, { fallback: UNIVERSAL_DEPRELS }),
+      featureInventory: readFeatureInventory(featuresLayer?.config)
+    },
+    colors: {
+      upos: readColorMap(uposLayer?.config),
+      deprel: readColorMap(relationLayer?.config)
+    },
     missingLayers: normalizedMissing,
     isConfigured: normalizedMissing.length === 0
   };

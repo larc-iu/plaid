@@ -5,8 +5,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { UserProfile } from './components/auth/UserProfile';
 import { ProjectList } from './components/projects/ProjectList';
-import { ProjectManagement } from './components/projects/ProjectManagement';
-import { ProjectConfiguration } from './components/projects/ProjectConfiguration.jsx';
+import { ProjectSettings } from './components/projects/ProjectSettings.jsx';
 import { DocumentList } from './components/documents/DocumentList';
 import { TextEditor } from './components/editor/TextEditor.jsx';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
@@ -40,11 +39,10 @@ function App() {
             {/* Documents page */}
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
             
-            {/* Project management page */}
-            <Route path="projects/:projectId/management" element={<ProjectManagement />} />
-
-            {/* Project configuration page */}
-            <Route path="projects/:projectId/configuration" element={<ProjectConfiguration />} />
+            {/* Project settings (tabbed: UD configuration + user management).
+                Both paths render the same view; the active tab follows the path. */}
+            <Route path="projects/:projectId/management" element={<ProjectSettings />} />
+            <Route path="projects/:projectId/configuration" element={<ProjectSettings />} />
             
             {/* Text editor route */}
             <Route path="projects/:projectId/documents/:documentId/edit" element={<TextEditor />} />

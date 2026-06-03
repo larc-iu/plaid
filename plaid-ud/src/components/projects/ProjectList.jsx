@@ -6,6 +6,7 @@ import {
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ProjectForm } from './ProjectForm';
+import { EntityAvatar } from '../common/EntityAvatar.jsx';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import classes from '../common/listRow.module.css';
 
@@ -107,7 +108,9 @@ export const ProjectList = () => {
                 style={{ borderTop: i ? '1px solid var(--mantine-color-gray-2)' : undefined }}
               >
                 <Group justify="space-between" wrap="nowrap">
-                  <div>
+                  <Group gap="sm" wrap="nowrap">
+                    <EntityAvatar id={project.id} size={36} />
+                    <div>
                     <Text fw={500} size="lg">{project.name}</Text>
                     <Group gap="md" mt={4}>
                       <Text size="sm" c="dimmed">ID: {project.id}</Text>
@@ -117,7 +120,8 @@ export const ProjectList = () => {
                         </Text>
                       )}
                     </Group>
-                  </div>
+                    </div>
+                  </Group>
                   <Tooltip label="Delete project">
                     <ActionIcon
                       variant="subtle"

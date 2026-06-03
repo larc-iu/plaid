@@ -10,6 +10,7 @@ import { DocumentForm } from './DocumentForm';
 import { ImportModal } from './ImportModal';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import classes from '../common/listRow.module.css';
+import { EntityAvatar } from '../common/EntityAvatar.jsx';
 
 export const DocumentList = () => {
   const { projectId } = useParams();
@@ -108,11 +109,11 @@ export const DocumentList = () => {
           {canManageProject() && (
             <Button
               component={Link}
-              to={`/projects/${projectId}/management`}
+              to={`/projects/${projectId}/configuration`}
               color="grape"
               leftSection={<IconSettings size={16} />}
             >
-              Project Management
+              Project Settings
             </Button>
           )}
           <Button variant="default" leftSection={<IconUpload size={16} />} onClick={() => setShowImportModal(true)}>
@@ -156,10 +157,13 @@ export const DocumentList = () => {
                 style={{ borderTop: i ? '1px solid var(--mantine-color-gray-2)' : undefined }}
               >
                 <Group justify="space-between" wrap="nowrap">
-                  <div>
-                    <Text fw={500} size="lg">{document.name}</Text>
-                    <Text size="sm" c="dimmed" mt={4}>ID: {document.id}</Text>
-                  </div>
+                  <Group gap="sm" wrap="nowrap">
+                    <EntityAvatar id={document.id} size={36} />
+                    <div>
+                      <Text fw={500} size="lg">{document.name}</Text>
+                      <Text size="sm" c="dimmed" mt={4}>ID: {document.id}</Text>
+                    </div>
+                  </Group>
                   <Group gap="xs" wrap="nowrap">
                     <Tooltip label="Edit text">
                       <ActionIcon

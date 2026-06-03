@@ -8,9 +8,13 @@ export const VirtualSentenceRow = ({
   onRelationCreate,
   onRelationUpdate,
   onRelationDelete,
-  sentenceIndex = 0, 
+  sentenceIndex = 0,
   totalTokensBefore = 0,
-  estimatedHeight = 200 // Default estimated height in pixels
+  estimatedHeight = 200, // Default estimated height in pixels
+  vocab,
+  colors,
+  visibleFields,
+  onToggleField
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [hasBeenVisible, setHasBeenVisible] = useState(false);
@@ -80,6 +84,10 @@ export const VirtualSentenceRow = ({
         onRelationDelete={onRelationDelete}
         sentenceIndex={sentenceIndex}
         totalTokensBefore={totalTokensBefore}
+        vocab={vocab}
+        colors={colors}
+        visibleFields={visibleFields}
+        onToggleField={onToggleField}
       />
     </div>
   );

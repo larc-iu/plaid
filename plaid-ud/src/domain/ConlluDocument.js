@@ -33,7 +33,13 @@ export class ConlluDocument {
     this._raw = raw;
     this._client = client;
     this._projectId = projectId;
+    // `_version` is the React subscription snapshot — it bumps on EVERY emit
+    // (including isSaving/error toggles that change no document data). The
+    // derived caches below instead key on `_dataVersion`, which bumps only when
+    // `_raw` actually changes, so transient saving re-renders don't rebuild the
+    // whole sentence grid (which would re-render every cell mid-edit).
     this._version = 0;
+    this._dataVersion = 0;
     this._listeners = new Set();
     this._sentencesCache = null;
     this._sentencesCacheVersion = -1;
@@ -279,9 +285,9 @@ export class ConlluDocument {
 
   // ----- layer info (cached per version) -----
   get layerInfo() {
-    if (this._layerInfoCacheVersion !== this._version) {
+    if (this._layerInfoCacheVersion !== this._dataVersion) {
       this._layerInfoCache = getUdLayerInfo(this._raw);
-      this._layerInfoCacheVersion = this._version;
+      this._layerInfoCacheVersion = this._dataVersion;
     }
     return this._layerInfoCache;
   }
@@ -292,11 +298,11 @@ export class ConlluDocument {
 
   // ----- derived sentence/word/morpheme hierarchy (cached per version) -----
   get sentences() {
-    if (this._sentencesCache && this._sentencesCacheVersion === this._version) {
+    if (this._sentencesCache && this._sentencesCacheVersion === this._dataVersion) {
       return this._sentencesCache;
     }
     this._sentencesCache = this._buildSentences();
-    this._sentencesCacheVersion = this._version;
+    this._sentencesCacheVersion = this._dataVersion;
     return this._sentencesCache;
   }
 
@@ -457,6 +463,7 @@ export class ConlluDocument {
     const next = cloneRaw(this._raw);
     producer(next, getUdLayerInfo(next));
     this._raw = next;
+    this._dataVersion++;
     this._emit();
   }
 
@@ -467,6 +474,7 @@ export class ConlluDocument {
     if (!this._client || !this.id) return;
     const updated = await this._client.documents.get(this.id, true);
     this._raw = updated;
+    this._dataVersion++;
     this._emit();
   }
 
@@ -541,7 +549,11 @@ export class ConlluDocument {
       // letters/digits on both sides stays in the word (contractions,
       // hyphenated forms, abbreviations, decimal numbers); edge or standalone
       // punctuation becomes its own one-character token.
-      const wordRanges = basicTokenize(body);
+      // Locale drives Intl.Segmenter's script-specific word segmentation
+      // (esp. ja/zh/th dictionary lookup). Configured per-project on the text
+      // layer; defaults to 'und'.
+      const tokenizerLocale = this.layerInfo.textLayer?.config?.ud?.tokenizerLocale || 'und';
+      const wordRanges = basicTokenize(body, tokenizerLocale);
 
       this._client.beginBatch();
       this._client.tokens.bulkCreate(sentenceRanges.map(([begin, end]) => ({
@@ -769,7 +781,7 @@ export class ConlluDocument {
           .filter(s => Array.isArray(s.tokens) && s.tokens.some(t => removedMorphIds.has(t)))
           .map(s => s.id)
       );
-      await this._client.tokens.delete(wordId);
+      // Optimistic: remove the word + its cascade locally before the round trip.
       this._applyRawPatch((next, info) => {
         if (info.wordTokenLayer?.tokens) {
           info.wordTokenLayer.tokens = info.wordTokenLayer.tokens.filter(t => t.id !== wordId);
@@ -786,6 +798,7 @@ export class ConlluDocument {
           info.relationLayer.relations = info.relationLayer.relations.filter(r => !removedLemmaSpanIds.has(r.source) && !removedLemmaSpanIds.has(r.target));
         }
       });
+      await this._client.tokens.delete(wordId);
     });
   }
 
@@ -871,7 +884,7 @@ export class ConlluDocument {
       this._client.beginBatch();
       this._client.tokens.update(wordId, begin, end);
       morphIds.forEach(mid => this._client.tokens.update(mid, begin, end));
-      await this._client.submitBatch();
+      // Optimistic: resize the word + its morphemes locally before the round trip.
       this._applyRawPatch((next, info) => {
         const w = info.wordTokenLayer?.tokens?.find(t => t.id === wordId);
         if (w) { w.begin = begin; w.end = end; }
@@ -880,6 +893,7 @@ export class ConlluDocument {
           if (m) { m.begin = begin; m.end = end; }
         });
       });
+      await this._client.submitBatch();
     });
   }
 
@@ -912,6 +926,30 @@ export class ConlluDocument {
 
     return this._withSaving(`Failed to update ${field}`, async () => {
       if (field === 'features') {
+        // Features are "Key=Value". Adding a key that already exists on this
+        // token overwrites the existing value rather than creating a duplicate.
+        const key = String(value).split('=')[0];
+        const featSpans = targetLayer?.spans || [];
+        const existingFeat = featSpans.find(span =>
+          Array.isArray(span.tokens) && span.tokens.includes(tokenId) &&
+          typeof span.value === 'string' && span.value.split('=')[0] === key
+        );
+        if (existingFeat) {
+          // Optimistic overwrite: update the tag locally before the round trip.
+          this._applyRawPatch((next, infoNext) => {
+            const layerDoc = infoNext.tokenLayer?.spanLayers?.find(layer =>
+              layer.spans?.some(span => span.id === existingFeat.id)
+            );
+            const spanIndex = layerDoc?.spans?.findIndex(span => span.id === existingFeat.id);
+            if (layerDoc?.spans && spanIndex != null && spanIndex !== -1) {
+              layerDoc.spans[spanIndex].value = value;
+            }
+          });
+          await this._client.spans.update(existingFeat.id, value);
+          return;
+        }
+        // Create is post-server (a span create needs the server id; the temp-id
+        // reconcile's double grid-rebuild isn't worth it — see createRelation).
         const spanResult = await this._client.spans.create(targetLayer.id, [tokenId], value);
         const newSpanId = spanResult?.id || spanResult;
         this._applyRawPatch((next, infoNext) => {
@@ -931,7 +969,7 @@ export class ConlluDocument {
         Array.isArray(span.tokens) && span.tokens.includes(tokenId)
       );
       if (existingSpan) {
-        await this._client.spans.update(existingSpan.id, value);
+        // Optimistic: update the value locally before the round trip.
         this._applyRawPatch((next, infoNext) => {
           const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find(layer =>
             layer.spans?.some(span => span.id === existingSpan.id)
@@ -943,7 +981,10 @@ export class ConlluDocument {
             }
           }
         });
+        await this._client.spans.update(existingSpan.id, value);
       } else {
+        // Create is post-server (EditableCell already shows the typed value
+        // optimistically via its local state, so there's no visible delay).
         const spanResult = await this._client.spans.create(targetLayer.id, [tokenId], value);
         const newSpanId = spanResult?.id || spanResult;
         this._applyRawPatch((next, infoNext) => {
@@ -959,13 +1000,14 @@ export class ConlluDocument {
 
   async deleteFeature(spanId) {
     return this._withSaving('Failed to delete feature', async () => {
-      await this._client.spans.delete(spanId);
+      // Optimistic: drop the feature tag locally before the round trip.
       this._applyRawPatch((next, info) => {
         const featuresLayerDoc = info.featuresLayer;
         if (featuresLayerDoc && Array.isArray(featuresLayerDoc.spans)) {
           featuresLayerDoc.spans = featuresLayerDoc.spans.filter(span => span.id !== spanId);
         }
       });
+      await this._client.spans.delete(spanId);
     });
   }
 
@@ -986,6 +1028,12 @@ export class ConlluDocument {
     }
 
     return this._withSaving('Failed to create relation', async () => {
+      // Post-server (NOT optimistic): a relation create needs the server id, so
+      // it requires a temp-id placeholder + a second reconcile patch. That
+      // double grid-rebuild makes the dependency tree re-measure positions and
+      // re-mount arcs twice, which visibly janks the drag-to-draw interaction —
+      // worse than just waiting one round trip. Creates show a brief absence,
+      // never a wrong value, so post-server is the right trade here.
       const ensureLemmaSpan = async (candidateId) => {
         if (!candidateId || candidateId === 'ROOT') return null;
 
@@ -1024,14 +1072,13 @@ export class ConlluDocument {
 
         const apiResponse = await this._client.spans.create(lemmaLayer.id, [tokenId], lemmaValue);
         const createdSpanId = apiResponse.id || apiResponse;
-        const createdSpan = { id: createdSpanId, tokens: [tokenId], value: lemmaValue };
 
         this._applyRawPatch((next, infoNext) => {
           const lemmaLayerDoc = infoNext.lemmaLayer;
           if (lemmaLayerDoc) {
             if (!Array.isArray(lemmaLayerDoc.spans)) lemmaLayerDoc.spans = [];
             if (lemmaLayerDoc.spans.findIndex(s => s.id === createdSpanId) === -1) {
-              lemmaLayerDoc.spans.push({ ...createdSpan });
+              lemmaLayerDoc.spans.push({ id: createdSpanId, tokens: [tokenId], value: lemmaValue });
             }
           }
         });
@@ -1043,15 +1090,12 @@ export class ConlluDocument {
       const resolvedTargetId = await ensureLemmaSpan(targetSpanId);
 
       if (!resolvedSourceId || !resolvedTargetId) {
-        console.warn('Unable to create relation because lemma spans could not be resolved:', {
-          sourceSpanId, targetSpanId
-        });
+        console.warn('Unable to create relation because lemma spans could not be resolved:', { sourceSpanId, targetSpanId });
         return;
       }
 
       // Delete any existing incoming relations to the target (one head per node).
-      const existingRelations = info.relationLayer.relations || [];
-      const incomingRelations = existingRelations.filter(rel => rel.target === resolvedTargetId);
+      const incomingRelations = (info.relationLayer.relations || []).filter(rel => rel.target === resolvedTargetId);
       for (const existingRel of incomingRelations) {
         try {
           await this._client.relations.delete(existingRel.id);
@@ -1060,55 +1104,42 @@ export class ConlluDocument {
         }
       }
 
-      const isRoot = resolvedSourceId === resolvedTargetId;
-      const finalDeprel = deprel || (isRoot ? 'root' : 'dep');
-      const apiResponse = await this._client.relations.create(
-        info.relationLayer.id,
-        resolvedSourceId,
-        resolvedTargetId,
-        finalDeprel
-      );
-      const newRelation = {
-        id: apiResponse.id || apiResponse,
-        source: resolvedSourceId,
-        target: resolvedTargetId,
-        value: finalDeprel
-      };
-
+      const finalDeprel = deprel || (resolvedSourceId === resolvedTargetId ? 'root' : 'dep');
+      const apiResponse = await this._client.relations.create(info.relationLayer.id, resolvedSourceId, resolvedTargetId, finalDeprel);
       this._applyRawPatch((next, infoNext) => {
-        // Mutate the SAME relations array the read model resolves to (via
-        // the `ud.dependency` config-flag lookup). Earlier code targeted
-        // `lemmaLayer.relationLayers[0].relations` which only worked when
-        // the dependency layer happened to sit at index 0.
         const relLayer = infoNext.relationLayer;
         if (!relLayer) return;
         if (!Array.isArray(relLayer.relations)) relLayer.relations = [];
         relLayer.relations = relLayer.relations.filter(rel => rel.target !== resolvedTargetId);
-        relLayer.relations.push(newRelation);
+        relLayer.relations.push({ id: apiResponse.id || apiResponse, source: resolvedSourceId, target: resolvedTargetId, value: finalDeprel });
       });
     });
   }
 
   async updateRelation(relationId, deprel) {
     return this._withSaving('Failed to update relation', async () => {
-      await this._client.relations.update(relationId, deprel);
+      // Optimistic: reflect the new value immediately, BEFORE the round trip,
+      // so the label doesn't flash the previous value while the save is in
+      // flight. On failure, _withSaving reloads from the server and reverts.
       this._applyRawPatch((next, infoNext) => {
         const relLayer = infoNext.relationLayer;
         if (!relLayer || !Array.isArray(relLayer.relations)) return;
         const idx = relLayer.relations.findIndex(r => r.id === relationId);
         if (idx !== -1) relLayer.relations[idx].value = deprel;
       });
+      await this._client.relations.update(relationId, deprel);
     });
   }
 
   async deleteRelation(relationId) {
     return this._withSaving('Failed to delete relation', async () => {
-      await this._client.relations.delete(relationId);
+      // Optimistic: drop the arc locally before the round trip.
       this._applyRawPatch((next, infoNext) => {
         const relLayer = infoNext.relationLayer;
         if (!relLayer || !Array.isArray(relLayer.relations)) return;
         relLayer.relations = relLayer.relations.filter(r => r.id !== relationId);
       });
+      await this._client.relations.delete(relationId);
     });
   }
 
@@ -1119,9 +1150,9 @@ export class ConlluDocument {
   // Serialize the current document state to CoNLL-U text. Result is cached
   // per version so repeated calls between mutations are free.
   toConllu() {
-    if (this._conlluCacheVersion === this._version) return this._conlluCache;
+    if (this._conlluCacheVersion === this._dataVersion) return this._conlluCache;
     this._conlluCache = this._buildConllu();
-    this._conlluCacheVersion = this._version;
+    this._conlluCacheVersion = this._dataVersion;
     return this._conlluCache;
   }
 

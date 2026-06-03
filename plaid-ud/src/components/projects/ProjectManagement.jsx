@@ -17,7 +17,7 @@ const PERMISSION_OPTIONS = [
 
 const EMPTY_USER_FORM = { username: '', password: '', confirmPassword: '', isAdmin: false };
 
-export const ProjectManagement = () => {
+export const ProjectManagement = ({ embedded = false }) => {
   const { projectId } = useParams();
   const { user, getClient } = useAuth();
   const [project, setProject] = useState(null);
@@ -220,16 +220,20 @@ export const ProjectManagement = () => {
 
   return (
     <>
-      <Breadcrumbs mb="lg">
-        <Anchor component={Link} to="/projects" size="sm">Projects</Anchor>
-        <Anchor component={Link} to={`/projects/${projectId}/documents`} size="sm">{project.name}</Anchor>
-        <Text size="sm" c="dimmed">Project Management</Text>
-      </Breadcrumbs>
+      {!embedded && (
+        <>
+          <Breadcrumbs mb="lg">
+            <Anchor component={Link} to="/projects" size="sm">Projects</Anchor>
+            <Anchor component={Link} to={`/projects/${projectId}/documents`} size="sm">{project.name}</Anchor>
+            <Text size="sm" c="dimmed">Project Management</Text>
+          </Breadcrumbs>
 
-      <Stack gap={2} mb="lg">
-        <Title order={2}>Project Management</Title>
-        <Text c="dimmed">Manage users and permissions for {project.name}</Text>
-      </Stack>
+          <Stack gap={2} mb="lg">
+            <Title order={2}>Project Management</Title>
+            <Text c="dimmed">Manage users and permissions for {project.name}</Text>
+          </Stack>
+        </>
+      )}
 
       {isAdmin && (
         <Button

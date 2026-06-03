@@ -16,6 +16,20 @@ import { notifySuccess } from '../../utils/feedback.jsx';
 
 const DRAWER_WIDTH = 384;
 
+// Document-wide annotation-row expansion. FEATS defaults to collapsed because its
+// vertically-stacked tags inflate column widths; users expand it via its row header.
+// Persisted across documents/sessions in localStorage.
+const FIELD_VISIBILITY_KEY = 'ud-annotation-visible-fields';
+const DEFAULT_VISIBLE_FIELDS = { lemma: true, xpos: true, upos: true, feats: false };
+
+const loadVisibleFields = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FIELD_VISIBILITY_KEY));
+    if (saved && typeof saved === 'object') return { ...DEFAULT_VISIBLE_FIELDS, ...saved };
+  } catch { /* ignore malformed/absent value */ }
+  return DEFAULT_VISIBLE_FIELDS;
+};
+
 export const AnnotationEditor = () => {
   const { projectId, documentId } = useParams();
   const navigate = useNavigate();
@@ -30,6 +44,15 @@ export const AnnotationEditor = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const { getClient, user } = useAuth();
+
+  // Which annotation rows are expanded (document-wide). Persisted to localStorage.
+  const [visibleFields, setVisibleFields] = useState(loadVisibleFields);
+  useEffect(() => {
+    try { localStorage.setItem(FIELD_VISIBILITY_KEY, JSON.stringify(visibleFields)); } catch { /* ignore */ }
+  }, [visibleFields]);
+  const handleToggleField = useCallback((field) => {
+    setVisibleFields((prev) => ({ ...prev, [field]: !prev[field] }));
+  }, []);
 
   useConlluDocument(doc);
 
@@ -119,11 +142,14 @@ export const AnnotationEditor = () => {
 
   // Bind annotation/relation handlers to the current document. When viewing
   // historical state we pass `null` so VirtualSentenceRow disables editing.
-  const handleAnnotationUpdate = (tokenId, field, value) => doc?.updateAnnotation(tokenId, field, value);
-  const handleFeatureDelete = (spanId) => doc?.deleteFeature(spanId);
-  const handleRelationCreate = (s, t, dep) => doc?.createRelation(s, t, dep);
-  const handleRelationUpdate = (id, dep) => doc?.updateRelation(id, dep);
-  const handleRelationDelete = (id) => doc?.deleteRelation(id);
+  // useCallback keeps their identity stable across the transient saving
+  // re-renders (isSaving/error emits), so the memoized sentence/cell subtree
+  // isn't re-rendered mid-edit — otherwise focus jitters during the save.
+  const handleAnnotationUpdate = useCallback((tokenId, field, value) => doc?.updateAnnotation(tokenId, field, value), [doc]);
+  const handleFeatureDelete = useCallback((spanId) => doc?.deleteFeature(spanId), [doc]);
+  const handleRelationCreate = useCallback((s, t, dep) => doc?.createRelation(s, t, dep), [doc]);
+  const handleRelationUpdate = useCallback((id, dep) => doc?.updateRelation(id, dep), [doc]);
+  const handleRelationDelete = useCallback((id) => doc?.deleteRelation(id), [doc]);
 
   // NLP Service integration
   const {
@@ -271,6 +297,7 @@ export const AnnotationEditor = () => {
         error={historyError}
         onSelectEntry={handleSelectHistoryEntry}
         selectedEntry={selectedHistoryEntry}
+        layerInfo={doc?.layerInfo}
       />
 
       {/* Main content area - pushed right (not overlaid) when the drawer is open */}
@@ -331,6 +358,10 @@ export const AnnotationEditor = () => {
                     sentenceIndex={index}
                     totalTokensBefore={totalTokensBefore}
                     estimatedHeight={250} // Estimated height for placeholder
+                    vocab={layerInfo?.vocab}
+                    colors={layerInfo?.colors}
+                    visibleFields={visibleFields}
+                    onToggleField={handleToggleField}
                   />
                 );
               })
