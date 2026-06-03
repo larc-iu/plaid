@@ -1,6 +1,6 @@
 (ns plaid.sql.query.exec-scalar-test
-  "Integration tests for scalar value-variables ({value \"?v\"} binds + joins) and
-  predicate clauses ([= a b] / [!= a b] / ordering)."
+  "Integration tests for scalar value-variables ({value {var \"?v\"}} binds + joins)
+  and predicate clauses ([= a b] / [!= a b] / ordering)."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
@@ -39,8 +39,8 @@
     (testing "two DISTINCT pos spans sharing a value -> only the values with a twin"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?a"]
-                       "where" [["span" "?a" {"layer" "ScProj/pos" "value" "?v"}]
-                                ["span" "?b" {"layer" "ScProj/pos" "value" "?v"}]
+                       "where" [["span" "?a" {"layer" "ScProj/pos" "value" {"var" "?v"}}]
+                                ["span" "?b" {"layer" "ScProj/pos" "value" {"var" "?v"}}]
                                 ["!=" "?a" "?b"]]})]
         ;; only the two NOUN spans have a same-value partner; the lone VERB drops
         (is (= #{(str s0) (str s1)} (set (map str (ids r)))))
@@ -51,8 +51,8 @@
     (testing "WITHOUT != the self-pair survives, so every span matches (the footgun)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?a"]
-                       "where" [["span" "?a" {"layer" "ScProj/pos" "value" "?v"}]
-                                ["span" "?b" {"layer" "ScProj/pos" "value" "?v"}]]})]
+                       "where" [["span" "?a" {"layer" "ScProj/pos" "value" {"var" "?v"}}]
+                                ["span" "?b" {"layer" "ScProj/pos" "value" {"var" "?v"}}]]})]
         (is (= #{(str s0) (str s1) (str s2)} (set (map str (ids r)))))))))
 
 (deftest inequality-on-entity-ids
@@ -70,7 +70,7 @@
     (testing "bind a token's begin to ?n, then [< ?n 5] -> tokens before offset 5"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "ScProj/words" "begin" "?n"}]
+                       "where" [["token" "?t" {"layer" "ScProj/words" "begin" {"var" "?n"}}]
                                 ["<" "?n" 5]]})]
         (is (= #{(str t0) (str t1)} (set (map str (ids r)))))))))
 
@@ -79,7 +79,7 @@
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"binds a value .* cannot be a :find var"
          (ast/expand {"find" ["?v"]
-                      "where" [["span" "?s" {"layer" "ScProj/pos" "value" "?v"}]]}))))
+                      "where" [["span" "?s" {"layer" "ScProj/pos" "value" {"var" "?v"}}]]}))))
   (testing "ordering predicate on an entity var is a 400"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"cannot order entity variables"
@@ -93,7 +93,10 @@
          (ast/expand {"find" ["?a"]
                       "where" [["span" "?a" {"layer" "ScProj/pos"}]
                                ["=" "?a" "?zzz"]]}))))
-  (testing "a literal \"?\" gloss is NOT treated as a variable"
-    ;; should validate fine: value is the literal string "?", not a scalar var
-    (is (vector? (ast/expand {"find" ["?s"]
-                              "where" [["span" "?s" {"layer" "ScProj/pos" "value" "?"}]]})))))
+  (testing "?-prefixed value STRINGS stay literals (only {var ..} binds) — no data misread"
+    ;; A real gloss like "?x" must filter for the literal, NOT become a scalar var.
+    (doseq [gloss ["?" "?x" "?PST"]]
+      (let [clause (first (:where (ast/parse {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "ScProj/pos" "value" gloss}]]})))]
+        (is (= gloss (:value (nth clause 2))) (str gloss " must remain a literal"))
+        (is (string? (:value (nth clause 2))))))))

@@ -66,16 +66,36 @@
           (.putIfAbsent pattern-cache p compiled))
         compiled)))
 
+(defn- interruptible-cs
+  "Wrap `s` in a CharSequence whose `charAt` aborts (throws) once the running
+  thread is interrupted. This is the ONLY reliable kill for a catastrophic-
+  backtracking regex: SQLite's `interrupt()` can't stop a thread spinning inside
+  Java `Pattern.find()` (it never returns to the SQLite VM), so the watchdog also
+  interrupts the worker thread and the matcher notices here. `isInterrupted`
+  doesn't clear the flag; checking per-charAt is a cheap volatile read."
+  ^CharSequence [^String s]
+  (let [t (Thread/currentThread)]
+    (reify CharSequence
+      (length [_] (.length s))
+      (charAt [_ i]
+        (when (.isInterrupted t)
+          (throw (RuntimeException. "regex interrupted (query time limit)")))
+        (.charAt s i))
+      (subSequence [_ a b] (.subSequence s a b))
+      (^String toString [_] s))))
+
 (defn- regexp-function
   "A REGEXP(pattern, value) UDF: 1 if `value` contains a match for the Java
   regex `pattern`, else 0. Compiled patterns are cached. Patterns are validated
-  for syntax at query-validation time, so compile here won't see a bad one."
+  for syntax at query-validation time, so compile here won't see a bad one. The
+  value is wrapped in an interruptible CharSequence so a runaway pattern can be
+  aborted by the query watchdog (ReDoS guard)."
   []
   (proxy [Function] []
     (xFunc []
       (let [pat (.invoke m-value-text this (object-array [(int 0)]))
             s   (.invoke m-value-text this (object-array [(int 1)]))
-            hit (if (and pat s (.find (.matcher (cached-pattern pat) s))) 1 0)]
+            hit (if (and pat s (.find (.matcher (cached-pattern pat) (interruptible-cs s)))) 1 0)]
         (.invoke m-result-int this (object-array [(int hit)]))))))
 
 (defn- register-regexp! [^SQLiteConnection sqlite]
@@ -120,15 +140,24 @@
           ndb (.getDatabase sqlite)
           _ (register-regexp! sqlite)            ; make REGEXP() available for this query
           done (atom false)
-          fut (future (try (f conn) (finally (reset! done true))))
+          worker (promise)
+          fut (future (deliver worker (Thread/currentThread))
+                      (try (f conn)
+                           ;; clear any interrupt before this pooled thread is
+                           ;; reused (the watchdog may have set it)
+                           (finally (reset! done true) (Thread/interrupted))))
           watchdog (future (Thread/sleep *query-timeout-ms*)
-                           (when-not @done (.interrupt ndb)))]
+                           (when-not @done
+                             ;; abort SQLite's VM AND interrupt the worker thread,
+                             ;; so a runaway Java regex (which SQLite's interrupt
+                             ;; can't reach) is killed via interruptible-cs too.
+                             (.interrupt ndb)
+                             (.interrupt ^Thread @worker)))]
       (try
         @fut
         (catch java.util.concurrent.ExecutionException e
           (let [cause (.getCause e)]
-            (if (and (instance? org.sqlite.SQLiteException cause)
-                     (re-find #"interrupt" (str (.getMessage cause))))
+            (if (and cause (re-find #"(?i)interrupt" (str (.getMessage cause))))
               (throw (ex-info (str "Query exceeded the " (quot *query-timeout-ms* 1000)
                                    "s time limit — narrow it with more selective clauses or a tighter :scope.")
                               {:code 408 :query-error/stage :exec}))

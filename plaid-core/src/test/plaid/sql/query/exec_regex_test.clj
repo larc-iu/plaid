@@ -71,6 +71,30 @@
            (values [["span" "?s" {"layer" "RxProj/lemma"}]
                     ["not" ["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" "walk" "flags" "i"}}]]])))))
 
+(deftest regex-redos-is-aborted
+  (let [pid  (h/create-test-project admin-request "RxDos")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "w"))
+        sl   (id (h/create-span-layer admin-request tokl "lemma"))
+        doc  (h/create-test-document admin-request pid "d")
+        text (id (h/create-text admin-request txtl doc "x"))
+        t0   (id (h/create-token admin-request tokl text 0 1))]
+    (h/create-span admin-request sl [t0] (apply str (repeat 32 "a")))
+    (testing "a catastrophic-backtracking pattern is aborted by the watchdog, not hung"
+      ;; (.*a){28} over 32 a's runs ~6.7s unbounded in pure Java, which SQLite's
+      ;; interrupt can't reach — interruptible-cs + worker interrupt must. (A
+      ;; trivial "(a+)+b" is optimized away by the JDK, so use this measured one.)
+      (binding [qe/*query-timeout-ms* 1000]
+        (let [start (System/nanoTime)
+              code (try (qe/run db "admin@example.com"
+                                {"find" ["?s"]
+                                 "where" [["span" "?s" {"layer" "RxDos/lemma" "value" {"regex" "(.*a){28}"}}]]})
+                        nil
+                        (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))
+              ms   (/ (- (System/nanoTime) start) 1e6)]
+          (is (= 408 code) "must abort with a 408 timeout")
+          (is (< ms 20000) (str "must not hang past the limit (took " (long ms) "ms)")))))))
+
 (deftest regex-validation
   (testing "an invalid pattern is a 400 at validation time"
     (is (thrown-with-msg?

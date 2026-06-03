@@ -922,17 +922,19 @@ A relation's two ends can be written right on the relation, or as separate `sour
 ["source", "?r", "?head"], ["target", "?r", "?dependent"]
 ----
 
-So far a name has stood for an *entity*--a span, a token. A name can also stand for a *value*: write one where a condition's value would go, and instead of filtering, it remembers what it found, so that the same name elsewhere has to match.
+So far a name has stood for an *entity*--a span, a token. A name can also stand for a *value*. Write `{ var: "?v" }` where a condition's value would go, and instead of filtering, it remembers what it found, so that the same name elsewhere has to match.
 This is how you ask for two things that agree without naming the value yourself--two words with the same lemma, say:
 
 [,javascript]
 ----
 where: [
-  ["span", "?a", { layer: "lemma", value: "?v" }],
-  ["span", "?b", { layer: "lemma", value: "?v" }],   // the same ?v -- so the same lemma
-  ["!=", "?a", "?b"],                                  // but two different spans
+  ["span", "?a", { layer: "lemma", value: { var: "?v" } }],
+  ["span", "?b", { layer: "lemma", value: { var: "?v" } }],   // the same ?v -- so the same lemma
+  ["!=", "?a", "?b"],                                          // but two different spans
 ]
 ----
+
+(The `{ var: … }` wrapper is deliberate: a plain string is always a literal, so a real value that happens to start with `?` is never mistaken for a name.)
 
 That last line is a third kind of clause: a comparison.
 You write it as `[comparison, a, b]`, and it relates two things you have already named.

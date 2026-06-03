@@ -92,4 +92,9 @@
          clojure.lang.ExceptionInfo #"order-by cannot sort a token"
          (ast/expand {"find" ["?t"]
                       "where" [["token" "?t" {"layer" "OrdProj/words"}]]
-                      "order-by" [["?t" "value"]]})))))
+                      "order-by" [["?t" "value"]]}))))
+  (testing "a ?__-prefixed find var is reserved (would collide with __ord_N) -> 400"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"reserved"
+         (ast/expand {"find" ["?__ord_0"]
+                      "where" [["token" "?__ord_0" {"layer" "OrdProj/words"}]]})))))

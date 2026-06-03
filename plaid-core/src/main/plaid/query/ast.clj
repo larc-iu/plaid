@@ -44,16 +44,6 @@
     (and (string? x) (str/starts-with? x "?")) (symbol x)
     :else x))
 
-(def ^:private value-var-re #"\?[\p{L}_][\p{L}\p{N}_-]*")
-
-(defn- value-var
-  "In a constraint VALUE position, a string that is a proper var name (`?` then an
-  identifier) is a scalar variable; coerce it to a symbol. A bare `\"?\"` or any
-  other literal (e.g. a `\"?\"` gloss) is left untouched. Stricter than `->var`
-  precisely so literal glosses keep working."
-  [x]
-  (if (and (string? x) (re-matches value-var-re x)) (symbol x) x))
-
 ;; ---------------------------------------------------------------------------
 ;; Clause vocabulary
 ;; ---------------------------------------------------------------------------
@@ -162,10 +152,12 @@
                (let [k (->kw k)]
                  (assoc acc k (cond
                                 (#{:source :target :layer} k) (->var v)
-                                ;; a map value is a regex spec — keyword-ize its keys
-                                (map? v) (reduce-kv (fn [a ik iv] (assoc a (->kw ik) iv)) {} v)
-                                ;; a proper "?name" in a scalar-key value binds a scalar var
-                                (scalar-keys k) (value-var v)
+                                ;; a map value is a special spec: a regex {:regex ..}
+                                ;; or a value variable {:var "?v"}. Keyword-ize the
+                                ;; keys and var-ize the :var payload. (A plain string
+                                ;; value is ALWAYS a literal — no `?x` ambiguity.)
+                                (map? v) (let [m2 (reduce-kv (fn [a ik iv] (assoc a (->kw ik) iv)) {} v)]
+                                           (cond-> m2 (contains? m2 :var) (update :var ->var)))
                                 :else v))))
              {} m))
 
@@ -311,10 +303,10 @@
                               (assoc-kind kk sv :span)
                               kk))
                           kinds [:source :target])]
-        ;; a var in a scalar-key value (:value/:form/:begin/:end/:doc) is a scalar var
+        ;; a {:var ?v} in a scalar-key value (:value/:form/:begin/:end/:doc) is a scalar var
         (reduce (fn [kk sk]
                   (let [x (get cmap sk)]
-                    (if (var? x) (assoc-kind kk x :scalar) kk)))
+                    (if (and (map? x) (var? (:var x))) (assoc-kind kk (:var x) :scalar) kk)))
                 kinds scalar-keys))
 
       (= head :covers)     (-> kinds (assoc-kind (first args) :span)  (assoc-kind (second args) :token))
@@ -344,8 +336,9 @@
     (cond
       (contains? entity-clauses head)
       (let [[v cmap] args]
-        (into (if (var? v) [v] [])
-              (keep #(let [x (get cmap %)] (when (var? x) x)) (concat [:source :target :layer] scalar-keys))))
+        (-> (if (var? v) [v] [])
+            (into (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target :layer]))
+            (into (keep #(let [x (get cmap %)] (when (and (map? x) (var? (:var x))) (:var x))) scalar-keys))))
       (contains? rel-clauses head) (filterv var? args)
       (contains? layer-clauses head) (if (var? (first args)) [(first args)] [])
       :else [])))
@@ -374,6 +367,10 @@
     (err! :validate ":find must be a non-empty list of vars"))
   (when-not (every? var? (:find ast))
     (err! :validate (str ":find may only contain vars, got: " (pr-str (remove var? (:find ast))))))
+  ;; ?__-prefixed names are reserved for internal columns (e.g. order-by's hidden
+  ;; __ord_N projections); reject them as :find vars to avoid alias collisions.
+  (when-let [reserved (seq (filter #(str/starts-with? (name %) "?__") (:find ast)))]
+    (err! :validate (str "Variable names beginning with ?__ are reserved: " (vec reserved))))
   (when-not (apply distinct? (:find ast))
     (err! :validate (str ":find has duplicate variables: "
                          (pr-str (->> (:find ast) frequencies (keep (fn [[v n]] (when (> n 1) v))) vec)))))
@@ -458,7 +455,19 @@
                 (when (empty? v)
                   (err! :validate (str ":" (name head) " constraint :" (name k) " list must be non-empty"))))
             (map? v)
-            (validate-regex-spec! head k v))))
+            (cond
+              (contains? v :regex) (validate-regex-spec! head k v)
+              (contains? v :var)
+              (do (when-not (scalar-keys k)
+                    (err! :validate (str ":" (name head) " constraint :" (name k)
+                                         " does not take a value variable (allowed on "
+                                         (vec (sort scalar-keys)) ")")))
+                  (when-not (var? (:var v))
+                    (err! :validate (str ":" (name k) " :var must be a ?-variable, got: " (pr-str (:var v))))))
+              :else
+              (err! :validate (str ":" (name head) " constraint :" (name k)
+                                   " has an unrecognized spec " (pr-str v)
+                                   " (expected a regex {:regex ..} or a value variable {:var ..})"))))))
 
       (contains? rel-clauses head)
       (let [arity (rel-clauses head)]

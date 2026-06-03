@@ -151,12 +151,12 @@
     (swap! st assoc-in [:scalar-col v] {:sql col-ref :enc enc})))
 
 (defn- emit-field!
-  "One scalar-key constraint: a var value BINDS a scalar var (join); otherwise it
-  filters via `emit-match!` (= / IN / regex). `regex-col` is the expression a
-  regex runs against (may differ from `col`, e.g. the JSON-decoded value)."
+  "One scalar-key constraint: a `{:var ?v}` value BINDS a scalar var (join);
+  otherwise it filters via `emit-match!` (= / IN / regex). `regex-col` is the
+  expression a regex runs against (may differ from `col`, e.g. the decoded value)."
   [st col v enc regex-col]
-  (if (ast/var? v)
-    (bind-scalar! st v col enc)
+  (if (and (map? v) (contains? v :var))
+    (bind-scalar! st (:var v) col enc)
     (emit-match! st col v enc regex-col)))
 
 (defn- emit-entity-filters!
@@ -520,6 +520,15 @@
   {:begin :begin :end :end_ :precedence :precedence
    :value :value :doc :document_id :id :id :form :form})
 
+(defn- order-sort-expr
+  "The expression an :order-by attribute sorts on. :value is stored JSON-encoded,
+  so sort on its DECODED scalar (consistent with how regex matches :value) rather
+  than the quoted JSON text."
+  [a attr]
+  (if (= attr :value)
+    [:json_extract (col a :value) [:inline "$"]]
+    (col a (order-col attr))))
+
 (defn order-directive
   "The ORDER BY directive ([[col dir] ...]) compile-query attached as metadata,
   or nil. exec reads it from the head branch and applies it once at assembly."
@@ -535,7 +544,7 @@
      (let [a (get-in @st [:var->alias v])
            ord-kw (keyword (str "__ord_" i))]
        (when (nil? a) (err-500! (str "Order var " v " was never bound to a table") {:var v}))
-       [[(col a (order-col attr)) ord-kw]
+       [[(order-sort-expr a attr) ord-kw]
         [ord-kw (if (= dir :desc) :desc-nulls-last :asc-nulls-last)]]))
    order-by))
 

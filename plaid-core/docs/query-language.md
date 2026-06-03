@@ -145,19 +145,21 @@ readable projects (§8). A few examples:
 > expect. Patterns are POSIX-compatible; stick to common syntax (`. * + ? [] ^ $
 > |`) for portability. A malformed pattern is a `400`.
 
-> **Value variables (join on a value).** Put a variable where a literal would go
-> — `{"value": "?v"}` — and it *binds* the column instead of filtering it. The
-> same variable in two clauses joins them, so you can ask for two entities that
-> share a value without knowing the value up front:
+> **Value variables (join on a value).** Write `{"var": "?v"}` where a literal
+> would go and it *binds* the column instead of filtering it. The same variable
+> in two clauses joins them, so you can ask for two entities that share a value
+> without knowing the value up front:
 > ```python
 > # two DISTINCT spans on the same layer with the same value
-> ["span", "?a", {"layer": "?L", "value": "?v"}],
-> ["span", "?b", {"layer": "?L", "value": "?v"}],
+> ["span", "?a", {"layer": "?L", "value": {"var": "?v"}}],
+> ["span", "?b", {"layer": "?L", "value": {"var": "?v"}}],
 > ["!=", "?a", "?b"]
 > ```
-> Value variables work on `value`, `form`, `begin`, `end`, and `doc`. They are
+> Value variables work on `value`, `form`, `begin`, `end`, and `doc`, and are
 > join/comparison helpers only — they can't appear in `find` (return the entity
-> and read its value). A bare `"?"` is a literal, not a variable.
+> and read its value). Note the explicit `{"var": …}` wrapper: a plain string
+> value is **always** a literal, so a real annotation value like `"?x"` is never
+> mistaken for a variable.
 
 ---
 

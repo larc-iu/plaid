@@ -261,17 +261,16 @@
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s" "?s"] "where" [["span" "?s" {}]]}))))))
 
 (deftest constraint-value-vars
-  (testing "a proper var name in value position binds a scalar variable (symbol)"
-    (let [clause (first (:where (ast/parse {"find" ["?s"] "where" [["span" "?s" {"value" "?x"}]]})))
-          v (:value (nth clause 2))]
-      (is (= (symbol "?x") v))
-      (is (symbol? v) "a ?-prefixed identifier in value position is a scalar var")))
-  (testing "a bare \"?\" (or other literal) in value position stays a literal string"
-    (doseq [lit ["?" "NOUN" "??"]]
+  (testing "a value STRING is always a literal — even ?-prefixed ones (real glosses)"
+    (doseq [lit ["?x" "?" "NOUN" "?PST"]]
       (let [clause (first (:where (ast/parse {"find" ["?s"] "where" [["span" "?s" {"value" lit}]]})))
             v (:value (nth clause 2))]
         (is (= lit v))
         (is (string? v) (str (pr-str lit) " must stay a literal, not a scalar var")))))
+  (testing "a value variable is written explicitly as {var \"?v\"} and binds a symbol"
+    (let [clause (first (:where (ast/parse {"find" ["?s"] "where" [["span" "?s" {"value" {"var" "?v"}}]]})))
+          v (:value (nth clause 2))]
+      (is (= {:var (symbol "?v")} v) "{var ..} keyword-izes and var-izes its payload")))
   (testing "inline relation :source/:target ARE var-ized"
     (let [clause (first (:where (ast/parse {"find" ["?r"]
                                             "where" [["relation" "?r" {"source" "?h" "target" "?d"}]]})))
