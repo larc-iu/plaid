@@ -261,14 +261,13 @@ jobs:
           \`\`\`
           java -jar plaid-$VER.jar
           \`\`\`
-          The required JVM access flags are baked into the jar manifest, so no
-          \`--add-opens\` is needed. Listens on \`:8085\` by default.
+          The jar re-execs itself with the required \`--add-opens\` /
+          \`--enable-native-access\` JVM flags, so a bare \`java -jar\` works.
+          Listens on \`:8080\` by default.
 
           ## Minimum config
-          - \`JWT_SECRET\` (or a generated secret file) for token signing
+          - \`PLAID_JWT_SECRET\` (or a generated secret file) for token signing
           - SQLite database path (defaults to \`data/plaid.db\`)
-
-          See OPERATIONS.md for the full configuration + deployment guide.
 
           ## Clients
           - npm: \`npm install @larc-iu/plaid-client@$VER\`
