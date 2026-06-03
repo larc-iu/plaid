@@ -181,6 +181,42 @@
   (testing "an unknown :return is rejected"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "kwic"}))))))
 
+;; ---------------------------------------------------------------------------
+;; :or — clause-level disjunction (DNF -> branches)
+;; ---------------------------------------------------------------------------
+
+(deftest expand-or-disjunction
+  (testing ":or desugars to a branch per group (NOUN or VERB on one token)"
+    (let [bs (ast/expand {"find" ["?s"]
+                          "where" [["or" [["span" "?s" {"layer" "pos" "value" "NOUN"}]]
+                                    [["span" "?s" {"layer" "pos" "value" "VERB"}]]]]})]
+      (is (= 2 (count bs)))
+      (is (= #{"NOUN" "VERB"}
+             (set (map (fn [b] (-> b :where first (nth 2) :value)) bs))))))
+  (testing ":or distributes the surrounding conjunctive clauses into every branch"
+    (let [bs (ast/expand {"find" ["?s" "?t"]
+                          "where" [["covers" "?s" "?t"]
+                                   ["or" [["span" "?s" {"value" "NOUN"}]]
+                                    [["span" "?s" {"value" "VERB"}]]]]})]
+      (is (= 2 (count bs)))
+      (is (every? (fn [b] (some #(= :covers (first %)) (:where b))) bs))))
+  (testing "nested/stacked :or expands the cross-product"
+    (is (= 4 (count (ast/expand
+                     {"find" ["?s" "?t"]
+                      "where" [["or" [["span" "?s" {"value" "A"}]] [["span" "?s" {"value" "B"}]]]
+                               ["or" [["token" "?t" {"begin" 0}]] [["token" "?t" {"begin" 5}]]]]}))))))
+
+(deftest or-errors
+  (testing ":or author errors are 400"
+    (is (= 400 (code-of #(ast/expand {"find" ["?s"] "where" [["or" [["span" "?s" {}]]]]})))
+        ":or needs at least 2 groups")
+    (is (= 400 (code-of #(ast/expand {"find" ["?s"] "where" [["or" [["span" "?s" {}]] [["token" "?t" {}]]]]})))
+        "find var not bound in every branch")
+    (is (= 400 (code-of #(ast/expand {"find" ["?x"] "where" [["or" [["span" "?x" {}]] [["token" "?x" {}]]]]})))
+        "find var has inconsistent kinds across branches")
+    (is (= 400 (code-of #(ast/expand {"find" ["?s"] "where" [["or" [["span" "?s" {}]] "notagroup"]]})))
+        "each :or group must be a list of clauses")))
+
 (deftest find-rejects-duplicate-vars
   (testing "a duplicate var in :find is a 400 (would emit a duplicate result column)"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s" "?s"] "where" [["span" "?s" {}]]}))))))

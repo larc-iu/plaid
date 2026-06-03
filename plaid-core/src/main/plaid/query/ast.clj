@@ -140,6 +140,19 @@
       (= :rep head)      (let [[_ n m inner] elem] [:rep n m (normalize-seq-element inner)])
       :else              (normalize-seq-atom head (rest elem)))))
 
+(declare normalize-clause)
+
+(defn- normalize-or-clause
+  "Normalize an [:or group ...] clause; each group is a list of clauses (its own
+  conjunction). Clauses are normalized recursively, so groups may nest :or/:seq."
+  [groups]
+  (into [:or]
+        (map (fn [g]
+               (when-not (sequential? g)
+                 (err! :parse (str "Each :or group must be a list of clauses, got: " (pr-str g))))
+               (mapv normalize-clause g)))
+        groups))
+
 (defn- normalize-seq-clause
   "Normalize a [:seq {config} elem ...] clause."
   [args]
@@ -153,11 +166,12 @@
   (when-not (and (sequential? clause) (seq clause))
     (err! :parse (str "Each :where clause must be a non-empty vector, got: " (pr-str clause))))
   (let [head (->kw (first clause))]
-    (if (= head :seq)
-      (normalize-seq-clause (rest clause))
-      (into [head]
-            (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
-            (rest clause)))))
+    (cond
+      (= head :seq) (normalize-seq-clause (rest clause))
+      (= head :or)  (normalize-or-clause (rest clause))
+      :else (into [head]
+                  (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
+                  (rest clause)))))
 
 (defn parse
   "Normalize a raw request map (string- or keyword-keyed; JSON or EDN dialect)
@@ -311,9 +325,13 @@
 ;; ---------------------------------------------------------------------------
 
 (def ^:private bounded-rep-max 16)
-(def ^:private seq-branch-cap 64)
+(def ^:private query-branch-cap
+  "Max conjunctive branches a query may expand to (the cartesian product of every
+  :or group count and :seq quantifier-combo count). UNIONed downstream."
+  128)
 
 (defn- seq-clause? [c] (= :seq (first c)))
+(defn- or-clause? [c] (= :or (first c)))
 (defn- seq-atom? [elem] (contains? entity-clauses (first elem)))
 (defn- seq-element-atom [elem] (if (seq-atom? elem) elem (last elem)))
 
@@ -383,50 +401,93 @@
         tvars (mapv second pairs)]
     (into clauses (map (fn [a b] [:precedes a b]) tvars (rest tvars)))))
 
+(defn- seq-alternatives
+  "Validate one :seq clause and return its alternatives — a vector of conjunctive
+  clause-lists, one per bounded-quantifier length combo. `counter` is the shared
+  fresh-var counter (unique across the whole query so alternatives never collide
+  when combined into a branch)."
+  [sc counter]
+  (let [[_ config & elements] sc]
+    (when-not (:layer config)
+      (err! :validate ":seq requires a :layer in its config map"))
+    (let [bad (remove #{:layer :doc} (keys config))]
+      (when (seq bad)
+        (err! :validate (str ":seq config has unknown key(s) " (vec bad) " (allowed: :layer, :doc)"))))
+    (when (empty? elements)
+      (err! :validate ":seq needs at least one element"))
+    (doseq [e elements]
+      (validate-seq-atom! (seq-element-atom e) (not (seq-atom? e))))
+    (mapv (fn [combo] (seq-fragment config (vec elements) combo counter))
+          (cartesian (mapv element-counts elements)))))
+
+(declare expand-clauses)
+
+(defn- expand-clause
+  "The alternatives (a vector of conjunctive clause-lists) one clause contributes:
+  a static clause is itself (one alternative); a :seq is one alternative per
+  quantifier combo; an :or is the union of each group's expansions."
+  [clause counter]
+  (cond
+    (seq-clause? clause) (seq-alternatives clause counter)
+    (or-clause? clause)
+    (let [groups (rest clause)]
+      (when (< (count groups) 2)
+        (err! :validate ":or needs at least 2 groups"))
+      (doseq [g groups]
+        (when-not (and (sequential? g) (seq g))
+          (err! :validate "each :or group must be a non-empty list of clauses")))
+      (vec (mapcat #(expand-clauses % counter) groups)))
+    :else [[clause]]))
+
+(defn- expand-clauses
+  "Expand a clause list (possibly containing :seq/:or) into a vector of
+  conjunctive branch clause-lists, multiplying branches at each disjunctive
+  point. `[c [:or [A] [B]] d]` -> `[[c A d] [c B d]]` (distributes to DNF)."
+  [clauses counter]
+  (reduce
+   (fn [branches clause]
+     (let [alts (expand-clause clause counter)
+           next-branches (vec (for [b branches alt alts] (into b alt)))]
+       (when (> (count next-branches) query-branch-cap)
+         (err! :validate (str "Query expands to more than " query-branch-cap
+                              " branches — reduce :or / :seq disjunction")))
+       next-branches))
+   [[]]
+   clauses))
+
 (defn- expand-where
-  "Expand a :where (possibly containing :seq clauses) into one or more branch
-  :where vectors. No :seq -> the input unchanged (single branch). Bounded
-  quantifiers unroll to a branch per length combination (UNIONed downstream)."
+  "Expand a :where (possibly with :seq/:or) into one or more conjunctive branch
+  :where vectors (UNIONed downstream). No disjunction -> a single branch equal to
+  the input."
   [where]
-  (let [seqs (filterv seq-clause? where)
-        statics (filterv (complement seq-clause?) where)]
-    (if (empty? seqs)
-      [where]
-      (let [per-seq (mapv (fn [sc]
-                            (let [[_ config & elements] sc]
-                              (when-not (:layer config)
-                                (err! :validate ":seq requires a :layer in its config map"))
-                              (let [bad (remove #{:layer :doc} (keys config))]
-                                (when (seq bad)
-                                  (err! :validate (str ":seq config has unknown key(s) " (vec bad)
-                                                       " (allowed: :layer, :doc)"))))
-                              (when (empty? elements)
-                                (err! :validate ":seq needs at least one element"))
-                              (doseq [e elements]
-                                (validate-seq-atom! (seq-element-atom e) (not (seq-atom? e))))
-                              {:config config
-                               :elements (vec elements)
-                               :combos (cartesian (mapv element-counts elements))}))
-                          seqs)
-            total (reduce * 1 (map (comp count :combos) per-seq))]
-        (when (> total seq-branch-cap)
-          (err! :validate (str ":seq expansion produces " total
-                               " branches (cap " seq-branch-cap ") — tighten the quantifiers")))
-        (mapv (fn [chosen]
-                (let [counter (atom 0)
-                      frags (map (fn [{:keys [config elements]} combo]
-                                   (seq-fragment config elements combo counter))
-                                 per-seq chosen)]
-                  (into statics (apply concat frags))))
-              (cartesian (mapv :combos per-seq)))))))
+  (expand-clauses (vec where) (atom 0)))
+
+(defn- check-branch-consistency!
+  "Cross-branch checks for a query that expanded to >1 branch (via :or/:seq):
+  every :find var must be bound in EVERY branch (so the UNION columns are always
+  populated) and have the SAME kind across branches (so a result column is one
+  entity type and :entities hydrates each row with the right reader)."
+  [branch-wheres find-vars]
+  (let [branch-kinds (mapv (fn [w] (infer-kinds {:where w})) branch-wheres)]
+    (doseq [v find-vars]
+      (when-not (every? #(contains? % v) branch-kinds)
+        (err! :validate (str "Find var " v " is not bound in every branch — each :or alternative must bind it")
+              {:var v}))
+      (let [ks (distinct (map #(get % v) branch-kinds))]
+        (when (> (count ks) 1)
+          (err! :validate (str "Find var " v " has inconsistent kinds across branches: " (vec ks)
+                               " — every branch must bind it to the same entity kind")
+                {:var v :kinds (vec ks)}))))))
 
 (defn expand
-  "Parse + desugar `:seq` + validate. Returns a NON-EMPTY vector of validated
-  branch ASTs sharing the same :find/:scope/:limit/:return; the executor UNIONs
-  them. This is the entry point the query endpoint uses (handles :seq, unlike
-  `parse+validate`)."
+  "Parse + desugar (`:seq` / `:or`) + validate. Returns a NON-EMPTY vector of
+  validated branch ASTs sharing the same :find/:scope/:limit/:return; the executor
+  UNIONs them. This is the entry point the query endpoint uses (handles the
+  disjunctive sugar, unlike `parse+validate`)."
   [raw]
   (let [parsed (parse raw)
-        base (dissoc parsed :where)]
-    (mapv (fn [w] (validate (assoc base :where (vec w))))
-          (expand-where (vec (:where parsed))))))
+        base (dissoc parsed :where)
+        branch-wheres (expand-where (vec (:where parsed)))]
+    (when (> (count branch-wheres) 1)
+      (check-branch-consistency! branch-wheres (:find parsed)))
+    (mapv (fn [w] (validate (assoc base :where (vec w)))) branch-wheres)))

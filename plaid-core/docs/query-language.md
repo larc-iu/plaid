@@ -26,9 +26,8 @@ A query is a **conjunctive graph pattern**, in the spirit of Datalog:
 There's also a CQP-style **`:seq`** shorthand for the common case of *"this token,
 immediately followed by that token"* — it desugars into the same primitives.
 
-> The pattern is **purely conjunctive** — every clause must hold. There is no
-> general `OR`; the only disjunction is a bounded `:seq` quantifier (§5), which you
-> opt into explicitly.
+> Clauses are **conjunctive by default** — every clause must hold. For
+> disjunction ("this OR that"), use the explicit `:or` clause (§5.5).
 
 ```python
 from plaid_client import PlaidClient
@@ -194,6 +193,42 @@ Rules:
 
 Under the hood, bounded quantifiers expand to a `UNION` of the possible lengths,
 so the query above matches both *DET NOUN* and *DET ADJ NOUN*.
+
+## 5.5 Disjunction — `:or`
+
+The pattern is conjunctive by default. For "this OR that", use an `:or` clause:
+`["or", group, group, …]` where each **group is a list of clauses** (its own
+conjunction). The query matches if *any* group matches.
+
+```jsonc
+// a token tagged NOUN or VERB
+["or", [["span", "?s", {"layer": "UPOS", "value": "NOUN"}]],
+       [["span", "?s", {"layer": "UPOS", "value": "VERB"}]]]
+```
+
+A group can hold several clauses, and the surrounding conjunctive clauses apply
+to every branch — so this finds tokens that are *either* a sentence-initial DET
+*or* covered by a PROPN span:
+
+```jsonc
+["token", "?t", {"layer": "Words"}],
+["or",
+ [["first-in", "?t", "?s"], ["token", "?s", {"layer": "Sentences"}],
+  ["span", "?d", {"layer": "UPOS", "value": "DET"}], ["covers", "?d", "?t"]],
+ [["span", "?p", {"layer": "UPOS", "value": "PROPN"}], ["covers", "?p", "?t"]]]
+```
+
+Rules:
+- **At least 2 groups**, each a non-empty list of clauses.
+- Every `find` variable must be **bound in every group**, with the **same kind**
+  in each (so result columns are well-typed) — otherwise 400.
+- `:or` may nest, and a group may contain a `:seq`.
+- Each group is compiled as its own conjunctive query and the results are
+  `UNION`ed (set semantics — a row matching two groups appears once).
+
+> For simple "one field is one of several values" alternation, a value list
+> (`{"value": ["NOUN", "PROPN"]}`) — compiling to a single `IN` rather than a
+> UNION — is planned as a lighter-weight shorthand.
 
 ---
 
@@ -449,12 +484,18 @@ clause heads (`'span'`, `'seq'`, `'?'`), variables (`'?d'`), and values
 `[kind, {constraints}]` (optionally `…, "as", "?var"`) or a quantifier wrapper
 `["?", element]` / `["rep", n, m, element]`.
 
+**Disjunction** — `["or", group, group, …]` (≥2 groups; each group a list of
+clauses). Matches if any group matches; results are UNIONed.
+
 **Top level** — `{find, where, scope?, limit?, return?}`.
 
 ---
 
 ## 14. Not yet supported (roadmap)
 
+- Value-list alternation (`{"value": ["NOUN", "PROPN"]}` → `IN`) — a lighter
+  shorthand for `:or` on a single field.
+- Negation (`:not` / "no such clause").
 - Unbounded sequence quantifiers (`*`, `+`).
 - Cursor/streaming for very large result sets.
 - Historical / `as-of` querying (the QL runs against current state only).
