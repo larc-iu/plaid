@@ -224,7 +224,7 @@ jobs:
           if npm view "$PKG@$VER" version >/dev/null 2>&1; then
             echo "npm: $PKG@$VER already published — skipping."
           else
-            TARBALL="$(ls dist-artifacts/larc-iu-plaid-client-*.tgz)"
+            TARBALL="./$(ls dist-artifacts/larc-iu-plaid-client-*.tgz)"
             # Provenance is automatic under trusted publishing; --access public
             # is required for the first publish of a scoped package.
             npm publish "$TARBALL" --access public --tag "${{ steps.ver.outputs.npm_tag }}"
