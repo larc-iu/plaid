@@ -150,6 +150,7 @@ jobs:
         working-directory: plaid-client-js
         run: |
           npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+          mkdir -p ../dist-artifacts
           npm pack --pack-destination ../dist-artifacts
 
       # --- Build the Python sdist + wheel (NOT publish) ----------------------
