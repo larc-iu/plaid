@@ -123,6 +123,8 @@ jobs:
           mv target/plaid.jar "target/plaid-${{ steps.ver.outputs.version }}.jar"
 
       - name: Smoke-test the jar (boots via re-exec + reports release version)
+        env:
+          SKIP_ACCOUNT_CREATION_PROMPT: "1"
         run: |
           # `plaid.server.main` self-heals the JDK access flags: it probes for
           # --add-opens / --enable-native-access and, if absent, re-execs the
