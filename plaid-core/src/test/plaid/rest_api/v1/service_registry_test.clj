@@ -13,11 +13,13 @@
             [plaid.sql.common :as psc]))
 
 (defn with-service-registry-started
-  "The service registry is a mount `defstate`; the production server starts it
-  via `mount/start`, but the test fixture chain doesn't run mount, so start
-  just this one state (an atom) for the duration of the namespace's tests."
+  "The service registry + channel maps are mount `defstate`s; the production
+  server starts them via `mount/start`, but the test fixture chain doesn't run
+  mount, so start them here. `service-channels` is needed because discovery now
+  gates on an open request channel."
   [f]
-  (mount/start #'plaid.server.events/service-registry)
+  (mount/start #'plaid.server.events/service-registry
+               #'plaid.server.events/service-channels)
   (f))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin
@@ -55,6 +57,13 @@
   (api-call user-fn {:method :delete
                      :path (str "/api/v1/projects/" pid "/services/" service-id)}))
 
+(defn- open-channel!
+  "Simulate a service's open request channel so it passes discovery's
+  channel-open gate (`list-live-services` lists only services with one).
+  ring-mock can't hold a real SSE channel, so inject a placeholder."
+  [pid service-id]
+  (swap! events/service-channels assoc-in [pid service-id] ::fake-channel))
+
 (def ^:private stanza
   {:service-id "stanza" :service-name "Stanza" :description "Parser"
    :extras {:lang "en"}})
@@ -73,6 +82,7 @@
         (is (true? (-> resp :body :success)))
         (is (pos? (-> resp :body :ttl-ms)))
         (is (= (quot (-> resp :body :ttl-ms) 3) (-> resp :body :heartbeat-interval-ms)))))
+    (open-channel! pid "stanza")  ; discovery requires an open request channel
     (testing "a reader sees the live service, shaped to public fields only"
       (let [resp (list! user2-request pid)
             entry (first (:body resp))]
@@ -89,6 +99,7 @@
   (let [pid (create-project!)]
     (grant-writer! pid "user1@example.com")
     (register! user1-request pid stanza)
+    (open-channel! pid "stanza")
     (let [before (get-in @events/service-registry [pid "stanza" :last-seen])]
       ;; Backdate, then re-register: last-seen should advance past the old value.
       (swap! events/service-registry assoc-in [pid "stanza" :last-seen] (- before 10000))
@@ -101,6 +112,7 @@
   (let [pid (create-project!)]
     (grant-writer! pid "user1@example.com")
     (register! user1-request pid stanza)
+    (open-channel! pid "stanza")
     (is (= 1 (count (:body (list! user1-request pid)))))
     (testing "a writer can unregister; the service disappears from the listing"
       (let [resp (unregister! user1-request pid "stanza")]
@@ -119,6 +131,22 @@
         (is (empty? (:body (list! user1-request pid))))
         (is (not (contains? @events/service-registry pid))
             "the project key is dropped once its last service is reaped")))))
+
+(deftest discovery-requires-open-channel
+  ;; Regression: a service that registered (or whose heartbeat re-registered it
+  ;; on a fresh server) but whose request channel is not open must NOT be listed
+  ;; as available — otherwise discovery says "reachable" while requests 503.
+  (let [pid (create-project!)]
+    (grant-writer! pid "user1@example.com")
+    (register! user1-request pid stanza)
+    (testing "registered but no open channel → hidden from discovery"
+      (is (empty? (:body (list! user1-request pid)))))
+    (testing "opening the channel makes it discoverable; dropping it hides it again"
+      (open-channel! pid "stanza")
+      (is (= 1 (count (:body (list! user1-request pid)))))
+      (swap! events/service-channels update pid dissoc "stanza")
+      (is (empty? (:body (list! user1-request pid)))
+          "a dropped channel (registry entry still fresh) is no longer listed"))))
 
 (deftest auth-writer-required-to-register
   (let [pid (create-project!)]

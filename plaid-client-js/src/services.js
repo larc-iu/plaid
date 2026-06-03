@@ -41,6 +41,7 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   let connection = null;
   let isRunning = true;
   let heartbeatTimer = null;
+  let reconnectTimer = null;
 
   const reportEvent = (requestId, body) =>
     client
@@ -53,10 +54,8 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   const serviceRegistration = {
     stop: () => {
       isRunning = false;
-      if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-      }
+      if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+      if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
       client.messages.unregisterService(projectId, serviceId).catch(() => {});
       if (connection) connection.close();
     },
@@ -84,31 +83,44 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   // Open the dedicated inbound request channel (server -> service). The channel
   // only carries `connected` (ignored) and `service_request` events.
   const channelPath = `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests`;
+  const onChannelEvent = (eventType, payload) => {
+    if (!isRunning) return true;
+    if (eventType !== 'service_request' || !payload) return;
+    const requestId = payload.requestId;
+    if (!requestId) return;
+
+    const responseHelper = {
+      progress: (percent, msg) =>
+        reportEvent(requestId, { status: 'progress', progress: { percent, message: msg } }),
+      complete: (data) =>
+        reportEvent(requestId, { status: 'completed', data }),
+      error: (error) =>
+        reportEvent(requestId, { status: 'error', data: { error: error?.message || error } }),
+    };
+
+    try {
+      onServiceRequest(payload.data, responseHelper);
+    } catch (error) {
+      responseHelper.error(error?.message || error);
+    }
+  };
+  const openChannel = () => client.messages.listen(projectId, onChannelEvent, channelPath);
   try {
-    connection = client.messages.listen(projectId, (eventType, payload) => {
-      if (!isRunning) return true;
-      if (eventType !== 'service_request' || !payload) return;
-      const requestId = payload.requestId;
-      if (!requestId) return;
-
-      const responseHelper = {
-        progress: (percent, msg) =>
-          reportEvent(requestId, { status: 'progress', progress: { percent, message: msg } }),
-        complete: (data) =>
-          reportEvent(requestId, { status: 'completed', data }),
-        error: (error) =>
-          reportEvent(requestId, { status: 'error', data: { error: error?.message || error } }),
-      };
-
-      try {
-        onServiceRequest(payload.data, responseHelper);
-      } catch (error) {
-        responseHelper.error(error?.message || error);
-      }
-    }, channelPath);
+    connection = openChannel();
   } catch (error) {
     throw new Error(`Failed to start service: ${error.message}`);
   }
+
+  // Reopen the channel if it drops (e.g. the server restarted). On reconnect we
+  // also re-register, so the registry and channel come back together and
+  // discovery never lists the service while it is unreachable.
+  reconnectTimer = setInterval(() => {
+    if (!isRunning) return;
+    if (connection && connection.readyState === 2) { // CLOSED (dropped)
+      registerOnce();
+      try { connection = openChannel(); } catch (_) { /* retry next tick */ }
+    }
+  }, 3000);
 
   return serviceRegistration;
 }

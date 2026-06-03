@@ -46,15 +46,17 @@ class ServiceRegistration:
     """
 
     def __init__(self, service_info, connection, client=None, project_id=None,
-                 service_id=None):
+                 service_id=None, open_channel=None):
         self.service_info = service_info
         self._connection = connection
         self._client = client
         self._project_id = project_id
         self._service_id = service_id
+        self._open_channel = open_channel  # () -> SSEConnection, to (re)open the channel
         self._running = True
         self._stop_event = threading.Event()
         self._heartbeat_thread = None
+        self._supervisor_thread = None
 
     def _start_heartbeat(self, interval_s):
         """Spawn a daemon thread that re-registers every ``interval_s`` seconds
@@ -71,6 +73,35 @@ class ServiceRegistration:
 
         self._heartbeat_thread = threading.Thread(target=loop, daemon=True)
         self._heartbeat_thread.start()
+
+    def _start_supervisor(self, check_interval_s=3.0):
+        """Spawn a daemon thread that reopens the request channel if it drops
+        (e.g. the server restarted). On reconnect it also re-registers, so the
+        registry and the channel come back together and discovery never lists
+        the service while it is unreachable."""
+        def loop():
+            while not self._stop_event.wait(timeout=check_interval_s):
+                if not self._running:
+                    break
+                conn = self._connection
+                # ready_state 2 == CLOSED (dropped, since stop() would have
+                # ended the loop via _stop_event).
+                if conn is not None and conn.ready_state == 2 and self._open_channel:
+                    if not self._running:
+                        break
+                    try:
+                        self._client.messages.register_service(
+                            self._project_id, self.service_info)
+                    except Exception:
+                        logger.warning('Re-register on reconnect failed')
+                    try:
+                        self._connection = self._open_channel()
+                        logger.info('Service channel reconnected for %s', self._service_id)
+                    except Exception:
+                        logger.warning('Service channel reconnect failed; will retry')
+
+        self._supervisor_thread = threading.Thread(target=loop, daemon=True)
+        self._supervisor_thread.start()
 
     def stop(self):
         """Stop serving: halt heartbeats, unregister from the registry, and
@@ -121,6 +152,10 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
                  'description': description, 'extras': extras}
     registration = ServiceRegistration(full_info, None, client=client,
                                        project_id=project_id, service_id=service_id)
+    channel_path = f'/api/v1/projects/{project_id}/services/{service_id}/requests'
+
+    def open_channel():
+        return client.messages.listen(project_id, on_event, path=channel_path)
 
     def on_event(event_type, event_data):
         if not registration._running:
@@ -175,14 +210,15 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
         logger.warning('Failed to register service')
         interval_ms = 30000
 
-    channel_path = f'/api/v1/projects/{project_id}/services/{service_id}/requests'
     try:
-        connection = client.messages.listen(project_id, on_event, path=channel_path)
+        connection = open_channel()
     except Exception as e:
         raise RuntimeError(f'Failed to open service channel: {e}')
 
     registration._connection = connection
+    registration._open_channel = open_channel
     registration._start_heartbeat(interval_ms / 1000.0)
+    registration._start_supervisor()
     return registration
 
 

@@ -234,24 +234,32 @@
   true)
 
 (defn list-live-services
-  "Return the live (non-expired) service entries for a project, reaping any
-  stale entries from the registry as a side effect. Returns a vector of entries
-  (ordered by service-id for stable output)."
+  "Return the discoverable service entries for a project: those whose registry
+  entry is TTL-fresh AND whose request channel is currently open. Gating on the
+  open channel is what makes discovery honest — a service is listed only if it
+  can actually be reached (a stale registration left by a service that died, or
+  whose channel dropped on a server restart, is hidden). TTL-stale entries are
+  reaped from the registry as a side effect. Ordered by service-id."
   [project-id]
   (let [now-ms (System/currentTimeMillis)
         ttl-ms (:ttl-ms (service-registry-config))
         services (get @service-registry project-id {})
-        live (into {} (filter (fn [[_ entry]] (service-live? entry now-ms ttl-ms)) services))]
-    ;; Reap on read: write back the live subset (or drop the project key).
-    (when (not= (count live) (count services))
+        fresh (into {} (filter (fn [[_ entry]] (service-live? entry now-ms ttl-ms)) services))]
+    ;; Reap TTL-stale entries on read (write back the fresh subset, or drop the
+    ;; project key). Channel state is NOT a reap criterion — a registered
+    ;; service whose channel briefly dropped may reconnect, so its metadata
+    ;; stays until the TTL lapses; it is merely hidden from discovery meanwhile.
+    (when (not= (count fresh) (count services))
       (swap! service-registry
              (fn [reg]
-               (if (empty? live)
+               (if (empty? fresh)
                  (dissoc reg project-id)
-                 (assoc reg project-id live)))))
-    (->> (vals live)
-         (sort-by :service-id)
-         vec)))
+                 (assoc reg project-id fresh)))))
+    (let [open (get @service-channels project-id {})]
+      (->> (vals fresh)
+           (filter (fn [entry] (contains? open (:service-id entry))))
+           (sort-by :service-id)
+           vec))))
 
 ;; =============================================================================
 ;; Server-mediated RPC routing (addressed; off the broadcast bus)
