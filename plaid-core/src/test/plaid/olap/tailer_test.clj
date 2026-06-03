@@ -685,6 +685,89 @@
             (is (not= :stalled (:tailer-status c))
                 "tailer is running — never required an operator resume!")))))))
 
+(deftest run-loop-does-not-persist-stall-when-datasource-closed-on-shutdown
+  ;; Shutdown race: mount stops the tailer (bounded 5s wait) then closes
+  ;; the Hikari pool; a fetch-batch in flight when the pool closes (e.g.
+  ;; mid cold-replay backlog) throws "HikariDataSource has been closed."
+  ;; That is NOT a data defect — it must exit the loop cleanly WITHOUT
+  ;; persisting :stalled, or every restart comes up dead until a manual
+  ;; resume!. (Regression for the live dev-restart stall.)
+  (let [ds plaid.fixtures/db
+        node *olap-node*
+        op-id (str (UUID/randomUUID))
+        ts "2026-05-28T18:00:00Z"
+        cfg {:enabled? true
+             :cold-replay-on-empty? true
+             :tailer {:batch-size 50 :poll-interval-ms 50}}]
+    (insert-operation! ds op-id ts)
+    (insert-audit-rows! ds op-id ts 1)
+    (testing "a 'datasource closed' read error exits cleanly, no persisted stall"
+      (with-redefs [olap/olap-config (constantly cfg)
+                    tailer/fetch-batch
+                    (fn [& _]
+                      (throw (java.sql.SQLException.
+                              "HikariDataSource HikariDataSource (plaid-sqlite) has been closed.")))]
+        (let [done (#'tailer/run-loop! ds node cfg)]
+          (olap/nudge!)
+          ;; The loop should hit the closed-datasource error and exit on
+          ;; its own (no stop signal needed); wait for the done sentinel.
+          (let [[v _] (clojure.core.async/alts!!
+                       [done (clojure.core.async/timeout 5000)])]
+            (is (= ::tailer/exited v)
+                "loop exits on its own after a shutdown-class read error"))
+          (let [c (olap/cursor-read node)]
+            (is (not= :stalled (:tailer-status c))
+                "a datasource-closed error must NOT persist :stalled")
+            (is (nil? (:stall-reason c))
+                "no stall-reason recorded for a shutdown-class error"))
+          ;; clean up the loop-control atoms the way :stop would
+          (when-let [s @@#'tailer/stop-chan]
+            (clojure.core.async/close! s)))))
+    (testing "next poll (datasource healthy again) applies the op — resumed, not stalled"
+      (with-redefs [olap/olap-config (constantly cfg)]
+        (let [{:keys [applied-ops]} (tailer/poll-once! ds node)]
+          (is (= 1 applied-ops)
+              "the op the closed read skipped applies cleanly on the next start")
+          (is (= op-id (str (:last-op-id (olap/cursor-read node))))
+              "cursor advanced — the closed-datasource error left it resumable"))))))
+
+(deftest clear-stale-stall-on-start-clears-flag-without-moving-cursor
+  ;; Auto-recovery: the defstate :start calls clear-stale-stall-on-start!
+  ;; so a node that persisted :stalled (e.g. a shutdown-race false stall,
+  ;; or a stall whose underlying condition a restart resolves) comes up
+  ;; RUNNING and retries. Critical safety property: it must NOT advance
+  ;; the cursor (retry, not skip) — a real bad row must re-stall, never be
+  ;; silently dropped.
+  (let [node *olap-node*
+        clear! @#'tailer/clear-stale-stall-on-start!]
+    (testing "a stalled node is cleared to running, cursor untouched"
+      ;; Seed a cursor, then stall it with a reason + offending op-id/seq.
+      (let [op-id (str (UUID/randomUUID))
+            ts "2026-05-28T19:00:00Z"]
+        (insert-operation! plaid.fixtures/db op-id ts)
+        (insert-audit-rows! plaid.fixtures/db op-id ts 1)
+        (with-redefs [olap/olap-config (constantly (cfg 50))]
+          (tailer/poll-once! plaid.fixtures/db node))    ; advance cursor to op-id
+        (let [pre (olap/cursor-read node)]
+          (olap/set-stalled! node {:op-id (str (UUID/randomUUID)) :seq 7
+                                   :reason "simulated prior stall"})
+          (is (= :stalled (:tailer-status (olap/cursor-read node))) "precondition: stalled")
+          (clear! node)
+          (let [post (olap/cursor-read node)]
+            (is (= :running (:tailer-status post)) "flag cleared to running")
+            (is (nil? (:stall-reason post)) "stall-reason cleared")
+            ;; cursor position is byte-for-byte what it was BEFORE the stall —
+            ;; retry semantics, no skip.
+            (is (= (str (:last-op-id pre)) (str (:last-op-id post)))
+                "cursor op-id unchanged — retried the same position, did NOT skip")
+            (is (= (:last-op-ts pre) (:last-op-ts post)) "cursor ts unchanged")
+            (is (= (:last-seq pre) (:last-seq post)) "cursor seq unchanged")))))
+    (testing "a running node is left untouched (no-op)"
+      (olap/set-running! node)
+      (let [before (olap/cursor-read node)]
+        (clear! node)
+        (is (= before (olap/cursor-read node)) "no change when already running")))))
+
 ;; ============================================================
 ;; BUG-RES regression: resume! must restart a dead loop
 ;; ============================================================

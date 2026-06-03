@@ -679,6 +679,25 @@
                (or (.getMessage e) "")) true
       :else (recur (.getCause e)))))
 
+(defn- shutdown-db-error?
+  "True when `t` (or any cause) is a 'datasource/pool/connection has been
+  closed' error. Happens during shutdown: mount stops the tailer (bounded
+  5s wait) then closes the Hikari pool; a `fetch-batch` read still in
+  flight when the pool closes (e.g. mid cold-replay backlog) throws this.
+
+  It is NEITHER a data defect NOR retryable contention — the system is
+  going down. The loop must exit CLEANLY without persisting `:stalled`,
+  else every restart would resume into a false stall needing a manual
+  `resume!`. Safe: the read failed so the cursor never moved and nothing
+  partial landed; the next start resumes from the same cursor."
+  [^Throwable t]
+  (loop [^Throwable e t]
+    (cond
+      (nil? e) false
+      (re-find #"(?i)has been closed|connection is closed|connection pool .*shut(ting)? down|datasource .*closed"
+               (or (.getMessage e) "")) true
+      :else (recur (.getCause e)))))
+
 (defn- run-loop!
   "Body of the background loop. Returns a promise-channel `done` that
   receives `::exited` exactly once when the loop exits (stall or stop).
@@ -713,21 +732,34 @@
                             (drain-nudges! nudge)
                             (apply-batches-until-empty! ds node stop)
                             (catch Throwable t
-                              (if (transient-db-error? t)
+                              (cond
                                 ;; Transient SQLite lock contention on the
                                 ;; audit-log read. The cursor hasn't moved and
                                 ;; nothing partial landed (apply writes to XTDB,
                                 ;; not SQLite), so DON'T stall — return truthy to
                                 ;; fall through to the normal poll wait and retry
                                 ;; the same cursor next iteration.
+                                (transient-db-error? t)
                                 (do (log/warn t "OLAP tailer hit transient DB contention; retrying next poll:"
                                               (or (ex-message t) (str t)))
                                     true)
+
+                                ;; Datasource closed under us during shutdown.
+                                ;; Exit the loop cleanly WITHOUT persisting a
+                                ;; stall — the read failed so the cursor never
+                                ;; moved; the next :start resumes from it. (A
+                                ;; persisted stall here would make every restart
+                                ;; come up dead until a manual resume!.)
+                                (shutdown-db-error? t)
+                                (do (log/info "OLAP tailer: datasource closed (shutting down); exiting cleanly")
+                                    false)
+
                                 ;; Structural / data defect: stall so an operator
                                 ;; can intervene. The stall write uses a fresh
                                 ;; execute-tx so the cursor doc is updated even
                                 ;; though the apply tx (which would have included
                                 ;; its own cursor-advance) failed.
+                                :else
                                 (let [data (ex-data t)
                                       reason (or (ex-message t) (str t))]
                                   (log/error t "OLAP tailer stalled:" reason)
@@ -754,6 +786,26 @@
 ;; Mount lifecycle
 ;; ============================================================
 
+(defn- clear-stale-stall-on-start!
+  "If the node comes up `:stalled`, clear the flag (RETRY semantics — we
+  do NOT advance the cursor, so the loop simply re-reads the same row) and
+  WARN-log the prior reason.
+
+  Rationale: a persisted stall survives restarts, but most stalls we see
+  in practice are transient/environmental (a shutdown-race datasource
+  close, contention, stale-loaded code) — and a restart resolves the
+  underlying condition. Clearing on start auto-recovers all of those.
+  A GENUINE malformed/structural row is not skipped, so the loop re-hits
+  it and re-stalls within one poll — the loud signal survives, just with
+  a WARN trail here naming what we retried. (Skipping a bad row is still
+  the deliberate, operator-only `resume! {:skip-current-row? true}`.)"
+  [node]
+  (let [cur (olap/cursor-read node)]
+    (when (= :stalled (:tailer-status cur))
+      (log/warn "OLAP tailer came up stalled; clearing flag and retrying (cursor unchanged). Prior stall reason:"
+                (:stall-reason cur))
+      (olap/set-running! node))))
+
 (defstate tailer
   :start (let [cfg (olap/olap-config)]
            (if (and (:enabled? cfg) olap/node)
@@ -761,6 +813,7 @@
                (log/info "Starting OLAP tailer"
                          (select-keys (:tailer cfg)
                                       [:poll-interval-ms :batch-size]))
+               (clear-stale-stall-on-start! olap/node)
                (run-loop! datasource olap/node cfg))
              (do
                (log/info "OLAP tailer disabled (:plaid.olap/config :enabled? = false); skipping")
