@@ -73,3 +73,25 @@
                                  [["covers" "?s" "?t"] ["span" "?s" {"layer" "NotProj/pos" "value" "NOUN"}]]
                                  [["not" ["covers" "?s2" "?t"] ["span" "?s2" {"layer" "NotProj/pos"}]]]]]})]
         (is (= #{(str t0) (str t2)} (set (map first (tuples r)))))))))
+
+(deftest not-over-or-is-de-morgan
+  (let [{:keys [t2]} (build!)]
+    (testing "NOT(covered-by-NOUN OR covered-by-VERB) = covered by neither"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?t"]
+                       "where" [["token" "?t" {"layer" "NotProj/words"}]
+                                ["not" ["or"
+                                        [["covers" "?s" "?t"] ["span" "?s" {"layer" "NotProj/pos" "value" "NOUN"}]]
+                                        [["covers" "?s2" "?t"] ["span" "?s2" {"layer" "NotProj/pos" "value" "VERB"}]]]]]})]
+        ;; t0 (NOUN) and t1 (VERB) are excluded by De Morgan; only t2 remains
+        (is (= [[(str t2)]] (tuples r)))))))
+
+(deftest double-negation-is-existence
+  (let [{:keys [t0]} (build!)]
+    (testing "NOT(NOT(covered by NOUN)) = covered by NOUN"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?t"]
+                       "where" [["token" "?t" {"layer" "NotProj/words"}]
+                                ["not" ["not" ["covers" "?s" "?t"]
+                                        ["span" "?s" {"layer" "NotProj/pos" "value" "NOUN"}]]]]})]
+        (is (= [[(str t0)]] (tuples r)))))))

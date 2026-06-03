@@ -343,11 +343,10 @@
       (do
         (when (empty? args)
           (err! :validate ":not needs at least one clause to negate"))
-        (doseq [c args]
-          (when (#{:not :or :seq} (first c))
-            (err! :validate (str ":not may not contain :" (name (first c))
-                                 " (negate a conjunction of entity/relationship clauses)")))
-          (validate-clause! c)))
+        ;; recurse: the negated body is entity/relationship clauses and nested
+        ;; :not (a nested NOT EXISTS); any :or/:seq inside a :not were already
+        ;; De-Morganed away by `expand`.
+        (run! validate-clause! args))
 
       :else
       (err! :validate (str "Unknown clause head :" (name head))))))
@@ -479,10 +478,15 @@
 
 (declare expand-clauses)
 
+(defn- not-clause? [c] (= :not (first c)))
+
 (defn- expand-clause
   "The alternatives (a vector of conjunctive clause-lists) one clause contributes:
   a static clause is itself (one alternative); a :seq is one alternative per
-  quantifier combo; an :or is the union of each group's expansions."
+  quantifier combo; an :or is the union of each group's expansions; a :not has
+  its BODY expanded and De-Morganed — NOT(b1 OR b2 …) = NOT(b1) AND NOT(b2) …, so
+  it yields ONE alternative (a conjunction of simple :nots), leaving any nested
+  :not in place for the compiler to emit as a nested NOT EXISTS."
   [clause counter]
   (cond
     (seq-clause? clause) (seq-alternatives clause counter)
@@ -494,6 +498,9 @@
         (when-not (and (sequential? g) (seq g))
           (err! :validate "each :or group must be a non-empty list of clauses")))
       (vec (mapcat #(expand-clauses % counter) groups)))
+    (not-clause? clause)
+    (let [body-branches (expand-clauses (vec (rest clause)) counter)]
+      [(mapv #(into [:not] %) body-branches)])
     :else [[clause]]))
 
 (defn- expand-clauses

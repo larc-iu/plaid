@@ -257,11 +257,22 @@ How variables behave (this is the important part):
   so it **may not be a `find` variable** (that's a 400).
 
 Rules:
-- At least one clause to negate; the negated clauses are entity/relationship only
-  (`:not` may not contain `:or`, `:seq`, or another `:not` — yet).
+- At least one clause to negate.
 - Negation is over your readable scope, same as everything else.
 
-`:not` composes with `:or` (it distributes into branches) and with value lists.
+`:not` composes with everything. It distributes into `:or` branches, and its body
+may itself contain `:or`/`:seq`/`:not`:
+
+```jsonc
+// words covered by NEITHER a NOUN nor a VERB span (De Morgan: NOT(A OR B))
+["token", "?t", {"layer": "Words"}],
+["not", ["or", [["covers","?s","?t"], ["span","?s",{"layer":"UPOS","value":"NOUN"}]],
+               [["covers","?s","?t"], ["span","?s",{"layer":"UPOS","value":"VERB"}]]]]
+```
+
+`NOT(A OR B)` becomes `NOT(A) AND NOT(B)`; a nested `:not` is a double negation
+(`NOT(NOT(A))` ⇔ `A` exists). (For the simple NOUN-or-VERB case above, a value
+list — `{"value": ["NOUN","VERB"]}` — is lighter.)
 
 ---
 
@@ -531,8 +542,6 @@ existential (and can't be in `find`).
 ## 14. Not yet supported (roadmap)
 
 - Unbounded sequence quantifiers (`*`, `+`).
-- Disjunction / sequences / negation *nested inside* `:not` (v0 negates a
-  conjunction of entity/relationship clauses only).
 - Cursor/streaming for very large result sets.
 - Historical / `as-of` querying (the QL runs against current state only).
 - Bulk edits driven by query matches.

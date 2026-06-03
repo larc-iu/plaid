@@ -223,21 +223,25 @@
                      {"find" ["?t"]
                       "where" [["token" "?t" {"layer" "w"}]
                                ["not" ["covers" "?s" "?t"] ["span" "?s" {"value" "NOUN"}]]]})))))
+  (testing ":not may contain :or/:seq (De-Morganed) and may nest"
+    ;; NOT(A OR B) -> NOT(A) AND NOT(B): one outer clause, no outer branching
+    (is (= 1 (count (ast/expand {"find" ["?t"]
+                                 "where" [["token" "?t" {"layer" "w"}]
+                                          ["not" ["or" [["span" "?s" {"value" "A"}] ["covers" "?s" "?t"]]
+                                                  [["span" "?s" {"value" "B"}] ["covers" "?s" "?t"]]]]]}))))
+    (is (= 1 (count (ast/expand {"find" ["?t"]
+                                 "where" [["token" "?t" {"layer" "w"}]
+                                          ["not" ["seq" {"layer" "w"} ["span" {"layer" "p"}]]]]}))))
+    (is (= 1 (count (ast/expand {"find" ["?t"]
+                                 "where" [["token" "?t" {"layer" "w"}]
+                                          ["not" ["not" ["covers" "?s" "?t"] ["span" "?s" {}]]]]})))))
   (testing ":not author errors are 400"
     (is (= 400 (code-of #(ast/expand {"find" ["?s"]
                                       "where" [["token" "?t" {"layer" "w"}]
                                                ["not" ["span" "?s" {}] ["covers" "?s" "?t"]]]})))
         "a find var appearing only inside :not is not positively bound")
     (is (= 400 (code-of #(ast/expand {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["not"]]})))
-        ":not needs at least one clause")
-    (is (= 400 (code-of #(ast/expand {"find" ["?t"]
-                                      "where" [["token" "?t" {"layer" "w"}]
-                                               ["not" ["seq" {"layer" "w"} ["span" {"layer" "p"}]]]]})))
-        ":seq may not appear inside :not")
-    (is (= 400 (code-of #(ast/expand {"find" ["?t"]
-                                      "where" [["token" "?t" {"layer" "w"}]
-                                               ["not" ["not" ["span" "?s" {}]]]]})))
-        ":not may not nest")))
+        ":not needs at least one clause")))
 
 (deftest value-alternation
   (testing "a vector constraint value (one-of) is accepted on literal-match keys"

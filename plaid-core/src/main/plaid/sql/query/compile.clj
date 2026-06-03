@@ -282,16 +282,18 @@
   (let [inner (rest clause)
         sub-st (atom (assoc @outer-st :from [] :where [] :scoped #{}))]
     ;; existential (inner-only) vars get a table + scope here; correlated (outer)
-    ;; vars are already in var->alias, so ensure-var! no-ops for them.
+    ;; vars are already in var->alias, so ensure-var! no-ops for them. (A nested
+    ;; :not's own vars are handled by its recursive compile-not! call, not here.)
     (doseq [v (distinct (mapcat ast/clause-vars inner))]
       (ensure-var! sub-st v constraints))
     (doseq [c inner]
-      (if (contains? entity-table (first c))
-        (compile-relation-inline! sub-st constraints c)
-        (compile-rel! sub-st constraints c)))
-    (add-where! outer-st [:not [:exists {:select [1]
-                                         :from (:from @sub-st)
-                                         :where (into [:and] (:where @sub-st))}]])
+      (cond
+        (= :not (first c)) (compile-not! sub-st constraints c)   ; nested NOT EXISTS
+        (contains? entity-table (first c)) (compile-relation-inline! sub-st constraints c)
+        :else (compile-rel! sub-st constraints c)))
+    (let [subq (cond-> {:select [1] :where (into [:and] (:where @sub-st))}
+                 (seq (:from @sub-st)) (assoc :from (:from @sub-st)))]
+      (add-where! outer-st [:not [:exists subq]]))
     ;; advance the outer alias counter past the subquery's, and record the inner
     ;; vars (scoped in the subquery) as scoped so the ACL assert is satisfied.
     (swap! outer-st assoc :n (:n @sub-st))
