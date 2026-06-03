@@ -50,12 +50,12 @@
 
 ;; Entity clauses: [:kind ?var {constraint-map}]. Value = set of allowed constraint keys.
 (def ^:private entity-clauses
-  {:span     #{:layer :value :doc}
-   :token    #{:layer :doc :begin :end}
-   :relation #{:layer :value :doc :source :target}
-   :vocab    #{:layer :form}
-   :document #{:name :id}
-   :text     #{:body :doc}})
+  {:span     #{:layer :value :doc :metadata}
+   :token    #{:layer :doc :begin :end :metadata}
+   :relation #{:layer :value :doc :source :target :metadata}
+   :vocab    #{:layer :form :metadata}
+   :document #{:name :id :metadata}
+   :text     #{:body :doc :metadata}})
 
 ;; Constraint keys whose value may be a vector = "one of" (compiles to IN). The
 ;; literal-match keys only — NOT :layer (multi-layer is unique-or-400 / future
@@ -154,6 +154,15 @@
                (let [k (->kw k)]
                  (assoc acc k (cond
                                 (#{:source :target :layer} k) (->var v)
+                                ;; :metadata is a map of arbitrary metadata KEYS (kept
+                                ;; verbatim — case-sensitive strings) to value specs
+                                ;; (each spec keyword-ized if it's a regex map).
+                                (= k :metadata)
+                                (reduce-kv (fn [a mk spec]
+                                             (assoc a mk (if (map? spec)
+                                                           (reduce-kv (fn [s ik iv] (assoc s (->kw ik) iv)) {} spec)
+                                                           spec)))
+                                           {} v)
                                 ;; a map value is a special spec: a regex {:regex ..}
                                 ;; or a value variable {:var "?v"}. Keyword-ize the
                                 ;; keys and var-ize the :var payload. (A plain string
@@ -404,26 +413,47 @@
           (err! :validate (str ":order-by direction must be asc or desc, got: " (pr-str dir)))))))
   ast)
 
+(defn- check-regex-spec!
+  "Validate a `{:regex \"...\" :flags \"i\"?}` spec (`label` for error messages).
+  Compiles the pattern so a malformed regex is a 400 here, not a UDF runtime error."
+  [label spec]
+  (let [{:keys [regex flags]} spec
+        extra (remove #{:regex :flags} (keys spec))]
+    (when (seq extra)
+      (err! :validate (str label " regex spec has unknown key(s) " (vec extra) " (allowed :regex, :flags)")))
+    (when-not (string? regex)
+      (err! :validate (str label " regex must be a string, got: " (pr-str regex))))
+    (when (> (count regex) regex-max-len)
+      (err! :validate (str label " regex is too long (max " regex-max-len " chars)")))
+    (when (and flags (or (not (string? flags)) (not (re-matches #"i*" flags))))
+      (err! :validate (str label " regex flags " (pr-str flags) " unsupported (only \"i\")")))
+    (try (re-pattern regex)
+         (catch java.util.regex.PatternSyntaxException e
+           (err! :validate (str label " has an invalid regex: " (.getMessage e)))))))
+
 (defn- validate-regex-spec!
-  "Validate a `{:regex \"...\" :flags \"i\"?}` constraint value. Compiles the
-  pattern so a malformed regex is a 400 here, not a runtime error in the UDF."
   [head k spec]
   (when-not (regex-keys k)
     (err! :validate (str ":" (name head) " constraint :" (name k)
                          " does not support a regex (allowed on " (vec (sort regex-keys)) ")")))
-  (let [{:keys [regex flags]} spec
-        extra (remove #{:regex :flags} (keys spec))]
-    (when (seq extra)
-      (err! :validate (str "regex spec has unknown key(s) " (vec extra) " (allowed :regex, :flags)")))
-    (when-not (string? regex)
-      (err! :validate (str ":" (name k) " regex must be a string, got: " (pr-str regex))))
-    (when (> (count regex) regex-max-len)
-      (err! :validate (str ":" (name k) " regex is too long (max " regex-max-len " chars)")))
-    (when (and flags (or (not (string? flags)) (not (re-matches #"i*" flags))))
-      (err! :validate (str ":" (name k) " regex flags " (pr-str flags) " unsupported (only \"i\")")))
-    (try (re-pattern regex)
-         (catch java.util.regex.PatternSyntaxException e
-           (err! :validate (str ":" (name k) " has an invalid regex: " (.getMessage e)))))))
+  (check-regex-spec! (str ":" (name k)) spec))
+
+(defn- validate-metadata!
+  "Validate a :metadata constraint value: a map of metadata-key -> value spec
+  (literal, list, or regex map)."
+  [head mv]
+  (when-not (map? mv)
+    (err! :validate (str ":" (name head) " :metadata must be a map of key -> value")))
+  (doseq [[mk spec] mv]
+    (when-not (string? mk)
+      (err! :validate (str ":metadata keys must be strings, got: " (pr-str mk))))
+    (cond
+      (and (vector? spec) (empty? spec))
+      (err! :validate (str ":metadata " (pr-str mk) " list must be non-empty"))
+      (map? spec)
+      (if (contains? spec :regex)
+        (check-regex-spec! (str ":metadata " (pr-str mk)) spec)
+        (err! :validate (str ":metadata " (pr-str mk) " map value must be a regex {:regex ..}"))))))
 
 (defn- validate-clause!
   [clause]
@@ -451,6 +481,8 @@
         ;; only). A scalar is plain equality.
         (doseq [[k v] cmap]
           (cond
+            (= k :metadata)
+            (validate-metadata! head v)
             (vector? v)
             (do (when-not (alternation-keys k)
                   (err! :validate (str ":" (name head) " constraint :" (name k)

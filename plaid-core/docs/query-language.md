@@ -163,6 +163,19 @@ readable projects (§8). A few examples:
 > value is **always** a literal, so a real annotation value like `"?x"` is never
 > mistaken for a variable.
 
+> **Metadata.** Any entity can carry key/value metadata; filter on it with a
+> `metadata` map (each entry is `AND`-ed, and a value may be a literal, a list, or
+> a regex):
+> ```python
+> ["span", "?s", {"layer": "POS", "metadata": {"translation": "dog"}}]
+> ["span", "?s", {"layer": "POS", "metadata": {"sense": {"regex": "^[0-9]+$"}}}]
+> ["document", "?d", {"metadata": {"genre": "news"}}]
+> ```
+> Metadata keys are arbitrary strings (kept verbatim, case-sensitive). The lookup
+> is a correlated, index-backed `EXISTS` on the already-scoped entity, so it's
+> cheap — but metadata holds free-form data, so treat it as a filter, not a
+> primary search key.
+
 > **Filtering by document.** An annotation's `doc` is its document's id. To select
 > by document *name* (or any document property), bind the annotation's `doc` to a
 > value variable and equate it to a `document` clause:

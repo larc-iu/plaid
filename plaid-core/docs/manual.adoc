@@ -893,6 +893,16 @@ Give it a plain string for an exact match; give it a list, like `value: ["NOUN",
 The pattern is an ordinary regular expression; the one option, `flags: "i"`, makes it ignore case.
 This is the tool to reach for when you want a family of forms--a prefix, a suffix, a stem--rather than one exact string.
 
+Any entity can also carry free-form *metadata*--key/value pairs--and you can filter on it with a `metadata` map, where each entry must match (and a value can itself be an exact string, a list, or a `{ regex: … }` pattern):
+
+[,javascript]
+----
+["span", "?s", { layer: "pos", metadata: { translation: "dog" } }]
+["document", "?d", { metadata: { genre: "news" } }]
+----
+
+Metadata keys are whatever you stored, exactly as written. It is meant for filtering a search you have already narrowed, rather than as the first thing you reach for.
+
 The second sort of clause relates two named things to each other. You write it as `[relationship, "?a", "?b"]`:
 
 * `["covers", "?span", "?token"]`--the span includes that token;

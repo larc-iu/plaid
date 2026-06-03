@@ -128,17 +128,42 @@
   ;; maps to `regexp(pattern, col)` — exactly our UDF's (pattern, value) arg order.
   [:regexp col (if case-insensitive? (str "(?i)" pattern) pattern)])
 
-(defn- emit-match!
-  "Emit one text-match predicate: a regex spec `{:regex .. :flags}` -> REGEXP
-  against `regex-col`; a vector -> IN; a scalar -> `=` (both against `col`, with
-  literals `enc`oded). `regex-col` may differ from `col` so a regex can run on
-  the decoded text (e.g. JSON-extracted span value) while equality compares the
-  stored form."
-  [st col v enc regex-col]
-  (add-where! st
-              (if (and (map? v) (contains? v :regex))
-                (regex-pred regex-col (:regex v) (boolean (some-> (:flags v) (str/includes? "i"))))
-                (atomic-pred col v enc))))
+(defn- value-pred
+  "The predicate for one text-match spec: a regex spec `{:regex .. :flags}` ->
+  REGEXP against `regex-col`; a vector -> IN; a scalar -> `=` (against `col`, with
+  literals `enc`oded). `regex-col` may differ from `col` so a regex can run on the
+  decoded text (e.g. JSON-extracted value) while equality compares the stored form."
+  [col v enc regex-col]
+  (if (and (map? v) (contains? v :regex))
+    (regex-pred regex-col (:regex v) (boolean (some-> (:flags v) (str/includes? "i"))))
+    (atomic-pred col v enc)))
+
+(defn- emit-match! [st col v enc regex-col]
+  (add-where! st (value-pred col v enc regex-col)))
+
+;; --- entity metadata (entity_metadata wide-narrow table) -------------------
+;; A QL kind -> the entity_type string the metadata table keys on. Metadata
+;; values are stored JSON-encoded (write-json), like :value.
+(def ^:private kind->meta-type
+  {:span "span" :token "token" :relation "relation"
+   :document "document" :text "text" :vocab "vocab-item"})
+
+(defn- metadata-exists-pred
+  "EXISTS a entity_metadata row for (kind, `a`.id, `mk`) whose value matches
+  `spec`. Correlates to the already-scoped entity `a`, and rides the table's
+  PRIMARY KEY (entity_type, entity_id, key), so it's an indexed lookup."
+  [st kind a mk spec]
+  (let [em (next-alias! st "em")
+        et (or (kind->meta-type kind)
+               (err-500! (str "kind " kind " has no metadata entity-type") {:kind kind}))]
+    [:exists {:select [1]
+              :from [[:entity_metadata em]]
+              :where [:and
+                      [:= (col em :entity_type) et]
+                      [:= (col em :entity_id) (col a :id)]
+                      [:= (col em :key) mk]
+                      (value-pred (col em :value) spec psc/write-json
+                                  [:json_extract (col em :value) [:inline "$"]])]}]))
 
 (defn- bind-scalar!
   "Bind scalar var `v` to column `col-ref` (with literal-encoder `enc`). The first
@@ -161,13 +186,13 @@
     (emit-match! st col v enc regex-col)))
 
 (defn- emit-entity-filters!
-  "Emit the value/form/doc/begin/end predicates from one entity constraint map
-  against table alias `a`. Kept separate from `ensure-var!` (which only allocates
-  the table + scope predicate, idempotently) so these filters can be emitted in
-  the RIGHT query scope: a constraint that re-states an outer var inside a `:not`
-  must land inside that NOT EXISTS subquery as a correlated predicate, not on the
-  outer alias."
-  [st a cmap]
+  "Emit the value/form/doc/begin/end/name/body/id/metadata predicates from one
+  entity constraint map (`kind` is the host entity's kind, for metadata's
+  entity_type). Kept separate from `ensure-var!` (which only allocates the table +
+  scope predicate, idempotently) so these filters can be emitted in the RIGHT
+  query scope: a constraint that re-states an outer var inside a `:not` must land
+  inside that NOT EXISTS subquery as a correlated predicate, not on the outer alias."
+  [st kind a cmap]
   ;; :value is stored JSON-encoded; a regex matches the DECODED scalar
   ;; (json_extract '$') so patterns aren't fighting the surrounding quotes.
   (when (contains? cmap :value)
@@ -182,7 +207,11 @@
   ;; document name / text body (plain TEXT — regex runs on the column directly), id
   (when (contains? cmap :name)  (emit-field! st (col a :name) (:name cmap) identity (col a :name)))
   (when (contains? cmap :body)  (emit-field! st (col a :body) (:body cmap) identity (col a :body)))
-  (when (contains? cmap :id)    (emit-field! st (col a :id) (:id cmap) str (col a :id))))
+  (when (contains? cmap :id)    (emit-field! st (col a :id) (:id cmap) str (col a :id)))
+  ;; metadata: one correlated EXISTS per key (indexed on the PK)
+  (when (contains? cmap :metadata)
+    (doseq [[mk spec] (:metadata cmap)]
+      (add-where! st (metadata-exists-pred st kind a mk spec)))))
 
 (defn- ensure-layer-var!
   "Allocate a layer-table alias for a LAYER variable `v` of `kind`, emit its scope
@@ -490,7 +519,7 @@
         (let [[_ v cmap] c]
           ;; emit this clause's attribute filters INSIDE the subquery — for a
           ;; correlated outer var this is the negated predicate's correct home.
-          (emit-entity-filters! sub-st (get-in @sub-st [:var->alias v]) (or cmap {}))
+          (emit-entity-filters! sub-st (first c) (get-in @sub-st [:var->alias v]) (or cmap {}))
           (compile-relation-inline! sub-st inner-cons c))
         :else (compile-rel! sub-st constraints c)))
     (let [subq (cond-> {:select [1] :where (into [:and] (:where @sub-st))}
@@ -613,8 +642,8 @@
     ;; form) against its var's alias — per-clause so two clauses on one var AND.
     (doseq [clause (:where resolved)]
       (when (contains? entity-table (first clause))
-        (let [[_ v cmap] clause]
-          (emit-entity-filters! st (get-in @st [:var->alias v]) (or cmap {})))))
+        (let [[head v cmap] clause]
+          (emit-entity-filters! st head (get-in @st [:var->alias v]) (or cmap {})))))
     ;; Pass C: relationship clauses, inline relation source/target, and negation.
     (doseq [clause (:where resolved)]
       (cond
