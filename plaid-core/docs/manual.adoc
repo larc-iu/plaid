@@ -1133,7 +1133,7 @@ await client.query({
 A few rules of thumb:
 
 * you can only sort by a variable you actually asked for in `find`;
-* what you can sort *by* depends on what the variable is--a token by where it begins or ends or by its position (`begin`, `end`, `precedence`); a span or relation by its `value`; a vocabulary entry by its `form`; anything by its `id` or its `doc`;
+* what you can sort *by* depends on what the variable is--a token by where it begins or ends or by its position (`begin`, `end`, `precedence`) or its `doc`; a span or relation by its `value` or its `doc`; a vocabulary entry by its `form`; and any of them by its `id`;
 * add `"desc"` as a third element--`["?t", "begin", "desc"]`--to go from last to first; the default is first to last.
 
 == What Comes Back
@@ -1167,6 +1167,7 @@ await client.query({
 
 Group by nothing (`group: []`) to get a single overall row--that is just `count` written the long way.
 `sum` and `avg` expect the value to be a number; `min` and `max` work on anything that can be ordered.
+One thing to watch: a "match" is a binding of _all_ the variables in the query, so if your `where` ties the thing you are summing to several others (a span to each of its tokens, say), its value is counted once for each of them, and `sum` and `avg` come out inflated--keep the pattern down to what you are actually measuring.
 This is the one place the query language *summarises* rather than *finds*, and it is deliberately small: these five operations, grouped however you like, and nothing more elaborate.
 
 So that a very broad query cannot overwhelm the server, results are capped.

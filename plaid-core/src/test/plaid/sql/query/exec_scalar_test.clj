@@ -74,6 +74,25 @@
                                 ["<" "?n" 5]]})]
         (is (= #{(str t0) (str t1)} (set (map str (ids r)))))))))
 
+(deftest value-scalar-numeric-comparison
+  ;; Regression: a predicate on a :value scalar must compare the DECODED value
+  ;; numerically, not lexically on the quoted JSON ("100" < "25" is lexically true).
+  (let [pid  (h/create-test-project admin-request "NumProj")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "n"))
+        doc  (h/create-test-document admin-request pid "d1")
+        text (id (h/create-text admin-request txtl doc "aa bb cc"))
+        mk   (fn [b e v] (let [t (id (h/create-token admin-request tokl text b e))]
+                           (id (h/create-span admin-request sl [t] v))))
+        s5   (mk 0 2 5) s10 (mk 3 5 10) _s100 (mk 6 8 100)]
+    (testing "[< ?v 25] on a numeric :value is a NUMERIC compare (5,10 — not 100)"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?s"]
+                       "where" [["span" "?s" {"layer" "NumProj/n" "value" {"var" "?v"}}]
+                                ["<" "?v" 25]]})]
+        (is (= #{(str s5) (str s10)} (set (map (comp str first) (:results r)))))))))
+
 (deftest scalar-validation
   (testing "a scalar var cannot be returned in :find"
     (is (thrown-with-msg?

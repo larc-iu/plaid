@@ -620,6 +620,14 @@ client.query({
   30s time limit still applies, and a very large number of groups is truncated.
 - `find` and `order-by` aren't used with an aggregate `return`.
 
+> ⚠️ **Fan-out matters for `sum`/`avg`.** Because a match is a binding of *all* the
+> query's variables, a one-to-many join repeats the aggregated value once per
+> match. If you bind extra entities — e.g. `["covers", "?s", "?t"]` — a span's
+> value is counted once *per token it covers*, so `sum`/`avg` over `?s`'s value
+> will be inflated by that fan-out (`count` and `min`/`max` are unaffected). Keep
+> the WHERE pattern down to the entity you're aggregating (plus pure filters) when
+> you want a faithful `sum`/`avg`.
+
 ---
 
 ## 10. Result-size guardrails
@@ -708,15 +716,24 @@ clause heads (`'span'`, `'seq'`, `'?'`), variables (`'?d'`), and values
 
 | Kind | Constraint keys |
 |---|---|
-| `span` | `layer` `value` `doc` |
-| `token` | `layer` `doc` `begin` `end` |
-| `relation` | `layer` `value` `doc` `source` `target` |
-| `vocab` | `layer` `form` |
+| `span` | `layer` `value` `doc` `metadata` |
+| `token` | `layer` `doc` `begin` `end` `metadata` |
+| `relation` | `layer` `value` `doc` `source` `target` `metadata` |
+| `vocab` | `layer` `form` `metadata` |
+| `document` | `name` `id` `metadata` |
+| `text` | `body` `doc` `metadata` |
 
-**Relationships** — `[op, "?a", "?b"]`:
+A text-valued constraint (`value`/`form`/`name`/`body`) may be a literal, a list
+(`[a, b]` → IN), a regex (`{"regex": …, "flags"?: "i"}`), or a value variable
+(`{"var": "?v"}`). `metadata` is a map of metadata-key → such a value.
 
-`covers` · `precedes` · `precedes*` · `within` · `first-in` · `source` ·
-`target` · `vocab-link`
+**Relationships** — `[op, "?a", "?b"]` (and `["related*", "?a", "?b", {layer, value?}]`):
+
+`covers` · `precedes` · `precedes*` · `within` · `first-in` · `overlaps` ·
+`contains` · `coextensive` · `source` · `target` · `vocab-link` · `related*`
+
+**Predicates** — `[op, a, b]` where `op` ∈ `=` `!=` `<` `>` `<=` `>=` and each
+term is a bound variable or a literal. Entity vars compare ids (`=`/`!=` only).
 
 **Sequence** — `["seq", {layer, doc?}, element, …]` where each element is
 `[kind, {constraints}]` (optionally `…, "as", "?var"`) or a quantifier wrapper
@@ -733,7 +750,10 @@ existential (and can't be in `find`).
 layer (same-layer join, projection). Constrain it with `["span-layer", "?sl",
 {"name"|"alias": …}]` (or `token-layer`/`relation-layer`/`vocab-layer`).
 
-**Top level** — `{find, where, scope?, limit?, return?, strict-layers?}`.
+**Top level** — `{find, where, scope?, limit?, order-by?, return?, strict-layers?}`.
+`return` is `"ids"` (default) / `"entities"` / `"count"`, or an aggregate spec
+`{group: [vars], aggregates: [[op, src?], …]}` (§9). With an aggregate `return`,
+`find` and `order-by` are omitted.
 
 ---
 

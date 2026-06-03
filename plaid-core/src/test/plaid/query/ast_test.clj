@@ -62,7 +62,12 @@
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "limit" -1})))
         "non-positive limit")
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["frobnicate" "?s"]]})))
-        "unknown clause head")))
+        "unknown clause head")
+    ;; a non-map :scope must be a clean 400, not a 500 from reduce-kv on a non-map
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "scope" "notamap"})))
+        "non-map :scope (string)")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "scope" 5})))
+        "non-map :scope (number)")))
 
 (deftest m2-clauses-infer-kinds
   (testing ":within / :first-in bind tokens; :vocab + :vocab-link bind vocab/token"

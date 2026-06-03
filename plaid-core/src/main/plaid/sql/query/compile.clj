@@ -517,6 +517,9 @@
     (doseq [c inner]
       (cond
         (= :not (first c)) (compile-not! sub-st constraints c)   ; nested NOT EXISTS
+        ;; layer-constraint clauses are fully handled by ensure-layer-var! in the
+        ;; pre-loop ensure-var! above (same skip as the main Pass C loop)
+        (contains? layer-entity-table (first c)) nil
         (contains? entity-table (first c))
         (let [[_ v cmap] c]
           ;; emit this clause's attribute filters INSIDE the subquery — for a
@@ -551,8 +554,14 @@
   (if (ast/var? t)
     (let [kind (get-in @st [:kinds t])]
       (if (= :scalar kind)
-        (or (get-in @st [:scalar-col t])
-            (err-500! (str "Scalar var " t " used in a predicate was never bound") {:var t}))
+        (let [{:keys [sql enc json?]} (or (get-in @st [:scalar-col t])
+                                          (err-500! (str "Scalar var " t " used in a predicate was never bound") {:var t}))]
+          ;; a JSON-encoded scalar (:value) is DECODED for comparison, so e.g.
+          ;; `[< ?v 5]` is a numeric compare, not a lexical one on quoted JSON;
+          ;; the other-side literal is then taken raw (enc identity).
+          (if json?
+            {:sql [:json_extract sql [:inline "$"]] :enc identity}
+            {:sql sql :enc enc}))
         {:sql (col (or (get-in @st [:var->alias t])
                        (err-500! (str "Entity var " t " in a predicate was never bound") {:var t}))
                    :id)

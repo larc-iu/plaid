@@ -19,10 +19,13 @@
   Vars are Clojure symbols beginning with `?` (e.g. `?s1`). JSON sends them as the
   strings \"?s1\"; `parse` converts.
 
-  This namespace covers the v0 (M0+M1) clause set. Clauses recognized but reserved
-  for later milestones (`:within`, `:first-in`, `:vocab`, `:vocab-link`, `:seq`) are
-  rejected by `validate` with a clear \"not yet supported\" message, and `:as-of` is
-  rejected as the bitemporal seam."
+  Covers the full clause set: entity clauses (span/token/relation/vocab/document/
+  text) with literal/list/regex/value-variable constraints + :metadata; the
+  relationship clauses (covers, precedes(*), within, first-in, overlaps, contains,
+  coextensive, source, target, vocab-link, related*); predicate clauses; :or/:seq/
+  :not; layer variables; :order-by; and :return ids/entities/count/aggregate. The
+  `deferred-clauses` mechanism (now empty) still rejects any future-reserved head
+  with a clear message; `:as-of` is rejected as the bitemporal seam."
   (:refer-clojure :exclude [var?])
   (:require [clojure.string :as str]))
 
@@ -287,8 +290,10 @@
     (cond-> {}
       (contains? m :find)   (assoc :find (mapv ->var (:find m)))
       (contains? m :where)  (assoc :where (mapv normalize-clause (:where m)))
-      (contains? m :scope)  (assoc :scope (let [s (reduce-kv (fn [a k v] (assoc a (->kw k) v)) {} (:scope m))]
-                                            s))
+      (contains? m :scope)  (assoc :scope (let [s (:scope m)]
+                                            (when-not (map? s)
+                                              (err! :parse (str ":scope must be a map with :projects and/or :project-ids, got: " (pr-str s))))
+                                            (reduce-kv (fn [a k v] (assoc a (->kw k) v)) {} s)))
       (contains? m :limit)  (assoc :limit (:limit m))
       (contains? m :order-by) (assoc :order-by (let [ob (:order-by m)]
                                                  (when-not (sequential? ob)

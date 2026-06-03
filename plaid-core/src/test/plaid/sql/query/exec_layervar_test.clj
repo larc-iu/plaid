@@ -135,3 +135,25 @@
                                 "where" [["span" "?s" {"layer" "?sl" "value" "NOUN"}]
                                          ["span-layer" "?sl" {"name" "pos"}]]
                                 "strict-layers" true "return" "count"})))))))
+
+(deftest not-with-layer-constraint-clause
+  ;; Regression: a [:span-layer ?SL {...}] clause inside a :not used to fall to
+  ;; compile-rel!'s default branch and throw a 500. It must compile + run.
+  (let [pid  (h/create-test-project admin-request "NLProj")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        feat (id (h/create-span-layer admin-request tokl "feat"))
+        doc  (h/create-test-document admin-request pid "d1")
+        text (id (h/create-text admin-request txtl doc "aa bb"))
+        t0   (id (h/create-token admin-request tokl text 0 2))
+        t1   (id (h/create-token admin-request tokl text 3 5))]
+    (h/create-span admin-request feat [t0] "X")   ; only t0 has a feat span
+    (testing "tokens not covered by any span on a layer NAMED feat"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?t"]
+                       "where" [["token" "?t" {"layer" "NLProj/words"}]
+                                ["not" ["covers" "?s" "?t"]
+                                 ["span" "?s" {"layer" "?SL"}]
+                                 ["span-layer" "?SL" {"name" "feat"}]]]})]
+        ;; t0 has a feat span -> excluded; t1 has none -> included
+        (is (= #{(str t1)} (set (map (comp str first) (:results r)))))))))
