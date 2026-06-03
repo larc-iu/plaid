@@ -79,6 +79,28 @@
                      "return" {"group" [] "aggregates" [["sum" "?v"] ["avg" "?v"]]}})]
       (is (= [[60 20.0]] (:results r))))))
 
+(deftest aggregate-over-or
+  (build!)
+  (testing "count over an :or whose branches bind the SAME vars (UNION-safe)"
+    (let [r (qe/run db "admin@example.com"
+                    {"where" [["or"
+                               [["span" "?s" {"layer" "AggProj/pos" "value" 10}]]
+                               [["span" "?s" {"layer" "AggProj/pos" "value" 20}]]]]
+                     "return" {"group" [] "aggregates" [["count"]]}})]
+      ;; the value-10 span OR the value-20 span -> 2 distinct matches
+      (is (= [[2]] (:results r))))))
+
+(deftest aggregate-asymmetric-branches-400
+  (testing "branches binding different entity vars under aggregation -> clean 400 (not a 500)"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"must bind the same variables"
+         (ast/expand {"where" [["or"
+                                [["span" "?s" {"layer" "AggProj/pos" "value" 10}]
+                                 ["token" "?t" {"layer" "AggProj/words"}]
+                                 ["covers" "?s" "?t"]]
+                                [["span" "?s" {"layer" "AggProj/pos" "value" 20}]]]]
+                      "return" {"group" [] "aggregates" [["count"]]}})))))
+
 (deftest aggregate-validation
   (testing ":find is rejected alongside an aggregate :return"
     (is (thrown-with-msg?

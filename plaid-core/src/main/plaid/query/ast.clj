@@ -850,6 +850,20 @@
                                " — every branch must bind it to the same entity kind")
                 {:var v :kinds (vec ks)}))))))
 
+(defn- check-aggregate-branch-entities!
+  "Under aggregation, the distinct-match key projects EVERY entity/layer var's id,
+  so a UNION's branches must bind the SAME set of those vars (otherwise the branch
+  projections have different shapes — a 500 from the SQL engine). Reject the
+  mismatch with a clean 400."
+  [branch-wheres]
+  (let [entity-sets (mapv (fn [w]
+                            (set (keep (fn [[v k]] (when (not= :scalar k) v))
+                                       (infer-kinds {:where w}))))
+                          branch-wheres)]
+    (when (apply not= entity-sets)
+      (err! :validate (str "When aggregating over alternatives (:or/:seq), every alternative must bind the "
+                           "same variables; got differing sets " (mapv (comp vec sort) entity-sets))))))
+
 (defn expand
   "Parse + desugar (`:seq` / `:or`) + validate. Returns a NON-EMPTY vector of
   validated branch ASTs sharing the same :find/:scope/:limit/:return; the executor
@@ -858,12 +872,12 @@
   [raw]
   (let [parsed (parse raw)
         base (dissoc parsed :where)
+        agg? (aggregate? parsed)
         ;; the vars projected through the UNION: :find normally, or the aggregate
         ;; spec's group + source vars in aggregate mode. Every branch must bind them.
-        projected (if (aggregate? parsed)
-                    (aggregate-vars (:return parsed))
-                    (:find parsed))
+        projected (if agg? (aggregate-vars (:return parsed)) (:find parsed))
         branch-wheres (expand-where (vec (:where parsed)))]
     (when (> (count branch-wheres) 1)
-      (check-branch-consistency! branch-wheres projected))
+      (check-branch-consistency! branch-wheres projected)
+      (when agg? (check-aggregate-branch-entities! branch-wheres)))
     (mapv (fn [w] (validate (assoc base :where (vec w)))) branch-wheres)))

@@ -630,8 +630,6 @@
   [hq]
   (::aggregate (meta hq)))
 
-(defn- agg-col-kw [v] (keyword (str "__a_" (subs (name v) 1))))
-
 (defn- scalar-agg-expr
   "SQL for a scalar var used as a group/aggregate value: json_extract-decoded if
   its column is JSON-encoded (:value), else the bound column."
@@ -651,18 +649,25 @@
          :id)))
 
 (defn- aggregate-projection
-  "Returns {:select <distinct-match projection> :plan <plan for exec>}."
+  "Returns {:select <distinct-match projection> :plan <plan for exec>}. ALL the
+  internal aliases (__g_N / __a_N / __e_N) are POSITIONAL — no user var name ever
+  becomes a SQL identifier. The `__e_N` entity-id columns (which make a match
+  distinct) are ordered by var name so they align across UNION branches; `expand`
+  guarantees every branch binds the same entity-var set under aggregation."
   [st ret]
   (let [group-vars (:group ret)
         g-proj (map-indexed (fn [i v] [(group-expr st v) (keyword (str "__g_" i))]) group-vars)
         agg-srcs (distinct (keep second (:aggregates ret)))
-        a-proj (mapv (fn [v] [(scalar-agg-expr st v) (agg-col-kw v)]) agg-srcs)
-        ;; every aliased (entity/layer) var id makes a match distinct
-        e-proj (map-indexed (fn [i [_ a]] [(col a :id) (keyword (str "__e_" i))]) (:var->alias @st))
+        src->kw (into {} (map-indexed (fn [i v] [v (keyword (str "__a_" i))]) agg-srcs))
+        a-proj (mapv (fn [v] [(scalar-agg-expr st v) (src->kw v)]) agg-srcs)
+        ;; every entity/layer var id makes a match distinct; sort by var name so
+        ;; column N denotes the SAME variable in every branch of a UNION.
+        e-vars (sort-by name (keys (:var->alias @st)))
+        e-proj (map-indexed (fn [i v] [(col (get-in @st [:var->alias v]) :id) (keyword (str "__e_" i))]) e-vars)
         label (fn [op src] (if src (str (name op) "_" (subs (name src) 1)) (name op)))
         plan {:group-cols (mapv second g-proj)
               :group-labels (mapv #(subs (name %) 1) group-vars)
-              :aggs (mapv (fn [[op src]] {:op op :col (when src (agg-col-kw src)) :label (label op src)})
+              :aggs (mapv (fn [[op src]] {:op op :col (when src (src->kw src)) :label (label op src)})
                           (:aggregates ret))}]
     {:select (vec (concat g-proj a-proj e-proj)) :plan plan}))
 
