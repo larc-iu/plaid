@@ -1,16 +1,18 @@
 /**
  * Service coordination: discovery + server-mediated request/response RPC.
  *
- * All of this runs OFF the broadcast bus (`/listen` + `/message`). Discovery is
- * a synchronous read of the server-side registry. Work requests are addressed:
- * a service receives them on its own SSE channel and reports back via plain
- * POSTs that the server relays to the one waiting requester.
+ * All of this runs OFF the broadcast bus (`/listen` + `/message`). A service is
+ * present exactly while its inbound request channel (SSE) is open — that
+ * channel is the registration; there is no separate registry or heartbeat.
+ * Discovery is a synchronous GET. Work requests are addressed: a service
+ * receives them on its channel and reports back via plain POSTs that the
+ * server relays to the one waiting requester.
  */
 import { transformRequest, transformResponse } from './transforms.js';
 
 /**
- * Discover available services in a project — a synchronous read of the
- * server-side registry. `timeout` is accepted for back-compat and ignored.
+ * Discover the services currently connected to a project — a synchronous GET.
+ * `timeout` is accepted for back-compat and ignored.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
@@ -18,16 +20,16 @@ import { transformRequest, transformResponse } from './transforms.js';
  * @returns {Promise<Array>} [{serviceId, serviceName, description, extras}]
  */
 export function discoverServices(client, projectId, timeout) {
-  return client.messages.listServices(projectId);
+  return client._request('GET', `/api/v1/projects/${projectId}/services`);
 }
 
 /**
  * Register a service and handle incoming work requests.
  *
- * Registers in the discovery registry (so `discoverServices` lists it) and
- * opens the service's dedicated request channel. For each request, runs
- * `onServiceRequest(data, responseHelper)` where `responseHelper` has
- * `progress(percent, msg)` / `complete(data)` / `error(err)`.
+ * Opens the service's dedicated request channel — which registers it for
+ * discovery (presence = open channel) — and handles work on it. For each
+ * request, runs `onServiceRequest(data, responseHelper)` where `responseHelper`
+ * has `progress(percent, msg)` / `complete(data)` / `error(err)`.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
@@ -40,7 +42,6 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   const { serviceId, serviceName, description = '' } = serviceInfo;
   let connection = null;
   let isRunning = true;
-  let heartbeatTimer = null;
   let reconnectTimer = null;
 
   const reportEvent = (requestId, body) =>
@@ -54,35 +55,25 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   const serviceRegistration = {
     stop: () => {
       isRunning = false;
-      if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
       if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
-      client.messages.unregisterService(projectId, serviceId).catch(() => {});
+      // Closing the channel deregisters the service server-side.
       if (connection) connection.close();
     },
     isRunning: () => isRunning,
     serviceInfo: { serviceId, serviceName, description, extras },
   };
 
-  // Register for discovery, then re-register on the server-advised interval so
-  // the service stays listed by discoverServices().
-  const registerOnce = () =>
-    client.messages
-      .registerService(projectId, { serviceId, serviceName, description, extras })
-      .catch((error) => {
-        console.warn('Failed to register service:', error.message || error);
-        return null;
-      });
-  registerOnce().then((res) => {
-    if (!isRunning) return;
-    const intervalMs = (res && res.heartbeatIntervalMs) || 30000;
-    heartbeatTimer = setInterval(() => {
-      if (isRunning) registerOnce();
-    }, intervalMs);
-  });
+  // Discovery metadata rides the channel's query string — opening the channel
+  // is the registration. Keep wire keys kebab-case (transform extras too) so
+  // they round-trip like the rest of the API.
+  const params = new URLSearchParams();
+  if (serviceName) params.set('service-name', serviceName);
+  if (description) params.set('description', description);
+  if (extras && Object.keys(extras).length) params.set('extras', JSON.stringify(transformRequest(extras)));
+  const qs = params.toString();
+  const channelPath = `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests${qs ? `?${qs}` : ''}`;
 
-  // Open the dedicated inbound request channel (server -> service). The channel
-  // only carries `connected` (ignored) and `service_request` events.
-  const channelPath = `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests`;
+  // The channel only carries `connected` (ignored) and `service_request` events.
   const onChannelEvent = (eventType, payload) => {
     if (!isRunning) return true;
     if (eventType !== 'service_request' || !payload) return;
@@ -111,13 +102,12 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
     throw new Error(`Failed to start service: ${error.message}`);
   }
 
-  // Reopen the channel if it drops (e.g. the server restarted). On reconnect we
-  // also re-register, so the registry and channel come back together and
-  // discovery never lists the service while it is unreachable.
+  // Reopen the channel if it drops (e.g. the server restarted). Reopening
+  // re-registers the service server-side, so presence and reachability come
+  // back together.
   reconnectTimer = setInterval(() => {
     if (!isRunning) return;
     if (connection && connection.readyState === 2) { // CLOSED (dropped)
-      registerOnce();
       try { connection = openChannel(); } catch (_) { /* retry next tick */ }
     }
   }, 3000);

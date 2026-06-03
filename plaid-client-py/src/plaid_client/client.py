@@ -891,45 +891,6 @@ class MessagesResource(_Resource):
         return self._request('POST', f'/api/v1/projects/{project_id}/message',
                              body={'body': data})
 
-    def register_service(self, project_id: str, service_info: dict) -> Any:
-        """Register (or heartbeat) a service on a project's service registry.
-
-        Re-calling refreshes the service's presence.
-
-        Args:
-            project_id: The UUID of the project
-            service_info: {service_id, service_name, description, extras}
-
-        Returns:
-            {success, ttl_ms, heartbeat_interval_ms}
-        """
-        return self._request('POST', f'/api/v1/projects/{project_id}/services',
-                             body=service_info)
-
-    def unregister_service(self, project_id: str, service_id: str) -> Any:
-        """Unregister a service from a project (clean shutdown).
-
-        Args:
-            project_id: The UUID of the project
-            service_id: The ID of the service to remove
-
-        Returns:
-            {success}
-        """
-        return self._request(
-            'DELETE', f'/api/v1/projects/{project_id}/services/{service_id}')
-
-    def list_services(self, project_id: str) -> list:
-        """List the services currently registered (and still live) on a project.
-
-        Args:
-            project_id: The UUID of the project
-
-        Returns:
-            List of {service_id, service_name, description, extras}
-        """
-        return self._request('GET', f'/api/v1/projects/{project_id}/services')
-
     def discover_services(self, project_id: str, timeout: float = 3.0) -> list:
         """Discover available services in a project.
 

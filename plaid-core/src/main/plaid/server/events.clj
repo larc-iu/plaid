@@ -37,13 +37,6 @@
        {:interval-ms            30000
         :max-consecutive-misses 2}))
 
-(defn service-registry-config []
-  "Get service-registry configuration from global config. `:ttl-ms` is how long
-  a registered service stays 'live' after its last register/heartbeat before it
-  is reaped on read."
-  (get config :plaid.server.events/service-registry
-       {:ttl-ms 90000}))
-
 ;; =============================================================================
 ;; Client Subscription Management
 ;; =============================================================================
@@ -67,24 +60,15 @@
   :start (atom {})
   :stop (reset! heartbeat-registry {}))
 
-;; Service registry maps project-id -> {service-id -> service-entry}, where a
-;; service-entry is {:service-id :service-name :description :extras :user-id
-;; :last-seen <ms>}. This is purely in-memory presence state for NLP/other
-;; services that have registered on a project (see register-service! below);
-;; it is deliberately NOT persisted and NOT audit-logged — there is no record
-;; of which service was active when. Entries go stale and are reaped lazily on
-;; read once they exceed the configured TTL (see list-live-services).
-(defstate service-registry
-  :start (atom {})
-  :stop (reset! service-registry {}))
-
-;; Service request channels: project-id -> {service-id -> http-kit-channel}.
-;; This is the SERVICE's open inbound SSE stream — the dedicated, addressed
-;; channel the server pushes work requests down. Distinct from the broadcast
-;; bus (client-registry / event-bus): a request is delivered to exactly one
-;; service, never fanned out. An open channel is the authoritative "reachable
-;; now" signal for routing (the registry TTL above only gates the discovery
-;; *listing*). Ephemeral, like every other map here.
+;; Connected services: project-id -> {service-id -> entry}, where an entry is
+;; {:channel <http-kit channel> :service-id :service-name :description :extras
+;; :user-id}. The SERVICE's open inbound SSE channel IS its registration: a
+;; service is present exactly while this channel is open. Discovery lists these
+;; entries; routing pushes a request down :channel. There is no separate
+;; registry, TTL, or heartbeat — opening the channel registers, closing it
+;; deregisters, so presence can never diverge from reachability. Distinct from
+;; the broadcast bus (client-registry / event-bus): a request goes to exactly
+;; one service, never fanned out. Ephemeral, not persisted, not audit-logged.
 (defstate service-channels
   :start (atom {})
   :stop (reset! service-channels {}))
@@ -190,114 +174,63 @@
     (swap! channel-mappings dissoc http-channel)))
 
 ;; =============================================================================
-;; Service Registry
+;; Connected services (presence = open request channel) + RPC routing
 ;; =============================================================================
 ;;
-;; A lightweight, in-memory presence registry for services (e.g. an NLP parser)
-;; that have announced themselves on a project. It replaces the old
-;; "broadcast service_discovery and wait" discovery handshake: services POST to
-;; register (and periodically re-POST to stay alive), clients GET the live list
-;; synchronously. Mirrors the client/heartbeat registries above — no DB, no
-;; audit log. Expiry is lazy: stale entries are dropped when the registry is
-;; read, matching the no-background-sweeper style of this namespace.
-
-(defn- service-live?
-  "True if `entry`'s :last-seen is within `ttl-ms` of `now-ms`."
-  [entry now-ms ttl-ms]
-  (some-> (:last-seen entry) (#(< (- now-ms %) ttl-ms))))
-
-(defn register-service!
-  "Register a service on a project, or refresh its presence if already
-  registered (idempotent — re-registration doubles as a heartbeat). `info` is a
-  map of {:service-id :service-name :description :extras}. Stamps :last-seen so
-  the entry is considered live for the configured TTL."
-  [project-id service-id info user-id]
-  (let [entry (assoc (select-keys info [:service-id :service-name :description :extras])
-                     :service-id service-id
-                     :user-id user-id
-                     :last-seen (System/currentTimeMillis))]
-    (swap! service-registry assoc-in [project-id service-id] entry)
-    (log/debug "Registered service" service-id "on project" project-id)
-    entry))
-
-(defn unregister-service!
-  "Remove a service from a project's registry (clean shutdown). Drops the
-  project key entirely once its last service is gone."
-  [project-id service-id]
-  (swap! service-registry
-         (fn [reg]
-           (let [reg' (update reg project-id dissoc service-id)]
-             (if (empty? (get reg' project-id))
-               (dissoc reg' project-id)
-               reg'))))
-  (log/debug "Unregistered service" service-id "on project" project-id)
-  true)
-
-(defn list-live-services
-  "Return the discoverable service entries for a project: those whose registry
-  entry is TTL-fresh AND whose request channel is currently open. Gating on the
-  open channel is what makes discovery honest — a service is listed only if it
-  can actually be reached (a stale registration left by a service that died, or
-  whose channel dropped on a server restart, is hidden). TTL-stale entries are
-  reaped from the registry as a side effect. Ordered by service-id."
-  [project-id]
-  (let [now-ms (System/currentTimeMillis)
-        ttl-ms (:ttl-ms (service-registry-config))
-        services (get @service-registry project-id {})
-        fresh (into {} (filter (fn [[_ entry]] (service-live? entry now-ms ttl-ms)) services))]
-    ;; Reap TTL-stale entries on read (write back the fresh subset, or drop the
-    ;; project key). Channel state is NOT a reap criterion — a registered
-    ;; service whose channel briefly dropped may reconnect, so its metadata
-    ;; stays until the TTL lapses; it is merely hidden from discovery meanwhile.
-    (when (not= (count fresh) (count services))
-      (swap! service-registry
-             (fn [reg]
-               (if (empty? fresh)
-                 (dissoc reg project-id)
-                 (assoc reg project-id fresh)))))
-    (let [open (get @service-channels project-id {})]
-      (->> (vals fresh)
-           (filter (fn [entry] (contains? open (:service-id entry))))
-           (sort-by :service-id)
-           vec))))
-
-;; =============================================================================
-;; Server-mediated RPC routing (addressed; off the broadcast bus)
-;; =============================================================================
-;;
-;; These manage the maps only — the actual SSE framing / http-kit send! / close
-;; lives in the route handlers (plaid.rest-api.v1.message), which own the json +
-;; transport concerns, mirroring how the audit distributor leaves framing to the
-;; /listen handler.
+;; Presence is derived entirely from the open request channel: a service is
+;; "connected" exactly while its SSE channel (opened at GET
+;; /projects/:id/services/:sid/requests) is held. Opening it registers the
+;; service + its discovery metadata; closing it deregisters. There is no
+;; separate registry, TTL, or heartbeat to drift out of sync. These helpers
+;; only manage state — SSE framing / http-kit send! / close live in the route
+;; handlers (plaid.rest-api.v1.message), mirroring how the audit distributor
+;; leaves framing to the /listen handler.
 
 (defn register-service-channel!
-  "Record a service's open inbound request channel (its SSE http-kit channel).
-  Returns nil."
-  [project-id service-id channel]
-  (swap! service-channels assoc-in [project-id service-id] channel)
-  (log/debug "Registered service channel" service-id "on project" project-id)
-  nil)
+  "Record a connected service: its open inbound request channel plus its
+  discovery metadata. Opening the channel IS registration. `info` is a map of
+  {:service-name :description :extras}. Returns nil."
+  [project-id service-id channel info user-id]
+  (let [entry (merge (select-keys info [:service-name :description :extras])
+                     {:channel    channel
+                      :service-id service-id
+                      :user-id    user-id})]
+    (swap! service-channels assoc-in [project-id service-id] entry)
+    (log/debug "Service connected:" service-id "on project" project-id)
+    nil))
 
 (defn unregister-service-channel!
-  "Remove a service's request channel (only if it still maps to `channel`, so a
-  reconnect that replaced it isn't clobbered by the old connection's on-close).
-  Drops the project key when its last service channel is gone."
+  "Deregister a connected service (its channel closed), but only if it still
+  maps to `channel` — so a reconnect that already replaced the entry isn't
+  clobbered by the old connection's on-close. Drops the project key when its
+  last service is gone."
   [project-id service-id channel]
   (swap! service-channels
-         (fn [chans]
-           (if (= channel (get-in chans [project-id service-id]))
-             (let [chans' (update chans project-id dissoc service-id)]
-               (if (empty? (get chans' project-id))
-                 (dissoc chans' project-id)
-                 chans'))
-             chans)))
-  (log/debug "Unregistered service channel" service-id "on project" project-id)
+         (fn [svcs]
+           (if (= channel (get-in svcs [project-id service-id :channel]))
+             (let [svcs' (update svcs project-id dissoc service-id)]
+               (if (empty? (get svcs' project-id))
+                 (dissoc svcs' project-id)
+                 svcs'))
+             svcs)))
+  (log/debug "Service disconnected:" service-id "on project" project-id)
   nil)
 
 (defn get-service-channel
   "The open inbound channel for a service, or nil if none is connected."
   [project-id service-id]
-  (get-in @service-channels [project-id service-id]))
+  (get-in @service-channels [project-id service-id :channel]))
+
+(defn list-live-services
+  "Discovery: the connected services on a project as public metadata maps
+  {:service-id :service-name :description :extras}, ordered by service-id. A
+  service appears exactly while its request channel is open — there is no
+  separate registry to drift out of sync."
+  [project-id]
+  (->> (vals (get @service-channels project-id {}))
+       (map #(select-keys % [:service-id :service-name :description :extras]))
+       (sort-by :service-id)
+       vec))
 
 (defn track-request!
   "Record an in-flight RPC so the service's reply events can be routed back to
@@ -542,6 +475,5 @@
   (try (reset! client-registry {}) (catch Exception _))
   (try (reset! channel-mappings {}) (catch Exception _))
   (try (reset! heartbeat-registry {}) (catch Exception _))
-  (try (reset! service-registry {}) (catch Exception _))
   (try (reset! service-channels {}) (catch Exception _))
   (try (reset! inflight-requests {}) (catch Exception _)))

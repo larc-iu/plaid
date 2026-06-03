@@ -15,8 +15,7 @@
   "Start the ephemeral RPC defstates the test fixture chain otherwise leaves
   unstarted (mount isn't run by the fixtures)."
   [f]
-  (mount/start #'plaid.server.events/service-registry
-               #'plaid.server.events/service-channels
+  (mount/start #'plaid.server.events/service-channels
                #'plaid.server.events/inflight-requests)
   (f))
 
@@ -40,7 +39,7 @@
   (let [pid (random-uuid)
         ch (Object.)
         other (Object.)]
-    (events/register-service-channel! pid "svc" ch)
+    (events/register-service-channel! pid "svc" ch {:service-name "S"} "u1")
     (is (= ch (events/get-service-channel pid "svc")))
     (testing "unregister only fires when the channel still matches (reconnect-safe)"
       (events/unregister-service-channel! pid "svc" other)
@@ -62,7 +61,7 @@
     (is (nil? (events/resolve-request! "r1")) "resolving twice is a no-op")))
 
 (deftest reset-state-clears-rpc-maps
-  (events/register-service-channel! (random-uuid) "svc" (Object.))
+  (events/register-service-channel! (random-uuid) "svc" (Object.) {:service-name "S"} "u1")
   (events/track-request! "rid" (Object.) (random-uuid) "svc")
   (events/reset-state!)
   (is (empty? @events/service-channels))

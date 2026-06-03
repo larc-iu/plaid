@@ -137,28 +137,37 @@
 
 (defn service-channel-handler
   "SSE stream a service opens to RECEIVE work requests (server -> service).
-  Presence on this channel is what makes the service reachable for RPC."
-  [{{{:keys [id service-id]} :path} :parameters :as req}]
-  (http-kit/as-channel
-   req
-   {:on-open
-    (fn [channel]
-      (http-kit/send! channel {:status 200 :headers sse-response-headers} false)
-      (http-kit/send! channel (sse-event "connected" {:status "connected" :service-id service-id}) false)
-      (events/register-service-channel! id service-id channel)
-      (log/debug "Service channel opened for" service-id "on project" id)
-      (start-keepalive! channel))
-    :on-close
-    (fn [channel _]
-      (events/unregister-service-channel! id service-id channel)
-      ;; Fail any in-flight requests that were routed to this now-gone service.
-      (doseq [[request-id {:keys [requester]}] (events/requests-for-service id service-id)]
-        (when requester
-          (try (http-kit/send! requester (sse-event "error" {:error "Service disconnected"}) false)
-               (catch Exception _))
-          (try (http-kit/close requester) (catch Exception _)))
-        (events/resolve-request! request-id))
-      (log/debug "Service channel closed for" service-id "on project" id))}))
+  Holding this channel open IS the service's registration; its discovery
+  metadata (service-name / description / extras) rides the query string, and
+  closing the channel deregisters it."
+  [{{{:keys [id service-id]} :path
+     {:keys [service-name description extras]} :query} :parameters
+    user-id :user/id :as req}]
+  (let [info {:service-name service-name
+              :description description
+              :extras (when extras
+                        (try (json/read-str extras :key-fn keyword)
+                             (catch Exception _ nil)))}]
+    (http-kit/as-channel
+     req
+     {:on-open
+      (fn [channel]
+        (http-kit/send! channel {:status 200 :headers sse-response-headers} false)
+        (http-kit/send! channel (sse-event "connected" {:status "connected" :service-id service-id}) false)
+        (events/register-service-channel! id service-id channel info user-id)
+        (log/debug "Service channel opened for" service-id "on project" id)
+        (start-keepalive! channel))
+      :on-close
+      (fn [channel _]
+        (events/unregister-service-channel! id service-id channel)
+        ;; Fail any in-flight requests that were routed to this now-gone service.
+        (doseq [[request-id {:keys [requester]}] (events/requests-for-service id service-id)]
+          (when requester
+            (try (http-kit/send! requester (sse-event "error" {:error "Service disconnected"}) false)
+                 (catch Exception _))
+            (try (http-kit/close requester) (catch Exception _)))
+          (events/resolve-request! request-id))
+        (log/debug "Service channel closed for" service-id "on project" id))})))
 
 (defn submit-request-handler
   "Client POSTs work for a service; the response is an SSE stream of that
@@ -253,56 +262,29 @@
                          {:status 500
                           :body {:error "Failed to publish message"}}))}}]
 
-   ;; Service registry: in-memory presence for services (e.g. NLP parsers) that
-   ;; announce themselves on a project. Not persisted, not audit-logged.
+   ;; Service discovery: the services currently connected to a project (presence
+   ;; = an open request channel; see below). Synchronous read, not the old
+   ;; broadcast-and-wait handshake. Not persisted, not audit-logged.
    ["/services"
-    {;; List the services currently registered (and still live) on a project.
-     ;; Replaces the old broadcast-and-wait discovery handshake with a single
-     ;; synchronous read.
-     :get {:summary "List the services currently registered on a project."
+    {:get {:summary "List the services currently connected to a project."
            :middleware [[pra/wrap-reader-required get-project-id]]
            :handler (fn [{{{:keys [id]} :path} :parameters}]
                       {:status 200
-                       :body (mapv #(select-keys % [:service-id :service-name :description :extras])
-                                   (events/list-live-services id))})}
-     ;; Register a service, or refresh its presence (idempotent — re-POSTing is
-     ;; how a service heartbeats). The response advises a re-registration
-     ;; interval so the service can keep itself live.
-     :post {:summary "Register a service on a project (re-POST to heartbeat)."
-            :middleware [[pra/wrap-writer-required get-project-id]]
-            :openapi {:x-client-method "register-service"}
-            :parameters {:body [:map
-                                [:service-id :string]
-                                [:service-name :string]
-                                [:description {:optional true} :string]
-                                [:extras {:optional true} any?]]}
-            :handler (fn [{{{:keys [id]} :path
-                            {:keys [service-id] :as info} :body} :parameters
-                           user-id :user/id}]
-                       (events/register-service! id service-id info user-id)
-                       (let [ttl-ms (:ttl-ms (events/service-registry-config))]
-                         {:status 200
-                          :body {:success true
-                                 :ttl-ms ttl-ms
-                                 :heartbeat-interval-ms (quot ttl-ms 3)}}))}}]
-
-   ["/services/:service-id"
-    {:parameters {:path [:map [:id :uuid] [:service-id :string]]}
-     :delete {:summary "Unregister a service from a project (clean shutdown)."
-              :middleware [[pra/wrap-writer-required get-project-id]]
-              :openapi {:x-client-method "unregister-service"}
-              :handler (fn [{{{:keys [id service-id]} :path} :parameters}]
-                         (events/unregister-service! id service-id)
-                         {:status 200
-                          :body {:success true}})}}]
+                       :body (events/list-live-services id)})}}]
 
    ;; Server-mediated RPC: the service's inbound request stream (GET) and the
-   ;; client's work-submission stream (POST). Addressed, not broadcast.
+   ;; client's work-submission stream (POST). Addressed, not broadcast. Opening
+   ;; the GET stream registers the service for discovery (metadata rides the
+   ;; query string); closing it deregisters.
    ["/services/:service-id/requests"
     {:parameters {:path [:map [:id :uuid] [:service-id :string]]}
-     :get {:summary "Service: open the inbound work-request stream (SSE)."
+     :get {:summary "Service: open the inbound work-request stream (SSE); this registers the service."
            :middleware [[pra/wrap-writer-required get-project-id]]
            :openapi {:x-client-method "serve-channel"}
+           :parameters {:query [:map
+                                [:service-name {:optional true} :string]
+                                [:description {:optional true} :string]
+                                [:extras {:optional true} :string]]}
            :handler service-channel-handler}
      :post {:summary "Client: submit work to a service; streams progress + result (SSE)."
             :middleware [[pra/wrap-writer-required get-project-id]]

@@ -12,12 +12,6 @@ interface DiscoveredService {
   extras: any;
 }
 
-interface ServiceRegistrationResult {
-  success: boolean;
-  ttlMs: number;
-  heartbeatIntervalMs: number;
-}
-
 interface ServiceRegistration {
   stop(): void;
   isRunning(): boolean;
@@ -148,13 +142,7 @@ interface DocumentsBundle {
 interface MessagesBundle {
   sendMessage(projectId: string, data: any): Promise<any>;
   listen(projectId: string, onEvent: (eventType: string, data: any) => void | boolean, path?: string): SSEConnection;
-  /** Register (or heartbeat) a service in the project's service registry. */
-  registerService(projectId: string, serviceInfo: ServiceInfo): Promise<ServiceRegistrationResult>;
-  /** Remove a service from the registry (clean shutdown). */
-  unregisterService(projectId: string, serviceId: string): Promise<{ success: boolean }>;
-  /** List the services currently registered (and still live) on a project. */
-  listServices(projectId: string): Promise<DiscoveredService[]>;
-  /** Discover services via the registry. `timeout` is ignored (kept for back-compat). */
+  /** Discover the services currently connected to a project. `timeout` is ignored (kept for back-compat). */
   discoverServices(projectId: string, timeout?: number): Promise<DiscoveredService[]>;
   serve(projectId: string, serviceInfo: ServiceInfo, onServiceRequest: (data: any, responseHelper: ResponseHelper) => void, extras?: any): ServiceRegistration;
   /** Submit work to a service; streams progress to `onProgress`, resolves with the result. */

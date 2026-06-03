@@ -44,11 +44,6 @@
  :plaid.server.events/heartbeat {:interval-ms 30000
                                  :max-consecutive-misses 2}
 
- ;; Service registry: how long a registered service stays "live" after its last
- ;; register/heartbeat before it is reaped. Services re-register at roughly
- ;; ttl-ms/3 (the server advises this interval in the registration response).
- :plaid.server.events/service-registry {:ttl-ms 90000}
-
  ;; CORS: by default no cross-origin requests are allowed (frontends must be
  ;; served from the same origin as the API). To allow specific frontend
  ;; origins, add the EXACT origin strings (not regexes) to

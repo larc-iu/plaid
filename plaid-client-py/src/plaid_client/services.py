@@ -1,13 +1,16 @@
 """Service coordination: discovery + server-mediated request/response RPC.
 
-All of this runs OFF the broadcast bus (`/listen` + `/message`). Discovery is a
-synchronous read of the server-side registry. Work requests are addressed: a
-service receives them on its own SSE channel and reports back via plain POSTs
-that the server relays to the one waiting requester.
+All of this runs OFF the broadcast bus (`/listen` + `/message`). A service is
+present exactly while its inbound request channel (SSE) is open — that channel
+is the registration; there is no separate registry or heartbeat. Discovery is a
+synchronous GET. Work requests are addressed: a service receives them on its
+channel and reports back via plain POSTs that the server relays to the one
+waiting requester.
 """
 import json
 import logging
 import threading
+import urllib.parse
 
 import requests
 
@@ -18,10 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 def discover_services(client, project_id, timeout=None):
-    """Discover available services in a project — a synchronous read of the
-    server-side registry. ``timeout`` is accepted for back-compat and ignored.
+    """Discover the services currently connected to a project — a synchronous
+    GET. ``timeout`` is accepted for back-compat and ignored.
     """
-    return client.messages.list_services(project_id)
+    return client.messages._request('GET', f'/api/v1/projects/{project_id}/services')
 
 
 def _report_event(client, project_id, request_id, body):
@@ -34,11 +37,12 @@ def _report_event(client, project_id, request_id, body):
 
 
 class ServiceRegistration:
-    """Handle for a running service registration created by ``serve``.
+    """Handle for a running service created by ``serve``.
 
-    Holds the inbound request channel (SSE) the service receives work on, plus
-    a background thread that re-registers in the discovery registry so the
-    service stays listed by ``discover_services``.
+    Holds the inbound request channel (SSE) the service receives work on.
+    Holding that channel open IS the registration — there is no separate
+    registry entry or heartbeat. A supervisor thread reopens the channel if it
+    drops (e.g. the server restarted), so the service self-heals.
 
     Attributes:
         service_info: The registered metadata
@@ -55,30 +59,12 @@ class ServiceRegistration:
         self._open_channel = open_channel  # () -> SSEConnection, to (re)open the channel
         self._running = True
         self._stop_event = threading.Event()
-        self._heartbeat_thread = None
         self._supervisor_thread = None
-
-    def _start_heartbeat(self, interval_s):
-        """Spawn a daemon thread that re-registers every ``interval_s`` seconds
-        to keep the discovery-registry entry live."""
-        def loop():
-            # `wait` returns True when stopped, False on timeout — so the loop
-            # exits promptly on stop() instead of sleeping out the interval.
-            while not self._stop_event.wait(timeout=interval_s):
-                try:
-                    self._client.messages.register_service(
-                        self._project_id, self.service_info)
-                except Exception:
-                    logger.warning('Failed to send service heartbeat')
-
-        self._heartbeat_thread = threading.Thread(target=loop, daemon=True)
-        self._heartbeat_thread.start()
 
     def _start_supervisor(self, check_interval_s=3.0):
         """Spawn a daemon thread that reopens the request channel if it drops
-        (e.g. the server restarted). On reconnect it also re-registers, so the
-        registry and the channel come back together and discovery never lists
-        the service while it is unreachable."""
+        (e.g. the server restarted). Reopening the channel re-registers the
+        service server-side, so presence and reachability come back together."""
         def loop():
             while not self._stop_event.wait(timeout=check_interval_s):
                 if not self._running:
@@ -90,11 +76,6 @@ class ServiceRegistration:
                     if not self._running:
                         break
                     try:
-                        self._client.messages.register_service(
-                            self._project_id, self.service_info)
-                    except Exception:
-                        logger.warning('Re-register on reconnect failed')
-                    try:
                         self._connection = self._open_channel()
                         logger.info('Service channel reconnected for %s', self._service_id)
                     except Exception:
@@ -104,16 +85,10 @@ class ServiceRegistration:
         self._supervisor_thread.start()
 
     def stop(self):
-        """Stop serving: halt heartbeats, unregister from the registry, and
-        close the request channel."""
+        """Stop serving: close the request channel (which deregisters the
+        service server-side)."""
         self._running = False
         self._stop_event.set()
-        if self._client and self._project_id and self._service_id:
-            try:
-                self._client.messages.unregister_service(
-                    self._project_id, self._service_id)
-            except Exception:
-                logger.warning('Failed to unregister service')
         if self._connection:
             self._connection.close()
 
@@ -125,8 +100,9 @@ class ServiceRegistration:
 def serve(client, project_id, service_info, on_service_request, extras=None):
     """Register a service and handle incoming work requests.
 
-    Registers in the discovery registry (so ``discover_services`` lists it) and
-    opens the service's dedicated request channel. For each request, runs
+    Opens the service's dedicated request channel — which registers it for
+    discovery (presence = open channel) — and handles work on it. For each
+    request, runs
     ``on_service_request(data, response_helper)`` where ``response_helper`` has
     ``progress(percent, msg)`` / ``complete(data)`` / ``error(err)``. The
     handler runs synchronously on the channel's reader thread (one request at a
@@ -152,7 +128,17 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
                  'description': description, 'extras': extras}
     registration = ServiceRegistration(full_info, None, client=client,
                                        project_id=project_id, service_id=service_id)
+
+    # Discovery metadata rides the channel's query string — opening the channel
+    # is the registration. Keep wire keys kebab-case (transform extras too) so
+    # they round-trip like the rest of the API.
+    params = {'service-name': service_name, 'description': description}
+    if extras:
+        params['extras'] = json.dumps(transform_request(extras))
+    query = urllib.parse.urlencode({k: v for k, v in params.items() if v})
     channel_path = f'/api/v1/projects/{project_id}/services/{service_id}/requests'
+    if query:
+        channel_path = f'{channel_path}?{query}'
 
     def open_channel():
         return client.messages.listen(project_id, on_event, path=channel_path)
@@ -202,14 +188,8 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
         except Exception as e:
             helper.error(str(e))
 
-    # Register for discovery, then open the dedicated inbound request channel.
-    try:
-        res = client.messages.register_service(project_id, full_info)
-        interval_ms = (res or {}).get('heartbeat_interval_ms') or 30000
-    except Exception:
-        logger.warning('Failed to register service')
-        interval_ms = 30000
-
+    # Open the inbound request channel; this registers the service for
+    # discovery (presence = open channel).
     try:
         connection = open_channel()
     except Exception as e:
@@ -217,7 +197,6 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
 
     registration._connection = connection
     registration._open_channel = open_channel
-    registration._start_heartbeat(interval_ms / 1000.0)
     registration._start_supervisor()
     return registration
 
