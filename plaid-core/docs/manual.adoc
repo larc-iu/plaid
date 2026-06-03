@@ -1150,6 +1150,25 @@ await client.query({ find: ["?s"], where: [/* ... */], return: "count" });
 // -> { return: "count", count: 38 }
 ----
 
+When a single total is not enough--when you want a number *per group*--`return` can instead be a small summary.
+You give a list of variables to `group` by and a list of `aggregates` to compute for each group.
+The aggregates are the familiar ones: `count` (how many matches), and `sum`, `avg`, `min`, `max` of a value you have named with a variable.
+
+[,javascript]
+----
+// the number of words in each document, and how far into the text they range, in ONE query
+await client.query({
+  where: [["token", "?t", { layer: "Words", doc: { var: "?d" }, begin: { var: "?b" } }]],
+  return: { group: ["?d"], aggregates: [["count"], ["min", "?b"], ["max", "?b"], ["avg", "?b"]] },
+});
+// -> { return: "aggregate", columns: ["d","count","min_b","max_b","avg_b"],
+//      results: [ ["<doc-1>", 137, 0, 980, 412.6], ... ] }
+----
+
+Group by nothing (`group: []`) to get a single overall row--that is just `count` written the long way.
+`sum` and `avg` expect the value to be a number; `min` and `max` work on anything that can be ordered.
+This is the one place the query language *summarises* rather than *finds*, and it is deliberately small: these five operations, grouped however you like, and nothing more elaborate.
+
 So that a very broad query cannot overwhelm the server, results are capped.
 An `ids` or `entities` query returns at most a hundred matches by default--and at most a thousand even if you ask for more with `limit`.
 When there are more matches than were returned, the result's `truncated` flag is set, so you know it was cut short.

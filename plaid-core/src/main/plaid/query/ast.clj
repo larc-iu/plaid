@@ -79,6 +79,12 @@
 (def ^:private pred-ops #{:= :!= :< :> :<= :>=})
 (def ^:private order-pred-ops #{:< :> :<= :>=})
 
+;; Aggregate ops for `:return {:group [...] :aggregates [[op src?]...]}`. `:count`
+;; counts matches (no source); the rest aggregate a scalar variable. SUM/AVG
+;; assume the scalar is numeric; MIN/MAX work on anything comparable.
+(def ^:private agg-ops #{:count :sum :avg :min :max})
+(def ^:private agg-needs-source #{:sum :avg :min :max})
+
 ;; Layer-constraint clauses: [:span-layer ?sl {constraint-map}]. The head IS the
 ;; layer kind; binds/constrains a LAYER variable. Value = allowed constraint keys.
 (def ^:private layer-clauses
@@ -252,6 +258,24 @@
   (let [[v attr dir] spec]
     [(->var v) (->kw attr) (if (nil? dir) :asc (->kw dir))]))
 
+(defn- normalize-agg-entry
+  "Canonicalize one aggregate to `[:op]` (count) or `[:op ?src]`."
+  [entry]
+  (when-not (and (sequential? entry) (<= 1 (count entry) 2))
+    (err! :parse (str "Each aggregate must be [op] or [op var], got: " (pr-str entry))))
+  (let [[op src] entry]
+    (cond-> [(->kw op)] (some? src) (conj (->var src)))))
+
+(defn- normalize-return
+  "`:return` is either a keyword (:ids/:entities/:count) or an aggregate spec map
+  `{:group [vars] :aggregates [[op src?]...]}`."
+  [v]
+  (if (map? v)
+    (let [m (reduce-kv (fn [a k vv] (assoc a (->kw k) vv)) {} v)]
+      {:group (mapv ->var (:group m []))
+       :aggregates (mapv normalize-agg-entry (:aggregates m []))})
+    (->kw v)))
+
 (defn parse
   "Normalize a raw request map (string- or keyword-keyed; JSON or EDN dialect)
   into the canonical EDN AST. Pure; does not validate semantics beyond the
@@ -270,7 +294,7 @@
                                                  (when-not (sequential? ob)
                                                    (err! :parse (str ":order-by must be a list of [var attr dir] entries, got: " (pr-str ob))))
                                                  (mapv normalize-order-spec ob)))
-      (contains? m :return) (assoc :return (->kw (:return m)))
+      (contains? m :return) (assoc :return (normalize-return (:return m)))
       (contains? m :strict-layers) (assoc :strict-layers (:strict-layers m))
       (contains? m :as-of)  (assoc :as-of (:as-of m)))))     ; carried so validate can reject it
 
@@ -370,23 +394,59 @@
   [ast]
   (reduce clause-kinds {} (:where ast)))
 
+(defn aggregate?
+  "True if `:return` is an aggregate spec (a `{:group .. :aggregates ..}` map)
+  rather than a plain :ids/:entities/:count keyword."
+  [ast]
+  (map? (:return ast)))
+
+(defn aggregate-vars
+  "The vars an aggregate :return references: its group keys + each aggregate's
+  source var. These are the vars projected through the (UNION'd) match query."
+  [ret]
+  (into (vec (:group ret)) (keep second) (:aggregates ret)))
+
 ;; ---------------------------------------------------------------------------
 ;; Validate
 ;; ---------------------------------------------------------------------------
 
+(defn- validate-aggregate-spec!
+  [ret]
+  (let [{:keys [group aggregates]} ret]
+    (when-not (vector? group)
+      (err! :validate ":return :group must be a list of vars"))
+    (when-not (every? var? group)
+      (err! :validate (str ":return :group may only contain vars, got: " (pr-str (remove var? group)))))
+    (when-not (and (vector? aggregates) (seq aggregates))
+      (err! :validate ":return :aggregates must be a non-empty list"))
+    (doseq [[op src] aggregates]
+      (when-not (agg-ops op)
+        (err! :validate (str ":return aggregate op " (pr-str op) " is not supported (one of "
+                             (vec (sort agg-ops)) ")")))
+      (if (agg-needs-source op)
+        (when-not (var? src)
+          (err! :validate (str ":return aggregate :" (name op) " needs a source variable")))
+        (when (some? src)
+          (err! :validate (str ":return aggregate :" (name op) " takes no source variable")))))))
+
 (defn- validate-shape!
   [ast]
-  (when-not (and (vector? (:find ast)) (seq (:find ast)))
-    (err! :validate ":find must be a non-empty list of vars"))
-  (when-not (every? var? (:find ast))
-    (err! :validate (str ":find may only contain vars, got: " (pr-str (remove var? (:find ast))))))
-  ;; ?__-prefixed names are reserved for internal columns (e.g. order-by's hidden
-  ;; __ord_N projections); reject them as :find vars to avoid alias collisions.
-  (when-let [reserved (seq (filter #(str/starts-with? (name %) "?__") (:find ast)))]
-    (err! :validate (str "Variable names beginning with ?__ are reserved: " (vec reserved))))
-  (when-not (apply distinct? (:find ast))
-    (err! :validate (str ":find has duplicate variables: "
-                         (pr-str (->> (:find ast) frequencies (keep (fn [[v n]] (when (> n 1) v))) vec)))))
+  (let [agg? (aggregate? ast)]
+    (if agg?
+      (when (contains? ast :find)
+        (err! :validate ":find is not used with an aggregate :return (group/aggregate instead)"))
+      (do
+        (when-not (and (vector? (:find ast)) (seq (:find ast)))
+          (err! :validate ":find must be a non-empty list of vars"))
+        (when-not (every? var? (:find ast))
+          (err! :validate (str ":find may only contain vars, got: " (pr-str (remove var? (:find ast))))))
+        ;; ?__-prefixed names are reserved for internal columns (e.g. order-by's
+        ;; hidden __ord_N projections); reject them to avoid alias collisions.
+        (when-let [reserved (seq (filter #(str/starts-with? (name %) "?__") (:find ast)))]
+          (err! :validate (str "Variable names beginning with ?__ are reserved: " (vec reserved))))
+        (when-not (apply distinct? (:find ast))
+          (err! :validate (str ":find has duplicate variables: "
+                               (pr-str (->> (:find ast) frequencies (keep (fn [[v n]] (when (> n 1) v))) vec))))))))
   (when-not (vector? (:where ast))
     (err! :validate ":where must be a list of clauses"))
   (when (empty? (:where ast))
@@ -397,8 +457,12 @@
     (when-not (and (integer? l) (pos? l))
       (err! :validate (str ":limit must be a positive integer, got: " (pr-str l)))))
   (when-let [r (:return ast)]
-    (when-not (#{:ids :entities :count} r)
-      (err! :validate (str ":return " (pr-str r) " is not supported (one of :ids, :entities, :count)"))))
+    (cond
+      (map? r) (validate-aggregate-spec! r)
+      (not (#{:ids :entities :count} r))
+      (err! :validate (str ":return " (pr-str r) " is not supported (one of :ids, :entities, :count, or an aggregate spec)"))))
+  (when (and (aggregate? ast) (:order-by ast))
+    (err! :validate ":order-by is not supported with an aggregate :return (v0)"))
   (when (contains? ast :strict-layers)
     (when-not (boolean? (:strict-layers ast))
       (err! :validate (str ":strict-layers must be true or false, got: " (pr-str (:strict-layers ast))))))
@@ -598,6 +662,17 @@
         (when-not (and allowed (allowed attr))
           (err! :validate (str ":order-by cannot sort a " (name (or k :unknown)) " var (" v ") by "
                                attr "; allowed: " (vec (sort (or allowed #{}))))))))
+    ;; aggregate spec: group + source vars must be positively bound; aggregate
+    ;; SOURCE vars must be scalar (a value to aggregate, not an entity id).
+    (when (aggregate? ast)
+      (let [ret (:return ast)]
+        (doseq [v (aggregate-vars ret)]
+          (when-not (positive v)
+            (err! :validate (str ":return references unbound var " v))))
+        (doseq [[op src] (:aggregates ret) :when src]
+          (when-not (= :scalar (get kinds src))
+            (err! :validate (str ":return aggregate :" (name op) " source " src
+                                 " must be a value variable ({... {var " src "}}), not an entity"))))))
     (-> ast
         (assoc :return (or (:return ast) :ids))
         (assoc ::var-kinds kinds))))
@@ -783,7 +858,12 @@
   [raw]
   (let [parsed (parse raw)
         base (dissoc parsed :where)
+        ;; the vars projected through the UNION: :find normally, or the aggregate
+        ;; spec's group + source vars in aggregate mode. Every branch must bind them.
+        projected (if (aggregate? parsed)
+                    (aggregate-vars (:return parsed))
+                    (:find parsed))
         branch-wheres (expand-where (vec (:where parsed)))]
     (when (> (count branch-wheres) 1)
-      (check-branch-consistency! branch-wheres (:find parsed)))
+      (check-branch-consistency! branch-wheres projected))
     (mapv (fn [w] (validate (assoc base :where (vec w)))) branch-wheres)))

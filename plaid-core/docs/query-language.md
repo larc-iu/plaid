@@ -587,6 +587,39 @@ r["results"][0][0]
 A scalar count of distinct matches. It ignores `limit`. For safety it is computed
 up to 100,000; a result past that reports `count: 100000, truncated: true`.
 
+### Aggregates (`{group, aggregates}`)
+
+Instead of a keyword, `return` can be an **aggregate spec** — group the matches by
+one or more variables and reduce each group:
+
+```python
+client.query({
+    "where": [["token", "?t", {"layer": "Words",
+                               "doc": {"var": "?d"}, "begin": {"var": "?b"}}]],
+    "return": {"group": ["?d"],
+               "aggregates": [["count"], ["min", "?b"], ["max", "?b"], ["avg", "?b"]]},
+})
+# -> {"return": "aggregate",
+#     "columns": ["d", "count", "min_b", "max_b", "avg_b"],
+#     "results": [["<doc1>", 137, 0, 980, 412.6], ...],
+#     "truncated": false}
+```
+
+- **Ops:** `count` (counts matches, no source), and `sum` / `avg` / `min` / `max`
+  over a **value variable** (`{begin: {var: "?b"}}`, `{value: {var: "?v"}}`, …).
+  `sum`/`avg` assume the value is numeric (a `value` is JSON-decoded first, so a
+  numeric annotation value adds up correctly); `min`/`max` work on anything
+  comparable.
+- **Group keys** are bound variables (an entity → grouped by its id; a value
+  variable → grouped by its value). `"group": []` (or omitted) gives one overall
+  row — the general form of `return: "count"`.
+- Aggregation runs over the **distinct set of matches** (every distinct binding of
+  the query's variables). Result columns are the group variable names followed by
+  one column per aggregate (`op` for `count`, `op_var` otherwise).
+- Groups aren't matches, so they're **not** subject to the 100/1000 row cap; the
+  30s time limit still applies, and a very large number of groups is truncated.
+- `find` and `order-by` aren't used with an aggregate `return`.
+
 ---
 
 ## 10. Result-size guardrails

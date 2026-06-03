@@ -198,6 +198,32 @@
     {:select [[:%count.* :n]]
      :from [[capped :_c]]}))
 
+(def ^:private agg-group-cap
+  "Max group rows an aggregate query returns. Groups are not matches, so this is
+  NOT the 100/1000 match cap — it's a generous backstop; past it `:truncated` is
+  set. The 30s watchdog still bounds runtime."
+  100000)
+
+(defn- aggregate-query
+  "Wrap the (union of) distinct-match branches in a GROUP BY per `plan`, under
+  `limit` group rows. Returns {:hq <honeysql> :read-kws [...] :labels [...]}: the
+  SQL aliases aggregates to safe `__c_N` keys; `labels` are the human column
+  names for the result envelope."
+  [hqs plan limit]
+  (let [inner (if (= 1 (count hqs)) (first hqs) {:union hqs})
+        group-cols (:group-cols plan)
+        agg-selects (map-indexed
+                     (fn [j {:keys [op col]}]
+                       [(if (= op :count) :%count.* [op col]) (keyword (str "__c_" j))])
+                     (:aggs plan))
+        read-kws (into (vec group-cols) (map second agg-selects))
+        labels (into (vec (:group-labels plan)) (map :label (:aggs plan)))
+        hq (cond-> {:select (into (vec group-cols) agg-selects)
+                    :from [[inner :_agg]]
+                    :limit limit}
+             (seq group-cols) (assoc :group-by (vec group-cols)))]
+    {:hq hq :read-kws read-kws :labels labels}))
+
 (defn- hydrate
   "Replace each id cell in `id-results` with its full REST-shape entity map.
   Each distinct (kind, id) is fetched once (cached), reusing the kind's public
@@ -232,11 +258,27 @@
         ;; exec owns the limit policy: compile every branch without its own
         ;; :limit, then apply the effective limit once at assembly.
         hqs (mapv (fn [b] (qc/compile-query (qr/resolve-query db user-id (dissoc b :limit)))) branches)]
-    (if (= return-type :count)
+    (cond
+      (ast/aggregate? head)
+      (let [plan (qc/aggregate-plan (first hqs))
+            lim (min (or (:limit head) agg-group-cap) agg-group-cap)
+            {:keys [hq read-kws labels]} (aggregate-query hqs plan (inc lim))
+            rows (run-bounded db (fn [conn] (psc/q conn hq)))
+            truncated? (> (count rows) lim)
+            rows (vec (take lim rows))]
+        {:return :aggregate
+         :columns labels
+         :results (mapv (fn [r] (mapv #(get r %) read-kws)) rows)
+         :count (count rows)
+         :truncated truncated?})
+
+      (= return-type :count)
       (let [n (:n (run-bounded db (fn [conn] (psc/q1 conn (count-query hqs)))))]
         {:return :count
          :count (min n count-cap)
          :truncated (> n count-cap)})
+
+      :else
       (let [lim (effective-limit (:limit head))
             order (qc/order-directive (first hqs))
             ;; fetch one extra row to detect truncation, then trim

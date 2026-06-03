@@ -166,23 +166,25 @@
                                   [:json_extract (col em :value) [:inline "$"]])]}]))
 
 (defn- bind-scalar!
-  "Bind scalar var `v` to column `col-ref` (with literal-encoder `enc`). The first
-  binding records the column; a later binding of the SAME var emits a
-  column-equality join — that is how `{:value ?x}` on two clauses means \"same
-  value\". (Inside a `:not`, sub-st inherits the outer :scalar-col, so a re-use
-  there joins to the outer column as a correlated predicate.)"
-  [st v col-ref enc]
+  "Bind scalar var `v` to column `col-ref` (with literal-encoder `enc`; `json?`
+  marks a JSON-encoded column so aggregation can decode it). The first binding
+  records the column; a later binding of the SAME var emits a column-equality
+  join — that is how `{:value {:var ?x}}` on two clauses means \"same value\".
+  (Inside a `:not`, sub-st inherits the outer :scalar-col, so a re-use there joins
+  to the outer column as a correlated predicate.)"
+  [st v col-ref enc json?]
   (if-let [bound (get-in @st [:scalar-col v])]
     (add-where! st [:= (:sql bound) col-ref])
-    (swap! st assoc-in [:scalar-col v] {:sql col-ref :enc enc})))
+    (swap! st assoc-in [:scalar-col v] {:sql col-ref :enc enc :json? json?})))
 
 (defn- emit-field!
   "One scalar-key constraint: a `{:var ?v}` value BINDS a scalar var (join);
   otherwise it filters via `emit-match!` (= / IN / regex). `regex-col` is the
-  expression a regex runs against (may differ from `col`, e.g. the decoded value)."
-  [st col v enc regex-col]
+  expression a regex runs against (may differ from `col`, e.g. the decoded value);
+  `json?` marks `col` as JSON-encoded (for a bound scalar's later aggregation)."
+  [st col v enc regex-col json?]
   (if (and (map? v) (contains? v :var))
-    (bind-scalar! st (:var v) col enc)
+    (bind-scalar! st (:var v) col enc json?)
     (emit-match! st col v enc regex-col)))
 
 (defn- emit-entity-filters!
@@ -197,17 +199,17 @@
   ;; (json_extract '$') so patterns aren't fighting the surrounding quotes.
   (when (contains? cmap :value)
     (emit-field! st (col a :value) (:value cmap) psc/write-json
-                 [:json_extract (col a :value) [:inline "$"]]))
+                 [:json_extract (col a :value) [:inline "$"]] true))
   ;; :form (vocab_items.form) is plain TEXT — regex runs on the column directly.
   (when (contains? cmap :form)
-    (emit-field! st (col a :form) (:form cmap) identity (col a :form)))
-  (when (contains? cmap :doc)   (emit-field! st (col a :document_id) (:doc cmap) str (col a :document_id)))
-  (when (contains? cmap :begin) (emit-field! st (col a :begin) (:begin cmap) identity (col a :begin)))
-  (when (contains? cmap :end)   (emit-field! st (col a :end_) (:end cmap) identity (col a :end_)))
+    (emit-field! st (col a :form) (:form cmap) identity (col a :form) false))
+  (when (contains? cmap :doc)   (emit-field! st (col a :document_id) (:doc cmap) str (col a :document_id) false))
+  (when (contains? cmap :begin) (emit-field! st (col a :begin) (:begin cmap) identity (col a :begin) false))
+  (when (contains? cmap :end)   (emit-field! st (col a :end_) (:end cmap) identity (col a :end_) false))
   ;; document name / text body (plain TEXT — regex runs on the column directly), id
-  (when (contains? cmap :name)  (emit-field! st (col a :name) (:name cmap) identity (col a :name)))
-  (when (contains? cmap :body)  (emit-field! st (col a :body) (:body cmap) identity (col a :body)))
-  (when (contains? cmap :id)    (emit-field! st (col a :id) (:id cmap) str (col a :id)))
+  (when (contains? cmap :name)  (emit-field! st (col a :name) (:name cmap) identity (col a :name) false))
+  (when (contains? cmap :body)  (emit-field! st (col a :body) (:body cmap) identity (col a :body) false))
+  (when (contains? cmap :id)    (emit-field! st (col a :id) (:id cmap) str (col a :id) false))
   ;; metadata: one correlated EXISTS per key (indexed on the PK)
   (when (contains? cmap :metadata)
     (doseq [[mk spec] (:metadata cmap)]
@@ -616,6 +618,54 @@
         [ord-kw (if (= dir :desc) :desc-nulls-last :asc-nulls-last)]]))
    order-by))
 
+;; --- aggregate projection ($:return {:group .. :aggregates ..}) -------------
+;; The match query projects (DISTINCT) the group columns, the aggregate source
+;; columns, and EVERY entity/layer var's id — so DISTINCT counts true matches
+;; (every distinct binding of all variables), not raw join rows. exec then wraps
+;; this in `SELECT <group>, <agg fns> ... GROUP BY <group>`.
+
+(defn aggregate-plan
+  "The aggregate plan compile-query attached as metadata (or nil): :group-cols /
+  :group-labels and per-aggregate {:op :col :label}. exec builds the outer query."
+  [hq]
+  (::aggregate (meta hq)))
+
+(defn- agg-col-kw [v] (keyword (str "__a_" (subs (name v) 1))))
+
+(defn- scalar-agg-expr
+  "SQL for a scalar var used as a group/aggregate value: json_extract-decoded if
+  its column is JSON-encoded (:value), else the bound column."
+  [st v]
+  (let [{:keys [sql json?]} (or (get-in @st [:scalar-col v])
+                                (err-500! (str "Aggregate/group var " v " was never bound to a column") {:var v}))]
+    (if json? [:json_extract sql [:inline "$"]] sql)))
+
+(defn- group-expr
+  "SQL for a group-key var: a scalar var -> its (decoded) column; an entity/layer
+  var -> its id."
+  [st v]
+  (if (= :scalar (get-in @st [:kinds v]))
+    (scalar-agg-expr st v)
+    (col (or (get-in @st [:var->alias v])
+             (err-500! (str "Group var " v " was never bound to a table") {:var v}))
+         :id)))
+
+(defn- aggregate-projection
+  "Returns {:select <distinct-match projection> :plan <plan for exec>}."
+  [st ret]
+  (let [group-vars (:group ret)
+        g-proj (map-indexed (fn [i v] [(group-expr st v) (keyword (str "__g_" i))]) group-vars)
+        agg-srcs (distinct (keep second (:aggregates ret)))
+        a-proj (mapv (fn [v] [(scalar-agg-expr st v) (agg-col-kw v)]) agg-srcs)
+        ;; every aliased (entity/layer) var id makes a match distinct
+        e-proj (map-indexed (fn [i [_ a]] [(col a :id) (keyword (str "__e_" i))]) (:var->alias @st))
+        label (fn [op src] (if src (str (name op) "_" (subs (name src) 1)) (name op)))
+        plan {:group-cols (mapv second g-proj)
+              :group-labels (mapv #(subs (name %) 1) group-vars)
+              :aggs (mapv (fn [[op src]] {:op op :col (when src (agg-col-kw src)) :label (label op src)})
+                          (:aggregates ret))}]
+    {:select (vec (concat g-proj a-proj e-proj)) :plan plan}))
+
 (defn- assert-acl-invariant! [st]
   (let [scoped-kind? #(or (contains? entity-table %) (layer-kind? %))
         entity-vars (->> (:kinds @st) (filter (fn [[_ k]] (scoped-kind? k))) (map key) set)
@@ -654,12 +704,17 @@
         (pred-honeysql-op (first clause)) (compile-pred! st clause)
         :else (compile-rel! st constraints clause)))
     (assert-acl-invariant! st)
-    (let [order-pairs (order-projection st (:order-by resolved))
-          select (into (find-select st (:find resolved)) (map first) order-pairs)
-          directive (mapv second order-pairs)
-          hq (cond-> {:select-distinct select
-                      :from (:from @st)
-                      :where (into [:and] (:where @st))}
-               (:limit resolved) (assoc :limit (:limit resolved)))]
-      (cond-> hq
-        (seq directive) (vary-meta assoc ::order-by directive)))))
+    (if (ast/aggregate? resolved)
+      ;; aggregate mode: project the distinct-match columns; exec wraps in GROUP BY
+      (let [{:keys [select plan]} (aggregate-projection st (:return resolved))]
+        (vary-meta {:select-distinct select :from (:from @st) :where (into [:and] (:where @st))}
+                   assoc ::aggregate plan))
+      (let [order-pairs (order-projection st (:order-by resolved))
+            select (into (find-select st (:find resolved)) (map first) order-pairs)
+            directive (mapv second order-pairs)
+            hq (cond-> {:select-distinct select
+                        :from (:from @st)
+                        :where (into [:and] (:where @st))}
+                 (:limit resolved) (assoc :limit (:limit resolved)))]
+        (cond-> hq
+          (seq directive) (vary-meta assoc ::order-by directive))))))
