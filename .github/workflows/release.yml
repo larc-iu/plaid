@@ -3,8 +3,8 @@ name: Release
 # Tag-driven release. Push a tag like `v0.2.0-alpha.1` (e.g. via `bb release
 # 0.2.0-alpha.1`) and this workflow:
 #   1. runs the full test suite (gate — nothing publishes if it's red),
-#   2. builds ALL artifacts (uberjar with both SPAs bundled, npm tarball,
-#      Python sdist/wheel) and uploads them,
+#   2. builds ALL artifacts (uberjar with the plaid-ud SPA bundled, npm
+#      tarball, Python sdist/wheel) and uploads them,
 #   3. publishes everything LAST, in one job, each step idempotent
 #      (skip-if-version-already-exists) so re-running a failed tag is safe.
 #
@@ -35,8 +35,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -44,7 +44,7 @@ jobs:
         with:
           cli: latest
       - name: Cache Maven + gitlibs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.m2
@@ -63,7 +63,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Derive versions from tag
         id: ver
@@ -75,21 +75,21 @@ jobs:
           echo "pep440=$PEP440"     >> "$GITHUB_OUTPUT"
           echo "Release version=$VERSION  pep440=$PEP440"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
       - uses: DeLaGuardo/setup-clojure@13.6.1
         with:
           cli: latest
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Cache Maven + gitlibs
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.m2
@@ -97,7 +97,11 @@ jobs:
           key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
           restore-keys: ${{ runner.os }}-cljdeps-
 
-      # --- Build both SPAs and bundle them into the jar's resources ----------
+      # --- Build the SPA(s) and bundle into the jar's resources --------------
+      # NOTE: plaid-igt is intentionally left out of the release for now (not
+      # actively maintained). The middleware keeps its /igt route — it just
+      # 404s until an igt bundle is shipped — so re-adding it is a build step
+      # plus a copy line below.
       - name: Build plaid-ud
         working-directory: plaid-ud
         run: |
@@ -105,18 +109,10 @@ jobs:
           # so there's no lockfile to clean-install from in a fresh checkout.
           npm install
           npm run build
-      - name: Build plaid-igt
-        working-directory: plaid-igt
+      - name: Bundle SPA + version.edn into plaid-core resources
         run: |
-          # `npm install`, not `npm ci`: this repo gitignores package-lock.json,
-          # so there's no lockfile to clean-install from in a fresh checkout.
-          npm install
-          npm run build
-      - name: Bundle SPAs + version.edn into plaid-core resources
-        run: |
-          rm -rf plaid-core/resources/ud plaid-core/resources/igt
-          cp -r plaid-ud/dist  plaid-core/resources/ud
-          cp -r plaid-igt/dist plaid-core/resources/igt
+          rm -rf plaid-core/resources/ud
+          cp -r plaid-ud/dist plaid-core/resources/ud
           printf '{:version "%s"}\n' "${{ steps.ver.outputs.version }}" > plaid-core/resources/version.edn
           cat plaid-core/resources/version.edn
 
@@ -166,7 +162,7 @@ jobs:
       - name: Stage the jar for upload
         run: cp "plaid-core/target/plaid-${{ steps.ver.outputs.version }}.jar" dist-artifacts/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-artifacts
           path: dist-artifacts/
@@ -180,7 +176,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Derive version + channel from tag
         id: ver
@@ -200,7 +196,7 @@ jobs:
           echo "prerelease=$PRERELEASE"  >> "$GITHUB_OUTPUT"
           echo "npm_tag=$NPM_TAG"        >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-artifacts
           path: dist-artifacts
@@ -212,7 +208,7 @@ jobs:
       # was published once by hand from a laptop, then a trusted publisher
       # (repo larc-iu/plaid, workflow release.yml) was set on npmjs.com. From
       # then on this step needs no token and emits provenance automatically.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
@@ -276,7 +272,7 @@ jobs:
           - PyPI: \`pip install --pre larc-plaid-client==$(echo "$VER" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')\`
 
           ## Bundled apps
-          The jar serves the UD editor at \`/ud/\` and the IGT editor at \`/igt/\`.
+          The jar serves the UD editor at \`/ud/\`.
           EOF
           )"
 
