@@ -61,6 +61,7 @@ A query is a JSON object (a Python `dict` / a JS object):
 | `scope` | no | Restrict to specific projects. Default: every project you can read. |
 | `limit` | no | Max rows. Default 100, hard cap 1000 (see §10). |
 | `return` | no | `"ids"` (default), `"entities"`, or `"count"` (see §9). |
+| `strict-layers` | no | If `true`, scalar layer references must be ids (reject names/paths/aliases — §6). |
 
 ### Variables
 
@@ -281,9 +282,10 @@ list — `{"value": ["NOUN","VERB"]}` — is lighter.)
 Wherever a clause takes a `layer`, you can name it three ways. They're tried in
 this order:
 
-1. **Alias** — a stable label set in the layer's config (`plaid/alias`). Best for
-   cross-project queries that share a convention (e.g. every project's POS layer
-   aliased `"pos"`).
+1. **Alias** — a stable label set in the layer's config under the reserved
+   `plaid` / `alias` editor-config pair (set it with
+   `PUT …/config/plaid/alias` → `"pos"`). Best for cross-project queries that
+   share a convention (e.g. every project's POS layer aliased `"pos"`).
 2. **Path** — `"ProjectName/LayerName"`. Convenient for one project at the REPL.
 3. **ID** — the raw layer UUID. Always unambiguous.
 
@@ -310,6 +312,11 @@ layers on purpose isn't a scalar reference — it'll be expressed with a layer
 > **Prefer IDs in application code.** A UI or script already holds the layer ids
 > of whatever it loaded; feed those in — they're unambiguous by construction.
 > Names/aliases are best for human exploration.
+
+> **Strict mode.** Set `"strict-layers": true` on the query to *reject* scalar
+> name/path/alias references outright (400) — only layer ids or layer variables
+> (§6.5) are allowed. A query-building UI can turn this on to guarantee its
+> queries are unambiguous by construction.
 
 ### 6.5 Layer variables
 
@@ -340,8 +347,8 @@ refuses with an "ambiguous" 400):
 ```
 
 The layer-constraint clause matches the entity's kind: `span-layer`,
-`token-layer`, `relation-layer`, `vocab-layer`. It currently constrains by
-`name`; an unconstrained layer variable ranges over every layer of its kind in
+`token-layer`, `relation-layer`, `vocab-layer`. It constrains by `name` or
+`alias`; an unconstrained layer variable ranges over every layer of its kind in
 scope. (A layer variable used for two different kinds — e.g. a span's layer and a
 token's layer — is a 400 kind conflict.)
 
@@ -571,9 +578,9 @@ existential (and can't be in `find`).
 
 **Layer variable** — a var in the `layer` slot (`{"layer": "?sl"}`); bind/share a
 layer (same-layer join, projection). Constrain it with `["span-layer", "?sl",
-{"name": …}]` (or `token-layer`/`relation-layer`/`vocab-layer`).
+{"name"|"alias": …}]` (or `token-layer`/`relation-layer`/`vocab-layer`).
 
-**Top level** — `{find, where, scope?, limit?, return?}`.
+**Top level** — `{find, where, scope?, limit?, return?, strict-layers?}`.
 
 ---
 

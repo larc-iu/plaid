@@ -179,7 +179,10 @@
     (is (= :entities (:return (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "entities"}))))
     (is (= :count (:return (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "count"})))))
   (testing "an unknown :return is rejected"
-    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "kwic"}))))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "kwic"})))))
+  (testing ":strict-layers must be a boolean"
+    (is (true? (:strict-layers (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "strict-layers" true}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "strict-layers" "yes"}))))))
 
 ;; ---------------------------------------------------------------------------
 ;; :or — clause-level disjunction (DNF -> branches)

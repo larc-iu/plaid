@@ -7,6 +7,7 @@
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
             [plaid.test-helpers :as h]
+            [plaid.sql.project :as prj]
             [plaid.sql.query.exec :as qe]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -93,3 +94,44 @@
                             {"find" ["?a"]
                              "where" [["span" "?a" {"layer" "?sl"}] ["token" "?t" {"layer" "?sl"}]]})
                     (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))))))
+
+(deftest layer-alias-scalar-and-var
+  (let [pid  (h/create-test-project admin-request "AliasProj")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        pos  (id (h/create-span-layer admin-request tokl "pos"))
+        doc  (h/create-test-document admin-request pid "d1")
+        text (id (h/create-text admin-request txtl doc "aa"))
+        t0 (id (h/create-token admin-request tokl text 0 2))
+        s  (id (h/create-span admin-request pos [t0] "NOUN"))]
+    ;; aliases live under the reserved "plaid"/"alias" editor-config pair (nested)
+    (prj/assoc-editor-config-pair db pos "plaid" "alias" "lexZZ")
+    (testing "scalar alias addressing resolves the aliased layer"
+      (is (= [[(str s)]]
+             (tuples (qe/run db "admin@example.com"
+                             {"find" ["?s"] "where" [["span" "?s" {"layer" "lexZZ" "value" "NOUN"}]]})))))
+    (testing "a layer var constrained by :alias matches the same layer"
+      (is (= [[(str s)]]
+             (tuples (qe/run db "admin@example.com"
+                             {"find" ["?s"]
+                              "where" [["span" "?s" {"layer" "?sl" "value" "NOUN"}]
+                                       ["span-layer" "?sl" {"alias" "lexZZ"}]]})))))))
+
+(deftest strict-layers-mode
+  (let [{:keys [pos pos-noun]} (build!)]
+    (testing "strict-layers rejects a name/path scalar layer reference"
+      (is (= 400 (try (qe/run db "admin@example.com"
+                              {"find" ["?s"] "where" [["span" "?s" {"layer" "LVProj/pos"}]]
+                               "strict-layers" true})
+                      (catch clojure.lang.ExceptionInfo e (:code (ex-data e)))))))
+    (testing "strict-layers allows a layer id"
+      (is (= [[(str pos-noun)]]
+             (tuples (qe/run db "admin@example.com"
+                             {"find" ["?s"] "where" [["span" "?s" {"layer" (str pos) "value" "NOUN"}]]
+                              "strict-layers" true})))))
+    (testing "strict-layers allows a layer variable"
+      (is (= 1 (:count (qe/run db "admin@example.com"
+                               {"find" ["?s"]
+                                "where" [["span" "?s" {"layer" "?sl" "value" "NOUN"}]
+                                         ["span-layer" "?sl" {"name" "pos"}]]
+                                "strict-layers" true "return" "count"})))))))

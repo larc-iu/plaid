@@ -82,7 +82,10 @@
     (reduce
      (fn [ix {:keys [id name project_id config]}]
        (let [id (str id)
-             alias (get (psc/parse-config config) "plaid/alias")
+             ;; alias lives under the reserved "plaid"/"alias" editor-config pair
+             ;; (config is stored NESTED, {"plaid":{"alias":"pos"}}, by
+             ;; assoc-editor-config-pair — NOT a flat "plaid/alias" key)
+             alias (get-in (psc/parse-config config) ["plaid" "alias"])
              pname (proj-id->name (str project_id))
              path (when pname (str pname "/" name))]
          (cond-> ix
@@ -143,6 +146,9 @@
                           (swap! index-cache assoc kind ix)
                           ix)))
         layer-named? #{:span :token :relation :vocab}
+        ;; strict-layers: a scalar layer reference must be a layer id (names,
+        ;; paths, aliases are non-unique) — use an id or a layer variable.
+        strict? (boolean (:strict-layers ast*))
         resolve-clause
         (fn resolve-clause [clause]
           (let [[head v cmap] clause]
@@ -153,8 +159,13 @@
               ;; not a reference to resolve — leave it for the compiler
               (and (layer-named? head) (map? cmap) (contains? cmap :layer)
                    (not (symbol? (:layer cmap))))
-              (let [ids (resolve-ref (get-index head) head (:layer cmap))]
-                [head v (assoc cmap ::layer-ids (vec ids))])
+              (do
+                (when (and strict? (not (uuid-string? (str (:layer cmap)))))
+                  (err! (str "strict-layers is on: layer reference " (pr-str (:layer cmap))
+                             " must be a layer id (or a layer variable), not a name/path/alias")
+                        {:layer (:layer cmap)}))
+                (let [ids (resolve-ref (get-index head) head (:layer cmap))]
+                  [head v (assoc cmap ::layer-ids (vec ids))]))
               :else clause)))]
     (-> ast*
         (assoc :where (mapv resolve-clause (:where ast*)))

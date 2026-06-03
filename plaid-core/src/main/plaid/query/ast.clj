@@ -63,10 +63,10 @@
 ;; Layer-constraint clauses: [:span-layer ?sl {constraint-map}]. The head IS the
 ;; layer kind; binds/constrains a LAYER variable. Value = allowed constraint keys.
 (def ^:private layer-clauses
-  {:span-layer     #{:name}
-   :token-layer    #{:name}
-   :relation-layer #{:name}
-   :vocab-layer    #{:name}})
+  {:span-layer     #{:name :alias}
+   :token-layer    #{:name :alias}
+   :relation-layer #{:name :alias}
+   :vocab-layer    #{:name :alias}})
 
 ;; Relationship clauses and their arity (number of var args after the head).
 (def ^:private rel-clauses
@@ -209,6 +209,7 @@
                                             s))
       (contains? m :limit)  (assoc :limit (:limit m))
       (contains? m :return) (assoc :return (->kw (:return m)))
+      (contains? m :strict-layers) (assoc :strict-layers (:strict-layers m))
       (contains? m :as-of)  (assoc :as-of (:as-of m)))))     ; carried so validate can reject it
 
 ;; ---------------------------------------------------------------------------
@@ -321,6 +322,9 @@
   (when-let [r (:return ast)]
     (when-not (#{:ids :entities :count} r)
       (err! :validate (str ":return " (pr-str r) " is not supported (one of :ids, :entities, :count)"))))
+  (when (contains? ast :strict-layers)
+    (when-not (boolean? (:strict-layers ast))
+      (err! :validate (str ":strict-layers must be true or false, got: " (pr-str (:strict-layers ast))))))
   ast)
 
 (defn- validate-clause!

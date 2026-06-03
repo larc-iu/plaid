@@ -133,7 +133,11 @@
     (swap! st update :scoped conj v)
     (doseq [cs (get constraints v)]
       (when (contains? cs :name)
-        (add-where! st (atomic-pred (col a :name) (:name cs) identity))))))
+        (add-where! st (atomic-pred (col a :name) (:name cs) identity)))
+      ;; :alias lives in config JSON under the reserved "plaid"/"alias" pair
+      (when (contains? cs :alias)
+        (add-where! st (atomic-pred [:json_extract (col a :config) [:inline "$.plaid.alias"]]
+                                    (:alias cs) identity))))))
 
 (defn- ensure-var!
   "Allocate (once) a table alias for var v, emit its base table, scope predicate,
