@@ -10,6 +10,7 @@
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.sql.pagination :as pagination]
             [plaid.sql.user :as user]
             [plaid.sql.document :as document]
             [plaid.sql.text-layer :as text-layer])
@@ -180,22 +181,29 @@
                   :where [:= :project_id id]})
        (mapv :id)))
 
-(defn get-documents [db id]
-  (->> (psc/q db {:select [:id :name]
-                  :from [:documents]
-                  :where [:= :project_id id]})
-       (mapv (fn [r] {:document/id (:id r) :document/name (:name r)}))))
+(defn get-documents-page
+  "Keyset-paginated documents for a project, ordered by (name, id). The stub
+  carries the same scalar fields as `document/get` (sans nested layers/media) so
+  list views can show version + last-modified without a follow-up fetch."
+  [db project-id {:keys [limit cursor-vals]}]
+  (pagination/paginate db {:select [:id :name :version :created_at :modified_at]
+                           :from :documents
+                           :base-where [:= :project_id project-id]
+                           :order-by [:name :id]
+                           :limit limit
+                           :cursor-vals cursor-vals
+                           :row->entity (fn [r] {:document/id            (:id r)
+                                                 :document/name          (:name r)
+                                                 :document/version       (:version r)
+                                                 :document/time-created  (:created_at r)
+                                                 :document/time-modified (:modified_at r)})}))
 
 (defn get
   ([db id]
-   (get db id false))
-  ([db id include-documents?]
    (when-let [bare (row->project-bare (psc/fetch-by-id db :projects id))]
      (-> bare
          (->> (attach-acl db id))
-         (->> (enrich-layers db))
-         (cond-> include-documents?
-           (assoc :project/documents (get-documents db id)))))))
+         (->> (enrich-layers db))))))
 
 (defn reader-ids [db id]
   (user-ids-for-role db id "reader"))
@@ -294,6 +302,16 @@
           maintainers-by-vocab (reduce (fn [acc {:keys [vocab_layer_id user_id]}]
                                          (update acc vocab_layer_id (fnil conj []) user_id))
                                        {} vm-rows)
+          ;; 9) per-project document count + last-modified (one grouped query).
+          ;; modified_at is ISO-8601 text, so MAX is chronological. Powers
+          ;; last-updated + doc-count on list views without N count queries.
+          doc-stat-rows (psc/q db {:select [:project_id
+                                            [[:count :*] :doc_count]
+                                            [[:max :modified_at] :last_modified]]
+                                   :from [:documents]
+                                   :where [:in :project_id project-ids]
+                                   :group-by [:project_id]})
+          doc-stats-by-project (into {} (map (juxt :project_id identity)) doc-stat-rows)
           ;; Bottom-up layer builders — identical shape to `enrich-layers`.
           build-rl (fn [rl-row] (row->relation-layer rl-row))
           build-sl (fn [sl-row]
@@ -324,20 +342,30 @@
                                    :project/writers     (vec (clojure.core/get role-map "writer" []))
                                    :project/maintainers (vec (clojure.core/get role-map "maintainer" []))
                                    :project/text-layers txt-layers
-                                   :project/vocabs      vocabs))))]
+                                   :project/vocabs      vocabs
+                                   :project/document-count (or (:doc_count (clojure.core/get doc-stats-by-project pid)) 0)
+                                   :project/last-modified  (:last_modified (clojure.core/get doc-stats-by-project pid))))))]
       (->> project-ids
            (mapv hydrate-one)
            (filterv some?)))))
 
-(defn get-accessible [db user-id]
-  (let [admin? (user/admin? (user/get db user-id))
-        ids (if admin?
-              (get-all-ids db)
-              (get-accessible-ids db user-id))]
-    ;; Was `(mapv #(get db %) ids)` — N+1 over `ids` with each `get`
-    ;; firing attach-acl + enrich-layers (~6 queries per project). Now a
-    ;; constant number of bulk SELECTs regardless of project count.
-    (batch-hydrate-projects db ids)))
+(defn get-accessible
+  ([db user-id]
+   (let [admin? (user/admin? (user/get db user-id))
+         ids (if admin?
+               (get-all-ids db)
+               (get-accessible-ids db user-id))]
+     ;; Was `(mapv #(get db %) ids)` — N+1 over `ids` with each `get`
+     ;; firing attach-acl + enrich-layers (~6 queries per project). Now a
+     ;; constant number of bulk SELECTs regardless of project count.
+     (batch-hydrate-projects db ids)))
+  ([db user-id {:keys [limit cursor-vals]}]
+   ;; Paginated arity: hydrate the (bounded, per-user) accessible set then
+   ;; shape it into the uniform {:entries :next-cursor} envelope. Sorted by
+   ;; (name, id) — :project/id is the unique tiebreaker.
+   (pagination/paginate-coll (get-accessible db user-id)
+                             [:project/name :project/id]
+                             limit cursor-vals)))
 
 (defn get-by-name [db name]
   (when-let [row (psc/q1 db {:select [:*]

@@ -27,6 +27,7 @@
                                     assert-forbidden
                                     assert-bad-request with-clean-db]]
             [plaid.test-helpers :refer [create-test-project delete-test-project
+                                        create-test-document
                                         create-text-layer create-token-layer
                                         create-span-layer create-relation-layer]]
             [plaid.fixtures :as fix]
@@ -150,8 +151,8 @@
       (create-project admin-request {:name "List Test Project 2"})
       (let [response (list-projects admin-request)]
         (assert-ok response)
-        (is (vector? (:body response)))
-        (is (>= (count (:body response)) 2))))
+        (is (vector? (:entries (:body response))))
+        (is (>= (count (:entries (:body response))) 2))))
 
     (testing "Get project by ID"
       (let [create-response (create-project admin-request {:name "Get Test Project"})
@@ -159,7 +160,12 @@
             get-response (get-project admin-request project-id)]
         (assert-ok get-response)
         (is (= (-> get-response :body :project/name) "Get Test Project"))
-        (is (= (-> get-response :body :project/id) project-id))))
+        (is (= (-> get-response :body :project/id) project-id))
+        ;; The `?include-documents` param was removed; GET /projects/:id must
+        ;; NOT carry an embedded document list anymore (documents live at the
+        ;; dedicated GET /projects/:id/documents endpoint).
+        (is (not (contains? (:body get-response) :project/documents))
+            "single-project GET must not embed :project/documents")))
 
     (testing "Get project by invalid ID returns 404"
       (let [fake-id (str (java.util.UUID/randomUUID))
@@ -470,8 +476,9 @@
           "batched get-accessible should include the project")
       ;; Shape equality — keys, ACL vectors, layer tree, vocab grants,
       ;; config blob. Layer vectors are order-sensitive (order_idx).
-      (is (= (set (keys single)) (set (keys batched)))
-          "key sets must match")
+      (is (= (set (keys single))
+             (disj (set (keys batched)) :project/document-count :project/last-modified))
+          "batched list keys = single-get keys plus the list-view summary fields")
       (is (= (:project/id single) (:project/id batched)))
       (is (= (:project/name single) (:project/name batched)))
       (is (= (:config single) (:config batched)))
@@ -489,6 +496,32 @@
           result (prj/get-accessible db "user2@example.com")]
       (is (vector? result)
           "get-accessible must return a vector (not a lazy seq)"))))
+
+(deftest list-view-summary-fields
+  (testing "get-accessible carries per-project document-count + last-modified"
+    (let [db fix/db
+          pid (create-test-project admin-request "ListSummary")
+          _ (create-test-document admin-request pid "doc-a")
+          _ (create-test-document admin-request pid "doc-b")
+          proj (->> (prj/get-accessible db "admin@example.com")
+                    (filter #(= (:project/id %) pid)) first)
+          empty-proj-id (create-test-project admin-request "NoDocs")
+          empty-proj (->> (prj/get-accessible db "admin@example.com")
+                          (filter #(= (:project/id %) empty-proj-id)) first)]
+      (is (= 2 (:project/document-count proj)) "two documents")
+      (is (some? (:project/last-modified proj)) "last-modified is set")
+      (is (= 0 (:project/document-count empty-proj)) "no docs -> count 0")
+      (is (nil? (:project/last-modified empty-proj)) "no docs -> nil last-modified")))
+  (testing "get-documents-page stubs carry version + timestamps"
+    (let [db fix/db
+          pid (create-test-project admin-request "DocStubs")
+          _ (create-test-document admin-request pid "only-doc")
+          page (prj/get-documents-page db pid {:limit 10 :cursor-vals nil})
+          stub (first (:entries page))]
+      (is (contains? stub :document/version))
+      (is (contains? stub :document/time-created))
+      (is (contains? stub :document/time-modified))
+      (is (= "only-doc" (:document/name stub))))))
 
 (deftest validation-routes-through-submit-operation-catch
   ;; Regression test for task #47: pre-flight validations (valid-name?,
