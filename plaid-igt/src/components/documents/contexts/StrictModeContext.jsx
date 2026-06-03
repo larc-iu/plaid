@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 
-import PlaidClient from 'plaid-client';
+import PlaidClient from '@larc-iu/plaid-client';
 
 const StrictModeContext = createContext(null);
 

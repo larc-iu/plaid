@@ -19,7 +19,7 @@
     "@tabler/icons-react": "^3.44.0",
     "axios": "^1.10.0",
     "d3": "^7.9.0",
-    "plaid-client": "file:../plaid-client-js",
+    "@larc-iu/plaid-client": "file:../plaid-client-js",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.6.2"

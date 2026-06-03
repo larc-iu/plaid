@@ -10,6 +10,7 @@
             [plaid.olap.core :as olap]
             [plaid.rest-api.v1.core :refer [rest-handler]]
             [clojure.data.json :as json]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [taoensso.timbre :as log])
@@ -82,9 +83,17 @@
   :start (System/currentTimeMillis))
 
 (def ^:private health-version
-  "Version string surfaced by /health. Placeholder until a proper version
-  is wired in from project metadata (project.clj / git describe)."
-  "?")
+  "Version string surfaced by /health. Read from `version.edn` on the
+  classpath, which the release workflow (.github/workflows/release.yml)
+  writes into the jar from the git tag at build time. Absent in local /
+  unreleased runs, where we report \"dev\"."
+  (or (try
+        (some-> (io/resource "version.edn")
+                slurp
+                (edn/read-string)
+                :version)
+        (catch Exception _ nil))
+      "dev"))
 
 (def ^:private bytes-per-mb
   "Binary MB (1024*1024). Reported as `store_size_mb` in /health."
@@ -243,6 +252,44 @@
             (handler request)))
         (handler request)))))
 
+(def ^:private bundled-spa-roots
+  "URL prefix -> classpath resource root for each SPA bundled into the uberjar.
+  The release workflow copies each app's Vite build (built with base `/ud/`,
+  `/igt/`) into `resources/{ud,igt}/`, landing them on the classpath as
+  `ud/**` / `igt/**`."
+  {"/ud" "ud"
+   "/igt" "igt"})
+
+(defn- bundled-spa-resource-path
+  "If `uri` targets a bundled SPA, return the classpath resource path to serve;
+  else nil. A bare prefix or trailing slash maps to that app's index.html.
+  Both apps use HashRouter, so client routes live in the URL fragment and never
+  reach the server — no index.html fallback for unknown paths is needed."
+  [uri]
+  (when-not (str/includes? uri "..")
+    (some (fn [[prefix root]]
+            (cond
+              (or (= uri prefix) (= uri (str prefix "/")))
+              (str root "/index.html")
+
+              (str/starts-with? uri (str prefix "/"))
+              (str root (subs uri (count prefix)))))
+          bundled-spa-roots)))
+
+(defn wrap-bundled-spa
+  "Serve the bundled SPAs (plaid-ud at /ud, plaid-igt at /igt) from the
+  CLASSPATH so they work inside the distributed uberjar (where there is no
+  filesystem `resources/` directory). Only serves real files; misses fall
+  through to the next handler."
+  [handler]
+  (fn [{:keys [uri request-method] :as request}]
+    (if-let [resource-path (and (= :get request-method)
+                                (bundled-spa-resource-path uri))]
+      (or (some-> (response/resource-response resource-path)
+                  (response/content-type (mime/ext-mime-type resource-path)))
+          (handler request))
+      (handler request))))
+
 (defn- ^java.util.regex.Pattern origin-string->exact-pattern
   "Build an anchored, regex-escaped pattern that matches `origin` EXACTLY
   (no metacharacter interpretation). Operators configure CORS allowlists
@@ -354,6 +401,7 @@
                      "subdomain pattern, list each exact origin instead.")))
     (-> (fn [_] {:status 404 :body "Not Found"})
         (wrap-rest-routes datasource)
+        wrap-bundled-spa
         wrap-static-resources
         wrap-health
         (wrap-defaults defaults-config)

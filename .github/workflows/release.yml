@@ -1,0 +1,289 @@
+name: Release
+
+# Tag-driven release. Push a tag like `v0.2.0-alpha.1` (e.g. via `bb release
+# 0.2.0-alpha.1`) and this workflow:
+#   1. runs the full test suite (gate — nothing publishes if it's red),
+#   2. builds ALL artifacts (uberjar with both SPAs bundled, npm tarball,
+#      Python sdist/wheel) and uploads them,
+#   3. publishes everything LAST, in one job, each step idempotent
+#      (skip-if-version-already-exists) so re-running a failed tag is safe.
+#
+# The git tag is the SOLE source of truth for the version. In-repo manifests
+# stay at a placeholder (0.0.0) and are stamped from the tag here at build time.
+#
+# Versioning is lock-step alpha: tag `v0.2.0-alpha.1` ->
+#   npm   0.2.0-alpha.1  (dist-tag `alpha`, never `latest`)
+#   PyPI  0.2.0a1        (PEP440-normalized — the only cross-registry translation)
+#   GH    0.2.0-alpha.1  (marked pre-release)
+#   jar   0.2.0-alpha.1  (verbatim, surfaced at /health)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # create the GitHub Release + upload the jar
+  id-token: write   # OIDC: PyPI trusted publishing + npm provenance
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Gate: full Clojure suite. Expensive, so it only runs here (on tags) and in
+  # nightly.yml — never per-commit. A red suite aborts the whole release before
+  # anything is published.
+  # --------------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: latest
+      - name: Cache Maven + gitlibs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2
+            ~/.gitlibs
+          key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
+          restore-keys: ${{ runner.os }}-cljdeps-
+      - name: Run tests
+        working-directory: plaid-core
+        run: clojure -M:test
+
+  # --------------------------------------------------------------------------
+  # Build every artifact. No publishing here — just produce + upload, so the
+  # publish job has nothing left to fail on except the registries themselves.
+  # --------------------------------------------------------------------------
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive versions from tag
+        id: ver
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # PEP440 form for Python: -alpha.N -> aN, -beta.N -> bN, -rc.N -> rcN
+          PEP440="$(echo "$VERSION" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')"
+          echo "version=$VERSION"   >> "$GITHUB_OUTPUT"
+          echo "pep440=$PEP440"     >> "$GITHUB_OUTPUT"
+          echo "Release version=$VERSION  pep440=$PEP440"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Cache Maven + gitlibs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2
+            ~/.gitlibs
+          key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
+          restore-keys: ${{ runner.os }}-cljdeps-
+
+      # --- Build both SPAs and bundle them into the jar's resources ----------
+      - name: Build plaid-ud
+        working-directory: plaid-ud
+        run: |
+          npm ci
+          npm run build
+      - name: Build plaid-igt
+        working-directory: plaid-igt
+        run: |
+          npm ci
+          npm run build
+      - name: Bundle SPAs + version.edn into plaid-core resources
+        run: |
+          rm -rf plaid-core/resources/ud plaid-core/resources/igt
+          cp -r plaid-ud/dist  plaid-core/resources/ud
+          cp -r plaid-igt/dist plaid-core/resources/igt
+          printf '{:version "%s"}\n' "${{ steps.ver.outputs.version }}" > plaid-core/resources/version.edn
+          cat plaid-core/resources/version.edn
+
+      - name: Build uberjar
+        working-directory: plaid-core
+        run: |
+          clojure -X:uberjar
+          mv target/plaid.jar "target/plaid-${{ steps.ver.outputs.version }}.jar"
+
+      - name: Smoke-test the jar (boots via re-exec + reports release version)
+        run: |
+          # `plaid.server.main` self-heals the JDK access flags: it probes for
+          # --add-opens / --enable-native-access and, if absent, re-execs the
+          # JVM with them (PLAID_NO_REEXEC guards the child). So a bare
+          # `java -jar` must boot unattended. prod.edn listens on :8080 and the
+          # JWT secret + SQLite db auto-generate, so no config/env is needed.
+          # We assert /health reports the release version (proving version.edn
+          # was bundled), then tear the process(es) down.
+          JAR="plaid-core/target/plaid-${{ steps.ver.outputs.version }}.jar"
+          java -jar "$JAR" &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health | grep -q "\"version\":\"${{ steps.ver.outputs.version }}\""; then
+              echo "jar booted; /health reports the release version"; OK=1; break
+            fi
+            sleep 2
+          done
+          # Kill the parent AND the re-exec'd child (matched by jar path).
+          pkill -f "plaid-${{ steps.ver.outputs.version }}.jar" 2>/dev/null || true
+          if [ -z "$OK" ]; then echo "jar failed to boot / report version"; exit 1; fi
+
+      # --- Build the npm tarball (NOT publish) -------------------------------
+      - name: Pack npm client
+        working-directory: plaid-client-js
+        run: |
+          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm pack --pack-destination ../dist-artifacts
+
+      # --- Build the Python sdist + wheel (NOT publish) ----------------------
+      - name: Build Python client
+        working-directory: plaid-client-py
+        run: |
+          python -m pip install --upgrade build
+          # Stamp the PEP440 version into pyproject before building.
+          sed -i -E "s/^version = \".*\"/version = \"${{ steps.ver.outputs.pep440 }}\"/" pyproject.toml
+          python -m build --outdir ../dist-artifacts
+
+      - name: Stage the jar for upload
+        run: cp "plaid-core/target/plaid-${{ steps.ver.outputs.version }}.jar" dist-artifacts/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist-artifacts/
+          if-no-files-found: error
+
+  # --------------------------------------------------------------------------
+  # Publish everything. Runs only after build succeeds, so all artifacts exist
+  # before any registry is touched. Each publish is idempotent.
+  # --------------------------------------------------------------------------
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version + channel from tag
+        id: ver
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Prerelease if the version carries a `-` suffix (alpha/beta/rc).
+          if echo "$VERSION" | grep -q -- '-'; then
+            PRERELEASE=true
+            # npm dist-tag = the prerelease channel name (alpha|beta|rc), so a
+            # prerelease never becomes `latest`.
+            NPM_TAG="$(echo "$VERSION" | sed -E 's/^[0-9.]+-([a-z]+).*/\1/')"
+          else
+            PRERELEASE=false
+            NPM_TAG=latest
+          fi
+          echo "version=$VERSION"        >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE"  >> "$GITHUB_OUTPUT"
+          echo "npm_tag=$NPM_TAG"        >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist-artifacts
+
+      # --- npm -----------------------------------------------------------------
+      # Keyless via npm trusted publishing (OIDC) — no NPM_TOKEN secret.
+      # npm has no "pending publisher" (unlike PyPI), so the package must exist
+      # before a trusted publisher can be configured: v1 of @larc-iu/plaid-client
+      # was published once by hand from a laptop, then a trusted publisher
+      # (repo larc-iu/plaid, workflow release.yml) was set on npmjs.com. From
+      # then on this step needs no token and emits provenance automatically.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Upgrade npm (trusted publishing / OIDC needs npm >= 11.5.1)
+        run: npm install -g npm@latest
+      - name: Publish npm client (keyless via trusted publishing; skip if exists)
+        run: |
+          PKG="@larc-iu/plaid-client"
+          VER="${{ steps.ver.outputs.version }}"
+          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "npm: $PKG@$VER already published — skipping."
+          else
+            TARBALL="$(ls dist-artifacts/larc-iu-plaid-client-*.tgz)"
+            # Provenance is automatic under trusted publishing; --access public
+            # is required for the first publish of a scoped package.
+            npm publish "$TARBALL" --access public --tag "${{ steps.ver.outputs.npm_tag }}"
+          fi
+
+      # --- PyPI ----------------------------------------------------------------
+      # Keyless via OIDC trusted publishing. Configure a trusted publisher (or a
+      # pending publisher for the first release) for `larc-plaid-client` on
+      # PyPI. `skip-existing` makes re-runs idempotent.
+      - name: Collect Python dists
+        run: |
+          mkdir -p pydist
+          cp dist-artifacts/*.whl dist-artifacts/*.tar.gz pydist/ 2>/dev/null || true
+          ls -la pydist
+      - name: Publish to PyPI (skip if version exists)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: pydist
+          skip-existing: true
+
+      # --- GitHub Release ------------------------------------------------------
+      - name: Create GitHub Release with the jar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="${{ steps.ver.outputs.version }}"
+          PRERELEASE_FLAG=""
+          [ "${{ steps.ver.outputs.prerelease }}" = "true" ] && PRERELEASE_FLAG="--prerelease"
+
+          NOTES="$(cat <<EOF
+          Plaid \`$VER\`.
+
+          ## Run
+          \`\`\`
+          java -jar plaid-$VER.jar
+          \`\`\`
+          The required JVM access flags are baked into the jar manifest, so no
+          \`--add-opens\` is needed. Listens on \`:8085\` by default.
+
+          ## Minimum config
+          - \`JWT_SECRET\` (or a generated secret file) for token signing
+          - SQLite database path (defaults to \`data/plaid.db\`)
+
+          See OPERATIONS.md for the full configuration + deployment guide.
+
+          ## Clients
+          - npm: \`npm install @larc-iu/plaid-client@$VER\`
+          - PyPI: \`pip install --pre larc-plaid-client==$(echo "$VER" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')\`
+
+          ## Bundled apps
+          The jar serves the UD editor at \`/ud/\` and the IGT editor at \`/igt/\`.
+          EOF
+          )"
+
+          # Idempotent: create the release if absent, then (re)upload the jar.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME exists — clobbering the jar asset."
+            gh release upload "$GITHUB_REF_NAME" "dist-artifacts/plaid-$VER.jar" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "dist-artifacts/plaid-$VER.jar" \
+              --title "$GITHUB_REF_NAME" \
+              --notes "$NOTES" \
+              $PRERELEASE_FLAG
+          fi

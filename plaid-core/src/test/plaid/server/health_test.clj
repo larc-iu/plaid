@@ -32,7 +32,10 @@
         (is (string? body))
         ;; Crude payload checks — avoid pulling in a JSON parser dep.
         (is (re-find #"\"ok\":true" body))
-        (is (re-find #"\"version\":\"\?\"" body))
+        ;; version is "dev" in unreleased/test runs and the real version when
+        ;; version.edn is bundled into the jar at release time — assert the
+        ;; field is present with some non-empty value, not a fixed literal.
+        (is (re-find #"\"version\":\"[^\"]+\"" body))
         (is (re-find #"\"uptime-ms\":\d+" body))))))
 
 (deftest health-passes-through-non-matching

@@ -1,0 +1,41 @@
+{:min-bb-version "1.0.0"
+ :tasks
+ {release
+  {:doc "Cut a release. Usage: bb release 0.2.0-alpha.1  — validates a clean tree on master, tags vX.Y.Z, and pushes. The release.yml workflow then tests, builds, and publishes everything. The git tag is the sole source of truth for the version."
+   :requires ([clojure.string :as str])
+   :task
+   (let [version (first *command-line-args*)
+         tag     (str "v" version)
+         fail    (fn [msg] (binding [*out* *err*] (println "✗" msg)) (System/exit 1))
+         git-out (fn [& args]
+                   (str/trim (:out (apply shell {:out :string} "git" args))))]
+     (when-not version
+       (fail "Usage: bb release <version>   e.g. bb release 0.2.0-alpha.1"))
+     ;; Version shape: X.Y.Z, optionally -alpha.N / -beta.N / -rc.N (lock-step
+     ;; alpha scheme — keep it identical to what release.yml expects to parse).
+     (when-not (re-matches (re-pattern "\\d+\\.\\d+\\.\\d+(-(?:alpha|beta|rc)\\.\\d+)?") version)
+       (fail (str "'" version "' is not X.Y.Z or X.Y.Z-(alpha|beta|rc).N")))
+     ;; Must be on master (releases cut from master per repo convention).
+     (let [branch (git-out "rev-parse" "--abbrev-ref" "HEAD")]
+       (when-not (= branch "master")
+         (fail (str "on branch '" branch "', not master"))))
+     ;; Working tree must be clean.
+     (when-not (str/blank? (git-out "status" "--porcelain"))
+       (fail "working tree is not clean — commit or stash first"))
+     ;; Tag must not already exist (versions are immutable once published).
+     (let [{:keys [exit]} (shell {:continue true :out :string :err :string}
+                                 "git" "rev-parse" "--verify" "--quiet" tag)]
+       (when (zero? exit)
+         (fail (str "tag " tag " already exists"))))
+     ;; Warn if local master is behind/ahead of origin (non-fatal).
+     (shell {:continue true} "git" "fetch" "--quiet" "origin" "master")
+     (let [local  (git-out "rev-parse" "HEAD")
+           remote (git-out "rev-parse" "origin/master")]
+       (when (not= local remote)
+         (binding [*out* *err*]
+           (println "⚠ local master differs from origin/master — the tag will point at your local HEAD."))))
+     (println (str "→ tagging " tag " and pushing…"))
+     (shell "git" "tag" "-a" tag "-m" (str "Release " tag))
+     (shell "git" "push" "origin" tag)
+     (println (str "✓ pushed " tag))
+     (println "  Watch the release: gh run watch   (or the repo's Actions tab)"))}}}

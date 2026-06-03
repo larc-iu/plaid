@@ -1,8 +1,17 @@
 {
-  "name": "plaid-client",
-  "version": "0.1.0",
+  "name": "@larc-iu/plaid-client",
+  "version": "0.0.0",
   "description": "JavaScript client for the Plaid annotation API",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/larc-iu/plaid.git",
+    "directory": "plaid-client-js"
+  },
+  "homepage": "https://github.com/larc-iu/plaid#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js"

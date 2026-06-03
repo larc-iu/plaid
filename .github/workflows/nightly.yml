@@ -1,0 +1,42 @@
+name: Nightly Tests
+
+# The Clojure suite is expensive, so it does NOT run per-commit. It runs here on
+# a schedule (and on the release path in release.yml). This catches master
+# drifting red between releases without paying the cost on every push.
+#
+# Notification: GitHub emails the repository owner automatically when a
+# SCHEDULED workflow run fails, so no extra notify step is needed. Wire a Slack
+# / webhook step under `if: failure()` later if you want louder alerts.
+
+on:
+  schedule:
+    # 07:00 UTC daily (~02:00-03:00 US Eastern). Cron uses UTC.
+    - cron: '0 7 * * *'
+  workflow_dispatch:   # allow manual "run now" from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: latest
+      - name: Cache Maven + gitlibs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2
+            ~/.gitlibs
+          key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
+          restore-keys: ${{ runner.os }}-cljdeps-
+      - name: Run tests
+        working-directory: plaid-core
+        run: clojure -M:test

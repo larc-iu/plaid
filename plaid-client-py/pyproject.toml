@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "plaid-client"
-version = "0.1.0"
+name = "larc-plaid-client"
+version = "0.0.0"
 description = "Python client for the Plaid annotation API"
 requires-python = ">=3.10"
 dependencies = ["requests>=2.28"]
