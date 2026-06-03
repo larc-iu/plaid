@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
+import { notifyError } from '../../../utils/feedback.jsx';
 
 export const useDocumentHistory = (documentId) => {
   const [auditEntries, setAuditEntries] = useState([]);
   const [historicalDocument, setHistoricalDocument] = useState(null);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
-  const [error, setError] = useState('');
   const [hasLoadedAudit, setHasLoadedAudit] = useState(false);
   const { getClient } = useAuth();
 
@@ -25,13 +25,12 @@ export const useDocumentHistory = (documentId) => {
       const auditData = await client.documents.audit(documentId);
       setAuditEntries(auditData || []);
       setHasLoadedAudit(true);
-      setError('');
     } catch (err) {
       if (err.status === 401) {
         window.location.href = '/login';
         return;
       }
-      setError('Failed to load audit log: ' + (err.message || 'Unknown error'));
+      notifyError('Failed to load audit log: ' + (err.message || 'Unknown error'));
       console.error('Error fetching audit log:', err);
     } finally {
       setLoadingAudit(false);
@@ -44,7 +43,6 @@ export const useDocumentHistory = (documentId) => {
     
     try {
       setLoadingHistorical(true);
-      setError('');
       const client = getClient();
       if (!client) {
         window.location.href = '/login';
@@ -59,7 +57,14 @@ export const useDocumentHistory = (documentId) => {
         window.location.href = '/login';
         return null;
       }
-      setError('Failed to load historical document: ' + (err.message || 'Unknown error'));
+      // Time travel to a past state failed (non-200). Fail loudly via a toast
+      // so it's obvious even when the drawer is closed — but DON'T disturb the
+      // drawer's entry list (a transient failure shouldn't wipe the history you
+      // were browsing). Surface the HTTP status — e.g. a 425/503 means that
+      // state isn't available in the OLAP replica yet.
+      const status = err.status ? ` (HTTP ${err.status})` : '';
+      const msg = `Couldn't load the document at that point in time${status}: ${err.message || 'Unknown error'}`;
+      notifyError(msg, 'Time travel failed');
       console.error('Error fetching historical document:', err);
       return null;
     } finally {
@@ -70,7 +75,6 @@ export const useDocumentHistory = (documentId) => {
   // Clear historical document (return to current state)
   const clearHistoricalDocument = useCallback(() => {
     setHistoricalDocument(null);
-    setError('');
   }, []);
 
   return {
@@ -78,7 +82,6 @@ export const useDocumentHistory = (documentId) => {
     historicalDocument,
     loadingAudit,
     loadingHistorical,
-    error,
     hasLoadedAudit,
     fetchHistoricalDocument,
     clearHistoricalDocument,

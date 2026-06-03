@@ -1,10 +1,27 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
+// Compare two measured-position arrays for arc-geometry equivalence. Token
+// objects get fresh identities on every doc rebuild, so compare the fields that
+// actually drive arc rendering (token id + x/y/width/index/lemmaSpanId).
+const samePositions = (a, b) => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = b[i];
+    if (p.x !== q.x || p.y !== q.y || p.width !== q.width ||
+        p.index !== q.index || p.lemmaSpanId !== q.lemmaSpanId ||
+        p.token?.id !== q.token?.id) {
+      return false;
+    }
+  }
+  return true;
+};
+
 export const useTokenPositions = (tokenData, lemmaSpans) => {
   const [tokenPositions, setTokenPositions] = useState([]);
   const sentenceGridRef = useRef(null);
   const tokenRefs = useRef(new Map());
   const resizeObserverRef = useRef(null);
+  const positionsRef = useRef([]);
 
   // Function to measure actual token positions in the DOM
   const measureTokenPositions = useCallback(() => {
@@ -37,6 +54,12 @@ export const useTokenPositions = (tokenData, lemmaSpans) => {
       }
     });
 
+    // Token geometry is unchanged on relation-only edits (deprel value, arc
+    // add/remove): the rebuild hands us new token objects but the same layout.
+    // Skip the state update in that case so the DependencyTree doesn't re-render
+    // (and re-measure) a second time for nothing.
+    if (samePositions(positionsRef.current, positions)) return;
+    positionsRef.current = positions;
     setTokenPositions(positions);
   }, [tokenData, lemmaSpans]);
 

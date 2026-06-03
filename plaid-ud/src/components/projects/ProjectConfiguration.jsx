@@ -14,6 +14,7 @@ import {
   UPOS_TAGS, UNIVERSAL_DEPRELS, autoColor, colorMapToPairs, baseRel
 } from '../../utils/udVocab.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { canManageProject } from '../../utils/permissions.js';
 import {
   Container, Title, Text, Button, Group, Stack, Alert, Paper, Radio, Select, TextInput, List, Center, Loader,
   TagsInput, ColorInput, ActionIcon, Divider, SimpleGrid,
@@ -37,8 +38,6 @@ export const ProjectConfiguration = ({ embedded = false }) => {
 
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
   const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -66,11 +65,10 @@ export const ProjectConfiguration = ({ embedded = false }) => {
       }
       const data = await client.projects.get(projectId);
       setProject(data);
-      setError('');
       return data;
     } catch (err) {
       console.error('Failed to load project configuration:', err);
-      setError('Failed to load project configuration.');
+      notifyError('Failed to load project configuration.');
       return null;
     } finally {
       setLoading(false);
@@ -81,9 +79,7 @@ export const ProjectConfiguration = ({ embedded = false }) => {
     fetchProject();
   }, [projectId]);
 
-  const isAdmin = user?.isAdmin || false;
-  const isMaintainer = project?.maintainers?.includes(user?.id) || false;
-  const canConfigure = isAdmin || isMaintainer;
+  const canConfigure = canManageProject(project, user);
 
   useEffect(() => {
     if (project && !canConfigure) {
@@ -159,12 +155,10 @@ export const ProjectConfiguration = ({ embedded = false }) => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setError('');
-    setSuccessMessage('');
 
     const validationError = validateForm();
     if (validationError) {
-      setError(validationError);
+      notifyError(validationError);
       return;
     }
 
@@ -225,10 +219,10 @@ export const ProjectConfiguration = ({ embedded = false }) => {
       }
 
       await fetchProject();
-      setSuccessMessage('UD layer configuration saved successfully.');
+      notifySuccess('UD layer configuration saved successfully.');
     } catch (err) {
       console.error('Failed to save configuration:', err);
-      setError(err.message || 'Failed to save configuration');
+      notifyError(err.message || 'Failed to save configuration');
     } finally {
       setSaving(false);
     }
@@ -319,9 +313,6 @@ export const ProjectConfiguration = ({ embedded = false }) => {
 
       <form onSubmit={handleSubmit}>
         <Stack gap="xl">
-          {error && <Alert color="red">{error}</Alert>}
-          {successMessage && <Alert color="green">{successMessage}</Alert>}
-
           <Paper withBorder p="lg" radius="md">
             <Title order={2} size="h4" mb="md">Text Layer</Title>
             <Stack gap="md">

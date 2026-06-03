@@ -1,4 +1,4 @@
-# UD Editor - Universal Dependencies Tree Editor
+# Plaid UD - Universal Dependencies Annotation
 
 A React-based demo application for editing Universal Dependencies trees using the Plaid linguistic annotation platform.
 

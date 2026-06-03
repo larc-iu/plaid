@@ -1,12 +1,12 @@
 import { useState, useRef, useMemo } from 'react';
-import { Drawer, Loader, Alert, Text, Button, Box, Group } from '@mantine/core';
+import { Drawer, Loader, Text, Button, Box, Group } from '@mantine/core';
 import { IconChevronRight } from '@tabler/icons-react';
 import { EntityAvatar } from '../../common/EntityAvatar.jsx';
 import classes from './HistoryDrawer.module.css';
 
 const ITEM_HEIGHT = 116; // Height of each rendered row in pixels (card + gutter; see .cardContent)
 const BUFFER_SIZE = 5; // Number of rows to render outside visible area
-const GROUP_THRESHOLD_MS = 500; // Entries closer in time than this collapse together
+const GROUP_THRESHOLD_MS = 5000; // Entries closer in time than this collapse together
 
 const formatTime = (timestamp) => new Date(timestamp).toLocaleString();
 
@@ -62,19 +62,31 @@ const buildLayerNames = (layerInfo) => {
   return map;
 };
 
+// The acting agent behind an audit entry. Two entries only glom if the SAME
+// user is acting through the SAME token — an API token (by id, falling back to
+// name) or the plain web session. So edits by different users, or by one user
+// via different tokens, never collapse together even when near-simultaneous.
+const agentKey = (entry) => {
+  const actor = entry.user?.id ?? entry.user?.username ?? 'unknown';
+  const token = entry.apiToken?.id ?? entry.apiToken?.name ?? 'session';
+  return `${actor}::${token}`;
+};
+
 // Group consecutive entries whose timestamps fall within GROUP_THRESHOLD_MS of
-// each other. Entries arrive most-recent-first, so their times descend; we
-// compare each entry against the previous one in the (already reversed) list.
+// each other AND that share the same acting agent. Entries arrive
+// most-recent-first, so their times descend; we compare each entry against the
+// previous one in the (already reversed) list.
 const groupEntries = (entries, thresholdMs) => {
   const groups = [];
   let current = null;
   for (const entry of entries) {
     const t = new Date(entry.time).getTime();
-    if (current && Math.abs(current.lastTime - t) <= thresholdMs) {
+    const key = agentKey(entry);
+    if (current && current.agentKey === key && Math.abs(current.lastTime - t) <= thresholdMs) {
       current.entries.push(entry);
       current.lastTime = t;
     } else {
-      current = { id: entry.id, lastTime: t, entries: [entry] };
+      current = { id: entry.id, agentKey: key, lastTime: t, entries: [entry] };
       groups.push(current);
     }
   }
@@ -86,7 +98,6 @@ export const HistoryDrawer = ({
   onClose,
   auditEntries,
   loading,
-  error,
   onSelectEntry,
   selectedEntry,
   layerInfo
@@ -219,12 +230,11 @@ export const HistoryDrawer = ({
             </div>
           </div>
           <div style={{ flexShrink: 0, paddingTop: '0.35rem', borderTop: '1px solid var(--mantine-color-gray-1)' }}>
-            <Text size="xs" c="dimmed">{group.entries.length} actions • {formatTime(first.time)}</Text>
-            {first.user && (
-              <Text size="xs" c="dimmed">
-                by {first.user.username}{first.apiToken ? ` (via ${first.apiToken.name})` : ''}
-              </Text>
-            )}
+            <Text size="xs" c="dimmed">{formatTime(first.time)}</Text>
+            <Text size="xs" c="dimmed">
+              {group.entries.length} actions{first.user ? ` by ${first.user.username}` : ''}
+              {first.apiToken ? ` (via ${first.apiToken.name})` : ''}
+            </Text>
           </div>
         </div>
       </div>
@@ -256,13 +266,14 @@ export const HistoryDrawer = ({
         >
           {loading && <Group justify="center" py="xl"><Loader size="sm" /></Group>}
 
-          {error && <Box p="md"><Alert color="red">{error}</Alert></Box>}
-
-          {!loading && !error && reversedAuditEntries.length === 0 && (
+          {/* Errors (audit-log load, or a failed time-travel fetch) surface as
+              toasts — see useDocumentHistory. The entry list stays put so a
+              transient failure doesn't wipe the history you were browsing. */}
+          {!loading && reversedAuditEntries.length === 0 && (
             <Text ta="center" c="dimmed" py="xl" size="sm">No history entries found</Text>
           )}
 
-          {!loading && !error && reversedAuditEntries.length > 0 && (
+          {!loading && reversedAuditEntries.length > 0 && (
             <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '1rem' }}>
               <Text size="xs" c="dimmed" mb="sm">
                 {reversedAuditEntries.length} entries • Click to view historical state

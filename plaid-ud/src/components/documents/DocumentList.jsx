@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
 import { ImportModal } from './ImportModal';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import classes from '../common/listRow.module.css';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
 
@@ -80,12 +81,6 @@ export const DocumentList = () => {
     fetchProjectAndDocuments(); // Refresh the list
   };
 
-  // Check if user can manage this project (admin or maintainer)
-  const canManageProject = () => {
-    if (!user || !project) return false;
-    return user.isAdmin || project.maintainers?.includes(user.id);
-  };
-
   if (loading) {
     return <Center py={48}><Loader /></Center>;
   }
@@ -93,6 +88,11 @@ export const DocumentList = () => {
   if (!project) {
     return <Alert color="red">Project not found</Alert>;
   }
+
+  // Maintainers configure the project; writers (and up) create/import/delete
+  // documents. Readers get a view-only list.
+  const canManage = canManageProject(project, user);
+  const canEdit = canEditProject(project, user);
 
   const sortedDocuments = [...documents].sort((d1, d2) => (d1.name < d2.name ? -1 : d1.name > d2.name ? 1 : 0));
 
@@ -106,7 +106,7 @@ export const DocumentList = () => {
       <Group justify="space-between" mb="lg">
         <Title order={2}>Documents in {project.name}</Title>
         <Group gap="sm">
-          {canManageProject() && (
+          {canManage && (
             <Button
               component={Link}
               to={`/projects/${projectId}/configuration`}
@@ -116,12 +116,16 @@ export const DocumentList = () => {
               Project Settings
             </Button>
           )}
-          <Button variant="default" leftSection={<IconUpload size={16} />} onClick={() => setShowImportModal(true)}>
-            Import
-          </Button>
-          <Button color="dark" leftSection={<IconPlus size={16} />} onClick={() => setShowCreateForm(true)}>
-            New Document
-          </Button>
+          {canEdit && (
+            <Button variant="default" leftSection={<IconUpload size={16} />} onClick={() => setShowImportModal(true)}>
+              Import
+            </Button>
+          )}
+          {canEdit && (
+            <Button color="dark" leftSection={<IconPlus size={16} />} onClick={() => setShowCreateForm(true)}>
+              New Document
+            </Button>
+          )}
         </Group>
       </Group>
 
@@ -177,15 +181,17 @@ export const DocumentList = () => {
                         <IconPencil size={18} />
                       </ActionIcon>
                     </Tooltip>
-                    <Tooltip label="Delete document">
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        onClick={(e) => { e.stopPropagation(); handleDelete(document.id, document.name); }}
-                      >
-                        <IconTrash size={18} />
-                      </ActionIcon>
-                    </Tooltip>
+                    {canEdit && (
+                      <Tooltip label="Delete document">
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          onClick={(e) => { e.stopPropagation(); handleDelete(document.id, document.name); }}
+                        >
+                          <IconTrash size={18} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
                   </Group>
                 </Group>
               </Box>

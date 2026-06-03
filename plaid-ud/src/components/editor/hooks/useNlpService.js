@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
+import { notifyError } from '../../../utils/feedback.jsx';
 
 export const useNlpService = (projectId, documentId) => {
   const [availableServices, setAvailableServices] = useState([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [parseStatus, setParseStatus] = useState(null); // 'started', 'success', 'error'
-  const [parseError, setParseError] = useState(null);
-  
+
   const { getClient } = useAuth();
 
 
@@ -41,13 +41,12 @@ export const useNlpService = (projectId, documentId) => {
     // Use the first available NLP service
     const nlpService = availableServices[0];
     if (!nlpService) {
-      setParseError('No NLP services available');
+      notifyError('No NLP services available');
       return;
     }
 
     try {
       setParseStatus('started');
-      setParseError(null);
       setIsParsing(true);
 
       await client.messages.requestService(
@@ -62,7 +61,7 @@ export const useNlpService = (projectId, documentId) => {
       
     } catch (error) {
       console.error('Failed to request parse:', error);
-      setParseError(error.message || 'Failed to parse document');
+      notifyError(error.message || 'Failed to parse document', 'Parse Error');
       setParseStatus('error');
       setIsParsing(false);
     }
@@ -71,7 +70,6 @@ export const useNlpService = (projectId, documentId) => {
   // Clear parse status
   const clearParseStatus = useCallback(() => {
     setParseStatus(null);
-    setParseError(null);
   }, []);
 
   // Discover services when component mounts or projectId changes
@@ -86,7 +84,6 @@ export const useNlpService = (projectId, documentId) => {
     isDiscovering,
     isParsing,
     parseStatus,
-    parseError,
 
     // Actions
     discoverServices,

@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ProjectForm } from './ProjectForm';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { canManageProject } from '../../utils/permissions.js';
 import classes from '../common/listRow.module.css';
 
 export const ProjectList = () => {
@@ -15,7 +16,7 @@ export const ProjectList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const { getClient } = useAuth();
+  const { getClient, user } = useAuth();
   const navigate = useNavigate();
 
   const fetchProjects = async () => {
@@ -122,15 +123,17 @@ export const ProjectList = () => {
                     </Group>
                     </div>
                   </Group>
-                  <Tooltip label="Delete project">
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(project.id, project.name); }}
-                    >
-                      <IconTrash size={18} />
-                    </ActionIcon>
-                  </Tooltip>
+                  {canManageProject(project, user) && (
+                    <Tooltip label="Delete project">
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(project.id, project.name); }}
+                      >
+                        <IconTrash size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
                 </Group>
               </Box>
             ))}

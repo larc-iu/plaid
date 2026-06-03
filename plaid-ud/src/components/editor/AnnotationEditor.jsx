@@ -13,6 +13,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { notifySuccess } from '../../utils/feedback.jsx';
+import { canEditProject } from '../../utils/permissions.js';
 
 const DRAWER_WIDTH = 384;
 
@@ -92,7 +93,9 @@ export const AnnotationEditor = () => {
 
   const refreshData = useCallback(() => fetchData(false), [projectId, documentId, getClient]);
 
-  const error = loadError || doc?.error || '';
+  // doc-level operation errors now surface as toasts (see ConlluDocument.setError);
+  // only a hard document-load failure stays as a persistent page banner.
+  const error = loadError || '';
 
   // History functionality
   const {
@@ -100,7 +103,6 @@ export const AnnotationEditor = () => {
     historicalDocument,
     loadingAudit,
     loadingHistorical,
-    error: historyError,
     hasLoadedAudit,
     fetchHistoricalDocument,
     clearHistoricalDocument,
@@ -112,6 +114,11 @@ export const AnnotationEditor = () => {
   // ConlluDocument internally). Handlers are passed `null` in that mode, so
   // mutations stay disabled.
   const activeDocument = viewingHistoricalState ? historicalDocument : doc?.raw;
+
+  // Read-only mode is on when the user lacks write access to the project OR
+  // when viewing a past state. Reason is used to explain it in the banner.
+  const canEdit = canEditProject(project, user);
+  const readOnly = !canEdit || viewingHistoricalState;
 
   const historicalLayerInfo = useLayerInfo(historicalDocument);
   const layerInfo = viewingHistoricalState ? historicalLayerInfo : doc?.layerInfo;
@@ -157,7 +164,6 @@ export const AnnotationEditor = () => {
     isDiscovering,
     hasServices,
     parseStatus,
-    parseError,
     discoverServices,
     requestParse,
     clearParseStatus,
@@ -191,12 +197,18 @@ export const AnnotationEditor = () => {
     }
 
     // Set selected entry immediately for instant feedback
+    const previousEntry = selectedHistoryEntry;
     setSelectedHistoryEntry(entry);
 
     // Fetch historical document in background
     const historicalDoc = await fetchHistoricalDocument(entry.time);
     if (historicalDoc) {
       setViewingHistoricalState(true);
+    } else {
+      // Time travel failed (the hook already toasts). Roll the selection back
+      // so the drawer doesn't show a phantom-selected entry whose state never
+      // loaded — keep showing whatever we were actually viewing before.
+      setSelectedHistoryEntry(previousEntry);
     }
   };
 
@@ -243,19 +255,6 @@ export const AnnotationEditor = () => {
         {!isDiscovering && !hasServices && (
           <Button size="xs" onClick={discoverServices}>Retry</Button>
         )}
-
-        {selectedHistoryEntry && (
-          <Badge
-            size="lg"
-            variant="light"
-            color="yellow"
-            leftSection={loadingHistorical ? <Loader size={12} color="yellow" /> : <IconInfoCircle size={14} />}
-          >
-            {loadingHistorical
-              ? 'Loading Historical State...'
-              : `Viewing Historical State — ${new Date(selectedHistoryEntry.time).toLocaleString()}`}
-          </Badge>
-        )}
       </Group>
 
       <Group gap="sm">
@@ -263,7 +262,7 @@ export const AnnotationEditor = () => {
           <Button onClick={() => handleSelectHistoryEntry(null)}>Return to Current</Button>
         )}
 
-        {hasText && (
+        {hasText && canEdit && (
           <Button
             color="green"
             leftSection={<IconBolt size={16} />}
@@ -278,12 +277,38 @@ export const AnnotationEditor = () => {
     </Group>
   );
 
-  const errorMessages = (error || historyError || parseError) ? (
+  // History/parse errors surface as toasts (and the history error also shows
+  // inline within the drawer); only the page-load failure is a banner here.
+  const errorMessages = error ? (
     <Stack gap="xs" mt="md">
-      {error && <Alert color="red">{error}</Alert>}
-      {historyError && <Alert color="red">{historyError}</Alert>}
-      {parseError && <Alert color="red">Parse Error: {parseError}</Alert>}
+      <Alert color="red">{error}</Alert>
     </Stack>
+  ) : null;
+
+  // Persistent read-only banner, shown whenever editing is disabled — either
+  // because the user only has viewer access or because they're viewing a past
+  // state. The message names the reason so it isn't mysterious. For time travel
+  // this is the sole indicator (the toolbar chip was removed), so it carries the
+  // timestamp and the loading state too, and shows as soon as an entry is picked.
+  const historicalTime = selectedHistoryEntry
+    ? new Date(selectedHistoryEntry.time).toLocaleString()
+    : null;
+  const readOnlyBanner = selectedHistoryEntry ? (
+    <Alert
+      mt="md"
+      py="xs"
+      variant="light"
+      color="yellow"
+      icon={loadingHistorical ? <Loader size={16} color="yellow" /> : <IconInfoCircle size={18} />}
+    >
+      {loadingHistorical
+        ? `Loading the document state as of ${historicalTime}…`
+        : `Read-only — viewing the document as of ${historicalTime}. Return to the current state to make changes.`}
+    </Alert>
+  ) : !canEdit ? (
+    <Alert mt="md" py="xs" variant="light" color="blue" icon={<IconInfoCircle size={18} />}>
+      Read-only — you have viewer access to this project, so editing is disabled.
+    </Alert>
   ) : null;
 
   // Always render the main container with drawer to maintain state.
@@ -294,7 +319,6 @@ export const AnnotationEditor = () => {
         onClose={handleCloseHistory}
         auditEntries={auditEntries}
         loading={loadingAudit}
-        error={historyError}
         onSelectEntry={handleSelectHistoryEntry}
         selectedEntry={selectedHistoryEntry}
         layerInfo={doc?.layerInfo}
@@ -324,8 +348,9 @@ export const AnnotationEditor = () => {
                 document={activeDocument}
               />
               {toolbar}
+              {readOnlyBanner}
               {errorMessages}
-              {processedSentences.length > 0 && !viewingHistoricalState && (
+              {processedSentences.length > 0 && !readOnly && (
                 <Text size="xs" c="dimmed" mt="sm">
                   Tip: drag from one token to another to create a dependency relation; click a relation's
                   label to rename it, and double-click a cell to edit an annotation.
@@ -350,11 +375,11 @@ export const AnnotationEditor = () => {
                   <VirtualSentenceRow
                     key={sentenceData.id}
                     sentenceData={sentenceData}
-                    onAnnotationUpdate={viewingHistoricalState ? null : handleAnnotationUpdate}
-                    onFeatureDelete={viewingHistoricalState ? null : handleFeatureDelete}
-                    onRelationCreate={viewingHistoricalState ? null : handleRelationCreate}
-                    onRelationUpdate={viewingHistoricalState ? null : handleRelationUpdate}
-                    onRelationDelete={viewingHistoricalState ? null : handleRelationDelete}
+                    onAnnotationUpdate={readOnly ? null : handleAnnotationUpdate}
+                    onFeatureDelete={readOnly ? null : handleFeatureDelete}
+                    onRelationCreate={readOnly ? null : handleRelationCreate}
+                    onRelationUpdate={readOnly ? null : handleRelationUpdate}
+                    onRelationDelete={readOnly ? null : handleRelationDelete}
                     sentenceIndex={index}
                     totalTokensBefore={totalTokensBefore}
                     estimatedHeight={250} // Estimated height for placeholder

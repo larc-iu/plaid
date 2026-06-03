@@ -7,6 +7,7 @@ import {
 import { IconPlus } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { canManageProject } from '../../utils/permissions.js';
 
 const PERMISSION_OPTIONS = [
   { value: 'none', label: 'None' },
@@ -56,12 +57,6 @@ export const ProjectManagement = ({ embedded = false }) => {
   useEffect(() => {
     fetchData();
   }, [projectId]);
-
-  // Check if current user can manage this project
-  const canManageProject = () => {
-    if (!user || !project) return false;
-    return isAdmin || project.maintainers?.includes(user.id);
-  };
 
   // Get user's current permission level for the project
   const getUserPermissionLevel = (userId) => {
@@ -214,7 +209,7 @@ export const ProjectManagement = ({ embedded = false }) => {
     return <Alert color="red">Project not found</Alert>;
   }
 
-  if (!canManageProject()) {
+  if (!canManageProject(project, user)) {
     return <Alert color="red">You don't have permission to manage this project</Alert>;
   }
 

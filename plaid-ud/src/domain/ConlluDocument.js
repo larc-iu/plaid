@@ -1,6 +1,7 @@
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { basicTokenize } from '../utils/basicTokenize.js';
+import { notifyError } from '../utils/feedback.jsx';
 
 const UNDERSCORE = '_';
 
@@ -271,9 +272,13 @@ export class ConlluDocument {
     this._listeners.forEach(fn => fn());
   }
 
+  // Operation/validation errors surface as toasts (the editors no longer render
+  // a doc.error banner). We still track `_error` so callers can branch on
+  // outcome and so we don't fire a duplicate toast for the same sticky message.
   setError(msg) {
     if (this._error === msg) return;
     this._error = msg;
+    if (msg) notifyError(msg);
     this._emit();
   }
 
@@ -444,6 +449,7 @@ export class ConlluDocument {
     } catch (err) {
       console.error(`${label}:`, err);
       this._error = `${label}: ${err.message || 'Unknown error'}`;
+      notifyError(this._error);
       try { await this._reload(); } catch (reloadErr) {
         console.error('Reload after failure also failed:', reloadErr);
       }

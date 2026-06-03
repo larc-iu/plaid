@@ -35,7 +35,7 @@ export const LoginForm = () => {
     <Center mih="100vh" bg="gray.0" p="md">
       <Stack w="100%" maw={400} gap="xl">
         <div>
-          <Title order={1} ta="center">UD Editor Login</Title>
+          <Title order={1} ta="center">Plaid UD Login</Title>
           <Text c="dimmed" ta="center" size="sm" mt="xs">Universal Dependencies Tree Editor</Text>
         </div>
 

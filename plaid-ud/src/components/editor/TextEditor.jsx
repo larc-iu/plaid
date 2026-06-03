@@ -8,6 +8,7 @@ import { missingUdLayerLabels } from '../../utils/udLayerUtils.js';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { confirmDelete } from '../../utils/feedback.jsx';
+import { canEditProject } from '../../utils/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { DocumentTabs } from './DocumentTabs.jsx';
 
@@ -20,7 +21,7 @@ export const TextEditor = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
-  const { getClient } = useAuth();
+  const { getClient, user } = useAuth();
 
   // Subscribe the component to the doc's version counter so any mutation
   // (sentences/words/morphemes/spans/relations + isSaving + error) triggers
@@ -147,7 +148,11 @@ export const TextEditor = () => {
   const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
   const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
   const saving = doc.isSaving;
-  const opError = doc.error;
+
+  // Viewer-access users get the text editor read-only: the textarea is locked,
+  // the save/tokenize/clear actions are hidden, and the visualizer's edit
+  // handlers are withheld (it already null-guards every interaction).
+  const readOnly = !canEditProject(project, user);
 
   // Project-level misconfig: the three token layers exist but their
   // overlap-mode / parent chain doesn't match the UD layout. Runtime
@@ -175,7 +180,12 @@ export const TextEditor = () => {
         document={doc.raw}
       />
 
-      {opError && <Alert color="red" mb="sm">{opError}</Alert>}
+      {readOnly && (
+        <Alert color="blue" variant="light" mb="sm" py="xs">
+          Read-only — you have viewer access to this project, so the text and
+          tokenization can't be edited.
+        </Alert>
+      )}
 
       {missingLayerLabels.length > 0 && (
         <Alert color="yellow" mb="sm">
@@ -198,6 +208,7 @@ export const TextEditor = () => {
           <Textarea
             value={textContent}
             onChange={handleTextChange}
+            readOnly={readOnly}
             placeholder={`Enter your text here. Use newlines to separate sentences.
 
 Example:
@@ -209,19 +220,23 @@ This is a second sentence for testing.`}
           />
 
           <Group gap="sm">
-            <Button color="green" onClick={handleSaveText} disabled={saving || !textContent.trim()} loading={saving}>
-              Save Text
-            </Button>
+            {!readOnly && (
+              <Button color="green" onClick={handleSaveText} disabled={saving || !textContent.trim()} loading={saving}>
+                Save Text
+              </Button>
+            )}
 
-            <Button
-              onClick={handleTokenize}
-              disabled={saving || !textContent.trim() || isTextDirty || hasTokens}
-              title={isTextDirty ? 'Please save text changes before tokenizing' : (hasTokens ? 'Clear tokens before re-tokenizing' : '')}
-            >
-              Basic Tokenize
-            </Button>
+            {!readOnly && (
+              <Button
+                onClick={handleTokenize}
+                disabled={saving || !textContent.trim() || isTextDirty || hasTokens}
+                title={isTextDirty ? 'Please save text changes before tokenizing' : (hasTokens ? 'Clear tokens before re-tokenizing' : '')}
+              >
+                Basic Tokenize
+              </Button>
+            )}
 
-            {hasTokens && (
+            {!readOnly && hasTokens && (
               <Button color="red" onClick={handleClearTokens} disabled={saving}>
                 Clear Tokens
               </Button>
@@ -252,11 +267,11 @@ This is a second sentence for testing.`}
             wordTokens={wordTokens}
             morphemeTokens={morphemeTokens}
             morphemeForms={morphemeForms}
-            onWordCreate={handleWordCreate}
-            onWordUpdate={handleWordUpdate}
-            onWordDelete={handleWordDelete}
-            onSentenceToggle={handleSentenceBoundaryToggle}
-            onSetWordMorphemes={handleSetWordMorphemes}
+            onWordCreate={readOnly ? null : handleWordCreate}
+            onWordUpdate={readOnly ? null : handleWordUpdate}
+            onWordDelete={readOnly ? null : handleWordDelete}
+            onSentenceToggle={readOnly ? null : handleSentenceBoundaryToggle}
+            onSetWordMorphemes={readOnly ? null : handleSetWordMorphemes}
             setError={(msg) => doc.setError(msg)}
           />
         </Paper>

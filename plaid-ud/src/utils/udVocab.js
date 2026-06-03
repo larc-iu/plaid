@@ -1,5 +1,5 @@
 // Controlled vocabularies, color palette, and config read/normalize helpers
-// for the UD editor. Pure module — no React, no client calls — so it is safe to
+// for Plaid UD. Pure module — no React, no client calls — so it is safe to
 // import anywhere (components, utils, tests) and trivial to unit-test.
 //
 // Storage shape (all under the `ud` config namespace, verified to round-trip
