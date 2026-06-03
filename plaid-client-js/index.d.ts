@@ -195,10 +195,6 @@ interface TextLayersBundle {
   create(projectId: string, name: string): Promise<any>;
 }
 
-interface LoginBundle {
-  create(userId: string, password: string): Promise<any>;
-}
-
 interface VocabItemsBundle {
   setMetadata(id: string, body: any): Promise<any>;
   deleteMetadata(id: string): Promise<any>;
@@ -232,9 +228,15 @@ interface TokensBundle {
   deleteMetadata(tokenId: string): Promise<any>;
 }
 
+interface PlaidClientOptions {
+  /** Per-request timeout in ms (default 30000; 0 or null disables it). */
+  timeout?: number | null;
+}
+
 export declare class PlaidClient {
-  constructor(baseUrl: string, token: string);
-  static login(baseUrl: string, userId: string, password: string): Promise<PlaidClient>;
+  constructor(baseUrl: string, token: string, options?: PlaidClientOptions);
+  static login(baseUrl: string, userId: string, password: string, options?: PlaidClientOptions): Promise<PlaidClient>;
+  timeout: number | null;
 
   // Batch control methods
   beginBatch(): void;
@@ -260,7 +262,6 @@ export declare class PlaidClient {
   messages: MessagesBundle;
   projects: ProjectsBundle;
   textLayers: TextLayersBundle;
-  login: LoginBundle;
   vocabItems: VocabItemsBundle;
   relationLayers: RelationLayersBundle;
   tokens: TokensBundle;

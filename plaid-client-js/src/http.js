@@ -1,5 +1,10 @@
 import { transformRequest, transformResponse } from './transforms.js';
 
+// Default per-request timeout (ms). Applied to every request unless the client
+// is constructed with a different `timeout` (0 / null disables it). Note: this
+// also bounds media up/downloads — bump it (or disable) for very large files.
+export const DEFAULT_TIMEOUT_MS = 30000;
+
 /**
  * Extract and update document versions from response headers and body.
  */
@@ -9,10 +14,8 @@ export function extractDocumentVersions(client, responseHeaders, responseBody = 
     try {
       const versionsMap = JSON.parse(docVersionsHeader);
       if (typeof versionsMap === 'object' && versionsMap !== null) {
-        Object.entries(versionsMap).forEach(([docId, version]) => {
-          client.documentVersions = { ...client.documentVersions };
-          client.documentVersions[docId] = version;
-        });
+        // Clone once, then assign — cloning inside the loop is O(n²) and pointless.
+        client.documentVersions = { ...client.documentVersions, ...versionsMap };
       }
     } catch (e) {
       console.warn('Failed to parse document versions header:', e);
@@ -28,9 +31,20 @@ export function extractDocumentVersions(client, responseHeaders, responseBody = 
 }
 
 /**
+ * Read a failed response's body as parsed JSON, falling back to text.
+ */
+export async function parseErrorBody(response) {
+  try {
+    return await response.json();
+  } catch (_) {
+    return { message: await response.text().catch(() => 'Unable to read error response') };
+  }
+}
+
+/**
  * Create an enriched error from a failed HTTP response.
  */
-function makeHttpError(response, errorData, url, method) {
+export function makeHttpError(response, errorData, url, method) {
   const serverMessage = errorData?.error || errorData?.message || response.statusText || 'Unknown error';
   const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
   error.status = response.status;
@@ -42,15 +56,30 @@ function makeHttpError(response, errorData, url, method) {
 }
 
 /**
- * Create a network error.
+ * Create a network error (status 0). Timeout aborts get a clearer message.
  */
-function makeNetworkError(originalError, url, method) {
-  const error = new Error(`Network error: ${originalError.message} at ${url}`);
+export function makeNetworkError(originalError, url, method) {
+  const timedOut = originalError?.name === 'TimeoutError' || originalError?.name === 'AbortError';
+  const message = timedOut
+    ? `Request timed out at ${url}`
+    : `Network error: ${originalError.message} at ${url}`;
+  const error = new Error(message);
   error.status = 0;
   error.url = url;
   error.method = method;
   error.originalError = originalError;
   return error;
+}
+
+/**
+ * Build a fetch AbortSignal that fires after `timeout` ms, or undefined when
+ * timeouts are disabled / unsupported.
+ */
+export function timeoutSignal(timeout) {
+  if (timeout && timeout > 0 && typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
+    return AbortSignal.timeout(timeout);
+  }
+  return undefined;
 }
 
 /**
@@ -145,18 +174,14 @@ export async function makeRequest(client, method, path, options = {}) {
   if (requestBody !== undefined) {
     fetchOptions.body = formData ? requestBody : JSON.stringify(requestBody);
   }
+  const signal = timeoutSignal(client.timeout);
+  if (signal) fetchOptions.signal = signal;
 
   try {
     const response = await fetch(url, fetchOptions);
 
     if (!response.ok) {
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (_) {
-        errorData = { message: await response.text().catch(() => 'Unable to read error response') };
-      }
-      throw makeHttpError(response, errorData, url, method);
+      throw makeHttpError(response, await parseErrorBody(response), url, method);
     }
 
     // Binary response (getMedia)

@@ -7,6 +7,12 @@ from plaid_client.transforms import transform_request, transform_response
 logger = logging.getLogger(__name__)
 
 
+# Default per-request timeout (seconds). Applied to every request unless the
+# client is constructed with a different ``timeout`` (None disables it). Note:
+# this also bounds media up/downloads — raise it (or disable) for large files.
+DEFAULT_TIMEOUT_S = 30.0
+
+
 class PlaidAPIError(Exception):
     """Enriched API error raised for failed HTTP responses and network errors.
 
@@ -28,6 +34,29 @@ class PlaidAPIError(Exception):
         self.method = method
         self.response_data = response_data
         self.original_error = original_error
+
+
+def parse_error_body(response):
+    """Read a failed response's body as parsed JSON, falling back to text."""
+    try:
+        return response.json()
+    except Exception:
+        try:
+            return {'message': response.text}
+        except Exception:
+            return {'message': 'Unable to read error response'}
+
+
+def build_api_error(response, url, method):
+    """Build a PlaidAPIError from a failed HTTP response (shared by every code path)."""
+    error_data = parse_error_body(response)
+    server_message = (error_data.get('error') or error_data.get('message')
+                      or response.reason or 'Unknown error')
+    return PlaidAPIError(
+        f'HTTP {response.status_code} {server_message} at {url}',
+        status=response.status_code, url=url, method=method,
+        response_data=error_data, status_text=response.reason or '',
+    )
 
 
 def extract_document_versions(client, response_headers, response_body=None):
@@ -255,7 +284,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     if not form_data:
         headers['Content-Type'] = 'application/json'
 
-    kwargs = {'method': method, 'url': url, 'headers': headers}
+    kwargs = {'method': method, 'url': url, 'headers': headers,
+              'timeout': getattr(client, 'timeout', DEFAULT_TIMEOUT_S)}
 
     if request_body is not None:
         if form_data:
@@ -269,24 +299,14 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     try:
         response = client.session.request(**kwargs)
     except Exception as e:
+        if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
+            raise PlaidAPIError(f'Request timed out at {url}', url=url, method=method,
+                                original_error=e)
         raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method,
                             original_error=e)
 
     if not response.ok:
-        try:
-            error_data = response.json()
-        except Exception:
-            try:
-                error_data = {'message': response.text}
-            except Exception:
-                error_data = {'message': 'Unable to read error response'}
-        server_message = (error_data.get('error') or error_data.get('message')
-                          or response.reason or 'Unknown error')
-        raise PlaidAPIError(
-            f'HTTP {response.status_code} {server_message} at {url}',
-            status=response.status_code, url=url, method=method,
-            response_data=error_data, status_text=response.reason or '',
-        )
+        raise build_api_error(response, url, method)
 
     # Binary response
     if binary_response:

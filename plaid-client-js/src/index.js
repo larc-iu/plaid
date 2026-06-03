@@ -3,7 +3,10 @@
  */
 
 import { transformRequest, transformResponse } from './transforms.js';
-import { makeRequest, extractDocumentVersions } from './http.js';
+import {
+  makeRequest, extractDocumentVersions, parseErrorBody, makeHttpError,
+  makeNetworkError, timeoutSignal, DEFAULT_TIMEOUT_MS,
+} from './http.js';
 import { listAll, listPage, iterPages } from './pagination.js';
 import { createSSEConnection } from './sse.js';
 import {
@@ -26,10 +29,13 @@ class PlaidClient {
    * Create a new PlaidClient instance
    * @param {string} baseUrl - The base URL for the API
    * @param {string} token - The authentication token
+   * @param {object} [options] - Client options
+   * @param {number} [options.timeout=30000] - Per-request timeout in ms (0 or null disables it)
    */
-  constructor(baseUrl, token) {
+  constructor(baseUrl, token, options = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.token = token;
+    this.timeout = options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT_MS;
     this.isBatching = false;
     this.batchOperations = [];
     this.documentVersions = {};
@@ -1062,21 +1068,6 @@ class PlaidClient {
         }),
     };
 
-    this.login = {
-      /**
-       * Authenticate with a userId and password and get a JWT token. Unlike the
-       * static PlaidClient.login (which returns a ready-to-use client), this
-       * returns the raw login response containing the token.
-       * @param {string} userId - The user ID
-       * @param {string} password - The password
-       */
-      create: (userId, password) =>
-        this._request('POST', '/api/v1/login', {
-          body: bodyOf({ 'user-id': userId, password }),
-          noAuth: true,
-        }),
-    };
-
     this.vocabItems = {
       /**
        * Replace all metadata for a vocab item.
@@ -1450,25 +1441,13 @@ class PlaidClient {
         },
         body: JSON.stringify(body),
       };
+      const signal = timeoutSignal(this.timeout);
+      if (signal) fetchOptions.signal = signal;
 
       try {
         const response = await fetch(url, fetchOptions);
         if (!response.ok) {
-          let errorData;
-          try {
-            errorData = await response.json();
-          } catch (_) {
-            errorData = { message: await response.text().catch(() => 'Unable to read error response') };
-          }
-
-          const serverMessage = errorData?.error || errorData?.message || response.statusText;
-          const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
-          error.status = response.status;
-          error.statusText = response.statusText;
-          error.url = url;
-          error.method = 'POST';
-          error.responseData = errorData;
-          throw error;
+          throw makeHttpError(response, await parseErrorBody(response), url, 'POST');
         }
 
         const results = await response.json();
@@ -1479,10 +1458,8 @@ class PlaidClient {
             try {
               const versionsMap = JSON.parse(result.headers['X-Document-Versions']);
               if (typeof versionsMap === 'object' && versionsMap !== null) {
-                Object.entries(versionsMap).forEach(([docId, version]) => {
-                  this.documentVersions = { ...this.documentVersions };
-                  this.documentVersions[docId] = version;
-                });
+                // Clone once per response, then merge — not once per entry.
+                this.documentVersions = { ...this.documentVersions, ...versionsMap };
               }
             } catch (e) {
               console.warn('Failed to parse document versions header from batch response:', e);
@@ -1493,12 +1470,7 @@ class PlaidClient {
         return results.map(result => transformResponse(result));
       } catch (error) {
         if (error.status) throw error;
-        const fetchError = new Error(`Network error: ${error.message} at ${url}`);
-        fetchError.status = 0;
-        fetchError.url = url;
-        fetchError.method = 'POST';
-        fetchError.originalError = error;
-        throw fetchError;
+        throw makeNetworkError(error, url, 'POST');
       }
     } finally {
       this.isBatching = false;
@@ -1521,50 +1493,37 @@ class PlaidClient {
   }
 
   /**
-   * Authenticate and return a new client instance with token
+   * Authenticate and return a new client instance with token. This is the
+   * single auth entry point — there is no `client.login` resource.
    * @param {string} baseUrl - The base URL for the API
    * @param {string} userId - User ID for authentication
    * @param {string} password - Password for authentication
+   * @param {object} [options] - Client options forwarded to the constructor (e.g. { timeout })
    * @returns {Promise<PlaidClient>} - Authenticated client instance
    */
-  static async login(baseUrl, userId, password) {
+  static async login(baseUrl, userId, password, options = {}) {
     baseUrl = baseUrl.replace(/\/$/, '');
+    const url = `${baseUrl}/api/v1/login`;
     try {
-      const response = await fetch(`${baseUrl}/api/v1/login`, {
+      const fetchOptions = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 'user-id': userId, password }),
-      });
+      };
+      const signal = timeoutSignal(options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT_MS);
+      if (signal) fetchOptions.signal = signal;
 
+      const response = await fetch(url, fetchOptions);
       if (!response.ok) {
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch (_) {
-          errorData = { message: await response.text().catch(() => 'Unable to read error response') };
-        }
-
-        const serverMessage = errorData?.error || errorData?.message || response.statusText;
-        const error = new Error(`HTTP ${response.status} ${serverMessage} at ${baseUrl}/api/v1/login`);
-        error.status = response.status;
-        error.statusText = response.statusText;
-        error.url = `${baseUrl}/api/v1/login`;
-        error.method = 'POST';
-        error.responseData = errorData;
-        throw error;
+        throw makeHttpError(response, await parseErrorBody(response), url, 'POST');
       }
 
       const data = await response.json();
       const token = data.token || '';
-      return new PlaidClient(baseUrl, token);
+      return new PlaidClient(baseUrl, token, options);
     } catch (error) {
       if (error.status) throw error;
-      const fetchError = new Error(`Network error: ${error.message} at ${baseUrl}/api/v1/login`);
-      fetchError.status = 0;
-      fetchError.url = `${baseUrl}/api/v1/login`;
-      fetchError.method = 'POST';
-      fetchError.originalError = error;
-      throw fetchError;
+      throw makeNetworkError(error, url, 'POST');
     }
   }
 }

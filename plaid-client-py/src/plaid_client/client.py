@@ -7,7 +7,7 @@ import requests as req_lib
 
 from plaid_client.http import (
     PlaidAPIError, make_request, extract_document_versions,
-    list_all, list_page, iter_pages,
+    list_all, list_page, iter_pages, build_api_error, DEFAULT_TIMEOUT_S,
 )
 from plaid_client.transforms import transform_response
 from plaid_client.sse import SSEConnection
@@ -1651,32 +1651,19 @@ class BatchResource(_Resource):
         return self._request('POST', '/api/v1/batch', body=body, no_batch=True)
 
 
-class LoginResource(_Resource):
-    def create(self, user_id: str, password: str) -> Any:
-        """Authenticate with a user ID and password and get a JWT token.
-
-        Unlike the ``PlaidClient.login`` classmethod (which returns a ready-to-use
-        client), this returns the raw login response containing the token.
-
-        Args:
-            user_id: The user ID
-            password: The password
-        """
-        return self._request('POST', '/api/v1/login',
-                             body=_body_of(user_id=user_id, password=password),
-                             no_auth=True)
-
-
 class PlaidClient:
-    def __init__(self, base_url: str, token: str):
+    def __init__(self, base_url: str, token: str, timeout: float | None = DEFAULT_TIMEOUT_S):
         """Create a new PlaidClient instance.
 
         Args:
             base_url: The base URL for the API
             token: The authentication token
+            timeout: Per-request timeout in seconds (default 30; ``None`` disables
+                it). Also bounds media up/downloads — raise it for large files.
         """
         self.base_url = base_url.rstrip('/')
         self.token = token
+        self.timeout = timeout
         self.is_batching = False
         self.batch_operations: list[dict] = []
         self.document_versions: dict[str, str] = {}
@@ -1700,7 +1687,6 @@ class PlaidClient:
         self.relation_layers = RelationLayersResource(self)
         self.tokens = TokensResource(self)
         self.batch = BatchResource(self)
-        self.login = LoginResource(self)
 
     def query(self, body: Any) -> Any:
         """Run a query over every project you can read.
@@ -1782,23 +1768,11 @@ class PlaidClient:
                 'Content-Type': 'application/json',
             }
 
-            response = self.session.post(url, headers=headers, data=json.dumps(body))
+            response = self.session.post(url, headers=headers, data=json.dumps(body),
+                                         timeout=self.timeout)
 
             if not response.ok:
-                try:
-                    error_data = response.json()
-                except Exception:
-                    try:
-                        error_data = {'message': response.text}
-                    except Exception:
-                        error_data = {'message': 'Unable to read error response'}
-                server_message = (error_data.get('error') or error_data.get('message')
-                                  or response.reason or 'Unknown error')
-                raise PlaidAPIError(
-                    f'HTTP {response.status_code} {server_message} at {url}',
-                    status=response.status_code, url=url, method='POST',
-                    response_data=error_data, status_text=response.reason or '',
-                )
+                raise build_api_error(response, url, 'POST')
 
             results = response.json()
 
@@ -1848,13 +1822,17 @@ class PlaidClient:
         self.close()
 
     @classmethod
-    def login(cls, base_url: str, user_id: str, password: str) -> PlaidClient:
+    def login(cls, base_url: str, user_id: str, password: str,
+              timeout: float | None = DEFAULT_TIMEOUT_S) -> PlaidClient:
         """Authenticate and return a new client instance with token.
+
+        This is the single auth entry point — there is no ``client.login`` resource.
 
         Args:
             base_url: The base URL for the API
             user_id: User ID for authentication
             password: Password for authentication
+            timeout: Per-request timeout in seconds, forwarded to the new client.
 
         Returns:
             Authenticated client instance
@@ -1864,27 +1842,18 @@ class PlaidClient:
         try:
             response = req_lib.post(url,
                                     headers={'Content-Type': 'application/json'},
-                                    data=json.dumps({'user-id': user_id, 'password': password}))
+                                    data=json.dumps({'user-id': user_id, 'password': password}),
+                                    timeout=timeout)
         except Exception as e:
+            if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
+                raise PlaidAPIError(f'Request timed out at {url}', url=url, method='POST',
+                                    original_error=e)
             raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method='POST',
                                 original_error=e)
 
         if not response.ok:
-            try:
-                error_data = response.json()
-            except Exception:
-                try:
-                    error_data = {'message': response.text}
-                except Exception:
-                    error_data = {'message': 'Unable to read error response'}
-            server_message = (error_data.get('error') or error_data.get('message')
-                              or response.reason or 'Unknown error')
-            raise PlaidAPIError(
-                f'HTTP {response.status_code} {server_message} at {url}',
-                status=response.status_code, url=url, method='POST',
-                response_data=error_data, status_text=response.reason or '',
-            )
+            raise build_api_error(response, url, 'POST')
 
         data = response.json()
         token = data.get('token', '')
-        return cls(base_url, token)
+        return cls(base_url, token, timeout=timeout)
