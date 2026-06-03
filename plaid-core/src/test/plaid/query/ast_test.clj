@@ -217,6 +217,28 @@
     (is (= 400 (code-of #(ast/expand {"find" ["?s"] "where" [["or" [["span" "?s" {}]] "notagroup"]]})))
         "each :or group must be a list of clauses")))
 
+(deftest not-negation
+  (testing ":not is accepted; inner-only vars are existential, outer vars correlate"
+    (is (= 1 (count (ast/expand
+                     {"find" ["?t"]
+                      "where" [["token" "?t" {"layer" "w"}]
+                               ["not" ["covers" "?s" "?t"] ["span" "?s" {"value" "NOUN"}]]]})))))
+  (testing ":not author errors are 400"
+    (is (= 400 (code-of #(ast/expand {"find" ["?s"]
+                                      "where" [["token" "?t" {"layer" "w"}]
+                                               ["not" ["span" "?s" {}] ["covers" "?s" "?t"]]]})))
+        "a find var appearing only inside :not is not positively bound")
+    (is (= 400 (code-of #(ast/expand {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["not"]]})))
+        ":not needs at least one clause")
+    (is (= 400 (code-of #(ast/expand {"find" ["?t"]
+                                      "where" [["token" "?t" {"layer" "w"}]
+                                               ["not" ["seq" {"layer" "w"} ["span" {"layer" "p"}]]]]})))
+        ":seq may not appear inside :not")
+    (is (= 400 (code-of #(ast/expand {"find" ["?t"]
+                                      "where" [["token" "?t" {"layer" "w"}]
+                                               ["not" ["not" ["span" "?s" {}]]]]})))
+        ":not may not nest")))
+
 (deftest value-alternation
   (testing "a vector constraint value (one-of) is accepted on literal-match keys"
     (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"value" ["NOUN" "VERB"]}]]})))

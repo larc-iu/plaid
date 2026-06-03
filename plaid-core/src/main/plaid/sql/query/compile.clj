@@ -71,19 +71,23 @@
 ;; ---------------------------------------------------------------------------
 
 (defn- collect-entity-constraints
-  "Map of var -> VECTOR of the constraint maps from its entity clause(s). Each
-  clause contributes its own map and the compiler ANDs them all: a var that
-  appears in two entity clauses must satisfy both. (Merging them last-wins would
-  silently drop the earlier constraint and return a wrong, larger result — e.g.
-  `value NOUN` AND `value VERB` must be unsatisfiable, not just `VERB`.)"
+  "Map of var -> VECTOR of the constraint maps from every entity clause (including
+  those nested inside :not groups). Each clause contributes its own map and the
+  compiler ANDs them all: a var that appears in two entity clauses must satisfy
+  both. (Merging them last-wins would silently drop the earlier constraint and
+  return a wrong, larger result — e.g. `value NOUN` AND `value VERB` must be
+  unsatisfiable, not just `VERB`.)"
   [where]
-  (reduce
-   (fn [acc clause]
-     (let [[head v cmap] clause]
-       (if (contains? entity-table head)
-         (update acc v (fnil conj []) cmap)
-         acc)))
-   {} where))
+  (letfn [(collect [acc clauses]
+            (reduce
+             (fn [acc clause]
+               (let [[head v cmap] clause]
+                 (cond
+                   (contains? entity-table head) (update acc v (fnil conj []) (or cmap {}))
+                   (= head :not) (collect acc (rest clause))
+                   :else acc)))
+             acc clauses))]
+    (collect {} where)))
 
 ;; ---------------------------------------------------------------------------
 ;; Pass B: ensure every var has a table + scope predicate + filters
@@ -267,6 +271,32 @@
         (when-let [t (:target cmap)]
           (add-where! st [:= (col ra :target_span_id) (col (ensure-var! st t constraints) :id)]))))))
 
+(defn- compile-not!
+  "Compile a `[:not & inner-clauses]` clause to a correlated `NOT EXISTS`. A var
+  already bound in the outer query is CORRELATED (the subquery references its
+  outer alias); a var appearing ONLY inside the :not is existential and gets a
+  fresh alias + scope predicate INSIDE the subquery. The subquery is built in a
+  sub-state that shares the outer var->alias / kinds / scope / alias-counter but
+  has its own :from/:where."
+  [outer-st constraints clause]
+  (let [inner (rest clause)
+        sub-st (atom (assoc @outer-st :from [] :where [] :scoped #{}))]
+    ;; existential (inner-only) vars get a table + scope here; correlated (outer)
+    ;; vars are already in var->alias, so ensure-var! no-ops for them.
+    (doseq [v (distinct (mapcat ast/clause-vars inner))]
+      (ensure-var! sub-st v constraints))
+    (doseq [c inner]
+      (if (contains? entity-table (first c))
+        (compile-relation-inline! sub-st constraints c)
+        (compile-rel! sub-st constraints c)))
+    (add-where! outer-st [:not [:exists {:select [1]
+                                         :from (:from @sub-st)
+                                         :where (into [:and] (:where @sub-st))}]])
+    ;; advance the outer alias counter past the subquery's, and record the inner
+    ;; vars (scoped in the subquery) as scoped so the ACL assert is satisfied.
+    (swap! outer-st assoc :n (:n @sub-st))
+    (swap! outer-st update :scoped into (:scoped @sub-st))))
+
 ;; ---------------------------------------------------------------------------
 ;; Assemble
 ;; ---------------------------------------------------------------------------
@@ -294,11 +324,15 @@
         kinds (or (::ast/var-kinds resolved) (ast/infer-kinds resolved))
         st (new-state scope kinds)
         constraints (collect-entity-constraints (:where resolved))]
-    ;; Pass B: every var (entity + relationship-introduced) gets a table + scope.
-    (doseq [v (keys kinds)] (ensure-var! st v constraints))
-    ;; Pass C: relationship clauses + inline relation source/target.
+    ;; Pass B: every POSITIVELY-bound var (entity + relationship-introduced) gets
+    ;; a table + scope. Vars that appear only inside a :not are existential to the
+    ;; subquery and are allocated there by compile-not!, not in the outer query.
+    (doseq [v (ast/positive-binding-vars (:where resolved))]
+      (ensure-var! st v constraints))
+    ;; Pass C: relationship clauses, inline relation source/target, and negation.
     (doseq [clause (:where resolved)]
       (cond
+        (= :not (first clause)) (compile-not! st constraints clause)
         (contains? entity-table (first clause)) (compile-relation-inline! st constraints clause)
         :else (compile-rel! st constraints clause)))
     (assert-acl-invariant! st)

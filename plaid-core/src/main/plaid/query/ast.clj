@@ -158,6 +158,12 @@
                (mapv normalize-clause g)))
         groups))
 
+(defn- normalize-not-clause
+  "Normalize a [:not clause ...] clause; the negated sub-pattern is the
+  conjunction of the given clauses (normalized recursively)."
+  [clauses]
+  (into [:not] (map normalize-clause clauses)))
+
 (defn- normalize-seq-clause
   "Normalize a [:seq {config} elem ...] clause."
   [args]
@@ -174,6 +180,7 @@
     (cond
       (= head :seq) (normalize-seq-clause (rest clause))
       (= head :or)  (normalize-or-clause (rest clause))
+      (= head :not) (normalize-not-clause (rest clause))
       :else (into [head]
                   (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
                   (rest clause)))))
@@ -234,7 +241,30 @@
       (= head :source)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :target)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :vocab-link) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :vocab))
+      ;; :not contributes its inner clauses' kinds (so inner-only vars get a kind
+      ;; for compilation, and an inner use conflicting with an outer use errors)
+      (= head :not)        (reduce clause-kinds kinds args)
       :else kinds)))
+
+(defn clause-vars
+  "The vars a single positive (entity/relationship) clause mentions — its bound
+  var(s), plus inline :source/:target. (Not :not, which is filtered upstream.)"
+  [clause]
+  (let [[head & args] clause]
+    (cond
+      (contains? entity-clauses head)
+      (let [[v cmap] args]
+        (into (if (var? v) [v] [])
+              (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target])))
+      (contains? rel-clauses head) (filterv var? args)
+      :else [])))
+
+(defn positive-binding-vars
+  "The set of vars bound by the POSITIVE part of a :where — i.e. every var that
+  appears in a non-:not clause. A var appearing ONLY inside a :not is existential
+  to that negation and is NOT positively bound (so it may not be a :find var)."
+  [where]
+  (set (mapcat clause-vars (remove #(= :not (first %)) where))))
 
 (defn infer-kinds
   "Return a map of {var -> kind} (kind ∈ #{:span :token :relation}) for every var
@@ -309,6 +339,16 @@
         (when-not (every? var? args)
           (err! :validate (str "Clause :" (name head) " arguments must all be vars, got: " (pr-str (vec args))))))
 
+      (= head :not)
+      (do
+        (when (empty? args)
+          (err! :validate ":not needs at least one clause to negate"))
+        (doseq [c args]
+          (when (#{:not :or :seq} (first c))
+            (err! :validate (str ":not may not contain :" (name (first c))
+                                 " (negate a conjunction of entity/relationship clauses)")))
+          (validate-clause! c)))
+
       :else
       (err! :validate (str "Unknown clause head :" (name head))))))
 
@@ -321,9 +361,11 @@
   (validate-shape! ast)
   (run! validate-clause! (:where ast))
   (let [kinds (infer-kinds ast)
-        find-unbound (remove kinds (:find ast))]
+        positive (positive-binding-vars (:where ast))
+        find-unbound (remove positive (:find ast))]
     (when (seq find-unbound)
-      (err! :validate (str "Var(s) " (vec find-unbound) " in :find are never bound by any :where clause")
+      (err! :validate (str "Var(s) " (vec find-unbound) " in :find are never positively bound "
+                           "(a var that appears only inside :not is not bound)")
             {:vars (vec find-unbound)}))
     (-> ast
         (assoc :return (or (:return ast) :ids))

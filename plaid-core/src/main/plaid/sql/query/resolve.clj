@@ -144,12 +144,15 @@
                           ix)))
         layer-named? #{:span :token :relation :vocab}
         resolve-clause
-        (fn [clause]
+        (fn resolve-clause [clause]
           (let [[head v cmap] clause]
-            (if (and (layer-named? head) (map? cmap) (contains? cmap :layer))
+            (cond
+              ;; recurse into a :not's inner clauses so their layer refs resolve
+              (= head :not) (into [:not] (map resolve-clause (rest clause)))
+              (and (layer-named? head) (map? cmap) (contains? cmap :layer))
               (let [ids (resolve-ref (get-index head) head (:layer cmap))]
                 [head v (assoc cmap ::layer-ids (vec ids))])
-              clause)))]
+              :else clause)))]
     (-> ast*
         (assoc :where (mapv resolve-clause (:where ast*)))
         (assoc ::scope scope))))

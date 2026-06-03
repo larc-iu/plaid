@@ -26,8 +26,8 @@ A query is a **conjunctive graph pattern**, in the spirit of Datalog:
 There's also a CQP-style **`:seq`** shorthand for the common case of *"this token,
 immediately followed by that token"* — it desugars into the same primitives.
 
-> Clauses are **conjunctive by default** — every clause must hold. For
-> disjunction ("this OR that"), use the explicit `:or` clause (§5.5).
+> Clauses are **conjunctive by default** — every clause must hold. Use the
+> explicit `:or` clause (§5.5) for disjunction and `:not` (§5.6) for negation.
 
 ```python
 from plaid_client import PlaidClient
@@ -234,6 +234,34 @@ Rules:
 > For simple "one field is one of several values" alternation, prefer a **value
 > list** (§3) — `{"value": ["NOUN", "PROPN"]}` compiles to a single `IN` rather
 > than a UNION of branches.
+
+## 5.6 Negation — `:not`
+
+`["not", clause, clause, …]` matches when the negated sub-pattern (the
+conjunction of its clauses) has **no** match — a `NOT EXISTS` anti-join.
+
+```jsonc
+// words with no NOUN annotation on them
+["token", "?t", {"layer": "Words"}],
+["not", ["covers", "?s", "?t"], ["span", "?s", {"layer": "UPOS", "value": "NOUN"}]]
+```
+
+How variables behave (this is the important part):
+
+- A variable that is **also bound in the positive (non-`:not`) part** of the
+  query is **correlated** — the negation is checked *for that binding*. Above,
+  `?t` is bound positively, so `:not` means "this particular `?t` has no covering
+  NOUN span."
+- A variable that appears **only inside the `:not`** is **existential** to the
+  negation ("there is no `?s` such that…"). It is *not* bound by the outer query,
+  so it **may not be a `find` variable** (that's a 400).
+
+Rules:
+- At least one clause to negate; the negated clauses are entity/relationship only
+  (`:not` may not contain `:or`, `:seq`, or another `:not` — yet).
+- Negation is over your readable scope, same as everything else.
+
+`:not` composes with `:or` (it distributes into branches) and with value lists.
 
 ---
 
@@ -492,14 +520,19 @@ clause heads (`'span'`, `'seq'`, `'?'`), variables (`'?d'`), and values
 **Disjunction** — `["or", group, group, …]` (≥2 groups; each group a list of
 clauses). Matches if any group matches; results are UNIONed.
 
+**Negation** — `["not", clause, …]`. Matches when the conjunction of the clauses
+has no match (`NOT EXISTS`). Vars bound outside correlate; inner-only vars are
+existential (and can't be in `find`).
+
 **Top level** — `{find, where, scope?, limit?, return?}`.
 
 ---
 
 ## 14. Not yet supported (roadmap)
 
-- Negation (`:not` / "no such clause").
 - Unbounded sequence quantifiers (`*`, `+`).
+- Disjunction / sequences / negation *nested inside* `:not` (v0 negates a
+  conjunction of entity/relationship clauses only).
 - Cursor/streaming for very large result sets.
 - Historical / `as-of` querying (the QL runs against current state only).
 - Bulk edits driven by query matches.
