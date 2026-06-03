@@ -39,9 +39,11 @@ function App() {
             {/* Documents page */}
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
             
-            {/* Project settings (tabbed: UD configuration + user management).
-                Both paths render the same view; the active tab follows the path. */}
+            {/* Project settings (tabbed: users & permissions, customization, UD
+                configuration). All paths render the same view; the active tab
+                follows the path. */}
             <Route path="projects/:projectId/management" element={<ProjectSettings />} />
+            <Route path="projects/:projectId/customization" element={<ProjectSettings />} />
             <Route path="projects/:projectId/configuration" element={<ProjectSettings />} />
             
             {/* Text editor route */}

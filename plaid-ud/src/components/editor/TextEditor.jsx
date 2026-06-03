@@ -66,6 +66,12 @@ export const TextEditor = () => {
   };
 
   useEffect(() => {
+    // The text editor does structural edits (text body, tokenization) that
+    // aren't optimistic-concurrency-gated. Make sure no leaked strict mode (from
+    // a previously-open annotation editor) attaches a stale document-version and
+    // makes Basic Tokenize / Save Text fail with a spurious 409.
+    const client = getClient();
+    if (client) client.exitStrictMode();
     fetchData(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, documentId]);

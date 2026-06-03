@@ -126,9 +126,16 @@ export const DependencyTree = ({
     return d;
   };
 
+  // Editing is disabled (read-only) whenever the parent withholds the relation
+  // handlers — i.e. for viewer access or while viewing a past state. Guard every
+  // interaction entry point so drawing/label-editing can't start (and so calling
+  // a null handler can never throw).
+  const isReadOnly = !onRelationCreate;
+
   // Handle mouse down on token (start drag)
   const handleTokenMouseDown = (e, position) => {
     e.preventDefault();
+    if (isReadOnly) return;
     if (editingRelation) {
       setEditingRelation(null);
       return;
@@ -153,6 +160,7 @@ export const DependencyTree = ({
   // Handle mouse up on token (complete drag)
   const handleTokenMouseUp = (e, position) => {
     e.stopPropagation();
+    if (isReadOnly) return;
     if (dragOrigin && dragSourceId) {
       const sourceId = dragSourceId;
       const targetId = getEffectiveSpanId(position);
@@ -199,6 +207,7 @@ export const DependencyTree = ({
   // Handle mouse down on ROOT (start drag from ROOT)
   const handleRootMouseDown = (e) => {
     e.preventDefault();
+    if (isReadOnly) return;
     if (editingRelation) {
       setEditingRelation(null);
       return;
@@ -217,6 +226,7 @@ export const DependencyTree = ({
   // Handle mouse up on ROOT (when dragging TO ROOT)
   const handleRootMouseUp = (e) => {
     e.stopPropagation();
+    if (isReadOnly) return;
     if (dragOrigin && dragSourceId && dragSourceId !== 'ROOT') {
       const sourceId = dragSourceId;
       const sourcePosition = adjustedTokenPositions.find(p => positionMatchesSpanId(p, sourceId));
@@ -250,6 +260,7 @@ export const DependencyTree = ({
 
   // Handle token click for relation creation (fallback to click-click)
   const handleTokenClick = (position) => {
+    if (isReadOnly) return;
     if (editingRelation) {
       setEditingRelation(null);
       return;
@@ -289,6 +300,7 @@ export const DependencyTree = ({
 
   // Handle ROOT click
   const handleRootClick = (x) => {
+    if (isReadOnly) return;
     if (selectedSource && selectedSource.spanId !== 'ROOT') {
       const sourceId = selectedSource.spanId;
       const sourcePosition = adjustedTokenPositions.find(p => positionMatchesSpanId(p, sourceId)) || selectedSource;
@@ -461,9 +473,7 @@ export const DependencyTree = ({
           className="tree-arc-path"
           onMouseEnter={() => setHoveredRelation(relation.id)}
           onMouseLeave={() => setHoveredRelation(null)}
-          onClick={() => {
-            setEditingRelation(relation);
-          }}
+          onClick={() => { if (!isReadOnly) setEditingRelation(relation); }}
         />
 
         {/* Arrow polygon */}
@@ -471,9 +481,7 @@ export const DependencyTree = ({
           points={`${arrowX-3},${arrowY - 3} ${arrowX+3},${arrowY - 3} ${arrowX},${arrowY + 2}`}
           fill={color}
           className="tree-arc-arrow"
-          onClick={() => {
-            setEditingRelation(relation);
-          }}
+          onClick={() => { if (!isReadOnly) setEditingRelation(relation); }}
         />
       </>
     );
@@ -527,6 +535,7 @@ export const DependencyTree = ({
             onMouseEnter={() => setHoveredRelation(relation.id)}
             onMouseLeave={() => setHoveredRelation(null)}
             onFocus={() => {
+              if (isReadOnly) return;
               setFocusedRelation(relation.id);
               setEditingRelation(relation);
             }}
@@ -537,6 +546,7 @@ export const DependencyTree = ({
               }
             }}
             onClick={() => {
+              if (isReadOnly) return;
               setEditingRelation(relation);
               setFocusedRelation(relation.id);
             }}

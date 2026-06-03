@@ -88,6 +88,14 @@ export const AnnotationEditor = () => {
 
   useEffect(() => {
     fetchData(true);
+    // Strict mode is entered in fetchData to OCC-guard annotation edits. It's
+    // client-GLOBAL, so it must be exited when we leave this document/editor —
+    // otherwise it leaks onto unrelated writes (e.g. tokenizing in the Text
+    // Editor), attaching a stale document-version and triggering spurious 409s.
+    return () => {
+      const client = getClient();
+      if (client) client.exitStrictMode();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, documentId]);
 
@@ -116,9 +124,14 @@ export const AnnotationEditor = () => {
   const activeDocument = viewingHistoricalState ? historicalDocument : doc?.raw;
 
   // Read-only mode is on when the user lacks write access to the project OR
-  // when viewing a past state. Reason is used to explain it in the banner.
+  // when time-travelling. Key the historical case on `selectedHistoryEntry`, not
+  // `viewingHistoricalState`: the entry is set the instant you click (and the
+  // banner appears), but `viewingHistoricalState` only flips AFTER the async
+  // as-of fetch resolves. Using it would leave a window where the banner says
+  // "historical" yet the live current-doc handlers are still wired — letting
+  // edits land on the current document (and 409 on save).
   const canEdit = canEditProject(project, user);
-  const readOnly = !canEdit || viewingHistoricalState;
+  const readOnly = !canEdit || !!selectedHistoryEntry;
 
   const historicalLayerInfo = useLayerInfo(historicalDocument);
   const layerInfo = viewingHistoricalState ? historicalLayerInfo : doc?.layerInfo;
@@ -193,6 +206,11 @@ export const AnnotationEditor = () => {
       setSelectedHistoryEntry(null);
       setViewingHistoricalState(false);
       clearHistoricalDocument();
+      // The as-of GET poisoned the client's strict-mode document-version tracker
+      // with the OLD (historical) version. Refresh it from the live doc so the
+      // next edit doesn't fail OCC with a spurious 409.
+      const client = getClient();
+      if (client) client.documents.get(documentId).catch(() => {});
       return;
     }
 
@@ -258,8 +276,8 @@ export const AnnotationEditor = () => {
       </Group>
 
       <Group gap="sm">
-        {viewingHistoricalState && (
-          <Button onClick={() => handleSelectHistoryEntry(null)}>Return to Current</Button>
+        {selectedHistoryEntry && (
+          <Button onClick={handleCloseHistory}>Return to Current</Button>
         )}
 
         {hasText && canEdit && (

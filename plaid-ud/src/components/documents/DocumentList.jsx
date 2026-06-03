@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader,
@@ -10,8 +10,17 @@ import { DocumentForm } from './DocumentForm';
 import { ImportModal } from './ImportModal';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
+import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
+import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
+import { SortButton } from '../common/SortHeader.jsx';
+import { nextSort, sortBy } from '../../utils/sorting.js';
 import classes from '../common/listRow.module.css';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
+
+// Fixed metric-column widths, shared by the header and every row so they align.
+const W_WORDS = 84;
+const W_UPDATED = 124;
+const W_ACTION = 72; // edit + delete icons
 
 export const DocumentList = () => {
   const { projectId } = useParams();
@@ -22,6 +31,12 @@ export const DocumentList = () => {
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  // documentId -> word count. Docs with a word layer but no tokens are absent
+  // (rendered as 0); `hasWordLayer` false means the project isn't UD-configured.
+  const [wordCounts, setWordCounts] = useState({});
+  const [hasWordLayer, setHasWordLayer] = useState(true);
+  const [wordsLoading, setWordsLoading] = useState(true);
+  const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
   const { user, getClient } = useAuth();
 
   const fetchProjectAndDocuments = async () => {
@@ -58,6 +73,41 @@ export const DocumentList = () => {
     fetchProjectAndDocuments();
   }, [projectId]);
 
+  // Per-document word counts: one aggregate query over the project's word-layer
+  // tokens, grouped by document. Recomputed when the project (hence its word
+  // layer) changes; the document list itself doesn't affect the query.
+  useEffect(() => {
+    if (!project) return;
+    let cancelled = false;
+    (async () => {
+      setWordsLoading(true);
+      const client = getClient();
+      // "Words" = the morpheme layer: in the sentence>word>morpheme UD model the
+      // morpheme layer holds the syntactic words (CoNLL-U token rows), which is
+      // what a word count should mean.
+      const wordLayerId = getUdLayerInfo(project).morphemeTokenLayer?.id;
+      if (!wordLayerId || !client) {
+        if (!cancelled) { setHasWordLayer(false); setWordCounts({}); setWordsLoading(false); }
+        return;
+      }
+      try {
+        const res = await client.query({
+          where: [['token', '?t', { layer: wordLayerId, doc: { var: '?d' } }]],
+          return: { group: ['?d'], aggregates: [['count']] },
+        });
+        const byDoc = {};
+        for (const [docId, n] of (res?.results || [])) byDoc[docId] = n;
+        if (!cancelled) { setHasWordLayer(true); setWordCounts(byDoc); }
+      } catch (err) {
+        console.error('Word-count query failed:', err);
+        if (!cancelled) { setHasWordLayer(false); setWordCounts({}); }
+      } finally {
+        if (!cancelled) setWordsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [project, getClient]);
+
   const handleDelete = (documentId, documentName) => {
     confirmDelete({
       title: 'Delete document',
@@ -85,6 +135,17 @@ export const DocumentList = () => {
     fetchProjectAndDocuments(); // Refresh the list
   };
 
+  const onSort = (key) => setSort(nextSort(key));
+
+  const sortedDocuments = useMemo(() => {
+    const extract = {
+      name: (d) => d.name?.toLowerCase() ?? '',
+      words: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : null),
+      updated: (d) => d.timeModified ?? null,
+    }[sort.key];
+    return sortBy(documents, extract, sort.dir);
+  }, [documents, wordCounts, hasWordLayer, sort]);
+
   if (loading) {
     return <Center py={48}><Loader /></Center>;
   }
@@ -98,7 +159,11 @@ export const DocumentList = () => {
   const canManage = canManageProject(project, user);
   const canEdit = canEditProject(project, user);
 
-  const sortedDocuments = [...documents].sort((d1, d2) => (d1.name < d2.name ? -1 : d1.name > d2.name ? 1 : 0));
+  const renderWords = (documentId) => {
+    if (wordsLoading) return <Loader size={12} />;
+    if (!hasWordLayer) return '—';
+    return (wordCounts[documentId] ?? 0).toLocaleString();
+  };
 
   return (
     <>
@@ -155,25 +220,44 @@ export const DocumentList = () => {
         </Center>
       ) : (
         <Paper withBorder radius="md">
+          {/* Sortable column header */}
+          <Group
+            gap="sm"
+            wrap="nowrap"
+            px="md"
+            py="xs"
+            style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
+          >
+            <SortButton field="name" sort={sort} onSort={onSort} align="left">Document</SortButton>
+            <SortButton field="words" sort={sort} onSort={onSort} width={W_WORDS}>Words</SortButton>
+            <SortButton field="updated" sort={sort} onSort={onSort} width={W_UPDATED}>Updated</SortButton>
+            <Box w={W_ACTION} />
+          </Group>
+
           <Stack gap={0}>
-            {sortedDocuments.map((document, i) => (
+            {sortedDocuments.map((document) => (
               <Box
                 key={document.id}
                 className={classes.row}
                 onClick={() => navigate(`/projects/${projectId}/documents/${document.id}/annotate`)}
                 p="md"
-                style={{ borderTop: i ? '1px solid var(--mantine-color-gray-2)' : undefined }}
               >
-                <Group justify="space-between" wrap="nowrap">
-                  <Group gap="sm" wrap="nowrap">
+                <Group gap="sm" wrap="nowrap">
+                  <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
                     <EntityAvatar id={document.id} size={36} />
-                    <div>
-                      <Text fw={500} size="lg">{document.name}</Text>
-                      <Text size="sm" c="dimmed" mt={4}>ID: {document.id}</Text>
+                    <div style={{ minWidth: 0 }}>
+                      <Text fw={500} size="lg" truncate>{document.name}</Text>
+                      <Text size="xs" c="dimmed" truncate>ID: {document.id}</Text>
                     </div>
                   </Group>
-                  <Group gap="xs" wrap="nowrap">
-                    <Tooltip label="Edit text">
+
+                  <Box ta="right" w={W_WORDS}><Text size="sm" c="dimmed" component="span">{renderWords(document.id)}</Text></Box>
+                  <Tooltip label={fullTimestamp(document.timeModified)} disabled={!document.timeModified} withinPortal>
+                    <Text size="sm" c="dimmed" ta="right" w={W_UPDATED}>{timeAgo(document.timeModified) || '—'}</Text>
+                  </Tooltip>
+
+                  <Group gap="xs" wrap="nowrap" w={W_ACTION} justify="flex-end">
+                    <Tooltip label={canEdit ? 'Edit text' : 'View text'}>
                       <ActionIcon
                         variant="subtle"
                         color="gray"

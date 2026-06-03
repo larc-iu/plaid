@@ -3,20 +3,23 @@ import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Container, Title, Tabs, Breadcrumbs, Anchor, Text } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ProjectConfiguration } from './ProjectConfiguration.jsx';
+import { ProjectCustomization } from './ProjectCustomization.jsx';
 import { ProjectManagement } from './ProjectManagement.jsx';
 
-// Single settings view with tabs, merging UD layer configuration and user/
-// permission management. The two tabs stay route-backed (`/configuration` and
-// `/management`) so deep links and the editor's auto-redirect keep working;
-// the active tab is derived from the path. Only the active panel mounts, so
-// each child fetches lazily.
+// Single settings view with tabs: user/permission management, project-specific
+// customization (vocab/colors/locale), and the UD layer-structure configuration.
+// Each tab is route-backed (`/management`, `/customization`, `/configuration`) so
+// deep links and the editor's auto-redirect keep working; the active tab is
+// derived from the path. Only the active panel mounts, so each child fetches lazily.
 export const ProjectSettings = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { getClient } = useAuth();
   const [projectName, setProjectName] = useState('');
-  const active = location.pathname.endsWith('/management') ? 'management' : 'configuration';
+  const active = location.pathname.endsWith('/customization') ? 'customization'
+    : location.pathname.endsWith('/configuration') ? 'configuration'
+      : 'management';
 
   // Just the name, for the breadcrumb (the active tab's child fetches the rest).
   useEffect(() => {
@@ -39,14 +42,18 @@ export const ProjectSettings = () => {
 
       <Tabs value={active} onChange={(v) => navigate(`/projects/${projectId}/${v}`)} keepMounted={false}>
         <Tabs.List mb="lg">
-          <Tabs.Tab value="configuration">UD Configuration</Tabs.Tab>
           <Tabs.Tab value="management">Users &amp; Permissions</Tabs.Tab>
+          <Tabs.Tab value="customization">Customization</Tabs.Tab>
+          <Tabs.Tab value="configuration">UD Configuration</Tabs.Tab>
         </Tabs.List>
-        <Tabs.Panel value="configuration">
-          <ProjectConfiguration embedded />
-        </Tabs.Panel>
         <Tabs.Panel value="management">
           <ProjectManagement embedded />
+        </Tabs.Panel>
+        <Tabs.Panel value="customization">
+          <ProjectCustomization embedded />
+        </Tabs.Panel>
+        <Tabs.Panel value="configuration">
+          <ProjectConfiguration embedded />
         </Tabs.Panel>
       </Tabs>
     </Container>

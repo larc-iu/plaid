@@ -127,6 +127,24 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
   const hasContent = displayValue && displayValue.trim() !== '';
   const fieldClass = `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}`;
 
+  // Read-only (viewer access or time travel): render the value as static text,
+  // not an editable input, so cells can't be focused or typed into at all.
+  if (isReadOnly) {
+    return (
+      <div
+        className={fieldClass}
+        style={{
+          width: columnWidth ? `${columnWidth}px` : 'auto',
+          cursor: 'default',
+          ...(hasContent && cellColor ? { color: cellColor } : {})
+        }}
+        title={field}
+      >
+        {hasContent ? displayValue : ' '}
+      </div>
+    );
+  }
+
   // Vocab cells (UPOS/XPOS) use a Mantine Autocomplete: clicking opens the FULL
   // controlled list and it filters only once the user starts typing (the custom
   // `pristine` filter). Off-list values are still accepted (soft). It reuses the
@@ -204,7 +222,7 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
 });
 
 // Features cell component with hover-only delete buttons
-const FeaturesCell = React.memo(({ features, spanIds, tokenId, columnWidth, onAnnotationUpdate, onFeatureDelete, featureInventory }) => {
+const FeaturesCell = React.memo(({ features, spanIds, tokenId, columnWidth, onAnnotationUpdate, onFeatureDelete, featureInventory, isReadOnly }) => {
   const [editingFeature, setEditingFeature] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
@@ -268,13 +286,15 @@ const FeaturesCell = React.memo(({ features, spanIds, tokenId, columnWidth, onAn
           onMouseLeave={() => setHoveredFeatureIndex(null)}
         >
           <span className="feature-text">{feature}</span>
-          <button
-            onClick={() => handleRemoveFeature(index)}
-            className={`feature-delete-btn ${hoveredFeatureIndex === index ? 'feature-delete-btn--visible' : 'feature-delete-btn--hidden'}`}
-            title="Remove feature"
-          >
-            ×
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => handleRemoveFeature(index)}
+              className={`feature-delete-btn ${hoveredFeatureIndex === index ? 'feature-delete-btn--visible' : 'feature-delete-btn--hidden'}`}
+              title="Remove feature"
+            >
+              ×
+            </button>
+          )}
         </div>
       ))}
       
@@ -330,7 +350,7 @@ const FeaturesCell = React.memo(({ features, spanIds, tokenId, columnWidth, onAn
             {valueOptions.map((v) => <option key={v} value={v} />)}
           </datalist>
         </div>
-      ) : isHovering ? (
+      ) : (isHovering && !isReadOnly) ? (
         <button
           onClick={() => setEditingFeature(true)}
           className="feature-add-btn"
@@ -439,6 +459,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
             onAnnotationUpdate={onAnnotationUpdate}
             onFeatureDelete={onFeatureDelete}
             featureInventory={featureInventory}
+            isReadOnly={isReadOnly}
           />
         </div>
       ) : (
