@@ -43,3 +43,7 @@ test-results/
 playwright-report/
 # Compiled AsciiDoc docs (built into _site/ by docs.yml; local renders land here)
 /plaid-core/docs/*.html
+
+# Local dev convenience: boots all 3 dev processes in a zellij session
+/dev
+/dev.kdl
