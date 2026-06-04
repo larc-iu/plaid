@@ -48,10 +48,11 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   const spanLayers = layerInfo.spanLayers;
   const body = primaryTextLayer?.text?.body ?? '';
 
-  const singleTokenVocabLinks = collectSingleTokenVocabLinks(primaryTokenLayer?.vocabs);
-  const morphemeVocabLinks = morphemeTokenLayer
-    ? collectSingleTokenVocabLinks(morphemeTokenLayer.vocabs)
-    : {};
+  // Vocab links live on the project's vocab table (loaded separately by
+  // IgtDocument.load as `_vocabularies` and patched by the vocab mutations),
+  // NOT embedded on the document's token layers. One combined map keyed by
+  // token id serves both word tokens and morphemes (a link may target either).
+  const vocabLinksByToken = collectSingleTokenVocabLinks(vocabularies);
 
   const sortedTokens = (primaryTokenLayer?.tokens || [])
     .map(t => ({
@@ -63,7 +64,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
       metadata: t.metadata || {},
       annotations: {},
       orthographies: collectOrthographies(t, primaryTokenLayer),
-      vocabItem: singleTokenVocabLinks[t.id] || null,
+      vocabItem: vocabLinksByToken[t.id] || null,
       morphemes: []
     }))
     .sort((a, b) => a.begin - b.begin);
@@ -85,7 +86,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         content: body.slice(m.begin, m.end),
         metadata: m.metadata || {},
         annotations: collectAnnotations(m, spanLayers.morpheme),
-        vocabItem: morphemeVocabLinks[m.id] || null
+        vocabItem: vocabLinksByToken[m.id] || null
       };
       if (!morphemesByWord.has(parent.id)) morphemesByWord.set(parent.id, []);
       morphemesByWord.get(parent.id).push(entry);
@@ -120,7 +121,6 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
       annotations: sentenceAnnotations,
       tokens: tokensInSentence,
       pieces,
-      dragState: { isDragging: false, startToken: null, selectedTokenIds: new Set() }
     };
   });
 
@@ -226,10 +226,9 @@ function makeBinarySearchSentenceLookup(sortedSentences) {
 // keep one of duplicate single-token links, but we drop that for now — the
 // data shouldn't get into that state and the warning had no follow-through
 // without a long-lived client to schedule the cleanup against.
-function collectSingleTokenVocabLinks(vocabs) {
+function collectSingleTokenVocabLinks(vocabularies) {
   const out = {};
-  if (!Array.isArray(vocabs)) return out;
-  vocabs.forEach(vocab => {
+  Object.values(vocabularies || {}).forEach(vocab => {
     (vocab.vocabLinks || []).forEach(link => {
       if (!Array.isArray(link.tokens) || link.tokens.length !== 1 || !link.vocabItem) return;
       const tokenId = link.tokens[0];

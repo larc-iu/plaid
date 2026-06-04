@@ -1,112 +1,96 @@
-import React from 'react';
-import { useSnapshot } from 'valtio';
-import { 
-  Stack, 
-  Title, 
-  Text, 
-  Paper,
-  TextInput,
-  Button,
-  Group,
-  Alert,
-  Divider,
-  Modal
-} from '@mantine/core';
-import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
-import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
-import IconDeviceFloppy from '@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs';
-import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
-import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
+import { Info, Pencil, Save, X, Trash2, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useMetadataOperations } from './useMetadataOperations.js';
-import documentsStore from '../../../stores/documentsStore';
+import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 
-export function DocumentMetadata({ projectId, documentId, reload, client, readOnly = false }) {
-  const storeSnap = useSnapshot(documentsStore);
-  const docSnap = storeSnap[projectId]?.[documentId];
-  const ops = useMetadataOperations(projectId, documentId, reload, client);
+export function DocumentMetadata() {
+  const { readOnly } = useDocumentCtx();
+  const ops = useMetadataOperations();
 
   return (
-    <Stack spacing="lg" mt="md">
-      <Paper withBorder p="md">
-        <Stack spacing="md">
-          <Group justify="space-between" align="center">
-            <Title order={3}>Document Information</Title>
+    <div className="tw flex flex-col gap-6 pt-4">
+      <div className="rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Document Information</h2>
             {!ops.isEditing && !readOnly && (
-              <Button
-                leftSection={<IconEdit size={16} />}
-                variant="light"
-                size="sm"
-                onClick={ops.handleEdit}
-              >
-                Edit
+              <Button variant="outline" size="sm" onClick={ops.handleEdit}>
+                <Pencil className="h-4 w-4" /> Edit
               </Button>
             )}
-          </Group>
+          </div>
 
-          <Divider />
+          <div className="border-t" />
 
           {ops.isEditing ? (
-            <Stack spacing="md">
-              <TextInput
-                label="Document Name"
-                value={ops.editedName}
-                onChange={(e) => ops.updateEditedName(e.target.value)}
-                placeholder="Enter document name"
-                required
-              />
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Document Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={ops.editedName}
+                  onChange={(e) => ops.updateEditedName(e.target.value)}
+                  placeholder="Enter document name"
+                />
+              </div>
 
               {ops.metadataFields.map((field) => (
-                <TextInput
-                  key={field.name}
-                  label={field.name}
-                  value={ops.editedMetadata[field.name] || ''}
-                  onChange={(e) => ops.updateEditedMetadata(field.name, e.target.value)}
-                  placeholder={`Enter ${field.name}`}
-                />
+                <div key={field.name} className="flex flex-col gap-1.5">
+                  <Label>{field.name}</Label>
+                  <Input
+                    value={ops.editedMetadata[field.name] || ''}
+                    onChange={(e) => ops.updateEditedMetadata(field.name, e.target.value)}
+                    placeholder={`Enter ${field.name}`}
+                  />
+                </div>
               ))}
 
-              <Group justify="space-between">
+              <div className="flex items-center justify-between">
                 <Button
                   variant="outline"
-                  color="gray"
-                  leftSection={<IconTrash size={16} />}
+                  className="opacity-70"
                   onClick={ops.handleDeleteClick}
                   disabled={ops.saving || ops.deleting}
-                  style={{ opacity: 0.7 }}
                 >
-                  Delete
+                  <Trash2 className="h-4 w-4" /> Delete
                 </Button>
-                <Group>
+                <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
-                    leftSection={<IconX size={16} />}
                     onClick={ops.handleCancel}
                     disabled={ops.saving || ops.deleting}
                   >
-                    Cancel
+                    <X className="h-4 w-4" /> Cancel
                   </Button>
                   <Button
-                    leftSection={<IconDeviceFloppy size={16} />}
                     onClick={ops.handleSave}
-                    loading={ops.saving}
-                    disabled={!ops.editedName.trim() || ops.deleting}
+                    disabled={ops.saving || !ops.editedName.trim() || ops.deleting}
                   >
-                    Save Changes
+                    <Save className="h-4 w-4" /> {ops.saving ? 'Saving...' : 'Save Changes'}
                   </Button>
-                </Group>
-              </Group>
-            </Stack>
+                </div>
+              </div>
+            </div>
           ) : (
-            <Stack spacing="md">
+            <div className="flex flex-col gap-4">
               <div>
-                <Text size="sm" fw={700} mb="xs">Name</Text>
-                <Text>{ops.document.name}</Text>
+                <p className="mb-1 text-sm font-bold">Name</p>
+                <p>{ops.document.name}</p>
               </div>
 
               <div>
-                <Text size="sm" fw={700} mb="xs">Document ID</Text>
-                <Text size="sm" ff="monospace">{ops.document.id}</Text>
+                <p className="mb-1 text-sm font-bold">Document ID</p>
+                <p className="font-mono text-sm">{ops.document.id}</p>
               </div>
 
               {/* Show configured metadata fields */}
@@ -114,65 +98,70 @@ export function DocumentMetadata({ projectId, documentId, reload, client, readOn
                 const value = ops.document.metadata[field.name]
                 return (
                     <div key={field.name}>
-                      <Text size="sm" fw={700} mb="xs">{field.name}</Text>
-                      <Text c={value ? '' : 'dimmed'}>{value || 'Not set'}</Text>
+                      <p className="mb-1 text-sm font-bold">{field.name}</p>
+                      <p className={value ? '' : 'text-muted-foreground'}>{value || 'Not set'}</p>
                     </div>
                 )
               })}
 
               {ops.metadataFields.length === 0 && (!ops.document.metadata || Object.keys(ops.document.metadata).length === 0) && (
-                <Alert icon={<IconInfoCircle size={16} />} color="blue">
-                  No metadata fields configured for this project. You can add metadata fields 
-                  in the project settings.
-                </Alert>
+                <div className="rounded-md border border-blue-500/50 bg-blue-500/5 p-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                    <p className="text-sm text-muted-foreground">
+                      No metadata fields configured for this project. You can add metadata fields
+                      in the project settings.
+                    </p>
+                  </div>
+                </div>
               )}
-            </Stack>
+            </div>
           )}
-        </Stack>
-      </Paper>
+        </div>
+      </div>
 
-      <Modal
-        opened={ops.deleteModalOpen}
-        onClose={ops.handleCloseDeleteModal}
-        title="Delete Document"
-        size="md"
-        centered
-      >
-        <Stack spacing="md">
-          <Alert
-            icon={<IconAlertTriangle size={16} />}
-            title="This action is irreversible"
-            color="red"
-            variant="light"
-          >
-            <Text size="sm">
-              You are about to permanently delete the document <strong>"{ops.document.name}"</strong> and 
-              all of its associated data including annotations and text content.
-            </Text>
-            <Text size="sm" mt="xs">
-              This action cannot be undone.
-            </Text>
-          </Alert>
+      <Dialog open={ops.deleteModalOpen} onOpenChange={(open) => { if (!open) ops.handleCloseDeleteModal(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Document</DialogTitle>
+          </DialogHeader>
 
-          <Group justify="flex-end">
-            <Button
-              variant="default"
-              onClick={ops.handleCloseDeleteModal}
-              disabled={ops.deleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              color="red"
-              onClick={ops.handleDelete}
-              loading={ops.deleting}
-              leftSection={<IconTrash size={16} />}
-            >
-              {ops.deleting ? 'Deleting...' : 'Delete Document'}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-    </Stack>
+          <div className="flex flex-col gap-4">
+            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="text-sm">
+                  <p className="font-medium text-destructive">This action is irreversible</p>
+                  <p className="mt-1 text-muted-foreground">
+                    You are about to permanently delete the document <strong>"{ops.document.name}"</strong> and
+                    all of its associated data including annotations and text content.
+                  </p>
+                  <p className="mt-2 text-muted-foreground">
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={ops.handleCloseDeleteModal}
+                disabled={ops.deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={ops.handleDelete}
+                disabled={ops.deleting}
+              >
+                <Trash2 className="h-4 w-4" /> {ops.deleting ? 'Deleting...' : 'Delete Document'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };

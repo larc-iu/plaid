@@ -1,42 +1,44 @@
 import { useState, useMemo, memo } from 'react';
-import { 
-  Title, 
-  Text, 
-  Button, 
-  Stack,
-  Group,
+import { Copy, Check, UserPlus, Trash2, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
   Select,
-  Badge,
-  Paper,
-  Divider,
-  Modal,
-  TextInput,
-  Switch,
-  Alert
-} from '@mantine/core';
-import { DataTable } from 'mantine-datatable';
-import { notifications } from '@mantine/notifications';
-import { useClipboard, useDisclosure } from '@mantine/hooks';
-import IconCopy from '@tabler/icons-react/dist/esm/icons/IconCopy.mjs';
-import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs';
-import IconUserPlus from '@tabler/icons-react/dist/esm/icons/IconUserPlus.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
-import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { notifySuccess, notifyError } from '@/utils/feedback';
 
-export const AccessManagement = memo(({ 
-  project, 
-  users, 
-  user, 
-  projectId, 
-  client, 
+export const AccessManagement = memo(({
+  project,
+  users,
+  user,
+  projectId,
+  client,
   onDataUpdate,
   onUsersUpdate
 }) => {
-  const clipboard = useClipboard({ timeout: 2000 });
+  const [copied, setCopied] = useState(false);
   const [updatingUser, setUpdatingUser] = useState(null);
   const [hoveredUser, setHoveredUser] = useState(null);
-  const [addUserModalOpened, { open: openAddUserModal, close: closeAddUserModal }] = useDisclosure(false);
-  const [deleteUserModalOpened, { open: openDeleteUserModal, close: closeDeleteUserModal }] = useDisclosure(false);
+  const [addUserModalOpened, setAddUserModalOpened] = useState(false);
+  const openAddUserModal = () => setAddUserModalOpened(true);
+  const closeAddUserModal = () => setAddUserModalOpened(false);
+  const [deleteUserModalOpened, setDeleteUserModalOpened] = useState(false);
+  const openDeleteUserModal = () => setDeleteUserModalOpened(true);
+  const closeDeleteUserModal = () => setDeleteUserModalOpened(false);
   const [newUserData, setNewUserData] = useState({
     username: '',
     password: '',
@@ -58,11 +60,7 @@ export const AccessManagement = memo(({
 
   const handleRoleChange = async (userId, newRole) => {
     if (userId === user.id) {
-      notifications.show({
-        title: 'Cannot modify own permissions',
-        message: 'You cannot change your own role in the project',
-        color: 'red'
-      });
+      notifyError('You cannot change your own role in the project', 'Cannot modify own permissions');
       return;
     }
 
@@ -83,22 +81,14 @@ export const AccessManagement = memo(({
       } else if (newRole === 'none') {
         await client.projects.removeReader(projectId, userId);
       }
-      
+
       // Refresh project data to update permissions
       await onDataUpdate();
-      
-      notifications.show({
-        title: 'Role updated',
-        message: `User role has been updated to ${newRole}`,
-        color: 'green'
-      });
+
+      notifySuccess(`User role has been updated to ${newRole}`, 'Role updated');
     } catch (err) {
       console.error('Error updating role:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to update user role',
-        color: 'red'
-      });
+      notifyError('Failed to update user role', 'Error');
     } finally {
       setUpdatingUser(null);
     }
@@ -107,22 +97,16 @@ export const AccessManagement = memo(({
   const handleCopyToken = () => {
     const token = localStorage.getItem('token');
     if (token) {
-      clipboard.copy(token);
-      notifications.show({
-        title: 'Token copied',
-        message: 'Your authentication token has been copied to clipboard',
-        color: 'green'
-      });
+      navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      notifySuccess('Your authentication token has been copied to clipboard', 'Token copied');
     }
   };
 
   const handleAddUser = async () => {
     if (!newUserData.username || !newUserData.password) {
-      notifications.show({
-        title: 'Missing Information',
-        message: 'Please provide both Username and Password',
-        color: 'red'
-      });
+      notifyError('Please provide both Username and Password', 'Missing Information');
       return;
     }
 
@@ -131,30 +115,22 @@ export const AccessManagement = memo(({
       if (!client) {
         throw new Error('Not authenticated');
       }
-      
+
       // Create the user
       await client.users.create(newUserData.username, newUserData.password, newUserData.isAdmin);
-      
+
       // Refresh the users list
       await onUsersUpdate();
-      
-      notifications.show({
-        title: 'User created',
-        message: `User "${newUserData.username}" has been created successfully`,
-        color: 'green'
-      });
-      
+
+      notifySuccess(`User "${newUserData.username}" has been created successfully`, 'User created');
+
       // Reset form and close modal
       setNewUserData({ username: '', password: '', isAdmin: false });
       closeAddUserModal();
-      
+
     } catch (err) {
       console.error('Error creating user:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to create user. Please try again.',
-        color: 'red'
-      });
+      notifyError('Failed to create user. Please try again.', 'Error');
     } finally {
       setCreatingUser(false);
     }
@@ -167,11 +143,7 @@ export const AccessManagement = memo(({
 
   const handleDeleteUserClick = (userId, username) => {
     if (userId === user.id) {
-      notifications.show({
-        title: 'Cannot delete own account',
-        message: 'You cannot delete your own user account',
-        color: 'red'
-      });
+      notifyError('You cannot delete your own user account', 'Cannot delete own account');
       return;
     }
 
@@ -184,11 +156,7 @@ export const AccessManagement = memo(({
     if (!userToDelete) return;
 
     if (deleteConfirmationText !== userToDelete.id) {
-      notifications.show({
-        title: 'Invalid confirmation',
-        message: 'User ID does not match. Please type the exact user ID.',
-        color: 'red'
-      });
+      notifyError('User ID does not match. Please type the exact user ID.', 'Invalid confirmation');
       return;
     }
 
@@ -197,31 +165,23 @@ export const AccessManagement = memo(({
       if (!client) {
         throw new Error('Not authenticated');
       }
-      
+
       // Delete the user
       await client.users.delete(userToDelete.id);
-      
+
       // Refresh the users list
       await onUsersUpdate();
-      
-      notifications.show({
-        title: 'User deleted',
-        message: `User "${userToDelete.username}" has been deleted successfully`,
-        color: 'green'
-      });
-      
+
+      notifySuccess(`User "${userToDelete.username}" has been deleted successfully`, 'User deleted');
+
       // Close modal and reset state
       closeDeleteUserModal();
       setUserToDelete(null);
       setDeleteConfirmationText('');
-      
+
     } catch (err) {
       console.error('Error deleting user:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete user. Please try again.',
-        color: 'red'
-      });
+      notifyError('Failed to delete user. Please try again.', 'Error');
     } finally {
       setDeletingUser(false);
     }
@@ -233,7 +193,7 @@ export const AccessManagement = memo(({
       ...u,
       role: getUserRole(u.id)
     }));
-    
+
     // Sort by: 1) Admin status (admins first), 2) Role priority (maintainer > writer > reader > none), 3) Username alphabetically
     const roleMap = { maintainer: 3, writer: 2, reader: 1, none: 0 };
     data.sort((a, b) => {
@@ -241,184 +201,168 @@ export const AccessManagement = memo(({
       if (a.isAdmin !== b.isAdmin) {
         return b.isAdmin - a.isAdmin;
       }
-      
+
       // Then sort by role priority (higher number = higher priority)
       const roleA = roleMap[a.role] || 0;
       const roleB = roleMap[b.role] || 0;
       if (roleA !== roleB) {
         return roleB - roleA;
       }
-      
+
       // Finally sort by username alphabetically
       return a.username.localeCompare(b.username);
     });
-    
+
     return data;
   }, [users, project]);
 
   return (
-    <Stack spacing="lg" mt="md">
+    <div className="tw flex flex-col gap-6 pt-4">
       {/* User Management Section */}
-      <Paper p="md">
-        <Group justify="space-between" mb="md">
-          <Title order={2}>User Management</Title>
+      <div className="rounded-lg border bg-card p-4">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">User Management</h2>
           {user.isAdmin && (
-            <Button
-              leftSection={<IconUserPlus size={16} />}
-              onClick={handleAddUserModalOpen}
-            >
-              Add User
+            <Button onClick={handleAddUserModalOpen}>
+              <UserPlus className="h-4 w-4" /> Add User
             </Button>
           )}
-        </Group>
-        
-        <DataTable
-          withTableBorder
-          withRowBorders
-          highlightOnHover
-          columns={[
-            { 
-              accessor: 'id', 
-              title: 'User ID',
-              width: '20%',
-              render: ({ id }) => (
-                <Text size="sm" c="dimmed">{id}</Text>
-              )
-            },
-            { 
-              accessor: 'username', 
-              title: 'Username',
-              width: '20%',
-              render: (record) => (
-                <Text>{record.username}</Text>
-              )
-            },
-            { 
-              accessor: 'isAdmin', 
-              title: 'Admin Status',
-              width: '15%',
-              render: ({ isAdmin }) => (
-                isAdmin ? (
-                  <Badge color="red" size="sm">Admin</Badge>
-                ) : (
-                  <Badge color="gray" size="sm">User</Badge>
-                )
-              )
-            },
-            { 
-              accessor: 'role', 
-              title: 'Project Role',
-              width: '40%',
-              render: (record) => (
-                <Group 
-                  justify="space-between"
-                  onMouseEnter={() => setHoveredUser(record.id)}
-                  onMouseLeave={() => setHoveredUser(null)}
-                  style={{ width: '100%' }}
-                >
-                  <Select
-                    value={record.isAdmin && "admin" || record.role}
-                    onChange={(value) => handleRoleChange(record.id, value)}
-                    disabled={updatingUser === record.id || record.id === user.id || record.isAdmin}
-                    data={[
-                      { value: 'none', label: 'No Access' },
-                      { value: 'reader', label: 'Reader' },
-                      { value: 'writer', label: 'Writer' },
-                      { value: 'maintainer', label: 'Maintainer' },
-                    ]}
-                    size="xs"
-                    style={{ flex: 1 }}
-                  />
-                  {user.isAdmin && (
-                    <Button
-                      size="xs"
-                      color="red"
-                      variant="light"
-                      style={{ 
-                        opacity: (hoveredUser === record.id && record.id !== user.id) ? 1 : 0,
-                        transition: 'opacity 0.2s ease',
-                        marginLeft: '8px',
-                        cursor: (record.id !== user.id ? 'pointer' : 'default')
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleDeleteUserClick(record.id, record.username);
-                      }}
-                      loading={deletingUser}
-                      disabled={deletingUser}
-                    >
-                      <IconTrash size={14} />
-                    </Button>
-                  )}
-                </Group>
-              )
-            }
-          ]}
-          records={tableData}
-          minHeight={150}
-        />
-      </Paper>
+        </div>
 
-      <Divider />
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className="px-3 py-2 text-left font-medium">User ID</th>
+              <th className="px-3 py-2 text-left font-medium">Username</th>
+              <th className="px-3 py-2 text-left font-medium">Admin Status</th>
+              <th className="px-3 py-2 text-left font-medium">Project Role</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tableData.map(record => (
+              <tr key={record.id} className="group border-t hover:bg-muted/50">
+                <td className="px-3 py-2">
+                  <span className="text-muted-foreground">{record.id}</span>
+                </td>
+                <td className="px-3 py-2">{record.username}</td>
+                <td className="px-3 py-2">
+                  {record.isAdmin ? (
+                    <Badge variant="destructive">Admin</Badge>
+                  ) : (
+                    <Badge variant="secondary">User</Badge>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <div
+                    className="flex items-center justify-between gap-2"
+                    onMouseEnter={() => setHoveredUser(record.id)}
+                    onMouseLeave={() => setHoveredUser(null)}
+                  >
+                    <Select
+                      value={record.isAdmin && "admin" || record.role}
+                      onValueChange={(value) => handleRoleChange(record.id, value)}
+                      disabled={updatingUser === record.id || record.id === user.id || record.isAdmin}
+                    >
+                      <SelectTrigger className="h-8 flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[
+                          { value: 'none', label: 'No Access' },
+                          { value: 'reader', label: 'Reader' },
+                          { value: 'writer', label: 'Writer' },
+                          { value: 'maintainer', label: 'Maintainer' },
+                        ].map(o => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {user.isAdmin && (
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        className={`h-8 w-8 shrink-0 transition-opacity ${record.id !== user.id ? 'group-hover:opacity-100' : ''} opacity-0`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteUserClick(record.id, record.username);
+                        }}
+                        disabled={deletingUser}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="border-t" />
 
       {/* API Token Section */}
-      <Paper p="md">
-        <Title order={2} mb="md">API Token</Title>
-        <Text size="sm" mb="md">
+      <div className="rounded-lg border bg-card p-4">
+        <h2 className="mb-4 text-lg font-semibold">API Token</h2>
+        <p className="mb-4 text-sm">
           Use your authentication token to access the API programmatically from external services like parsers or scripts.
-        </Text>
-        
-        <Group>
-          <Button
-            leftSection={clipboard.copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-            color={clipboard.copied ? 'green' : 'blue'}
-            onClick={handleCopyToken}
-          >
-            {clipboard.copied ? 'Copied!' : 'Copy Token'}
+        </p>
+
+        <div className="flex items-center gap-2">
+          <Button onClick={handleCopyToken}>
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? 'Copied!' : 'Copy Token'}
           </Button>
-        </Group>
-        
-        <Text size="xs" c="dimmed" mt="md">
+        </div>
+
+        <p className="mt-4 text-xs text-muted-foreground">
           Keep your token secure. You can use it to initialize a Python PlaidClient instance.
-        </Text>
-      </Paper>
+        </p>
+      </div>
 
       {/* Add User Modal */}
-      <Modal
-        opened={addUserModalOpened}
-        onClose={closeAddUserModal}
-        title="Add New User"
-        size="md"
-        centered
-      >
-        <Stack spacing="md">
-          <TextInput
-            label="Username"
-            placeholder="Enter username"
-            value={newUserData.username}
-            onChange={(event) => setNewUserData({ ...newUserData, username: event.currentTarget.value })}
-            required
-          />
-          
-          <TextInput
-            label="Password"
-            placeholder="Enter initial password"
-            type="password"
-            value={newUserData.password}
-            onChange={(event) => setNewUserData({ ...newUserData, password: event.currentTarget.value })}
-            required
-          />
-          
-          <Switch
-            label="Admin Status"
-            description="Grant this user admin privileges"
-            checked={newUserData.isAdmin}
-            onChange={(event) => setNewUserData({ ...newUserData, isAdmin: event.currentTarget.checked })}
-          />
-          
-          <Group justify="flex-end">
+      <Dialog open={addUserModalOpened} onOpenChange={(o) => { if (!o) closeAddUserModal(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New User</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Username</Label>
+              <Input
+                placeholder="Enter username"
+                value={newUserData.username}
+                onChange={(event) => setNewUserData({ ...newUserData, username: event.target.value })}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Password</Label>
+              <Input
+                placeholder="Enter initial password"
+                type="password"
+                value={newUserData.password}
+                onChange={(event) => setNewUserData({ ...newUserData, password: event.target.value })}
+              />
+            </div>
+
+            <div className="flex items-start gap-2">
+              <Switch
+                id="admin"
+                checked={newUserData.isAdmin}
+                onCheckedChange={(c) => setNewUserData({ ...newUserData, isAdmin: c })}
+              />
+              <div>
+                <Label htmlFor="admin">Admin Status</Label>
+                <p className="text-xs text-muted-foreground">Grant this user admin privileges</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
             <Button
-              variant="default"
+              variant="outline"
               onClick={closeAddUserModal}
               disabled={creatingUser}
             >
@@ -426,70 +370,72 @@ export const AccessManagement = memo(({
             </Button>
             <Button
               onClick={handleAddUser}
-              loading={creatingUser}
-              leftSection={!creatingUser ? <IconUserPlus size={16} /> : undefined}
+              disabled={creatingUser}
             >
+              {!creatingUser && <UserPlus className="h-4 w-4" />}
               {creatingUser ? 'Creating...' : 'Create User'}
             </Button>
-          </Group>
-        </Stack>
-      </Modal>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete User Modal */}
-      <Modal
-        opened={deleteUserModalOpened}
-        onClose={closeDeleteUserModal}
-        title="Delete User"
-        size="md"
-        centered
-      >
-        <Stack spacing="md">
-          <Alert
-            icon={<IconAlertTriangle size={16} />}
-            title="Caution"
-            color="red"
-            variant="light"
-          >
-            <Text size="sm">
-              You are about to delete user:
-              <br/><br/>
-              <strong>"{userToDelete?.username}"</strong><br/>
-              (<strong>{userToDelete?.id}</strong>)
-            </Text>
-          </Alert>
+      <Dialog open={deleteUserModalOpened} onOpenChange={(o) => { if (!o) closeDeleteUserModal(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete User</DialogTitle>
+          </DialogHeader>
 
-          <div>
-            <Text size="sm" mb="xs">
-              To confirm deletion, please type the user ID <strong>{userToDelete?.id}</strong> below:
-            </Text>
-            <TextInput
-              value={deleteConfirmationText}
-              onChange={(event) => setDeleteConfirmationText(event.currentTarget.value)}
-              placeholder="Enter user ID"
-              error={deleteConfirmationText && deleteConfirmationText !== userToDelete?.id ? 'User ID does not match' : null}
-            />
+          <div className="flex flex-col gap-4">
+            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="text-sm">
+                  <p className="font-medium text-destructive">Caution</p>
+                  <p className="mt-1 text-muted-foreground">
+                    You are about to delete user:
+                    <br/><br/>
+                    <strong>"{userToDelete?.username}"</strong><br/>
+                    (<strong>{userToDelete?.id}</strong>)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <p className="text-sm">
+                To confirm deletion, please type the user ID <strong>{userToDelete?.id}</strong> below:
+              </p>
+              <Input
+                value={deleteConfirmationText}
+                onChange={(event) => setDeleteConfirmationText(event.target.value)}
+                placeholder="Enter user ID"
+              />
+              {deleteConfirmationText && deleteConfirmationText !== userToDelete?.id && (
+                <p className="text-xs text-destructive">User ID does not match</p>
+              )}
+            </div>
           </div>
 
-          <Group justify="flex-end">
+          <DialogFooter>
             <Button
-              variant="default"
+              variant="outline"
               onClick={closeDeleteUserModal}
               disabled={deletingUser}
             >
               Cancel
             </Button>
             <Button
-              color="red"
+              variant="destructive"
               onClick={handleDeleteUser}
               disabled={deleteConfirmationText !== userToDelete?.id || deletingUser}
-              loading={deletingUser}
-              leftSection={<IconTrash size={16} />}
             >
+              <Trash2 className="h-4 w-4" />
               {deletingUser ? 'Deleting...' : 'Delete User'}
             </Button>
-          </Group>
-        </Stack>
-      </Modal>
-    </Stack>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 });

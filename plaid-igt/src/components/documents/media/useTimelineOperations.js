@@ -1,8 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useSnapshot } from 'valtio';
-import { notifications } from '@mantine/notifications';
-import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
-import documentsStore from '../../../stores/documentsStore.js';
 
 // Constants
 const TIMELINE_HEIGHT = 100;
@@ -49,11 +45,11 @@ const getCachedWaveform = (cacheKey) => {
 };
 
 const setCachedWaveform = (cacheKey, imageData) => {
+  const data = {
+    imageData,
+    timestamp: Date.now()
+  };
   try {
-    const data = {
-      imageData,
-      timestamp: Date.now()
-    };
     localStorage.setItem(cacheKey, JSON.stringify(data));
   } catch (error) {
     console.warn('Failed to cache waveform (storage might be full):', error);
@@ -91,17 +87,13 @@ const clearOldWaveformCache = () => {
   }
 };
 
-export const useTimelineOperations = (projectId, documentId, reload, client, mediaElement) => {
-  const handleError = useStrictModeErrorHandler(reload);
-  
-  // Get the document snapshot and proxy
-  const docSnap = useSnapshot(documentsStore[projectId][documentId]);
-  const docProxy = documentsStore[projectId][documentId];
-  const uiProxy = docProxy.ui.media;
-  const uiSnap = docSnap.ui.media;
-  
-  const parsedDocument = docSnap;
-  
+// Reads/writes the shared media UI state through `mediaOps` (owned by
+// useMediaOperations) and delegates resize persistence to the shared
+// IgtDocument. Keeps all the waveform/canvas/virtualization/drag logic intact.
+export const useTimelineOperations = (mediaOps) => {
+  const doc = mediaOps.doc;
+  const mediaElement = mediaOps.mediaElementRef.current;
+
   // Get authenticated media URL with proper token
   const getAuthenticatedMediaUrl = useCallback((serverUrl) => {
     if (!serverUrl) return serverUrl;
@@ -132,85 +124,83 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
   const animationFrameRef = useRef(null);
 
   // Zoom and timeline calculations
-  const timelineWidth = uiSnap.duration * uiSnap.pixelsPerSecond;
+  const timelineWidth = mediaOps.duration * mediaOps.pixelsPerSecond;
 
   const handlePixelsPerSecondChange = useCallback((newPixelsPerSecond) => {
-    uiProxy.pixelsPerSecond = newPixelsPerSecond;
-  }, [uiProxy]);
+    mediaOps.setPixelsPerSecond(newPixelsPerSecond);
+  }, [mediaOps]);
 
   // Calculate visible tokens for virtualization
   const getVisibleTokens = useCallback(() => {
-    if (!timelineContainerRef.current || !uiSnap.duration || uiSnap.pixelsPerSecond <= 0) {
-      return docSnap.alignmentTokens || [];
+    if (!timelineContainerRef.current || !mediaOps.duration || mediaOps.pixelsPerSecond <= 0) {
+      return doc.alignmentTokens || [];
     }
 
     const containerWidth = timelineContainerRef.current.clientWidth;
     const scrollLeft = timelineScrollLeft;
-    
+
     // Calculate visible time range with buffer
     const bufferTime = 10; // seconds of buffer on each side
-    const visibleTimeStart = Math.max(0, scrollLeft / uiSnap.pixelsPerSecond - bufferTime);
-    const visibleTimeEnd = Math.min(uiSnap.duration, (scrollLeft + containerWidth) / uiSnap.pixelsPerSecond + bufferTime);
-    
+    const visibleTimeStart = Math.max(0, scrollLeft / mediaOps.pixelsPerSecond - bufferTime);
+    const visibleTimeEnd = Math.min(mediaOps.duration, (scrollLeft + containerWidth) / mediaOps.pixelsPerSecond + bufferTime);
+
     // Filter tokens that intersect with visible range
-    return (docSnap.alignmentTokens || []).filter(token => {
+    return (doc.alignmentTokens || []).filter(token => {
       const tokenStart = token.metadata?.timeBegin || 0;
       const tokenEnd = token.metadata?.timeEnd || token.metadata?.timeBegin || 1;
-      
+
       // Check if token intersects with visible range
       return tokenEnd >= visibleTimeStart && tokenStart <= visibleTimeEnd;
     });
-  }, [timelineContainerRef, uiSnap.duration, uiSnap.pixelsPerSecond, timelineScrollLeft, docSnap.alignmentTokens]);
+  }, [timelineContainerRef, mediaOps.duration, mediaOps.pixelsPerSecond, timelineScrollLeft, doc.alignmentTokens]);
 
   const getTimeFromPosition = useCallback((clientX) => {
     if (!timelineRef.current) return 0;
     const rect = timelineRef.current.getBoundingClientRect();
     const clickX = clientX - rect.left;
-    const timeAtClick = clickX / uiSnap.pixelsPerSecond;
-    return Math.max(0, Math.min(uiSnap.duration, timeAtClick));
-  }, [uiSnap.pixelsPerSecond, uiSnap.duration]);
+    const timeAtClick = clickX / mediaOps.pixelsPerSecond;
+    return Math.max(0, Math.min(mediaOps.duration, timeAtClick));
+  }, [mediaOps.pixelsPerSecond, mediaOps.duration]);
 
   // Helper function to auto-scroll timeline to show current position
   const autoScrollToTime = useCallback((time) => {
-    if (timelineContainerRef.current && uiSnap.pixelsPerSecond > 0) {
-      const position = time * uiSnap.pixelsPerSecond;
+    if (timelineContainerRef.current && mediaOps.pixelsPerSecond > 0) {
+      const position = time * mediaOps.pixelsPerSecond;
       const containerWidth = timelineContainerRef.current.clientWidth;
       const scrollLeft = position - containerWidth / 2; // Center the position
       timelineContainerRef.current.scrollLeft = Math.max(0, scrollLeft);
     }
-  }, [uiSnap.pixelsPerSecond]);
+  }, [mediaOps.pixelsPerSecond]);
 
   // Timeline interaction handlers
   const handleTimelineClick = useCallback((time) => {
     if (mediaElement) {
       mediaElement.pause(); // Stop playback when clicking timeline
       mediaElement.currentTime = time;
-      uiProxy.currentTime = time; // Update state immediately
-      uiProxy.playingSelection = null;
-      
+      mediaOps.setCurrentTime(time); // Update state immediately
+      mediaOps.setPlayingSelection(null);
+
       // If clicking inside existing selection, open popover (if not already open)
-      if (uiSnap.selection && time >= uiSnap.selection.start && time <= uiSnap.selection.end && !uiSnap.popoverOpened) {
-        uiProxy.popoverOpened = true;
+      if (mediaOps.selection && time >= mediaOps.selection.start && time <= mediaOps.selection.end && !mediaOps.popoverOpened) {
+        mediaOps.setPopoverOpened(true);
       }
     }
-  }, [mediaElement, uiProxy, uiSnap.selection, uiSnap.popoverOpened]);
+  }, [mediaElement, mediaOps]);
 
   const handleSelectionCreate = useCallback((startTime, endTime) => {
     const newSelection = { start: startTime, end: endTime };
-    uiProxy.selection = newSelection;
-    uiProxy.popoverOpened = true; // Open popover immediately when selection is created
-  }, [uiProxy]);
+    mediaOps.setSelection(newSelection);
+    mediaOps.setPopoverOpened(true); // Open popover immediately when selection is created
+  }, [mediaOps]);
 
   const handleAlignmentCreated = useCallback(async () => {
     // Clear selection and trigger reload since we removed optimistic updates
-    uiProxy.selection = null;
-    uiProxy.popoverOpened = false;
-    
+    mediaOps.setSelection(null);
+    mediaOps.setPopoverOpened(false);
+
     // Reload to get updated document state
-    if (reload) {
-      await reload();
-    }
-  }, [uiProxy, reload]);
+    await doc._reload();
+  }, [mediaOps, doc]);
 
   // Mouse event handlers for timeline
   const handleMouseDown = useCallback((event) => {
@@ -220,15 +210,15 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
     const time = getTimeFromPosition(event.clientX);
     
     // Only close popover if clicking outside existing selection
-    if (!uiSnap.selection || time < uiSnap.selection.start || time > uiSnap.selection.end) {
-      uiProxy.popoverOpened = false;
+    if (!mediaOps.selection || time < mediaOps.selection.start || time > mediaOps.selection.end) {
+      mediaOps.setPopoverOpened(false);
     }
-    
+
     setIsDragging(true);
     setDragStart(time);
     setDragEnd(time);
     setTempSelection(null);
-  }, [isResizing, getTimeFromPosition, uiSnap.selection, uiProxy]);
+  }, [isResizing, getTimeFromPosition, mediaOps]);
 
   // Resize event handlers (defined first to avoid reference issues)
   const handleResizeStart = useCallback((event, token, handle) => {
@@ -258,50 +248,25 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
       if (resizingHandle === 'left') {
         newStart = Math.max(0, Math.min(currentTime, prevBounds.end - 0.1)); // Min 0.1s width
       } else if (resizingHandle === 'right') {
-        newEnd = Math.min(uiSnap.duration, Math.max(currentTime, prevBounds.start + 0.1)); // Min 0.1s width
+        newEnd = Math.min(mediaOps.duration, Math.max(currentTime, prevBounds.start + 0.1)); // Min 0.1s width
       }
-      
+
       return { start: newStart, end: newEnd };
     });
-  }, [isResizing, resizingToken, resizingHandle, getTimeFromPosition, uiSnap.duration]);
+  }, [isResizing, resizingToken, resizingHandle, getTimeFromPosition, mediaOps.duration]);
 
   const handleResizeEnd = useCallback(async (event) => {
     if (!isResizing || !resizingToken || !tempTokenBounds) return;
-    
-    // Store original bounds for potential revert
-    const originalBounds = {
-      timeBegin: resizingToken.metadata?.timeBegin,
-      timeEnd: resizingToken.metadata?.timeEnd
-    };
-    
-    try {
-      // Optimistically update the alignment token metadata in the valtio proxy
-      const alignmentToken = docProxy.alignmentTokens?.find(token => token.id === resizingToken.id);
-      if (alignmentToken?.metadata) {
-        alignmentToken.metadata.timeBegin = tempTokenBounds.start;
-        alignmentToken.metadata.timeEnd = tempTokenBounds.end;
-      }
 
-      // Update token metadata via API
-      await client.tokens.setMetadata(resizingToken.id, {
+    try {
+      // The domain method does the optimistic patch + reload-on-error.
+      await doc.updateAlignmentBounds(resizingToken.id, {
         timeBegin: tempTokenBounds.start,
         timeEnd: tempTokenBounds.end
       });
 
       // Clear selection state
-      if (handleAlignmentCreated) {
-        handleAlignmentCreated();
-      }
-    } catch (error) {
-      // Revert the optimistic update on error
-      const alignmentToken = docProxy.alignmentTokens?.find(token => token.id === resizingToken.id);
-      if (alignmentToken?.metadata) {
-        alignmentToken.metadata.timeBegin = originalBounds.timeBegin;
-        alignmentToken.metadata.timeEnd = originalBounds.timeEnd;
-      }
-      
-      // Use the error handler which will reload on 409
-      handleError(error, 'update alignment boundaries');
+      handleAlignmentCreated();
     } finally {
       // Reset resize state
       setIsResizing(false);
@@ -309,7 +274,7 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
       setResizingHandle(null);
       setTempTokenBounds(null);
     }
-  }, [isResizing, resizingToken, tempTokenBounds, client, handleAlignmentCreated, handleError, docProxy]);
+  }, [isResizing, resizingToken, tempTokenBounds, doc, handleAlignmentCreated]);
 
   const handleMouseMove = useCallback((event) => {
     if (isResizing) {
@@ -387,9 +352,9 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
         // CTRL+scroll: zoom in/out (modify pixels per second)
         const delta = event.deltaY > 0 ? -1 : 1; // Reverse for natural zooming
         const zoomFactor = 1.1;
-        const newPixelsPerSecond = delta > 0 
-          ? Math.min(100, uiSnap.pixelsPerSecond * zoomFactor)
-          : Math.max(4, uiSnap.pixelsPerSecond / zoomFactor);
+        const newPixelsPerSecond = delta > 0
+          ? Math.min(100, mediaOps.pixelsPerSecond * zoomFactor)
+          : Math.max(4, mediaOps.pixelsPerSecond / zoomFactor);
         handlePixelsPerSecondChange(newPixelsPerSecond);
       } else {
         // Normal scroll: pan left/right
@@ -409,14 +374,14 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
         container.removeEventListener('wheel', handleWheel);
       };
     }
-  }, [uiSnap.pixelsPerSecond, handlePixelsPerSecondChange]);
-  
+  }, [mediaOps.pixelsPerSecond, handlePixelsPerSecondChange]);
+
   // Smooth needle movement with auto-scroll
   useEffect(() => {
     const updateNeedle = () => {
-      if (needleRef.current && timelineRef.current && mediaElement && uiSnap.pixelsPerSecond > 0) {
+      if (needleRef.current && timelineRef.current && mediaElement && mediaOps.pixelsPerSecond > 0) {
         const currentTime = mediaElement.currentTime;
-        const position = currentTime * uiSnap.pixelsPerSecond;
+        const position = currentTime * mediaOps.pixelsPerSecond;
         needleRef.current.style.left = `${position}px`;
         
         // Auto-scroll to keep needle in view
@@ -440,12 +405,12 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
         }
       }
       
-      if (uiSnap.isPlaying && mediaElement) {
+      if (mediaOps.isPlaying && mediaElement) {
         animationFrameRef.current = requestAnimationFrame(updateNeedle);
       }
     };
 
-    if (uiSnap.isPlaying && mediaElement) {
+    if (mediaOps.isPlaying && mediaElement) {
       animationFrameRef.current = requestAnimationFrame(updateNeedle);
     } else {
       if (animationFrameRef.current) {
@@ -458,7 +423,7 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [uiSnap.isPlaying, mediaElement, uiSnap.pixelsPerSecond]);
+  }, [mediaOps.isPlaying, mediaElement, mediaOps.pixelsPerSecond]);
   
   // Cleanup object URLs to prevent memory leaks
   useEffect(() => {
@@ -473,21 +438,21 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
   // Generate canvas-based waveform image
   useEffect(() => {
     const generateWaveformImage = async () => {
-      if (!parsedDocument.document.mediaUrl || !uiSnap.duration || waveformImage || timelineWidth < 100) return;
-      
+      if (!doc.document.mediaUrl || !mediaOps.duration || waveformImage || timelineWidth < 100) return;
+
       setIsLoadingWaveform(true);
-      
+
       let audioHash = null;
       let cacheKey = null;
-      
+
       try {
-        const authenticatedMediaUrl = getAuthenticatedMediaUrl(parsedDocument.document.mediaUrl);
+        const authenticatedMediaUrl = getAuthenticatedMediaUrl(doc.document.mediaUrl);
         const response = await fetch(authenticatedMediaUrl);
         const arrayBuffer = await response.arrayBuffer();
         
         // Generate hash from audio data for caching
         audioHash = await generateAudioHash(arrayBuffer);
-        cacheKey = getCacheKey(audioHash, timelineWidth, uiSnap.duration);
+        cacheKey = getCacheKey(audioHash, timelineWidth, mediaOps.duration);
         
         // Check cache first
         const cachedWaveform = getCachedWaveform(cacheKey);
@@ -611,10 +576,10 @@ export const useTimelineOperations = (projectId, documentId, reload, client, med
       }
     };
 
-    if (uiSnap.duration > 0 && timelineWidth > 0) {
+    if (mediaOps.duration > 0 && timelineWidth > 0) {
       generateWaveformImage();
     }
-  }, [parsedDocument.document.mediaUrl, uiSnap.duration, timelineWidth, waveformImage, getAuthenticatedMediaUrl]);
+  }, [doc.document.mediaUrl, mediaOps.duration, timelineWidth, waveformImage, getAuthenticatedMediaUrl]);
 
   return {
     // State

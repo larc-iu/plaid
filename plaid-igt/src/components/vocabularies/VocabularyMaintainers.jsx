@@ -1,25 +1,15 @@
 import { useState, useMemo } from 'react';
-import { 
-  Title, 
-  Text, 
-  Button, 
-  Stack,
-  Group,
-  Badge,
-  Paper,
-  Alert
-} from '@mantine/core';
-import { DataTable } from 'mantine-datatable';
-import { notifications } from '@mantine/notifications';
-import IconUserPlus from '@tabler/icons-react/dist/esm/icons/IconUserPlus.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
+import { UserPlus, Trash2, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { notifySuccess, notifyError } from '@/utils/feedback';
 
-export const VocabularyMaintainers = ({ 
-  vocabulary, 
-  users, 
-  user, 
-  vocabularyId, 
-  client, 
+export const VocabularyMaintainers = ({
+  vocabulary,
+  users,
+  user,
+  vocabularyId,
+  client,
   onDataUpdate
 }) => {
   const [updatingUser, setUpdatingUser] = useState(null);
@@ -38,22 +28,14 @@ export const VocabularyMaintainers = ({
       }
 
       await client.vocabLayers.addMaintainer(vocabularyId, userId);
-      
+
       // Refresh vocabulary data to update permissions
       await onDataUpdate();
-      
-      notifications.show({
-        title: 'Maintainer added',
-        message: 'User has been added as a maintainer',
-        color: 'green'
-      });
+
+      notifySuccess('User has been added as a maintainer', 'Maintainer added');
     } catch (err) {
       console.error('Error adding maintainer:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to add maintainer',
-        color: 'red'
-      });
+      notifyError('Failed to add maintainer', 'Error');
     } finally {
       setUpdatingUser(null);
     }
@@ -61,11 +43,7 @@ export const VocabularyMaintainers = ({
 
   const handleRemoveMaintainer = async (userId) => {
     if (userId === user.id) {
-      notifications.show({
-        title: 'Cannot remove own permissions',
-        message: 'You cannot remove yourself as a maintainer of the vocabulary',
-        color: 'red'
-      });
+      notifyError('You cannot remove yourself as a maintainer of the vocabulary', 'Cannot remove own permissions');
       return;
     }
 
@@ -76,22 +54,14 @@ export const VocabularyMaintainers = ({
       }
 
       await client.vocabLayers.removeMaintainer(vocabularyId, userId);
-      
+
       // Refresh vocabulary data to update permissions
       await onDataUpdate();
-      
-      notifications.show({
-        title: 'Maintainer removed',
-        message: 'User has been removed as a maintainer',
-        color: 'green'
-      });
+
+      notifySuccess('User has been removed as a maintainer', 'Maintainer removed');
     } catch (err) {
       console.error('Error removing maintainer:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to remove maintainer',
-        color: 'red'
-      });
+      notifyError('Failed to remove maintainer', 'Error');
     } finally {
       setUpdatingUser(null);
     }
@@ -103,23 +73,23 @@ export const VocabularyMaintainers = ({
       ...u,
       isMaintainer: isMaintainer(u.id)
     }));
-    
+
     // Sort by: 1) Admin status (admins first), 2) Maintainer status (maintainers next), 3) Username alphabetically
     data.sort((a, b) => {
       // First sort by admin status (admins first)
       if (a.isAdmin !== b.isAdmin) {
         return b.isAdmin - a.isAdmin;
       }
-      
+
       // Then sort by maintainer status (maintainers first)
       if (a.isMaintainer !== b.isMaintainer) {
         return b.isMaintainer - a.isMaintainer;
       }
-      
+
       // Finally sort by username alphabetically
       return a.username.localeCompare(b.username);
     });
-    
+
     return data;
   }, [users, vocabulary]);
 
@@ -131,128 +101,108 @@ export const VocabularyMaintainers = ({
 
   if (!canManageVocabulary()) {
     return (
-      <Alert color="yellow" title="Access Denied">
-        You need maintainer permissions to manage vocabulary access.
-      </Alert>
+      <div className="tw rounded-md border border-border bg-muted p-3">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="text-sm">
+            <p className="font-medium">Access Denied</p>
+            <p className="mt-1 text-muted-foreground">
+              You need maintainer permissions to manage vocabulary access.
+            </p>
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Stack spacing="lg">
-      <Paper p="md" withBorder>
-        <Group justify="space-between" mb="md">
-          <Title order={3}>Maintainer Management</Title>
-        </Group>
-        
-        <Text size="sm" c="dimmed" mb="md">
+    <div className="tw flex flex-col gap-6">
+      <div className="rounded-lg border bg-card p-4">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <h3 className="text-base font-semibold">Maintainer Management</h3>
+        </div>
+
+        <p className="mb-4 text-sm text-muted-foreground">
           Maintainers can edit vocabulary settings, manage vocabulary items, and control access to this vocabulary.
-        </Text>
-        
-        <DataTable
-          withTableBorder
-          withRowBorders
-          highlightOnHover
-          columns={[
-            { 
-              accessor: 'id', 
-              title: 'User ID',
-              width: '25%',
-              render: ({ id }) => (
-                <Text size="sm" c="dimmed">{id}</Text>
-              )
-            },
-            { 
-              accessor: 'username', 
-              title: 'Username',
-              width: '25%',
-              render: (record) => (
-                <Text>{record.username}</Text>
-              )
-            },
-            { 
-              accessor: 'isAdmin', 
-              title: 'Admin Status',
-              width: '20%',
-              render: ({ isAdmin }) => (
-                isAdmin ? (
-                  <Badge color="red" size="sm">Admin</Badge>
-                ) : (
-                  <Badge color="gray" size="sm">User</Badge>
-                )
-              )
-            },
-            { 
-              accessor: 'isMaintainer', 
-              title: 'Maintainer Status',
-              width: '30%',
-              render: (record) => (
-                <Group 
-                  justify="space-between"
-                  onMouseEnter={() => setHoveredUser(record.id)}
-                  onMouseLeave={() => setHoveredUser(null)}
-                  style={{ width: '100%' }}
-                >
-                  {record.isMaintainer ? (
-                    <>
-                      <Badge color="blue" size="sm">Maintainer</Badge>
-                      {record.id !== user.id && (
-                        <Button
-                          size="xs"
-                          color="red"
-                          variant="light"
-                          style={{ 
-                            opacity: hoveredUser === record.id ? 1 : 0,
-                            transition: 'opacity 0.2s ease',
-                            marginLeft: '8px'
-                          }}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleRemoveMaintainer(record.id);
-                          }}
-                          loading={updatingUser === record.id}
-                          disabled={updatingUser === record.id}
-                        >
-                          <IconTrash size={14} />
-                        </Button>
-                      )}
-                    </>
+        </p>
+
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className="px-3 py-2 text-left font-medium">User ID</th>
+              <th className="px-3 py-2 text-left font-medium">Username</th>
+              <th className="px-3 py-2 text-left font-medium">Admin Status</th>
+              <th className="px-3 py-2 text-left font-medium">Maintainer Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tableData.map(record => (
+              <tr key={record.id} className="group border-t hover:bg-muted/50">
+                <td className="px-3 py-2">
+                  <span className="text-muted-foreground">{record.id}</span>
+                </td>
+                <td className="px-3 py-2">{record.username}</td>
+                <td className="px-3 py-2">
+                  {record.isAdmin ? (
+                    <Badge variant="destructive">Admin</Badge>
                   ) : (
-                    <>
-                      {record.isAdmin ? (
-                        <Badge color="red" size="sm">Admin (Full Access)</Badge>
-                      ) : (
-                        <>
-                          <Text size="sm" c="dimmed">Not a maintainer</Text>
+                    <Badge variant="secondary">User</Badge>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <div
+                    className="flex items-center justify-between gap-2"
+                    onMouseEnter={() => setHoveredUser(record.id)}
+                    onMouseLeave={() => setHoveredUser(null)}
+                  >
+                    {record.isMaintainer ? (
+                      <>
+                        <Badge variant="secondary">Maintainer</Badge>
+                        {record.id !== user.id && (
                           <Button
-                            size="xs"
-                            color="blue"
-                            variant="light"
-                            style={{ 
-                              opacity: hoveredUser === record.id ? 1 : 0,
-                              transition: 'opacity 0.2s ease',
-                              marginLeft: '8px'
-                            }}
+                            size="icon"
+                            variant="destructive"
+                            className={`h-8 w-8 shrink-0 transition-opacity ${hoveredUser === record.id ? 'opacity-100' : 'opacity-0'}`}
                             onClick={(event) => {
                               event.stopPropagation();
-                              handleAddMaintainer(record.id);
+                              handleRemoveMaintainer(record.id);
                             }}
-                            loading={updatingUser === record.id}
                             disabled={updatingUser === record.id}
                           >
-                            <IconUserPlus size={14} />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
-                        </>
-                      )}
-                    </>
-                  )}
-                </Group>
-              )
-            }
-          ]}
-          records={tableData}
-          minHeight={150}
-        />
-      </Paper>
-    </Stack>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {record.isAdmin ? (
+                          <Badge variant="destructive">Admin (Full Access)</Badge>
+                        ) : (
+                          <>
+                            <span className="text-sm text-muted-foreground">Not a maintainer</span>
+                            <Button
+                              size="icon"
+                              variant="secondary"
+                              className={`h-8 w-8 shrink-0 transition-opacity ${hoveredUser === record.id ? 'opacity-100' : 'opacity-0'}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleAddMaintainer(record.id);
+                              }}
+                              disabled={updatingUser === record.id}
+                            >
+                              <UserPlus className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };

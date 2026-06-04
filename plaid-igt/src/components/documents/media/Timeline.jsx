@@ -1,16 +1,8 @@
 import React from 'react';
-import {
-  Stack,
-  Text,
-  Paper,
-  Group,
-  Box,
-  ActionIcon,
-  Tooltip,
-} from '@mantine/core';
-import IconZoomIn from '@tabler/icons-react/dist/esm/icons/IconZoomIn.mjs';
-import IconZoomOut from '@tabler/icons-react/dist/esm/icons/IconZoomOut.mjs';
-import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
+import { ZoomIn, ZoomOut, Play } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useTimelineOperations } from './useTimelineOperations.js';
 import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 
@@ -21,30 +13,25 @@ const formatTime = (seconds) => {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
-export const Timeline = ({ 
-  projectId,
-  documentId,
-  reload,
-  client,
+export const Timeline = ({
   mediaOps,
   readOnly = false
 }) => {
+  const { doc } = useDocumentCtx();
+
   // Destructure what we need from mediaOps
   const {
-    mediaElementRef,
-    duration,
-    currentTime,
-    alignmentTokens,
     selection,
     handlePlaySelection: onPlaySelection,
     popoverOpened,
     setPopoverOpened,
-    parsedDocument,
-    project
+    pixelsPerSecond
   } = mediaOps;
-  
+
+  const currentTime = mediaOps.currentTime;
+
   // Use timeline operations hook directly
-  const timelineOps = useTimelineOperations(projectId, documentId, reload, client, mediaElementRef.current);
+  const timelineOps = useTimelineOperations(mediaOps);
   const {
     isDragging,
     tempSelection,
@@ -70,9 +57,7 @@ export const Timeline = ({
     autoScrollToTime,
     TIMELINE_HEIGHT
   } = timelineOps;
-  
-  const pixelsPerSecond = parsedDocument.ui.media.pixelsPerSecond;
-  
+
   const onPixelsPerSecondChange = handlePixelsPerSecondChange;
   
   // Register autoScrollToTime with mediaOps
@@ -83,49 +68,60 @@ export const Timeline = ({
   }, [mediaOps, autoScrollToTime]);
   
   return (
-    <Paper withBorder p="md">
-      <Stack spacing="md">
-        {/* Timeline Controls */}
-        <Group justify="space-between">
-          <Text fw={500}>Timeline</Text>
-          <Group spacing="xs">
-            <Tooltip label="Zoom out">
-              <ActionIcon 
-                onClick={() => {
-                  // Zoom out by 1/3, minimum 4px/s
-                  const newZoom = Math.max(4, pixelsPerSecond / (4/3));
-                  onPixelsPerSecondChange(newZoom);
-                }} 
-                size="sm"
-                disabled={pixelsPerSecond <= 4}
-              >
-                <IconZoomOut size={16} />
-              </ActionIcon>
-            </Tooltip>
-            <Text size="sm" c="dimmed">{Math.round(pixelsPerSecond)}px/s</Text>
-            <Tooltip label="Zoom in">
-              <ActionIcon 
-                onClick={() => {
-                  // Zoom in by 1/3, max 100px/s
-                  const newZoom = Math.min(100, pixelsPerSecond * (4/3));
-                  onPixelsPerSecondChange(newZoom);
-                }} 
-                size="sm"
-                disabled={pixelsPerSecond >= 100}
-              >
-                <IconZoomIn size={16} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-        </Group>
+    <TooltipProvider>
+      <div className="tw rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-4">
+          {/* Timeline Controls */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Timeline</span>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => {
+                      // Zoom out by 1/3, minimum 4px/s
+                      const newZoom = Math.max(4, pixelsPerSecond / (4/3));
+                      onPixelsPerSecondChange(newZoom);
+                    }}
+                    disabled={pixelsPerSecond <= 4}
+                  >
+                    <ZoomOut className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Zoom out</TooltipContent>
+              </Tooltip>
+              <span className="text-sm text-muted-foreground">{Math.round(pixelsPerSecond)}px/s</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => {
+                      // Zoom in by 1/3, max 100px/s
+                      const newZoom = Math.min(100, pixelsPerSecond * (4/3));
+                      onPixelsPerSecondChange(newZoom);
+                    }}
+                    disabled={pixelsPerSecond >= 100}
+                  >
+                    <ZoomIn className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Zoom in</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
 
         {/* Timeline Visualization */}
-        <Box 
-          ref={timelineContainerRef} 
+        <div
+          ref={timelineContainerRef}
           style={{ overflowX: 'auto', border: '1px solid #e0e0e0', borderRadius: '4px', paddingTop: '50px' }}
           onScroll={(e) => setTimelineScrollLeft(e.target.scrollLeft)}
         >
-          <Box 
+          <div
             ref={timelineRef}
             style={{ 
               position: 'relative', 
@@ -180,12 +176,7 @@ export const Timeline = ({
                 opened={popoverOpened}
                 onClose={() => setPopoverOpened(false)}
                 selection={selection}
-                parsedDocument={parsedDocument}
-                project={project}
-                projectId={projectId}
-                documentId={documentId}
                 onAlignmentCreated={handleAlignmentCreated}
-                client={client}
                 readOnly={readOnly}
                 selectionBox={
                   <div
@@ -222,36 +213,36 @@ export const Timeline = ({
                   zIndex: 15
                 }}
               >
-                <Text
-                  size="xs"
+                <span
                   style={{
                     color: '#228be6',
                     fontWeight: 600
                   }}
                 >
                   {formatTime(selection.start)}
-                </Text>
-                
-                <Tooltip label="Play selected region">
-                  <ActionIcon 
-                    onClick={onPlaySelection} 
-                    size="sm" 
-                    variant="filled" 
-                    color="blue"
-                  >
-                    <IconPlayerPlay size={12} />
-                  </ActionIcon>
+                </span>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={onPlaySelection}
+                      size="icon"
+                      className="h-7 w-7"
+                    >
+                      <Play className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Play selected region</TooltipContent>
                 </Tooltip>
-                
-                <Text
-                  size="xs"
+
+                <span
                   style={{
                     color: '#228be6',
                     fontWeight: 600
                   }}
                 >
                   {formatTime(selection.end)}
-                </Text>
+                </span>
               </div>
             )}
 
@@ -326,7 +317,7 @@ export const Timeline = ({
                     // Create selection from alignment token
                     handleSelectionCreate(displayStart, displayEnd);
                   }}
-                  title={`${parsedDocument.document.text.body.substring(token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
+                  title={`${(doc.body || '').substring(token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
                 >
                   {/* Left resize handle */}
                   {!readOnly && (
@@ -354,7 +345,7 @@ export const Timeline = ({
                     paddingLeft: tokenWidth > 20 ? '6px' : '2px',
                     paddingRight: tokenWidth > 20 ? '6px' : '2px'
                   }}>
-                    {parsedDocument.document.text.body.substring(token.begin, token.end) || ''}
+                    {(doc.body || '').substring(token.begin, token.end) || ''}
                   </div>
                   
                   {/* Right resize handle */}
@@ -377,9 +368,10 @@ export const Timeline = ({
                 </div>
               );
             })}
-          </Box>
-        </Box>
-      </Stack>
-    </Paper>
+          </div>
+        </div>
+        </div>
+      </div>
+    </TooltipProvider>
   );
 };

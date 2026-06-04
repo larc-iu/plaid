@@ -1,21 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  Container, 
-  Title, 
-  Text, 
-  Stack,
-  Alert,
-  Loader,
-  Center,
-  Breadcrumbs,
-  Anchor,
-  Tabs
-} from '@mantine/core';
-import IconFile from '@tabler/icons-react/dist/esm/icons/IconFile.mjs';
-import IconUsers from '@tabler/icons-react/dist/esm/icons/IconUsers.mjs';
-import IconSettings from '@tabler/icons-react/dist/esm/icons/IconSettings.mjs';
+import { FileText, Users, Settings } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { DocumentList } from './DocumentList';
 import { AccessManagement } from './AccessManagement';
 import { ProjectSettings } from './ProjectSettings';
@@ -124,115 +111,76 @@ export const ProjectDetail = () => {
     return user.isAdmin || project.maintainers?.includes(user.id);
   };
 
-  const breadcrumbItems = [
-    { title: 'Projects', href: '/projects' },
-    { title: project?.name || 'Loading...', href: null }
-  ].map((item, index) => (
-    item.href ? (
-      <Anchor key={index} component={Link} to={item.href}>
-        {item.title}
-      </Anchor>
-    ) : (
-      <Text key={index}>{item.title}</Text>
-    )
-  ));
-
   if (loading) {
     return (
-      <Container size="lg" py="xl">
-        <Center>
-          <Stack align="center" spacing="md">
-            <Loader size="lg" />
-            <Text>Loading project...</Text>
-          </Stack>
-        </Center>
-      </Container>
+      <div className="tw flex items-center justify-center py-24 text-muted-foreground">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
     );
   }
 
-  if (error) {
+  if (error || !project) {
     return (
-      <Container size="lg" py="xl">
-        <Alert color="red" title="Error">
-          {error}
-        </Alert>
-      </Container>
-    );
-  }
-
-  if (!project) {
-    return (
-      <Container size="lg" py="xl">
-        <Alert color="red" title="Project Not Found">
-          The requested project could not be found.
-        </Alert>
-      </Container>
-    );
-  }
-
-  return (
-    <Container size="lg" py="xl">
-      <Stack spacing="lg">
-        <Breadcrumbs>
-          {breadcrumbItems}
-        </Breadcrumbs>
-
-        <div>
-          <Title order={1} mb="xs">{project.name}</Title>
-          <Text c="dimmed" size="xs" mb="lg">{project.id}</Text>
+      <div className="tw mx-auto max-w-5xl px-4 py-8">
+        <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error || 'The requested project could not be found.'}
         </div>
+      </div>
+    );
+  }
 
-        <Tabs value={activeTab} onChange={setActiveTab}>
-          <Tabs.List>
-            <Tabs.Tab value="documents" leftSection={<IconFile size={16} />}>
-              Document List
-            </Tabs.Tab>
-            {canManageProject() && (
-              <Tabs.Tab value="management" leftSection={<IconUsers size={16} />}>
-                Access Management
-              </Tabs.Tab>
-            )}
-            {canManageProject() && (
-              <Tabs.Tab value="settings" leftSection={<IconSettings size={16} />}>
-                Settings
-              </Tabs.Tab>
-            )}
-          </Tabs.List>
+  const canManage = canManageProject();
 
-          <Tabs.Panel value="documents">
-            <DocumentList 
-              documents={documents} 
+  // NOTE: `.tw` is scoped to the shadcn chrome (header + tabs list) only. The
+  // tab panels are still Mantine (DocumentList/AccessManagement/ProjectSettings)
+  // and must stay OUTSIDE any `.tw` subtree, or the scoped reset clobbers their
+  // styling (e.g. button backgrounds). Drop the wrapper when those migrate.
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-8">
+      <div className="tw">
+        <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Link to="/projects" className="hover:text-foreground">Projects</Link>
+          <span>/</span>
+          <span className="text-foreground">{project.name}</span>
+        </nav>
+        <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+        <p className="mb-6 mt-1 text-xs text-muted-foreground">{project.id}</p>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="tw">
+          <TabsTrigger value="documents"><FileText className="h-4 w-4" /> Document List</TabsTrigger>
+          {canManage && <TabsTrigger value="management"><Users className="h-4 w-4" /> Access Management</TabsTrigger>}
+          {canManage && <TabsTrigger value="settings"><Settings className="h-4 w-4" /> Settings</TabsTrigger>}
+        </TabsList>
+
+        <TabsContent value="documents">
+          <DocumentList
+            documents={documents}
+            projectId={projectId}
+            client={client}
+            onDocumentCreated={handleDocumentCreated}
+          />
+        </TabsContent>
+        {canManage && (
+          <TabsContent value="management">
+            <AccessManagement
+              project={project}
+              users={users}
+              user={user}
               projectId={projectId}
               client={client}
-              onDocumentCreated={handleDocumentCreated}
+              onDataUpdate={updateProjectData}
+              onUsersUpdate={updateUsersData}
             />
-          </Tabs.Panel>
-
-          {canManageProject() && (
-            <Tabs.Panel value="management">
-              <AccessManagement
-                project={project}
-                users={users}
-                user={user}
-                projectId={projectId}
-                client={client}
-                onDataUpdate={updateProjectData}
-                onUsersUpdate={updateUsersData}
-              />
-            </Tabs.Panel>
-          )}
-
-          {canManageProject() && (
-            <Tabs.Panel value="settings">
-              <ProjectSettings
-                project={project}
-                projectId={projectId}
-                client={client}
-              />
-            </Tabs.Panel>
-          )}
-        </Tabs>
-      </Stack>
-    </Container>
+          </TabsContent>
+        )}
+        {canManage && (
+          <TabsContent value="settings">
+            <ProjectSettings project={project} projectId={projectId} client={client} />
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
   );
 };

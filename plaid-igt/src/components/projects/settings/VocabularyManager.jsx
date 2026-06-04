@@ -1,29 +1,18 @@
 import { useState, useEffect } from 'react';
-import { 
-  Stack, 
-  Text, 
-  Paper,
-  TextInput,
-  Button,
-  Group,
-  Loader,
-  Alert,
-  Modal
-} from '@mantine/core';
-import { DataTable } from 'mantine-datatable';
-import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
-import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs';
-import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
-import IconChevronUp from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';
-import IconChevronDown from '@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs';
-import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
-import IconUnlink from '@tabler/icons-react/dist/esm/icons/IconUnlink.mjs';
-import IconAlertTriangle from '@tabler/icons-react/dist/esm/icons/IconAlertTriangle.mjs';
-import { notifications } from '@mantine/notifications';
-import { useDisclosure } from '@mantine/hooks';
+import { Plus, Trash2, Check, X, ChevronUp, ChevronDown, Unlink, AlertTriangle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
+import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
-export const VocabularyManager = ({ 
+export const VocabularyManager = ({
   initialData,
   onLoadData,
   onSaveChanges,
@@ -37,8 +26,11 @@ export const VocabularyManager = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isInitialized, setIsInitialized] = useState(false);
-  const [unlinkModalOpened, { open: openUnlinkModal, close: closeUnlinkModal }] = useDisclosure(false);
+  const [unlinkModalOpened, setUnlinkModalOpened] = useState(false);
   const [vocabToUnlink, setVocabToUnlink] = useState(null);
+
+  const openUnlinkModal = () => setUnlinkModalOpened(true);
+  const closeUnlinkModal = () => setUnlinkModalOpened(false);
 
   // Initialize data on mount
   useEffect(() => {
@@ -46,17 +38,17 @@ export const VocabularyManager = ({
       try {
         setLoading(true);
         let vocabData = initialData;
-        
+
         // If no initial data provided or if vocabularies array is missing, try loading from callback
         if ((!vocabData || !vocabData.vocabularies) && onLoadData) {
           vocabData = await onLoadData();
         }
-        
+
         // If still no data, use empty array
         if (!vocabData?.vocabularies) {
           vocabData = { vocabularies: [] };
         }
-        
+
         setVocabularies(vocabData.vocabularies);
         setIsInitialized(true);
         setError('');
@@ -65,15 +57,11 @@ export const VocabularyManager = ({
         setError('Failed to load vocabularies');
         setVocabularies([]);
         setIsInitialized(true);
-        
+
         if (onError) {
           onError(err);
         } else {
-          notifications.show({
-            title: 'Load Error',
-            message: 'Failed to load vocabularies configuration',
-            color: 'red'
-          });
+          notifyError('Failed to load vocabularies configuration', 'Load Error');
         }
       } finally {
         setLoading(false);
@@ -94,11 +82,7 @@ export const VocabularyManager = ({
       if (onError) {
         onError(error);
       } else {
-        notifications.show({
-          title: 'Save Error',
-          message: 'Failed to save vocabularies configuration',
-          color: 'red'
-        });
+        notifyError('Failed to save vocabularies configuration', 'Save Error');
       }
     }
   };
@@ -113,7 +97,7 @@ export const VocabularyManager = ({
         return;
       }
     }
-    
+
     const updatedVocabs = vocabularies.map(vocab =>
       vocab.id === vocabId ? { ...vocab, enabled } : vocab
     );
@@ -122,39 +106,31 @@ export const VocabularyManager = ({
 
   const handleConfirmUnlink = async () => {
     if (!vocabToUnlink) return;
-    
+
     const updatedVocabs = vocabularies.map(vocab =>
       vocab.id === vocabToUnlink.id ? { ...vocab, enabled: false } : vocab
     );
     await saveChanges(updatedVocabs);
-    
+
     closeUnlinkModal();
     setVocabToUnlink(null);
   };
 
   const handleAddCustomVocab = async () => {
     const trimmedName = newVocabName.trim();
-    
+
     if (!trimmedName) {
-      notifications.show({
-        title: 'Invalid Vocabulary Name',
-        message: 'Vocabulary name cannot be empty',
-        color: 'red'
-      });
+      notifyError('Vocabulary name cannot be empty', 'Invalid Vocabulary Name');
       return;
     }
 
     // Check for duplicate names (case insensitive)
-    const isDuplicate = vocabularies.some(vocab => 
+    const isDuplicate = vocabularies.some(vocab =>
       vocab.name.toLowerCase() === trimmedName.toLowerCase()
     );
 
     if (isDuplicate) {
-      notifications.show({
-        title: 'Duplicate Vocabulary',
-        message: 'A vocabulary with this name already exists',
-        color: 'red'
-      });
+      notifyError('A vocabulary with this name already exists', 'Duplicate Vocabulary');
       return;
     }
 
@@ -169,23 +145,15 @@ export const VocabularyManager = ({
     await saveChanges(updatedVocabs);
 
     setNewVocabName('');
-    notifications.show({
-      title: 'Vocabulary Added',
-      message: `"${trimmedName}" has been added to your vocabularies`,
-      color: 'green'
-    });
+    notifySuccess(`"${trimmedName}" has been added to your vocabularies`, 'Vocabulary Added');
   };
 
   const handleDeleteCustomVocab = async (vocabId) => {
     const vocabToDelete = vocabularies.find(v => v.id === vocabId);
     const updatedVocabs = vocabularies.filter(vocab => vocab.id !== vocabId);
     await saveChanges(updatedVocabs);
-    
-    notifications.show({
-      title: 'Vocabulary Removed',
-      message: `"${vocabToDelete?.name}" has been removed`,
-      color: 'blue'
-    });
+
+    notifyInfo(`"${vocabToDelete?.name}" has been removed`, 'Vocabulary Removed');
   };
 
   const handleKeyPress = (event) => {
@@ -198,7 +166,7 @@ export const VocabularyManager = ({
   const wouldBeDuplicate = () => {
     const trimmedName = newVocabName.trim();
     if (!trimmedName) return false;
-    return vocabularies.some(vocab => 
+    return vocabularies.some(vocab =>
       vocab.name.toLowerCase() === trimmedName.toLowerCase()
     );
   };
@@ -206,32 +174,38 @@ export const VocabularyManager = ({
   const handleMoveVocab = async (vocabId, direction) => {
     const currentIndex = vocabularies.findIndex(vocab => vocab.id === vocabId);
     if (currentIndex === -1) return;
-    
+
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
     if (newIndex < 0 || newIndex >= vocabularies.length) return;
-    
+
     const newVocabs = [...vocabularies];
     const [movedVocab] = newVocabs.splice(currentIndex, 1);
     newVocabs.splice(newIndex, 0, movedVocab);
-    
+
     await saveChanges(newVocabs);
   };
 
   // Don't render until initialized
   if (!isInitialized || loading) {
     return (
-      <Stack spacing="lg" align="center">
-        <Loader size="md" />
-        <Text>Loading vocabularies...</Text>
-      </Stack>
+      <div className="flex flex-col items-center gap-6">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+        <p className="text-sm">Loading vocabularies...</p>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Alert color="red" title="Error" icon={<IconInfoCircle size={16} />}>
-        {error}
-      </Alert>
+      <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+          <div>
+            <p className="text-sm font-medium text-destructive">Error</p>
+            <p className="text-sm text-muted-foreground">{error}</p>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -242,206 +216,187 @@ export const VocabularyManager = ({
   }));
 
   return (
-    <Stack spacing="xl">
+    <div className="flex flex-col gap-8">
       {/* Vocabularies Table */}
-      <Paper p="md" withBorder>
-        {showTitle && <Text size="md" fw={500} mb="md">Available Vocabularies</Text>}
-        
-        <DataTable
-          textSelectionDisabled
-          withTableBorder
-          withRowBorders
-          highlightOnHover
-          onRowClick={({ record }) => {
-            handleVocabToggle(record.id, !record.enabled);
-          }}
-          styles={{
-            table: {
-              cursor: 'pointer'
-            }
-          }}
-          columns={[
-            {
-              accessor: 'enabled', 
-              title: 'Link',
-              width: '10%',
-              render: (record) => (
-                record.enabled ? (
-                  <IconCheck size={18} color="green" />
-                ) : (
-                  <IconX size={18} color="gray" />
-                )
-              )
-            },
-            {
-              accessor: 'name',
-              title: 'Vocabulary Name',
-              width: '90%',
-              render: (record) => {
-                return (
-                  <Group 
-                    justify="space-between" 
-                    onMouseEnter={() => setHoveredVocab(record.id)}
-                    onMouseLeave={() => setHoveredVocab(null)}
-                    style={{ width: '100%' }}
-                  >
-                    <Text 
-                      c={record.enabled ? undefined : 'dimmed'}
-                      fs={record.enabled ? undefined : 'italic'}
-                    >
-                      {record.name}
-                    </Text>
-                    <Group spacing="xs">
-                      {/* Only show move buttons in setup mode */}
-                      {!isSettings && (
-                        <>
+      <div className="rounded-lg border bg-card p-4">
+        {showTitle && <p className="mb-4 text-sm font-medium">Available Vocabularies</p>}
+
+        <div className="overflow-hidden rounded-md border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50">
+                <th className="w-[10%] px-3 py-2 text-left font-medium">Link</th>
+                <th className="px-3 py-2 text-left font-medium">Vocabulary Name</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableData.map((record) => (
+                <tr
+                  key={record.tableId}
+                  className="cursor-pointer border-t hover:bg-muted/50"
+                  onMouseEnter={() => setHoveredVocab(record.id)}
+                  onMouseLeave={() => setHoveredVocab(null)}
+                  onClick={() => handleVocabToggle(record.id, !record.enabled)}
+                >
+                  <td className="px-3 py-2">
+                    {record.enabled ? (
+                      <Check className="h-[18px] w-[18px] text-green-600" />
+                    ) : (
+                      <X className="h-[18px] w-[18px] text-gray-400" />
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={cn(
+                          record.enabled ? '' : 'italic text-muted-foreground'
+                        )}
+                      >
+                        {record.name}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {/* Only show move buttons in setup mode */}
+                        {!isSettings && (
+                          <>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className={cn(
+                                'h-7 w-7 transition-opacity',
+                                hoveredVocab === record.id ? 'opacity-100' : 'opacity-0'
+                              )}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleMoveVocab(record.id, 'up');
+                              }}
+                              disabled={tableData.findIndex(item => item.id === record.id) === 0}
+                            >
+                              <ChevronUp className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className={cn(
+                                'h-7 w-7 transition-opacity',
+                                hoveredVocab === record.id ? 'opacity-100' : 'opacity-0'
+                              )}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleMoveVocab(record.id, 'down');
+                              }}
+                              disabled={tableData.findIndex(item => item.id === record.id) === tableData.length - 1}
+                            >
+                              <ChevronDown className="h-3 w-3" />
+                            </Button>
+                          </>
+                        )}
+
+                        {/* Show unlink button for enabled vocabs in settings mode */}
+                        {isSettings && record.enabled && (
                           <Button
-                            size="xs"
-                            variant="light"
-                            color="gray"
-                            style={{ 
-                              opacity: hoveredVocab === record.id ? 1 : 0,
-                              transition: 'opacity 0.2s ease'
-                            }}
+                            size="icon"
+                            variant="outline"
+                            className={cn(
+                              'h-7 w-7 text-orange-600 transition-opacity hover:text-orange-600',
+                              hoveredVocab === record.id ? 'opacity-100' : 'opacity-0'
+                            )}
                             onClick={(event) => {
                               event.stopPropagation();
-                              handleMoveVocab(record.id, 'up');
+                              handleVocabToggle(record.id, false);
                             }}
-                            disabled={tableData.findIndex(item => item.id === record.id) === 0}
                           >
-                            <IconChevronUp size={12} />
+                            <Unlink className="h-3.5 w-3.5" />
                           </Button>
+                        )}
+
+                        {/* Only show delete button for custom vocabs in setup mode */}
+                        {!isSettings && record.isCustom && (
                           <Button
-                            size="xs"
-                            variant="light"
-                            color="gray"
-                            style={{ 
-                              opacity: hoveredVocab === record.id ? 1 : 0,
-                              transition: 'opacity 0.2s ease'
-                            }}
+                            size="icon"
+                            variant="outline"
+                            className={cn(
+                              'h-7 w-7 text-destructive transition-opacity hover:text-destructive',
+                              hoveredVocab === record.id ? 'opacity-100' : 'opacity-0'
+                            )}
                             onClick={(event) => {
                               event.stopPropagation();
-                              handleMoveVocab(record.id, 'down');
+                              handleDeleteCustomVocab(record.id);
                             }}
-                            disabled={tableData.findIndex(item => item.id === record.id) === tableData.length - 1}
                           >
-                            <IconChevronDown size={12} />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                        </>
-                      )}
-                      
-                      {/* Show unlink button for enabled vocabs in settings mode */}
-                      {isSettings && record.enabled && (
-                        <Button
-                          size="xs"
-                          color="orange"
-                          variant="light"
-                          style={{ 
-                            opacity: hoveredVocab === record.id ? 1 : 0,
-                            transition: 'opacity 0.2s ease'
-                          }}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleVocabToggle(record.id, false);
-                          }}
-                        >
-                          <IconUnlink size={14} />
-                        </Button>
-                      )}
-                      
-                      {/* Only show delete button for custom vocabs in setup mode */}
-                      {!isSettings && record.isCustom && (
-                        <Button
-                          size="xs"
-                          color="red"
-                          variant="light"
-                          style={{ 
-                            opacity: hoveredVocab === record.id ? 1 : 0,
-                            transition: 'opacity 0.2s ease'
-                          }}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleDeleteCustomVocab(record.id);
-                          }}
-                        >
-                          <IconTrash size={14} />
-                        </Button>
-                      )}
-                    </Group>
-                  </Group>
-                );
-              }
-            }
-          ]}
-          records={tableData}
-          minHeight={200}
-        />
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {/* Add Custom Vocab - only in setup mode */}
         {!isSettings && (
-          <Paper p="md">
-            <Text size="md" fw={500} mb="md">Add New Vocabulary</Text>
-            <Group>
-              <TextInput
-                  placeholder="Enter vocabulary name"
-                  value={newVocabName}
-                  onChange={(event) => setNewVocabName(event.currentTarget.value)}
-                  onKeyDown={handleKeyPress}
-                  flex={1}
+          <div className="mt-4">
+            <p className="mb-4 text-sm font-medium">Add New Vocabulary</p>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Enter vocabulary name"
+                value={newVocabName}
+                onChange={(event) => setNewVocabName(event.target.value)}
+                onKeyDown={handleKeyPress}
+                className="flex-1"
               />
               <Button
-                  leftSection={<IconPlus size={16} />}
-                  onClick={handleAddCustomVocab}
-                  disabled={!newVocabName.trim() || wouldBeDuplicate()}
+                onClick={handleAddCustomVocab}
+                disabled={!newVocabName.trim() || wouldBeDuplicate()}
               >
-                Add Vocabulary
+                <Plus className="h-4 w-4" /> Add Vocabulary
               </Button>
-            </Group>
-          </Paper>
+            </div>
+          </div>
         )}
-      </Paper>
+      </div>
 
       {/* Unlink Confirmation Modal */}
-      <Modal
-        opened={unlinkModalOpened}
-        onClose={closeUnlinkModal}
-        title="Unlink Vocabulary"
-        size="md"
-        centered
-      >
-        <Stack spacing="md">
-          <Alert
-            icon={<IconAlertTriangle size={16} />}
-            title="Warning"
-            color="orange"
-            variant="light"
-          >
-            <Text size="sm">
-              You are about to unlink the vocabulary <strong>"{vocabToUnlink?.name}"</strong> from this project.
-            </Text>
-            <Text size="sm" mt="xs">
-              This will delete all vocabulary item links for this vocabulary in this project. 
-              The vocabulary itself will remain available for other projects.
-            </Text>
-          </Alert>
+      <Dialog open={unlinkModalOpened} onOpenChange={(o) => { if (!o) closeUnlinkModal(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unlink Vocabulary</DialogTitle>
+          </DialogHeader>
 
-          <Group justify="flex-end">
+          <div className="rounded-md border border-orange-500/50 bg-orange-500/5 p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 text-orange-600" />
+              <div>
+                <p className="text-sm font-medium text-orange-600">Warning</p>
+                <p className="text-sm text-muted-foreground">
+                  You are about to unlink the vocabulary <strong>"{vocabToUnlink?.name}"</strong> from this project.
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  This will delete all vocabulary item links for this vocabulary in this project.
+                  The vocabulary itself will remain available for other projects.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
             <Button
-              variant="default"
+              variant="secondary"
               onClick={closeUnlinkModal}
             >
               Cancel
             </Button>
             <Button
-              color="orange"
+              className="bg-orange-600 text-white hover:bg-orange-700"
               onClick={handleConfirmUnlink}
-              leftSection={<IconUnlink size={16} />}
             >
-              Unlink Vocabulary
+              <Unlink className="h-4 w-4" /> Unlink Vocabulary
             </Button>
-          </Group>
-        </Stack>
-      </Modal>
-    </Stack>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };

@@ -1,25 +1,18 @@
 import { useState, useEffect } from 'react';
+import { Plus, Trash2, Pencil, Check, X, AlertTriangle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import {
-  Stack,
-  Text,
-  Paper,
-  TextInput,
-  Button,
-  Group,
-  Loader,
-  Alert,
-  Modal,
-  Divider,
-  ActionIcon
-} from '@mantine/core';
-import { DataTable } from 'mantine-datatable';
-import { notifications } from '@mantine/notifications';
-import { useDisclosure } from '@mantine/hooks';
-import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
-import IconEdit from '@tabler/icons-react/dist/esm/icons/IconEdit.mjs';
-import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs';
-import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+import { notifySuccess, notifyError } from '@/utils/feedback';
 
 export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields }) => {
   const [items, setItems] = useState([]);
@@ -30,7 +23,9 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
   const [editingItem, setEditingItem] = useState(null);
   const [editForm, setEditForm] = useState('');
   const [editFields, setEditFields] = useState({});
-  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
+  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
+  const openDeleteModal = () => setDeleteModalOpened(true);
+  const closeDeleteModal = () => setDeleteModalOpened(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
   const fetchItems = async () => {
@@ -39,11 +34,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
       if (!client) {
         throw new Error('Not authenticated');
       }
-      
+
       if (!vocabularyId || vocabularyId === 'undefined' || vocabularyId === 'new') {
         throw new Error('Invalid vocabulary ID');
       }
-      
+
       const vocabularyData = await client.vocabLayers.get(vocabularyId, true);
       setItems(vocabularyData.items || []);
       setError('');
@@ -66,37 +61,25 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
 
   const handleCreateItem = async () => {
     if (!newItemForm.trim()) {
-      notifications.show({
-        title: 'Invalid Form',
-        message: 'Item form cannot be empty',
-        color: 'red'
-      });
+      notifyError('Item form cannot be empty', 'Invalid Form');
       return;
     }
 
     try {
       const metadata = Object.keys(newItemFields).length > 0 ? newItemFields : undefined;
       await client.vocabItems.create(vocabularyId, newItemForm.trim(), metadata);
-      
+
       // Reset form
       setNewItemForm('');
       setNewItemFields({});
-      
+
       // Refresh items
       await fetchItems();
-      
-      notifications.show({
-        title: 'Success',
-        message: 'Vocabulary item created successfully',
-        color: 'green'
-      });
+
+      notifySuccess('Vocabulary item created successfully', 'Success');
     } catch (err) {
       console.error('Error creating vocabulary item:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to create vocabulary item',
-        color: 'red'
-      });
+      notifyError('Failed to create vocabulary item', 'Error');
     }
   };
 
@@ -108,49 +91,37 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
 
   const handleSaveEdit = async () => {
     if (!editForm.trim()) {
-      notifications.show({
-        title: 'Invalid Form',
-        message: 'Item form cannot be empty',
-        color: 'red'
-      });
+      notifyError('Item form cannot be empty', 'Invalid Form');
       return;
     }
 
     try {
       const item = items.find(i => i.id === editingItem);
-      
+
       // Update form if changed
       if (editForm !== item.form) {
         await client.vocabItems.update(editingItem, editForm.trim());
       }
-      
+
       // Update metadata
       if (Object.keys(editFields).length > 0) {
         await client.vocabItems.setMetadata(editingItem, editFields);
       } else if (item.metadata && Object.keys(item.metadata).length > 0) {
         await client.vocabItems.deleteMetadata(editingItem);
       }
-      
+
       // Reset edit state
       setEditingItem(null);
       setEditForm('');
       setEditFields({});
-      
+
       // Refresh items
       await fetchItems();
-      
-      notifications.show({
-        title: 'Success',
-        message: 'Vocabulary item updated successfully',
-        color: 'green'
-      });
+
+      notifySuccess('Vocabulary item updated successfully', 'Success');
     } catch (err) {
       console.error('Error updating vocabulary item:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to update vocabulary item',
-        color: 'red'
-      });
+      notifyError('Failed to update vocabulary item', 'Error');
     }
   };
 
@@ -170,252 +141,244 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
 
     try {
       await client.vocabItems.delete(itemToDelete.id);
-      
+
       closeDeleteModal();
       setItemToDelete(null);
-      
+
       // Refresh items
       await fetchItems();
-      
-      notifications.show({
-        title: 'Success',
-        message: 'Vocabulary item deleted successfully',
-        color: 'green'
-      });
+
+      notifySuccess('Vocabulary item deleted successfully', 'Success');
     } catch (err) {
       console.error('Error deleting vocabulary item:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete vocabulary item',
-        color: 'red'
-      });
+      notifyError('Failed to delete vocabulary item', 'Error');
     }
   };
 
   const renderCustomFieldInputs = (values, onChange, keyPrefix) => {
     return customFields.map(fieldName => (
-      <TextInput
-        key={`${keyPrefix}-${fieldName}`}
-        label={fieldName}
-        placeholder={`Enter ${fieldName}`}
-        value={values[fieldName] || ''}
-        onChange={(event) => onChange({
-          ...values,
-          [fieldName]: event.currentTarget.value
-        })}
-      />
+      <div key={`${keyPrefix}-${fieldName}`} className="flex flex-col gap-1.5">
+        <Label>{fieldName}</Label>
+        <Input
+          placeholder={`Enter ${fieldName}`}
+          value={values[fieldName] || ''}
+          onChange={(event) => onChange({
+            ...values,
+            [fieldName]: event.target.value
+          })}
+        />
+      </div>
     ));
   };
 
   if (loading) {
     return (
-      <Stack spacing="lg" align="center">
-        <Loader size="md" />
-        <Text>Loading vocabulary items...</Text>
-      </Stack>
+      <div className="tw flex flex-col items-center gap-6 py-6">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+        <p className="text-sm">Loading vocabulary items...</p>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Alert color="red" title="Error">
-        {error}
-      </Alert>
+      <div className="tw rounded-md border border-destructive/50 bg-destructive/5 p-3">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <div className="text-sm">
+            <p className="font-medium text-destructive">Error</p>
+            <p className="mt-1 text-muted-foreground">{error}</p>
+          </div>
+        </div>
+      </div>
     );
   }
 
-  // Prepare columns for the data table
-  const columns = [
-    {
-      accessor: 'form',
-      title: 'Form',
-      width: '30%',
-      render: (record) => {
-        if (editingItem === record.id) {
-          return (
-            <TextInput
-              value={editForm}
-              onChange={(event) => setEditForm(event.currentTarget.value)}
-              size="sm"
-            />
-          );
-        }
-        return <Text>{record.form}</Text>;
-      }
-    },
-    // Add custom field columns
-    ...customFields.map(fieldName => ({
-      accessor: fieldName,
-      title: fieldName,
-      width: `${Math.max(15, 60 / (customFields.length + 2))}%`,
-      render: (record) => {
-        if (editingItem === record.id) {
-          return (
-            <TextInput
-              value={editFields[fieldName] || ''}
-              onChange={(event) => setEditFields({
-                ...editFields,
-                [fieldName]: event.currentTarget.value
-              })}
-              size="sm"
-            />
-          );
-        }
-        return <Text>{record.metadata?.[fieldName] || ''}</Text>;
-      }
-    })),
-    {
-      accessor: 'actions',
-      title: 'Actions',
-      width: '20%',
-      render: (record) => {
-        if (editingItem === record.id) {
-          return (
-            <Group spacing="xs">
-              <ActionIcon
-                color="green"
-                size="sm"
-                onClick={handleSaveEdit}
-              >
-                <IconCheck size={14} />
-              </ActionIcon>
-              <ActionIcon
-                color="gray"
-                size="sm"
-                onClick={handleCancelEdit}
-              >
-                <IconX size={14} />
-              </ActionIcon>
-            </Group>
-          );
-        }
-        
-        return (
-          <Group spacing="xs">
-            <ActionIcon
-              color="blue"
-              size="sm"
-              onClick={() => handleStartEdit(record)}
-            >
-              <IconEdit size={14} />
-            </ActionIcon>
-            <ActionIcon
-              color="red"
-              size="sm"
-              onClick={() => handleDeleteClick(record)}
-            >
-              <IconTrash size={14} />
-            </ActionIcon>
-          </Group>
-        );
-      }
-    }
-  ];
-
   return (
-    <Stack spacing="lg">
+    <div className="tw flex flex-col gap-6">
       {/* Items table */}
-      <Paper p="md" withBorder>
-        <Stack spacing="md">
-          <Text size="md" fw={500}>Vocabulary Items ({items.length})</Text>
-          
+      <div className="rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm font-medium">Vocabulary Items ({items.length})</p>
+
           {items.length === 0 ? (
-            <Text c="dimmed" ta="center" py="xl">
+            <p className="py-8 text-center text-sm text-muted-foreground">
               No vocabulary items yet. Add your first item below.
-            </Text>
+            </p>
           ) : (
-            <DataTable
-              textSelectionDisabled
-              withTableBorder
-              withRowBorders
-              highlightOnHover
-              columns={columns}
-              records={items}
-              minHeight={200}
-            />
+            <div className="overflow-hidden rounded-md border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium" style={{ width: '30%' }}>Form</th>
+                    {customFields.map(fieldName => (
+                      <th
+                        key={fieldName}
+                        className="px-3 py-2 text-left font-medium"
+                        style={{ width: `${Math.max(15, 60 / (customFields.length + 2))}%` }}
+                      >
+                        {fieldName}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 text-left font-medium" style={{ width: '20%' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map(record => (
+                    <tr key={record.id} className="group border-t hover:bg-muted/50">
+                      <td className="px-3 py-2">
+                        {editingItem === record.id ? (
+                          <Input
+                            value={editForm}
+                            onChange={(event) => setEditForm(event.target.value)}
+                            className="h-8"
+                          />
+                        ) : (
+                          <span>{record.form}</span>
+                        )}
+                      </td>
+                      {customFields.map(fieldName => (
+                        <td key={fieldName} className="px-3 py-2">
+                          {editingItem === record.id ? (
+                            <Input
+                              value={editFields[fieldName] || ''}
+                              onChange={(event) => setEditFields({
+                                ...editFields,
+                                [fieldName]: event.target.value
+                              })}
+                              className="h-8"
+                            />
+                          ) : (
+                            <span>{record.metadata?.[fieldName] || ''}</span>
+                          )}
+                        </td>
+                      ))}
+                      <td className="px-3 py-2">
+                        {editingItem === record.id ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-green-600 hover:text-green-600"
+                              onClick={handleSaveEdit}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={handleCancelEdit}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={() => handleStartEdit(record)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteClick(record)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </Stack>
-      </Paper>
+        </div>
+      </div>
 
       {/* Add new item form */}
-      <Paper p="md" withBorder>
-        <Stack spacing="md">
-          <Text size="md" fw={500}>Add New Vocabulary Item</Text>
-          
-          <TextInput
-            label="Form"
-            placeholder="Enter item form"
-            value={newItemForm}
-            onChange={(event) => setNewItemForm(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                handleCreateItem();
-              }
-            }}
-          />
-          
+      <div className="rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm font-medium">Add New Vocabulary Item</p>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Form</Label>
+            <Input
+              placeholder="Enter item form"
+              value={newItemForm}
+              onChange={(event) => setNewItemForm(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  handleCreateItem();
+                }
+              }}
+            />
+          </div>
+
           {customFields.length > 0 && (
             <>
-              <Divider />
-              <Text size="sm" fw={500}>Custom Fields</Text>
-              <Stack spacing="xs">
+              <div className="border-t" />
+              <p className="text-sm font-medium">Custom Fields</p>
+              <div className="flex flex-col gap-2">
                 {renderCustomFieldInputs(newItemFields, setNewItemFields, 'new')}
-              </Stack>
+              </div>
             </>
           )}
-          
-          <Group justify="flex-end">
+
+          <div className="flex justify-end">
             <Button
-              leftSection={<IconPlus size={16} />}
               onClick={handleCreateItem}
               disabled={!newItemForm.trim()}
             >
-              Add Item
+              <Plus className="h-4 w-4" /> Add Item
             </Button>
-          </Group>
-        </Stack>
-      </Paper>
+          </div>
+        </div>
+      </div>
 
       {/* Delete Confirmation Modal */}
-      <Modal
-        opened={deleteModalOpened}
-        onClose={closeDeleteModal}
-        title="Delete Vocabulary Item"
-        size="md"
-        centered
-      >
-        <Stack spacing="md">
-          <Alert
-            color="red"
-            title="Warning"
-            variant="light"
-          >
-            <Text size="sm">
-              You are about to permanently delete the vocabulary item <strong>"{itemToDelete?.form}"</strong>.
-            </Text>
-            <Text size="sm" mt="xs">
-              This action cannot be undone and will remove all links to this item.
-            </Text>
-          </Alert>
+      <AlertDialog open={deleteModalOpened} onOpenChange={(o) => { if (!o) closeDeleteModal(); }}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Vocabulary Item</AlertDialogTitle>
+          </AlertDialogHeader>
 
-          <Group justify="flex-end">
-            <Button
-              variant="default"
-              onClick={closeDeleteModal}
-            >
+          <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+              <div className="text-sm">
+                <p className="font-medium text-destructive">Warning</p>
+                <p className="mt-1 text-muted-foreground">
+                  You are about to permanently delete the vocabulary item <strong>"{itemToDelete?.form}"</strong>.
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  This action cannot be undone and will remove all links to this item.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={closeDeleteModal}>
               Cancel
-            </Button>
-            <Button
-              color="red"
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleConfirmDelete}
-              leftSection={<IconTrash size={16} />}
             >
-              Delete Item
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-    </Stack>
+              <Trash2 className="h-4 w-4" /> Delete Item
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 };

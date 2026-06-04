@@ -1,4 +1,5 @@
-import { Stack, TextInput, Text } from '@mantine/core';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export const BasicInfoStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const handleProjectNameChange = (event) => {
@@ -9,16 +10,19 @@ export const BasicInfoStep = ({ data, onDataChange, setupData, isNewProject, pro
   };
 
   return (
-    <Stack spacing="lg">
-      <TextInput
-        label="Project Name"
-        placeholder="Enter a name for your project"
-        value={data?.projectName || ''}
-        onChange={handleProjectNameChange}
-        required
-        description="Choose a descriptive name for your linguistic annotation project"
-      />
-    </Stack>
+    <div className="tw flex flex-col gap-6">
+      <div className="flex flex-col gap-1.5">
+        <Label>Project Name <span className="text-destructive">*</span></Label>
+        <Input
+          placeholder="Enter a name for your project"
+          value={data?.projectName || ''}
+          onChange={handleProjectNameChange}
+        />
+        <p className="text-xs text-muted-foreground">
+          Choose a descriptive name for your linguistic annotation project
+        </p>
+      </div>
+    </div>
   );
 };
 

@@ -1,169 +1,115 @@
 import { useState } from 'react';
-import { 
-  Title, 
-  Text, 
-  Stack,
-  Center,
-  Button,
-  Modal,
-  TextInput,
-  Group,
-  Textarea
-} from '@mantine/core';
-import { DataTable } from 'mantine-datatable';
-import { notifications } from '@mantine/notifications';
-import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
+import { Plus } from 'lucide-react';
+import { notifySuccess, notifyError } from '@/utils/feedback';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 export const DocumentList = ({ documents, projectId, client, onDocumentCreated }) => {
-  const [createModalOpened, setCreateModalOpened] = useState(false);
+  const [open, setOpen] = useState(false);
   const [documentName, setDocumentName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+
   const handleDocumentClick = (document) => {
-    // Navigate to document detail page
     window.location.href = `#/projects/${projectId}/documents/${document.id}`;
   };
 
   const handleCreateDocument = async () => {
     if (!documentName.trim()) {
-      notifications.show({
-        title: 'Error',
-        message: 'Document name is required',
-        color: 'red'
-      });
+      notifyError('Document name is required', 'Error');
       return;
     }
-
     setIsCreating(true);
     try {
-      if (!client) {
-        throw new Error('Authentication required');
-      }
-
+      if (!client) throw new Error('Authentication required');
       const newDocument = await client.documents.create(projectId, documentName.trim());
-
-      // Get the project data to find the primary text layer
       const projectData = await client.projects.get(projectId);
-      const primaryTextLayer = projectData?.textLayers?.find(layer => layer.config?.plaid?.primary);
-
+      const primaryTextLayer = projectData?.textLayers?.find((layer) => layer.config?.plaid?.primary);
       if (primaryTextLayer) {
-        // Create a blank text for the new document
         await client.texts.create(primaryTextLayer.id, newDocument.id, '', {});
       }
-
-      notifications.show({
-        title: 'Success',
-        message: `Document "${documentName}" created successfully`,
-        color: 'green'
-      });
-
-      // Reset form
+      notifySuccess(`Document "${documentName}" created successfully`, 'Success');
       setDocumentName('');
-      setCreateModalOpened(false);
-
-      // Notify parent component with the document name we know it should have
-      if (onDocumentCreated) {
-        onDocumentCreated({
-          ...newDocument,
-          name: documentName.trim() // Ensure the name is set optimistically
-        });
-      }
+      setOpen(false);
+      if (onDocumentCreated) onDocumentCreated({ ...newDocument, name: documentName.trim() });
     } catch (error) {
       console.error('Failed to create document:', error);
-      notifications.show({
-        title: 'Error',
-        message: `Failed to create document: ${error.message}`,
-        color: 'red'
-      });
+      notifyError(`Failed to create document: ${error.message}`, 'Error');
     } finally {
       setIsCreating(false);
     }
   };
 
+  const sorted = [...documents].sort((a, b) => a.name.localeCompare(b.name));
+
   return (
-    <Stack spacing="md" mt="md">
-      <Group justify="space-between" align="center">
-        <Title order={2}>Documents</Title>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => setCreateModalOpened(true)}
-        >
-          Create Document
+    <div className="tw mt-2">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Documents</h2>
+        <Button onClick={() => setOpen(true)}>
+          <Plus className="h-4 w-4" /> Create Document
         </Button>
-      </Group>
-      
+      </div>
+
       {documents.length === 0 ? (
-        <Center py="xl">
-          <Stack align="center" spacing="md">
-            <Text size="lg" c="dimmed">No documents found</Text>
-            <Text size="sm" c="dimmed">
-              This project doesn't have any documents yet.
-            </Text>
-          </Stack>
-        </Center>
+        <div className="rounded-md border py-12 text-center text-muted-foreground">
+          <p className="text-base">No documents found</p>
+          <p className="mt-1 text-sm">This project doesn&apos;t have any documents yet.</p>
+        </div>
       ) : (
-        <DataTable
-          textSelectionDisabled
-          withTableBorder
-          withRowBorders
-          highlightOnHover
-          columns={[
-            { 
-              accessor: 'name', 
-              title: 'Document Name',
-              width: '70%'
-            },
-            { 
-              accessor: 'id', 
-              title: 'ID',
-              width: '30%',
-              render: ({ id }) => (
-                <Text size="sm" c="dimmed">{id}</Text>
-              )
-            }
-          ]}
-          records={documents.sort((a, b) => a.name.localeCompare(b.name))}
-          onRowClick={({ record }) => handleDocumentClick(record)}
-          sx={{
-            '& tbody tr': {
-              cursor: 'pointer'
-            }
-          }}
-        />
+        <div className="overflow-hidden rounded-md border">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40 text-left">
+              <tr>
+                <th className="px-4 py-2 font-medium">Document Name</th>
+                <th className="px-4 py-2 font-medium">ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((d) => (
+                <tr
+                  key={d.id}
+                  onClick={() => handleDocumentClick(d)}
+                  className="cursor-pointer border-b last:border-0 hover:bg-accent/40"
+                >
+                  <td className="px-4 py-2">{d.name}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{d.id}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      {/* Create Document Modal */}
-      <Modal
-        opened={createModalOpened}
-        onClose={() => setCreateModalOpened(false)}
-        title="Create New Document"
-        size="md"
-      >
-        <Stack spacing="md">
-          <TextInput
-            label="Document Name"
-            placeholder="Enter document name"
-            value={documentName}
-            onChange={(event) => setDocumentName(event.currentTarget.value)}
-            required
-          />
-          <Group justify="flex-end">
-            <Button
-              variant="outline"
-              onClick={() => setCreateModalOpened(false)}
-              disabled={isCreating}
-            >
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New Document</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="doc-name">Document Name</Label>
+            <Input
+              id="doc-name"
+              placeholder="Enter document name"
+              value={documentName}
+              onChange={(e) => setDocumentName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && documentName.trim() && !isCreating) handleCreateDocument();
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={isCreating}>
               Cancel
             </Button>
-            <Button
-              onClick={handleCreateDocument}
-              loading={isCreating}
-              disabled={!documentName.trim()}
-            >
-              Create Document
+            <Button onClick={handleCreateDocument} disabled={!documentName.trim() || isCreating}>
+              {isCreating ? 'Creating…' : 'Create Document'}
             </Button>
-          </Group>
-        </Stack>
-      </Modal>
-    </Stack>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };

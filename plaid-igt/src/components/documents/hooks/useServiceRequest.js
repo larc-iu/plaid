@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { notifications } from '@mantine/notifications';
+import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useStrictClient } from '../contexts/StrictModeContext.jsx';
 
 export const useServiceRequest = () => {
@@ -47,15 +47,16 @@ export const useServiceRequest = () => {
       timeout = 300000
     } = options;
 
+    let progressConnection = null;
     try {
       setProcessStatus('started');
       setProcessError(null);
       setIsProcessing(true);
       setProgressPercent(0);
       setProgressMessage('Starting service...');
-      
+
       // Set up progress listener before making the request
-      const progressConnection = client.messages.listen(projectId, (eventType, eventData) => {
+      progressConnection = client.messages.listen(projectId, (eventType, eventData) => {
         if (eventType === 'message' && eventData.data?.type === 'service_response') {
           const message = eventData.data;
           if (message.status === 'progress') {
@@ -72,20 +73,13 @@ export const useServiceRequest = () => {
         serviceParams,
         timeout
       );
-      
-      // Clean up progress listener
-      progressConnection.close();
-      
+
       setProcessStatus('success');
       setProgressPercent(100);
       setProgressMessage('Completed successfully');
       
-      notifications.show({
-        title: successTitle,
-        message: successMessage,
-        color: 'green'
-      });
-      
+      notifySuccess(successMessage, successTitle);
+
       return result;
       
     } catch (error) {
@@ -94,14 +88,15 @@ export const useServiceRequest = () => {
       setProcessStatus('error');
       setProgressMessage(`Error: ${error.message || errorMessage}`);
       
-      notifications.show({
-        title: errorTitle,
-        message: error.message || errorMessage,
-        color: 'red'
-      });
-      
+      notifyError(error.message || errorMessage, errorTitle);
+
       throw error;
     } finally {
+      // Always close the progress listener — on the success path AND when the
+      // request throws (previously leaked the SSE listener on failure).
+      if (progressConnection) {
+        try { progressConnection.close(); } catch { /* already closed */ }
+      }
       setIsProcessing(false);
     }
   }, [client, isProcessing]);

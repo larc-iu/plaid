@@ -30,18 +30,30 @@ const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
 // also holds the project's loaded vocabularies (`_vocabularies`) and applies
 // link/unlink patches to that table in `_applyRawPatch`.
 export class IgtDocument {
-  constructor({ raw, project = null, vocabularies = {}, client = null, projectId = null }) {
+  constructor({ raw, project = null, vocabularies = {}, client = null, projectId = null, asOf = null }) {
     this._raw = raw;
     this._project = project;
     this._vocabularies = vocabularies;
     this._client = client;
     this._projectId = projectId;
+    // The as-of timestamp this doc was loaded at (null = live). Threaded through
+    // _reload so a resync during time-travel stays on the historical snapshot
+    // instead of silently jumping to live data.
+    this._asOf = asOf;
     this._version = 0;
+    // Bumps only when `_raw`/`_vocabularies` actually change (via _applyRawPatch
+    // / _reload), NOT on isSaving/error-only emits. Derived caches and the
+    // vanilla island gate on this so transient saving toggles don't rebuild the
+    // grid or jitter input focus (see plaid-ud's _dataVersion lesson).
+    this._dataVersion = 0;
     this._listeners = new Set();
     this._isSaving = false;
     this._error = '';
+    // Optional sink for surfacing errors loudly (e.g. a toast). Framework-agnostic:
+    // the React mount wrapper sets this to notifyError; tests leave it null.
+    this.onError = null;
 
-    // Per-version caches. Each is gated on `*CacheVersion === this._version`.
+    // Per-data-version caches. Each is gated on `*CacheVersion === this._dataVersion`.
     this._layerInfoCache = null;
     this._layerInfoCacheVersion = -1;
     this._documentDataCache = null;
@@ -54,17 +66,21 @@ export class IgtDocument {
 
   // Convenience factory: fetch document + project + project vocabularies and
   // wrap them in an IgtDocument. Mirror of plaid-ud's ConlluDocument.load.
-  static async load(client, projectId, documentId) {
+  // `asOf` (an ISO timestamp) loads a historical snapshot for time-travel /
+  // read-only viewing; omit/null for the live document.
+  static async load(client, projectId, documentId, asOf = null) {
+    const at = asOf || undefined;
     const [raw, project] = await Promise.all([
-      client.documents.get(documentId, true),
-      client.projects.get(projectId)
+      client.documents.get(documentId, true, at),
+      client.projects.get(projectId, at)
     ]);
-    const vocabularies = await loadProjectVocabularies(client, project);
-    return new IgtDocument({ raw, project, vocabularies, client, projectId });
+    const vocabularies = await loadProjectVocabularies(client, project, at);
+    return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf });
   }
 
   // ----- read API -----
   get version() { return this._version; }
+  get dataVersion() { return this._dataVersion; }
   get raw() { return this._raw; }
   get id() { return this._raw?.id; }
   get name() { return this._raw?.name; }
@@ -76,17 +92,17 @@ export class IgtDocument {
   get error() { return this._error; }
 
   get layerInfo() {
-    if (this._layerInfoCacheVersion !== this._version) {
+    if (this._layerInfoCacheVersion !== this._dataVersion) {
       this._layerInfoCache = getIgtLayerInfo(this._raw);
-      this._layerInfoCacheVersion = this._version;
+      this._layerInfoCacheVersion = this._dataVersion;
     }
     return this._layerInfoCache;
   }
 
   get document() {
-    if (this._documentDataCacheVersion !== this._version) {
+    if (this._documentDataCacheVersion !== this._dataVersion) {
       this._documentDataCache = deriveDocumentData(this._raw, this.layerInfo, this._project);
-      this._documentDataCacheVersion = this._version;
+      this._documentDataCacheVersion = this._dataVersion;
     }
     return this._documentDataCache;
   }
@@ -96,9 +112,9 @@ export class IgtDocument {
   }
 
   get alignmentTokens() {
-    if (this._alignmentTokensCacheVersion !== this._version) {
+    if (this._alignmentTokensCacheVersion !== this._dataVersion) {
       this._alignmentTokensCache = deriveAlignmentTokens(this.layerInfo);
-      this._alignmentTokensCacheVersion = this._version;
+      this._alignmentTokensCacheVersion = this._dataVersion;
     }
     return this._alignmentTokensCache;
   }
@@ -106,9 +122,9 @@ export class IgtDocument {
   // Sentences + lookup maps share one derivation; expose individually for
   // ergonomic consumer access.
   _sentencesBundle() {
-    if (this._sentencesBundleCacheVersion !== this._version) {
+    if (this._sentencesBundleCacheVersion !== this._dataVersion) {
       this._sentencesBundleCache = deriveSentences(this._raw, this.layerInfo, this._vocabularies);
-      this._sentencesBundleCacheVersion = this._version;
+      this._sentencesBundleCacheVersion = this._dataVersion;
     }
     return this._sentencesBundleCache;
   }
@@ -138,6 +154,7 @@ export class IgtDocument {
   setError(msg) {
     if (this._error === msg) return;
     this._error = msg;
+    if (msg && this.onError) this.onError(msg);
     this._emit();
   }
 
@@ -165,6 +182,7 @@ export class IgtDocument {
     } catch (err) {
       console.error(`${label}:`, err);
       this._error = `${label}: ${err.message || 'Unknown error'}`;
+      if (this.onError) this.onError(this._error);
       try { await this._reload(); } catch (reloadErr) {
         console.error('Reload after failure also failed:', reloadErr);
       }
@@ -186,6 +204,7 @@ export class IgtDocument {
     producer(next, getIgtLayerInfo(next), nextVocabs);
     this._raw = next;
     this._vocabularies = nextVocabs;
+    this._dataVersion++;
     this._emit();
   }
 
@@ -194,15 +213,17 @@ export class IgtDocument {
   // big-bang multi-batch ops where local replay would be too complex.
   async _reload() {
     if (!this._client || !this.id) return;
-    const updated = await this._client.documents.get(this.id, true);
+    const at = this._asOf || undefined;
+    const updated = await this._client.documents.get(this.id, true, at);
     this._raw = updated;
     if (this._project) {
       try {
-        this._vocabularies = await loadProjectVocabularies(this._client, this._project);
+        this._vocabularies = await loadProjectVocabularies(this._client, this._project, at);
       } catch (err) {
         console.warn('Vocab reload failed:', err);
       }
     }
+    this._dataVersion++;
     this._emit();
   }
 
@@ -295,11 +316,11 @@ export class IgtDocument {
 }
 
 // ----- helper: load project vocabularies -----
-async function loadProjectVocabularies(client, project) {
+async function loadProjectVocabularies(client, project, asOf) {
   const vocabIds = (project?.vocabs || []).map(v => v.id);
   if (vocabIds.length === 0) return {};
   const results = await Promise.all(vocabIds.map(async id => {
-    try { return await client.vocabLayers.get(id, true); }
+    try { return await client.vocabLayers.get(id, true, asOf || undefined); }
     catch (err) { console.warn(`Error fetching vocab ${id}:`, err); return null; }
   }));
   const out = {};

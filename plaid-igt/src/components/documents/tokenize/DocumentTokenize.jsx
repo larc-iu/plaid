@@ -1,481 +1,412 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { useSnapshot } from 'valtio';
+import { useEffect, useState, useRef } from 'react';
+import { Info, Play, ChevronUp, Scissors, HelpCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import {
-  Stack,
-  Text,
-  Paper,
-  Button,
-  Group,
-  Alert,
-  Divider,
-  Progress,
   Select,
-  Box,
-  ActionIcon,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import {
   Tooltip,
-  Kbd,
-  Title,
-  Collapse,
-  Pagination, Container, Center, Loader
-} from '@mantine/core';
-import { useHotkeys } from '@mantine/hooks';
-import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
-import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
-import IconChevronUp from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';
-import IconCut from '@tabler/icons-react/dist/esm/icons/IconCut.mjs';
-import IconQuestionMark from '@tabler/icons-react/dist/esm/icons/IconQuestionMark.mjs';
-import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
 import { useTokenOperations } from './useTokenOperations.js';
-import documentsStore, {loadDocument} from '../../../stores/documentsStore';
+import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import Lazy from '../../lazy';
 import './DocumentTokenize.css';
 
+export function DocumentTokenize() {
+  const { doc, readOnly } = useDocumentCtx();
+  useIgtDocument(doc);
+  const ops = useTokenOperations();
 
-export function DocumentTokenize({ projectId, documentId, reload, client, readOnly = false }) {
-  const ops = useTokenOperations(projectId, documentId, reload, client);
-
-  // Get the proxy once to pass down for mutations
-  const docProxy = documentsStore[projectId][documentId];
-
-  // Use snapshot for reading
-  const docSnap = useSnapshot(documentsStore[projectId][documentId]);
-  const uiSnap = docSnap.ui.tokenize;
-  const layers = docSnap.layers;
-  const text = docSnap.document.text;
-  const project = docSnap.project;
-  const existingTokens = docSnap.sentences?.flatMap(s => s.tokens) || [];
-  const existingSentenceTokens = docSnap.sentences || [];
+  const sentences = doc.sentences;
+  const layers = doc.layerInfo;
+  const text = doc.document.text;
+  const project = doc.project;
+  const existingTokens = sentences?.flatMap((s) => s.tokens || []) || [];
+  const existingSentenceTokens = sentences || [];
   // Word layer is :non-overlapping nested under sentence — every word token must be contained
-  // in a sentence partition. If no partition exists, word create/tokenize/etc. will fail with
-  // a confusing 400 from the server. Gate the UI so the user saves baseline text first.
+  // in a sentence partition. Gate the UI so the user saves baseline text first if missing.
   const hasSentencePartition = existingSentenceTokens.length > 0;
 
-  // Create stable callbacks for UI mutations
-  const toggleHelp = () => {
-    docProxy.ui.tokenize.helpOpen = !docProxy.ui.tokenize.helpOpen;
-  };
-  
-  // Algorithm selection handler
-  const handleAlgorithmChange = (value) => {
-    docProxy.ui.tokenize.algorithm = value;
-    // Cache the selection
-    if (value) {
-      localStorage.setItem('plaid_tokenization_algorithm', value);
-    } else {
-      localStorage.removeItem('plaid_tokenization_algorithm');
-    }
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  // Drag-to-merge selection state. Mirrored into a ref so synchronous DOM event
+  // handlers (mousedown→mouseup→click) read the latest value without waiting for
+  // a React re-render — preserving the old valtio synchronous semantics (esp. so
+  // the trailing `click` after a plain press sees the drag already cleared).
+  const [drag, setDragState] = useState(null); // { sentenceId, startToken:{id,begin,end}, selectedTokenIds:Set } | null
+  const dragRef = useRef(null);
+  const setDrag = (next) => {
+    dragRef.current = next;
+    setDragState(next);
   };
 
-  // Handle algorithm dropdown click to discover services
+  const mergeRef = useRef(ops.mergeTokens);
+  mergeRef.current = ops.mergeTokens;
+
+  // Global mouseup ends any active drag; merges if >1 token was selected.
+  useEffect(() => {
+    const handleGlobalMouseUp = async () => {
+      const d = dragRef.current;
+      if (!d) return;
+      const ids = d.selectedTokenIds;
+      setDrag(null);
+      if (!readOnly && ids.size > 1) {
+        await mergeRef.current(ids);
+      }
+    };
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [readOnly]);
+
   const handleAlgorithmDropdownClick = async () => {
-    console.log('[DocumentTokenize] Algorithm dropdown hover triggered');
     if (!project?.id || ops.isDiscovering) return;
     await ops.discoverServices(project.id);
   };
 
-  // Handle global mouse events for drag operations
-  useEffect(() => {
-    const handleGlobalMouseUp = async () => {
-      // Don't process drag operations in read-only mode
-      if (readOnly) {
-        // Just reset drag states without performing operations
-        for (const sentProxy of docProxy.sentences) {
-          if (sentProxy.dragState.isDragging) {
-            sentProxy.dragState.isDragging = false;
-            sentProxy.dragState.startToken = null;
-            sentProxy.dragState.selectedTokenIds = new Set();
-          }
-        }
-        return;
-      }
-      
-      // Check all sentences for active drag operations
-      for (const sentProxy of docProxy.sentences) {
-        if (sentProxy.dragState.isDragging) {
-          // Only merge if we have multiple tokens selected
-          if (sentProxy.dragState.selectedTokenIds.size > 1) {
-            await ops.mergeTokens(sentProxy, sentProxy.dragState.selectedTokenIds);
-          }
-          
-          // Reset drag state for this sentence
-          sentProxy.dragState.isDragging = false;
-          sentProxy.dragState.startToken = null;
-          sentProxy.dragState.selectedTokenIds = new Set();
-        }
-      }
-    };
-
-    // Always listen for mouseup when component is mounted
-    window.addEventListener('mouseup', handleGlobalMouseUp);
-    return () => {
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-    };
-  }, [docProxy, ops, readOnly]);
-
   return (
-      <Stack spacing="lg" mt="md" style={{ height: 'calc(100vh - 200px)' }}>
+    <TooltipProvider>
+      <div className="tw flex flex-col gap-6 mt-4" style={{ height: 'calc(100vh - 200px)' }}>
         {/* Text Visualization */}
-        <Paper withBorder style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <Box p="md" style={{ borderBottom: '1px solid #e0e0e0' }}>
-            <Group gap="xs" align="center">
-              <Title order={3}>Tokens</Title>
-              <Tooltip label={uiSnap.helpOpen ? "Hide help" : "Show help"}>
-                <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size="md"
-                    onClick={toggleHelp}
-                >
-                  <IconQuestionMark size={20} />
-                </ActionIcon>
+        <div className="rounded-lg border bg-card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div className="p-4" style={{ borderBottom: '1px solid #e0e0e0' }}>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold">Tokens</h3>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    onClick={() => setHelpOpen((v) => !v)}
+                  >
+                    <HelpCircle className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{helpOpen ? 'Hide help' : 'Show help'}</TooltipContent>
               </Tooltip>
-            </Group>
+            </div>
 
-            <Collapse in={uiSnap.helpOpen}>
-              <Text size="md" mb="sm" mt="sm">
-                Existing tokens are highlighted. Untokenized text appears as plain text.
-              </Text>
-              <Stack gap="0.4rem" mb="xs">
-                <div>
-                  <Kbd size="md">Left Click</Kbd> + <Kbd size="md">Drag</Kbd>: Create token from selection, or merge tokens
+            {helpOpen && (
+              <div>
+                <p className="text-sm mb-2 mt-2">
+                  Existing tokens are highlighted. Untokenized text appears as plain text.
+                </p>
+                <div className="flex flex-col gap-[0.4rem] mb-2">
+                  <div>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd> + <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Drag</kbd>: Create token from selection, or merge tokens
+                  </div>
+                  <div>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>: Split Token
+                  </div>
+                  <div>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Right Click</kbd>: Delete Token
+                  </div>
+                  <div>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Ctrl</kbd>/<kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Cmd</kbd> + <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd> on token: New Sentence
+                  </div>
+                  <div>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs"><ChevronUp className="h-3 w-3 inline" /></kbd>: Merge sentence with previous
+                  </div>
                 </div>
-                <div>
-                  <Kbd size="md">Left Click</Kbd>: Split Token
-                </div>
-                <div>
-                  <Kbd size="md">Right Click</Kbd>: Delete Token
-                </div>
-                <div>
-                  <Kbd size="md">Ctrl</Kbd>/<Kbd size="md">Cmd</Kbd> + <Kbd size="md">Left Click</Kbd> on token: New Sentence
-                </div>
-                <div>
-                  <Kbd size="md"><IconChevronUp size={12} /></Kbd>: Merge sentence with previous
-                </div>
-              </Stack>
-            </Collapse>
-          </Box>
+              </div>
+            )}
+          </div>
 
           {/* Sentence rendering */}
-          <Box className="sentence-container">
+          <div className="sentence-container">
             {!hasSentencePartition && !readOnly && (
-              <Alert
-                icon={<IconInfoCircle size={16} />}
-                color="yellow"
-                m="md"
-                title="No sentence partition"
-              >
-                Save baseline text first to enable tokenization. Word-level tokens must live
-                inside a sentence partition, which is created when you save baseline text.
-              </Alert>
+              <div className="m-4 rounded-md border border-yellow-500/50 bg-yellow-500/5 p-3">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600" />
+                  <div>
+                    <p className="text-sm font-medium">No sentence partition</p>
+                    <p className="text-sm text-muted-foreground">
+                      Save baseline text first to enable tokenization. Word-level tokens must live
+                      inside a sentence partition, which is created when you save baseline text.
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
-            {docProxy.sentences.map((sentProxy, index) => {
-              return (
-                  <SentenceComponent
-                      key={docSnap.sentences[index].id}
-                      sentProxy={sentProxy}
-                      ops={ops}
-                      index={index}
-                      docProxy={docProxy}
-                      readOnly={readOnly}
-                  />
-              )})}
-          </Box>
-        </Paper>
+            {sentences.map((sentence, index) => (
+              <SentenceComponent
+                key={sentence.id}
+                sentence={sentence}
+                ops={ops}
+                index={index}
+                drag={drag}
+                setDrag={setDrag}
+                dragRef={dragRef}
+                readOnly={readOnly}
+              />
+            ))}
+          </div>
+        </div>
 
         {/* NLP Controls Panel */}
-        <Paper withBorder p="md" style={{ flexShrink: 0 }} onMouseEnter={() => {
-          console.log('[DocumentTokenize] NLP controls panel hover triggered');
-          ops.discoverServices(project?.id);
-        }}>
-          <Group justify="space-between" align="flex-end" mb="md">
-            <Group align="flex-end" gap="sm">
-              <Select
-                label="Tokenization Algorithm"
-                value={uiSnap.algorithm}
-                onChange={handleAlgorithmChange}
-                data={uiSnap.algorithmOptions}
-                style={{ width: 280 }}
-                onMouseEnter={handleAlgorithmDropdownClick}
-                disabled={readOnly}
-              />
+        <div
+          className="rounded-lg border bg-card p-4"
+          style={{ flexShrink: 0 }}
+          onMouseEnter={() => ops.discoverServices(project?.id)}
+        >
+          <div className="flex items-end justify-between flex-wrap gap-2 mb-4">
+            <div className="flex items-end gap-3">
+              <div className="flex flex-col gap-1.5" onMouseEnter={handleAlgorithmDropdownClick}>
+                <Label>Tokenization Algorithm</Label>
+                <Select value={ops.algorithm} onValueChange={ops.setAlgorithm} disabled={readOnly}>
+                  <SelectTrigger style={{ width: 280 }}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ops.algorithmOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               <Button
-                leftSection={<IconPlayerPlay size={16} />}
                 onClick={ops.handleTokenize}
-                loading={uiSnap.isTokenizing || ops.isProcessing}
-                disabled={!text?.body || !layers?.primaryTokenLayer || !hasSentencePartition || ops.isProcessing || readOnly}
+                disabled={ops.isTokenizing || ops.isProcessing || !text?.body || !layers?.primaryTokenLayer || !hasSentencePartition || readOnly}
               >
-                Tokenize
+                <Play className="h-4 w-4" />
+                {(ops.isTokenizing || ops.isProcessing) ? 'Tokenizing...' : 'Tokenize'}
               </Button>
-            </Group>
+            </div>
 
-            <Group align="flex-end" gap="sm">
+            <div className="flex items-end gap-3">
               <Button
-                variant="default"
+                variant="secondary"
                 onClick={ops.handleClearTokens}
-                disabled={uiSnap.isTokenizing || ops.isProcessing || !existingTokens.length || readOnly}
+                disabled={ops.isTokenizing || ops.isProcessing || !existingTokens.length || readOnly}
               >
                 Clear Tokens
               </Button>
 
               <Button
-                variant="default"
+                variant="secondary"
                 onClick={ops.handleClearSentences}
-                disabled={uiSnap.isTokenizing || ops.isProcessing || !existingSentenceTokens.length || existingSentenceTokens.length === 1 || readOnly}
+                disabled={ops.isTokenizing || ops.isProcessing || !existingSentenceTokens.length || existingSentenceTokens.length === 1 || readOnly}
               >
                 Clear Sentences
               </Button>
-            </Group>
-          </Group>
+            </div>
+          </div>
 
           {/* Progress */}
-          <Paper withBorder p="md" style={{ minHeight: '120px' }}>
-            {(uiSnap.isTokenizing || ops.isProcessing) ? (
-              <Stack spacing="sm">
-                <Group>
-                  <IconPlayerPlay size={16} />
-                  <Text fw={500}>{ops.progressMessage || 'Processing...'}</Text>
-                </Group>
-                <Progress value={ops.progressPercent || uiSnap.tokenizationProgress} animated />
-                <Text size="sm" c="dimmed">{uiSnap.currentOperation}</Text>
-              </Stack>
+          <div className="rounded-lg border bg-card p-4" style={{ minHeight: '120px' }}>
+            {(ops.isTokenizing || ops.isProcessing) ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Play className="h-4 w-4" />
+                  <p className="font-medium">{ops.progressMessage || 'Processing...'}</p>
+                </div>
+                <div className="h-2 w-full rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${ops.progressPercent || ops.tokenizationProgress}%` }} />
+                </div>
+                <p className="text-sm text-muted-foreground">{ops.currentOperation}</p>
+              </div>
             ) : (
-              <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Text size="sm" c="dimmed"></Text>
-              </Box>
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <p className="text-sm text-muted-foreground"></p>
+              </div>
             )}
-          </Paper>
+          </div>
 
           {!layers?.primaryTokenLayer && (
             <>
-              <Divider mt="md" />
-              <Alert icon={<IconInfoCircle size={16} />} color="red" mt="md">
-                Missing primary token layer. Please ensure your project has a primary token layer configured.
-              </Alert>
+              <div className="border-t mt-4" />
+              <div className="mt-4 rounded-md border border-destructive/50 bg-destructive/5 p-3">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
+                  <p className="text-sm text-destructive">
+                    Missing primary token layer. Please ensure your project has a primary token layer configured.
+                  </p>
+                </div>
+              </div>
             </>
           )}
-        </Paper>
-      </Stack>
-  )
+        </div>
+      </div>
+    </TooltipProvider>
+  );
 }
 
-function SentenceComponent({sentProxy, ops, index, docProxy, readOnly = false}) {
-  const sentSnap = useSnapshot(sentProxy);
-  const dragStateSnap = sentSnap.dragState;
-  
-  // Create a stable callback for merge action
+function SentenceComponent({ sentence, ops, index, drag, setDrag, dragRef, readOnly = false }) {
   const handleMerge = async () => {
-    await ops.mergeSentence(sentSnap, index, docProxy);
+    await ops.mergeSentence(sentence.id);
   };
 
   const preview = (
-      <div style={{position: 'relative'}}>
-        <div className="sentence-content">
-          {sentSnap.pieces.map(p => p.content).join("")}
-        </div>
-        <div className="blur-overlay" />
-      </div>
+    <div style={{ position: 'relative' }}>
+      <div className="sentence-content">{sentence.pieces.map((p) => p.content).join('')}</div>
+      <div className="blur-overlay" />
+    </div>
   );
   return (
     <Lazy className="sentence-row" contentPreview={preview}>
-      <Box>
+      <div>
         {/* Sentence number */}
-        <Text size="xs" c="dimmed" className="sentence-number">
-          {index + 1}
-        </Text>
+        <div className="text-xs text-muted-foreground sentence-number">{index + 1}</div>
 
-        {/* Delete button - subtle, always visible (not on first sentence) */}
+        {/* Merge-with-previous button (not on first sentence) */}
         {index > 0 && !readOnly && (
-            <Box className="merge-button">
-              <Tooltip label="Merge with above">
-                <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size="xs"
-                    onClick={handleMerge}
-                    className="merge-icon"
+          <div className="merge-button">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleMerge}
+                  className="merge-icon inline-flex items-center justify-center rounded h-5 w-5 text-muted-foreground"
                 >
-                  <IconChevronUp size={12} />
-                </ActionIcon>
-              </Tooltip>
-            </Box>
+                  <ChevronUp className="h-3 w-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Merge with above</TooltipContent>
+            </Tooltip>
+          </div>
         )}
 
         {/* Sentence content */}
-        <Box className="sentence-content">
-          {sentSnap.pieces.map((piece, pieceIndex) =>
-              piece.isToken ? (
-                  <TokenComponent
-                      key={piece.id}
-                      sentSnap={sentSnap}
-                      sentProxy={sentProxy}
-                      sentIndex={index}
-                      pieceIndex={pieceIndex}
-                      ops={ops}
-                      dragStateSnap={dragStateSnap}
-                      docProxy={docProxy}
-                      readOnly={readOnly}
-                  />
-              ) : (
-                  <span
-                      key={`${piece.begin}-${piece.end}`}
-                      className="untokenized"
-                      onMouseUp={readOnly ? undefined : (e) => {
-                        ops.createTokenFromSelection(e, sentProxy, piece, pieceIndex);
-                      }}
-                      title={readOnly ? "Untokenized text" : "Select text to create token"}
-                      style={{
-                        cursor: readOnly ? 'default' : 'text'
-                      }}
-                  >
-                  {piece.content}
-                </span>
-              )
+        <div className="sentence-content">
+          {sentence.pieces.map((piece, pieceIndex) =>
+            piece.isToken ? (
+              <TokenComponent
+                key={piece.id}
+                sentence={sentence}
+                piece={piece}
+                pieceIndex={pieceIndex}
+                ops={ops}
+                drag={drag}
+                setDrag={setDrag}
+                dragRef={dragRef}
+                readOnly={readOnly}
+              />
+            ) : (
+              <span
+                key={`${piece.begin}-${piece.end}`}
+                className="untokenized"
+                onMouseUp={readOnly ? undefined : (e) => ops.createTokenFromSelection(e, piece)}
+                title={readOnly ? 'Untokenized text' : 'Select text to create token'}
+                style={{ cursor: readOnly ? 'default' : 'text' }}
+              >
+                {piece.content}
+              </span>
+            ),
           )}
-        </Box>
-      </Box>
+        </div>
+      </div>
     </Lazy>
-  )
+  );
 }
 
-// Memoized token component
-function TokenComponent({ 
-  ops,
-  sentSnap,
-  sentProxy,
-  sentIndex,
-  pieceIndex,
-  dragStateSnap,
-  docProxy,
-  readOnly = false
-}) {
+function TokenComponent({ ops, sentence, piece, pieceIndex, drag, setDrag, dragRef, readOnly = false }) {
   const [isSplitting, setIsSplitting] = useState(false);
-  const piece = sentSnap.pieces[pieceIndex];
-  const isSelected = dragStateSnap.selectedTokenIds.has(piece.id);
-  //console.log(`Rendering ${sentIndex}:${piece.begin}-end`)
+  const isDraggingHere = drag?.sentenceId === sentence.id;
+  const isSelected = isDraggingHere && drag.selectedTokenIds.has(piece.id);
 
   const handleClick = async (e) => {
-    // Don't trigger anything if read-only or dragging
-    if (readOnly || dragStateSnap.isDragging) return;
-    
-    // Handle Ctrl/Cmd+click for sentence splitting
+    // Read the ref (not the closure) so a trailing click after a press sees the
+    // drag already cleared by the global mouseup handler.
+    if (readOnly || dragRef.current) return;
+
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       if (pieceIndex > 0) {
-        await ops.splitSentence(piece, sentProxy, docProxy);
+        await ops.splitSentence(piece.begin);
       }
       return;
     }
-    
-    // Regular click for token splitting
+
     if (piece.content.length > 1) {
       setIsSplitting(true);
     }
   };
 
   const handleMouseDown = (e) => {
-    if (readOnly || e.button !== 0) return; // Don't handle if read-only or not left click
+    if (readOnly || e.button !== 0) return;
     e.preventDefault();
-    
-    // Start drag operation on this sentence
-    sentProxy.dragState.isDragging = true;
-    sentProxy.dragState.startToken = {
-      id: piece.id,
-      sentenceId: sentSnap.id,
-      begin: piece.begin,
-      end: piece.end
-    };
-    sentProxy.dragState.selectedTokenIds = new Set([piece.id]);
+    setDrag({
+      sentenceId: sentence.id,
+      startToken: { id: piece.id, begin: piece.begin, end: piece.end },
+      selectedTokenIds: new Set([piece.id]),
+    });
   };
 
   const handleMouseEnter = () => {
-    if (readOnly || !dragStateSnap.isDragging || !dragStateSnap.startToken) return;
+    const d = dragRef.current;
+    if (readOnly || !d || d.sentenceId !== sentence.id || !d.startToken) return;
 
-    // Find all tokens between start and current
-    const startBegin = dragStateSnap.startToken.begin;
-    const currentBegin = piece.begin;
-    const minBegin = Math.min(startBegin, currentBegin);
-    const maxEnd = Math.max(dragStateSnap.startToken.end, piece.end);
-    
+    const minBegin = Math.min(d.startToken.begin, piece.begin);
+    const maxEnd = Math.max(d.startToken.end, piece.end);
     const newSelectedIds = new Set();
-    sentSnap.pieces.forEach(p => {
-      if (p.isToken && p.begin >= minBegin && p.end <= maxEnd) {
-        newSelectedIds.add(p.id);
-      }
+    sentence.pieces.forEach((p) => {
+      if (p.isToken && p.begin >= minBegin && p.end <= maxEnd) newSelectedIds.add(p.id);
     });
-    
-    sentProxy.dragState.selectedTokenIds = newSelectedIds;
+    setDrag({ ...d, selectedTokenIds: newSelectedIds });
   };
 
   const handleRightClick = async (e) => {
     e.preventDefault();
     if (readOnly) return;
-    await ops.deleteToken(sentProxy, sentIndex, piece, pieceIndex);
-  };
-
-  const close = () => {
-    setIsSplitting(false);
+    await ops.deleteToken(piece.id);
   };
 
   if (isSplitting && !readOnly) {
-    return (
-        <TokenSplitter
-            sentProxy={sentProxy}
-            ops={ops}
-            piece={piece}
-            pieceIndex={pieceIndex}
-            close={close}
-        />
-    );
+    return <TokenSplitter ops={ops} token={piece} close={() => setIsSplitting(false)} />;
   }
 
   return (
-      <Box
-          component="span"
-          onClick={handleClick}
-          onMouseDown={handleMouseDown}
-          onMouseEnter={handleMouseEnter}
-          onContextMenu={handleRightClick}
-          className={`token ${dragStateSnap.isDragging ? 'token-dragging' : ''}`}
-          style={{
-            backgroundColor: isSelected ? "#1976d2" : "#e3f2fd",
-            color: isSelected ? "white" : "inherit",
-            border: `1px solid ${isSelected ? "#1565c0" : "#bbdefb"}`,
-            cursor: readOnly ? 'default' : (dragStateSnap.isDragging ? 'grabbing' : 'pointer')
-          }}
-      >
-        {piece.content}
-      </Box>
+    <span
+      onClick={handleClick}
+      onMouseDown={handleMouseDown}
+      onMouseEnter={handleMouseEnter}
+      onContextMenu={handleRightClick}
+      className={`token ${isDraggingHere ? 'token-dragging' : ''}`}
+      style={{
+        backgroundColor: isSelected ? '#1976d2' : '#e3f2fd',
+        color: isSelected ? 'white' : 'inherit',
+        border: `1px solid ${isSelected ? '#1565c0' : '#bbdefb'}`,
+        cursor: readOnly ? 'default' : (isDraggingHere ? 'grabbing' : 'pointer'),
+      }}
+    >
+      {piece.content}
+    </span>
   );
 }
 
-// Token splitter component
-function TokenSplitter({ ops, piece: token, pieceIndex, sentProxy, close }) {
+// Token splitter: click between two chars to split the word at that offset.
+function TokenSplitter({ ops, token, close }) {
   async function handleTokenSplit(e, wordOffset) {
     e.stopPropagation();
     close();
-    await ops.splitToken(token.id, sentProxy, token, pieceIndex, wordOffset);
+    await ops.splitToken(token.id, wordOffset);
   }
 
+  const chars = Array.from(token.content);
   return (
-      <Box
-          component="span"
-          className="splitter-box"
-          onMouseLeave={close}
-      >
-        {Array.from(token.content).map((char, index) => (
-            <Box key={token.begin + index} className="splitter-char-container">
-              <Text className="splitter-char">{char}</Text>
-              {index < Array.from(token.content).length - 1 && (
-                  <Box
-                      className="splitter-split-point"
-                      onClick={(e) => handleTokenSplit(e, index)}
-                  >
-                    <IconCut className="splitter-icon" size={12}/>
-                  </Box>
-              )}
-            </Box>
-        ))}
-      </Box>
+    <span className="splitter-box" onMouseLeave={close}>
+      {chars.map((char, index) => (
+        <div key={token.begin + index} className="splitter-char-container">
+          <span className="splitter-char">{char}</span>
+          {index < chars.length - 1 && (
+            <div className="splitter-split-point" onClick={(e) => handleTokenSplit(e, index)}>
+              <Scissors className="splitter-icon" size={12} />
+            </div>
+          )}
+        </div>
+      ))}
+    </span>
   );
 }

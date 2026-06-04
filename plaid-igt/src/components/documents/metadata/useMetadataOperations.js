@@ -1,129 +1,84 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSnapshot } from 'valtio';
-import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
-import { notifications } from '@mantine/notifications';
-import documentsStore from '../../../stores/documentsStore.js';
+import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { notifySuccess } from '@/utils/feedback';
 
-export const useMetadataOperations = (projectId, documentId, reload, client) => {
+// Metadata tab operations, backed by the shared IgtDocument. All transient
+// editing state (isEditing / drafts / modal / spinners) is component-local;
+// the domain model handles the save/delete + optimistic patch + error toast.
+export const useMetadataOperations = () => {
   const navigate = useNavigate();
-  const handleError = useStrictModeErrorHandler(reload);
-  
-  // Get the document snapshot and proxy
-  const docSnap = useSnapshot(documentsStore[projectId][documentId]);
-  const docProxy = documentsStore[projectId][documentId];
-  const uiProxy = docProxy.ui.metadata;
-  const uiSnap = docSnap.ui.metadata;
-  
-  const document = docSnap.document;
-  const project = docSnap.project;
-  
-  // Get metadata fields configuration from project
-  const metadataFields = project.config.plaid.documentMetadata || [];
+  const { doc } = useDocumentCtx();
+  useIgtDocument(doc);
+
+  const document = doc.document;
+  const project = doc.project;
+  const metadataFields = project?.config?.plaid?.documentMetadata || [];
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editedName, setEditedName] = useState('');
+  const [editedMetadata, setEditedMetadata] = useState({});
 
   const handleEdit = () => {
-    uiProxy.editedName = document.name || '';
-    
-    // Initialize edited metadata with current values for configured fields
+    setEditedName(document.name || '');
     const initialMetadata = {};
-    metadataFields.forEach(field => {
+    metadataFields.forEach((field) => {
       initialMetadata[field.name] = document.metadata[field.name] || '';
     });
-    uiProxy.editedMetadata = initialMetadata;
-    
-    uiProxy.isEditing = true;
+    setEditedMetadata(initialMetadata);
+    setIsEditing(true);
   };
 
   const handleCancel = () => {
-    uiProxy.editedName = '';
-    uiProxy.editedMetadata = {};
-    uiProxy.isEditing = false;
+    setEditedName('');
+    setEditedMetadata({});
+    setIsEditing(false);
   };
 
   const handleSave = async () => {
-    uiProxy.saving = true;
-    try {
-      // Update document name if changed
-      if (uiSnap.editedName !== document.name) {
-        await client.documents.update(document.id, uiSnap.editedName);
-      }
-      
-      // Prepare complete metadata object with all existing metadata plus edits
-      const completeMetadata = {
-        ...document.metadata, // Keep existing metadata (including deactivated fields)
-        ...uiSnap.editedMetadata // Override with edited values
-      };
-      
-      // Update document metadata
-      await client.documents.setMetadata(document.id, completeMetadata);
-      
-      // Optimistically update the store
-      Object.assign(docProxy.document, {
-        name: uiSnap.editedName,
-        metadata: completeMetadata
-      });
-      
-      uiProxy.isEditing = false;
-      
-    } catch (error) {
-      uiProxy.isEditing = false;
-      handleError(error, 'save document metadata');
-    } finally {
-      uiProxy.saving = false;
-    }
+    setSaving(true);
+    // saveNameAndMetadata merges the partial over existing raw metadata (so
+    // deactivated fields aren't dropped) and handles errors + optimistic patch.
+    const ok = await doc.saveNameAndMetadata(editedName, editedMetadata);
+    setSaving(false);
+    if (ok) setIsEditing(false);
   };
 
-  const handleDeleteClick = () => {
-    uiProxy.deleteModalOpen = true;
-  };
-
-  const handleCloseDeleteModal = () => {
-    uiProxy.deleteModalOpen = false;
-  };
+  const handleDeleteClick = () => setDeleteModalOpen(true);
+  const handleCloseDeleteModal = () => setDeleteModalOpen(false);
 
   const handleDelete = async () => {
-    uiProxy.deleting = true;
-    try {
-      await client.documents.delete(document.id);
-      
-      notifications.show({
-        title: 'Document deleted',
-        message: `"${document.name}" has been successfully deleted.`,
-        color: 'green'
-      });
-      
-      // Navigate back to the project page
-      navigate(`/projects/${projectId}`);
-    } catch (error) {
-      handleError(error, 'delete document');
-    } finally {
-      uiProxy.deleting = false;
-      uiProxy.deleteModalOpen = false;
+    setDeleting(true);
+    const name = document.name;
+    const ok = await doc.deleteDocument();
+    setDeleting(false);
+    setDeleteModalOpen(false);
+    if (ok) {
+      notifySuccess(`"${name}" has been successfully deleted.`, 'Document deleted');
+      navigate(`/projects/${doc.projectId}`);
     }
   };
 
-  const updateEditedName = (name) => {
-    uiProxy.editedName = name;
-  };
-
-  const updateEditedMetadata = (fieldName, value) => {
-    uiProxy.editedMetadata = {
-      ...uiSnap.editedMetadata,
-      [fieldName]: value
-    };
-  };
+  const updateEditedName = (name) => setEditedName(name);
+  const updateEditedMetadata = (fieldName, value) =>
+    setEditedMetadata((prev) => ({ ...prev, [fieldName]: value }));
 
   return {
     // State
     document,
     project,
     metadataFields,
-    isEditing: uiSnap.isEditing,
-    saving: uiSnap.saving,
-    deleting: uiSnap.deleting,
-    deleteModalOpen: uiSnap.deleteModalOpen,
-    editedName: uiSnap.editedName,
-    editedMetadata: uiSnap.editedMetadata,
-    
+    isEditing,
+    saving,
+    deleting,
+    deleteModalOpen,
+    editedName,
+    editedMetadata,
+
     // Actions
     handleEdit,
     handleCancel,
@@ -132,6 +87,6 @@ export const useMetadataOperations = (projectId, documentId, reload, client) => 
     handleCloseDeleteModal,
     handleDelete,
     updateEditedName,
-    updateEditedMetadata
+    updateEditedMetadata,
   };
 };

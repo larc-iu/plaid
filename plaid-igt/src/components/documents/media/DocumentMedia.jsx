@@ -1,117 +1,125 @@
 import React from 'react';
-import { useSnapshot } from 'valtio';
+import { Mic } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import {
-  Stack,
-  Text,
-  Paper,
-  Button,
-  Group,
-  Box,
   Select,
-  Progress
-} from '@mantine/core';
-import IconMicrophone from '@tabler/icons-react/dist/esm/icons/IconMicrophone.mjs';
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem
+} from '@/components/ui/select';
+import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useMediaOperations } from './useMediaOperations.js';
-import documentsStore from '../../../stores/documentsStore';
 import { MediaPlayer } from './MediaPlayer.jsx';
 import { Timeline } from './Timeline.jsx';
 import { MediaUpload } from './MediaUpload.jsx';
 
-export function DocumentMedia({ projectId, documentId, reload, client, readOnly = false }) {
-  const storeSnap = useSnapshot(documentsStore);
-  const docSnap = storeSnap[projectId]?.[documentId];
-  
+export function DocumentMedia() {
+  const { doc, readOnly } = useDocumentCtx();
+  useIgtDocument(doc);
+
   // Use media operations hook
-  const mediaOps = useMediaOperations(projectId, documentId, reload, client);
+  const mediaOps = useMediaOperations();
 
   // If no media, show upload interface
-  if (!mediaOps.parsedDocument.document.mediaUrl) {
+  if (!doc.document.mediaUrl) {
     return (
-      <Stack spacing="lg">
-        <MediaUpload 
-          onUpload={mediaOps.handleMediaUpload} 
+      <div className="tw flex flex-col gap-6">
+        <MediaUpload
+          onUpload={mediaOps.handleMediaUpload}
           isUploading={mediaOps.isUploading}
-          projectId={projectId}
-          documentId={documentId}
           readOnly={readOnly}
         />
-      </Stack>
+      </div>
     );
   }
 
   return (
-    <Stack spacing="lg" mb="400px">
+    <div className="tw flex flex-col gap-6" style={{ marginBottom: '400px' }}>
       {/* Media Player */}
       <MediaPlayer mediaOps={mediaOps} readOnly={readOnly} />
 
       {/* Timeline */}
-      <Box style={{ position: 'relative' }}>
+      <div className="relative">
         <Timeline
-          projectId={projectId}
-          documentId={documentId}
-          reload={reload}
-          client={client}
           mediaOps={mediaOps}
           readOnly={readOnly}
         />
-      </Box>
+      </div>
 
       {/* ASR Controls */}
-      <Paper withBorder p="md" style={{ backgroundColor: '#f8f9fa' }}>
-        <Group justify="space-between" align="flex-end" mb="md">
-          <Group align="flex-end" gap="sm">
-            <Select
-                label="Transcription Service"
+      <div className="rounded-lg border bg-muted/50 p-4">
+        <div className="mb-4 flex items-end justify-between">
+          <div className="flex items-end gap-2">
+            <div
+              className="flex flex-col gap-1.5"
+              onMouseEnter={mediaOps.handleAsrDropdownInteraction}
+            >
+              <Label>Transcription Service</Label>
+              <Select
                 value={mediaOps.asrAlgorithm}
-                onChange={mediaOps.handleAlgorithmChange}
-                data={mediaOps.asrAlgorithmOptions}
-                style={{ width: 280 }}
-                onMouseEnter={mediaOps.handleAsrDropdownInteraction}
+                onValueChange={mediaOps.handleAlgorithmChange}
                 disabled={readOnly}
-            />
+              >
+                <SelectTrigger className="w-[280px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {mediaOps.asrAlgorithmOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             <Button
-                leftSection={<IconMicrophone size={16} />}
                 onClick={mediaOps.handleTranscribe}
-                loading={mediaOps.isProcessing}
                 disabled={!mediaOps.isUsingAsrService || mediaOps.isProcessing || mediaOps.isUploading || readOnly}
             >
-              Transcribe
+              <Mic className="h-4 w-4" />
+              {mediaOps.isProcessing ? 'Transcribing…' : 'Transcribe'}
             </Button>
-          </Group>
+          </div>
 
           <Button
-              variant="default"
+              variant="outline"
               onClick={mediaOps.handleClearAlignments}
               disabled={mediaOps.isProcessing || mediaOps.isUploading || !mediaOps.alignmentTokens.length || readOnly}
           >
             Clear Alignments
           </Button>
-        </Group>
-        
+        </div>
+
         {/* Progress */}
-        <Box style={{ minHeight: '80px' }}>
+        <div style={{ minHeight: '80px' }}>
           {(mediaOps.isProcessing || mediaOps.isUploading) ? (
-            <Stack spacing="sm">
-              <Group>
-                <IconMicrophone size={16} />
-                <Text fw={500}>{mediaOps.progressMessage || 'Processing...'}</Text>
-              </Group>
-              <Progress value={mediaOps.progressPercent || mediaOps.transcriptionProgress} animated />
-              <Text size="sm" c="dimmed">{mediaOps.currentOperation}</Text>
-            </Stack>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Mic className="h-4 w-4" />
+                <span className="font-medium">{mediaOps.progressMessage || 'Processing...'}</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${mediaOps.progressPercent || mediaOps.transcriptionProgress}%` }}
+                />
+              </div>
+              <span className="text-sm text-muted-foreground">{mediaOps.currentOperation}</span>
+            </div>
           ) : (
-            <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Text size="sm" c="dimmed">
-                {mediaOps.alignmentTokens.length > 0 
-                  ? `${mediaOps.alignmentTokens.length} time alignments` 
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="text-sm text-muted-foreground">
+                {mediaOps.alignmentTokens.length > 0
+                  ? `${mediaOps.alignmentTokens.length} time alignments`
                   : 'No time alignments yet'
                 }
-              </Text>
-            </Box>
+              </span>
+            </div>
           )}
-        </Box>
-      </Paper>
-    </Stack>
+        </div>
+      </div>
+    </div>
   );
 };

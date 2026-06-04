@@ -1,33 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  Container, 
-  Title, 
-  Text, 
-  Stack,
-  Alert,
-  Loader,
-  Center,
-  Breadcrumbs,
-  Anchor,
-  Tabs,
-  TextInput,
-  Button,
-  Group,
-  Paper,
-  Modal,
-  Divider,
-  Switch
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { useDisclosure } from '@mantine/hooks';
-import IconVocabulary from '@tabler/icons-react/dist/esm/icons/IconVocabulary.mjs';
-import IconUsers from '@tabler/icons-react/dist/esm/icons/IconUsers.mjs';
-import IconSettings from '@tabler/icons-react/dist/esm/icons/IconSettings.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
-import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
-import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
+import { BookText, Users, Settings, Trash2, Plus, X, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { notifySuccess, notifyError } from '@/utils/feedback';
 import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
 
@@ -47,7 +34,9 @@ export const VocabularyDetail = () => {
   const [customFields, setCustomFields] = useState([]);
   const [fieldConfigs, setFieldConfigs] = useState({});
   const [newFieldName, setNewFieldName] = useState('');
-  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
+  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
+  const openDeleteModal = () => setDeleteModalOpened(true);
+  const closeDeleteModal = () => setDeleteModalOpened(false);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
 
   const fetchVocabulary = async () => {
@@ -69,15 +58,15 @@ export const VocabularyDetail = () => {
       if (!client) {
         throw new Error('Not authenticated');
       }
-      
+
       if (!vocabularyId || vocabularyId === 'undefined') {
         throw new Error('Invalid vocabulary ID');
       }
-      
+
       const vocabularyData = await client.vocabLayers.get(vocabularyId);
       setVocabulary(vocabularyData);
       setEditedName(vocabularyData.name);
-      
+
       // Extract custom fields from config
       const fields = [];
       const configs = {};
@@ -97,13 +86,13 @@ export const VocabularyDetail = () => {
       }
       setCustomFields(fields);
       setFieldConfigs(configs);
-      
+
       // Fetch users if user can manage this vocabulary
       if (canManageVocabulary(vocabularyData)) {
         const usersData = await client.users.list();
         setUsers(usersData);
       }
-      
+
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
@@ -131,14 +120,14 @@ export const VocabularyDetail = () => {
       if (!client) {
         throw new Error('Not authenticated');
       }
-      
+
       if (!vocabularyId || vocabularyId === 'undefined') {
         throw new Error('Invalid vocabulary ID');
       }
-      
+
       const vocabularyData = await client.vocabLayers.get(vocabularyId);
       setVocabulary(vocabularyData);
-      
+
       // Extract custom fields from config
       const fields = [];
       const configs = {};
@@ -158,14 +147,10 @@ export const VocabularyDetail = () => {
       }
       setCustomFields(fields);
       setFieldConfigs(configs);
-      
+
     } catch (err) {
       console.error('Error updating vocabulary:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to update vocabulary data',
-        color: 'red'
-      });
+      notifyError('Failed to update vocabulary data', 'Error');
     }
   };
 
@@ -175,20 +160,16 @@ export const VocabularyDetail = () => {
 
   const handleSave = async () => {
     if (!editedName.trim()) {
-      notifications.show({
-        title: 'Invalid Name',
-        message: 'Vocabulary name cannot be empty',
-        color: 'red'
-      });
+      notifyError('Vocabulary name cannot be empty', 'Invalid Name');
       return;
     }
 
     try {
       let savedVocabulary;
-      
+
       if (isNewVocabulary) {
         savedVocabulary = await client.vocabLayers.create(editedName.trim());
-        
+
         // Save custom fields configuration if any
         if (customFields.length > 0) {
           const fieldsConfig = {};
@@ -197,66 +178,42 @@ export const VocabularyDetail = () => {
           });
           await client.vocabLayers.setConfig(savedVocabulary.id, 'plaid', 'fields', fieldsConfig);
         }
-        
+
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
-        notifications.show({
-          title: 'Success',
-          message: 'Vocabulary created successfully',
-          color: 'green'
-        });
+        notifySuccess('Vocabulary created successfully', 'Success');
       } else {
         // Update existing vocabulary name
         if (editedName !== vocabulary.name) {
           await client.vocabLayers.update(vocabularyId, editedName.trim());
           // Update local state to reflect the change immediately
           await updateVocabulary();
-          notifications.show({
-            title: 'Success',
-            message: 'Vocabulary name updated successfully',
-            color: 'green'
-          });
+          notifySuccess('Vocabulary name updated successfully', 'Success');
         }
       }
-      
+
       setIsEditing(false);
     } catch (err) {
       console.error('Error saving vocabulary:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to save vocabulary',
-        color: 'red'
-      });
+      notifyError('Failed to save vocabulary', 'Error');
     }
   };
 
   const handleAddField = async () => {
     const trimmedName = newFieldName.trim();
     if (!trimmedName) {
-      notifications.show({
-        title: 'Invalid Field Name',
-        message: 'Field name cannot be empty',
-        color: 'red'
-      });
+      notifyError('Field name cannot be empty', 'Invalid Field Name');
       return;
     }
 
     // Check for reserved name
     if (trimmedName.toLowerCase() === 'form') {
-      notifications.show({
-        title: 'Reserved Field Name',
-        message: 'Field name "form" is reserved and cannot be used',
-        color: 'red'
-      });
+      notifyError('Field name "form" is reserved and cannot be used', 'Reserved Field Name');
       return;
     }
 
     // Check for duplicate names (case insensitive)
     if (customFields.some(field => field.toLowerCase() === trimmedName.toLowerCase())) {
-      notifications.show({
-        title: 'Duplicate Field Name',
-        message: 'A field with this name already exists',
-        color: 'red'
-      });
+      notifyError('A field with this name already exists', 'Duplicate Field Name');
       return;
     }
 
@@ -287,43 +244,31 @@ export const VocabularyDetail = () => {
     try {
       setCustomFields(fields);
       setFieldConfigs(configs);
-      
+
       // Save to server if not a new vocabulary
       if (!isNewVocabulary) {
         const fieldsConfig = {};
         fields.forEach(field => {
           fieldsConfig[field] = configs[field] || { inline: false };
         });
-        
+
         if (Object.keys(fieldsConfig).length > 0) {
           await client.vocabLayers.setConfig(vocabularyId, 'plaid', 'fields', fieldsConfig);
         } else {
           await client.vocabLayers.deleteConfig(vocabularyId, 'plaid', 'fields');
         }
-        
-        notifications.show({
-          title: 'Success',
-          message: 'Custom fields updated successfully',
-          color: 'green'
-        });
+
+        notifySuccess('Custom fields updated successfully', 'Success');
       }
     } catch (err) {
       console.error('Error saving custom fields:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to save custom fields',
-        color: 'red'
-      });
+      notifyError('Failed to save custom fields', 'Error');
     }
   };
 
   const handleDelete = async () => {
     if (confirmDeleteName !== vocabulary.name) {
-      notifications.show({
-        title: 'Name Mismatch',
-        message: 'The entered name does not match the vocabulary name',
-        color: 'red'
-      });
+      notifyError('The entered name does not match the vocabulary name', 'Name Mismatch');
       return;
     }
 
@@ -331,111 +276,154 @@ export const VocabularyDetail = () => {
       await client.vocabLayers.delete(vocabularyId);
       closeDeleteModal();
       navigate('/vocabularies');
-      notifications.show({
-        title: 'Success',
-        message: 'Vocabulary deleted successfully',
-        color: 'green'
-      });
+      notifySuccess('Vocabulary deleted successfully', 'Success');
     } catch (err) {
       console.error('Error deleting vocabulary:', err);
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete vocabulary',
-        color: 'red'
-      });
+      notifyError('Failed to delete vocabulary', 'Error');
     }
   };
 
-  const breadcrumbItems = [
-    { title: 'Vocabularies', href: '/vocabularies' },
-    { title: isNewVocabulary ? 'New Vocabulary' : (vocabulary?.name || 'Loading...'), href: null }
-  ].map((item, index) => (
-    item.href ? (
-      <Anchor key={index} component={Link} to={item.href}>
-        {item.title}
-      </Anchor>
-    ) : (
-      <Text key={index}>{item.title}</Text>
-    )
-  ));
+  const renderCustomFieldsEditor = () => (
+    <>
+      {customFields.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {customFields.map(field => (
+            <div key={field} className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-sm">{field}</span>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor={`inline-${field}`} className="text-xs text-muted-foreground">Show inline</Label>
+                  <Switch
+                    id={`inline-${field}`}
+                    checked={fieldConfigs[field]?.inline || false}
+                    onCheckedChange={() => handleToggleInline(field)}
+                  />
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                onClick={() => handleRemoveField(field)}
+              >
+                <X className="h-3.5 w-3.5" /> Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Input
+          placeholder="Enter field name"
+          value={newFieldName}
+          onChange={(event) => setNewFieldName(event.target.value)}
+          className="flex-1"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              handleAddField();
+            }
+          }}
+        />
+        <Button
+          onClick={handleAddField}
+          disabled={!newFieldName.trim()}
+        >
+          <Plus className="h-4 w-4" /> Add Field
+        </Button>
+      </div>
+    </>
+  );
 
   if (loading) {
     return (
-      <Container size="lg" py="xl">
-        <Center>
-          <Stack align="center" spacing="md">
-            <Loader size="lg" />
-            <Text>Loading vocabulary...</Text>
-          </Stack>
-        </Center>
-      </Container>
+      <div className="tw mx-auto max-w-5xl px-4 py-8">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+          <p>Loading vocabulary...</p>
+        </div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Container size="lg" py="xl">
-        <Alert color="red" title="Error">
-          {error}
-        </Alert>
-      </Container>
+      <div className="tw mx-auto max-w-5xl px-4 py-8">
+        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div className="text-sm">
+              <p className="font-medium text-destructive">Error</p>
+              <p className="mt-1 text-muted-foreground">{error}</p>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
   if (!vocabulary && !isNewVocabulary) {
     return (
-      <Container size="lg" py="xl">
-        <Alert color="red" title="Vocabulary Not Found">
-          The requested vocabulary could not be found.
-        </Alert>
-      </Container>
+      <div className="tw mx-auto max-w-5xl px-4 py-8">
+        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div className="text-sm">
+              <p className="font-medium text-destructive">Vocabulary Not Found</p>
+              <p className="mt-1 text-muted-foreground">The requested vocabulary could not be found.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Container size="lg" py="xl">
-      <Stack spacing="lg">
-        <Breadcrumbs>
-          {breadcrumbItems}
-        </Breadcrumbs>
+    <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="flex flex-col gap-6">
+        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to="/vocabularies" className="text-primary hover:underline">Vocabularies</Link>
+          <span>/</span>
+          <span>{isNewVocabulary ? 'New Vocabulary' : (vocabulary?.name || 'Loading...')}</span>
+        </nav>
 
         {!isNewVocabulary && (
           <div>
-            <Title order={1} mb="xs">{vocabulary?.name}</Title>
-            <Text c="dimmed" size="xs" mb="lg">{vocabulary?.id}</Text>
+            <h1 className="mb-1 text-2xl font-bold">{vocabulary?.name}</h1>
+            <p className="mb-4 text-xs text-muted-foreground">{vocabulary?.id}</p>
           </div>
         )}
 
         {!isNewVocabulary && !isEditing && (
-          <Tabs value={activeTab} onChange={setActiveTab}>
-            <Tabs.List>
-              <Tabs.Tab value="items" leftSection={<IconVocabulary size={16} />}>
-                Vocabulary Items
-              </Tabs.Tab>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="tw">
+              <TabsTrigger value="items">
+                <BookText className="h-4 w-4" /> Vocabulary Items
+              </TabsTrigger>
               {canManageVocabulary() && (
-                <Tabs.Tab value="maintainers" leftSection={<IconUsers size={16} />}>
-                  Maintainers
-                </Tabs.Tab>
+                <TabsTrigger value="maintainers">
+                  <Users className="h-4 w-4" /> Maintainers
+                </TabsTrigger>
               )}
               {canManageVocabulary() && (
-                <Tabs.Tab value="settings" leftSection={<IconSettings size={16} />}>
-                  Settings
-                </Tabs.Tab>
+                <TabsTrigger value="settings">
+                  <Settings className="h-4 w-4" /> Settings
+                </TabsTrigger>
               )}
-            </Tabs.List>
+            </TabsList>
 
-            <Tabs.Panel value="items">
-              <VocabularyItems 
+            <TabsContent value="items">
+              <VocabularyItems
                 vocabularyId={vocabularyId}
                 vocabulary={vocabulary}
                 client={client}
                 customFields={customFields}
               />
-            </Tabs.Panel>
+            </TabsContent>
 
             {canManageVocabulary() && (
-              <Tabs.Panel value="maintainers">
-                <VocabularyMaintainers 
+              <TabsContent value="maintainers">
+                <VocabularyMaintainers
                   vocabulary={vocabulary}
                   users={users}
                   user={user}
@@ -443,198 +431,104 @@ export const VocabularyDetail = () => {
                   client={client}
                   onDataUpdate={updateVocabulary}
                 />
-              </Tabs.Panel>
+              </TabsContent>
             )}
 
             {canManageVocabulary() && (
-              <Tabs.Panel value="settings">
-                <Stack spacing="lg">
-                  <Paper p="md" withBorder>
-                    <Stack spacing="md">
-                      <Title order={3}>Basic Settings</Title>
-                      
-                      <Group>
-                        <TextInput
-                          label="Vocabulary Name"
-                          placeholder="Enter vocabulary name"
-                          value={editedName}
-                          onChange={(event) => setEditedName(event.currentTarget.value)}
-                          flex={1}
-                        />
+              <TabsContent value="settings">
+                <div className="flex flex-col gap-6">
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex flex-col gap-4">
+                      <h3 className="text-base font-semibold">Basic Settings</h3>
+
+                      <div className="flex items-end gap-2">
+                        <div className="flex flex-1 flex-col gap-1.5">
+                          <Label>Vocabulary Name</Label>
+                          <Input
+                            placeholder="Enter vocabulary name"
+                            value={editedName}
+                            onChange={(event) => setEditedName(event.target.value)}
+                          />
+                        </div>
                         <Button
                           onClick={handleSave}
                           disabled={!editedName.trim() || editedName === vocabulary?.name}
-                          style={{ alignSelf: 'flex-end' }}
                         >
                           Save Name
                         </Button>
-                      </Group>
-                    </Stack>
-                  </Paper>
+                      </div>
+                    </div>
+                  </div>
 
-                  <Paper p="md" withBorder>
-                    <Stack spacing="md">
-                      <Title order={3}>Custom Fields</Title>
-                      <Text size="sm" c="dimmed">
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex flex-col gap-4">
+                      <h3 className="text-base font-semibold">Custom Fields</h3>
+                      <p className="text-sm text-muted-foreground">
                         Add custom fields to vocabulary items. Field names cannot be "form" or duplicate existing fields (case-insensitive).
-                      </Text>
-                      
-                      {customFields.length > 0 && (
-                        <Stack spacing="xs">
-                          {customFields.map(field => (
-                            <Group key={field} justify="space-between">
-                              <Group>
-                                <Text>{field}</Text>
-                                <Switch
-                                  size="xs"
-                                  label="Show inline"
-                                  labelPosition="left"
-                                  checked={fieldConfigs[field]?.inline || false}
-                                  onChange={() => handleToggleInline(field)}
-                                />
-                              </Group>
-                              <Button
-                                size="xs"
-                                variant="light"
-                                color="red"
-                                leftSection={<IconX size={14} />}
-                                onClick={() => handleRemoveField(field)}
-                              >
-                                Remove
-                              </Button>
-                            </Group>
-                          ))}
-                        </Stack>
-                      )}
-                      
-                      <Group>
-                        <TextInput
-                          placeholder="Enter field name"
-                          value={newFieldName}
-                          onChange={(event) => setNewFieldName(event.currentTarget.value)}
-                          flex={1}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              handleAddField();
-                            }
-                          }}
-                        />
-                        <Button
-                          leftSection={<IconPlus size={16} />}
-                          onClick={handleAddField}
-                          disabled={!newFieldName.trim()}
-                        >
-                          Add Field
-                        </Button>
-                      </Group>
-                    </Stack>
-                  </Paper>
+                      </p>
 
-                  <Divider />
+                      {renderCustomFieldsEditor()}
+                    </div>
+                  </div>
 
-                  <Paper p="md" withBorder>
-                    <Stack spacing="md">
-                      <Title order={3}>Danger Zone</Title>
-                      <Text size="sm" c="dimmed">
+                  <div className="border-t" />
+
+                  <div className="rounded-lg border border-destructive/40 p-4">
+                    <div className="flex flex-col gap-4">
+                      <h3 className="text-base font-semibold">Danger Zone</h3>
+                      <p className="text-sm text-muted-foreground">
                         Delete this vocabulary permanently. This action cannot be undone.
-                      </Text>
+                      </p>
                       <div>
                         <Button
-                          color="red"
-                          leftSection={<IconTrash size={16} />}
+                          variant="destructive"
                           onClick={openDeleteModal}
                         >
-                          Delete Vocabulary
+                          <Trash2 className="h-4 w-4" /> Delete Vocabulary
                         </Button>
                       </div>
-                    </Stack>
-                  </Paper>
-                </Stack>
-              </Tabs.Panel>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
             )}
           </Tabs>
         )}
 
         {isNewVocabulary && (
-          <Stack spacing="lg">
-            <Title order={2}>Create New Vocabulary</Title>
-            
-            <Paper p="md" withBorder>
-              <Stack spacing="md">
-                <TextInput
-                  label="Vocabulary Name"
+          <div className="flex flex-col gap-6">
+            <h2 className="text-lg font-semibold">Create New Vocabulary</h2>
+
+            <div className="rounded-lg border bg-card p-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>Vocabulary Name <span className="text-destructive">*</span></Label>
+                <Input
                   placeholder="Enter vocabulary name"
                   value={editedName}
-                  onChange={(event) => setEditedName(event.currentTarget.value)}
-                  required
+                  onChange={(event) => setEditedName(event.target.value)}
                   autoFocus
-                  description="Choose a descriptive name for your vocabulary"
-                  error={editedName && !editedName.trim() ? "Name cannot be empty" : null}
                 />
-              </Stack>
-            </Paper>
-
-            <Paper p="md" withBorder>
-              <Stack spacing="md">
-                <Title order={3}>Custom Fields (Optional)</Title>
-                <Text size="sm" c="dimmed">
-                  Add custom fields to vocabulary items. Field names cannot be "form" or duplicate existing fields (case-insensitive).
-                </Text>
-                
-                {customFields.length > 0 && (
-                  <Stack spacing="xs">
-                    {customFields.map(field => (
-                      <Group key={field} justify="space-between">
-                        <Group>
-                          <Text>{field}</Text>
-                          <Switch
-                            size="xs"
-                            label="Show inline"
-                            labelPosition="left"
-                            checked={fieldConfigs[field]?.inline || false}
-                            onChange={() => handleToggleInline(field)}
-                          />
-                        </Group>
-                        <Button
-                          size="xs"
-                          variant="light"
-                          color="red"
-                          leftSection={<IconX size={14} />}
-                          onClick={() => handleRemoveField(field)}
-                        >
-                          Remove
-                        </Button>
-                      </Group>
-                    ))}
-                  </Stack>
+                <p className="text-xs text-muted-foreground">Choose a descriptive name for your vocabulary</p>
+                {editedName && !editedName.trim() && (
+                  <p className="text-xs text-destructive">Name cannot be empty</p>
                 )}
-                
-                <Group>
-                  <TextInput
-                    placeholder="Enter field name"
-                    value={newFieldName}
-                    onChange={(event) => setNewFieldName(event.currentTarget.value)}
-                    flex={1}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        handleAddField();
-                      }
-                    }}
-                  />
-                  <Button
-                    leftSection={<IconPlus size={16} />}
-                    onClick={handleAddField}
-                    disabled={!newFieldName.trim()}
-                  >
-                    Add Field
-                  </Button>
-                </Group>
-              </Stack>
-            </Paper>
+              </div>
+            </div>
 
-            <Group justify="flex-end">
+            <div className="rounded-lg border bg-card p-4">
+              <div className="flex flex-col gap-4">
+                <h3 className="text-base font-semibold">Custom Fields (Optional)</h3>
+                <p className="text-sm text-muted-foreground">
+                  Add custom fields to vocabulary items. Field names cannot be "form" or duplicate existing fields (case-insensitive).
+                </p>
+
+                {renderCustomFieldsEditor()}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
               <Button
-                variant="default"
+                variant="secondary"
                 onClick={() => navigate('/vocabularies')}
               >
                 Cancel
@@ -645,43 +539,47 @@ export const VocabularyDetail = () => {
               >
                 Create Vocabulary
               </Button>
-            </Group>
-          </Stack>
+            </div>
+          </div>
         )}
-      </Stack>
+      </div>
 
       {/* Delete Confirmation Modal */}
-      <Modal
-        opened={deleteModalOpened}
-        onClose={closeDeleteModal}
-        title="Delete Vocabulary"
-        size="md"
-        centered
-      >
-        <Stack spacing="md">
-          <Alert
-            color="red"
-            title="Warning"
-            variant="light"
-          >
-            <Text size="sm">
-              You are about to permanently delete the vocabulary <strong>"{vocabulary?.name}"</strong>.
-            </Text>
-            <Text size="sm" mt="xs">
-              This action cannot be undone and will remove all vocabulary items and their links.
-            </Text>
-          </Alert>
+      <Dialog open={deleteModalOpened} onOpenChange={(o) => { if (!o) closeDeleteModal(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Vocabulary</DialogTitle>
+          </DialogHeader>
 
-          <TextInput
-            label={`To confirm, type "${vocabulary?.name}" below:`}
-            placeholder="Enter vocabulary name"
-            value={confirmDeleteName}
-            onChange={(event) => setConfirmDeleteName(event.currentTarget.value)}
-          />
+          <div className="flex flex-col gap-4">
+            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="text-sm">
+                  <p className="font-medium text-destructive">Warning</p>
+                  <p className="mt-1 text-muted-foreground">
+                    You are about to permanently delete the vocabulary <strong>"{vocabulary?.name}"</strong>.
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    This action cannot be undone and will remove all vocabulary items and their links.
+                  </p>
+                </div>
+              </div>
+            </div>
 
-          <Group justify="flex-end">
+            <div className="flex flex-col gap-1.5">
+              <Label>To confirm, type "{vocabulary?.name}" below:</Label>
+              <Input
+                placeholder="Enter vocabulary name"
+                value={confirmDeleteName}
+                onChange={(event) => setConfirmDeleteName(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
             <Button
-              variant="default"
+              variant="outline"
               onClick={() => {
                 closeDeleteModal();
                 setConfirmDeleteName('');
@@ -690,16 +588,15 @@ export const VocabularyDetail = () => {
               Cancel
             </Button>
             <Button
-              color="red"
+              variant="destructive"
               onClick={handleDelete}
               disabled={confirmDeleteName !== vocabulary?.name}
-              leftSection={<IconTrash size={16} />}
             >
-              Delete Vocabulary
+              <Trash2 className="h-4 w-4" /> Delete Vocabulary
             </Button>
-          </Group>
-        </Stack>
-      </Modal>
-    </Container>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };

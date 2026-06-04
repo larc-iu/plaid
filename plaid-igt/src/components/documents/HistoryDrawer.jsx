@@ -1,32 +1,23 @@
 import { useState, useRef, useMemo } from 'react';
-import { 
-  Drawer, 
-  Stack, 
-  Text, 
-  Button, 
-  Loader, 
-  Center, 
-  Alert, 
-  ScrollArea, 
-  Group,
-  Box,
-  Paper,
-  Badge
-} from '@mantine/core';
-import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
-import IconHistory from '@tabler/icons-react/dist/esm/icons/IconHistory.mjs';
+import { X, History } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 const ITEM_HEIGHT = 120; // Height of each audit entry in pixels
 const BUFFER_SIZE = 5; // Number of items to render outside visible area
 
-export const HistoryDrawer = ({ 
-  isOpen, 
-  onClose, 
-  auditEntries, 
-  loading, 
-  error, 
+// Non-modal left slide-in panel (no overlay, no focus trap) so the editor stays
+// interactive while browsing history — preserves the old Mantine Drawer's
+// withOverlay={false} behavior. A radix Dialog/Sheet would wrongly trap focus.
+export const HistoryDrawer = ({
+  isOpen,
+  onClose,
+  auditEntries,
+  loading,
+  error,
   onSelectEntry,
-  selectedEntry 
+  selectedEntry
 }) => {
   const [scrollTop, setScrollTop] = useState(0);
   const scrollContainerRef = useRef(null);
@@ -65,91 +56,60 @@ export const HistoryDrawer = ({
   const totalHeight = reversedAuditEntries.length * ITEM_HEIGHT;
   const offsetY = visibleRange.startIndex * ITEM_HEIGHT;
 
+  if (!isOpen) return null;
+
   return (
-    <Drawer 
-      opened={isOpen} 
-      onClose={onClose}
-      position="left"
-      size={400}
-      withCloseButton={false}
-      withOverlay={false}
-      removeScrollProps={{ enabled: false }}
-      styles={{
-        content: {
-          padding: 0,
-          height: '100vh'
-        },
-        body: {
-          padding: 0,
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column'
-        }
-      }}
-    >
+    <div className="tw fixed left-0 top-0 z-40 flex h-screen w-[400px] flex-col border-r bg-background shadow-lg">
       {/* Header */}
-      <Group justify="space-between" p="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
-        <Group>
-          <IconHistory size={20} />
-          <Text size="lg" fw={600}>Document History</Text>
-        </Group>
-        <Button 
-          variant="subtle" 
-          size="sm" 
-          onClick={onClose}
-          leftSection={<IconX size={16} />}
-        >
-          Close
+      <div className="flex items-center justify-between border-b p-4">
+        <div className="flex items-center gap-2">
+          <History className="h-5 w-5" />
+          <span className="text-lg font-semibold">Document History</span>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          <X className="h-4 w-4" /> Close
         </Button>
-      </Group>
+      </div>
 
       {/* Content */}
-      <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="flex min-h-0 flex-1 flex-col">
         {loading && (
-          <Center py="xl">
-            <Stack align="center" gap="sm">
-              <Loader size="lg" />
-              <Text size="sm" c="dimmed">Loading history...</Text>
-            </Stack>
-          </Center>
+          <div className="flex flex-col items-center gap-2 py-10">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+            <p className="text-sm text-muted-foreground">Loading history...</p>
+          </div>
         )}
 
         {error && (
-          <Box p="md">
-            <Alert color="red" title="Error">
-              {error}
-            </Alert>
-          </Box>
+          <div className="p-4">
+            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+              <p className="text-sm font-medium text-destructive">Error</p>
+              <p className="text-sm text-muted-foreground">{error}</p>
+            </div>
+          </div>
         )}
 
         {!loading && !error && reversedAuditEntries.length === 0 && (
-          <Center py="xl">
-            <Text size="sm" c="dimmed">No history entries found</Text>
-          </Center>
+          <div className="py-10 text-center">
+            <p className="text-sm text-muted-foreground">No history entries found</p>
+          </div>
         )}
 
         {!loading && !error && reversedAuditEntries.length > 0 && (
-          <Box p="md" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <Text size="xs" c="dimmed" mb="md">
+          <div className="flex min-h-0 flex-1 flex-col p-4">
+            <p className="mb-4 text-xs text-muted-foreground">
               {reversedAuditEntries.length} entries • Click to view historical state
-            </Text>
-            
+            </p>
+
             {/* Virtual scrolled list */}
-            <Box 
+            <div
               ref={scrollContainerRef}
-              style={{ 
-                flex: 1, 
-                border: '1px solid var(--mantine-color-gray-3)', 
-                borderRadius: 'var(--mantine-radius-sm)',
-                position: 'relative',
-                overflow: 'auto',
-                backgroundColor: 'white'
-              }}
+              className="relative flex-1 overflow-auto rounded-md border bg-background"
               onScroll={handleScroll}
             >
               <div style={{ height: totalHeight, position: 'relative' }}>
-                <div 
-                  style={{ 
+                <div
+                  style={{
                     transform: `translateY(${offsetY}px)`,
                     position: 'absolute',
                     top: 0,
@@ -157,87 +117,60 @@ export const HistoryDrawer = ({
                     right: 0
                   }}
                 >
-                  {reversedAuditEntries.slice(visibleRange.startIndex, visibleRange.endIndex + 1).map((entry, index) => {
+                  {reversedAuditEntries.slice(visibleRange.startIndex, visibleRange.endIndex + 1).map((entry) => {
                     const isSelected = selectedEntry?.id === entry.id;
-                    
+
                     return (
-                      <Box
+                      <div
                         key={entry.id}
-                        style={{ 
-                          height: ITEM_HEIGHT, 
-                          minHeight: ITEM_HEIGHT,
-                          borderBottom: '1px solid var(--mantine-color-gray-3)',
-                          cursor: 'pointer',
-                          backgroundColor: isSelected ? 'var(--mantine-color-blue-0)' : 'white',
-                          padding: '12px',
-                          display: 'flex',
-                          flexDirection: 'column'
-                        }}
+                        className={cn(
+                          'flex cursor-pointer flex-col border-b p-3 hover:bg-muted/50',
+                          isSelected && 'bg-accent hover:bg-accent'
+                        )}
+                        style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
                         onClick={() => handleEntryClick(entry)}
-                        __vars={{
-                          '--hover-bg': isSelected ? 'var(--mantine-color-blue-1)' : 'var(--mantine-color-gray-0)'
-                        }}
-                        sx={{
-                          '&:hover': {
-                            backgroundColor: 'var(--hover-bg)'
-                          }
-                        }}
                       >
-                        <Box style={{ flex: 1 }}>
-                          <Text 
-                            size="sm" 
-                            fw={500} 
-                            style={{
-                              lineHeight: 1.3,
-                              marginBottom: '12px'
-                            }}
-                          >
+                        <div className="flex-1">
+                          <p className="mb-3 text-sm font-medium leading-tight">
                             {getEntryDescription(entry)}
-                          </Text>
-                          
-                          <Box style={{ borderTop: '1px solid var(--mantine-color-gray-2)', paddingTop: '6px' }}>
-                            <Text size="xs" c="dimmed">
+                          </p>
+
+                          <div className="border-t pt-1.5">
+                            <p className="text-xs text-muted-foreground">
                               {formatTime(entry.time)}
-                            </Text>
+                            </p>
                             {entry.user && (
-                              <Text size="xs" c="dimmed">
+                              <p className="text-xs text-muted-foreground">
                                 by {entry.user.username}
                                 {entry.userAgent && ` (via ${entry.userAgent})`}
-                              </Text>
+                              </p>
                             )}
-                          </Box>
-                        </Box>
-                      </Box>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               </div>
-            </Box>
-          </Box>
+            </div>
+          </div>
         )}
-      </Box>
+      </div>
 
       {/* Footer with current selection info */}
       {selectedEntry && (
-        <Box p="md" bg="blue.0" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
-          <Stack gap="xs">
-            <Badge color="blue" variant="filled">
-              Viewing Historical State
-            </Badge>
-            <Text size="xs" c="blue.7">
+        <div className="border-t bg-accent p-4">
+          <div className="flex flex-col items-start gap-2">
+            <Badge>Viewing Historical State</Badge>
+            <p className="text-xs text-muted-foreground">
               {formatTime(selectedEntry.time)}
-            </Text>
-            <Button
-              size="xs"
-              onClick={() => onSelectEntry(null)}
-              variant="filled"
-              color="blue"
-            >
+            </p>
+            <Button size="sm" onClick={() => onSelectEntry(null)}>
               Return to Current State
             </Button>
-          </Stack>
-        </Box>
+          </div>
+        </div>
       )}
-    </Drawer>
+    </div>
   );
 };

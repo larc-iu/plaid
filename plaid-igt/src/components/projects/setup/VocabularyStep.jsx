@@ -1,16 +1,14 @@
-import { useState, useEffect } from 'react';
-import { Stack, Text } from '@mantine/core';
 import { VocabularyManager } from '../settings/VocabularyManager.jsx';
 
 export const VocabularyStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
-  
+
   // Load vocabularies from API on mount
   const handleLoadData = async () => {
     try {
       if (!client) throw new Error('Not authenticated');
-      
+
       const vocabList = await client.vocabLayers.list();
-      
+
       // Transform API vocabs into our format
       const initialVocabs = (vocabList || []).map(vocab => ({
         name: vocab.name || vocab.id,
@@ -18,7 +16,7 @@ export const VocabularyStep = ({ data, onDataChange, setupData, isNewProject, pr
         enabled: false, // Default to disabled
         isCustom: false // Existing vocabs from API
       }));
-      
+
       return { vocabularies: initialVocabs };
     } catch (err) {
       console.error('Error fetching vocabularies:', err);
@@ -32,14 +30,14 @@ export const VocabularyStep = ({ data, onDataChange, setupData, isNewProject, pr
   };
 
   return (
-    <Stack spacing="xl">
+    <div className="tw flex flex-col gap-8">
       {/* Explanatory header */}
       <div>
-        <Text>
-          Configure vocabularies for your project. Vocabularies allow you to link tokens to 
+        <p className="text-sm">
+          Configure vocabularies for your project. Vocabularies allow you to link tokens to
           document-independent vocabulary entries, allowing you to track constructs such as
           morphemes, words, or multi-word expressions.
-        </Text>
+        </p>
       </div>
 
       {/* Use the reusable manager component */}
@@ -50,7 +48,7 @@ export const VocabularyStep = ({ data, onDataChange, setupData, isNewProject, pr
         showTitle={true}
         isSettings={false}
       />
-    </Stack>
+    </div>
   );
 };
 

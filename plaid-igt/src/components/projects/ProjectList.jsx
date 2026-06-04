@@ -1,42 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  Container, 
-  Title, 
-  Paper, 
-  Text, 
-  Button, 
-  Stack,
-  Alert,
-  Loader,
-  Center,
-  Group,
-  SimpleGrid
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
-import IconLogout from '@tabler/icons-react/dist/esm/icons/IconLogout.mjs';
+import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 
 export const ProjectList = () => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { client, user, logout } = useAuth();
+  const { client, logout } = useAuth();
 
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
+      if (!client) throw new Error('Not authenticated');
       const projectList = await client.projects.list();
       setProjects(projectList);
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
-        // Redirect to login instead of showing error
         logout();
         return;
       }
@@ -49,84 +33,51 @@ export const ProjectList = () => {
 
   useEffect(() => {
     fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleProjectClick = (projectId) => {
-    navigate(`/projects/${projectId}`);
-  };
 
   if (loading) {
     return (
-      <Container size="lg" py="xl">
-        <Center>
-          <Stack align="center" spacing="md">
-            <Loader size="lg" />
-            <Text>Loading projects...</Text>
-          </Stack>
-        </Center>
-      </Container>
+      <div className="tw flex items-center justify-center py-24 text-muted-foreground">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
     );
   }
 
   return (
-    <Container size="lg" py="xl">
-      <Stack spacing="xl">
-        <Group justify="space-between">
-          <div>
-            <Title order={1}>Projects</Title>
-          </div>
-          <Button 
-            leftSection={<IconPlus size={16} />}
-            onClick={() => navigate('/projects/new')}
-          >
-            New Project
-          </Button>
-        </Group>
+    <div className="tw mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
+        <Button onClick={() => navigate('/projects/new')}>
+          <Plus className="h-4 w-4" /> New Project
+        </Button>
+      </div>
 
-        {error && (
-          <Alert color="red" title="Error">
-            {error}
-          </Alert>
-        )}
+      {error && (
+        <div role="alert" className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
-        {projects.length === 0 ? (
-          <Paper shadow="sm" p="xl" radius="md">
-            <Center>
-              <Stack align="center" spacing="md">
-                <Text size="lg" color="dimmed">No projects found</Text>
-                <Text size="sm" color="dimmed">
-                  You don't have access to any projects yet.
-                </Text>
-              </Stack>
-            </Center>
-          </Paper>
-        ) : (
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
-            {projects.map(project => (
-              <Paper 
-                key={project.id} 
-                shadow="sm" 
-                p="md" 
-                radius="md"
-                style={{ cursor: 'pointer' }}
-                onClick={() => handleProjectClick(project.id)}
-              >
-                <Stack spacing="xs">
-                  <Title order={4}>{project.name}</Title>
-                  <Text size="sm" c="dimmed">
-                    ID: {project.id}
-                  </Text>
-                  {project.documents && (
-                    <Text size="sm" c="dimmed">
-                      {project.documents.length} document{project.documents.length !== 1 ? 's' : ''}
-                    </Text>
-                  )}
-                </Stack>
-              </Paper>
-            ))}
-          </SimpleGrid>
-        )}
-      </Stack>
-    </Container>
+      {projects.length === 0 ? (
+        <Card className="p-10 text-center text-muted-foreground">
+          <p className="text-lg">No projects found</p>
+          <p className="mt-1 text-sm">You don&apos;t have access to any projects yet.</p>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+          {projects.map((project) => (
+            <Card
+              key={project.id}
+              onClick={() => navigate(`/projects/${project.id}`)}
+              className="cursor-pointer p-4 transition-colors hover:border-primary/50 hover:bg-accent/40"
+            >
+              <h3 className="font-semibold">{project.name}</h3>
+              <p className="mt-1 truncate text-sm text-muted-foreground">ID: {project.id}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };

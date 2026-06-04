@@ -1,26 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import {
-  Stack,
-  Text,
-  Paper,
-  Button,
-  Group,
-  Alert,
-  ActionIcon,
   Tooltip,
-  Slider,
-  Title
-} from '@mantine/core';
-import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
-import IconPlayerPause from '@tabler/icons-react/dist/esm/icons/IconPlayerPause.mjs';
-import IconPlayerSkipBack from '@tabler/icons-react/dist/esm/icons/IconPlayerSkipBack.mjs';
-import IconPlayerSkipForward from '@tabler/icons-react/dist/esm/icons/IconPlayerSkipForward.mjs';
-import IconVolume from '@tabler/icons-react/dist/esm/icons/IconVolume.mjs';
-import IconPlayerTrackPrev from '@tabler/icons-react/dist/esm/icons/IconPlayerTrackPrev.mjs';
-import IconPlayerTrackNext from '@tabler/icons-react/dist/esm/icons/IconPlayerTrackNext.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
-import { useSnapshot } from 'valtio';
-import documentsStore from '../../../stores/documentsStore';
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider
+} from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Rewind,
+  FastForward,
+  Volume2,
+  Trash2
+} from 'lucide-react';
 
 // Utility function for formatting time
 const formatTime = (seconds) => {
@@ -45,13 +42,9 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
     handleSkipToEnd: onSkipToEnd,
     setMediaElement: onMediaElementReady,
     handleSeek: onSeek,
-    handleDeleteMedia: onDeleteMedia,
-    projectId,
-    documentId
+    handleDeleteMedia: onDeleteMedia
   } = mediaOps;
-  
-  const storeSnap = useSnapshot(documentsStore);
-  const docSnap = storeSnap[projectId]?.[documentId];
+
   const mediaRef = useRef(null);
   const [mediaError, setMediaError] = useState(null);
   const [mediaType, setMediaType] = useState('video');
@@ -105,7 +98,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
       if (mediaRef.current && onTimeUpdate) {
         onTimeUpdate(mediaRef.current.currentTime);
       }
-      
+
       if (isPlaying && mediaRef.current) {
         animationFrameRef.current = requestAnimationFrame(updateTime);
       }
@@ -127,142 +120,160 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
   }, [isPlaying, onTimeUpdate]);
 
   return (
-    <Paper withBorder p="md">
-      <Group justify="space-between" align="center" mb="1rem">
-        <div>
-          <Title order={3}>Time Alignment</Title>
+    <TooltipProvider>
+      <div className="tw rounded-lg border bg-card p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base font-semibold">Time Alignment</h3>
+          </div>
+          {mediaUrl && (
+            <div className="flex items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={onDeleteMedia}
+                    disabled={readOnly}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Delete media file</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
         </div>
-        {mediaUrl && (
-          <Group>
-            <Tooltip label="Delete media file">
-              <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size="md"
-                  onClick={onDeleteMedia}
-                  disabled={readOnly}
-              >
-                <IconTrash size={16} />
-              </ActionIcon>
+
+        <div className="flex flex-col gap-4">
+          {/* Media error */}
+          {mediaError && (
+            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+              <p className="text-sm font-medium text-destructive">Playback Error</p>
+              <p className="text-sm text-muted-foreground">{mediaError}</p>
+            </div>
+          )}
+
+          {/* Media Element - Use video element for everything since it can play both video and audio */}
+          <video
+            ref={mediaRef}
+            src={mediaUrl}
+            controls={false} // We provide custom controls
+            style={{
+              width: '100%',
+              maxHeight: '400px',
+              backgroundColor: '#000',
+              borderRadius: '8px',
+              display: mediaType === 'audio' ? 'none' : 'block'
+            }}
+            onTimeUpdate={() => {}} // RAF handles time updates now
+            onPlay={() => {
+              onPlayingChange && onPlayingChange(true);
+            }}
+            onPause={() => {
+              onPlayingChange && onPlayingChange(false);
+            }}
+            onLoadedMetadata={(e) => {
+              onDurationChange && onDurationChange(e.target.duration);
+
+              // Detect if this is actually a video or just audio
+              const video = e.target;
+              if (video.videoWidth === 0 || video.videoHeight === 0) {
+                setMediaType('audio');
+              } else {
+                setMediaType('video');
+              }
+
+              // Ensure parent gets the media element reference
+              if (onMediaElementReady) {
+                onMediaElementReady(e.target);
+              }
+            }}
+            onError={(e) => {
+              console.error('Media error:', e);
+              setMediaError('Failed to load media. This format may not be supported.');
+            }}
+            preload="auto"
+          />
+
+          {/* Transport Controls */}
+          <div className="flex items-center justify-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={onSkipToBeginning}>
+                  <SkipBack className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Skip to beginning</TooltipContent>
             </Tooltip>
-          </Group>
-        )}
-      </Group>
 
-      <Stack spacing="md">
-        {/* Media error */}
-        {mediaError && (
-          <Alert color="red" title="Playback Error">
-            {mediaError}
-          </Alert>
-        )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => skipTime(-5)}>
+                  <Rewind className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Skip back 5 seconds</TooltipContent>
+            </Tooltip>
 
-        {/* Media Element - Use video element for everything since it can play both video and audio */}
-        <video
-          ref={mediaRef}
-          src={mediaUrl}
-          controls={false} // We provide custom controls
-          style={{ 
-            width: '100%', 
-            maxHeight: '400px',
-            backgroundColor: '#000',
-            borderRadius: '8px',
-            display: mediaType === 'audio' ? 'none' : 'block'
-          }}
-          onTimeUpdate={() => {}} // RAF handles time updates now
-          onPlay={() => {
-            onPlayingChange && onPlayingChange(true);
-          }}
-          onPause={() => {
-            onPlayingChange && onPlayingChange(false);
-          }}
-          onLoadedMetadata={(e) => {
-            onDurationChange && onDurationChange(e.target.duration);
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="icon" className="h-12 w-12" onClick={togglePlayback}>
+                  {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{isPlaying ? "Pause" : "Play"}</TooltipContent>
+            </Tooltip>
 
-            // Detect if this is actually a video or just audio
-            const video = e.target;
-            if (video.videoWidth === 0 || video.videoHeight === 0) {
-              setMediaType('audio');
-            } else {
-              setMediaType('video');
-            }
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => skipTime(5)}>
+                  <FastForward className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Skip forward 5 seconds</TooltipContent>
+            </Tooltip>
 
-            // Ensure parent gets the media element reference
-            if (onMediaElementReady) {
-              onMediaElementReady(e.target);
-            }
-          }}
-          onError={(e) => {
-            console.error('Media error:', e);
-            setMediaError('Failed to load media. This format may not be supported.');
-          }}
-          preload="auto"
-        />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={onSkipToEnd}>
+                  <SkipForward className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Skip to end</TooltipContent>
+            </Tooltip>
+          </div>
 
-        {/* Transport Controls */}
-        <Group justify="center" spacing="xs">
-          <Tooltip label="Skip to beginning">
-            <ActionIcon onClick={onSkipToBeginning} size="lg">
-              <IconPlayerSkipBack size={20} />
-            </ActionIcon>
-          </Tooltip>
-          
-          <Tooltip label="Skip back 5 seconds">
-            <ActionIcon onClick={() => skipTime(-5)} size="lg">
-              <IconPlayerTrackPrev size={20} />
-            </ActionIcon>
-          </Tooltip>
-          
-          <Tooltip label={isPlaying ? "Pause" : "Play"}>
-            <ActionIcon onClick={togglePlayback} size="xl" variant="filled">
-              {isPlaying ? <IconPlayerPause size={24} /> : <IconPlayerPlay size={24} />}
-            </ActionIcon>
-          </Tooltip>
-          
-          <Tooltip label="Skip forward 5 seconds">
-            <ActionIcon onClick={() => skipTime(5)} size="lg">
-              <IconPlayerTrackNext size={20} />
-            </ActionIcon>
-          </Tooltip>
-          
-          <Tooltip label="Skip to end">
-            <ActionIcon onClick={onSkipToEnd} size="lg">
-              <IconPlayerSkipForward size={20} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
+          {/* Time Display and Seek Bar */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-sm text-muted-foreground">{formatTime(currentTime || 0)}</span>
+              <span className="text-sm text-muted-foreground">{formatTime(duration || 0)}</span>
+            </div>
 
-        {/* Time Display and Seek Bar */}
-        <Stack spacing="xs">
-          <Group justify="space-between" spacing="xs">
-            <Text size="sm" c="dimmed">{formatTime(currentTime || 0)}</Text>
-            <Text size="sm" c="dimmed">{formatTime(duration || 0)}</Text>
-          </Group>
-          
-          <Slider
-            value={currentTime || 0}
-            max={duration || 100}
-            onChange={seekTo}
-            label={(value) => formatTime(value)}
-            size="sm"
-            style={{ flex: 1 }}
-          />
-        </Stack>
+            <Slider
+              value={[currentTime || 0]}
+              max={duration || 100}
+              onValueChange={([v]) => seekTo(v)}
+              className="flex-1"
+            />
+          </div>
 
-        {/* Volume Control */}
-        <Group spacing="xs">
-          <IconVolume size={16} />
-          <Slider
-            value={volume}
-            onChange={onVolumeChange}
-            min={0}
-            max={1}
-            step={0.1}
-            style={{ flex: 1, maxWidth: 150 }}
-            size="sm"
-          />
-        </Group>
-      </Stack>
-    </Paper>
+          {/* Volume Control */}
+          <div className="flex items-center gap-2">
+            <Volume2 className="h-4 w-4" />
+            <Slider
+              value={[volume]}
+              onValueChange={([v]) => onVolumeChange(v)}
+              min={0}
+              max={1}
+              step={0.1}
+              className="max-w-[150px] flex-1"
+            />
+          </div>
+        </div>
+      </div>
+    </TooltipProvider>
   );
 };

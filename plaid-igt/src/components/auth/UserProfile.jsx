@@ -1,137 +1,66 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  Container, 
-  Paper, 
-  Title, 
-  Text, 
-  Button, 
-  TextInput,
-  PasswordInput,
-  Stack,
-  Group,
-  Alert,
-  Divider
-} from '@mantine/core';
-import { useForm } from '@mantine/form';
-import { notifications } from '@mantine/notifications';
-import IconArrowLeft from '@tabler/icons-react/dist/esm/icons/IconArrowLeft.mjs';
+import { ArrowLeft } from 'lucide-react';
+import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+
+const EMPTY = (username = '') => ({ username, currentPassword: '', newPassword: '', confirmPassword: '' });
 
 export const UserProfile = () => {
   const navigate = useNavigate();
   const { user, client, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fields, setFields] = useState(EMPTY(user?.username));
+  const [errors, setErrors] = useState({});
 
-  const form = useForm({
-    initialValues: {
-      username: user?.username || '',
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: ''
-    },
-    validate: {
-      username: (value) => value.trim().length < 1 ? 'Username is required' : null,
-      newPassword: (value, values) => {
-        if (value && value.length < 6) {
-          return 'Password must be at least 6 characters long';
-        }
-        return null;
-      },
-      confirmPassword: (value, values) => {
-        if (values.newPassword && value !== values.newPassword) {
-          return 'Passwords do not match';
-        }
-        return null;
-      },
-      currentPassword: (value, values) => {
-        if (values.newPassword && !value) {
-          return 'Current password is required to change password';
-        }
-        return null;
-      }
-    }
-  });
+  const set = (k) => (e) => setFields((f) => ({ ...f, [k]: e.target.value }));
+  const fieldError = (k) => (errors[k] ? <p className="text-xs text-destructive">{errors[k]}</p> : null);
 
-  const handleSubmit = async (values) => {
+  const validate = () => {
+    const er = {};
+    if (!fields.username.trim()) er.username = 'Username is required';
+    if (fields.newPassword && fields.newPassword.length < 6) er.newPassword = 'Password must be at least 6 characters long';
+    if (fields.newPassword && fields.confirmPassword !== fields.newPassword) er.confirmPassword = 'Passwords do not match';
+    if (fields.newPassword && !fields.currentPassword) er.currentPassword = 'Current password is required to change password';
+    setErrors(er);
+    return Object.keys(er).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
     setLoading(true);
-
     try {
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-      
-      if (!user.id) {
-        throw new Error('Could not get current user ID');
-      }
+      if (!client) throw new Error('Not authenticated');
+      if (!user.id) throw new Error('Could not get current user ID');
 
       const updateData = {};
-      
-      // Only include username if it changed
-      if (values.username !== user.username) {
-        updateData.username = values.username;
-      }
-      
-      // Only include password if it's being changed
-      if (values.newPassword) {
-        updateData.password = values.newPassword;
-      }
+      if (fields.username !== user.username) updateData.username = fields.username;
+      if (fields.newPassword) updateData.password = fields.newPassword;
 
-      // If no changes, don't make API call
       if (Object.keys(updateData).length === 0) {
-        notifications.show({
-          title: 'No Changes',
-          message: 'No changes to save',
-          color: 'yellow'
-        });
+        notifyWarning('No changes to save', 'No Changes');
         setLoading(false);
         return;
       }
 
-      // Call users.update with correct parameter order: (id, password, username, isAdmin)
-      await client.users.update(
-        user.id, 
-        updateData.password || undefined,
-        updateData.username || undefined,
-        undefined // isAdmin - we don't change this here
-      );
-      
-      // Fetch updated user data from server
+      // users.update(id, password, username, isAdmin)
+      await client.users.update(user.id, updateData.password || undefined, updateData.username || undefined, undefined);
       const updatedUserData = await client.users.get(user.id);
 
-      notifications.show({
-        title: 'Success',
-        message: 'Profile updated successfully!',
-        color: 'green'
-      });
-      
+      notifySuccess('Profile updated successfully!', 'Success');
       setIsEditing(false);
-      
-      // Clear password fields
-      form.setValues({
-        username: updatedUserData.username,
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      });
-
-      // Update localStorage and auth context
+      setFields(EMPTY(updatedUserData.username));
       localStorage.setItem('username', updatedUserData.username);
       localStorage.setItem('isAdmin', (updatedUserData.isAdmin || false).toString());
-      
-      // Update the auth context
-      updateUser({ 
-        username: updatedUserData.username,
-        isAdmin: updatedUserData.isAdmin || false
-      });
-      
+      updateUser({ username: updatedUserData.username, isAdmin: updatedUserData.isAdmin || false });
     } catch (err) {
-      notifications.show({
-        title: 'Error',
-        message: err.message || 'Failed to update profile',
-        color: 'red'
-      });
+      notifyError(err.message || 'Failed to update profile', 'Error');
     } finally {
       setLoading(false);
     }
@@ -139,84 +68,65 @@ export const UserProfile = () => {
 
   const handleCancel = () => {
     setIsEditing(false);
-    form.setValues({
-      username: user?.username || '',
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: ''
-    });
-    form.clearErrors();
+    setFields(EMPTY(user?.username));
+    setErrors({});
   };
 
   return (
-    <Container size="sm" py="xl">
-      <Button 
-        variant="subtle" 
-        leftSection={<IconArrowLeft size={16} />}
-        mb="md"
-        onClick={() => navigate(-1)}
-      >
-        Back
+    <div className="tw mx-auto max-w-xl px-4 py-8">
+      <Button variant="ghost" size="sm" className="mb-4" onClick={() => navigate(-1)}>
+        <ArrowLeft className="h-4 w-4" /> Back
       </Button>
-      
-      <Paper shadow="sm" p="xl" radius="md">
-        <Stack spacing="lg">
-          <Title order={2}>User Profile</Title>
-          
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">User Profile</CardTitle>
+        </CardHeader>
+        <CardContent>
           {!isEditing ? (
-            <Stack spacing="md">
+            <div className="flex flex-col gap-4">
               <div>
-                <Text size="sm" fw={500} c="dimmed" mb="xs">Username</Text>
-                <Text size="lg">{user?.username}</Text>
+                <p className="text-sm font-medium text-muted-foreground">Username</p>
+                <p className="text-lg">{user?.username}</p>
               </div>
-              
-              <Button onClick={() => setIsEditing(true)} mt="md">
-                Edit Profile
-              </Button>
-            </Stack>
+              <Button className="self-start" onClick={() => setIsEditing(true)}>Edit Profile</Button>
+            </div>
           ) : (
-            <form onSubmit={form.onSubmit(handleSubmit)}>
-              <Stack spacing="md">
-                <TextInput
-                  label="Username"
-                  placeholder="Enter username"
-                  required
-                  {...form.getInputProps('username')}
-                />
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="username">Username</Label>
+                <Input id="username" value={fields.username} onChange={set('username')} placeholder="Enter username" />
+                {fieldError('username')}
+              </div>
 
-                <Divider label="Change Password (Optional)" labelPosition="center" />
-                
-                <PasswordInput
-                  label="Current Password"
-                  placeholder="Enter current password"
-                  {...form.getInputProps('currentPassword')}
-                />
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="h-px flex-1 bg-border" /> Change Password (Optional) <div className="h-px flex-1 bg-border" />
+              </div>
 
-                <PasswordInput
-                  label="New Password"
-                  placeholder="Enter new password"
-                  {...form.getInputProps('newPassword')}
-                />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cur">Current Password</Label>
+                <Input id="cur" type="password" value={fields.currentPassword} onChange={set('currentPassword')} placeholder="Enter current password" />
+                {fieldError('currentPassword')}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="new">New Password</Label>
+                <Input id="new" type="password" value={fields.newPassword} onChange={set('newPassword')} placeholder="Enter new password" />
+                {fieldError('newPassword')}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="conf">Confirm New Password</Label>
+                <Input id="conf" type="password" value={fields.confirmPassword} onChange={set('confirmPassword')} placeholder="Confirm new password" />
+                {fieldError('confirmPassword')}
+              </div>
 
-                <PasswordInput
-                  label="Confirm New Password"
-                  placeholder="Confirm new password"
-                  {...form.getInputProps('confirmPassword')}
-                />
-
-                <Group justify="flex-end" mt="lg">
-                  <Button variant="outline" onClick={handleCancel}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" loading={loading}>
-                    Save Changes
-                  </Button>
-                </Group>
-              </Stack>
+              <div className="mt-2 flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={handleCancel} disabled={loading}>Cancel</Button>
+                <Button type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save Changes'}</Button>
+              </div>
             </form>
           )}
-        </Stack>
-      </Paper>
-    </Container>
+        </CardContent>
+      </Card>
+    </div>
   );
 };

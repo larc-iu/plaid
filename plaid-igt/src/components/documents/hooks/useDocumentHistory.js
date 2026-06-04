@@ -1,17 +1,18 @@
 import { useState, useCallback } from 'react';
 
+// Owns the history-rail UI state + audit-log fetching. Time-travel itself is
+// driven by the parent's `asOf` (which reloads the shared IgtDocument); this hook
+// no longer fetches a separate historical document.
 export const useDocumentHistory = (documentId, client) => {
+  const [open, setOpen] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState(null);
   const [auditEntries, setAuditEntries] = useState([]);
-  const [historicalDocument, setHistoricalDocument] = useState(null);
   const [loadingAudit, setLoadingAudit] = useState(false);
-  const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [error, setError] = useState('');
   const [hasLoadedAudit, setHasLoadedAudit] = useState(false);
 
-  // Fetch audit log entries
   const fetchAuditLog = useCallback(async () => {
     if (!documentId || !client) return;
-    
     try {
       setLoadingAudit(true);
       const auditData = await client.documents.audit(documentId);
@@ -26,40 +27,15 @@ export const useDocumentHistory = (documentId, client) => {
     }
   }, [documentId, client]);
 
-  // Fetch historical document state
-  const fetchHistoricalDocument = useCallback(async (timestamp) => {
-    if (!documentId || !timestamp || !client) return null;
-    
-    try {
-      setLoadingHistorical(true);
-      setError('');
-      const historicalDoc = await client.documents.get(documentId, true, timestamp);
-      setHistoricalDocument(historicalDoc);
-      return historicalDoc;
-    } catch (err) {
-      setError('Failed to load historical document: ' + (err.message || 'Unknown error'));
-      console.error('Error fetching historical document:', err);
-      return null;
-    } finally {
-      setLoadingHistorical(false);
-    }
-  }, [documentId, client]);
-
-  // Clear historical document (return to current state)
-  const clearHistoricalDocument = useCallback(() => {
-    setHistoricalDocument(null);
-    setError('');
-  }, []);
-
   return {
+    open,
+    setOpen,
+    selectedEntry,
+    setSelectedEntry,
     auditEntries,
-    historicalDocument,
     loadingAudit,
-    loadingHistorical,
     error,
     hasLoadedAudit,
-    fetchHistoricalDocument,
-    clearHistoricalDocument,
-    fetchAuditLog
+    fetchAuditLog,
   };
 };

@@ -74,7 +74,7 @@ function extractDocumentData(rawDocument, project) {
   if (project?.config?.plaid?.documentMetadata && rawDocument.metadata) {
     const metadataFields = project.config.plaid.documentMetadata;
     metadataFields.forEach(field => {
-      if (field.name && rawDocument.metadata.hasOwnProperty(field.name)) {
+      if (field.name && Object.prototype.hasOwnProperty.call(rawDocument.metadata, field.name)) {
         configuredMetadata[field.name] = rawDocument.metadata[field.name];
       }
     });

@@ -1,15 +1,14 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Loader, Center } from '@mantine/core';
 
 export const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
     return (
-      <Center style={{ height: '100vh' }}>
-        <Loader size="lg" />
-      </Center>
+      <div className="tw flex h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
     );
   }
 

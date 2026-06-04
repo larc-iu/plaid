@@ -1,51 +1,47 @@
-import React from 'react';
-import { useSnapshot } from 'valtio';
-import {
-  Stack,
-  Text,
-  Paper,
-  Button,
-  Center,
-  FileButton
-} from '@mantine/core';
-import IconUpload from '@tabler/icons-react/dist/esm/icons/IconUpload.mjs';
-import documentsStore from '../../../stores/documentsStore';
+import React, { useRef } from 'react';
+import { Upload } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-export const MediaUpload = ({ onUpload, isUploading, projectId, documentId, readOnly = false }) => {
-  const storeSnap = useSnapshot(documentsStore);
-  const docSnap = storeSnap[projectId]?.[documentId];
-  
+export const MediaUpload = ({ onUpload, isUploading, readOnly = false }) => {
+  const inputRef = useRef(null);
+
   return (
-    <Paper withBorder p="xl">
-      <Center>
-        <Stack align="center" spacing="lg">
-          <IconUpload size={48} color="#868e96" />
-          <div style={{ textAlign: 'center' }}>
-            <Text size="lg" fw={500} mb="xs">Upload Media File</Text>
-            <Text size="sm" c="dimmed" mb="md">
+    <div className="tw rounded-lg border bg-card p-4">
+      <div className="flex items-center justify-center">
+        <div className="flex flex-col items-center gap-6">
+          <Upload className="h-12 w-12 text-muted-foreground" />
+          <div className="text-center">
+            <p className="mb-1 text-lg font-medium">Upload Media File</p>
+            <p className="mb-4 text-sm text-muted-foreground">
               Upload an audio or video file to begin time-aligned transcription
-            </Text>
+            </p>
           </div>
-          
-          <FileButton onChange={onUpload} accept="audio/*,video/*" disabled={readOnly}>
-            {(props) => (
-              <Button 
-                {...props} 
-                leftSection={<IconUpload size={16} />}
-                loading={isUploading}
-                size="lg"
-                disabled={readOnly}
-              >
-                Choose Media File
-              </Button>
-            )}
-          </FileButton>
-          
-          <Text size="xs" c="dimmed">
+
+          <input
+            ref={inputRef}
+            type="file"
+            accept="audio/*,video/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onUpload(file);
+              e.target.value = '';
+            }}
+          />
+          <Button
+            size="lg"
+            disabled={isUploading || readOnly}
+            onClick={() => inputRef.current?.click()}
+          >
+            <Upload className="h-4 w-4" />
+            Choose Media File
+          </Button>
+
+          <p className="text-xs text-muted-foreground">
             Recommended formats: MP4, WebM, OGG, MOV (video) • MP3, WAV, M4A, AAC (audio)
-          </Text>
-        </Stack>
-      </Center>
-    </Paper>
+          </p>
+        </div>
+      </div>
+    </div>
   );
 };

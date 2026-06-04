@@ -145,21 +145,25 @@ export const tokenMutations = {
   // Built-in rule-based tokenization of any untokenized ranges of the body.
   // Cascade-heavy result on success, so we just reload rather than replay
   // locally. Returns true if anything was created, false otherwise.
+  // Rule-based tokenize of untokenized body ranges. Returns the count of tokens
+  // created (0 = already fully tokenized) on success, or null on failure — so
+  // callers can distinguish "nothing to do" from an error (which is toasted here).
   async tokenize() {
     const info = this.layerInfo;
     const primaryTokenLayer = info.primaryTokenLayer;
     const text = info.primaryTextLayer?.text;
     if (!primaryTokenLayer?.id || !text?.id) {
       this.setError('Token layer is not configured');
-      return false;
+      return null;
     }
     const body = this.body;
     if (!body || !body.trim()) {
       this.setError('No text to tokenize');
-      return false;
+      return null;
     }
 
-    return this._withSaving('Failed to tokenize', async () => {
+    let createdCount = 0;
+    const ok = await this._withSaving('Failed to tokenize', async () => {
       const existingTokens = primaryTokenLayer.tokens || [];
       const ignoredTokensConfig = getIgnoredTokensConfig(this.project);
       const untokenizedRanges = findUntokenizedRanges(body, existingTokens);
@@ -176,8 +180,10 @@ export const tokenMutations = {
         begin: t.begin,
         end: t.end
       })));
+      createdCount = newTokens.length;
       await this._reload();
     });
+    return ok ? createdCount : null;
   },
 
   // Delete all word tokens. The server cascades to morphemes (and their

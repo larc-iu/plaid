@@ -1,3 +1,11 @@
 # CLAUDE.md is an agent-facing doc: kept on disk (the harness auto-loads it)
 # but not committed. See plaid-core/.gitignore for the project convention.
 /CLAUDE.md
+
+# Playwright e2e artifacts + local dev token
+/test-results/
+/playwright-report/
+/.token
+
+# Temporary working checklist (agent-facing, like CLAUDE.md)
+/IGT_TODO.md

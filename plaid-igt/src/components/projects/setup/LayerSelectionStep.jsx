@@ -1,16 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { Info } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import {
-  Stack,
-  Text,
-  Radio,
-  Group,
   Select,
-  TextInput,
-  Paper,
-  Alert,
-  Loader
-} from '@mantine/core';
-import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const [project, setProject] = useState(null);
@@ -135,26 +132,34 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
 
   if (loading) {
     return (
-      <Stack spacing="lg" align="center">
-        <Loader size="md" />
-        <Text>Loading project layers...</Text>
-      </Stack>
+      <div className="tw flex flex-col items-center gap-6">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+        <p className="text-sm">Loading project layers...</p>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Alert color="red" title="Error" icon={<IconInfoCircle size={16} />}>
-        {error}
-      </Alert>
+      <div className="tw rounded-md border border-destructive/50 bg-destructive/5 p-4">
+        <div className="flex items-start gap-2">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <div className="text-sm">
+            <p className="font-medium text-destructive">Error</p>
+            <p className="mt-1 text-muted-foreground">{error}</p>
+          </div>
+        </div>
+      </div>
     );
   }
 
+  const selectableTextLayers = textLayers.filter(layer => layer.id);
+
   return (
-    <Stack spacing="xl">
+    <div className="tw flex flex-col gap-8">
       {/* Explanatory header */}
       <div>
-        <Text>
+        <p className="text-sm">
           Choose a text layer for Plaid Base to use, then provide names for the new
           token and morpheme layers that will be created.
           <strong> Text layers</strong> contain the baseline text content of your documents.
@@ -162,97 +167,112 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
           and serve as the foundation for further annotation layers. Token and morpheme
           layers are always created fresh because their overlap mode and hierarchy are
           fixed at creation time.
-        </Text>
+        </p>
       </div>
 
       {/* Text Layer Selection */}
-      <Paper p="md" withBorder>
-        <Text size="md" fw={500} mb="md">Text Layer</Text>
+      <div className="rounded-lg border bg-card p-4">
+        <p className="mb-4 font-medium">Text Layer</p>
 
-        <Radio.Group
-          value={data?.textLayerType || ''}
-          onChange={handleTextLayerTypeChange}
-        >
-          <Stack spacing="md">
-            <Radio
+        <div className="flex flex-col gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="textLayerType"
+              className="h-4 w-4"
               value="existing"
-              label="Use existing text layer"
-              disabled={textLayers.filter(layer => layer.id).length === 0}
+              checked={data?.textLayerType === 'existing'}
+              onChange={(e) => handleTextLayerTypeChange(e.target.value)}
+              disabled={selectableTextLayers.length === 0}
             />
-            {data?.textLayerType === 'existing' && textLayers.filter(layer => layer.id).length > 0 && (
+            Use existing text layer
+          </label>
+          {data?.textLayerType === 'existing' && selectableTextLayers.length > 0 && (
+            <div className="ml-6">
               <Select
-                placeholder="Select a text layer"
-                data={textLayers
-                  .filter(layer => layer.id) // Filter out layers without valid IDs
-                  .map(layer => ({
-                    value: layer.id,
-                    label: layer.name || layer.id
-                  }))}
-                value={data?.selectedTextLayerId || null}
-                onChange={handleTextLayerSelectionChange}
-                ml="xl"
-              />
-            )}
-            {data?.textLayerType === 'existing' && textLayers.filter(layer => layer.id).length === 0 && (
-              <Text size="sm" c="dimmed" ml="xl">No existing text layers found</Text>
-            )}
+                value={data?.selectedTextLayerId || undefined}
+                onValueChange={handleTextLayerSelectionChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a text layer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectableTextLayers.map(layer => (
+                    <SelectItem key={layer.id} value={layer.id}>
+                      {layer.name || layer.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {data?.textLayerType === 'existing' && selectableTextLayers.length === 0 && (
+            <p className="ml-6 text-sm text-muted-foreground">No existing text layers found</p>
+          )}
 
-            <Radio
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="textLayerType"
+              className="h-4 w-4"
               value="new"
-              label="Create new text layer"
+              checked={data?.textLayerType === 'new'}
+              onChange={(e) => handleTextLayerTypeChange(e.target.value)}
             />
-            {data?.textLayerType === 'new' && (
-              <TextInput
+            Create new text layer
+          </label>
+          {data?.textLayerType === 'new' && (
+            <div className="ml-6">
+              <Input
                 placeholder="Enter text layer name"
                 value={data?.newTextLayerName || ''}
                 onChange={handleNewTextLayerNameChange}
-                ml="xl"
               />
-            )}
-          </Stack>
-        </Radio.Group>
-      </Paper>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Token Layer (always new) */}
-      <Paper p="md" withBorder>
-        <Text size="md" fw={500} mb="md">Primary Token Layer</Text>
+      <div className="rounded-lg border bg-card p-4">
+        <p className="mb-4 font-medium">Primary Token Layer</p>
 
         {!hasValidTextLayerSelection() ? (
-          <Text size="sm" c="dimmed">Please select a text layer first</Text>
+          <p className="text-sm text-muted-foreground">Please select a text layer first</p>
         ) : (
-          <Stack spacing="xs">
-            <Text size="sm" c="dimmed">
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">
               A new primary (word-level) token layer will be created. Name it:
-            </Text>
-            <TextInput
+            </p>
+            <Input
               placeholder="e.g. Main Tokens"
               value={data?.newTokenLayerName || ''}
               onChange={handleNewTokenLayerNameChange}
             />
-          </Stack>
+          </div>
         )}
-      </Paper>
+      </div>
 
       {/* Morpheme Layer (always new) */}
-      <Paper p="md" withBorder>
-        <Text size="md" fw={500} mb="md">Morpheme Token Layer</Text>
+      <div className="rounded-lg border bg-card p-4">
+        <p className="mb-4 font-medium">Morpheme Token Layer</p>
 
         {!hasValidTextLayerSelection() ? (
-          <Text size="sm" c="dimmed">Please select a text layer first</Text>
+          <p className="text-sm text-muted-foreground">Please select a text layer first</p>
         ) : (
-          <Stack spacing="xs">
-            <Text size="sm" c="dimmed">
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">
               A new morpheme token layer will be created under the primary token layer. Name it:
-            </Text>
-            <TextInput
+            </p>
+            <Input
               placeholder="e.g. Main Morphemes"
               value={data?.newMorphemeLayerName || ''}
               onChange={handleNewMorphemeLayerNameChange}
             />
-          </Stack>
+          </div>
         )}
-      </Paper>
-    </Stack>
+      </div>
+    </div>
   );
 };
 

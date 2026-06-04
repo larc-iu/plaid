@@ -1,19 +1,9 @@
 import { useState, useEffect } from 'react';
-import { 
-  Stack, 
-  Text, 
-  Paper,
-  TextInput,
-  Button,
-  Group,
-  Badge
-} from '@mantine/core';
-import { DataTable } from 'mantine-datatable';
-import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
-import IconChevronUp from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';
-import IconChevronDown from '@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs';
-import { notifications } from '@mantine/notifications';
+import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
 // Predefined orthography setup
 const DEFAULT_ORTHOGRAPHIES = [
@@ -29,7 +19,7 @@ const DEFAULT_ORTHOGRAPHIES = [
   }
 ];
 
-export const OrthographiesManager = ({ 
+export const OrthographiesManager = ({
   initialData,
   onLoadData,
   onSaveChanges,
@@ -39,7 +29,6 @@ export const OrthographiesManager = ({
 }) => {
   const [orthographies, setOrthographies] = useState([]);
   const [newOrthographyName, setNewOrthographyName] = useState('');
-  const [hoveredOrthography, setHoveredOrthography] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize data on mount
@@ -47,22 +36,22 @@ export const OrthographiesManager = ({
     const initializeData = async () => {
       try {
         let orthographiesData = initialData;
-        
+
         // If no initial data provided, try loading from callback
         if (!orthographiesData && onLoadData) {
           orthographiesData = await onLoadData();
         }
-        
+
         // If still no data, use default orthographies
         if (!orthographiesData?.orthographies) {
           orthographiesData = {
             orthographies: DEFAULT_ORTHOGRAPHIES
           };
         }
-        
+
         setOrthographies(orthographiesData.orthographies);
         setIsInitialized(true);
-        
+
         // Important: If we're using default data and onSaveChanges exists AND autoSaveDefaults is enabled,
         // save the defaults to the parent setup wizard
         if (!initialData?.orthographies && onSaveChanges && autoSaveDefaults) {
@@ -74,7 +63,7 @@ export const OrthographiesManager = ({
         const defaultData = { orthographies: DEFAULT_ORTHOGRAPHIES };
         setOrthographies(DEFAULT_ORTHOGRAPHIES);
         setIsInitialized(true);
-        
+
         // Save defaults even on error (only in setup mode)
         if (onSaveChanges && autoSaveDefaults) {
           try {
@@ -83,15 +72,11 @@ export const OrthographiesManager = ({
             console.error('Failed to save default orthographies:', saveError);
           }
         }
-        
+
         if (onError) {
           onError(error);
         } else {
-          notifications.show({
-            title: 'Load Error',
-            message: 'Failed to load orthographies configuration',
-            color: 'red'
-          });
+          notifyError('Failed to load orthographies configuration', 'Load Error');
         }
       }
     };
@@ -110,38 +95,26 @@ export const OrthographiesManager = ({
       if (onError) {
         onError(error);
       } else {
-        notifications.show({
-          title: 'Save Error',
-          message: 'Failed to save orthographies configuration',
-          color: 'red'
-        });
+        notifyError('Failed to save orthographies configuration', 'Save Error');
       }
     }
   };
 
   const handleAddCustomOrthography = async () => {
     const trimmedName = newOrthographyName.trim();
-    
+
     if (!trimmedName) {
-      notifications.show({
-        title: 'Invalid Orthography Name',
-        message: 'Orthography name cannot be empty',
-        color: 'red'
-      });
+      notifyError('Orthography name cannot be empty', 'Invalid Orthography Name');
       return;
     }
 
     // Check for duplicate names (case insensitive)
-    const isDuplicate = orthographies.some(orth => 
+    const isDuplicate = orthographies.some(orth =>
       orth.name.toLowerCase() === trimmedName.toLowerCase()
     );
 
     if (isDuplicate) {
-      notifications.show({
-        title: 'Duplicate Orthography',
-        message: 'An orthography with this name already exists',
-        color: 'red'
-      });
+      notifyError('An orthography with this name already exists', 'Duplicate Orthography');
       return;
     }
 
@@ -155,11 +128,7 @@ export const OrthographiesManager = ({
     await saveChanges(updatedOrthographies);
 
     setNewOrthographyName('');
-    notifications.show({
-      title: 'Orthography Added',
-      message: `"${trimmedName}" has been added to your orthographies`,
-      color: 'green'
-    });
+    notifySuccess(`"${trimmedName}" has been added to your orthographies`, 'Orthography Added');
   };
 
   const handleDeleteOrthography = async (orthographyName) => {
@@ -171,12 +140,8 @@ export const OrthographiesManager = ({
 
     const updatedOrthographies = orthographies.filter(orth => orth.name !== orthographyName);
     await saveChanges(updatedOrthographies);
-    
-    notifications.show({
-      title: 'Orthography Removed',
-      message: `"${orthographyName}" has been removed`,
-      color: 'blue'
-    });
+
+    notifyInfo(`"${orthographyName}" has been removed`, 'Orthography Removed');
   };
 
   const handleKeyPress = (event) => {
@@ -189,7 +154,7 @@ export const OrthographiesManager = ({
   const wouldBeDuplicate = () => {
     const trimmedName = newOrthographyName.trim();
     if (!trimmedName) return false;
-    return orthographies.some(orth => 
+    return orthographies.some(orth =>
       orth.name.toLowerCase() === trimmedName.toLowerCase()
     );
   };
@@ -203,148 +168,101 @@ export const OrthographiesManager = ({
 
     const currentIndex = orthographies.findIndex(orth => orth.name === orthographyName);
     if (currentIndex === -1) return;
-    
+
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    
+
     // Don't allow moving above baseline (index 0)
     if (newIndex <= 0 || newIndex >= orthographies.length) return;
-    
+
     const newOrthographies = [...orthographies];
     const [movedOrthography] = newOrthographies.splice(currentIndex, 1);
     newOrthographies.splice(newIndex, 0, movedOrthography);
-    
+
     await saveChanges(newOrthographies);
   };
 
   // Don't render until initialized
   if (!isInitialized) {
     return (
-      <Paper p="md" withBorder>
-        <Text>Loading orthographies configuration...</Text>
-      </Paper>
+      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+        Loading orthographies configuration...
+      </div>
     );
   }
 
-  // Prepare data for the table
-  const tableData = orthographies.map((orth, index) => ({
-    ...orth,
-    id: `${orth.name}-${index}` // Unique ID for table
-  }));
-
   return (
-    <Stack spacing="xl">
-      {/* Orthographies Table */}
-      <Paper p="md" withBorder>
-        {showTitle && <Text size="md" fw={500} mb="md">Available Orthographies</Text>}
-        
-        <DataTable
-          textSelectionDisabled
-          withTableBorder
-          withRowBorders
-          highlightOnHover
-          columns={[
-            {
-              accessor: 'name',
-              title: 'Orthography Name',
-              width: '100%',
-              render: (record) => {
-                return (
-                  <Group 
-                    justify="space-between" 
-                    onMouseEnter={() => setHoveredOrthography(record.name)}
-                    onMouseLeave={() => setHoveredOrthography(null)}
-                    style={{ width: '100%' }}
-                  >
-                    <Group spacing="sm">
-                      <Text>{record.name}</Text>
-                      {record.isBaseline && (
-                        <Badge size="xs" variant="light" color="blue">
-                          Required
-                        </Badge>
-                      )}
-                    </Group>
-                    <Group spacing="xs">
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="gray"
-                        style={{ 
-                          opacity: hoveredOrthography === record.name && !record.isBaseline ? 1 : 0,
-                          transition: 'opacity 0.2s ease'
-                        }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleMoveOrthography(record.name, 'up');
-                        }}
-                        disabled={record.isBaseline || tableData.findIndex(item => item.name === record.name) <= 1}
-                      >
-                        <IconChevronUp size={12} />
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="gray"
-                        style={{ 
-                          opacity: hoveredOrthography === record.name && !record.isBaseline ? 1 : 0,
-                          transition: 'opacity 0.2s ease'
-                        }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleMoveOrthography(record.name, 'down');
-                        }}
-                        disabled={record.isBaseline || tableData.findIndex(item => item.name === record.name) === tableData.length - 1}
-                      >
-                        <IconChevronDown size={12} />
-                      </Button>
-                      <Button
-                        size="xs"
-                        color="red"
-                        variant="light"
-                        style={{ 
-                          opacity: hoveredOrthography === record.name && !record.isBaseline ? 1 : 0,
-                          transition: 'opacity 0.2s ease'
-                        }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (!record.isBaseline) {
-                            handleDeleteOrthography(record.name);
-                          }
-                        }}
-                        disabled={record.isBaseline}
-                      >
-                        <IconTrash size={14} />
-                      </Button>
-                    </Group>
-                  </Group>
-                );
-              }
-            }
-          ]}
-          records={tableData}
-          minHeight={200}
-        />
+    <div className="flex flex-col gap-4">
+      {showTitle && <p className="text-sm font-medium">Available Orthographies</p>}
 
-        {/* Add Custom Orthography */}
-        <Paper p="md">
-          <Text size="md" fw={500} mb="md">Add Custom Orthography</Text>
-          <Group>
-            <TextInput
-                placeholder="Enter orthography name"
-                value={newOrthographyName}
-                onChange={(event) => setNewOrthographyName(event.currentTarget.value)}
-                onKeyDown={handleKeyPress}
-                flex={1}
-            />
-            <Button
-                leftSection={<IconPlus size={16} />}
-                onClick={handleAddCustomOrthography}
-                disabled={!newOrthographyName.trim() || wouldBeDuplicate()}
-            >
-              Add Orthography
-            </Button>
-          </Group>
-        </Paper>
-      </Paper>
-    </Stack>
+      {/* Orthographies list */}
+      <div className="overflow-hidden rounded-md border">
+        {orthographies.map((orth, index) => (
+          <div
+            key={`${orth.name}-${index}`}
+            className="group flex items-center justify-between border-b px-3 py-2 last:border-b-0 hover:bg-muted/50"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm">{orth.name}</span>
+              {orth.isBaseline && (
+                <Badge variant="secondary" className="text-[10px]">Required</Badge>
+              )}
+            </div>
+            {!orth.isBaseline && (
+              <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  onClick={() => handleMoveOrthography(orth.name, 'up')}
+                  disabled={index <= 1}
+                  title="Move up"
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  onClick={() => handleMoveOrthography(orth.name, 'down')}
+                  disabled={index === orthographies.length - 1}
+                  title="Move down"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-destructive hover:text-destructive"
+                  onClick={() => handleDeleteOrthography(orth.name)}
+                  title="Remove"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Add Custom Orthography */}
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Add Custom Orthography</p>
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="Enter orthography name"
+            value={newOrthographyName}
+            onChange={(event) => setNewOrthographyName(event.target.value)}
+            onKeyDown={handleKeyPress}
+            className="flex-1"
+          />
+          <Button
+            onClick={handleAddCustomOrthography}
+            disabled={!newOrthographyName.trim() || wouldBeDuplicate()}
+          >
+            <Plus className="h-4 w-4" /> Add Orthography
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 };

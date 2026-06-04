@@ -1,35 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  Container, 
-  Title, 
-  Paper, 
-  Text, 
-  Button, 
-  Stack,
-  Alert,
-  Loader,
-  Center,
-  Group,
-  SimpleGrid
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
+import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 
 export const VocabularyList = () => {
   const navigate = useNavigate();
   const [vocabularies, setVocabularies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { client, user, logout } = useAuth();
+  const { client, logout } = useAuth();
 
   const fetchVocabularies = async () => {
     try {
       setLoading(true);
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
+      if (!client) throw new Error('Not authenticated');
       const vocabList = await client.vocabLayers.list();
       setVocabularies(vocabList);
       setError('');
@@ -47,88 +33,56 @@ export const VocabularyList = () => {
 
   useEffect(() => {
     fetchVocabularies();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleVocabularyClick = (vocabularyId) => {
-    navigate(`/vocabularies/${vocabularyId}`);
-  };
-
-  const handleCreateVocabulary = () => {
-    navigate('/vocabularies/new');
-  };
 
   if (loading) {
     return (
-      <Container size="lg" py="xl">
-        <Center>
-          <Stack align="center" spacing="md">
-            <Loader size="lg" />
-            <Text>Loading vocabularies...</Text>
-          </Stack>
-        </Center>
-      </Container>
+      <div className="tw flex items-center justify-center py-24 text-muted-foreground">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
     );
   }
 
   return (
-    <Container size="lg" py="xl">
-      <Stack spacing="xl">
-        <Group justify="space-between">
-          <div>
-            <Title order={1}>Vocabularies</Title>
-          </div>
-          <Button 
-            leftSection={<IconPlus size={16} />}
-            onClick={handleCreateVocabulary}
-          >
-            New Vocabulary
-          </Button>
-        </Group>
+    <div className="tw mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">Vocabularies</h1>
+        <Button onClick={() => navigate('/vocabularies/new')}>
+          <Plus className="h-4 w-4" /> New Vocabulary
+        </Button>
+      </div>
 
-        {error && (
-          <Alert color="red" title="Error">
-            {error}
-          </Alert>
-        )}
+      {error && (
+        <div role="alert" className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
-        {vocabularies.length === 0 ? (
-          <Paper shadow="sm" p="xl" radius="md">
-            <Center>
-              <Stack align="center" spacing="md">
-                <Text size="lg" color="dimmed">No vocabularies found</Text>
-                <Text size="sm" color="dimmed">
-                  Create your first vocabulary to get started.
-                </Text>
-              </Stack>
-            </Center>
-          </Paper>
-        ) : (
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
-            {vocabularies.map(vocabulary => (
-              <Paper 
-                key={vocabulary.id} 
-                shadow="sm" 
-                p="md" 
-                radius="md"
-                style={{ cursor: 'pointer' }}
-                onClick={() => handleVocabularyClick(vocabulary.id)}
-              >
-                <Stack spacing="xs">
-                  <Title order={4}>{vocabulary.name}</Title>
-                  <Text size="sm" c="dimmed">
-                    ID: {vocabulary.id}
-                  </Text>
-                  {vocabulary.maintainers && (
-                    <Text size="sm" c="dimmed">
-                      {vocabulary.maintainers.length} maintainer{vocabulary.maintainers.length !== 1 ? 's' : ''}
-                    </Text>
-                  )}
-                </Stack>
-              </Paper>
-            ))}
-          </SimpleGrid>
-        )}
-      </Stack>
-    </Container>
+      {vocabularies.length === 0 ? (
+        <Card className="p-10 text-center text-muted-foreground">
+          <p className="text-lg">No vocabularies found</p>
+          <p className="mt-1 text-sm">Create your first vocabulary to get started.</p>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+          {vocabularies.map((vocabulary) => (
+            <Card
+              key={vocabulary.id}
+              onClick={() => navigate(`/vocabularies/${vocabulary.id}`)}
+              className="cursor-pointer p-4 transition-colors hover:border-primary/50 hover:bg-accent/40"
+            >
+              <h3 className="font-semibold">{vocabulary.name}</h3>
+              <p className="mt-1 truncate text-sm text-muted-foreground">ID: {vocabulary.id}</p>
+              {vocabulary.maintainers && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {vocabulary.maintainers.length} maintainer{vocabulary.maintainers.length !== 1 ? 's' : ''}
+                </p>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };

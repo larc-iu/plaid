@@ -1,56 +1,39 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  Container, 
-  Paper, 
-  Title, 
-  Text, 
-  TextInput, 
-  PasswordInput, 
-  Button, 
-  Alert, 
-  Stack,
-  Center
-} from '@mantine/core';
-import { useForm } from '@mantine/form';
-import { notifications } from '@mantine/notifications';
+import { notifySuccess } from '@/utils/feedback';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
+// First screen migrated from Mantine to shadcn/Tailwind. The `.tw` wrapper opts
+// this subtree into the scoped preflight subset (see src/index.css).
 export const LoginForm = () => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const form = useForm({
-    initialValues: {
-      username: '',
-      password: ''
-    },
-    validate: {
-      username: (value) => value.length === 0 ? 'Username is required' : null,
-      password: (value) => value.length === 0 ? 'Password is required' : null
-    }
-  });
-
-  const handleSubmit = async (values) => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setError('');
-    setLoading(true);
+    if (!username) return setError('Username is required');
+    if (!password) return setError('Password is required');
 
+    setLoading(true);
     try {
-      const result = await login(values.username, values.password);
+      const result = await login(username, password);
       if (result.success) {
-        notifications.show({
-          title: 'Success',
-          message: 'Login successful!',
-          color: 'green'
-        });
+        notifySuccess('Login successful!', 'Success');
         navigate('/projects');
       } else {
         setError(result.error || 'Login failed. Please check your credentials.');
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -58,53 +41,51 @@ export const LoginForm = () => {
   };
 
   return (
-    <Container size="sm" style={{ height: '100vh', display: 'flex', alignItems: 'center' }}>
-      <Paper shadow="md" p="xl" radius="md" style={{ width: '100%' }}>
-        <Stack spacing="md">
-          <Center>
-            <Stack spacing="xs" align="center">
-              <Title order={1} size="h2">Plaid Base Login</Title>
-              <Text size="sm" color="dimmed">Plaid Annotation Interface</Text>
-            </Stack>
-          </Center>
-          
-          <form onSubmit={form.onSubmit(handleSubmit)}>
-            <Stack spacing="md">
-              {error && (
-                <Alert color="red" title="Login Error">
-                  {error}
-                </Alert>
-              )}
-              
-              <TextInput
-                label="Username"
-                placeholder="Enter your username"
-                required
-                disabled={loading}
-                {...form.getInputProps('username')}
-              />
-              
-              <PasswordInput
-                label="Password"
-                placeholder="Enter your password"
-                required
-                disabled={loading}
-                {...form.getInputProps('password')}
-              />
-              
-              <Button 
-                type="submit" 
-                loading={loading}
-                fullWidth
-                size="md"
-                mt="sm"
+    <div className="tw flex min-h-screen items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="items-center text-center">
+          <CardTitle className="text-2xl">Plaid Base Login</CardTitle>
+          <CardDescription>Plaid Annotation Interface</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {error && (
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
               >
-                {loading ? 'Logging in...' : 'Login'}
-              </Button>
-            </Stack>
+                {error}
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                placeholder="Enter your username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={loading}
+                autoComplete="username"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                autoComplete="current-password"
+              />
+            </div>
+            <Button type="submit" disabled={loading} className="mt-2 w-full">
+              {loading ? 'Logging in…' : 'Login'}
+            </Button>
           </form>
-        </Stack>
-      </Paper>
-    </Container>
+        </CardContent>
+      </Card>
+    </div>
   );
 };

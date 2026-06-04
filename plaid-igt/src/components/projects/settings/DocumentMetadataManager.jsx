@@ -1,20 +1,8 @@
 import { useState, useEffect } from 'react';
-import { 
-  Stack, 
-  Text, 
-  Paper,
-  TextInput,
-  Button,
-  Group
-} from '@mantine/core';
-import { DataTable } from 'mantine-datatable';
-import IconPlus from '@tabler/icons-react/dist/esm/icons/IconPlus.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
-import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs';
-import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
-import IconChevronUp from '@tabler/icons-react/dist/esm/icons/IconChevronUp.mjs';
-import IconChevronDown from '@tabler/icons-react/dist/esm/icons/IconChevronDown.mjs';
-import { notifications } from '@mantine/notifications';
+import { Plus, Trash2, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
 // Predefined metadata fields common in linguistic annotation
 const PREDEFINED_FIELDS = {
@@ -26,7 +14,7 @@ const PREDEFINED_FIELDS = {
   'Transcriber': false
 };
 
-export const DocumentMetadataManager = ({ 
+export const DocumentMetadataManager = ({
   initialData,
   onLoadData,
   onSaveChanges,
@@ -44,12 +32,12 @@ export const DocumentMetadataManager = ({
     const initializeData = async () => {
       try {
         let fieldsData = initialData;
-        
+
         // If no initial data provided, try loading from callback
         if (!fieldsData && onLoadData) {
           fieldsData = await onLoadData();
         }
-        
+
         // If still no data, use predefined fields as default
         if (!fieldsData?.enabledFields) {
           fieldsData = {
@@ -60,7 +48,7 @@ export const DocumentMetadataManager = ({
             }))
           };
         }
-        
+
         setEnabledFields(fieldsData.enabledFields);
         setIsInitialized(true);
       } catch (error) {
@@ -73,15 +61,11 @@ export const DocumentMetadataManager = ({
         }));
         setEnabledFields(defaultFields);
         setIsInitialized(true);
-        
+
         if (onError) {
           onError(error);
         } else {
-          notifications.show({
-            title: 'Load Error',
-            message: 'Failed to load metadata configuration',
-            color: 'red'
-          });
+          notifyError('Failed to load metadata configuration', 'Load Error');
         }
       }
     };
@@ -100,11 +84,7 @@ export const DocumentMetadataManager = ({
       if (onError) {
         onError(error);
       } else {
-        notifications.show({
-          title: 'Save Error',
-          message: 'Failed to save metadata configuration',
-          color: 'red'
-        });
+        notifyError('Failed to save metadata configuration', 'Save Error');
       }
     }
   };
@@ -118,27 +98,19 @@ export const DocumentMetadataManager = ({
 
   const handleAddCustomField = async () => {
     const trimmedName = newFieldName.trim();
-    
+
     if (!trimmedName) {
-      notifications.show({
-        title: 'Invalid Field Name',
-        message: 'Field name cannot be empty',
-        color: 'red'
-      });
+      notifyError('Field name cannot be empty', 'Invalid Field Name');
       return;
     }
 
     // Check for duplicate names (case insensitive)
-    const isDuplicate = enabledFields.some(field => 
+    const isDuplicate = enabledFields.some(field =>
       field.name.toLowerCase() === trimmedName.toLowerCase()
     );
 
     if (isDuplicate) {
-      notifications.show({
-        title: 'Duplicate Field',
-        message: 'A field with this name already exists',
-        color: 'red'
-      });
+      notifyError('A field with this name already exists', 'Duplicate Field');
       return;
     }
 
@@ -152,22 +124,14 @@ export const DocumentMetadataManager = ({
     await saveChanges(updatedFields);
 
     setNewFieldName('');
-    notifications.show({
-      title: 'Field Added',
-      message: `"${trimmedName}" has been added to your metadata fields`,
-      color: 'green'
-    });
+    notifySuccess(`"${trimmedName}" has been added to your metadata fields`, 'Field Added');
   };
 
   const handleDeleteCustomField = async (fieldName) => {
     const updatedFields = enabledFields.filter(field => field.name !== fieldName);
     await saveChanges(updatedFields);
-    
-    notifications.show({
-      title: 'Field Removed',
-      message: `"${fieldName}" has been removed`,
-      color: 'blue'
-    });
+
+    notifyInfo(`"${fieldName}" has been removed`, 'Field Removed');
   };
 
   const handleKeyPress = (event) => {
@@ -180,7 +144,7 @@ export const DocumentMetadataManager = ({
   const wouldBeDuplicate = () => {
     const trimmedName = newFieldName.trim();
     if (!trimmedName) return false;
-    return enabledFields.some(field => 
+    return enabledFields.some(field =>
       field.name.toLowerCase() === trimmedName.toLowerCase()
     );
   };
@@ -188,23 +152,23 @@ export const DocumentMetadataManager = ({
   const handleMoveField = async (fieldName, direction) => {
     const currentIndex = enabledFields.findIndex(field => field.name === fieldName);
     if (currentIndex === -1) return;
-    
+
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
     if (newIndex < 0 || newIndex >= enabledFields.length) return;
-    
+
     const newFields = [...enabledFields];
     const [movedField] = newFields.splice(currentIndex, 1);
     newFields.splice(newIndex, 0, movedField);
-    
+
     await saveChanges(newFields);
   };
 
   // Don't render until initialized (but don't block on external isLoading)
   if (!isInitialized) {
     return (
-      <Paper p="md" withBorder>
-        <Text>Loading metadata configuration...</Text>
-      </Paper>
+      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+        Loading metadata configuration...
+      </div>
     );
   }
 
@@ -215,140 +179,114 @@ export const DocumentMetadataManager = ({
   }));
 
   return (
-    <Stack spacing="xl">
+    <div className="flex flex-col gap-8">
       {/* Metadata Fields Table */}
-      <Paper p="md" withBorder>
-        {showTitle && <Text size="md" fw={500} mb="md">Available Metadata Fields</Text>}
-        
-        <DataTable
-          textSelectionDisabled
-          withTableBorder
-          withRowBorders
-          highlightOnHover
-          onRowClick={({ record }) => {
-            handleFieldToggle(record.name, !record.enabled);
-          }}
-          styles={{
-            table: {
-              cursor: 'pointer'
-            }
-          }}
-          columns={[
-            {
-              accessor: 'enabled', 
-              title: 'Enabled',
-              width: '10%',
-              render: (record) => (
-                record.enabled ? (
-                  <IconCheck size={18} color="green" />
-                ) : (
-                  <IconX size={18} color="gray" />
-                )
-              )
-            },
-            {
-              accessor: 'name',
-              title: 'Field Name',
-              width: '90%',
-              render: (record) => {
-                return (
-                  <Group 
-                    justify="space-between" 
-                    onMouseEnter={() => setHoveredField(record.name)}
-                    onMouseLeave={() => setHoveredField(null)}
-                    style={{ width: '100%' }}
-                  >
-                    <Text 
-                      c={record.enabled ? undefined : 'dimmed'}
-                      fs={record.enabled ? undefined : 'italic'}
-                    >
-                      {record.name}
-                    </Text>
-                    <Group spacing="xs">
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="gray"
-                        style={{ 
-                          opacity: hoveredField === record.name ? 1 : 0,
-                          transition: 'opacity 0.2s ease'
-                        }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleMoveField(record.name, 'up');
-                        }}
-                        disabled={tableData.findIndex(item => item.name === record.name) === 0}
-                      >
-                        <IconChevronUp size={12} />
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        color="gray"
-                        style={{ 
-                          opacity: hoveredField === record.name ? 1 : 0,
-                          transition: 'opacity 0.2s ease'
-                        }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleMoveField(record.name, 'down');
-                        }}
-                        disabled={tableData.findIndex(item => item.name === record.name) === tableData.length - 1}
-                      >
-                        <IconChevronDown size={12} />
-                      </Button>
-                      <Button
-                        size="xs"
-                        color="red"
-                        variant="light"
-                        style={{ 
-                          opacity: hoveredField === record.name ? 1 : 0,
-                          transition: 'opacity 0.2s ease'
-                        }}
-                        onClick={(event) => {
-                          event.stopPropagation(); // Prevent row click when clicking delete
-                          if (record.isCustom) {
-                            handleDeleteCustomField(record.name);
-                          } else {
-                            // For predefined fields, reset to default value instead of deleting
-                            const defaultEnabled = PREDEFINED_FIELDS[record.name] || false;
-                            handleFieldToggle(record.name, defaultEnabled);
-                          }
-                        }}
-                      >
-                        <IconTrash size={14} />
-                      </Button>
-                    </Group>
-                  </Group>
-                );
-              }
-            }
-          ]}
-          records={tableData}
-          minHeight={200}
-        />
+      <div className="rounded-lg border bg-card p-4">
+        {showTitle && <p className="mb-4 text-sm font-medium">Available Metadata Fields</p>}
+
+        <div className="overflow-hidden rounded-md border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th className="w-[10%] px-3 py-2 text-left font-medium">Enabled</th>
+                <th className="w-[90%] px-3 py-2 text-left font-medium">Field Name</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableData.map((record) => (
+                <tr
+                  key={record.id}
+                  className="cursor-pointer border-t hover:bg-muted/50"
+                  onClick={() => handleFieldToggle(record.name, !record.enabled)}
+                  onMouseEnter={() => setHoveredField(record.name)}
+                  onMouseLeave={() => setHoveredField(null)}
+                >
+                  <td className="px-3 py-2">
+                    {record.enabled ? (
+                      <Check className="h-[18px] w-[18px] text-green-600" />
+                    ) : (
+                      <X className="h-[18px] w-[18px] text-muted-foreground" />
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className={record.enabled ? undefined : 'italic text-muted-foreground'}>
+                        {record.name}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          className="h-7 w-7 transition-opacity"
+                          style={{ opacity: hoveredField === record.name ? 1 : 0 }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleMoveField(record.name, 'up');
+                          }}
+                          disabled={tableData.findIndex(item => item.name === record.name) === 0}
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          className="h-7 w-7 transition-opacity"
+                          style={{ opacity: hoveredField === record.name ? 1 : 0 }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleMoveField(record.name, 'down');
+                          }}
+                          disabled={tableData.findIndex(item => item.name === record.name) === tableData.length - 1}
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="destructive"
+                          className="h-7 w-7 transition-opacity"
+                          style={{ opacity: hoveredField === record.name ? 1 : 0 }}
+                          onClick={(event) => {
+                            event.stopPropagation(); // Prevent row click when clicking delete
+                            if (record.isCustom) {
+                              handleDeleteCustomField(record.name);
+                            } else {
+                              // For predefined fields, reset to default value instead of deleting
+                              const defaultEnabled = PREDEFINED_FIELDS[record.name] || false;
+                              handleFieldToggle(record.name, defaultEnabled);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {/* Add Custom Field */}
-        <Paper p="md">
-          <Text size="md" fw={500} mb="md">Add Custom Field</Text>
-          <Group>
-            <TextInput
-                placeholder="Enter custom field name"
-                value={newFieldName}
-                onChange={(event) => setNewFieldName(event.currentTarget.value)}
-                onKeyDown={handleKeyPress}
-                flex={1}
+        <div className="p-4">
+          <p className="mb-4 text-sm font-medium">Add Custom Field</p>
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Enter custom field name"
+              value={newFieldName}
+              onChange={(event) => setNewFieldName(event.target.value)}
+              onKeyDown={handleKeyPress}
+              className="flex-1"
             />
             <Button
-                leftSection={<IconPlus size={16} />}
-                onClick={handleAddCustomField}
-                disabled={!newFieldName.trim() || wouldBeDuplicate()}
+              onClick={handleAddCustomField}
+              disabled={!newFieldName.trim() || wouldBeDuplicate()}
             >
-              Add Field
+              <Plus className="h-4 w-4" /> Add Field
             </Button>
-          </Group>
-        </Paper>
-      </Paper>
-    </Stack>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

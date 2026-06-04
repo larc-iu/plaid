@@ -1,29 +1,44 @@
-import { useEffect, useCallback, useRef } from 'react';
-import { useSnapshot } from 'valtio';
-import { useHotkeys } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
-import { useStrictModeErrorHandler } from '../hooks/useStrictModeErrorHandler.js';
+import { useEffect, useCallback, useRef, useState } from 'react';
+import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
-import documentsStore from '../../../stores/documentsStore.js';
 
-export const useMediaOperations = (projectId, documentId, reload, client) => {
-  const handleError = useStrictModeErrorHandler(reload);
-  
-  // Get the document snapshot and proxy
-  const docSnap = useSnapshot(documentsStore[projectId][documentId]);
-  const docProxy = documentsStore[projectId][documentId];
-  const uiProxy = docProxy.ui.media;
-  const uiSnap = docSnap.ui.media;
-  
-  const document = docSnap.document;
-  const project = docSnap.project;
-  const parsedDocument = docSnap;
-  
+// Matches the old Mantine useHotkeys default: ignore key events from form fields.
+const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
+
+// Media tab operations, backed by the shared IgtDocument. This hook OWNS all
+// transient media UI state (playback position, selection, popover, ASR options)
+// as local React state, and delegates every mutation to the domain model
+// (doc.uploadMedia/deleteMedia/clearAlignments/etc., all _withSaving-wrapped so
+// they single-flight + toast + reload-on-error). The returned object is the
+// single source the timeline + player read from.
+export const useMediaOperations = () => {
+  const { doc } = useDocumentCtx();
+  useIgtDocument(doc);
+
+  const project = doc.project;
+
   // Refs for RAF and monitoring
   const selectionMonitorRef = useRef(null);
   const mediaElementRef = useRef(null);
   const autoScrollToTimeRef = useRef(null);
-  
+
+  // Local media UI state (formerly ui.media.* on the valtio proxy)
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.8);
+  const [selection, setSelection] = useState(null);
+  const [playingSelection, setPlayingSelection] = useState(null);
+  const [popoverOpened, setPopoverOpened] = useState(false);
+  const [pixelsPerSecond, setPixelsPerSecond] = useState(25);
+  const [asrAlgorithm, setAsrAlgorithm] = useState('');
+  const [asrAlgorithmOptions, setAsrAlgorithmOptions] = useState([]);
+  const [transcriptionProgress, setTranscriptionProgress] = useState(0);
+  const [currentOperation, setCurrentOperation] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+
   // ASR service hook
   const {
     availableServices,
@@ -42,11 +57,11 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
     return `${serverUrl}?token=${localStorage.getItem('token')}`;
   };
 
-  const authenticatedMediaUrl = getAuthenticatedMediaUrl(parsedDocument.document.mediaUrl);
+  const authenticatedMediaUrl = getAuthenticatedMediaUrl(doc.document.mediaUrl);
 
   // Get alignment token layer and tokens
-  const alignmentTokenLayer = parsedDocument.layers.alignmentTokenLayer;
-  const alignmentTokens = parsedDocument.alignmentTokens || [];
+  const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
+  const alignmentTokens = doc.alignmentTokens || [];
 
   // Media playback operations
   const setMediaElement = useCallback((element) => {
@@ -58,164 +73,131 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
   }, []);
 
   const handleTimeUpdate = useCallback((time) => {
-    uiProxy.currentTime = time;
-  }, [uiProxy]);
+    setCurrentTime(time);
+  }, []);
 
-  const handleDurationChange = useCallback((duration) => {
-    uiProxy.duration = duration;
-  }, [uiProxy]);
+  const handleDurationChange = useCallback((d) => {
+    setDuration(d);
+  }, []);
 
-  const handlePlayingChange = useCallback((isPlaying) => {
-    uiProxy.isPlaying = isPlaying;
-  }, [uiProxy]);
+  const handlePlayingChange = useCallback((playing) => {
+    setIsPlaying(playing);
+  }, []);
 
-  const handleVolumeChange = useCallback((volume) => {
-    uiProxy.volume = volume;
-  }, [uiProxy]);
+  const handleVolumeChange = useCallback((v) => {
+    setVolume(v);
+  }, []);
 
   const handleSeek = useCallback((time) => {
-    uiProxy.playingSelection = null; // Clear any playing selection
+    setPlayingSelection(null); // Clear any playing selection
     // Auto-scroll timeline to show the seek position
     if (autoScrollToTimeRef.current) {
       autoScrollToTimeRef.current(time);
     }
-  }, [uiProxy]);
+  }, []);
 
   const handleSkipToBeginning = useCallback(() => {
     if (mediaElementRef.current) {
       mediaElementRef.current.pause();
       mediaElementRef.current.currentTime = 0;
-      uiProxy.currentTime = 0;
-      uiProxy.playingSelection = null;
+      setCurrentTime(0);
+      setPlayingSelection(null);
       // Auto-scroll timeline to beginning
       if (autoScrollToTimeRef.current) {
         autoScrollToTimeRef.current(0);
       }
     }
-  }, [uiProxy]);
+  }, []);
 
   const handleSkipToEnd = useCallback(() => {
-    if (mediaElementRef.current && uiSnap.duration) {
+    if (mediaElementRef.current && duration) {
       mediaElementRef.current.pause();
-      mediaElementRef.current.currentTime = uiSnap.duration;
-      uiProxy.currentTime = uiSnap.duration;
-      uiProxy.playingSelection = null;
+      mediaElementRef.current.currentTime = duration;
+      setCurrentTime(duration);
+      setPlayingSelection(null);
       // Auto-scroll timeline to end
       if (autoScrollToTimeRef.current) {
-        autoScrollToTimeRef.current(uiSnap.duration);
+        autoScrollToTimeRef.current(duration);
       }
     }
-  }, [uiProxy, uiSnap.duration]);
+  }, [duration]);
 
   const handlePlaySelection = useCallback(() => {
-    if (uiSnap.selection && mediaElementRef.current) {
-      mediaElementRef.current.currentTime = uiSnap.selection.start;
-      uiProxy.playingSelection = uiSnap.selection;
-      
+    if (selection && mediaElementRef.current) {
+      mediaElementRef.current.currentTime = selection.start;
+      setPlayingSelection(selection);
+
       // Wait for seek to complete before starting playback
       const handleSeeked = () => {
         mediaElementRef.current.removeEventListener('seeked', handleSeeked);
         mediaElementRef.current.play();
       };
-      
+
       mediaElementRef.current.addEventListener('seeked', handleSeeked);
     }
-  }, [uiSnap.selection, uiProxy]);
+  }, [selection]);
 
   const handleClearSelection = useCallback(() => {
-    uiProxy.selection = null;
-    uiProxy.popoverOpened = false;
-  }, [uiProxy]);
-
-  const setPopoverOpened = useCallback((opened) => {
-    uiProxy.popoverOpened = opened;
-  }, [uiProxy]);
+    setSelection(null);
+    setPopoverOpened(false);
+  }, []);
 
   // Media upload operations
   const handleMediaUpload = useCallback(async (file) => {
     if (!file) return;
 
-    try {
-      uiProxy.isUploading = true;
-      await client.documents.uploadMedia(parsedDocument.document.id, file);
-      
-      notifications.show({
-        title: 'Success',
-        message: 'Media file uploaded successfully',
-        color: 'green'
-      });
-      
-      // Reload to get updated document state
-      if (reload) {
-        reload();
-      }
-    } catch (error) {
-      handleError(error, 'upload media file');
-    } finally {
-      uiProxy.isUploading = false;
+    setIsUploading(true);
+    const ok = await doc.uploadMedia(file);
+    setIsUploading(false);
+    if (ok) {
+      notifySuccess('Media file uploaded successfully', 'Success');
     }
-  }, [client, parsedDocument, handleError, uiProxy, reload]);
+  }, [doc]);
 
   const handleDeleteMedia = useCallback(async () => {
-    if (!parsedDocument.document.id || !client) return;
+    if (!doc.document.id) return;
 
     if (!confirm('Are you sure you want to delete this media file? This action cannot be undone.')) {
       return;
     }
 
-    try {
-      await client.documents.deleteMedia(parsedDocument.document.id);
-      
-      notifications.show({
-        title: 'Media Deleted',
-        message: 'Media file has been deleted successfully',
-        color: 'green'
-      });
-      
-      // Reload to get updated document state
-      if (reload) {
-        reload();
-      }
-    } catch (error) {
-      handleError(error, 'delete media file');
+    const ok = await doc.deleteMedia();
+    if (ok) {
+      notifySuccess('Media file has been deleted successfully', 'Media Deleted');
     }
-  }, [client, parsedDocument, handleError, reload]);
+  }, [doc]);
 
   // ASR operations
   const handleAsrDropdownInteraction = useCallback(async () => {
     if (!project.id || isDiscovering) return;
     await discoverServices(project.id);
-  }, [project.id, discoverServices]);
+  }, [project.id, discoverServices, isDiscovering]);
 
   const updateProgress = useCallback((percent, operation) => {
-    uiProxy.transcriptionProgress = percent;
-    uiProxy.currentOperation = operation;
-  }, [uiProxy]);
+    setTranscriptionProgress(percent);
+    setCurrentOperation(operation);
+  }, []);
 
   const handleTranscribe = useCallback(async () => {
-    if (!uiSnap.asrAlgorithm.startsWith('service:')) return;
-    
-    const serviceId = uiSnap.asrAlgorithm.substring(8); // Remove 'service:' prefix
-    const documentId = parsedDocument.document.id;
-    
+    if (!asrAlgorithm.startsWith('service:')) return;
+
+    const serviceId = asrAlgorithm.substring(8); // Remove 'service:' prefix
+    const documentId = doc.document.id;
+
     if (!documentId) {
-      notifications.show({
-        title: 'Error',
-        message: 'Document ID not found',
-        color: 'red'
-      });
+      notifyError('Document ID not found', 'Error');
       return;
     }
-    
+
     // Find text, alignment token, and sentence token layers
-    const primaryTextLayer = parsedDocument.layers.primaryTextLayer;
-    const alignmentTokenLayer = parsedDocument.layers.alignmentTokenLayer;
-    const sentenceTokenLayer = parsedDocument.layers.sentenceTokenLayer;
+    const primaryTextLayer = doc.layerInfo.primaryTextLayer;
+    const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
+    const sentenceTokenLayer = doc.layerInfo.sentenceTokenLayer;
 
     try {
       updateProgress(10, 'Starting transcription...');
-      
-      const result = await requestService(
+
+      await requestService(
         project.id,
         documentId,
         serviceId,
@@ -232,115 +214,99 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
           errorMessage: 'An error occurred during transcription'
         }
       );
-      
+
       updateProgress(100, 'Transcription complete!');
-      
-      // Note: For ASR transcription, we keep the reload since it creates many alignment tokens
-      // and the service response doesn't include the created token data needed for optimistic updates
-      if (reload) {
-        reload();
-      }
-      
+
+      // Note: For ASR transcription, we reload since it creates many alignment
+      // tokens and the service response doesn't include the created token data.
+      await doc._reload();
+
     } catch (error) {
       console.error('Transcription failed:', error);
       updateProgress(0, '');
     }
-  }, [uiSnap.asrAlgorithm, parsedDocument, project, requestService, updateProgress, reload]);
+  }, [asrAlgorithm, doc, project, requestService, updateProgress]);
 
   const handleClearAlignments = useCallback(async () => {
     if (!alignmentTokens.length) return;
-    
+
     if (!confirm('Are you sure you want to clear all time alignments? This action cannot be undone.')) {
       return;
     }
-    
-    try {
-      updateProgress(25, 'Clearing alignments...');
-      
-      // Delete all alignment tokens
-      const alignmentIds = alignmentTokens.map(token => token.id);
-      await client.tokens.bulkDelete(alignmentIds);
-      
-      updateProgress(100, 'Alignments cleared!');
-      
-      notifications.show({
-        title: 'Success',
-        message: `Cleared ${alignmentIds.length} time alignments`,
-        color: 'green'
-      });
-      
-      // Reload to get updated document state
-      if (reload) {
-        reload();
-      }
-      
-    } catch (error) {
-      handleError(error, 'clear alignments');
-    } finally {
-      uiProxy.transcriptionProgress = 0;
-      uiProxy.currentOperation = '';
+
+    updateProgress(25, 'Clearing alignments...');
+    const count = alignmentTokens.length;
+    const ok = await doc.clearAlignments();
+    updateProgress(100, 'Alignments cleared!');
+    if (ok) {
+      notifySuccess(`Cleared ${count} time alignments`, 'Success');
     }
-  }, [alignmentTokens, client, handleError, reload, updateProgress, uiProxy]);
+    setTranscriptionProgress(0);
+    setCurrentOperation('');
+  }, [alignmentTokens, doc, updateProgress]);
 
   const handleAlgorithmChange = useCallback((value) => {
-    uiProxy.asrAlgorithm = value;
+    setAsrAlgorithm(value);
     // Cache the selection
     if (value) {
       localStorage.setItem('plaid_asr_algorithm', value);
     } else {
       localStorage.removeItem('plaid_asr_algorithm');
     }
-  }, [uiProxy]);
+  }, []);
 
-  // Setup hotkeys
-  useHotkeys([
-    // ESC key to clear selection
-    ['Escape', () => {
-      if (uiSnap.selection) {
-        uiProxy.selection = null;
-        uiProxy.popoverOpened = false;
-      }
-    }],
-    
-    // Space key to toggle playback
-    ['space', () => {
-      if (mediaElementRef.current) {
-        if (uiSnap.isPlaying) {
-          mediaElementRef.current.pause();
-        } else {
-          mediaElementRef.current.play();
+  // Setup hotkeys (replaces Mantine useHotkeys; ignores events from form fields).
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (TAGS_TO_IGNORE.includes(e.target?.tagName)) return;
+      // ESC key to clear selection
+      if (e.key === 'Escape') {
+        if (selection) {
+          setSelection(null);
+          setPopoverOpened(false);
+        }
+      } else if (e.key === ' ' && e.ctrlKey) {
+        // Ctrl+Space to play selection
+        e.preventDefault();
+        if (selection && mediaElementRef.current) {
+          handlePlaySelection();
+        }
+      } else if (e.key === ' ') {
+        // Space key to toggle playback
+        e.preventDefault();
+        if (mediaElementRef.current) {
+          if (isPlaying) {
+            mediaElementRef.current.pause();
+          } else {
+            mediaElementRef.current.play();
+          }
         }
       }
-    }],
-    
-    // Ctrl+Space to play selection
-    ['ctrl+space', () => {
-      if (uiSnap.selection && mediaElementRef.current) {
-        handlePlaySelection();
-      }
-    }]
-  ]);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selection, isPlaying, handlePlaySelection]);
 
   // Monitor selection playback and auto-pause at end
   useEffect(() => {
     const monitorSelection = () => {
-      if (uiSnap.playingSelection && mediaElementRef.current && uiSnap.isPlaying) {
-        const currentTime = mediaElementRef.current.currentTime;
-        if (currentTime >= uiSnap.playingSelection.end) {
+      if (playingSelection && mediaElementRef.current && isPlaying) {
+        const t = mediaElementRef.current.currentTime;
+        if (t >= playingSelection.end) {
           // Reached end of selection, snap to exact end and pause
-          mediaElementRef.current.currentTime = uiSnap.playingSelection.end;
+          mediaElementRef.current.currentTime = playingSelection.end;
           mediaElementRef.current.pause();
-          uiProxy.playingSelection = null;
+          setPlayingSelection(null);
           return; // Stop monitoring
         }
       }
-      
-      if (uiSnap.playingSelection && uiSnap.isPlaying) {
+
+      if (playingSelection && isPlaying) {
         selectionMonitorRef.current = requestAnimationFrame(monitorSelection);
       }
     };
 
-    if (uiSnap.playingSelection && uiSnap.isPlaying) {
+    if (playingSelection && isPlaying) {
       selectionMonitorRef.current = requestAnimationFrame(monitorSelection);
     } else {
       if (selectionMonitorRef.current) {
@@ -355,7 +321,7 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
         selectionMonitorRef.current = null;
       }
     };
-  }, [uiSnap.playingSelection, uiSnap.isPlaying, uiProxy]);
+  }, [playingSelection, isPlaying]);
 
   // Trigger service discovery on component mount
   useEffect(() => {
@@ -368,7 +334,7 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
   useEffect(() => {
     // Build options list with discovered ASR services
     const options = [];
-    
+
     // Add discovered ASR services (filter by asr: prefix)
     availableServices.forEach(service => {
       if (service.serviceId.startsWith('asr:')) {
@@ -378,66 +344,74 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
         });
       }
     });
-    
-    uiProxy.asrAlgorithmOptions = options;
-  }, [availableServices, uiProxy]);
+
+    setAsrAlgorithmOptions(options);
+  }, [availableServices]);
 
   // Restore cached selection when options are available
   useEffect(() => {
-    if (uiSnap.asrAlgorithmOptions.length === 0) {
+    if (asrAlgorithmOptions.length === 0) {
       return;
     }
-    
+
     const cached = localStorage.getItem('plaid_asr_algorithm');
-    
+
     if (cached) {
-      const isAvailable = uiSnap.asrAlgorithmOptions.some(opt => opt.value === cached);
-      
+      const isAvailable = asrAlgorithmOptions.some(opt => opt.value === cached);
+
       if (isAvailable) {
         // Cached selection is available, restore it
-        uiProxy.asrAlgorithm = cached;
+        setAsrAlgorithm(cached);
       } else {
         // Cached selection no longer available, clear it
-        uiProxy.asrAlgorithm = '';
+        setAsrAlgorithm('');
         localStorage.removeItem('plaid_asr_algorithm');
       }
     }
-  }, [uiSnap.asrAlgorithmOptions, uiProxy]);
+  }, [asrAlgorithmOptions]);
 
   // Check if using ASR service
-  const isUsingAsrService = uiSnap.asrAlgorithm && uiSnap.asrAlgorithm.startsWith('service:');
+  const isUsingAsrService = asrAlgorithm && asrAlgorithm.startsWith('service:');
 
   return {
+    // Shared model
+    doc,
+
     // State
-    document,
+    document: doc.document,
     project,
-    parsedDocument,
     authenticatedMediaUrl,
     alignmentTokenLayer,
     alignmentTokens,
-    
+
     // Media state
-    currentTime: uiSnap.currentTime,
-    duration: uiSnap.duration,
-    isPlaying: uiSnap.isPlaying,
-    volume: uiSnap.volume,
-    selection: uiSnap.selection,
-    playingSelection: uiSnap.playingSelection,
-    popoverOpened: uiSnap.popoverOpened,
-    
+    currentTime,
+    setCurrentTime,
+    duration,
+    isPlaying,
+    volume,
+    selection,
+    setSelection,
+    playingSelection,
+    setPlayingSelection,
+    popoverOpened,
+    setPopoverOpened,
+    pixelsPerSecond,
+    setPixelsPerSecond,
+
     // ASR state
-    asrAlgorithm: uiSnap.asrAlgorithm,
-    asrAlgorithmOptions: uiSnap.asrAlgorithmOptions,
-    transcriptionProgress: uiSnap.transcriptionProgress,
-    currentOperation: uiSnap.currentOperation,
+    asrAlgorithm,
+    asrAlgorithmOptions,
+    transcriptionProgress,
+    currentOperation,
     isUsingAsrService,
     isProcessing,
     progressPercent,
     progressMessage,
-    
+
     // Upload state
-    isUploading: uiSnap.isUploading,
-    
+    isUploading,
+
     // Media operations
     setMediaElement,
     setAutoScrollToTime,
@@ -450,24 +424,23 @@ export const useMediaOperations = (projectId, documentId, reload, client) => {
     handleSkipToEnd,
     handlePlaySelection,
     handleClearSelection,
-    setPopoverOpened,
-    
+
     // Media file operations
     handleMediaUpload,
     handleDeleteMedia,
-    
+
     // ASR operations
     handleAsrDropdownInteraction,
     handleTranscribe,
     handleClearAlignments,
     handleAlgorithmChange,
-    
+
     // Service discovery
     discoverServices,
     isDiscovering,
     availableServices,
     hasServices,
-    
+
     // Refs
     mediaElementRef
   };

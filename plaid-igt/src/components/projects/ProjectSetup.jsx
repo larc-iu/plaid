@@ -1,26 +1,9 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  Container, 
-  Title, 
-  Text, 
-  Stack,
-  Paper,
-  Group,
-  Button,
-  Timeline,
-  Grid,
-  Breadcrumbs,
-  Anchor
-} from '@mantine/core';
-import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
-import IconStack from '@tabler/icons-react/dist/esm/icons/IconStack.mjs';
-import IconFileText from '@tabler/icons-react/dist/esm/icons/IconFileText.mjs';
-import IconLanguage from '@tabler/icons-react/dist/esm/icons/IconLanguage.mjs';
-import IconList from '@tabler/icons-react/dist/esm/icons/IconList.mjs';
-import IconBook2 from '@tabler/icons-react/dist/esm/icons/IconBook2.mjs';
-import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs';
+import { Info, Layers, FileText, Languages, List, BookOpen, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 // Step components
 import { BasicInfoStep } from './setup/BasicInfoStep';
@@ -35,7 +18,7 @@ export const ProjectSetup = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { user, client } = useAuth();
-  
+
   const [currentStep, setCurrentStep] = useState(0);
   const [setupData, setSetupData] = useState({
     // Will accumulate all setup configuration here
@@ -56,48 +39,48 @@ export const ProjectSetup = () => {
   // For /projects/new, projectId will be undefined
   // For /projects/:projectId/setup, projectId will be the actual ID
   const isNewProject = !projectId || projectId === 'new';
-  
+
   const steps = [
     ...(isNewProject ? [{
       id: 'basic-info',
       title: 'Basic Information',
-      icon: IconInfoCircle,
+      icon: Info,
       component: BasicInfoStep
     }] : []),
     ...(!isNewProject ? [{
       id: 'layer-selection',
       title: 'Layer Selection',
-      icon: IconStack,
+      icon: Layers,
       component: LayerSelectionStep
     }] : []),
     {
       id: 'document-metadata',
       title: 'Document Metadata',
-      icon: IconFileText,
+      icon: FileText,
       component: DocumentMetadataStep
     },
     {
       id: 'orthographies',
       title: 'Orthographies',
-      icon: IconLanguage,
+      icon: Languages,
       component: OrthographiesStep
     },
     {
       id: 'fields',
       title: 'Fields',
-      icon: IconList,
+      icon: List,
       component: FieldsStep
     },
     {
       id: 'vocabulary',
       title: 'Vocabulary',
-      icon: IconBook2,
+      icon: BookOpen,
       component: VocabularyStep
     },
     {
       id: 'confirmation',
       title: 'Confirmation',
-      icon: IconCheck,
+      icon: Check,
       component: ConfirmationStep
     }
   ];
@@ -134,69 +117,65 @@ export const ProjectSetup = () => {
     const StepComponent = currentStepData.component;
     const stepKey = stepIdToDataKey(currentStepData.id);
     const stepData = setupData[stepKey];
-    
+
     // If the step component has a validation function, use it
     if (StepComponent.isValid) {
       return StepComponent.isValid(stepData);
     }
-    
+
     // Default to valid if no validation function
     return true;
   };
 
-  const breadcrumbItems = [
-    { title: 'Projects', href: '/projects' },
-    { title: isNewProject ? 'New Project' : 'Project Setup', href: null }
-  ].map((item, index) => (
-    item.href ? (
-      <Anchor key={index} component={Link} to={item.href}>
-        {item.title}
-      </Anchor>
-    ) : (
-      <Text key={index}>{item.title}</Text>
-    )
-  ));
-
   return (
-    <Container size="xl" py="xl">
-      <Stack spacing="xl">
-        <Breadcrumbs>
-          {breadcrumbItems}
-        </Breadcrumbs>
+    <div className="tw mx-auto max-w-7xl px-4 py-8">
+      <div className="flex flex-col gap-8">
+        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to="/projects" className="hover:text-foreground hover:underline">Projects</Link>
+          <span>/</span>
+          <span>{isNewProject ? 'New Project' : 'Project Setup'}</span>
+        </nav>
 
         <div>
-          <Title order={1}>
+          <h1 className="text-2xl font-bold">
             {isNewProject ? 'Create New Project' : 'Project Setup'}
-          </Title>
-          <Text c="dimmed" size="sm">
+          </h1>
+          <p className="text-sm text-muted-foreground">
             {isNewProject
               ? 'Set up a new Plaid Base project.'
               : 'Configure your existing project for annotation with Plaid Base.'
             }
-          </Text>
+          </p>
         </div>
 
-        <Grid>
-          <Grid.Col span={3}>
-            <Paper p="md" withBorder>
-              <Timeline active={currentStep} bulletSize={24} lineWidth={2}>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
+          <div className="md:col-span-3">
+            <div className="rounded-lg border bg-card p-4">
+              <ol className="flex flex-col gap-3">
                 {steps.map((step, index) => (
-                  <Timeline.Item
-                    key={step.id}
-                    bullet={<step.icon size={14} />}
-                    title={step.title}
-                  >
-                  </Timeline.Item>
+                  <li key={step.id} className="flex items-center gap-2 text-sm">
+                    <span
+                      className={cn(
+                        'flex h-6 w-6 items-center justify-center rounded-full border text-xs',
+                        index <= currentStep
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-muted text-muted-foreground'
+                      )}
+                    >
+                      <step.icon className="h-3.5 w-3.5" />
+                    </span>
+                    <span className={cn(index === currentStep && 'font-medium')}>{step.title}</span>
+                  </li>
                 ))}
-              </Timeline>
-            </Paper>
-          </Grid.Col>
+              </ol>
+            </div>
+          </div>
 
-          <Grid.Col span={9}>
-            <Paper p="xl" withBorder>
-              <Stack spacing="lg">
+          <div className="md:col-span-9">
+            <div className="rounded-lg border bg-card p-6">
+              <div className="flex flex-col gap-6">
                 <div>
-                  <Title order={2}>{currentStepData.title}</Title>
+                  <h2 className="text-lg font-semibold">{currentStepData.title}</h2>
                 </div>
 
                 <StepComponent
@@ -209,27 +188,27 @@ export const ProjectSetup = () => {
                   client={client}
                 />
 
-                <Group justify="space-between" pt="md">
+                <div className="flex items-center justify-between gap-2 pt-4">
                   <Button
-                    variant="default"
+                    variant="outline"
                     onClick={handlePrevious}
                     disabled={currentStep === 0}
                   >
                     Previous
                   </Button>
-                  
+
                   <Button
                     onClick={handleNext}
                     disabled={currentStep === steps.length - 1 || !isCurrentStepValid()}
                   >
                     Next
                   </Button>
-                </Group>
-              </Stack>
-            </Paper>
-          </Grid.Col>
-        </Grid>
-      </Stack>
-    </Container>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

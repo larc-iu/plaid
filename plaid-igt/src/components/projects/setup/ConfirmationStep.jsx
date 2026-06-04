@@ -1,25 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Stack, 
-  Text, 
-  Paper, 
-  Button, 
-  Progress, 
-  Alert, 
-  Group,
-  List,
-  Badge,
-  Divider,
-  Loader,
-  Title
-} from '@mantine/core';
-import IconCheck from '@tabler/icons-react/dist/esm/icons/IconCheck.mjs';
-import IconX from '@tabler/icons-react/dist/esm/icons/IconX.mjs';
-import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
-import IconInfoCircle from '@tabler/icons-react/dist/esm/icons/IconInfoCircle.mjs';
-import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
-import { notifications } from '@mantine/notifications';
+import { Check, X, RefreshCw, Play } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { notifySuccess, notifyError } from '@/utils/feedback';
 
 export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const navigate = useNavigate();
@@ -46,7 +30,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     setErrors([]);
     setProgress(0);
     setCreatedResources({});
-    
+
     try {
       if (!client) {
         throw new Error('Authentication required');
@@ -68,11 +52,10 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         try {
           const existingProject = await client.projects.get(resumeProjectId);
           if (existingProject?.config?.plaid?.initialized === true) {
-            notifications.show({
-              title: 'Project Already Initialized',
-              message: 'This project is already initialized with Plaid Base. Re-running setup is not supported — create a new project instead.',
-              color: 'red'
-            });
+            notifyError(
+              'This project is already initialized with Plaid Base. Re-running setup is not supported — create a new project instead.',
+              'Project Already Initialized'
+            );
             setIsExecuting(false);
             return;
           }
@@ -174,7 +157,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
           .map(orth => ({
             name: orth.name
           }));
-        
+
         // Always save the config to indicate user choice, even if empty
         await client.tokenLayers.setConfig(tokenLayerId, "plaid", "orthographies", orthographiesConfig);
       }
@@ -183,7 +166,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       if (tokenLayerId && sentenceTokenLayerId) {
         updateProgress(50, 'Creating annotation field layers...');
         const createdSpanLayers = [];
-        
+
         // Create span layers for user-defined annotation fields
         if (setupData.fields?.fields?.length > 0) {
           for (const field of setupData.fields.fields) {
@@ -191,7 +174,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
               // Choose parent layer based on field scope
               let parentLayerId;
               let parentType;
-              
+
               if (field.scope === 'Sentence') {
                 parentLayerId = sentenceTokenLayerId;
                 parentType = 'sentence token layer';
@@ -203,20 +186,20 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
                 parentLayerId = tokenLayerId;
                 parentType = 'primary token layer';
               }
-              
+
               updateProgress(50, `Creating span layer: ${field.name} (${field.scope})...`);
               const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
-              
+
               // Set the scope in the span layer's config
               await client.spanLayers.setConfig(spanLayer.id, "plaid", "scope", field.scope);
-              
+
               createdSpanLayers.push(spanLayer);
             } catch (fieldError) {
               console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
             }
           }
         }
-        
+
         resources.spanLayers = createdSpanLayers;
       }
 
@@ -226,13 +209,13 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         const ignoredTokensConfig = {
           type: setupData.fields.ignoredTokens.mode === 'unicode-punctuation' ? 'unicodePunctuation' : 'blacklist'
         };
-        
+
         if (ignoredTokensConfig.type === 'unicodePunctuation') {
           ignoredTokensConfig.whitelist = setupData.fields.ignoredTokens.unicodePunctuationExceptions || [];
         } else {
           ignoredTokensConfig.blacklist = setupData.fields.ignoredTokens.explicitIgnoredTokens || [];
         }
-        
+
         await client.tokenLayers.setConfig(tokenLayerId, "plaid", "ignoredTokens", ignoredTokensConfig);
       }
 
@@ -241,7 +224,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         updateProgress(70, 'Configuring vocabularies...');
         const enabledVocabs = setupData.vocabulary.vocabularies.filter(vocab => vocab.enabled);
         const vocabulariesProcessed = [];
-        
+
         for (const vocab of enabledVocabs) {
           try {
             if (vocab.isCustom && vocab.id.startsWith('new-')) {
@@ -267,10 +250,10 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
 
       // Step 9: Configure document metadata
       updateProgress(80, 'Configuring document metadata...');
-      
+
       // Use configured fields if available, otherwise use predefined defaults
       let enabledFields = setupData.documentMetadata?.enabledFields?.filter(field => field.enabled) || [];
-      
+
       // If no document metadata was configured, use the default enabled fields
       if (!setupData.documentMetadata?.enabledFields) {
         const defaultFields = [
@@ -283,7 +266,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         ];
         enabledFields = defaultFields.filter(field => field.enabled);
       }
-      
+
       const metadataConfig = enabledFields.map(field => ({
         name: field.name
       }));
@@ -298,11 +281,10 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       setCreatedResources(resources);
       setIsComplete(true);
 
-      notifications.show({
-        title: 'Setup Complete',
-        message: 'Your project has been successfully configured with Plaid Base.',
-        color: 'green'
-      });
+      notifySuccess(
+        'Your project has been successfully configured with Plaid Base.',
+        'Setup Complete'
+      );
 
       // Redirect
       navigate(`/projects/${currentProjectId}`);
@@ -310,12 +292,8 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     } catch (error) {
       console.error('Setup failed:', error);
       setErrors(prev => [...prev, `Setup failed: ${error.message}`]);
-      
-      notifications.show({
-        title: 'Setup Failed',
-        message: error.message,
-        color: 'red'
-      });
+
+      notifyError(error.message, 'Setup Failed');
     } finally {
       setIsExecuting(false);
     }
@@ -323,19 +301,19 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
 
   // Review Section Components
   const ProjectInfoReview = () => (
-    <Paper p="md" withBorder>
-      <Text fw={500} mb="sm">Project Information</Text>
+    <div className="rounded-lg border bg-card p-4">
+      <p className="mb-2 font-medium">Project Information</p>
       {isNewProject && setupData.basicInfo?.projectName && (
-        <Text size="sm">
+        <p className="text-sm">
           <strong>Project Name:</strong> {setupData.basicInfo.projectName}
-        </Text>
+        </p>
       )}
       {!isNewProject && (
-        <Text size="sm">
+        <p className="text-sm">
           <strong>Project ID:</strong> {projectId}
-        </Text>
+        </p>
       )}
-    </Paper>
+    </div>
   );
 
   const LayerSelectionReview = () => {
@@ -347,48 +325,48 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     // row to keep the review concise.
     if (isNewProject) {
       return (
-        <Paper p="md" withBorder>
-          <Text fw={500} mb="sm">Layer Configuration</Text>
-          <Stack spacing="xs">
-            <Group>
-              <Text size="sm" fw={500}>Token Layer:</Text>
-              <Badge color="green">New: Main Tokens</Badge>
-            </Group>
-            <Group>
-              <Text size="sm" fw={500}>Morpheme Layer:</Text>
-              <Badge color="green">New: Main Morphemes</Badge>
-            </Group>
-          </Stack>
-        </Paper>
+        <div className="rounded-lg border bg-card p-4">
+          <p className="mb-2 font-medium">Layer Configuration</p>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium">Token Layer:</p>
+              <Badge className="border-transparent bg-green-100 text-green-700">New: Main Tokens</Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium">Morpheme Layer:</p>
+              <Badge className="border-transparent bg-green-100 text-green-700">New: Main Morphemes</Badge>
+            </div>
+          </div>
+        </div>
       );
     }
 
     if (!layerData) return null;
 
     return (
-      <Paper p="md" withBorder>
-        <Text fw={500} mb="sm">Layer Configuration</Text>
-        <Stack spacing="xs">
-          <Group>
-            <Text size="sm" fw={500}>Text Layer:</Text>
+      <div className="rounded-lg border bg-card p-4">
+        <p className="mb-2 font-medium">Layer Configuration</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">Text Layer:</p>
             {layerData.textLayerType === 'existing' ? (
-              <Badge color="blue">Existing: {layerData.selectedTextLayerId}</Badge>
+              <Badge className="border-transparent bg-blue-100 text-blue-700">Existing: {layerData.selectedTextLayerId}</Badge>
             ) : layerData.textLayerType === 'new' ? (
-              <Badge color="green">New: {layerData.newTextLayerName}</Badge>
+              <Badge className="border-transparent bg-green-100 text-green-700">New: {layerData.newTextLayerName}</Badge>
             ) : (
-              <Badge color="gray">Not configured</Badge>
+              <Badge variant="secondary">Not configured</Badge>
             )}
-          </Group>
-          <Group>
-            <Text size="sm" fw={500}>Token Layer:</Text>
-            <Badge color="green">New: {layerData.newTokenLayerName || 'Main Tokens'}</Badge>
-          </Group>
-          <Group>
-            <Text size="sm" fw={500}>Morpheme Layer:</Text>
-            <Badge color="green">New: {layerData.newMorphemeLayerName || 'Main Morphemes'}</Badge>
-          </Group>
-        </Stack>
-      </Paper>
+          </div>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">Token Layer:</p>
+            <Badge className="border-transparent bg-green-100 text-green-700">New: {layerData.newTokenLayerName || 'Main Tokens'}</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">Morpheme Layer:</p>
+            <Badge className="border-transparent bg-green-100 text-green-700">New: {layerData.newMorphemeLayerName || 'Main Morphemes'}</Badge>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -400,16 +378,16 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     if (enabledFields.length === 0) return null;
 
     return (
-      <Paper p="md" withBorder>
-        <Text fw={500} mb="sm">Document Metadata Fields</Text>
-        <List size="sm">
+      <div className="rounded-lg border bg-card p-4">
+        <p className="mb-2 font-medium">Document Metadata Fields</p>
+        <ul className="list-disc pl-5 text-sm">
           {enabledFields.map(field => (
-            <List.Item key={field.name}>
-              {field.name} {field.isCustom && <Badge size="xs" color="orange">Custom</Badge>}
-            </List.Item>
+            <li key={field.name}>
+              {field.name} {field.isCustom && <Badge className="border-transparent bg-orange-100 text-orange-700">Custom</Badge>}
+            </li>
           ))}
-        </List>
-      </Paper>
+        </ul>
+      </div>
     );
   };
 
@@ -418,16 +396,16 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     if (!orthographiesData?.orthographies?.length) return null;
 
     return (
-      <Paper p="md" withBorder>
-        <Text fw={500} mb="sm">Orthographies</Text>
-        <List size="sm">
+      <div className="rounded-lg border bg-card p-4">
+        <p className="mb-2 font-medium">Orthographies</p>
+        <ul className="list-disc pl-5 text-sm">
           {orthographiesData.orthographies.map(orth => (
-            <List.Item key={orth.name}>
-              {orth.name} {orth.isBaseline && <Badge size="xs" color="blue">Baseline</Badge>}
-            </List.Item>
+            <li key={orth.name}>
+              {orth.name} {orth.isBaseline && <Badge className="border-transparent bg-blue-100 text-blue-700">Baseline</Badge>}
+            </li>
           ))}
-        </List>
-      </Paper>
+        </ul>
+      </div>
     );
   };
 
@@ -435,35 +413,41 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     const fieldsData = setupData.fields;
     if (!fieldsData?.fields?.length) return null;
 
+    const scopeBadgeClasses = {
+      'Word': 'border-transparent bg-blue-100 text-blue-700',
+      'Morpheme': 'border-transparent bg-violet-100 text-violet-700',
+      'Sentence': 'border-transparent bg-green-100 text-green-700'
+    };
+
     return (
-      <Paper p="md" withBorder>
-        <Text fw={500} mb="sm">Annotation Fields</Text>
-        <List size="sm">
+      <div className="rounded-lg border bg-card p-4">
+        <p className="mb-2 font-medium">Annotation Fields</p>
+        <ul className="list-disc pl-5 text-sm">
           {fieldsData.fields.map(field => (
-            <List.Item key={field.name}>
-              {field.name} - <Badge size="xs" color={field.scope === 'Word' ? 'blue' : field.scope === 'Morpheme' ? 'violet' : 'green'}>{field.scope}</Badge>
-            </List.Item>
+            <li key={field.name}>
+              {field.name} - <Badge className={scopeBadgeClasses[field.scope]}>{field.scope}</Badge>
+            </li>
           ))}
-        </List>
+        </ul>
         {fieldsData.ignoredTokens && (
-          <div style={{ marginTop: '1rem' }}>
-            <Text size="sm" fw={500} mb="xs">Ignored Tokens Configuration:</Text>
-            <Text size="sm">
+          <div className="mt-4">
+            <p className="mb-1 text-sm font-medium">Ignored Tokens Configuration:</p>
+            <p className="text-sm">
               Mode: {fieldsData.ignoredTokens.mode === 'unicode-punctuation' ? 'Unicode Punctuation' : 'Explicit List'}
-            </Text>
+            </p>
             {fieldsData.ignoredTokens.mode === 'unicode-punctuation' && fieldsData.ignoredTokens.unicodePunctuationExceptions?.length > 0 && (
-              <Text size="sm">
+              <p className="text-sm">
                 Exceptions: {fieldsData.ignoredTokens.unicodePunctuationExceptions.join(', ')}
-              </Text>
+              </p>
             )}
             {fieldsData.ignoredTokens.mode === 'explicit-list' && fieldsData.ignoredTokens.explicitIgnoredTokens?.length > 0 && (
-              <Text size="sm">
+              <p className="text-sm">
                 Ignored: {fieldsData.ignoredTokens.explicitIgnoredTokens.join(', ')}
-              </Text>
+              </p>
             )}
           </div>
         )}
-      </Paper>
+      </div>
     );
   };
 
@@ -475,138 +459,150 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     if (enabledVocabs.length === 0) return null;
 
     return (
-      <Paper p="md" withBorder>
-        <Text fw={500} mb="sm">Enabled Vocabularies</Text>
-        <List size="sm">
+      <div className="rounded-lg border bg-card p-4">
+        <p className="mb-2 font-medium">Enabled Vocabularies</p>
+        <ul className="list-disc pl-5 text-sm">
           {enabledVocabs.map(vocab => (
-            <List.Item key={vocab.name}>
-              {vocab.name} {vocab.isCustom && <Badge size="xs" color="orange">New</Badge>}
-            </List.Item>
+            <li key={vocab.name}>
+              {vocab.name} {vocab.isCustom && <Badge className="border-transparent bg-orange-100 text-orange-700">New</Badge>}
+            </li>
           ))}
-        </List>
-      </Paper>
+        </ul>
+      </div>
     );
   };
 
   if (isComplete) {
     return (
-      <Stack spacing="lg">
-        <Alert color="green" title="Setup Complete!" icon={<IconCheck size={16} />}>
-          Your project has been successfully configured with Plaid Base. Redirecting to project...
-        </Alert>
-        <Paper p="md" withBorder>
-          <Text fw={500} mb="sm">Setup Summary</Text>
-          <Stack spacing="xs">
+      <div className="tw flex flex-col gap-6">
+        <div className="rounded-md border border-border bg-muted p-4">
+          <div className="flex items-start gap-2">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+            <div className="text-sm">
+              <p className="font-medium">Setup Complete!</p>
+              <p className="mt-1 text-muted-foreground">
+                Your project has been successfully configured with Plaid Base. Redirecting to project...
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <p className="mb-2 font-medium">Setup Summary</p>
+          <div className="flex flex-col gap-2">
             {createdResources.project && (
-              <Text size="sm">✓ Project created: {createdResources.project.name}</Text>
+              <p className="text-sm">✓ Project created: {createdResources.project.name}</p>
             )}
             {createdResources.textLayer && (
-              <Text size="sm">✓ Text layer: {createdResources.textLayer.name}</Text>
+              <p className="text-sm">✓ Text layer: {createdResources.textLayer.name}</p>
             )}
             {createdResources.tokenLayer && (
-              <Text size="sm">✓ Token layer: {createdResources.tokenLayer.name}</Text>
+              <p className="text-sm">✓ Token layer: {createdResources.tokenLayer.name}</p>
             )}
             {createdResources.morphemeLayer && (
-              <Text size="sm">✓ Morpheme layer: {createdResources.morphemeLayer.name}</Text>
+              <p className="text-sm">✓ Morpheme layer: {createdResources.morphemeLayer.name}</p>
             )}
             {createdResources.sentenceTokenLayer && (
-              <Text size="sm">✓ Sentence token layer: {createdResources.sentenceTokenLayer.name}</Text>
+              <p className="text-sm">✓ Sentence token layer: {createdResources.sentenceTokenLayer.name}</p>
             )}
             {createdResources.alignmentTokenLayer && (
-              <Text size="sm">✓ Alignment token layer: {createdResources.alignmentTokenLayer.name}</Text>
+              <p className="text-sm">✓ Alignment token layer: {createdResources.alignmentTokenLayer.name}</p>
             )}
             {createdResources.spanLayers?.length > 0 && (
-              <Text size="sm">✓ Span layers: {createdResources.spanLayers.map(layer => layer.name).join(', ')}</Text>
+              <p className="text-sm">✓ Span layers: {createdResources.spanLayers.map(layer => layer.name).join(', ')}</p>
             )}
             {createdResources.vocabularies?.length > 0 && (
-              <Text size="sm">✓ Vocabularies: {createdResources.vocabularies.length} configured</Text>
+              <p className="text-sm">✓ Vocabularies: {createdResources.vocabularies.length} configured</p>
             )}
-          </Stack>
-        </Paper>
-        <Group justify="center">
-          <Loader size="sm" />
-          <Text size="sm" c="dimmed">Redirecting to project...</Text>
-        </Group>
-      </Stack>
+          </div>
+        </div>
+        <div className="flex items-center justify-center gap-2">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+          <p className="text-sm text-muted-foreground">Redirecting to project...</p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Stack spacing="lg">
-      <Text size="md">
+    <div className="tw flex flex-col gap-6">
+      <p>
         Please review your choices below.
-      </Text>
+      </p>
 
-      <Stack spacing="md">
+      <div className="flex flex-col gap-4">
         <ProjectInfoReview />
         <LayerSelectionReview />
         <DocumentMetadataReview />
         <OrthographiesReview />
         <FieldsReview />
         <VocabularyReview />
-        
-        {/* Show message if no optional configuration is provided */}
-        {!setupData.documentMetadata?.enabledFields?.some(f => f.enabled) && 
-         !setupData.orthographies?.orthographies?.length && 
-         !setupData.fields?.fields?.length && 
-         !setupData.vocabulary?.vocabularies?.some(v => v.enabled) && (
-          <Paper p="md" withBorder>
-            <Text fw={500} mb="sm">Additional Configuration</Text>
-            <Text size="sm" c="dimmed">
-              No additional configuration selected. You can add document metadata, orthographies, 
-              annotation fields, and vocabularies later through the project settings.
-            </Text>
-          </Paper>
-        )}
-      </Stack>
 
-      <Divider />
+        {/* Show message if no optional configuration is provided */}
+        {!setupData.documentMetadata?.enabledFields?.some(f => f.enabled) &&
+         !setupData.orthographies?.orthographies?.length &&
+         !setupData.fields?.fields?.length &&
+         !setupData.vocabulary?.vocabularies?.some(v => v.enabled) && (
+          <div className="rounded-lg border bg-card p-4">
+            <p className="mb-2 font-medium">Additional Configuration</p>
+            <p className="text-sm text-muted-foreground">
+              No additional configuration selected. You can add document metadata, orthographies,
+              annotation fields, and vocabularies later through the project settings.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <hr className="border-border" />
 
       {errors.length > 0 && (
-        <Alert color="red" title="Setup Errors" icon={<IconX size={16} />}>
-          <Stack spacing="xs">
-            {errors.map((error, index) => (
-              <Text key={index} size="sm">{error}</Text>
-            ))}
-          </Stack>
-        </Alert>
+        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4">
+          <div className="flex items-start gap-2">
+            <X className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div className="text-sm">
+              <p className="font-medium text-destructive">Setup Errors</p>
+              <div className="mt-1 flex flex-col gap-2">
+                {errors.map((error, index) => (
+                  <p key={index} className="text-muted-foreground">{error}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {isExecuting && (
-        <Paper p="md" withBorder>
-          <Stack spacing="sm">
-            <Group>
-              <Loader size="sm" />
-              <Text fw={500}>Executing Setup...</Text>
-            </Group>
-            <Progress value={progress} animated />
-            <Text size="sm" c="dimmed">{currentOperation}</Text>
-          </Stack>
-        </Paper>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+              <p className="font-medium">Executing Setup...</p>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+            </div>
+            <p className="text-sm text-muted-foreground">{currentOperation}</p>
+          </div>
+        </div>
       )}
 
-      <Group justify="flex-end">
+      <div className="flex items-center justify-end gap-2">
         {errors.length > 0 && (
           <Button
-            leftSection={<IconRefresh size={16} />}
+            variant="outline"
             onClick={executeSetup}
             disabled={isExecuting}
-            loading={isExecuting}
-            color="orange"
           >
-            Retry Setup
+            <RefreshCw className="h-4 w-4" /> Retry Setup
           </Button>
         )}
         <Button
-          leftSection={<IconPlayerPlay size={16} />}
           onClick={executeSetup}
           disabled={isExecuting}
-          loading={isExecuting}
         >
-          {isNewProject ? "Create Project" : "Initialize Project"}
+          <Play className="h-4 w-4" /> {isNewProject ? "Create Project" : "Initialize Project"}
         </Button>
-      </Group>
-    </Stack>
+      </div>
+    </div>
   );
 };
 

@@ -1,0 +1,288 @@
+/* Styling for the vanilla-JS interlinear editor island. Plain CSS (no Mantine,
+   no Tailwind) — the island owns its own surface, mirroring plaid-ud's
+   convention of styling bespoke editor surfaces with plain CSS. Dimensions and
+   colors carried over from the old DocumentAnalyze.css for visual continuity. */
+
+.igt-island {
+  --igt-blue: #3b82f6;
+  --igt-row-h: 40px;
+  --igt-morph-h: 32px;
+  --igt-label-w: 120px;
+  width: 100%;
+  font-size: 14px;
+  color: #111827;
+}
+
+.igt-island__error {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.igt-island__empty {
+  padding: 24px;
+  text-align: center;
+  color: #6b7280;
+}
+
+/* ---- sentence block ---- */
+.igt-sentence {
+  position: relative;
+  padding: 10px 10px 10px 28px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.igt-sentence:nth-child(odd) { background: #ffffff; }
+.igt-sentence:nth-child(even) { background: #f8faff; }
+
+.igt-sentence__num {
+  position: absolute;
+  left: 6px;
+  top: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+/* ---- the interlinear grid ---- */
+.igt-grid {
+  display: flex;
+  align-items: flex-start;
+  overflow-x: auto;
+}
+
+.igt-labels {
+  flex: 0 0 var(--igt-label-w);
+  min-width: var(--igt-label-w);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  left: 0;
+  background: inherit;
+  z-index: 2;
+}
+
+.igt-row-label {
+  height: var(--igt-row-h);
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 12px;
+  color: #374151;
+  white-space: nowrap;
+  padding-right: 8px;
+}
+.igt-row-label--morph { height: var(--igt-morph-h); font-weight: 500; color: #6d28d9; }
+.igt-row-label--spacer { height: var(--igt-row-h); }
+
+.igt-tokens {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.igt-token-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 72px;
+  width: min-content;
+  border-left: 1px solid transparent;
+}
+
+.igt-token-form {
+  height: var(--igt-row-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  background: #eee;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: default;
+}
+.igt-token-form--clickable { cursor: pointer; }
+
+.igt-cell {
+  height: var(--igt-row-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.igt-cell--ignored { background: repeating-linear-gradient(45deg, #fafafa, #fafafa 4px, #f0f0f0 4px, #f0f0f0 8px); }
+
+/* ---- editable field ---- */
+.igt-field {
+  width: 100%;
+  min-width: 56px;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font: inherit;
+  padding: 4px 6px;
+  outline: none;
+  transition: outline 0.15s, background-color 0.15s;
+}
+.igt-field:focus {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: -1px;
+  background: #fff;
+}
+.igt-field--empty { color: #9ca3af; font-style: italic; }
+.igt-field--filled { color: #111827; }
+.igt-field:disabled { opacity: 0.6; cursor: default; background: transparent; }
+
+/* ---- morpheme sub-grid ---- */
+.igt-morphemes {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.igt-morph-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 56px;
+  width: min-content;
+  padding: 0 2px;
+}
+.igt-morph-col--placeholder { opacity: 0.55; }
+.igt-morph-col--placeholder:focus-within { opacity: 1; }
+
+.igt-morph-form {
+  height: var(--igt-morph-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f0fb;
+}
+.igt-morph-cell {
+  height: var(--igt-morph-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.igt-morph-field { min-width: 48px; }
+
+/* ---- vocab link affordance ---- */
+.igt-vocab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+}
+.igt-vocab__opener { cursor: pointer; }
+.igt-vocab__hint {
+  font-size: 10px;
+  font-style: italic;
+  color: var(--igt-blue);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.igt-vocab__link {
+  font-size: 9px;
+  color: #c0c4cc;
+  text-decoration: underline dotted;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.igt-vocab:hover .igt-vocab__link,
+.igt-vocab__link:focus { opacity: 1; }
+.igt-island--readonly .igt-vocab__opener { cursor: default; }
+
+/* ---- vocab link popover ---- */
+.igt-vocab-pop {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  width: 210px;
+  margin-top: 4px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  text-align: left;
+}
+.igt-vocab-pop__search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font: inherit;
+}
+.igt-vocab-pop__list {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.igt-vocab-pop__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  padding: 4px 6px;
+  background: #f9fafb;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+.igt-vocab-pop__item:hover { background: #eef2ff; }
+.igt-vocab-pop__item.is-linked { background: #dcfce7; border-color: #86efac; }
+.igt-vocab-pop__vname { font-size: 9px; color: #9ca3af; }
+.igt-vocab-pop__x { font-size: 9px; color: #b91c1c; }
+.igt-vocab-pop__empty { padding: 6px; font-size: 12px; color: #9ca3af; }
+.igt-vocab-pop__create {
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: #eff6ff;
+  border: 1px dashed #93c5fd;
+  border-radius: 4px;
+  color: #1d4ed8;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ---- sentence-scoped annotations (below grid) ---- */
+.igt-sentence-annos {
+  margin-top: 8px;
+  padding-left: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.igt-sentence-anno {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.igt-sentence-anno__label {
+  flex: 0 0 var(--igt-label-w);
+  min-width: var(--igt-label-w);
+  font-weight: 600;
+  font-size: 12px;
+  color: #15803d;
+}
+.igt-field--sentence {
+  text-align: left;
+  min-width: 240px;
+  max-width: 560px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.igt-island--readonly .igt-field { cursor: default; }

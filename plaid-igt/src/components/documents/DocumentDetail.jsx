@@ -1,344 +1,197 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useSnapshot } from 'valtio';
-import { useAuth } from '../../contexts/AuthContext';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
-import documentsStore, { loadDocument, loadHistoricalDocument, loadAuditLog } from '../../stores/documentsStore';
-import {
-  Container, 
-  Title, 
-  Text, 
-  Stack,
-  Alert,
-  Loader,
-  Center,
-  Breadcrumbs,
-  Anchor,
-  Box,
-  Tabs,
-  ActionIcon,
-  Group
-} from '@mantine/core';
-import IconHistory from '@tabler/icons-react/dist/esm/icons/IconHistory.mjs';
-import IconFileText from '@tabler/icons-react/dist/esm/icons/IconFileText.mjs';
-import IconPlayerPlay from '@tabler/icons-react/dist/esm/icons/IconPlayerPlay.mjs';
-import IconLetterA from '@tabler/icons-react/dist/esm/icons/IconLetterA.mjs';
-import IconMicrophone from '@tabler/icons-react/dist/esm/icons/IconMicrophone.mjs';
-import IconTable from '@tabler/icons-react/dist/esm/icons/IconTable.mjs';
+import { DocumentProvider } from './contexts/DocumentContext.jsx';
+import { IgtDocument } from '../../domain/IgtDocument.js';
+import { notifyError } from '@/utils/feedback';
+import { History, FileText, Type, Mic, Play, Table } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
 import { HistoryDrawer } from './HistoryDrawer.jsx';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { DocumentMedia } from './media/DocumentMedia.jsx';
-import { DocumentAnalyze } from './analyze/DocumentAnalyze.jsx';
+import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
+import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 
-export const DocumentDetail = () => {
+// Renders only the active tab's panel (others stay unmounted).
+const Panel = ({ active, children }) => (active ? children : null);
+
+const DocumentEditor = () => {
   const { projectId, documentId } = useParams();
   const navigate = useNavigate();
   const client = useStrictClient();
 
-  const docProxy = documentsStore?.[projectId]?.[documentId];
-  const storeSnap = useSnapshot(documentsStore);
-  const permissions = useDocumentPermissions(projectId, documentId);
+  // The single shared IgtDocument for the whole editor. `asOf` drives time-travel:
+  // selecting a history entry reloads this doc at that snapshot.
+  const [doc, setDoc] = useState(null);
+  const [asOf, setAsOf] = useState(null);
+  const [activeTab, setActiveTab] = useState('metadata');
+  const [loadError, setLoadError] = useState('');
 
-  const refreshDocumentData = useCallback(async () => {
-    try {
-      await loadDocument(projectId, documentId, client);
-    } catch (error) {
-      console.error('Error refreshing document data:', error);
-      const docState = documentsStore[projectId][documentId];
-      docState.ui.error = error.message || 'Failed to refresh document';
-    }
-  }, [client, documentId, projectId]);
-
-  // History drawer handlers
-  const handleOpenHistory = useCallback(() => {
-    const docState = documentsStore[projectId][documentId];
-    docState.ui.history.open = true;
-    if (!docState.ui.history.hasLoadedAudit) {
-      loadAuditLog(projectId, documentId, client);
-    }
-  }, [projectId, documentId, client]);
-
-  const handleCloseHistory = useCallback(() => {
-    const docState = documentsStore[projectId][documentId];
-    docState.ui.history.open = false;
-    if (docState.ui.history.selectedEntry) {
-      handleSelectHistoryEntry(null);
-    }
-  }, [projectId, documentId]);
-
-  const handleSelectHistoryEntry = useCallback(async (entry) => {
-    const docState = documentsStore[projectId][documentId];
-    if (!entry) {
-      docState.ui.history.selectedEntry = null;
-      docState.ui.history.viewingHistorical = false;
-      await refreshDocumentData();
-      return;
-    }
-
-    docState.ui.history.selectedEntry = entry;
-    try {
-      await loadHistoricalDocument(projectId, documentId, entry.time, client);
-    } catch (error) {
-      console.error('Error loading historical document:', error);
-      docState.ui.history.auditError = 'Failed to load historical document';
-    }
-  }, [projectId, documentId, client, refreshDocumentData]);
+  const permissions = useDocumentPermissions(doc?.project);
+  const history = useDocumentHistory(documentId, client);
 
   useEffect(() => {
-    async function fetchData() {
-      if (!client) {
-        navigate('/login');
-        return;
-      }
-
+    if (!client) {
+      navigate('/login');
+      return undefined;
+    }
+    let cancelled = false;
+    setDoc(null);
+    setLoadError('');
+    (async () => {
       try {
-        await refreshDocumentData();
-      } catch (err) {
-        if (err.message === 'Not authenticated' || err.status === 401) {
+        const d = await IgtDocument.load(client, projectId, documentId, asOf);
+        if (cancelled) return;
+        d.onError = (msg) => notifyError(msg);
+        setDoc(d);
+      } catch (e) {
+        if (cancelled) return;
+        if (e.message === 'Not authenticated' || e.status === 401) {
           navigate('/login');
           return;
         }
-        docProxy.ui.error = 'Failed to load document';
+        console.error('Failed to load document:', e);
+        setLoadError(e.message || 'Failed to load document');
       }
-    }
-    fetchData();
-  }, [documentId]);
+    })();
+    return () => { cancelled = true; };
+  }, [client, projectId, documentId, asOf, navigate]);
 
-  if (!docProxy || !storeSnap[projectId][documentId].layers) {
+  const handleOpenHistory = () => {
+    history.setOpen(true);
+    if (!history.hasLoadedAudit) history.fetchAuditLog();
+  };
+
+  const handleSelectHistoryEntry = (entry) => {
+    history.setSelectedEntry(entry);
+    setAsOf(entry ? entry.time : null);
+  };
+
+  const handleCloseHistory = () => {
+    history.setOpen(false);
+    if (history.selectedEntry) handleSelectHistoryEntry(null);
+  };
+
+  if (loadError) {
     return (
-        <Container size="lg" py="xl">
-          <Center>
-            <Stack align="center" spacing="md">
-              <Loader size="lg" />
-              <Text>Loading document...</Text>
-            </Stack>
-          </Center>
-        </Container>
+      <div className="tw mx-auto max-w-5xl px-4 py-8">
+        <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      </div>
     );
   }
 
-  const docSnap = storeSnap[projectId][documentId];
+  if (!doc) {
+    return (
+      <div className="tw flex items-center justify-center py-24 text-muted-foreground">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
+    );
+  }
 
-  // Calculate unified read-only state
-  const isViewingHistorical = docSnap?.ui?.history?.viewingHistorical || false;
+  const isViewingHistorical = asOf != null;
   const readOnly = permissions.isReadOnly || isViewingHistorical;
 
-  const breadcrumbItems = [
-    { title: 'Projects', href: '/projects' },
-    { title: docSnap?.project?.name || 'Loading...', href: `/projects/${projectId}` },
-    { title: docSnap?.document?.name || 'Loading...', href: null }
-  ].map((item, index) => (
-    item.href ? (
-      <Anchor key={index} component={Link} to={item.href}>
-        {item.title}
-      </Anchor>
-    ) : (
-      <Text key={index}>{item.title}</Text>
-    )
-  ));
-
-  if (docSnap.ui.error) {
-    return (
-      <Container size="lg" py="xl">
-        <Alert color="red" title="Error">
-          {docSnap.ui.error}
-        </Alert>
-      </Container>
-    );
-  }
-
   return (
-      <>
-        {/* History Drawer */}
-        <HistoryDrawer
-          isOpen={docSnap.ui.history.open}
-          onClose={handleCloseHistory}
-          auditEntries={docSnap.ui.history.auditEntries}
-          loading={docSnap.ui.history.loadingAudit}
-          error={docSnap.ui.history.auditError}
-          onSelectEntry={handleSelectHistoryEntry}
-          selectedEntry={docSnap.ui.history.selectedEntry}
-        />
-        
-        {/* History Tab Trigger */}
-        {!docSnap.ui.history.open && (
-          <Box
-            style={{
-              position: 'fixed',
-              left: 0,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              zIndex: 1000,
-              width: '6px',
-              height: '120px',
-              backgroundColor: '#868e96',
-              borderTopRightRadius: '6px',
-              borderBottomRightRadius: '6px',
-              cursor: 'pointer',
-              transition: 'width 200ms ease, background-color 200ms ease',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.width = '40px';
-              e.currentTarget.style.backgroundColor = '#495057';
-              const icon = e.currentTarget.querySelector('svg');
-              if (icon) icon.style.opacity = '1';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.width = '6px';
-              e.currentTarget.style.backgroundColor = '#868e96';
-              const icon = e.currentTarget.querySelector('svg');
-              if (icon) icon.style.opacity = '0';
-            }}
-            onClick={handleOpenHistory}
-          >
-            <IconHistory size={16} style={{ 
-              opacity: 0,
-              transition: 'opacity 200ms ease',
-              color: 'white',
-              minWidth: '16px'
-            }} />
-          </Box>
-        )}
-        
-        <Box
-            style={{
-              marginLeft: docSnap.ui.history.open ? '400px' : '0',
-              transition: 'margin-left 200ms ease',
-              minHeight: '100vh'
-            }}
+    <>
+      <HistoryDrawer
+        isOpen={history.open}
+        onClose={handleCloseHistory}
+        auditEntries={history.auditEntries}
+        loading={history.loadingAudit}
+        error={history.error}
+        onSelectEntry={handleSelectHistoryEntry}
+        selectedEntry={history.selectedEntry}
+      />
+
+      {/* History rail trigger (left edge) */}
+      {!history.open && (
+        <button
+          type="button"
+          onClick={handleOpenHistory}
+          aria-label="Open history"
+          className="tw group fixed left-0 top-1/2 z-[1000] flex h-28 w-1.5 -translate-y-1/2 items-center justify-center rounded-r-md bg-neutral-400 transition-all hover:w-10 hover:bg-neutral-600"
         >
-          <Container size="lg" py="xl">
-              <Stack spacing="lg">
-                <Breadcrumbs>
-                  {breadcrumbItems}
-                </Breadcrumbs>
+          <History className="h-4 w-4 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+        </button>
+      )}
 
-                <div>
-                  <Title order={1} mb="xs">{docSnap.document.name}</Title>
-                  <Text c="dimmed" size="xs" mb="lg">{docSnap.document.id}</Text>
-                  {docSnap.ui.history.viewingHistorical && (
-                      <Alert color="blue" mb="lg">
-                        <Text size="sm" fw={500}>Viewing Historical State</Text>
-                        <Text size="xs">Changes cannot be made while viewing historical data</Text>
-                      </Alert>
-                  )}
-                </div>
+      <div
+        className="transition-[margin] duration-200"
+        style={{ marginLeft: history.open ? '400px' : '0', minHeight: '100vh' }}
+      >
+        <div className="mx-auto max-w-5xl px-4 py-8">
+          <div className="tw">
+            <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Link to="/projects" className="hover:text-foreground">Projects</Link>
+              <span>/</span>
+              <Link to={`/projects/${projectId}`} className="hover:text-foreground">
+                {doc.project?.name || 'Project'}
+              </Link>
+              <span>/</span>
+              <span className="text-foreground">{doc.document?.name || 'Document'}</span>
+            </nav>
 
-                <Tabs
-                    value={docSnap.ui.activeTab}
-                    onChange={async (newTab) => {
-                      docProxy.ui.activeTab = newTab;
-                      await refreshDocumentData();
-                    }}
-                >
-                  <Tabs.List>
-                    <Tabs.Tab value="metadata" leftSection={<IconFileText size={16} />}>
-                      Metadata
-                    </Tabs.Tab>
-                    <Tabs.Tab value="baseline" leftSection={<IconLetterA size={16} />}>
-                      Baseline
-                    </Tabs.Tab>
-                    <Tabs.Tab value="media" leftSection={<IconMicrophone size={16} />}>
-                      Media
-                    </Tabs.Tab>
-                    <Tabs.Tab value="tokenize" leftSection={<IconPlayerPlay size={16} />}>
-                      Tokenize
-                    </Tabs.Tab>
-                    <Tabs.Tab value="analyze" leftSection={<IconTable size={16} />}>
-                      Analyze
-                    </Tabs.Tab>
-                  </Tabs.List>
+            <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
+            <p className="mb-2 mt-1 text-xs text-muted-foreground">{doc.document.id}</p>
 
-                  <Tabs.Panel value="metadata">
-                    {docSnap.ui.loading ? (
-                        <Center py="xl">
-                          <Loader size="lg" />
-                        </Center>
-                    ) : (
-                        docSnap.ui.activeTab === "metadata" && <DocumentMetadata
-                            projectId={projectId}
-                            documentId={documentId}
-                            reload={refreshDocumentData}
-                            client={client}
-                            readOnly={readOnly}
-                        />
-                    )}
-                  </Tabs.Panel>
+            {isViewingHistorical && (
+              <div className="mb-4 rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                <p className="font-medium">Viewing Historical State</p>
+                <p className="text-xs">Changes cannot be made while viewing historical data.</p>
+              </div>
+            )}
 
-                  <Tabs.Panel value="baseline">
-                    {docSnap.ui.loading ? (
-                        <Center py="xl">
-                          <Loader size="lg" />
-                        </Center>
-                    ) : (
-                        docSnap.ui.activeTab === "baseline" && <DocumentBaseline
-                            projectId={projectId}
-                            documentId={documentId}
-                            reload={refreshDocumentData}
-                            client={client}
-                            readOnly={readOnly}
-                        />
-                    )}
-                  </Tabs.Panel>
+            {!isViewingHistorical && permissions.isReadOnly && (
+              <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="font-medium">Read-only access</p>
+                <p className="text-xs">You have viewer access to this project, so changes are disabled.</p>
+              </div>
+            )}
+          </div>
 
-                  <Tabs.Panel value="media">
-                    {docSnap.ui.loading ? (
-                        <Center py="xl">
-                          <Loader size="lg" />
-                        </Center>
-                    ) : (
-                        docSnap.ui.activeTab === "media" && <DocumentMedia
-                            projectId={projectId}
-                            documentId={documentId}
-                            reload={refreshDocumentData}
-                            client={client}
-                            readOnly={readOnly}
-                        />
-                    )}
-                  </Tabs.Panel>
+          <DocumentProvider value={{ doc, client, readOnly, asOf }}>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="tw">
+                <TabsTrigger value="metadata"><FileText className="h-4 w-4" /> Metadata</TabsTrigger>
+                <TabsTrigger value="baseline"><Type className="h-4 w-4" /> Baseline</TabsTrigger>
+                <TabsTrigger value="media"><Mic className="h-4 w-4" /> Media</TabsTrigger>
+                <TabsTrigger value="tokenize"><Play className="h-4 w-4" /> Tokenize</TabsTrigger>
+                <TabsTrigger value="analyze"><Table className="h-4 w-4" /> Analyze</TabsTrigger>
+              </TabsList>
 
-                  <Tabs.Panel value="tokenize">
-                    {docSnap.ui.loading ? (
-                        <Center py="xl">
-                          <Loader size="lg" />
-                        </Center>
-                    ) : (
-                        docSnap.ui.activeTab === "tokenize" && <DocumentTokenize
-                            documentId={documentId}
-                            projectId={projectId}
-                            reload={refreshDocumentData}
-                            client={client}
-                            readOnly={readOnly}
-                        />
-                    )}
-                  </Tabs.Panel>
-
-                  <Tabs.Panel value="analyze">
-                    {docSnap.ui.loading ? (
-                        <Center py="xl">
-                          <Loader size="lg" />
-                        </Center>
-                    ) : (
-                        docSnap.ui.activeTab === "analyze" && <DocumentAnalyze
-                            projectId={projectId}
-                            documentId={documentId}
-                            reload={refreshDocumentData}
-                            client={client}
-                            readOnly={readOnly}
-                        />
-                    )}
-                  </Tabs.Panel>
-                </Tabs>
-              </Stack>
-            </Container>
-        </Box>
-      </>
+              <TabsContent value="metadata">
+                <Panel active={activeTab === 'metadata'}><DocumentMetadata /></Panel>
+              </TabsContent>
+              <TabsContent value="baseline">
+                <Panel active={activeTab === 'baseline'}><DocumentBaseline /></Panel>
+              </TabsContent>
+              <TabsContent value="media">
+                <Panel active={activeTab === 'media'}><DocumentMedia /></Panel>
+              </TabsContent>
+              <TabsContent value="tokenize">
+                <Panel active={activeTab === 'tokenize'}><DocumentTokenize /></Panel>
+              </TabsContent>
+              <TabsContent value="analyze">
+                <Panel active={activeTab === 'analyze'}><AnalyzeIsland /></Panel>
+              </TabsContent>
+            </Tabs>
+          </DocumentProvider>
+        </div>
+      </div>
+    </>
   );
+};
+
+// Key the editor by documentId so navigating between documents remounts it with
+// fresh state — otherwise the history rail (audit log / hasLoadedAudit) and the
+// time-travel asOf/activeTab would leak from the previous document (e.g. doc B
+// loading at doc A's snapshot).
+export const DocumentDetail = () => {
+  const { documentId } = useParams();
+  return <DocumentEditor key={documentId} />;
 };
