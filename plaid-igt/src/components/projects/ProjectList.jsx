@@ -39,7 +39,7 @@ export const ProjectList = () => {
   // word-token layer. `undefined` (missing key) means "still loading".
   const [wordCounts, setWordCounts] = useState({});
   const [wordsLoading, setWordsLoading] = useState(true);
-  const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
+  const [sort, setSort] = useState({ key: 'updated', dir: 'desc' });
 
   const fetchProjects = async () => {
     try {
