@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader, ActionIcon, Tooltip,
+  Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader, Tooltip,
 } from '@mantine/core';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconPlus } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ProjectForm } from './ProjectForm';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
-import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
-import { canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
 import { SortButton } from '../common/SortHeader.jsx';
@@ -19,7 +17,6 @@ import classes from '../common/listRow.module.css';
 const W_DOCS = 64;
 const W_WORDS = 84;
 const W_UPDATED = 124;
-const W_ACTION = 36;
 
 export const ProjectList = () => {
   const [projects, setProjects] = useState([]);
@@ -31,7 +28,7 @@ export const ProjectList = () => {
   const [wordCounts, setWordCounts] = useState({});
   const [wordsLoading, setWordsLoading] = useState(true);
   const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
-  const { getClient, user } = useAuth();
+  const { getClient } = useAuth();
   const navigate = useNavigate();
 
   const fetchProjects = async () => {
@@ -98,27 +95,6 @@ export const ProjectList = () => {
     return () => { cancelled = true; };
   }, [projects, getClient]);
 
-  const handleDelete = (projectId, projectName) => {
-    confirmDelete({
-      title: 'Delete project',
-      message: `Are you sure you want to delete project "${projectName}"? This action cannot be undone.`,
-      onConfirm: async () => {
-        // Optimistic remove so the UI doesn't gate on the server round-trip.
-        // Snapshot for rollback if the server rejects.
-        const previousProjects = projects;
-        setProjects(prev => prev.filter(p => p.id !== projectId));
-        try {
-          await getClient().projects.delete(projectId);
-          notifySuccess(`Deleted "${projectName}"`);
-        } catch (err) {
-          setProjects(previousProjects);
-          notifyError(err.message || 'Unknown error', 'Failed to delete project');
-          console.error('Error deleting project:', err);
-        }
-      },
-    });
-  };
-
   const handleProjectCreated = () => {
     setShowCreateForm(false);
     fetchProjects(); // Refresh the list
@@ -181,7 +157,6 @@ export const ProjectList = () => {
             <SortButton field="documents" sort={sort} onSort={onSort} width={W_DOCS}>Docs</SortButton>
             <SortButton field="words" sort={sort} onSort={onSort} width={W_WORDS}>Words</SortButton>
             <SortButton field="updated" sort={sort} onSort={onSort} width={W_UPDATED}>Updated</SortButton>
-            <Box w={W_ACTION} />
           </Group>
 
           <Stack gap={0}>
@@ -206,20 +181,6 @@ export const ProjectList = () => {
                   <Tooltip label={fullTimestamp(project.lastModified)} disabled={!project.lastModified} withinPortal>
                     <Text size="sm" c="dimmed" ta="right" w={W_UPDATED}>{timeAgo(project.lastModified) || '—'}</Text>
                   </Tooltip>
-
-                  <Box w={W_ACTION} style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    {canManageProject(project, user) && (
-                      <Tooltip label="Delete project">
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(project.id, project.name); }}
-                        >
-                          <IconTrash size={18} />
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
-                  </Box>
                 </Group>
               </Box>
             ))}

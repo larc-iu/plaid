@@ -13,11 +13,11 @@ import {
 } from '@mantine/core';
 import { IconTrash, IconRestore } from '@tabler/icons-react';
 
-// "Customization" tab: project-specific controlled vocabularies, colors, the
-// feature inventory, and the tokenizer locale. Everything here is local state
-// until you press Save — nothing round-trips on a keystroke. These settings
-// attach to the UD annotation layers, so the project must be configured (see the
-// UD Configuration tab) before they can be edited.
+// "UD Customization" tab: project-specific controlled vocabularies, colors, and
+// the feature inventory. Everything here is local state until you press Save —
+// nothing round-trips on a keystroke. These settings attach to the UD annotation
+// layers, so the project must be configured before they can be edited. (The
+// tokenizer locale and project deletion live on the General tab.)
 export const ProjectCustomization = ({ embedded = false }) => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -33,7 +33,6 @@ export const ProjectCustomization = ({ embedded = false }) => {
   const [deprelColors, setDeprelColors] = useState({}); // { baseRel: '#hex' }
   const [uposColors, setUposColors] = useState({});     // { UPOS: '#hex' }
   const [featureInventory, setFeatureInventory] = useState([]); // [{key, values}]
-  const [tokenizerLocale, setTokenizerLocale] = useState(''); // BCP-47, '' = 'und'
 
   const fetchProject = async () => {
     try {
@@ -72,7 +71,6 @@ export const ProjectCustomization = ({ embedded = false }) => {
     setDeprelColors(info.colors.deprel || {});
     setUposColors(info.colors.upos || {});
     setFeatureInventory(info.vocab.featureInventory.list.map(e => ({ key: e.key, values: [...e.values] })));
-    setTokenizerLocale(info.textLayer?.config?.[UD_NAMESPACE]?.tokenizerLocale || '');
   }, [project]);
 
   // Set/clear a single color in a {label: '#hex'} map (clearing falls back to auto).
@@ -93,11 +91,6 @@ export const ProjectCustomization = ({ embedded = false }) => {
       if (!client) throw new Error('Not authenticated');
       const info = getUdLayerInfo(project);
 
-      if (info.textLayer) {
-        const loc = tokenizerLocale.trim();
-        if (loc) await client.textLayers.setConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale', loc);
-        else await client.textLayers.deleteConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale');
-      }
       if (info.xposLayer) {
         await client.spanLayers.setConfig(info.xposLayer.id, UD_NAMESPACE, 'vocab', xposVocab);
       }
@@ -138,27 +131,11 @@ export const ProjectCustomization = ({ embedded = false }) => {
 
   const content = !info.isConfigured ? (
     <Alert color="gray" variant="light">
-      Configure the project's UD layers first (the <b>UD Configuration</b> tab) — vocabulary,
-      color, and tokenizer settings attach to those annotation layers.
+      Configure the project's UD layers first — vocabulary and color settings attach to those
+      annotation layers.
     </Alert>
   ) : (
     <Stack gap="xl">
-      <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">Tokenizer locale</Title>
-        <Text size="sm" c="dimmed" mb="md">
-          Language tag used for whitespace/word tokenization (<code>Intl.Segmenter</code>). Drives
-          script-specific segmentation — especially <code>ja</code>, <code>zh</code>, <code>th</code>, which
-          are segmented by dictionary lookup when given the locale. A BCP-47 tag (e.g. <code>en</code>,
-          <code> ja</code>, <code>zh-Hans</code>); leave empty for generic (<code>und</code>).
-        </Text>
-        <TextInput
-          value={tokenizerLocale}
-          onChange={(e) => setTokenizerLocale(e.target.value)}
-          placeholder="und"
-          w={220}
-        />
-      </Paper>
-
       <Paper withBorder p="lg" radius="md">
         <Group justify="space-between" align="center" mb="xs">
           <Title order={2} size="h4">UPOS tags</Title>

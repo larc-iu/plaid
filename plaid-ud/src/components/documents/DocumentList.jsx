@@ -159,6 +159,14 @@ export const DocumentList = () => {
   const canManage = canManageProject(project, user);
   const canEdit = canEditProject(project, user);
 
+  // If the project's UD layers aren't set up yet, "Project Settings" should land
+  // on the standalone setup/repair page rather than the tabbed settings (which
+  // assume a configured project). Otherwise it opens the tabbed settings.
+  const projectConfigured = getUdLayerInfo(project).isConfigured;
+  const settingsTo = projectConfigured
+    ? `/projects/${projectId}/management`
+    : `/projects/${projectId}/configuration`;
+
   const renderWords = (documentId) => {
     if (wordsLoading) return <Loader size={12} />;
     if (!hasWordLayer) return '—';
@@ -178,7 +186,7 @@ export const DocumentList = () => {
           {canManage && (
             <Button
               component={Link}
-              to={`/projects/${projectId}/configuration`}
+              to={settingsTo}
               color="grape"
               leftSection={<IconSettings size={16} />}
             >

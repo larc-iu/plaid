@@ -6,6 +6,7 @@ import { LoginForm } from './components/auth/LoginForm';
 import { UserProfile } from './components/auth/UserProfile';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectSettings } from './components/projects/ProjectSettings.jsx';
+import { ProjectConfiguration } from './components/projects/ProjectConfiguration.jsx';
 import { DocumentList } from './components/documents/DocumentList';
 import { TextEditor } from './components/editor/TextEditor.jsx';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
@@ -39,12 +40,16 @@ function App() {
             {/* Documents page */}
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
             
-            {/* Project settings (tabbed: users & permissions, customization, UD
-                configuration). All paths render the same view; the active tab
-                follows the path. */}
+            {/* Project settings (tabbed: users & permissions, UD customization,
+                general). All paths render the same view; the active tab follows
+                the path. */}
             <Route path="projects/:projectId/management" element={<ProjectSettings />} />
             <Route path="projects/:projectId/customization" element={<ProjectSettings />} />
-            <Route path="projects/:projectId/configuration" element={<ProjectSettings />} />
+            <Route path="projects/:projectId/general" element={<ProjectSettings />} />
+
+            {/* Standalone UD layer setup/repair page — the destination of the
+                annotation editor's "missing layers" auto-redirect. */}
+            <Route path="projects/:projectId/configuration" element={<ProjectConfiguration />} />
             
             {/* Text editor route */}
             <Route path="projects/:projectId/documents/:documentId/edit" element={<TextEditor />} />

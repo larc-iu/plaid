@@ -185,8 +185,9 @@ export const ProjectConfiguration = ({ embedded = false }) => {
         await client.relationLayers.setConfig(relationLayer.id, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
       }
 
-      await fetchProject();
       notifySuccess('UD layer configuration saved successfully.');
+      // Setup/repair done — head back to the project's document view.
+      navigate(`/projects/${projectId}/documents`);
     } catch (err) {
       console.error('Failed to save configuration:', err);
       notifyError(err.message || 'Failed to save configuration');

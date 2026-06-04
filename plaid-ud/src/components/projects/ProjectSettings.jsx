@@ -2,15 +2,17 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Container, Title, Tabs, Breadcrumbs, Anchor, Text } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { ProjectConfiguration } from './ProjectConfiguration.jsx';
 import { ProjectCustomization } from './ProjectCustomization.jsx';
 import { ProjectManagement } from './ProjectManagement.jsx';
+import { ProjectGeneral } from './ProjectGeneral.jsx';
 
-// Single settings view with tabs: user/permission management, project-specific
-// customization (vocab/colors/locale), and the UD layer-structure configuration.
-// Each tab is route-backed (`/management`, `/customization`, `/configuration`) so
-// deep links and the editor's auto-redirect keep working; the active tab is
-// derived from the path. Only the active panel mounts, so each child fetches lazily.
+// Single settings view with tabs: user/permission management, UD customization
+// (vocab/colors), and general project settings (tokenizer locale + delete).
+// Each tab is route-backed (`/management`, `/customization`, `/general`) so
+// deep links keep working; the active tab is derived from the path. Only the
+// active panel mounts, so each child fetches lazily. The UD layer-structure
+// setup form (ProjectConfiguration) is a separate standalone page at
+// `/configuration`, used by the editor's "missing layers" auto-redirect.
 export const ProjectSettings = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -18,7 +20,7 @@ export const ProjectSettings = () => {
   const { getClient } = useAuth();
   const [projectName, setProjectName] = useState('');
   const active = location.pathname.endsWith('/customization') ? 'customization'
-    : location.pathname.endsWith('/configuration') ? 'configuration'
+    : location.pathname.endsWith('/general') ? 'general'
       : 'management';
 
   // Just the name, for the breadcrumb (the active tab's child fetches the rest).
@@ -43,8 +45,8 @@ export const ProjectSettings = () => {
       <Tabs value={active} onChange={(v) => navigate(`/projects/${projectId}/${v}`)} keepMounted={false}>
         <Tabs.List mb="lg">
           <Tabs.Tab value="management">Users &amp; Permissions</Tabs.Tab>
-          <Tabs.Tab value="customization">Customization</Tabs.Tab>
-          <Tabs.Tab value="configuration">UD Configuration</Tabs.Tab>
+          <Tabs.Tab value="customization">UD Customization</Tabs.Tab>
+          <Tabs.Tab value="general">General</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="management">
           <ProjectManagement embedded />
@@ -52,8 +54,8 @@ export const ProjectSettings = () => {
         <Tabs.Panel value="customization">
           <ProjectCustomization embedded />
         </Tabs.Panel>
-        <Tabs.Panel value="configuration">
-          <ProjectConfiguration embedded />
+        <Tabs.Panel value="general">
+          <ProjectGeneral embedded />
         </Tabs.Panel>
       </Tabs>
     </Container>
