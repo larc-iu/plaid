@@ -15,9 +15,16 @@ const formatTime = (seconds) => {
 
 export const Timeline = ({
   mediaOps,
-  readOnly = false
+  readOnly = false,
+  transcriptionAvailable = false
 }) => {
   const { doc } = useDocumentCtx();
+
+  // New time selections (drag on the waveform) are only allowed when editing is
+  // permitted AND a transcription service exists for the project. Without one,
+  // the timeline stays view/playback-only — though existing alignments can still
+  // be opened/edited/resized (gated by `readOnly` alone).
+  const canCreateSelection = !readOnly && transcriptionAvailable;
 
   // Destructure what we need from mediaOps
   const {
@@ -73,7 +80,14 @@ export const Timeline = ({
         <div className="flex flex-col gap-4">
           {/* Timeline Controls */}
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Timeline</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm font-medium">Timeline</span>
+              {!readOnly && !transcriptionAvailable && (
+                <span className="text-xs text-muted-foreground">
+                  No transcription service — add one to create time alignments
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -128,13 +142,13 @@ export const Timeline = ({
               height: `${TIMELINE_HEIGHT}px`,
               width: `${timelineWidth}px`,
               minWidth: '100%',
-              cursor: readOnly ? 'default' : (isDragging ? 'grabbing' : 'pointer'),
+              cursor: !canCreateSelection ? 'default' : (isDragging ? 'grabbing' : 'pointer'),
               backgroundColor: '#f8f9fa',
               userSelect: 'none'
             }}
-            onMouseDown={readOnly ? undefined : handleMouseDown}
-            onMouseMove={readOnly ? undefined : handleMouseMove}
-            onMouseUp={readOnly ? undefined : handleMouseUp}
+            onMouseDown={canCreateSelection ? handleMouseDown : undefined}
+            onMouseMove={canCreateSelection ? handleMouseMove : undefined}
+            onMouseUp={canCreateSelection ? handleMouseUp : undefined}
             onMouseLeave={handleMouseUp} // End drag if mouse leaves timeline
           >
             {/* Waveform Background */}

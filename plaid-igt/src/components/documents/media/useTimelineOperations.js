@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 
 // Constants
 const TIMELINE_HEIGHT = 100;
@@ -116,12 +116,16 @@ export const useTimelineOperations = (mediaOps) => {
   
   // Virtualization state
   const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
-  
+
   // Refs
   const timelineRef = useRef(null);
   const needleRef = useRef(null);
   const timelineContainerRef = useRef(null);
   const animationFrameRef = useRef(null);
+  // Pending zoom-to-pointer anchor. Set by the ctrl+wheel handler, consumed by a
+  // layout effect once the new pixelsPerSecond (and thus the timeline width) has
+  // committed — see the wheel handler below.
+  const zoomAnchorRef = useRef(null);
 
   // Zoom and timeline calculations
   const timelineWidth = mediaOps.duration * mediaOps.pixelsPerSecond;
@@ -345,36 +349,61 @@ export const useTimelineOperations = (mediaOps) => {
 
   // Handle wheel events with proper passive listener setup
   useEffect(() => {
+    const container = timelineContainerRef.current;
+    if (!container) return;
+
     const handleWheel = (event) => {
       event.preventDefault();
-      
+
       if (event.ctrlKey || event.metaKey) {
         // CTRL+scroll: zoom in/out (modify pixels per second)
+        const oldPixelsPerSecond = mediaOps.pixelsPerSecond;
         const delta = event.deltaY > 0 ? -1 : 1; // Reverse for natural zooming
         const zoomFactor = 1.1;
         const newPixelsPerSecond = delta > 0
-          ? Math.min(100, mediaOps.pixelsPerSecond * zoomFactor)
-          : Math.max(4, mediaOps.pixelsPerSecond / zoomFactor);
-        handlePixelsPerSecondChange(newPixelsPerSecond);
+          ? Math.min(100, oldPixelsPerSecond * zoomFactor)
+          : Math.max(4, oldPixelsPerSecond / zoomFactor);
+        if (newPixelsPerSecond !== oldPixelsPerSecond) {
+          // Zoom anchored at the pointer: remember the time step currently under
+          // the cursor and its pixel offset inside the scroll viewport. The
+          // layout effect below restores that time step to the same offset once
+          // the new width has committed, so the cursor stays put while zooming.
+          const rect = container.getBoundingClientRect();
+          const pointerX = event.clientX - rect.left;
+          zoomAnchorRef.current = {
+            timeAtPointer: (container.scrollLeft + pointerX) / oldPixelsPerSecond,
+            pointerX
+          };
+          handlePixelsPerSecondChange(newPixelsPerSecond);
+        }
       } else {
         // Normal scroll: pan left/right
         const scrollAmount = 50; // pixels to scroll
-        const container = timelineContainerRef.current;
-        if (container) {
-          const delta = event.deltaY > 0 ? scrollAmount : -scrollAmount;
-          container.scrollLeft += delta;
-        }
+        const delta = event.deltaY > 0 ? scrollAmount : -scrollAmount;
+        container.scrollLeft += delta;
       }
     };
 
-    const container = timelineContainerRef.current;
-    if (container) {
-      container.addEventListener('wheel', handleWheel, { passive: false });
-      return () => {
-        container.removeEventListener('wheel', handleWheel);
-      };
-    }
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
   }, [mediaOps.pixelsPerSecond, handlePixelsPerSecondChange]);
+
+  // Apply a pending zoom-to-pointer anchor after the new pixelsPerSecond (and
+  // therefore the timeline width) has committed to the DOM. Keeping the time
+  // step that was under the cursor pinned to the same viewport offset makes
+  // ctrl+wheel zoom feel anchored instead of jumping back toward t=0.
+  useLayoutEffect(() => {
+    const anchor = zoomAnchorRef.current;
+    if (!anchor) return;
+    zoomAnchorRef.current = null;
+    const container = timelineContainerRef.current;
+    if (!container) return;
+    const nextScrollLeft = Math.max(0, anchor.timeAtPointer * mediaOps.pixelsPerSecond - anchor.pointerX);
+    container.scrollLeft = nextScrollLeft;
+    setTimelineScrollLeft(nextScrollLeft);
+  }, [mediaOps.pixelsPerSecond]);
 
   // Smooth needle movement with auto-scroll
   useEffect(() => {

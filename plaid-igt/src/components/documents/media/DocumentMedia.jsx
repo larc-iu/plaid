@@ -23,6 +23,11 @@ export function DocumentMedia() {
   // Use media operations hook
   const mediaOps = useMediaOperations();
 
+  // Time-aligned transcription is only meaningful when at least one ASR
+  // (transcription) service is registered for the project. With none available
+  // we keep the timeline view/playback-only — see Timeline's selection gating.
+  const transcriptionAvailable = mediaOps.asrAlgorithmOptions.length > 0;
+
   // If no media, show upload interface
   if (!doc.document.mediaUrl) {
     return (
@@ -46,6 +51,7 @@ export function DocumentMedia() {
         <Timeline
           mediaOps={mediaOps}
           readOnly={readOnly}
+          transcriptionAvailable={transcriptionAvailable}
         />
       </div>
 
