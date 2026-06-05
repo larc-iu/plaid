@@ -8,17 +8,48 @@
 +++<style>.sect1+.sect1{border-top: none !important;} #preamble{padding-bottom:2em;}</style>+++
 
 **Plaid** is a platform for developers of linguistic annotation apps.
-It provides many foundational backend systems, including a user system, a modular data model, and a lossless database.
+It provides many foundational backend systems, including a user system and a modular data model.
 Plaid provides this common functionality so that you can focus on developing your app front-end in JavaScript or any other programming language of your choosing.
 
 Some distinguishing features of Plaid:
 
 * **Effortless Collaboration**: since Plaid is a web platform, all users read and write to a single database. There is no need for manual synchronization or movement of data.
 * **Customizable Data Model**: Plaid provides _layers_ which allow you to tailor the data model you use for an app on a per-project basis.
-* **Time-traveling Database**: unlike with a traditional SQL server, Plaid's database is lossless ("immutable"), allowing you to **view every past state** your documents were ever in. Additionally, an audit log allows you to see every operation that has been performed.
 * **AI Model Integration**: Plaid offers a powerful client-to-client communication system, making it easy to make apps which are deeply integrated with AI models.
 
-See link:manual.html[the manual] for a comprehensive introduction to Plaid.
+++++
+<style>
+.plaid-cta{display:grid;grid-template-columns:repeat(2,1fr);gap:1.25rem;margin:2.5em 0 .5em}
+@media (max-width:600px){.plaid-cta{grid-template-columns:1fr}}
+.plaid-cta a{display:flex;align-items:center;gap:1.25rem;padding:1.6rem 1.8rem;border-radius:16px;text-decoration:none;border:1px solid #d9dde2;background:#f6f8fa;color:#1a1f24;transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease}
+.plaid-cta a:hover{transform:translateY(-3px);box-shadow:0 10px 26px rgba(0,0,0,.10);border-color:#bcc2ca}
+.plaid-cta a.primary{background:#2b6cb0;border-color:#2b6cb0;color:#fff}
+.plaid-cta a.primary:hover{box-shadow:0 12px 30px rgba(43,108,176,.38)}
+.plaid-cta .ico{flex:0 0 auto;width:44px;height:44px}
+.plaid-cta .ico svg{width:44px;height:44px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.plaid-cta .ico.badge{display:flex;align-items:center;justify-content:center;border:1.7px solid currentColor;border-radius:11px;font-family:Helvetica,Arial,sans-serif;font-weight:700;font-size:1.05rem;letter-spacing:.3px}
+.plaid-cta .txt b{display:block;font-size:1.3rem;line-height:1.2;margin-bottom:.25rem}
+.plaid-cta .txt span{display:block;font-size:.95rem;opacity:.82;line-height:1.35}
+</style>
+<div class="plaid-cta">
+  <a class="primary" href="manual.html">
+    <span class="ico"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+    <div class="txt"><b>Read the Manual</b><span>A comprehensive introduction to Plaid's data model and APIs.</span></div>
+  </a>
+  <a href="query.html">
+    <span class="ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+    <div class="txt"><b>Query Language</b><span>Search and filter annotation data across a project.</span></div>
+  </a>
+  <a href="api-js.html">
+    <span class="ico badge">JS</span>
+    <div class="txt"><b>JavaScript Client</b><span>API reference for the JavaScript client library.</span></div>
+  </a>
+  <a href="api-py.html">
+    <span class="ico badge">Py</span>
+    <div class="txt"><b>Python Client</b><span>API reference for the Python client library.</span></div>
+  </a>
+</div>
+++++
 
 == Quick Start
 
@@ -26,17 +57,4 @@ See link:manual.html[the manual] for a comprehensive introduction to Plaid.
 2. With https://www.oracle.com/java/technologies/downloads/[JDK 21 or later], use `java` to run the JAR: `java -jar plaid.jar`
 3. Enter an admin username and password when prompted.
 4. Visit <http://localhost:8080/api/v1/docs/> to ensure the server is running.
-5. Any files under `resources/` (a sister directory of `plaid.jar`) will be served: `resources/index.html`, for example, would be served at <http://localhost:8080/index.html>.
-
-That's it!
-
-== Example App: UD Editor
-
-To get a feel for how to program an app with Plaid, it may be helpful to see https://drive.google.com/file/d/1Ld9tfHBqF4gwQTOn0mBtHVDllcHCUwdZ/view?usp=sharing[an example app for UD editing].
-(Cf. https://github.com/larc-iu/plaid/tree/master/plaid-ud[source code].)
-
-== Learn More
-
-See link:manual.html[the manual] for a comprehensive introduction to Plaid, and link:query.html[the query language reference] for searching annotation data.
-
-Also see the client libraries for https://github.com/larc-iu/plaid/tree/master/plaid-client-js[JavaScript] and https://github.com/larc-iu/plaid/tree/master/plaid-client-py[Python], as well as the API documentation for link:api-js.html[JS] and link:api-py.html[Python].
+5. Try one of the bundled apps in your browser: the UD editor at <http://localhost:8080/ud/> or the IGT editor at <http://localhost:8080/igt/>.
