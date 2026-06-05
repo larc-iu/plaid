@@ -299,6 +299,25 @@
    (metadata/replace-metadata! tx "vocab-link" eid metadata-map)
    eid))
 
+(defn patch-metadata
+  "Shallow-merge a metadata patch on a vocab-link: keys present set/overwrite,
+  a null value deletes that key, omitted keys are untouched. See
+  `plaid.sql.metadata/patch-metadata!`."
+  [db eid patch user-id]
+  (metadata/validate-entity-type! "vocab-link")
+  (submit-operation!
+   [tx db {:type :vocab-link/patch-metadata
+           :project (project-id db eid)
+           :document (:document_id (psc/fetch-by-id db :vocab_links eid))
+           :description (str "Patch metadata on vocab link " eid
+                             " with " (count patch) " keys")
+           :user user-id}]
+   (when (nil? (psc/fetch-by-id tx :vocab_links eid))
+     (throw (ex-info (psc/err-msg-not-found "Vocab link" eid)
+                     {:code 404 :id eid})))
+   (metadata/patch-metadata! tx "vocab-link" eid patch)
+   eid))
+
 (defn delete-metadata
   "Remove all metadata from a vocab-link."
   [db eid user-id]

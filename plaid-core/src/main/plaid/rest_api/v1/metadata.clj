@@ -139,12 +139,13 @@
      get-project-id-fn - Function to get project ID for authorization
      get-document-id-fn - Function to get document ID
      entity-get-fn - Function to get the entity after metadata operations
-     entity-set-metadata-fn - Function to set metadata on the entity
+     entity-set-metadata-fn - Function to set (replace all) metadata on the entity
      entity-delete-metadata-fn - Function to delete metadata from the entity
+     entity-patch-metadata-fn - Function to shallow-merge a metadata patch into the entity
 
    Returns:
      Vector of route definitions for metadata operations"
-  [entity-type entity-id-key get-project-id-fn get-document-id-fn entity-get-fn entity-set-metadata-fn entity-delete-metadata-fn]
+  [entity-type entity-id-key get-project-id-fn get-document-id-fn entity-get-fn entity-set-metadata-fn entity-delete-metadata-fn entity-patch-metadata-fn]
 
   ["/metadata"
    {:put    {:summary    (str "Replace all metadata for a " entity-type ". The entire metadata map is replaced - existing metadata keys not included in the request will be removed.")
@@ -158,6 +159,27 @@
                            (let [entity-id (get path-params entity-id-key)
                                  doc-id (get-document-id-fn request)
                                  {:keys [success code error]} (entity-set-metadata-fn db entity-id metadata user-id)]
+                             (if success
+                               (prm/assoc-document-version-in-header
+                                {:status 200 :body (entity-get-fn db entity-id)}
+                                db doc-id)
+                               {:status (or code 500) :body {:error (or error "Internal server error")}})))}
+    :patch  {:summary    (str "Patch (shallow-merge) metadata for a " entity-type ". Keys present "
+                              "in the request are set or overwritten; keys NOT present are left "
+                              "untouched; a key whose value is null is deleted. Merging is "
+                              "top-level only (nested objects are replaced wholesale, not "
+                              "deep-merged), so a literal null cannot be stored as a value. An "
+                              "empty body changes no metadata.")
+             :middleware [[pra/wrap-writer-required get-project-id-fn]
+                          [prm/wrap-document-version get-document-id-fn]
+                          wrap-metadata-shape-guard]
+             :openapi    {:x-client-method "patch-metadata"}
+             :parameters {:query [:map [:document-version {:optional true} :int]]
+                          :body [:map-of string? any?]}
+             :handler    (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id :as request}]
+                           (let [entity-id (get path-params entity-id-key)
+                                 doc-id (get-document-id-fn request)
+                                 {:keys [success code error]} (entity-patch-metadata-fn db entity-id metadata user-id)]
                              (if success
                                (prm/assoc-document-version-in-header
                                 {:status 200 :body (entity-get-fn db entity-id)}

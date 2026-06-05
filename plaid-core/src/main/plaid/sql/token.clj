@@ -1062,6 +1062,24 @@
    (metadata/replace-metadata! tx "token" eid metadata-map)
    eid))
 
+(defn patch-metadata
+  "Shallow-merge a metadata patch on a token: keys present set/overwrite,
+  a null value deletes that key, omitted keys are untouched. See
+  `plaid.sql.metadata/patch-metadata!`."
+  [db eid patch user-id]
+  (submit-operation!
+   [tx db {:type :token/patch-metadata
+           :project (project-id db eid)
+           :document (:document_id (psc/fetch-by-id db :tokens eid))
+           :description (str "Patch metadata on token " eid
+                             " with " (count patch) " keys")
+           :user user-id}]
+   (metadata/validate-entity-type! "token")
+   (when (nil? (psc/fetch-by-id tx :tokens eid))
+     (throw (ex-info (psc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
+   (metadata/patch-metadata! tx "token" eid patch)
+   eid))
+
 (defn delete-metadata
   "Remove all metadata from a token."
   [db eid user-id]

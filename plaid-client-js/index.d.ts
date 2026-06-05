@@ -40,6 +40,7 @@ interface VocabLinksBundle {
   create(vocabItem: string, tokens: any[], metadata?: any): Promise<any>;
   setMetadata(id: string, body: any): Promise<any>;
   deleteMetadata(id: string): Promise<any>;
+  patchMetadata(id: string, body: any): Promise<any>;
   get(id: string, asOf?: string): Promise<any>;
   delete(id: string): Promise<any>;
 }
@@ -61,6 +62,7 @@ interface VocabLayersBundle {
 interface RelationsBundle {
   setMetadata(relationId: string, body: any): Promise<any>;
   deleteMetadata(relationId: string): Promise<any>;
+  patchMetadata(relationId: string, body: any): Promise<any>;
   setTarget(relationId: string, spanId: string): Promise<any>;
   get(relationId: string, asOf?: string): Promise<any>;
   delete(relationId: string): Promise<any>;
@@ -91,6 +93,7 @@ interface SpansBundle {
   bulkDelete(body: any[]): Promise<any>;
   setMetadata(spanId: string, body: any): Promise<any>;
   deleteMetadata(spanId: string): Promise<any>;
+  patchMetadata(spanId: string, body: any): Promise<any>;
 }
 
 interface BatchBundle {
@@ -100,6 +103,7 @@ interface BatchBundle {
 interface TextsBundle {
   setMetadata(textId: string, body: any): Promise<any>;
   deleteMetadata(textId: string): Promise<any>;
+  patchMetadata(textId: string, body: any): Promise<any>;
   create(textLayerId: string, documentId: string, body: string, metadata?: any): Promise<any>;
   get(textId: string, asOf?: string): Promise<any>;
   delete(textId: string): Promise<any>;
@@ -144,6 +148,7 @@ interface DocumentsBundle {
   deleteMedia(documentId: string): Promise<any>;
   setMetadata(documentId: string, body: any): Promise<any>;
   deleteMetadata(documentId: string): Promise<any>;
+  patchMetadata(documentId: string, body: any): Promise<any>;
   audit(documentId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any[]>;
   get(documentId: string, includeBody?: boolean, asOf?: string): Promise<any>;
   delete(documentId: string): Promise<any>;
@@ -198,6 +203,7 @@ interface TextLayersBundle {
 interface VocabItemsBundle {
   setMetadata(id: string, body: any): Promise<any>;
   deleteMetadata(id: string): Promise<any>;
+  patchMetadata(id: string, body: any): Promise<any>;
   create(vocabLayerId: string, form: string, metadata?: any): Promise<any>;
   get(id: string, asOf?: string): Promise<any>;
   delete(id: string): Promise<any>;
@@ -226,6 +232,7 @@ interface TokensBundle {
   shift(tokenId: string, begin?: number, end?: number): Promise<any>;
   setMetadata(tokenId: string, body: any): Promise<any>;
   deleteMetadata(tokenId: string): Promise<any>;
+  patchMetadata(tokenId: string, body: any): Promise<any>;
 }
 
 interface PlaidClientOptions {
@@ -247,6 +254,9 @@ export declare class PlaidClient {
   // Strict mode methods
   enterStrictMode(documentId: string): void;
   exitStrictMode(): void;
+
+  // Query
+  query(body: any): Promise<any>;
 
   vocabLinks: VocabLinksBundle;
   vocabLayers: VocabLayersBundle;

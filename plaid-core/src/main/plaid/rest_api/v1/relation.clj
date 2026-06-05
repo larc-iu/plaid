@@ -213,4 +213,4 @@
                                      {:status (or code 400) :body {:error (or error "Failed to update relation target")}})))}}]
 
     ;; Metadata operations
-    (metadata/metadata-routes "relation" :relation-id get-project-id get-document-id r/get r/set-metadata r/delete-metadata)]])
+    (metadata/metadata-routes "relation" :relation-id get-project-id get-document-id r/get r/set-metadata r/delete-metadata r/patch-metadata)]])

@@ -191,4 +191,4 @@
                                      {:status (or code 400) :body {:error (or error "Failed to set span tokens")}})))}}]
 
     ;; Metadata operations
-    (metadata/metadata-routes "span" :span-id get-project-id get-document-id s/get s/set-metadata s/delete-metadata)]])
+    (metadata/metadata-routes "span" :span-id get-project-id get-document-id s/get s/set-metadata s/delete-metadata s/patch-metadata)]])

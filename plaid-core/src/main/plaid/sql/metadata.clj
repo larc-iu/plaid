@@ -36,6 +36,12 @@
     (replace-metadata! tx entity-type entity-id m)
       DELETE existing rows then INSERT the new ones.
 
+    (patch-metadata! tx entity-type entity-id patch)
+      SHALLOW-MERGE `patch` into the existing metadata: keys present in
+      `patch` overwrite, keys absent are left untouched, and a key whose
+      value is nil/JSON-null is DELETED. (So a literal null cannot be
+      stored; an empty patch is a no-op.) Contrast `replace-metadata!`.
+
     (delete-metadata! tx entity-type entity-id)
       DELETE all rows for (entity_type, entity_id).
 
@@ -44,6 +50,7 @@
       `metadata/add-metadata-to-response` contract: looks up metadata
       and, if non-empty, assoc's it under :metadata on the response map."
   (:require [clojure.string]
+            [clojure.data.json]
             [plaid.sql.common :as psc])
   (:refer-clojure :exclude [get]))
 
@@ -224,6 +231,46 @@
     (raw-insert-metadata! tx entity-type entity-id m)
     (let [post (get-metadata tx entity-type entity-id)]
       (emit-parent-audit! tx entity-type entity-id pre post))))
+
+(defn patch-metadata!
+  "Shallow-merge `patch` into the entity's existing metadata, then emit a
+  single synthetic parent-row audit row capturing the transition.
+
+  MERGE SEMANTICS — top-level keys only; values are opaque and are NEVER
+  deep-merged (a nested object replaces the old value wholesale):
+
+    * key PRESENT in `patch`                -> set / overwrite that key
+    * key ABSENT from `patch`               -> left untouched
+    * key whose value is nil (JSON `null`)  -> that key is DELETED
+
+  Because nil is the delete signal, a literal JSON null CANNOT be stored as
+  a value. An empty `patch` is a no-op: post == pre, so `emit-parent-audit!`
+  skips and no audit row is written.
+
+  Contrast `replace-metadata!`, which discards every existing key. Reuses the
+  same raw delete/insert helpers, so the on-disk result and the audit image
+  are identical to a `replace-metadata!` with the already-merged map."
+  [tx entity-type entity-id patch]
+  (when (seq patch) (validate-metadata-keys! patch))
+  (let [pre    (get-metadata tx entity-type entity-id)
+        ;; `pre` is keyed by strings (see get-metadata); normalize patch keys to
+        ;; strings too so set/overwrite (assoc) and delete (dissoc) line up.
+        merged (reduce (fn [acc [k v]]
+                         (let [ks (if (keyword? k) (name k) (str k))]
+                           (if (nil? v)
+                             (dissoc acc ks)
+                             (assoc acc ks v))))
+                       pre
+                       patch)]
+    (raw-delete-metadata! tx entity-type entity-id)
+    (raw-insert-metadata! tx entity-type entity-id merged)
+    ;; Re-read the persisted (JSON-round-tripped, string-keyed) form for the
+    ;; audit post-image, exactly as replace-metadata! does. This keeps the audit
+    ;; image byte-identical to the replace path the ETL replayer was built
+    ;; against, and means a re-patch with the same value never emits a spurious
+    ;; :update (emit-parent-audit! skips on pre == post).
+    (emit-parent-audit! tx entity-type entity-id
+                        pre (get-metadata tx entity-type entity-id))))
 
 (defn sweep-metadata!
   "Raw DELETE of all metadata rows for a list of (entity-type, entity-id).

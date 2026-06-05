@@ -72,6 +72,22 @@ class VocabLinksResource(_Resource):
         return self._request('DELETE', f'/api/v1/vocab-links/{id}/metadata',
                              skip_response_transform=True)
 
+    def patch_metadata(self, id: str, body: Any) -> Any:
+        """Patch (shallow-merge) metadata for a vocab link.
+
+        Keys present in the body are set or overwritten; keys not present are
+        left untouched; a key whose value is None (JSON null) is deleted.
+        Merging is top-level only (nested objects are replaced wholesale, not
+        deep-merged), so a literal null cannot be stored as a value. An empty
+        body changes no metadata.
+
+        Args:
+            id: The resource ID
+            body: The metadata patch
+        """
+        return self._request('PATCH', f'/api/v1/vocab-links/{id}/metadata',
+                             raw_body=body, skip_response_transform=True)
+
     def get(self, id: str, *, as_of: str | None = None) -> Any:
         """Get a vocab link by ID.
 
@@ -231,6 +247,22 @@ class RelationsResource(_Resource):
         """
         return self._request('DELETE', f'/api/v1/relations/{relation_id}/metadata',
                              skip_response_transform=True)
+
+    def patch_metadata(self, relation_id: str, body: Any) -> Any:
+        """Patch (shallow-merge) metadata for a relation.
+
+        Keys present in the body are set or overwritten; keys not present are
+        left untouched; a key whose value is None (JSON null) is deleted.
+        Merging is top-level only (nested objects are replaced wholesale, not
+        deep-merged), so a literal null cannot be stored as a value. An empty
+        body changes no metadata.
+
+        Args:
+            relation_id: The relation ID
+            body: The metadata patch
+        """
+        return self._request('PATCH', f'/api/v1/relations/{relation_id}/metadata',
+                             raw_body=body, skip_response_transform=True)
 
     def set_target(self, relation_id: str, span_id: str) -> Any:
         """Update the target span of a relation.
@@ -409,6 +441,22 @@ class SpansResource(_Resource):
         return self._request('DELETE', f'/api/v1/spans/{span_id}/metadata',
                              skip_response_transform=True)
 
+    def patch_metadata(self, span_id: str, body: Any) -> Any:
+        """Patch (shallow-merge) metadata for a span.
+
+        Keys present in the body are set or overwritten; keys not present are
+        left untouched; a key whose value is None (JSON null) is deleted.
+        Merging is top-level only (nested objects are replaced wholesale, not
+        deep-merged), so a literal null cannot be stored as a value. An empty
+        body changes no metadata.
+
+        Args:
+            span_id: The span ID
+            body: The metadata patch
+        """
+        return self._request('PATCH', f'/api/v1/spans/{span_id}/metadata',
+                             raw_body=body, skip_response_transform=True)
+
     def set_tokens(self, span_id: str, tokens: list) -> Any:
         """Replace the tokens associated with a span.
 
@@ -549,6 +597,22 @@ class TextsResource(_Resource):
         """
         return self._request('DELETE', f'/api/v1/texts/{text_id}/metadata',
                              skip_response_transform=True)
+
+    def patch_metadata(self, text_id: str, body: Any) -> Any:
+        """Patch (shallow-merge) metadata for a text.
+
+        Keys present in the body are set or overwritten; keys not present are
+        left untouched; a key whose value is None (JSON null) is deleted.
+        Merging is top-level only (nested objects are replaced wholesale, not
+        deep-merged), so a literal null cannot be stored as a value. An empty
+        body changes no metadata.
+
+        Args:
+            text_id: The text ID
+            body: The metadata patch
+        """
+        return self._request('PATCH', f'/api/v1/texts/{text_id}/metadata',
+                             raw_body=body, skip_response_transform=True)
 
 
 class UsersResource(_Resource):
@@ -939,6 +1003,22 @@ class DocumentsResource(_Resource):
         """
         return self._request('DELETE', f'/api/v1/documents/{document_id}/metadata',
                              skip_response_transform=True)
+
+    def patch_metadata(self, document_id: str, body: Any) -> Any:
+        """Patch (shallow-merge) metadata for a document.
+
+        Keys present in the body are set or overwritten; keys not present are
+        left untouched; a key whose value is None (JSON null) is deleted.
+        Merging is top-level only (nested objects are replaced wholesale, not
+        deep-merged), so a literal null cannot be stored as a value. An empty
+        body changes no metadata.
+
+        Args:
+            document_id: The document ID
+            body: The metadata patch
+        """
+        return self._request('PATCH', f'/api/v1/documents/{document_id}/metadata',
+                             raw_body=body, skip_response_transform=True)
 
     def audit(self, document_id: str, *, start_time: str | None = None,
               end_time: str | None = None, as_of: str | None = None) -> Any:
@@ -1419,6 +1499,22 @@ class VocabItemsResource(_Resource):
         return self._request('DELETE', f'/api/v1/vocab-items/{id}/metadata',
                              skip_response_transform=True)
 
+    def patch_metadata(self, id: str, body: Any) -> Any:
+        """Patch (shallow-merge) metadata for a vocab item.
+
+        Keys present in the body are set or overwritten; keys not present are
+        left untouched; a key whose value is None (JSON null) is deleted.
+        Merging is top-level only (nested objects are replaced wholesale, not
+        deep-merged), so a literal null cannot be stored as a value. An empty
+        body changes no metadata.
+
+        Args:
+            id: The resource ID
+            body: The metadata patch
+        """
+        return self._request('PATCH', f'/api/v1/vocab-items/{id}/metadata',
+                             raw_body=body, skip_response_transform=True)
+
 
 class RelationLayersResource(_Resource):
     def get(self, relation_layer_id: str, *, as_of: str | None = None) -> Any:
@@ -1512,6 +1608,22 @@ class TokensResource(_Resource):
         """
         return self._request('DELETE', f'/api/v1/tokens/{token_id}/metadata',
                              skip_response_transform=True)
+
+    def patch_metadata(self, token_id: str, body: Any) -> Any:
+        """Patch (shallow-merge) metadata for a token.
+
+        Keys present in the body are set or overwritten; keys not present are
+        left untouched; a key whose value is None (JSON null) is deleted.
+        Merging is top-level only (nested objects are replaced wholesale, not
+        deep-merged), so a literal null cannot be stored as a value. An empty
+        body changes no metadata.
+
+        Args:
+            token_id: The token ID
+            body: The metadata patch
+        """
+        return self._request('PATCH', f'/api/v1/tokens/{token_id}/metadata',
+                             raw_body=body, skip_response_transform=True)
 
     def get(self, token_id: str, *, as_of: str | None = None) -> Any:
         """Get a token.

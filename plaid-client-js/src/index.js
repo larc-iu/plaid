@@ -72,6 +72,15 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
+       * Patch (shallow-merge) metadata for a vocab link. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * @param {string} id - The resource ID
+       * @param {any} body - The metadata patch
+       */
+      patchMetadata: (id, body) =>
+        this._request('PATCH', `/api/v1/vocab-links/${id}/metadata`, {
+          rawBody: body, skipResponseTransform: true,
+        }),
+      /**
        * Get a vocab link by ID
        * @param {string} id - The resource ID
        * @param {string} [asOf] - Temporal query timestamp
@@ -204,6 +213,15 @@ class PlaidClient {
       deleteMetadata: (relationId) =>
         this._request('DELETE', `/api/v1/relations/${relationId}/metadata`, {
           skipResponseTransform: true,
+        }),
+      /**
+       * Patch (shallow-merge) metadata for a relation. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * @param {string} relationId - The relation ID
+       * @param {any} body - The metadata patch
+       */
+      patchMetadata: (relationId, body) =>
+        this._request('PATCH', `/api/v1/relations/${relationId}/metadata`, {
+          rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Update the target span of a relation.
@@ -416,6 +434,15 @@ class PlaidClient {
         this._request('DELETE', `/api/v1/spans/${spanId}/metadata`, {
           skipResponseTransform: true,
         }),
+      /**
+       * Patch (shallow-merge) metadata for a span. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * @param {string} spanId - The span ID
+       * @param {any} body - The metadata patch
+       */
+      patchMetadata: (spanId, body) =>
+        this._request('PATCH', `/api/v1/spans/${spanId}/metadata`, {
+          rawBody: body, skipResponseTransform: true,
+        }),
     };
 
     this.batch = {
@@ -447,6 +474,15 @@ class PlaidClient {
       deleteMetadata: (textId) =>
         this._request('DELETE', `/api/v1/texts/${textId}/metadata`, {
           skipResponseTransform: true,
+        }),
+      /**
+       * Patch (shallow-merge) metadata for a text. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * @param {string} textId - The text ID
+       * @param {any} body - The metadata patch
+       */
+      patchMetadata: (textId, body) =>
+        this._request('PATCH', `/api/v1/texts/${textId}/metadata`, {
+          rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Create a new text in a document's text layer. A text is a container for
@@ -759,6 +795,15 @@ class PlaidClient {
       deleteMetadata: (documentId) =>
         this._request('DELETE', `/api/v1/documents/${documentId}/metadata`, {
           skipResponseTransform: true,
+        }),
+      /**
+       * Patch (shallow-merge) metadata for a document. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * @param {string} documentId - The document ID
+       * @param {any} body - The metadata patch
+       */
+      patchMetadata: (documentId, body) =>
+        this._request('PATCH', `/api/v1/documents/${documentId}/metadata`, {
+          rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Get audit log for a document. Transparently follows pagination cursors
@@ -1087,6 +1132,15 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
+       * Patch (shallow-merge) metadata for a vocab item. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * @param {string} id - The resource ID
+       * @param {any} body - The metadata patch
+       */
+      patchMetadata: (id, body) =>
+        this._request('PATCH', `/api/v1/vocab-items/${id}/metadata`, {
+          rawBody: body, skipResponseTransform: true,
+        }),
+      /**
        * Create a new vocab item
        * @param {string} vocabLayerId - The vocab layer ID
        * @param {string} form - The vocab item form
@@ -1297,6 +1351,15 @@ class PlaidClient {
       deleteMetadata: (tokenId) =>
         this._request('DELETE', `/api/v1/tokens/${tokenId}/metadata`, {
           skipResponseTransform: true,
+        }),
+      /**
+       * Patch (shallow-merge) metadata for a token. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * @param {string} tokenId - The token ID
+       * @param {any} body - The metadata patch
+       */
+      patchMetadata: (tokenId, body) =>
+        this._request('PATCH', `/api/v1/tokens/${tokenId}/metadata`, {
+          rawBody: body, skipResponseTransform: true,
         }),
     };
 

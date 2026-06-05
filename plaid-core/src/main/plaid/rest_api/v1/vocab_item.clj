@@ -90,6 +90,17 @@
                           {:status 200 :body (vocab-item/get db item-id)}
                           {:status (or code 500) :body {:error (or error "Internal server error")}})))}
 
+     :patch {:summary "Patch (shallow-merge) metadata for a vocab item. Keys present in the request are set or overwritten; keys NOT present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata."
+             :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
+             :openapi {:x-client-method "patch-metadata"}
+             :parameters {:body [:map-of string? any?]}
+             :handler (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id}]
+                        (let [item-id (:id path-params)
+                              {:keys [success code error]} (vocab-item/patch-metadata db item-id metadata user-id)]
+                          (if success
+                            {:status 200 :body (vocab-item/get db item-id)}
+                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}
+
      :delete {:summary "Remove all metadata from a vocab item."
               :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
               :openapi {:x-client-method "delete-metadata"}

@@ -330,6 +330,24 @@
    (metadata/replace-metadata! tx "text" eid metadata-map)
    eid))
 
+(defn patch-metadata
+  "Shallow-merge a metadata patch on the text: keys present set/overwrite,
+  a null value deletes that key, omitted keys are untouched. See
+  `plaid.sql.metadata/patch-metadata!`."
+  [db eid patch user-id]
+  (submit-operation!
+   [tx db {:type :text/patch-metadata
+           :project (project-id db eid)
+           :document (:document_id (psc/fetch-by-id db :texts eid))
+           :description (str "Patch metadata on text " eid
+                             " with " (count patch) " keys")
+           :user user-id}]
+   (metadata/validate-entity-type! "text")
+   (when (nil? (psc/fetch-by-id tx :texts eid))
+     (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
+   (metadata/patch-metadata! tx "text" eid patch)
+   eid))
+
 (defn delete-metadata
   "Remove all metadata from the text."
   [db eid user-id]

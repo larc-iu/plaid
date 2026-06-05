@@ -93,6 +93,11 @@
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/texts/" text-id "/metadata")}))
 
+(defn patch-text-metadata [user-request-fn text-id metadata]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/texts/" text-id "/metadata")
+                             :body metadata}))
+
 (defn delete-text [user-request-fn text-id]
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/texts/" text-id)}))
@@ -144,6 +149,11 @@
 (defn delete-token-metadata [user-request-fn token-id]
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/tokens/" token-id "/metadata")}))
+
+(defn patch-token-metadata [user-request-fn token-id metadata]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/tokens/" token-id "/metadata")
+                             :body metadata}))
 
 (defn delete-token [user-request-fn token-id]
   (api-call user-request-fn {:method :delete
@@ -200,6 +210,11 @@
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/spans/" span-id "/metadata")}))
 
+(defn patch-span-metadata [user-request-fn span-id metadata]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/spans/" span-id "/metadata")
+                             :body metadata}))
+
 (defn update-span-tokens [user-request-fn span-id tokens]
   (api-call user-request-fn {:method :put
                              :path (str "/api/v1/spans/" span-id "/tokens")
@@ -254,6 +269,11 @@
 (defn delete-relation-metadata [user-request-fn relation-id]
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/relations/" relation-id "/metadata")}))
+
+(defn patch-relation-metadata [user-request-fn relation-id metadata]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/relations/" relation-id "/metadata")
+                             :body metadata}))
 
 (defn delete-relation [user-request-fn relation-id]
   (api-call user-request-fn {:method :delete
@@ -416,6 +436,11 @@
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/vocab-items/" item-id "/metadata")}))
 
+(defn patch-vocab-item-metadata [user-request-fn item-id metadata]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/vocab-items/" item-id "/metadata")
+                             :body metadata}))
+
 (defn delete-vocab-item [user-request-fn item-id]
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/vocab-items/" item-id)}))
@@ -444,6 +469,11 @@
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/vocab-links/" link-id "/metadata")}))
 
+(defn patch-vocab-link-metadata [user-request-fn link-id metadata]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/vocab-links/" link-id "/metadata")
+                             :body metadata}))
+
 (defn delete-vocab-link [user-request-fn link-id]
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/vocab-links/" link-id)}))
@@ -461,6 +491,11 @@
 (defn delete-document-metadata [user-request-fn document-id]
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/documents/" document-id "/metadata")}))
+
+(defn patch-document-metadata [user-request-fn document-id metadata]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/documents/" document-id "/metadata")
+                             :body metadata}))
 
 ;; Project vocab linking helpers
 (defn link-vocab-to-project [user-request-fn project-id vocab-id]

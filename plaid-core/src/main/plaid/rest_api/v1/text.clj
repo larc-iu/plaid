@@ -109,4 +109,4 @@
                                   :body {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations
-    (metadata/metadata-routes "text" :text-id get-project-id get-document-id txt/get txt/set-metadata txt/delete-metadata)]])
+    (metadata/metadata-routes "text" :text-id get-project-id get-document-id txt/get txt/set-metadata txt/delete-metadata txt/patch-metadata)]])

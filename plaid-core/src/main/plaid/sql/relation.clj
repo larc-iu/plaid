@@ -241,6 +241,25 @@
    (metadata/replace-metadata! tx "relation" eid metadata-map)
    eid))
 
+(defn patch-metadata
+  "Shallow-merge a metadata patch on a relation: keys present set/overwrite,
+  a null value deletes that key, omitted keys are untouched. See
+  `plaid.sql.metadata/patch-metadata!`."
+  [db eid patch user-id]
+  (submit-operation!
+   [tx db {:type :relation/patch-metadata
+           :project (project-id db eid)
+           :document (:document_id (psc/fetch-by-id db :relations eid))
+           :description (str "Patch metadata on relation " eid
+                             " with " (count patch) " keys")
+           :user user-id}]
+   (metadata/validate-entity-type! "relation")
+   (when (nil? (psc/fetch-by-id tx :relations eid))
+     (throw (ex-info (psc/err-msg-not-found "Relation" eid)
+                     {:code 404 :id eid})))
+   (metadata/patch-metadata! tx "relation" eid patch)
+   eid))
+
 (defn delete-metadata
   "Remove all metadata from a relation."
   [db eid user-id]

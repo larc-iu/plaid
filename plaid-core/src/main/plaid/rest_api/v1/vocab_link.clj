@@ -115,4 +115,4 @@
                                   :body {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations
-    (metadata/metadata-routes "vocab link" :id get-project-id-from-vocab-link get-document-id-from-vocab-link vocab-link/get vocab-link/set-metadata vocab-link/delete-metadata)]])
+    (metadata/metadata-routes "vocab link" :id get-project-id-from-vocab-link get-document-id-from-vocab-link vocab-link/get vocab-link/set-metadata vocab-link/delete-metadata vocab-link/patch-metadata)]])

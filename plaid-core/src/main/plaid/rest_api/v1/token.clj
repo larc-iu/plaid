@@ -281,4 +281,4 @@
                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ;; Metadata operations
-    (metadata/metadata-routes "token" :token-id get-project-id get-document-id tok/get tok/set-metadata tok/delete-metadata)]])
+    (metadata/metadata-routes "token" :token-id get-project-id get-document-id tok/get tok/set-metadata tok/delete-metadata tok/patch-metadata)]])

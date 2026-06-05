@@ -172,6 +172,24 @@
                      (metadata/replace-metadata! tx "vocab-item" eid metadata-map)
                      eid))
 
+(defn patch-metadata
+  "Shallow-merge a metadata patch on the vocab item: keys present set/overwrite,
+  a null value deletes that key, omitted keys are untouched. See
+  `plaid.sql.metadata/patch-metadata!`."
+  [db eid patch user-id]
+  (submit-operation! [tx db {:type :vocab-item/patch-metadata
+                             :project nil
+                             :document nil
+                             :description (str "Patch metadata on vocab item " eid
+                                               " with " (count patch) " keys")
+                             :user user-id}]
+                     (metadata/validate-entity-type! "vocab-item")
+                     (when (nil? (psc/fetch-by-id tx :vocab_items eid))
+                       (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
+                                       {:code 404 :id eid})))
+                     (metadata/patch-metadata! tx "vocab-item" eid patch)
+                     eid))
+
 (defn delete-metadata
   "Remove all metadata for the vocab item."
   [db eid user-id]
