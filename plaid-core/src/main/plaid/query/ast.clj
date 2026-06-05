@@ -27,7 +27,8 @@
   `deferred-clauses` mechanism (now empty) still rejects any future-reserved head
   with a clear message; `:as-of` is rejected as the bitemporal seam."
   (:refer-clojure :exclude [var?])
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [clojure.walk :as walk]))
 
 ;; ---------------------------------------------------------------------------
 ;; Vars
@@ -293,14 +294,87 @@
        :aggregates (mapv normalize-agg-entry (:aggregates m []))})
     (->kw v)))
 
+;; ---------------------------------------------------------------------------
+;; Bindings (query parameters): a `?name` placeholder spliced to a literal
+;; ---------------------------------------------------------------------------
+;; A top-level `:bindings` map `{"?txtl" <literal>}` lets a placeholder that
+;; LOOKS like a free var be pinned to a concrete value. Substitution happens
+;; here, at the wire-parse boundary, BEFORE clause normalization — so the
+;; placeholder is replaced before anything could interpret it as a var, and it
+;; behaves exactly as if the literal were typed inline anywhere it appears
+;; (layer ref, value, doc, scope id, …). Bindings are literals, so a bound layer
+;; id flows through scope/resolution like an inline id — no new ACL surface.
+
+(defn- placeholder-name
+  "The canonical `?name` (string) of a token usable as a binding placeholder — a
+  `?`-prefixed string, symbol, or keyword — else nil. (Keywords arise because the
+  REST layer keywordizes JSON object keys, so a `bindings` key reaches us as
+  `:?lyr`; placeholders used as clause *values* stay strings.)"
+  [x]
+  (cond
+    (and (string? x) (str/starts-with? x "?")) x
+    (and (or (symbol? x) (keyword? x)) (str/starts-with? (name x) "?")) (name x)
+    :else nil))
+
+(defn- scalar-literal? [x]
+  (or (string? x) (number? x) (boolean? x)))
+
+(defn- valid-binding-value?
+  "A binding value is a scalar literal or a non-empty list of scalar literals
+  (a list drives `IN`/alternation in a value position). Maps/vars are rejected."
+  [v]
+  (or (scalar-literal? v)
+      (and (sequential? v) (seq v) (every? scalar-literal? v))))
+
+(defn- build-bindings
+  "Validate the raw `:bindings` value and return `{\"?name\" -> literal}`."
+  [raw-bindings]
+  (when-not (map? raw-bindings)
+    (err! :parse (str ":bindings must be a map of \"?name\" -> value, got: " (pr-str raw-bindings))))
+  (reduce-kv
+   (fn [acc k v]
+     (let [pname (placeholder-name k)]
+       (when-not pname
+         (err! :parse (str ":bindings keys must be ?-prefixed placeholder names, got: " (pr-str k))))
+       (when-not (valid-binding-value? v)
+         (err! :parse (str ":bindings " pname " value must be a scalar or non-empty list of scalars, got: " (pr-str v))))
+       (assoc acc pname v)))
+   {} raw-bindings))
+
+(defn- apply-bindings
+  "Splice `subst` values into `x` wherever a placeholder token appears. Returns
+  `[substituted used-name-set]`. Single pass — a spliced value is never
+  re-scanned (no chaining), since postwalk visits each node once bottom-up."
+  [x subst]
+  (let [used (volatile! #{})
+        f (fn [node]
+            (if-let [pname (placeholder-name node)]
+              (if (contains? subst pname)
+                (do (vswap! used conj pname) (get subst pname))
+                node)
+              node))]
+    [(walk/postwalk f x) @used]))
+
 (defn parse
   "Normalize a raw request map (string- or keyword-keyed; JSON or EDN dialect)
   into the canonical EDN AST. Pure; does not validate semantics beyond the
-  shape needed to normalize. Throws `:code 400` on gross malformation."
+  shape needed to normalize. Throws `:code 400` on gross malformation.
+
+  A top-level `:bindings` map splices `?name` placeholders to literals first
+  (see above); the rest of the pipeline only ever sees the substituted query."
   [raw]
   (when-not (map? raw)
     (err! :parse (str "Query must be a map/object, got: " (pr-str raw))))
-  (let [m (reduce-kv (fn [acc k v] (assoc acc (->kw k) v)) {} raw)]
+  (let [m0 (reduce-kv (fn [acc k v] (assoc acc (->kw k) v)) {} raw)
+        subst (when (contains? m0 :bindings) (build-bindings (:bindings m0)))
+        [m used] (if subst (apply-bindings (dissoc m0 :bindings) subst) [m0 #{}])]
+    ;; strict: every binding must be referenced (a typo'd/unused placeholder is
+    ;; almost always a mistake). Misuse of a placeholder in a var-only slot needs
+    ;; no special check — it becomes a literal there and trips the existing
+    ;; "must be a var" validation downstream.
+    (when subst
+      (when-let [unused (seq (remove used (keys subst)))]
+        (err! :parse (str "binding(s) " (vec unused) " not referenced in the query"))))
     (cond-> {}
       (contains? m :find)   (assoc :find (let [f (:find m)]
                                            (when-not (sequential? f)

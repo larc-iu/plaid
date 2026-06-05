@@ -343,3 +343,55 @@
                                      [["token" "?t" {"layer" "w"}] ["covers" "?s" "?t"]]
                                      [["not" ["token" "?t" {"layer" "w"}] ["covers" "?s" "?t"]]]]]
                            "return" {"group" ["?s"] "aggregates" [["count"]]}}))))))
+
+(defn- cmap-of [ast] (nth (first (:where ast)) 2))
+
+(deftest bindings-substitution
+  (testing "a placeholder in :layer is spliced to the literal (a pinned ref, not a free layer var)"
+    (let [lyr (:layer (cmap-of (ast/parse {"find" ["?s"]
+                                           "where" [["span" "?s" {"layer" "?txtl"}]]
+                                           "bindings" {"?txtl" "L1"}})))]
+      (is (= "L1" lyr))
+      (is (string? lyr) "stays a literal, not a layer-var symbol")))
+  (testing "a placeholder value can be a scalar or a list (-> alternation)"
+    (is (= "NOUN" (:value (cmap-of (ast/parse {"find" ["?s"]
+                                               "where" [["span" "?s" {"value" "?v"}]]
+                                               "bindings" {"?v" "NOUN"}})))))
+    (is (= ["NOUN" "VERB"] (:value (cmap-of (ast/parse {"find" ["?s"]
+                                                        "where" [["span" "?s" {"value" "?v"}]]
+                                                        "bindings" {"?v" ["NOUN" "VERB"]}}))))))
+  (testing "a placeholder splices into :scope ids too"
+    (is (= ["MyProj"] (:projects (:scope (ast/parse {"find" ["?s"]
+                                                     "where" [["span" "?s" {"layer" "p"}]]
+                                                     "scope" {"projects" ["?p"]}
+                                                     "bindings" {"?p" "MyProj"}}))))))
+  (testing "no chaining: a binding value that looks like a var stays a literal string"
+    (let [v (:value (cmap-of (ast/parse {"find" ["?s"]
+                                         "where" [["span" "?s" {"value" "?a"}]]
+                                         "bindings" {"?a" "?b"}})))]
+      (is (= "?b" v))
+      (is (string? v))))
+  (testing "without a binding, a ?-token keeps its normal meaning (here, a layer var)"
+    (is (ast/var? (:layer (cmap-of (ast/parse {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}]]}))))))
+  (testing "REST shape: the body arrives keyword-keyed (Muuntaja), so a bindings key is :?lyr"
+    ;; placeholders used as clause VALUES stay strings (only keys are keywordized)
+    (is (= "L9" (:layer (cmap-of (ast/parse {:find ["?s"]
+                                             :where [["span" "?s" {:layer "?lyr"}]]
+                                             :bindings {:?lyr "L9"}}))))))
+  (testing "strict + shape errors are all 400"
+    ;; unused binding
+    (is (= 400 (code-of #(ast/parse {"find" ["?s"] "where" [["span" "?s" {}]] "bindings" {"?x" "u"}}))))
+    ;; placeholder used where a var is required (:find) -> caught downstream as a literal
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?x"] "where" [["span" "?x" {"layer" "L"}]]
+                                              "bindings" {"?x" "u"}}))))
+    ;; non-?-prefixed binding key
+    (is (= 400 (code-of #(ast/parse {"find" ["?s"] "where" [["span" "?s" {"value" "x"}]]
+                                     "bindings" {"txtl" "u"}}))))
+    ;; map value rejected
+    (is (= 400 (code-of #(ast/parse {"find" ["?s"] "where" [["span" "?s" {"value" "?v"}]]
+                                     "bindings" {"?v" {"regex" "x"}}}))))
+    ;; empty-list value rejected
+    (is (= 400 (code-of #(ast/parse {"find" ["?s"] "where" [["span" "?s" {"value" "?v"}]]
+                                     "bindings" {"?v" []}}))))
+    ;; non-map :bindings
+    (is (= 400 (code-of #(ast/parse {"find" ["?s"] "where" [["span" "?s" {}]] "bindings" "nope"}))))))

@@ -27,7 +27,7 @@ def key_from_snake(key):
 # inside them are never re-cased or namespace-stripped — a label like
 # ``case-marker`` used as a map key survives intact. Everything else is API
 # envelope and gets the usual case conversion.
-OPAQUE_KEYS = ('metadata', 'config')
+OPAQUE_KEYS = ('metadata', 'config', 'bindings')
 
 
 def transform_request(obj):

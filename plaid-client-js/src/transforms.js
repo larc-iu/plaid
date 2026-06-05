@@ -25,7 +25,7 @@ export function transformKeyFromCamel(key) {
 // are never re-cased or namespace-stripped — a label like `case-marker` used as
 // a map key survives intact. Everything else is API envelope and gets the
 // usual case conversion.
-const OPAQUE_KEYS = new Set(['metadata', 'config']);
+const OPAQUE_KEYS = new Set(['metadata', 'config', 'bindings']);
 
 /**
  * Recursively transform request object keys from camelCase to kebab-case.
