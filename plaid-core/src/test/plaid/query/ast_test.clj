@@ -442,3 +442,33 @@
                                                                      ["=" "?b.metadata.k" "x"]]}))))
     ;; config on an entity var
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["=" "?s.config.k" "x"]]}))))))
+
+(deftest layer-structural-slots
+  (testing "a structural-slot var binds the parent layer kind; the whole chain is inferred"
+    (let [a (ast/parse+validate {"find" ["?txtl"]
+                                 "where" [["span" "?s" {"layer" "?sl"}]
+                                          ["span-layer" "?sl" {"token-layer" "?tl"}]
+                                          ["token-layer" "?tl" {"text-layer" "?txtl"}]
+                                          ["text-layer" "?txtl" {"name" "Transcription"}]]})]
+      (is (= {(symbol "?s") :span (symbol "?sl") :span-layer
+              (symbol "?tl") :token-layer (symbol "?txtl") :text-layer}
+             (::ast/var-kinds a)))))
+  (testing "parent-token-layer nests token layers; a slot var is positively bound (find-able)"
+    (is (some? (ast/parse+validate {"find" ["?s"]
+                                    "where" [["token-layer" "?w" {"parent-token-layer" "?s" "name" "words"}]]}))))
+  (testing "a scalar slot reference stays a literal string (not var-ized)"
+    (let [p (ast/parse {"find" ["?tl"] "where" [["token-layer" "?tl" {"text-layer" "Transcription"}]]})]
+      (is (= "Transcription" (get-in (first (:where p)) [2 :text-layer])))))
+  (testing "text-layer is a queryable kind with name + alias"
+    (is (some? (ast/parse+validate {"find" ["?x"] "where" [["text-layer" "?x" {"name" "T" "alias" "t"}]]}))))
+  (testing "kind conflict: a var used as two different layer kinds is a 400"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?x"]
+                                              "where" [["span-layer" "?x" {"token-layer" "?x"}]]})))))
+  (testing "unknown slot for a kind is a 400 (span-layer has no text-layer slot)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?sl"] "where" [["span-layer" "?sl" {"text-layer" "?x"}]]})))))
+  (testing "a list slot value (no alternation) is a 400"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?tl"] "where" [["token-layer" "?tl" {"text-layer" ["a" "b"]}]]})))))
+  (testing "a map slot value (no regex / value-var) is a 400"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?tl"] "where" [["token-layer" "?tl" {"text-layer" {"regex" "x"}}]]})))))
+  (testing "a dotted name in a slot var position is a 400 (slots bind, paths don't)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?tl"] "where" [["token-layer" "?tl" {"text-layer" "?x.name"}]]}))))))

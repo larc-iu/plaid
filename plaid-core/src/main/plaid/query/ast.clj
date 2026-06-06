@@ -91,11 +91,38 @@
 
 ;; Layer-constraint clauses: [:span-layer ?sl {constraint-map}]. The head IS the
 ;; layer kind; binds/constrains a LAYER variable. Value = allowed constraint keys.
+;; Besides its own attributes (:name/:alias) a layer clause may name its immutable
+;; PARENT layer through a structural slot (see `layer-slot->kind`). `:text-layer` is
+;; a queryable kind only so a token layer's text-layer parent can be bound/constrained.
 (def ^:private layer-clauses
-  {:span-layer     #{:name :alias}
-   :token-layer    #{:name :alias}
-   :relation-layer #{:name :alias}
+  {:text-layer     #{:name :alias}
+   :token-layer    #{:name :alias :text-layer :parent-token-layer}
+   :span-layer     #{:name :alias :token-layer}
+   :relation-layer #{:name :alias :span-layer}
    :vocab-layer    #{:name :alias}})
+
+;; Structural slots: a layer clause may reference its PARENT layer (the immutable FK
+;; in the data model) by a slot named after the domain attribute. The slot value is a
+;; layer variable (binds + joins the parent node) or a scalar layer reference
+;; (resolved to one layer) — exactly like an entity's :layer slot. Keyed by
+;; [clause-head slot] -> the parent layer kind the slot references.
+(def ^:private layer-slot->kind
+  {[:token-layer :text-layer]         :text-layer
+   [:token-layer :parent-token-layer] :token-layer
+   [:span-layer :token-layer]         :token-layer
+   [:relation-layer :span-layer]      :span-layer})
+
+(defn layer-slots-for
+  "The `[slot parent-kind]` structural-slot entries available on a layer clause head
+  (empty for entity heads and for layer kinds with no parent — text-layer/vocab-layer).
+  Public so resolve/compile share this single source of truth."
+  [head]
+  (keep (fn [[[h slot] tgt]] (when (= h head) [slot tgt])) layer-slot->kind))
+
+;; Constraint keys whose value may be a query variable (so it is var-ized at parse):
+;; the entity :layer / relation-endpoint slots plus every layer structural slot.
+(def ^:private var-slots
+  (into #{:source :target :layer} (map second) (keys layer-slot->kind)))
 
 ;; Relationship clauses and their arity (number of var args after the head).
 (def ^:private rel-clauses
@@ -239,8 +266,9 @@
 
 (defn- normalize-constraints
   "Constraint map: keyword-ize keys, and var-ize the keys whose values may be a
-  query variable — `:source`/`:target` (inline relation endpoints) and `:layer`
-  (a layer variable). `->var` only coerces strings that actually look like vars
+  query variable — `:source`/`:target` (inline relation endpoints), `:layer` (a
+  layer variable), and the layer structural slots (`:text-layer` etc.). `->var`
+  only coerces strings that actually look like vars
   (`\"?x\"`), so a literal layer ref (`\"pos\"`) or a literal gloss (`\"?\"`)
   stays a string. Every other value (`:value` `:form` `:doc` `:begin` `:end`) is
   left untouched."
@@ -250,7 +278,7 @@
   (reduce-kv (fn [acc k v]
                (let [k (->kw k)]
                  (assoc acc k (cond
-                                (#{:source :target :layer} k) (->var v)
+                                (var-slots k) (->var v)
                                 ;; :metadata is a map of arbitrary metadata KEYS (kept
                                 ;; verbatim — case-sensitive strings) to value specs
                                 ;; (each spec keyword-ized if it's a regex map).
@@ -556,8 +584,16 @@
       (= head :source)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :target)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :vocab-link) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :vocab))
-      ;; a layer-constraint clause binds its var to the head's layer kind
-      (contains? layer-clauses head) (assoc-kind kinds (first args) head)
+      ;; a layer-constraint clause binds its var to the head's layer kind, and each
+      ;; structural-slot var to its parent layer kind (assoc-kind detects conflicts
+      ;; and rejects a dotted name in the slot)
+      (contains? layer-clauses head)
+      (let [[v cmap] args]
+        (reduce (fn [kk [slot tgt]]
+                  (let [x (get cmap slot)]
+                    (if (var? x) (assoc-kind kk x tgt) kk)))
+                (assoc-kind kinds v head)
+                (layer-slots-for head)))
       ;; :not contributes its inner clauses' kinds (so inner-only vars get a kind
       ;; for compilation, and an inner use conflicting with an outer use errors)
       (= head :not)        (reduce clause-kinds kinds args)
@@ -577,7 +613,11 @@
             (into (keep #(let [x (get cmap %)] (when (and (map? x) (var? (:var x))) (:var x))) scalar-keys))))
       (contains? rel-clauses head) (filterv var? args)
       (= head :related*) (filterv var? args)   ; two span vars (the trailing map filters out)
-      (contains? layer-clauses head) (if (var? (first args)) [(first args)] [])
+      (contains? layer-clauses head)
+      (let [[v cmap] args]
+        (-> (if (var? v) [v] [])
+            (into (keep (fn [[slot _]] (let [x (get cmap slot)] (when (var? x) x)))
+                        (layer-slots-for head)))))
       :else [])))
 
 (defn positive-binding-vars
@@ -790,7 +830,16 @@
               unknown (remove allowed (keys (or cmap {})))]
           (when (seq unknown)
             (err! :validate (str "Unknown constraint key(s) " (vec unknown) " on :" (name head)
-                                 " (allowed: " (vec (sort allowed)) ")")))))
+                                 " (allowed: " (vec (sort allowed)) ")"))))
+        ;; a structural slot references ONE parent layer: a layer variable or a
+        ;; scalar reference (name/alias/path/id) — like :layer, no list (alternation)
+        ;; or map (regex / value-variable).
+        (doseq [[slot _] (layer-slots-for head) :when (contains? cmap slot)]
+          (let [x (get cmap slot)]
+            (when-not (or (var? x) (string? x) (number? x))
+              (err! :validate (str ":" (name head) " :" (name slot)
+                                   " must be a layer variable or a single layer reference"
+                                   " (name/alias/path/id), got: " (pr-str x)))))))
 
       (= head :related*)
       (let [[a b cmap] args]

@@ -43,11 +43,20 @@
 ;; Layer variables: a var in an entity's :layer position is a node of a LAYER
 ;; kind, joined to the entity's `*_layer_id`. (Same-layer joins + projection.)
 (def ^:private layer-entity-table
-  {:span-layer :span_layers :token-layer :token_layers
+  {:text-layer :text_layers :span-layer :span_layers :token-layer :token_layers
    :relation-layer :relation_layers :vocab-layer :vocab_layers})
 
 (def ^:private layer-alias-prefix
-  {:span-layer "slv" :token-layer "tlv" :relation-layer "rlv" :vocab-layer "vlv"})
+  {:text-layer "txlv" :span-layer "slv" :token-layer "tlv" :relation-layer "rlv" :vocab-layer "vlv"})
+
+;; A layer clause's structural slot -> the FK column on the host layer table that
+;; points at the referenced parent layer. Keyed by [layer-kind slot]; the kind IS
+;; the clause head (a layer var's kind equals the clause that binds it).
+(def ^:private layer-slot-fk
+  {[:token-layer :text-layer]         :text_layer_id
+   [:token-layer :parent-token-layer] :parent_token_layer_id
+   [:span-layer :token-layer]         :token_layer_id
+   [:relation-layer :span-layer]      :span_layer_id})
 
 (defn- layer-kind? [k] (contains? layer-entity-table k))
 
@@ -215,13 +224,17 @@
     (doseq [[mk spec] (:metadata cmap)]
       (add-where! st (metadata-exists-pred st kind a mk spec)))))
 
+(declare ensure-var!)
+
 (defn- ensure-layer-var!
   "Allocate a layer-table alias for a LAYER variable `v` of `kind`, emit its scope
   predicate (project_id IN scope; vocab layers are global -> via project_vocabs
-  grants), and any `:name` filters from `[:span-layer ?v {:name …}]` clauses. The
-  entity that names this layer joins to its `:id`. Because a layer name is not
-  unique across projects, an unconstrained-by-id layer var ranges over EVERY
-  matching layer in scope — the sanctioned intentional multi-layer match."
+  grants), its `:name`/`:alias` filters, and its STRUCTURAL slots (a parent-layer FK
+  join — a var slot joins to the recursively-ensured/scoped parent node, a scalar
+  slot filters the FK to the id(s) resolve attached). The entity that names this
+  layer joins to its `:id`. Because a layer name is not unique across projects, an
+  unconstrained-by-id layer var ranges over EVERY matching layer in scope — the
+  sanctioned intentional multi-layer match."
   [st v kind constraints]
   (let [a (next-alias! st (layer-alias-prefix kind))]
     (swap! st assoc-in [:var->alias v] a)
@@ -239,7 +252,18 @@
       ;; :alias lives in config JSON under the reserved "plaid"/"alias" pair
       (when (contains? cs :alias)
         (add-where! st (atomic-pred [:json_extract (col a :config) [:inline "$.plaid.alias"]]
-                                    (:alias cs) identity))))))
+                                    (:alias cs) identity)))
+      ;; structural slots: join this layer's FK to its referenced parent layer
+      (doseq [[slot _parent-kind] (ast/layer-slots-for kind)
+              :when (contains? cs slot)]
+        (let [fk (layer-slot-fk [kind slot])
+              ref (get cs slot)]
+          (if (symbol? ref)
+            ;; var slot: join to the parent layer node (ensure-var! scopes it; the
+            ;; host alias is already registered above, so a slot cycle terminates)
+            (add-where! st [:= (col a fk) (col (ensure-var! st ref constraints) :id)])
+            ;; scalar slot: resolve attached the in-scope id(s); filter the FK
+            (add-where! st [:in (col a fk) (vec (get-in cs [::qr/slot-layer-ids slot]))])))))))
 
 (defn- ensure-var!
   "Allocate (once) a table alias for var v, emit its base table, scope predicate,

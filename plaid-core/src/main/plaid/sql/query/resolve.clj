@@ -19,11 +19,16 @@
             [plaid.sql.project :as prj]
             [plaid.sql.user :as usr]))
 
-;; Entity-clause kind -> its layer table.
+;; Kind -> its layer table. Keyed both by ENTITY kind (resolving an entity's :layer
+;; ref) and by LAYER kind (resolving a structural slot's parent-layer ref, e.g. a
+;; token layer's :text-layer). `:text-layer` has no entity equivalent.
 (def ^:private layer-table
-  {:span     :span_layers
-   :token    :token_layers
-   :relation :relation_layers})
+  {:span         :span_layers
+   :token        :token_layers
+   :relation     :relation_layers
+   :text-layer   :text_layers
+   :token-layer  :token_layers
+   :span-layer   :span_layers})
 
 (defn- err! [msg data]
   (throw (ex-info msg (merge {:code 400 :query-error/stage :resolve} data))))
@@ -175,6 +180,27 @@
                         {:layer (:layer cmap)}))
                 (let [ids (resolve-ref (get-index head) head (:layer cmap))]
                   [head v (assoc cmap ::layer-ids (vec ids))]))
+              ;; a LAYER clause may carry structural slots referencing a parent layer
+              ;; (token-layer's :text-layer / :parent-token-layer, span-layer's
+              ;; :token-layer, relation-layer's :span-layer). A scalar ref is resolved
+              ;; to id(s) against the PARENT kind's index; a var slot is left for the
+              ;; compiler (a join). Mirrors the entity :layer branch above.
+              (seq (ast/layer-slots-for head))
+              [head v
+               (reduce
+                (fn [cm [slot parent-kind]]
+                  (let [ref (get cm slot)]
+                    (if (and (some? ref) (not (symbol? ref)))
+                      (do
+                        (when (and strict? (not (uuid-string? (str ref))))
+                          (err! (str "strict-layers is on: " (clojure.core/name head) " " (clojure.core/name slot)
+                                     " reference " (pr-str ref) " must be a layer id (or a layer variable)")
+                                {:layer ref :slot slot}))
+                        (assoc-in cm [::slot-layer-ids slot]
+                                  (vec (resolve-ref (get-index parent-kind) parent-kind ref))))
+                      cm)))
+                cmap
+                (ast/layer-slots-for head))]
               :else clause)))]
     (-> ast*
         (assoc :where (mapv resolve-clause (:where ast*)))
