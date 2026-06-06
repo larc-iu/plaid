@@ -156,7 +156,7 @@ type (and its table and access-control scope); the **constraint map** filters it
 | Kind | Constraints | Notes
 
 | `span`     | `layer`, `value`, `doc`, `metadata`                   | `value` matches the stored annotation value.
-| `token`    | `layer`, `value`, `doc`, `begin`, `end`, `metadata`   | `value` is the token's surface text (the slice of the text body); `begin` / `end` are character offsets.
+| `token`    | `layer`, `value`, `doc`, `begin`, `end`, `metadata`   | `value` is the token's surface text (the slice of the text body); `begin` / `end` are 0-based Unicode code-point offsets (begin inclusive, end exclusive).
 | `relation` | `layer`, `value`, `doc`, `source`, `target`, `metadata` | `source` / `target` may be inline variables (see <<Relationship clauses>>).
 | `vocab`    | `layer`, `form`, `metadata`                           | Vocab items are global; scoped via project grants (see <<Scope and access control>>).
 | `document` | `name`, `id`, `metadata`                              | A document.
@@ -197,10 +197,10 @@ Supported names, by type:
 |===
 | Kind | Readable fields
 
-| `span`          | `value`, `doc`, `id`, `metadata.KEY…`
-| `token`         | `value`, `begin`, `end`, `precedence`, `doc`, `id`, `metadata.KEY…`
-| `relation`      | `value`, `doc`, `id`, `metadata.KEY…`
-| `vocab`         | `form`, `id`, `metadata.KEY…`
+| `span`          | `value`, `doc`, `id`, `layer`, `metadata.KEY…`
+| `token`         | `value`, `begin`, `end`, `precedence`, `doc`, `id`, `layer`, `metadata.KEY…`
+| `relation`      | `value`, `doc`, `id`, `layer`, `source`, `target`, `metadata.KEY…`
+| `vocab`         | `form`, `id`, `layer`, `metadata.KEY…`
 | `document`      | `name`, `id`, `metadata.KEY…`
 | `text`          | `body`, `doc`, `id`, `metadata.KEY…`
 | layer variable  | `name`, `id`, `alias`, `config.KEY…`
@@ -209,6 +209,16 @@ Supported names, by type:
 `doc` is the document id and `id` is the entity's own id. `metadata` and
 `config` go deeper: the segment after them is a key, and you can keep descending
 into nested objects (`?s.metadata.author.name`, `?sl.config.editor.color`).
+
+`layer` (every entity) and `source`/`target` (a relation's endpoint spans) are
+**reference fields** — opaque id columns, the dot-path spelling of the `layer` /
+`source` / `target` constraint slots. Like other ids they take only `=`, `!=`,
+and `in` (no ordering), and they compare to a **variable or an id**, never a
+name: `["=", "?s.layer", "?sl"]` joins to a layer variable, and
+`["=", "?r.source", "?sp"]` is the same as the `<<Relationship clauses,source>>`
+clause. A bare layer *name* on the right (`["=", "?s.layer", "pos"]`) is a
+400 — match a layer by name with the `layer` constraint or a layer-variable
+clause instead.
 
 The field name itself (`begin`, `value`, the `metadata`/`config` word) is part
 of the query language, so it is matched loosely: case and `-`/`_` are ignored,
@@ -245,9 +255,13 @@ key:
 === Regular expressions
 
 A regex spec is `{"regex": "<pattern>"}`, optionally with `"flags": "i"`
-(case-insensitive, the only flag). The pattern is matched against the decoded string, so anchors
-(`^` / `$`) behave as expected. Stick to common syntax (`. * + ? [ ] ^ $ |`) for
-portability. A malformed pattern, or one longer than 512 characters, is a 400.
+(case-insensitive, the only flag). Patterns are Java regular expressions, the
+syntax accepted by
+https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pattern.html[`java.util.regex.Pattern`].
+Matching is a substring search against the decoded value: a pattern matches
+anywhere unless you anchor it with `^` / `$`. Stick to common syntax
+(`. * + ? [ ] ^ $ |`) for patterns that port to other regex engines. A malformed
+pattern, or one longer than 512 characters, is a 400.
 
 [,python]
 ----
@@ -401,7 +415,7 @@ token, and neither relation reaches across texts.
               ?token
 ....
 
-Both compare tokens by their character offsets, so they work across layers: naming
+Both compare tokens by their code-point offsets, so they work across layers: naming
 child and parent on different token layers (morpheme within word within sentence)
 is how you walk a hierarchy. Nesting is non-strict, so a child whose extent
 exactly fills its parent still counts, but a token is never within itself.
@@ -503,13 +517,15 @@ token is linked to that vocab item.
 == Predicate clauses
 
 A predicate compares two already-bound terms: `[op, a, b]` where `op` is one of
-`=`, `!=`, `<`, `>`, `<=`, `>=` and each term is a variable or a literal.
+`=`, `!=`, `<`, `>`, `+<=+`, `>=` and each term is a variable, a
+<<Field access (dot paths),field path>>, or a literal.
 
 [,python]
 ----
 ["!=", "?s1", "?s2"]   # two DIFFERENT spans (compares entity ids)
 ["=",  "?v1", "?v2"]   # two value variables that must be equal
 ["<",  "?n", 5]        # a value variable bound to begin, vs a literal
+["=",  "?s.value", "NOUN"]   # a field path vs a literal
 ----
 
 * On entity variables only `=` / `!=` are allowed (ids have no order); this is
@@ -517,6 +533,66 @@ A predicate compares two already-bound terms: `[op, a, b]` where `op` is one of
 * On value variables and literals, all six operators work.
 * Both variable terms must be bound elsewhere in `where`; a predicate filters, it
   never introduces a variable. Predicates are not allowed inside `not`.
+
+Two more predicates work on a field path (or, for `in`, also a variable):
+
+[,python]
+----
+["~",  "?s.value", "^N"]                      # regex match (bare pattern)
+["~",  "?s.value", {"regex": "^n", "flags": "i"}]   # …with flags
+["in", "?s.value", ["NOUN", "PROPN"]]         # membership / alternation
+----
+
+* `~` matches a **text** field (`value`, `form`, `name`, `body`, the layer
+  `alias`, a `metadata`/`config` value, or a token's surface `value`) against a
+  regular expression. The right side is a bare pattern string or a
+  `{"regex": …, "flags": "i"?}` spec (only the `i` — case-insensitive — flag is
+  supported). Regexes run against the decoded text, so anchors (`^`, `$`) work.
+  `~` on a number or id field is a 400.
+* `in` keeps rows whose left term equals one of the listed literals — the
+  predicate form of a <<Constraints,list constraint>>. The list must be non-empty
+  literals. On a <<Field access (dot paths),reference field>> the members must be
+  ids, not names.
+* Like the comparison predicates, `~` and `in` are not allowed inside `not`.
+
+[[constraints-two-ways]]
+=== Constraints, two ways
+
+Most things you can say in an entity clause's **constraint map** you can also say
+as a standalone predicate over a **field path** — the same filter, two spellings,
+the same result. The constraint map is the compact, common form; the predicate
+("triple") form is the composable, Datalog-style one. Both are first-class;
+neither is preferred, and neither is going away. Pick whichever reads better.
+
+[cols="1,1"]
+|===
+| Constraint map | Equivalent predicate form
+
+| `["span", "?s", {"value": "NOUN"}]`
+| `["span", "?s"], ["=", "?s.value", "NOUN"]`
+
+| `{"value": ["NOUN", "PROPN"]}`
+| `["in", "?s.value", ["NOUN", "PROPN"]]`
+
+| `{"value": {"regex": "^N"}}`
+| `["~", "?s.value", "^N"]`
+
+| `{"begin": 5}` (and `<`, `>`, …)
+| `["=", "?t.begin", 5]`
+
+| `{"layer": "?sl"}`
+| `["=", "?s.layer", "?sl"]`
+
+| `{"source": "?sp"}` (relation)
+| `["=", "?r.source", "?sp"]` (or the `source` clause)
+
+| `{"metadata": {"k": {"regex": "x"}}}`
+| `["~", "?s.metadata.k", "x"]`
+|===
+
+The triple form's strength is composition: a bare `["span", "?s"]` plus
+predicates lets you filter on fields of *different* entities and join them, where
+a single constraint map only describes one entity.
 
 == Sequences (`seq`)
 
