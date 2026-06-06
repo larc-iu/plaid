@@ -236,15 +236,19 @@ export class IgtDocument {
   // recoverable. Deliberately NOT via _withSaving (a heal failure must not
   // reload-and-revert the freshly loaded document).
   async reconcileOnOpen() {
+    // Single-flight: a concurrent re-entry (StrictMode double-invoke, a rapid
+    // re-open) must not double-create morphemes. Set before the first await.
+    if (this._reconciling) return { created: 0, deleted: 0, keptAnnotatedOrphans: 0 };
     const info = this.layerInfo;
-    const { wordsNeedingMorpheme, orphanMorphemeIds } = planMorphemeReconcile(info);
+    const { wordsNeedingMorpheme, orphanMorphemeIds, keptAnnotatedOrphans } = planMorphemeReconcile(info);
     if (!wordsNeedingMorpheme.length && !orphanMorphemeIds.length) {
-      return { created: 0, deleted: 0 };
+      return { created: 0, deleted: 0, keptAnnotatedOrphans };
     }
     const morphemeLayer = info.morphemeTokenLayer;
     const textId = info.primaryTextLayer?.text?.id;
-    if (!morphemeLayer?.id || !textId) return { created: 0, deleted: 0 };
+    if (!morphemeLayer?.id || !textId) return { created: 0, deleted: 0, keptAnnotatedOrphans };
 
+    this._reconciling = true;
     try {
       this._client.beginBatch();
       if (orphanMorphemeIds.length) this._client.tokens.bulkDelete(orphanMorphemeIds);
@@ -267,10 +271,12 @@ export class IgtDocument {
           if (id) layer.tokens.push({ id, text: textId, begin: w.begin, end: w.end, precedence: 1, metadata: {} });
         });
       });
-      return { created: wordsNeedingMorpheme.length, deleted: orphanMorphemeIds.length };
+      return { created: wordsNeedingMorpheme.length, deleted: orphanMorphemeIds.length, keptAnnotatedOrphans };
     } catch (err) {
       console.error('reconcileOnOpen failed:', err);
-      return { created: 0, deleted: 0, error: err };
+      return { created: 0, deleted: 0, keptAnnotatedOrphans, error: err };
+    } finally {
+      this._reconciling = false;
     }
   }
 

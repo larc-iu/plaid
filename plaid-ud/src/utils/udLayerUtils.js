@@ -1,7 +1,7 @@
 import {
   UPOS_TAGS, UNIVERSAL_DEPRELS, readVocab, readColorMap, readFeatureInventory
 } from './udVocab.js';
-import { ROLES, readRole } from '@larc-iu/plaid-client';
+import { ROLES, findByRole } from '@larc-iu/plaid-client';
 
 const UD_NAMESPACE = 'ud';
 
@@ -49,15 +49,9 @@ const hasConfigFlag = (config, key) => config?.[UD_NAMESPACE]?.[key] === true;
 // (config.plaid.role), so a UD project and a project set up by another app
 // resolve the same way. Annotation span / relation layers stay private to UD
 // and are bound by the `ud` config flags (findUdSpanLayer/findUdRelationLayer).
-const findUdTextLayer = (document) => {
-  if (!document?.textLayers) return null;
-  return document.textLayers.find(layer => readRole(layer.config) === ROLES.BASELINE) || null;
-};
+const findUdTextLayer = (document) => findByRole(document?.textLayers, ROLES.BASELINE);
 
-const findUdTokenLayerByRole = (textLayer, role) => {
-  if (!textLayer?.tokenLayers) return null;
-  return textLayer.tokenLayers.find(layer => readRole(layer.config) === role) || null;
-};
+const findUdTokenLayerByRole = (textLayer, role) => findByRole(textLayer?.tokenLayers, role);
 
 const findUdSpanLayer = (tokenLayer, configKey) => {
   if (!tokenLayer?.spanLayers) return null;

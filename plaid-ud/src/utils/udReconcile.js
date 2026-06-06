@@ -28,11 +28,20 @@ export const interSententialRelationIds = (layerInfo) => {
   if (!relations.length || !sentenceTokens.length) return [];
 
   // A begin offset falls in exactly one sentence (the sentence layer is
-  // partitioning). Map an offset to its sentence id, or null if none covers it.
+  // partitioning). Sort once by begin and binary-search each lookup, so the whole
+  // pass is O(n log n) rather than O(spans × sentences) on the document-open path.
+  const sortedSentences = [...sentenceTokens].sort((a, b) => a.begin - b.begin);
   const sentenceIdAt = (begin) => {
     if (begin == null) return null;
-    const s = sentenceTokens.find(t => t.begin <= begin && begin < t.end);
-    return s ? s.id : null;
+    let lo = 0, hi = sortedSentences.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const s = sortedSentences[mid];
+      if (begin < s.begin) hi = mid - 1;
+      else if (begin >= s.end) lo = mid + 1;
+      else return s.id;
+    }
+    return null;
   };
 
   const beginByMorpheme = new Map(morphemeTokens.map(t => [t.id, t.begin]));

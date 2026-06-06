@@ -14,27 +14,18 @@
 // `syntactic-word` layer (that's UD's; it's a sibling of IGT's morpheme layer
 // under the shared word layer).
 
-import { ROLES, readRole } from '@larc-iu/plaid-client';
+import { ROLES, findByRole } from '@larc-iu/plaid-client';
 
 /** plaid-igt's private config namespace (distinct from the reserved `plaid`). */
 export const IGT_NAMESPACE = 'igt';
 
 // --- Substrate binding (by shared role) ------------------------------------
 
-export const findBaselineTextLayer = (textLayers) =>
-  (textLayers || []).find(l => readRole(l.config) === ROLES.BASELINE) || null;
-
-export const findSentenceTokenLayer = (tokenLayers) =>
-  (tokenLayers || []).find(l => readRole(l.config) === ROLES.SENTENCE) || null;
-
-export const findWordTokenLayer = (tokenLayers) =>
-  (tokenLayers || []).find(l => readRole(l.config) === ROLES.WORD) || null;
-
-export const findMorphemeTokenLayer = (tokenLayers) =>
-  (tokenLayers || []).find(l => readRole(l.config) === ROLES.MORPHEME) || null;
-
-export const findAlignmentTokenLayer = (tokenLayers) =>
-  (tokenLayers || []).find(l => readRole(l.config) === ROLES.TIME_ALIGNMENT) || null;
+export const findBaselineTextLayer = (textLayers) => findByRole(textLayers, ROLES.BASELINE);
+export const findSentenceTokenLayer = (tokenLayers) => findByRole(tokenLayers, ROLES.SENTENCE);
+export const findWordTokenLayer = (tokenLayers) => findByRole(tokenLayers, ROLES.WORD);
+export const findMorphemeTokenLayer = (tokenLayers) => findByRole(tokenLayers, ROLES.MORPHEME);
+export const findAlignmentTokenLayer = (tokenLayers) => findByRole(tokenLayers, ROLES.TIME_ALIGNMENT);
 
 // --- Private config (the `igt` namespace) ----------------------------------
 

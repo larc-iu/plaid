@@ -13,8 +13,8 @@ export const notifyError = (message, title = 'Error') =>
 export const notifyInfo = (message, title) =>
   toast(title || message, title ? { description: message } : undefined);
 
-export const notifyWarning = (message, title = 'Warning') =>
-  toast.warning(title, { description: message });
+export const notifyWarning = (message, title = 'Warning', options) =>
+  toast.warning(title, { description: message, ...options });
 
 // Re-export the raw toast for advanced cases (promise toasts, custom JSX, etc.).
 export { toast };

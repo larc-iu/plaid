@@ -5,11 +5,8 @@
  * organized by sentences containing tokens with their annotations.
  */
 
-import {
-  findBaselineTextLayer, findWordTokenLayer, findSentenceTokenLayer,
-  findAlignmentTokenLayer, findMorphemeTokenLayer, readScope,
-  readOrthographies, readDocumentMetadata
-} from '../domain/igtConfig.js';
+import { findBaselineTextLayer, readOrthographies, readDocumentMetadata } from '../domain/igtConfig.js';
+import { getIgtLayerInfo } from '../domain/layerInfo.js';
 
 /**
  * Main parser function that transforms raw document response
@@ -101,56 +98,21 @@ function extractDocumentData(rawDocument, project) {
  * @returns {Object} Object containing identified layers
  */
 function findPrimaryLayers(textLayers) {
-  const primaryTextLayer = findBaselineTextLayer(textLayers);
-  const primaryTokenLayer = findWordTokenLayer(primaryTextLayer.tokenLayers);
-  const sentenceTokenLayer = findSentenceTokenLayer(primaryTextLayer.tokenLayers);
-  const alignmentTokenLayer = findAlignmentTokenLayer(primaryTextLayer.tokenLayers);
-  const morphemeTokenLayer = findMorphemeTokenLayer(primaryTextLayer.tokenLayers);
-
-  // Collect all span layers and categorize by scope
-  const spanLayers = {
-    token: [],
-    sentence: [],
-    morpheme: []
-  };
-  
-  // Collect span layers from primary token layer
-  if (primaryTokenLayer.spanLayers) {
-    primaryTokenLayer.spanLayers.forEach(spanLayer => {
-      const scope = readScope(spanLayer.config);
-      if (scope === 'Token' || scope === 'Word') {
-        spanLayers.token.push(spanLayer);
-      }
-    });
-  }
-  
-  // Collect span layers from morpheme token layer
-  if (morphemeTokenLayer?.spanLayers) {
-    morphemeTokenLayer.spanLayers.forEach(spanLayer => {
-      const scope = readScope(spanLayer.config);
-      if (scope === 'Morpheme') {
-        spanLayers.morpheme.push(spanLayer);
-      }
-    });
-  }
-  
-  // Collect span layers from sentence token layer
-  if (sentenceTokenLayer.spanLayers) {
-    sentenceTokenLayer.spanLayers.forEach(spanLayer => {
-      const scope = readScope(spanLayer.config);
-      if (scope === 'Sentence') {
-        spanLayers.sentence.push(spanLayer);
-      }
-    });
-  }
-  
+  // Single source of truth for substrate binding + scope bucketing is
+  // getIgtLayerInfo; adapt only the one bucket this parser names differently
+  // (`spanLayers.word` -> `spanLayers.token`).
+  const info = getIgtLayerInfo({ textLayers });
   return {
-    primaryTextLayer,
-    primaryTokenLayer,
-    sentenceTokenLayer,
-    alignmentTokenLayer,
-    morphemeTokenLayer,
-    spanLayers
+    primaryTextLayer: info.primaryTextLayer,
+    primaryTokenLayer: info.primaryTokenLayer,
+    sentenceTokenLayer: info.sentenceTokenLayer,
+    alignmentTokenLayer: info.alignmentTokenLayer,
+    morphemeTokenLayer: info.morphemeTokenLayer,
+    spanLayers: {
+      token: info.spanLayers.word,
+      morpheme: info.spanLayers.morpheme,
+      sentence: info.spanLayers.sentence,
+    },
   };
 }
 

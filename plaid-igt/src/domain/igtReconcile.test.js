@@ -35,6 +35,24 @@ describe('planMorphemeReconcile', () => {
     expect(plan.orphanMorphemeIds).toEqual(['m-orphan']);
   });
 
+  it('keeps an annotated orphan morpheme instead of deleting it', () => {
+    // An orphan morpheme that carries a gloss must NOT be auto-deleted (a token
+    // delete would cascade its annotation spans away).
+    const layerInfo = {
+      primaryTokenLayer: { tokens: [{ id: 'w-1', begin: 0, end: 3 }] },
+      morphemeTokenLayer: { tokens: [
+        { id: 'm-1', begin: 0, end: 3 },      // full-width over the word — fine
+        { id: 'm-orphan', begin: 5, end: 8 }, // orphan, but annotated below
+      ] },
+      spanLayers: { morpheme: [
+        { id: 'gloss', spans: [{ id: 's1', tokens: ['m-orphan'], value: 'PST' }] },
+      ] },
+    };
+    const plan = planMorphemeReconcile(layerInfo);
+    expect(plan.orphanMorphemeIds).toEqual([]);  // annotated orphan is kept
+    expect(plan.keptAnnotatedOrphans).toBe(1);
+  });
+
   it('is empty for a well-formed doc', () => {
     const plan = planMorphemeReconcile(getIgtLayerInfo(buildRawDoc()));
     expect(plan.wordsNeedingMorpheme).toEqual([]);
@@ -43,7 +61,7 @@ describe('planMorphemeReconcile', () => {
 
   it('is empty when there is no morpheme layer (foreign project not yet adopted)', () => {
     expect(planMorphemeReconcile({ primaryTokenLayer: { tokens: twoWords } }))
-      .toEqual({ wordsNeedingMorpheme: [], orphanMorphemeIds: [] });
+      .toEqual({ wordsNeedingMorpheme: [], orphanMorphemeIds: [], keptAnnotatedOrphans: 0 });
   });
 });
 

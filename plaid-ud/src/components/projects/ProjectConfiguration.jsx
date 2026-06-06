@@ -8,7 +8,7 @@ import {
   UD_LAYER_LABELS,
   getUdLayerInfo
 } from '../../utils/udLayerUtils.js';
-import { PLAID_NAMESPACE, ROLE_KEY, ROLES, readRole } from '@larc-iu/plaid-client';
+import { PLAID_NAMESPACE, ROLE_KEY, ROLES, findByRole } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import {
@@ -102,11 +102,9 @@ export const ProjectConfiguration = ({ embedded = false }) => {
   // Find an existing UD annotation layer (idempotent re-configuration), else null.
   const findFlagged = (layers, namespace, key) =>
     (layers || []).find(layer => layer.config?.[namespace]?.[key] === true) || null;
-  // Substrate layers are matched by their shared ROLE. This is also how UD adopts
-  // a substrate created by another app: we reuse its baseline/sentence/word layers
-  // and only create the layers UD additionally needs below the word.
-  const findByRole = (layers, role) =>
-    (layers || []).find(layer => readRole(layer.config) === role) || null;
+  // Substrate layers are matched by their shared ROLE (findByRole, imported from
+  // the client). This is also how UD adopts a substrate created by another app:
+  // reuse its baseline/sentence/word and create only the layers UD needs below.
 
   const ensureTokenLayer = async (client, textLayerId, existingTextLayer, role, name, overlapMode, parentId) => {
     const existing = findByRole(existingTextLayer?.tokenLayers, role);

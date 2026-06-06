@@ -310,5 +310,5 @@ export const ROLES: {
 };
 /** The role recorded on a layer's `config`, or null if none. */
 export function readRole(config?: object): string | null;
-/** True if `layer`'s config carries the given role. */
-export function hasRole(layer: { config?: object } | undefined, role: string): boolean;
+/** The first layer in `layers` carrying the given role, or null. */
+export function findByRole<T extends { config?: object }>(layers: T[] | undefined, role: string): T | null;

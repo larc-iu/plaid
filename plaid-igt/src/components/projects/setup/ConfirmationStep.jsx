@@ -54,9 +54,11 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       // existing layers either — user must create a new project instead.
       // This guard applies to existing-project flows AND to new-project retries
       // (the just-created project won't be initialized, so it falls through).
+      // Fetched once here and reused for substrate adoption below (no 2nd GET).
+      let existingProject = null;
       if (resumeProjectId) {
         try {
-          const existingProject = await client.projects.get(resumeProjectId);
+          existingProject = await client.projects.get(resumeProjectId);
           if (readInitialized(existingProject?.config)) {
             notifyError(
               'This project is already initialized with Plaid Base. Re-running setup is not supported — create a new project instead.',
@@ -67,6 +69,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
           }
         } catch (checkError) {
           console.warn('Could not check project initialization status:', checkError);
+          existingProject = null;
           // Fall through — if we can't check, attempt setup and let it surface other errors.
         }
       }
@@ -89,34 +92,34 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       // another Plaid app may already have set up. Substrate layers are matched
       // by their shared role, so we reuse an existing baseline/sentence/word
       // rather than duplicating them, and create only what IGT additionally
-      // needs (its morpheme + alignment layers). New projects have no substrate,
-      // so this finds nothing and creates the whole skeleton.
-      let existingTextLayers = [];
-      try {
-        const proj = await client.projects.get(currentProjectId);
-        existingTextLayers = proj?.textLayers || [];
-      } catch { /* brand-new / empty project: nothing to adopt */ }
+      // needs (its morpheme + alignment layers). Reuses the project already
+      // fetched above (no second round-trip); a brand-new project has none.
+      const existingTextLayers = existingProject?.textLayers || [];
       const adoptedBaseline = findBaselineTextLayer(existingTextLayers);
 
       let textLayerId = adoptedBaseline?.id ?? null;
+      let needsBaselineTag = false;
       if (textLayerId) {
         updateProgress(20, 'Using shared text layer...');
-        await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+        // Adopted baseline already carries role=baseline — no re-stamp needed.
       } else if (isNewProject) {
         updateProgress(20, 'Creating text layer...');
         const textLayer = await client.textLayers.create(currentProjectId, 'Main Text');
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
-        await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+        needsBaselineTag = true;
       } else if (setupData.layerSelection?.textLayerType === 'new' && setupData.layerSelection?.newTextLayerName) {
         updateProgress(20, 'Creating text layer...');
         const textLayer = await client.textLayers.create(currentProjectId, setupData.layerSelection.newTextLayerName);
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
-        await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+        needsBaselineTag = true;
       } else if (setupData.layerSelection?.textLayerType === 'existing' && setupData.layerSelection?.selectedTextLayerId) {
         textLayerId = setupData.layerSelection.selectedTextLayerId;
         updateProgress(20, 'Using existing text layer...');
+        needsBaselineTag = true;
+      }
+      if (needsBaselineTag && textLayerId) {
         await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
       }
 
@@ -130,61 +133,36 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       let alignmentTokenLayerId = null;
 
       if (textLayerId) {
-        const existingTokenLayers = (adoptedBaseline?.id === textLayerId ? adoptedBaseline?.tokenLayers : []) || [];
+        const existingTokenLayers = adoptedBaseline?.tokenLayers || [];
 
-        // Sentence (partitioning root)
-        const foundSentence = findSentenceTokenLayer(existingTokenLayers);
-        if (foundSentence) {
-          sentenceTokenLayerId = foundSentence.id;
-        } else {
-          updateProgress(28, 'Creating sentence layer...');
-          const sentenceTokenLayer = await client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
-          sentenceTokenLayerId = sentenceTokenLayer.id;
-          resources.sentenceTokenLayer = sentenceTokenLayer;
-          await client.tokenLayers.setConfig(sentenceTokenLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
-        }
+        // Find a substrate token layer by role, or create + tag a new one.
+        // Adopting a foreign layer skips creation (and its setConfig) entirely.
+        const ensureTokenLayer = async (found, role, resourceKey, name, overlapMode, parentId, pct, msg) => {
+          if (found) return found.id;
+          updateProgress(pct, msg);
+          const layer = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
+          resources[resourceKey] = layer;
+          await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, ROLE_KEY, role);
+          return layer.id;
+        };
 
-        // Word (non-overlapping, nested in sentence)
-        const foundWord = findWordTokenLayer(existingTokenLayers);
-        if (foundWord) {
-          tokenLayerId = foundWord.id;
-        } else {
-          const tokenLayerName = (!isNewProject && setupData.layerSelection?.newTokenLayerName)
-            ? setupData.layerSelection.newTokenLayerName
-            : 'Main Tokens';
-          updateProgress(32, 'Creating token layer...');
-          const tokenLayer = await client.tokenLayers.create(textLayerId, tokenLayerName, 'non-overlapping', sentenceTokenLayerId);
-          tokenLayerId = tokenLayer.id;
-          resources.tokenLayer = tokenLayer;
-          await client.tokenLayers.setConfig(tokenLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
-        }
+        sentenceTokenLayerId = await ensureTokenLayer(
+          findSentenceTokenLayer(existingTokenLayers), ROLES.SENTENCE, 'sentenceTokenLayer',
+          'Sentences', 'partitioning', undefined, 28, 'Creating sentence layer...');
 
-        // Morpheme (any, nested in word) — IGT-specific; a UD substrate has none.
-        const foundMorpheme = findMorphemeTokenLayer(existingTokenLayers);
-        if (foundMorpheme) {
-          morphemeLayerId = foundMorpheme.id;
-        } else {
-          const morphemeLayerName = (!isNewProject && setupData.layerSelection?.newMorphemeLayerName)
-            ? setupData.layerSelection.newMorphemeLayerName
-            : 'Main Morphemes';
-          updateProgress(35, 'Creating morpheme layer...');
-          const morphemeLayer = await client.tokenLayers.create(textLayerId, morphemeLayerName, 'any', tokenLayerId);
-          morphemeLayerId = morphemeLayer.id;
-          resources.morphemeLayer = morphemeLayer;
-          await client.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.MORPHEME);
-        }
+        const wordName = (!isNewProject && setupData.layerSelection?.newTokenLayerName) || 'Main Tokens';
+        tokenLayerId = await ensureTokenLayer(
+          findWordTokenLayer(existingTokenLayers), ROLES.WORD, 'tokenLayer',
+          wordName, 'non-overlapping', sentenceTokenLayerId, 32, 'Creating token layer...');
 
-        // Alignment (non-overlapping root, time-aligned)
-        const foundAlignment = findAlignmentTokenLayer(existingTokenLayers);
-        if (foundAlignment) {
-          alignmentTokenLayerId = foundAlignment.id;
-        } else {
-          updateProgress(38, 'Creating alignment token layer...');
-          const alignmentTokenLayer = await client.tokenLayers.create(textLayerId, 'Time Alignment', 'non-overlapping');
-          alignmentTokenLayerId = alignmentTokenLayer.id;
-          resources.alignmentTokenLayer = alignmentTokenLayer;
-          await client.tokenLayers.setConfig(alignmentTokenLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.TIME_ALIGNMENT);
-        }
+        const morphName = (!isNewProject && setupData.layerSelection?.newMorphemeLayerName) || 'Main Morphemes';
+        morphemeLayerId = await ensureTokenLayer(
+          findMorphemeTokenLayer(existingTokenLayers), ROLES.MORPHEME, 'morphemeLayer',
+          morphName, 'any', tokenLayerId, 35, 'Creating morpheme layer...');
+
+        alignmentTokenLayerId = await ensureTokenLayer(
+          findAlignmentTokenLayer(existingTokenLayers), ROLES.TIME_ALIGNMENT, 'alignmentTokenLayer',
+          'Time Alignment', 'non-overlapping', undefined, 38, 'Creating alignment token layer...');
       }
 
       // Step 5: Configure orthographies on token layer

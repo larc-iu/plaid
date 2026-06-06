@@ -12,7 +12,7 @@ import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
-import { notifySuccess, notifyWarning } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyWarning, notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 
 const DRAWER_WIDTH = 384;
@@ -73,12 +73,18 @@ export const AnnotationEditor = () => {
       setProject(projectData);
       // Reconcile-on-open: heal UD invariants another app may have broken while
       // this editor was closed (e.g. a sentence split that left a dependency
-      // relation crossing a boundary). Edit permission only, and BEFORE entering
-      // strict mode so the repair's own write doesn't trip OCC. Loud + recoverable.
-      if (canEditProject(projectData, user)) {
+      // relation crossing a boundary). Only on the INITIAL open (not on every
+      // refresh), with edit permission, and BEFORE entering strict mode so the
+      // repair's own write doesn't trip OCC. Loud on success AND on failure.
+      if (initial && canEditProject(projectData, user)) {
         try {
-          const { deletedRelations } = await next.reconcileOnOpen();
-          if (deletedRelations > 0) {
+          const { deletedRelations, error } = await next.reconcileOnOpen();
+          if (error) {
+            notifyError(
+              'Could not auto-repair this document; a dependency relation may cross a sentence boundary. Try reloading.',
+              'Repair failed'
+            );
+          } else if (deletedRelations > 0) {
             notifyWarning(
               `Removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
               'crossed a sentence boundary, likely from an edit in another app. Please review.',
@@ -88,6 +94,7 @@ export const AnnotationEditor = () => {
           }
         } catch (e) {
           console.error('Reconcile-on-open failed:', e);
+          notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
         }
       }
       setDoc(next);

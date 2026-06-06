@@ -60,9 +60,12 @@ def relation_layer_by_ud_config(span_layer, key, fallback_index=0):
     return None
 
 
-def token_layer_by_ud_config(token_layers, key):
+def token_layer_by_role(token_layers, role):
+    # Substrate token layers are bound by their shared role (config.plaid.role),
+    # NOT by the per-app ud.* flags. UD's "Morphemes" layer carries role
+    # "syntactic-word" (it holds CoNLL-U syntactic words), not "morpheme".
     for layer in token_layers or []:
-        if layer.get("config", {}).get("ud", {}).get(key) is True:
+        if layer.get("config", {}).get("plaid", {}).get("role") == role:
             return layer
     return None
 
@@ -108,14 +111,19 @@ def parse_document(pipeline, client, document_id, text_content):
         log("Fetching document with layers…")
         full_document = client.documents.get(document_id, include_body=True)
         log("  …document fetched")
-        text_layer = full_document["text_layers"][0]
+        text_layers = full_document["text_layers"]
+        text_layer = next(
+            (tl for tl in text_layers
+             if tl.get("config", {}).get("plaid", {}).get("role") == "baseline"),
+            text_layers[0],
+        )
         text_id = text_layer["text"]["id"]
         body = text_layer["text"]["body"]
 
         token_layers = text_layer.get("token_layers", [])
-        sentence_layer = token_layer_by_ud_config(token_layers, "sentenceTokenLayer")
-        word_layer = token_layer_by_ud_config(token_layers, "wordTokenLayer")
-        morpheme_layer = token_layer_by_ud_config(token_layers, "morphemeTokenLayer")
+        sentence_layer = token_layer_by_role(token_layers, "sentence")
+        word_layer = token_layer_by_role(token_layers, "word")
+        morpheme_layer = token_layer_by_role(token_layers, "syntactic-word")
 
         if not (sentence_layer and word_layer and morpheme_layer):
             raise RuntimeError("Project is missing the sentence/word/morpheme token layers")

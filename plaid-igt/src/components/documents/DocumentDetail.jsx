@@ -71,14 +71,26 @@ const DocumentEditor = () => {
     let cancelled = false;
     (async () => {
       try {
-        const { created = 0, deleted = 0 } = await doc.reconcileOnOpen();
-        if (cancelled || created + deleted === 0) return;
+        const { created = 0, deleted = 0, keptAnnotatedOrphans = 0, error } = await doc.reconcileOnOpen();
+        if (cancelled) return;
+        if (error) {
+          notifyError(
+            'Could not finish auto-repairing this document; some morphemes may be missing or out of sync. Try reloading.',
+            'Repair failed'
+          );
+          return;
+        }
+        if (created + deleted + keptAnnotatedOrphans === 0) return;
         const parts = [];
         if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
-        if (deleted) parts.push(`removed ${deleted} orphaned morpheme${deleted === 1 ? '' : 's'}`);
+        if (deleted) parts.push(`removed ${deleted} empty orphaned morpheme${deleted === 1 ? '' : 's'}`);
+        if (keptAnnotatedOrphans) {
+          parts.push(`kept ${keptAnnotatedOrphans} annotated morpheme${keptAnnotatedOrphans === 1 ? '' : 's'} that no longer match a word (their glosses were preserved — reattach or delete them)`);
+        }
         notifyWarning(
-          `Repaired this document after an edit in another app: ${parts.join(' and ')}. Please review.`,
-          'Document repaired'
+          `Repaired this document after an edit in another app: ${parts.join('; ')}. Please review.`,
+          'Document repaired',
+          { duration: Infinity }
         );
       } catch (e) {
         console.error('Reconcile-on-open failed:', e);

@@ -22,7 +22,7 @@ const extentKey = (t) => `${t.begin}:${t.end}`;
  * @param {object} layerInfo result of getIgtLayerInfo (bound layers)
  */
 export const planMorphemeReconcile = (layerInfo) => {
-  const empty = { wordsNeedingMorpheme: [], orphanMorphemeIds: [] };
+  const empty = { wordsNeedingMorpheme: [], orphanMorphemeIds: [], keptAnnotatedOrphans: 0 };
   if (!layerInfo?.morphemeTokenLayer) return empty;
 
   const words = layerInfo.primaryTokenLayer?.tokens || [];
@@ -31,8 +31,18 @@ export const planMorphemeReconcile = (layerInfo) => {
   const morphemeExtents = new Set(morphemes.map(extentKey));
   const wordExtents = new Set(words.map(extentKey));
 
-  const wordsNeedingMorpheme = words.filter(w => !morphemeExtents.has(extentKey(w)));
-  const orphanMorphemeIds = morphemes.filter(m => !wordExtents.has(extentKey(m))).map(m => m.id);
+  // Morpheme token ids carrying at least one annotation span. We NEVER auto-delete
+  // an annotated morpheme: a token delete cascades its spans, so deleting on open
+  // would be silent, unrecoverable gloss loss. Annotated orphans are left in place
+  // and reported for the user to reattach or remove deliberately.
+  const annotated = new Set();
+  (layerInfo.spanLayers?.morpheme || []).forEach(sl =>
+    (sl.spans || []).forEach(sp => (sp.tokens || []).forEach(t => annotated.add(t))));
 
-  return { wordsNeedingMorpheme, orphanMorphemeIds };
+  const wordsNeedingMorpheme = words.filter(w => !morphemeExtents.has(extentKey(w)));
+  const orphans = morphemes.filter(m => !wordExtents.has(extentKey(m)));
+  const orphanMorphemeIds = orphans.filter(m => !annotated.has(m.id)).map(m => m.id);
+  const keptAnnotatedOrphans = orphans.length - orphanMorphemeIds.length;
+
+  return { wordsNeedingMorpheme, orphanMorphemeIds, keptAnnotatedOrphans };
 };
