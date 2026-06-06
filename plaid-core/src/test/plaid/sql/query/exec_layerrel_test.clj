@@ -65,13 +65,13 @@
       (is (empty? (ids (run (assoc-in chain ["where" 3 2 "name"] "Translation"))))))))
 
 (deftest scalar-slot-equals-var-plus-name
-  (let [{:keys [noun verb]} (build! "LR2")
-        ;; one-clause scalar ref on the token layer's text-layer slot
+  (let [{:keys [txtl noun verb]} (build! "LR2")
+        ;; one-clause scalar ref (by layer id) on the token layer's text-layer slot
         scalar (ids (run {"find" ["?s"]
                           "where" [["span" "?s" {"layer" "?sl"}]
                                    ["span-layer" "?sl" {"token-layer" "?tl"}]
-                                   ["token-layer" "?tl" {"text-layer" "Transcription"}]]}))]
-    (testing "a scalar text-layer reference yields exactly the var + name-clause form"
+                                   ["token-layer" "?tl" {"text-layer" (str txtl)}]]}))]
+    (testing "a scalar text-layer id reference yields exactly the var + name-clause form"
       (is (= #{(str noun) (str verb)} scalar))
       (is (= scalar (ids (run chain)))))))
 
@@ -105,38 +105,35 @@
              (ids (run chain)))))
     (testing "user1 (reader of P1) sees ONLY P1's spans — the structural join cannot reach P2's text layer"
       (is (= #{(str (:noun p1)) (str (:verb p1))} (ids (run "user1@example.com" chain)))))
-    ;; a scalar structural ref is scope-confined too: it resolves against the
-    ;; in-scope index only, so "Transcription" is ambiguous for admin (two in scope)
-    ;; but unambiguous for user1 (only P1's is visible).
-    (let [scalar-q {"find" ["?s"]
-                    "where" [["span" "?s" {"layer" "?sl"}]
-                             ["span-layer" "?sl" {"token-layer" "?tl"}]
-                             ["token-layer" "?tl" {"text-layer" "Transcription"}]]}]
-      (testing "scalar text-layer ref is ambiguous (400) for admin across 2 projects"
-        (is (= 400 (try (run scalar-q)
-                        (catch clojure.lang.ExceptionInfo e (:code (ex-data e)))))))
-      (testing "scalar text-layer ref resolves cleanly for user1 (only P1's Transcription in scope)"
-        (is (= #{(str (:noun p1)) (str (:verb p1))} (ids (run "user1@example.com" scalar-q))))))))
+    ;; a scalar structural ref (by id) is scope-confined: P2's text-layer id resolves
+    ;; for admin (P2 in scope) but is invisible to user1 (only P1 readable) -> 400.
+    (let [p2-scalar {"find" ["?s"]
+                     "where" [["span" "?s" {"layer" "?sl"}]
+                              ["span-layer" "?sl" {"token-layer" "?tl"}]
+                              ["token-layer" "?tl" {"text-layer" (str (:txtl p2))}]]}]
+      (testing "admin (P2 in scope) gets P2's spans via P2's text-layer id"
+        (is (= #{(str (:noun p2)) (str (:verb p2))} (ids (run p2-scalar)))))
+      (testing "user1 (reader of P1 only) -> 400, P2's text layer is not visible in scope"
+        (is (= 400 (try (run "user1@example.com" p2-scalar)
+                        (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))))))))
 
-(deftest strict-layers-on-structural-ref
+(deftest structural-scalar-ref-must-be-an-id
   (let [{:keys [txtl noun verb]} (build! "LR6")]
-    (testing "strict-layers rejects a non-uuid structural scalar ref"
-      (is (= 400 (try (run (assoc {"find" ["?s"]
-                                   "where" [["span" "?s" {"layer" "?sl"}]
-                                            ["span-layer" "?sl" {"token-layer" "?tl"}]
-                                            ["token-layer" "?tl" {"text-layer" "Transcription"}]]}
-                                  "strict-layers" true))
+    (testing "a non-uuid structural scalar ref is a 400 (layers are identified by id only)"
+      (is (= 400 (try (run {"find" ["?s"]
+                            "where" [["span" "?s" {"layer" "?sl"}]
+                                     ["span-layer" "?sl" {"token-layer" "?tl"}]
+                                     ["token-layer" "?tl" {"text-layer" "Transcription"}]]})
                       (catch clojure.lang.ExceptionInfo e (:code (ex-data e)))))))
-    (testing "strict-layers allows a structural ref given by layer id"
+    (testing "a structural ref given by layer id resolves"
       (is (= #{(str noun) (str verb)}
-             (ids (run (assoc {"find" ["?s"]
-                               "where" [["span" "?s" {"layer" "?sl"}]
-                                        ["span-layer" "?sl" {"token-layer" "?tl"}]
-                                        ["token-layer" "?tl" {"text-layer" (str txtl)}]]}
-                              "strict-layers" true))))))
-    (testing "strict-layers allows a structural variable"
+             (ids (run {"find" ["?s"]
+                        "where" [["span" "?s" {"layer" "?sl"}]
+                                 ["span-layer" "?sl" {"token-layer" "?tl"}]
+                                 ["token-layer" "?tl" {"text-layer" (str txtl)}]]})))))
+    (testing "a structural variable (joined parent) resolves"
       (is (= #{(str noun) (str verb)}
-             (ids (run (assoc chain "strict-layers" true))))))))
+             (ids (run chain)))))))
 
 (deftest structural-slot-inside-not-correlates
   ;; Regression (review f58a7e2): a structural slot on a CORRELATED layer var inside

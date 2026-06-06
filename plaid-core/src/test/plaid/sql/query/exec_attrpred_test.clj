@@ -39,7 +39,7 @@
         c  (id (h/create-span admin-request pos [t2] "VERB"))
         d  (id (h/create-span admin-request pos [t3] "NOUN"))
         r  (id (h/create-relation admin-request dep a b "nsubj"))]
-    {:pid pid :pos pos :dep dep
+    {:pid pid :pos pos :dep dep :tokl tokl
      :t0 t0 :t1 t1 :t2 t2 :t3 t3 :a a :b b :c c :d d :r r}))
 
 ;; ---------------------------------------------------------------------------
@@ -47,29 +47,29 @@
 ;; ---------------------------------------------------------------------------
 
 (deftest in-value-equivalence
-  (let [{:keys [a b d]} (build!)]
+  (let [{:keys [a b d pos]} (build!)]
     (testing "[in ?s.value [NOUN PROPN]] == {value [NOUN PROPN]}"
-      (let [triple (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]
+      (let [triple (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]
                                                 ["in" "?s.value" ["NOUN" "PROPN"]]]})
-            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos" "value" ["NOUN" "PROPN"]}]]})]
+            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos "value" ["NOUN" "PROPN"]}]]})]
         (is (= #{(str a) (str b) (str d)} (ids triple)))
         (is (= (ids cmap) (ids triple)))))))
 
 (deftest in-token-surface-equivalence
-  (let [{:keys [t0 t2]} (build!)]
+  (let [{:keys [t0 t2 tokl]} (build!)]
     (testing "[in ?t.value [aa cc]] (surface substrings) == token {value [aa cc]}"
-      (let [triple (run {"find" ["?t"] "where" [["token" "?t" {"layer" "AP/words"}]
+      (let [triple (run {"find" ["?t"] "where" [["token" "?t" {"layer" tokl}]
                                                 ["in" "?t.value" ["aa" "cc"]]]})
-            cmap   (run {"find" ["?t"] "where" [["token" "?t" {"layer" "AP/words" "value" ["aa" "cc"]}]]})]
+            cmap   (run {"find" ["?t"] "where" [["token" "?t" {"layer" tokl "value" ["aa" "cc"]}]]})]
         (is (= #{(str t0) (str t2)} (ids triple)))
         (is (= (ids cmap) (ids triple)))))))
 
 (deftest in-metadata-equivalence
-  (let [{:keys [a]} (build!)]
+  (let [{:keys [a pos]} (build!)]
     (testing "[in ?s.metadata.genre [news]] == {metadata {genre [news]}}"
-      (let [triple (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]
+      (let [triple (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]
                                                 ["in" "?s.metadata.genre" ["news"]]]})
-            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos" "metadata" {"genre" ["news"]}}]]})]
+            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos "metadata" {"genre" ["news"]}}]]})]
         (is (= #{(str a)} (ids triple)))
         (is (= (ids cmap) (ids triple)))))))
 
@@ -78,41 +78,41 @@
 ;; ---------------------------------------------------------------------------
 
 (deftest regex-value-equivalence
-  (let [{:keys [a d]} (build!)]
+  (let [{:keys [a d pos]} (build!)]
     (testing "[~ ?s.value ^N] (and the bare-string form) == {value {regex ^N}}"
-      (let [spec  (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]
+      (let [spec  (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]
                                                ["~" "?s.value" {"regex" "^N"}]]})
-            bare  (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]
+            bare  (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]
                                                ["~" "?s.value" "^N"]]})
-            cmap  (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos" "value" {"regex" "^N"}}]]})]
+            cmap  (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos "value" {"regex" "^N"}}]]})]
         (is (= #{(str a) (str d)} (ids spec)))   ; NOUN matches ^N; PROPN/VERB don't
         (is (= (ids spec) (ids bare)))
         (is (= (ids cmap) (ids spec)))))
     (testing "anchors run on the DECODED value (not the JSON \"NOUN\")"
       (is (= #{(str a) (str d)}
-             (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]
+             (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]
                                                ["~" "?s.value" "^NOUN$"]]})))))))
 
 (deftest regex-flags-equivalence
-  (let [{:keys [a b d]} (build!)]
+  (let [{:keys [a b d pos]} (build!)]
     (testing "flags i folds case, matching {value {regex flags}}"
-      (let [triple (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]
+      (let [triple (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]
                                                 ["~" "?s.value" {"regex" "n" "flags" "i"}]]})
-            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos" "value" {"regex" "n" "flags" "i"}}]]})]
+            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos "value" {"regex" "n" "flags" "i"}}]]})]
         ;; NOUN, PROPN, NOUN all contain an n/N case-insensitively; VERB does not
         (is (= #{(str a) (str b) (str d)} (ids triple)))
         (is (= (ids cmap) (ids triple)))))))
 
 (deftest regex-token-surface-and-metadata
-  (let [{:keys [t0 b]} (build!)]
+  (let [{:keys [t0 b pos tokl]} (build!)]
     (testing "~ on a token surface == token {value {regex}}"
       (is (= #{(str t0)}
-             (ids (run {"find" ["?t"] "where" [["token" "?t" {"layer" "AP/words"}]
+             (ids (run {"find" ["?t"] "where" [["token" "?t" {"layer" tokl}]
                                                ["~" "?t.value" "^a"]]})))))
     (testing "~ on metadata == {metadata {k {regex}}}"
-      (let [triple (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]
+      (let [triple (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]
                                                 ["~" "?s.metadata.genre" "^na"]]})
-            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos" "metadata" {"genre" {"regex" "^na"}}}]]})]
+            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos "metadata" {"genre" {"regex" "^na"}}}]]})]
         (is (= #{(str b)} (ids triple)))   ; "naval" starts na; "news" does not
         (is (= (ids cmap) (ids triple)))))))
 
@@ -126,7 +126,7 @@
       (let [triple (run {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}]
                                                 ["span-layer" "?sl" {"name" "pos"}]
                                                 ["=" "?s.layer" "?sl"]]})
-            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]]})]
+            cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]]})]
         (is (= #{(str a) (str b) (str c) (str d)} (ids triple)))
         (is (= (ids cmap) (ids triple)))))
     (testing "[= ?s.layer <pos-uuid>] == {layer <pos-uuid>} (ids are strings on the wire)"
@@ -138,32 +138,32 @@
       (is (= #{(str a) (str b) (str c) (str d)}
              (ids (run {"find" ["?s"] "where" [["span" "?s"] ["in" "?s.layer" [(str pos)]]]})))))
     (testing "a reference field is usable in order-by (sorts by the id string, no error)"
-      (let [r (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]]
+      (let [r (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]]
                     "order-by" [["?s.layer"]]})]
         (is (= #{(str a) (str b) (str c) (str d)} (set (map (comp str first) (:results r)))))))))
 
 (deftest relation-endpoint-ref-equivalence
-  (let [{:keys [a b]} (build!)]
+  (let [{:keys [a b dep]} (build!)]
     (testing "[= ?r.source ?sp] == [source ?r ?sp] == inline {source ?sp}"
-      (let [via-eq     (run {"find" ["?sp"] "where" [["relation" "?r" {"layer" "AP/dep"}]
+      (let [via-eq     (run {"find" ["?sp"] "where" [["relation" "?r" {"layer" dep}]
                                                      ["span" "?sp"] ["=" "?r.source" "?sp"]]})
-            via-clause (run {"find" ["?sp"] "where" [["relation" "?r" {"layer" "AP/dep"}]
+            via-clause (run {"find" ["?sp"] "where" [["relation" "?r" {"layer" dep}]
                                                      ["span" "?sp"] ["source" "?r" "?sp"]]})
-            via-inline (run {"find" ["?sp"] "where" [["relation" "?r" {"layer" "AP/dep" "source" "?sp"}]
+            via-inline (run {"find" ["?sp"] "where" [["relation" "?r" {"layer" dep "source" "?sp"}]
                                                      ["span" "?sp"]]})]
         (is (= #{(str a)} (ids via-eq)))
         (is (= (ids via-clause) (ids via-eq)))
         (is (= (ids via-inline) (ids via-eq)))))
     (testing "[= ?r.target ?sp] picks the target span"
       (is (= #{(str b)}
-             (ids (run {"find" ["?sp"] "where" [["relation" "?r" {"layer" "AP/dep"}]
+             (ids (run {"find" ["?sp"] "where" [["relation" "?r" {"layer" dep}]
                                                 ["span" "?sp"] ["=" "?r.target" "?sp"]]})))))))
 
 (deftest in-on-bound-entity-var
-  (let [{:keys [a c]} (build!)]
+  (let [{:keys [a c pos]} (build!)]
     (testing "in over a bare entity var's id == an id membership filter"
       (is (= #{(str a) (str c)}
-             (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]
+             (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]
                                                ["in" "?s" [(str a) (str c)]]]})))))))
 
 ;; ---------------------------------------------------------------------------
@@ -171,17 +171,17 @@
 ;; ---------------------------------------------------------------------------
 
 (deftest attr-preds-compose-with-or
-  (let [{:keys [a b c d]} (build!)]
+  (let [{:keys [a b c d pos]} (build!)]
     (testing "or of two ~ branches unions the matches"
       ;; ^N -> NOUN {a,d}; ^V -> VERB {c}
       (is (= #{(str a) (str c) (str d)}
              (ids (run {"find" ["?s"]
-                        "where" [["span" "?s" {"layer" "AP/pos"}]
+                        "where" [["span" "?s" {"layer" pos}]
                                  ["or" [["~" "?s.value" "^N"]] [["~" "?s.value" "^V"]]]]})))))
     (testing "or mixing in and ~ unions the matches"
       (is (= #{(str a) (str b) (str d)}
              (ids (run {"find" ["?s"]
-                        "where" [["span" "?s" {"layer" "AP/pos"}]
+                        "where" [["span" "?s" {"layer" pos}]
                                  ["or" [["in" "?s.value" ["PROPN"]]] [["~" "?s.value" "^N"]]]]})))))))
 
 ;; ---------------------------------------------------------------------------
@@ -224,7 +224,7 @@
       (binding [qe/*query-timeout-ms* 1000]
         (let [start (System/nanoTime)
               code  (try (qe/run db "admin@example.com"
-                                 {"find" ["?s"] "where" [["span" "?s" {"layer" "ApDos/lemma"}]
+                                 {"find" ["?s"] "where" [["span" "?s" {"layer" sl}]
                                                          ["~" "?s.value" "(.*a){28}"]]})
                          nil
                          (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))

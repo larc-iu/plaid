@@ -29,15 +29,15 @@
         t0 (id (h/create-token admin-request tokl text 0 2))
         t1 (id (h/create-token admin-request tokl text 3 5))
         t2 (id (h/create-token admin-request tokl text 6 8))]
-    {:pid pid
+    {:pid pid :pos sl :words tokl
      :noun0 (id (h/create-span admin-request sl [t0] "NOUN"))
      :verb1 (id (h/create-span admin-request sl [t1] "VERB"))
      :noun2 (id (h/create-span admin-request sl [t2] "NOUN"))}))
 
 ;; Layer-LESS spans: the legitimate way to query across every readable project
-;; in one request. (A bare layer *name* shared by several projects is now an
-;; ambiguous 400 — see exec-review2-test — so cross-project queries either omit
-;; the layer, like here, or pin a unique id.)
+;; in one request. (A bare layer *name* is no longer a valid reference — layers
+;; are identified by id only — so cross-project queries either omit the layer,
+;; like here, or pin a layer id.)
 (def ^:private noun-verb-query
   {"find" ["?s1" "?s2"]
    "where" [["span" "?s1" {"value" "NOUN"}]
@@ -56,25 +56,25 @@
       (is (= [[(str noun0) (str verb1)]] (tuples result))))))
 
 (deftest precedes-star-is-transitive
-  (build-corpus! "P1")
-  (testing "NOUN somewhere-before VERB: only NOUN@tok0 precedes VERB@tok1"
-    (let [result (qe/run db "admin@example.com"
-                         {"find" ["?s1" "?s2"]
-                          "where" [["span" "?s1" {"layer" "pos" "value" "NOUN"}]
-                                   ["span" "?s2" {"layer" "pos" "value" "VERB"}]
-                                   ["covers" "?s1" "?t1"] ["covers" "?s2" "?t2"]
-                                   ["precedes*" "?t1" "?t2"]]})]
-      (is (= 1 (:count result))))))
+  (let [{:keys [pos]} (build-corpus! "P1")]
+    (testing "NOUN somewhere-before VERB: only NOUN@tok0 precedes VERB@tok1"
+      (let [result (qe/run db "admin@example.com"
+                           {"find" ["?s1" "?s2"]
+                            "where" [["span" "?s1" {"layer" pos "value" "NOUN"}]
+                                     ["span" "?s2" {"layer" pos "value" "VERB"}]
+                                     ["covers" "?s1" "?t1"] ["covers" "?s2" "?t2"]
+                                     ["precedes*" "?t1" "?t2"]]})]
+        (is (= 1 (:count result)))))))
 
 (deftest value-filter-and-limit
-  (build-corpus! "P1")
-  (testing "all NOUN spans (two), bounded by :limit"
-    (let [all (qe/run db "admin@example.com"
-                      {"find" ["?s"] "where" [["span" "?s" {"layer" "pos" "value" "NOUN"}]]})
-          one (qe/run db "admin@example.com"
-                      {"find" ["?s"] "where" [["span" "?s" {"layer" "pos" "value" "NOUN"}]] "limit" 1})]
-      (is (= 2 (:count all)))
-      (is (= 1 (:count one))))))
+  (let [{:keys [pos]} (build-corpus! "P1")]
+    (testing "all NOUN spans (two), bounded by :limit"
+      (let [all (qe/run db "admin@example.com"
+                        {"find" ["?s"] "where" [["span" "?s" {"layer" pos "value" "NOUN"}]]})
+            one (qe/run db "admin@example.com"
+                        {"find" ["?s"] "where" [["span" "?s" {"layer" pos "value" "NOUN"}]] "limit" 1})]
+        (is (= 2 (:count all)))
+        (is (= 1 (:count one)))))))
 
 (deftest acl-cross-project-isolation
   (testing "two projects, each with a 'pos' layer + a NOUN->VERB pair; readers scoped"
@@ -94,14 +94,14 @@
         (is (= 2 (:count (qe/run db "admin@example.com" noun-verb-query)))))
       (testing "explicit :scope narrows within what the user can read"
         (is (= 1 (:count (qe/run db "admin@example.com"
-                                 (assoc noun-verb-query "scope" {"projects" ["P1"]})))))))))
+                                 (assoc noun-verb-query "scope" {"project-ids" [(:pid c1)]})))))))))
 
 (deftest scope-rejects-inaccessible-project
   (let [c1 (build-corpus! "P1")
-        _ (build-corpus! "P2")]
+        c2 (build-corpus! "P2")]
     (h/add-project-reader admin-request (:pid c1) "user1@example.com")
     (testing "user1 (reader of P1 only) scoping to P2 -> no accessible projects -> 400"
-      (is (= 400 (try (qe/run db "user1@example.com" (assoc noun-verb-query "scope" {"projects" ["P2"]}))
+      (is (= 400 (try (qe/run db "user1@example.com" (assoc noun-verb-query "scope" {"project-ids" [(:pid c2)]}))
                       nil
                       (catch clojure.lang.ExceptionInfo e (:code (ex-data e)))))))))
 

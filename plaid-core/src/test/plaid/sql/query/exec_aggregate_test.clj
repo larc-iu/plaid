@@ -34,35 +34,35 @@
     (h/create-span admin-request sl [t10] 10)
     (h/create-span admin-request sl [t11] 20)
     (h/create-span admin-request sl [t12] 30)
-    {:d1 d1 :d2 d2}))
+    {:d1 d1 :d2 d2 :words tokl :pos sl}))
 
 (defn- by-key [r]
   "Map the first result column -> the rest of the row."
   (into {} (map (fn [row] [(str (first row)) (vec (rest row))]) (:results r))))
 
 (deftest grouped-count-per-document
-  (let [{:keys [d1 d2]} (build!)]
+  (let [{:keys [d1 d2 words]} (build!)]
     (testing "word count per document in ONE query"
       (let [r (qe/run db "admin@example.com"
-                      {"where" [["token" "?t" {"layer" "AggProj/words" "doc" {"var" "?d"}}]]
+                      {"where" [["token" "?t" {"layer" words "doc" {"var" "?d"}}]]
                        "return" {"group" ["?d"] "aggregates" [["count"]]}})]
         (is (= :aggregate (:return r)))
         (is (= ["d" "count"] (:columns r)))
         (is (= {(str d1) [3] (str d2) [2]} (by-key r)))))))
 
 (deftest overall-count-no-group
-  (build!)
-  (testing "no group keys -> a single overall row (generalizes return:count)"
-    (let [r (qe/run db "admin@example.com"
-                    {"where" [["token" "?t" {"layer" "AggProj/words"}]]
-                     "return" {"group" [] "aggregates" [["count"]]}})]
-      (is (= [[5]] (:results r))))))
+  (let [{:keys [words]} (build!)]
+    (testing "no group keys -> a single overall row (generalizes return:count)"
+      (let [r (qe/run db "admin@example.com"
+                      {"where" [["token" "?t" {"layer" words}]]
+                       "return" {"group" [] "aggregates" [["count"]]}})]
+        (is (= [[5]] (:results r)))))))
 
 (deftest min-max-avg-over-begin
-  (let [{:keys [d1 d2]} (build!)]
+  (let [{:keys [d1 d2 words]} (build!)]
     (testing "min/max/avg of a numeric scalar (token begin) per document"
       (let [r (qe/run db "admin@example.com"
-                      {"where" [["token" "?t" {"layer" "AggProj/words" "doc" {"var" "?d"} "begin" {"var" "?b"}}]]
+                      {"where" [["token" "?t" {"layer" words "doc" {"var" "?d"} "begin" {"var" "?b"}}]]
                        "return" {"group" ["?d"]
                                  "aggregates" [["min" "?b"] ["max" "?b"] ["avg" "?b"]]}})
             m (by-key r)]
@@ -72,23 +72,23 @@
         (is (= 1.5 (double (nth (get m (str d2)) 2))))))))
 
 (deftest sum-avg-over-numeric-value
-  (build!)
-  (testing "sum/avg over a JSON-encoded numeric :value (json_extract-decoded)"
-    (let [r (qe/run db "admin@example.com"
-                    {"where" [["span" "?s" {"layer" "AggProj/pos" "value" {"var" "?v"}}]]
-                     "return" {"group" [] "aggregates" [["sum" "?v"] ["avg" "?v"]]}})]
-      (is (= [[60 20.0]] (:results r))))))
+  (let [{:keys [pos]} (build!)]
+    (testing "sum/avg over a JSON-encoded numeric :value (json_extract-decoded)"
+      (let [r (qe/run db "admin@example.com"
+                      {"where" [["span" "?s" {"layer" pos "value" {"var" "?v"}}]]
+                       "return" {"group" [] "aggregates" [["sum" "?v"] ["avg" "?v"]]}})]
+        (is (= [[60 20.0]] (:results r)))))))
 
 (deftest aggregate-over-or
-  (build!)
-  (testing "count over an :or whose branches bind the SAME vars (UNION-safe)"
-    (let [r (qe/run db "admin@example.com"
-                    {"where" [["or"
-                               [["span" "?s" {"layer" "AggProj/pos" "value" 10}]]
-                               [["span" "?s" {"layer" "AggProj/pos" "value" 20}]]]]
-                     "return" {"group" [] "aggregates" [["count"]]}})]
-      ;; the value-10 span OR the value-20 span -> 2 distinct matches
-      (is (= [[2]] (:results r))))))
+  (let [{:keys [pos]} (build!)]
+    (testing "count over an :or whose branches bind the SAME vars (UNION-safe)"
+      (let [r (qe/run db "admin@example.com"
+                      {"where" [["or"
+                                 [["span" "?s" {"layer" pos "value" 10}]]
+                                 [["span" "?s" {"layer" pos "value" 20}]]]]
+                       "return" {"group" [] "aggregates" [["count"]]}})]
+        ;; the value-10 span OR the value-20 span -> 2 distinct matches
+        (is (= [[2]] (:results r)))))))
 
 (deftest aggregate-asymmetric-branches-400
   (testing "branches binding different entity vars under aggregation -> clean 400 (not a 500)"
@@ -116,8 +116,8 @@
         t2 (id (h/create-token admin-request tokl tx 6 8))]
     (h/create-span admin-request sl [t0 t1] "X")  ; covers TWO tokens
     (h/create-span admin-request sl [t2] "Y")     ; covers one
-    (let [where [["span" "?s" {"layer" "FanProj/pos"}]
-                 ["token" "?t" {"layer" "FanProj/words"}]
+    (let [where [["span" "?s" {"layer" sl}]
+                 ["token" "?t" {"layer" tokl}]
                  ["covers" "?s" "?t"]]
           tuple-count (:count (qe/run db "admin@example.com"
                                       {"find" ["?s"] "where" where "return" "count"}))

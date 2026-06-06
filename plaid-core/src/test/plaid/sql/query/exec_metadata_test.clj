@@ -32,34 +32,34 @@
         b (id (h/create-span admin-request sl [t1] "Y" {"translation" "cat"}))
         c (id (h/create-span admin-request sl [t2] "Z"))]
     (h/update-document-metadata admin-request d1 {"genre" "news"})
-    {:d1 d1 :a a :b b :c c}))
+    {:d1 d1 :sl sl :a a :b b :c c}))
 
 (deftest metadata-exact
-  (let [{:keys [a]} (build!)]
+  (let [{:keys [a sl]} (build!)]
     (testing "spans whose metadata.translation = dog (C has no metadata; B is cat)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?s"]
-                       "where" [["span" "?s" {"layer" "MetaProj/pos" "metadata" {"translation" "dog"}}]]})]
+                       "where" [["span" "?s" {"layer" sl "metadata" {"translation" "dog"}}]]})]
         (is (= #{(str a)} (ids r)))))))
 
 (deftest metadata-regex
-  (let [{:keys [a]} (build!)]
+  (let [{:keys [a sl]} (build!)]
     (testing "metadata value regex matches the decoded scalar"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?s"]
-                       "where" [["span" "?s" {"layer" "MetaProj/pos" "metadata" {"translation" {"regex" "^d"}}}]]})]
+                       "where" [["span" "?s" {"layer" sl "metadata" {"translation" {"regex" "^d"}}}]]})]
         (is (= #{(str a)} (ids r)))))))
 
 (deftest metadata-multiple-keys-and
-  (let [{:keys [a]} (build!)]
+  (let [{:keys [a sl]} (build!)]
     (testing "two metadata constraints AND together"
       (let [hit (qe/run db "admin@example.com"
                         {"find" ["?s"]
-                         "where" [["span" "?s" {"layer" "MetaProj/pos"
+                         "where" [["span" "?s" {"layer" sl
                                                 "metadata" {"translation" "dog" "num" "sg"}}]]})
             miss (qe/run db "admin@example.com"
                          {"find" ["?s"]
-                          "where" [["span" "?s" {"layer" "MetaProj/pos"
+                          "where" [["span" "?s" {"layer" sl
                                                  "metadata" {"translation" "dog" "num" "pl"}}]]})]
         (is (= #{(str a)} (ids hit)))
         (is (empty? (ids miss)))))))
@@ -92,24 +92,24 @@
         r0 (id (h/create-relation admin-request rl sa sb "nsubj" {"tag" "keep"}))
         vi (id (h/create-vocab-item admin-request vl "dog" {"tag" "keep"}))]
     (h/update-text-metadata admin-request text {"tag" "keep"})
-    {:t0 t0 :r0 r0 :vi vi :text text}))
+    {:t0 t0 :r0 r0 :vi vi :text text :tokl tokl :rl rl :vl vl}))
 
 (deftest metadata-on-all-kinds
-  (let [{:keys [t0 r0 vi text]} (build-kinds!)]
+  (let [{:keys [t0 r0 vi text tokl rl vl]} (build-kinds!)]
     (testing "token metadata (entity_type = token)"
       (is (= #{(str t0)}
              (ids (qe/run db "admin@example.com"
-                          {"find" ["?t"] "where" [["token" "?t" {"layer" "MetaKinds/words"
+                          {"find" ["?t"] "where" [["token" "?t" {"layer" tokl
                                                                  "metadata" {"tag" "keep"}}]]})))))
     (testing "relation metadata (entity_type = relation)"
       (is (= #{(str r0)}
              (ids (qe/run db "admin@example.com"
-                          {"find" ["?r"] "where" [["relation" "?r" {"layer" "MetaKinds/dep"
+                          {"find" ["?r"] "where" [["relation" "?r" {"layer" rl
                                                                     "metadata" {"tag" "keep"}}]]})))))
     (testing "vocab-item metadata (entity_type = vocab-item)"
       (is (= #{(str vi)}
              (ids (qe/run db "admin@example.com"
-                          {"find" ["?v"] "where" [["vocab" "?v" {"layer" "lex"
+                          {"find" ["?v"] "where" [["vocab" "?v" {"layer" vl
                                                                  "metadata" {"tag" "keep"}}]]})))))
     (testing "text metadata (entity_type = text)"
       (is (= #{(str text)}

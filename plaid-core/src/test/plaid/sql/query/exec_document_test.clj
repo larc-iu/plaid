@@ -31,7 +31,7 @@
         t2   (id (h/create-token admin-request tokl tx2 0 7))
         a    (id (h/create-span admin-request sl [t1] "A"))
         b    (id (h/create-span admin-request sl [t2] "B"))]
-    {:d1 d1 :d2 d2 :tx1 tx1 :tx2 tx2 :a a :b b}))
+    {:d1 d1 :d2 d2 :tx1 tx1 :tx2 tx2 :a a :b b :sl sl}))
 
 (deftest document-standalone
   (let [{:keys [d1 d2]} (build!)]
@@ -45,11 +45,11 @@
         (is (= #{(str d1) (str d2)} (ids r)))))))
 
 (deftest spans-in-named-document
-  (let [{:keys [a]} (build!)]
+  (let [{:keys [a sl]} (build!)]
     (testing "spans whose document is named interview-1 (scalar :doc var = :document var)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?s"]
-                       "where" [["span" "?s" {"layer" "DocProj/pos" "doc" {"var" "?dv"}}]
+                       "where" [["span" "?s" {"layer" sl "doc" {"var" "?dv"}}]
                                 ["document" "?d" {"name" "interview-1"}]
                                 ["=" "?dv" "?d"]]})]
         (is (= #{(str a)} (ids r)))))))

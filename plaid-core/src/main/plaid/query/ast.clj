@@ -11,8 +11,8 @@
 
   Canonical AST shape:
     {:find   [?s1 ?s2]            ; non-empty vector of vars (symbols starting with ?)
-     :where  [[:span ?s1 {:layer \"pos\" :value \"NOUN\"}] ...]
-     :scope  {:projects [...]}    ; optional; :projects (names) and/or :project-ids
+     :where  [[:span ?s1 {:layer \"<layer-id>\" :value \"NOUN\"}] ...]
+     :scope  {:project-ids [...]} ; optional; projects identified by id only
      :limit  100                  ; optional positive int
      :return :ids}                ; defaulted to :ids
 
@@ -577,13 +577,18 @@
                                             (mapv normalize-clause w)))
       (contains? m :scope)  (assoc :scope (let [s (:scope m)]
                                             (when-not (map? s)
-                                              (err! :parse (str ":scope must be a map with :projects and/or :project-ids, got: " (pr-str s))))
+                                              (err! :parse (str ":scope must be a map with :project-ids, got: " (pr-str s))))
                                             (let [sc (reduce-kv (fn [a k v] (assoc a (->kw k) v)) {} s)]
-                                              ;; projects/project-ids must be lists if present
-                                              ;; (else effective-scope's empty?/seq throws a 500)
-                                              (doseq [k [:projects :project-ids]]
-                                                (when (and (contains? sc k) (not (sequential? (get sc k))))
-                                                  (err! :parse (str ":scope " k " must be a list, got: " (pr-str (get sc k))))))
+                                              ;; projects are identified by id only — scope-by-name is gone
+                                              ;; (project names are non-unique across a multi-tenant instance)
+                                              (when (contains? sc :projects)
+                                                (err! :parse "scope by project name (:projects) is no longer supported — use :project-ids (projects are identified by id)"))
+                                              ;; closed key set: an unknown key silently widening scope is a footgun
+                                              (when-let [unknown (seq (remove #{:project-ids} (keys sc)))]
+                                                (err! :parse (str "Unknown :scope key(s) " (vec unknown) " (allowed: [:project-ids])")))
+                                              ;; project-ids must be a list if present (else effective-scope's empty?/seq throws a 500)
+                                              (when (and (contains? sc :project-ids) (not (sequential? (:project-ids sc))))
+                                                (err! :parse (str ":scope :project-ids must be a list, got: " (pr-str (:project-ids sc)))))
                                               sc)))
       (contains? m :limit)  (assoc :limit (:limit m))
       (contains? m :order-by) (assoc :order-by (let [ob (:order-by m)]
@@ -591,7 +596,6 @@
                                                    (err! :parse (str ":order-by must be a list of [var attr dir] entries, got: " (pr-str ob))))
                                                  (mapv normalize-order-spec ob)))
       (contains? m :return) (assoc :return (normalize-return (:return m)))
-      (contains? m :strict-layers) (assoc :strict-layers (:strict-layers m))
       (contains? m :as-of)  (assoc :as-of (:as-of m)))))     ; carried so validate can reject it
 
 ;; ---------------------------------------------------------------------------
@@ -784,9 +788,6 @@
       (err! :validate (str ":return " (pr-str r) " is not supported (one of :ids, :entities, :count, or an aggregate spec)"))))
   (when (and (aggregate? ast) (:order-by ast))
     (err! :validate ":order-by is not supported with an aggregate :return (v0)"))
-  (when (contains? ast :strict-layers)
-    (when-not (boolean? (:strict-layers ast))
-      (err! :validate (str ":strict-layers must be true or false, got: " (pr-str (:strict-layers ast))))))
   ;; order-by entries are [field-ref dir]; the dir is a shape concern here, the
   ;; field/find-var checks happen in `validate` (they need inferred kinds).
   (doseq [[_fr dir] (:order-by ast)]

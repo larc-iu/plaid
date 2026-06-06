@@ -33,72 +33,72 @@
     (h/create-span admin-request sl [t1] "ADJ")
     (h/create-span admin-request sl [t2] "NOUN")
     (h/create-span admin-request sl [t3] "DET")
-    {:t0 t0 :t1 t1 :t2 t2 :t3 t3}))
+    {:t0 t0 :t1 t1 :t2 t2 :t3 t3 :tokl tokl :sl sl}))
 
 (deftest order-tokens-by-begin
-  (let [{:keys [t0 t1 t2 t3]} (build!)]
+  (let [{:keys [t0 t1 t2 t3 tokl]} (build!)]
     (testing "ascending by begin"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "OrdProj/words"}]]
+                       "where" [["token" "?t" {"layer" tokl}]]
                        "order-by" [["?t" "begin"]]})]
         (is (= [(str t0) (str t1) (str t2) (str t3)] (mapv str (col r))))))
     (testing "descending by begin"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "OrdProj/words"}]]
+                       "where" [["token" "?t" {"layer" tokl}]]
                        "order-by" [["?t" "begin" "desc"]]})]
         (is (= [(str t3) (str t2) (str t1) (str t0)] (mapv str (col r))))))))
 
 (deftest order-spans-by-value
-  (let [{:keys [t0 t1 t2 t3]} (build!)]
+  (let [{:keys [t0 t1 t2 t3 tokl sl]} (build!)]
     (testing "spans sorted by value, independent of token offset order"
       ;; ADJ(t1) < DET(t3) < NOUN(t2) < VERB(t0). ?s must be a :find var to be an
       ;; order key (so its column is projected through any UNION).
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t" "?s"]
-                       "where" [["span" "?s" {"layer" "OrdProj/pos"}]
+                       "where" [["span" "?s" {"layer" sl}]
                                 ["covers" "?s" "?t"]
-                                ["token" "?t" {"layer" "OrdProj/words"}]]
+                                ["token" "?t" {"layer" tokl}]]
                        "order-by" [["?s" "value"]]})]
         (is (= [(str t1) (str t3) (str t2) (str t0)] (mapv str (col r))))))))
 
 (deftest order-by-survives-union
-  (let [{:keys [t0 t1 t3]} (build!)]
+  (let [{:keys [t0 t1 t3 tokl sl]} (build!)]
     (testing ":order-by sorts across an :or UNION"
       ;; tokens that are VERB(t0) OR DET(t3) OR begin=3(t1) — sorted by begin
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "OrdProj/words"}]
+                       "where" [["token" "?t" {"layer" tokl}]
                                 ["or"
-                                 [["span" "?s" {"layer" "OrdProj/pos" "value" ["VERB" "DET"]}]
+                                 [["span" "?s" {"layer" sl "value" ["VERB" "DET"]}]
                                   ["covers" "?s" "?t"]]
                                  [["token" "?t" {"begin" 3}]]]]
                        "order-by" [["?t" "begin"]]})]
         (is (= [(str t0) (str t1) (str t3)] (mapv str (col r))))))))
 
 (deftest order-by-validation
-  (build!)
-  (testing "ordering by a non-:find var is a 400"
-    (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"order-by may only reference :find vars"
-         (ast/expand {"find" ["?t"]
-                      "where" [["span" "?s" {"layer" "OrdProj/pos"}]
-                               ["covers" "?s" "?t"]
-                               ["token" "?t" {"layer" "OrdProj/words"}]]
-                      "order-by" [["?s" "value"]]}))))
-  (testing "ordering a token by a non-token field (e.g. form) is a 400"
-    (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"unknown field"
-         (ast/expand {"find" ["?t"]
-                      "where" [["token" "?t" {"layer" "OrdProj/words"}]]
-                      "order-by" [["?t" "form"]]}))))
-  (testing "ordering a token by :value (the surface substring) IS now allowed"
-    (is (some? (ast/expand {"find" ["?t"]
-                            "where" [["token" "?t" {"layer" "OrdProj/words"}]]
-                            "order-by" [["?t" "value"]]}))))
-  (testing "a ?__-prefixed find var is reserved (would collide with __ord_N) -> 400"
-    (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"reserved"
-         (ast/expand {"find" ["?__ord_0"]
-                      "where" [["token" "?__ord_0" {"layer" "OrdProj/words"}]]})))))
+  (let [{:keys [tokl sl]} (build!)]
+    (testing "ordering by a non-:find var is a 400"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo #"order-by may only reference :find vars"
+           (ast/expand {"find" ["?t"]
+                        "where" [["span" "?s" {"layer" sl}]
+                                 ["covers" "?s" "?t"]
+                                 ["token" "?t" {"layer" tokl}]]
+                        "order-by" [["?s" "value"]]}))))
+    (testing "ordering a token by a non-token field (e.g. form) is a 400"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo #"unknown field"
+           (ast/expand {"find" ["?t"]
+                        "where" [["token" "?t" {"layer" tokl}]]
+                        "order-by" [["?t" "form"]]}))))
+    (testing "ordering a token by :value (the surface substring) IS now allowed"
+      (is (some? (ast/expand {"find" ["?t"]
+                              "where" [["token" "?t" {"layer" tokl}]]
+                              "order-by" [["?t" "value"]]}))))
+    (testing "a ?__-prefixed find var is reserved (would collide with __ord_N) -> 400"
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo #"reserved"
+           (ast/expand {"find" ["?__ord_0"]
+                        "where" [["token" "?__ord_0" {"layer" tokl}]]}))))))

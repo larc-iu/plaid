@@ -1439,8 +1439,8 @@ class PlaidClient {
      *   await client.query({
      *     find: ['?s1', '?s2'],
      *     where: [
-     *       ['span', '?s1', { layer: 'pos', value: 'NOUN' }],
-     *       ['span', '?s2', { layer: 'pos', value: 'VERB' }],
+     *       ['span', '?s1', { layer: posLayerId, value: 'NOUN' }],
+     *       ['span', '?s2', { layer: posLayerId, value: 'VERB' }],
      *       ['covers', '?s1', '?t1'], ['covers', '?s2', '?t2'],
      *       ['precedes', '?t1', '?t2'],
      *     ],
@@ -1448,13 +1448,17 @@ class PlaidClient {
      *     limit: 100,
      *   });
      *
-     * Optional keys: `scope` (restrict to named projects/ids), `orderBy`
-     * (sort rows), `strictLayers` (require layer ids, not names), and `bindings`
-     * (substitute `?name` placeholders with literals). `return` may also be an
-     * aggregate spec `{group, aggregates}`. See the query language reference.
+     * A `layer` is referenced by its id (its UUID) only — not by name, alias, or
+     * path. To match a layer by name, bind it with a `*-layer` clause (e.g.
+     * `['span-layer', '?sl', { name: 'pos' }]`) and use the variable.
+     *
+     * Optional keys: `scope` (restrict to projects by id, `{projectIds}`), `orderBy`
+     * (sort rows), and `bindings` (substitute `?name` placeholders with literals).
+     * `return` may also be an aggregate spec `{group, aggregates}`. See the query
+     * language reference.
      *
      * @param {Object} body - The query AST ({find, where, scope?, limit?, orderBy?,
-     *   return?, strictLayers?, bindings?}).
+     *   return?, bindings?}).
      * @returns {Promise<Object>} For 'ids'/'entities': {columns, results, count, truncated}.
      *   For 'count': {return: 'count', count}. Entity cells are full entity objects
      *   (same shape as the GET endpoints).

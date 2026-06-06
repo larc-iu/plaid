@@ -28,94 +28,94 @@
         t2 (id (h/create-token admin-request tokl text 6 8))]
     (h/create-span admin-request sl [t0] "NOUN")
     (h/create-span admin-request sl [t1] "VERB")
-    {:t0 t0 :t1 t1 :t2 t2}))
+    {:t0 t0 :t1 t1 :t2 t2 :tokl tokl :sl sl}))
 
 (deftest not-anti-join-correlated
-  (let [{:keys [t1 t2]} (build!)]
+  (let [{:keys [t1 t2 tokl sl]} (build!)]
     (testing "tokens NOT covered by a NOUN span — ?s is existential inside the :not"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "NotProj/words"}]
+                       "where" [["token" "?t" {"layer" tokl}]
                                 ["not" ["covers" "?s" "?t"]
-                                 ["span" "?s" {"layer" "NotProj/pos" "value" "NOUN"}]]]})]
+                                 ["span" "?s" {"layer" sl "value" "NOUN"}]]]})]
         ;; t0 (NOUN) excluded; t1 (VERB) and t2 (no span) remain
         (is (= 2 (:count r)))
         (is (= #{(str t1) (str t2)} (set (map first (tuples r)))))))))
 
 (deftest not-no-span-at-all
-  (let [{:keys [t2]} (build!)]
+  (let [{:keys [t2 tokl sl]} (build!)]
     (testing "tokens NOT covered by ANY pos span -> only the bare token"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "NotProj/words"}]
-                                ["not" ["covers" "?s" "?t"] ["span" "?s" {"layer" "NotProj/pos"}]]]})]
+                       "where" [["token" "?t" {"layer" tokl}]
+                                ["not" ["covers" "?s" "?t"] ["span" "?s" {"layer" sl}]]]})]
         (is (= [[(str t2)]] (tuples r)))))))
 
 (deftest not-with-value-alternation-inside
-  (let [{:keys [t2]} (build!)]
+  (let [{:keys [t2 tokl sl]} (build!)]
     (testing ":not composes with value alternation: tokens not covered by a NOUN-or-VERB span"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "NotProj/words"}]
+                       "where" [["token" "?t" {"layer" tokl}]
                                 ["not" ["covers" "?s" "?t"]
-                                 ["span" "?s" {"layer" "NotProj/pos" "value" ["NOUN" "VERB"]}]]]})]
+                                 ["span" "?s" {"layer" sl "value" ["NOUN" "VERB"]}]]]})]
         ;; t0 and t1 are covered (NOUN / VERB); only t2 survives
         (is (= [[(str t2)]] (tuples r)))))))
 
 (deftest not-composes-with-or
-  (let [{:keys [t0 t2]} (build!)]
+  (let [{:keys [t0 t2 tokl sl]} (build!)]
     (testing ":not distributes into :or branches"
       ;; tokens that are EITHER covered by a NOUN span OR covered by no span
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "NotProj/words"}]
+                       "where" [["token" "?t" {"layer" tokl}]
                                 ["or"
-                                 [["covers" "?s" "?t"] ["span" "?s" {"layer" "NotProj/pos" "value" "NOUN"}]]
-                                 [["not" ["covers" "?s2" "?t"] ["span" "?s2" {"layer" "NotProj/pos"}]]]]]})]
+                                 [["covers" "?s" "?t"] ["span" "?s" {"layer" sl "value" "NOUN"}]]
+                                 [["not" ["covers" "?s2" "?t"] ["span" "?s2" {"layer" sl}]]]]]})]
         (is (= #{(str t0) (str t2)} (set (map first (tuples r)))))))))
 
 (deftest not-over-or-is-de-morgan
-  (let [{:keys [t2]} (build!)]
+  (let [{:keys [t2 tokl sl]} (build!)]
     (testing "NOT(covered-by-NOUN OR covered-by-VERB) = covered by neither"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "NotProj/words"}]
+                       "where" [["token" "?t" {"layer" tokl}]
                                 ["not" ["or"
-                                        [["covers" "?s" "?t"] ["span" "?s" {"layer" "NotProj/pos" "value" "NOUN"}]]
-                                        [["covers" "?s2" "?t"] ["span" "?s2" {"layer" "NotProj/pos" "value" "VERB"}]]]]]})]
+                                        [["covers" "?s" "?t"] ["span" "?s" {"layer" sl "value" "NOUN"}]]
+                                        [["covers" "?s2" "?t"] ["span" "?s2" {"layer" sl "value" "VERB"}]]]]]})]
         ;; t0 (NOUN) and t1 (VERB) are excluded by De Morgan; only t2 remains
         (is (= [[(str t2)]] (tuples r)))))))
 
 (deftest not-reconstrains-outer-var-begin
-  (let [{:keys [t1 t2]} (build!)]
+  (let [{:keys [t1 t2 tokl]} (build!)]
     (testing "a :not that re-states an already-bound outer var negates only that attribute"
       ;; tokens that do NOT begin at offset 0 — t0@0 excluded, t1@3 and t2@6 kept.
       ;; (Regression: the inner `{begin 0}` must land inside the NOT EXISTS as a
       ;; correlated predicate, not be ANDed onto the outer alias.)
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "NotProj/words"}]
+                       "where" [["token" "?t" {"layer" tokl}]
                                 ["not" ["token" "?t" {"begin" 0}]]]})]
         (is (= 2 (:count r)))
         (is (= #{(str t1) (str t2)} (set (map first (tuples r)))))))))
 
 (deftest not-reconstrains-outer-var-value
-  (let [_ (build!)]
+  (let [{:keys [sl]} (build!)]
     (testing "NOUN span that is not (also) VERB — same span correlated, value negated"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?s"]
-                       "where" [["span" "?s" {"layer" "NotProj/pos" "value" "NOUN"}]
-                                ["not" ["span" "?s" {"layer" "NotProj/pos" "value" "VERB"}]]]})]
+                       "where" [["span" "?s" {"layer" sl "value" "NOUN"}]
+                                ["not" ["span" "?s" {"layer" sl "value" "VERB"}]]]})]
         ;; the one NOUN span survives (it is not VERB); the leak would AND
         ;; value=NOUN AND value=VERB onto the outer alias and return nothing.
         (is (= 1 (:count r)))))))
 
 (deftest double-negation-is-existence
-  (let [{:keys [t0]} (build!)]
+  (let [{:keys [t0 tokl sl]} (build!)]
     (testing "NOT(NOT(covered by NOUN)) = covered by NOUN"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "NotProj/words"}]
+                       "where" [["token" "?t" {"layer" tokl}]
                                 ["not" ["not" ["covers" "?s" "?t"]
-                                        ["span" "?s" {"layer" "NotProj/pos" "value" "NOUN"}]]]]})]
+                                        ["span" "?s" {"layer" sl "value" "NOUN"}]]]]})]
         (is (= [[(str t0)]] (tuples r)))))))

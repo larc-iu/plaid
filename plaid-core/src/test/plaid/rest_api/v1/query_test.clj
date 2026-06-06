@@ -28,10 +28,13 @@
      :noun0 (id (h/create-span admin-request sl [t0] "NOUN"))
      :verb1 (id (h/create-span admin-request sl [t1] "VERB"))}))
 
+;; layer-less (the corpus has a single span layer; value + covers + precedes pin
+;; the pair) — a bare layer *name* is no longer a valid reference, and a layer id is
+;; only known at runtime, so the deep layer-ref/ACL semantics live in exec-test.
 (def ^:private noun-verb-query
   {:find ["?s1" "?s2"]
-   :where [["span" "?s1" {"layer" "pos" "value" "NOUN"}]
-           ["span" "?s2" {"layer" "pos" "value" "VERB"}]
+   :where [["span" "?s1" {"value" "NOUN"}]
+           ["span" "?s2" {"value" "VERB"}]
            ["covers" "?s1" "?t1"] ["covers" "?s2" "?t2"]
            ["precedes" "?t1" "?t2"]]})
 
@@ -49,7 +52,7 @@
   (testing "unbound find var -> 400 with a message"
     (let [resp (api-call admin-request
                          {:method :post :path "/api/v1/query"
-                          :body {:find ["?nope"] :where [["span" "?s" {"layer" "pos"}]]}})]
+                          :body {:find ["?nope"] :where [["span" "?s" {}]]}})]
       (fix/assert-status 400 resp)
       (is (string? (-> resp :body :error)))))
   (testing "as-of -> 400"

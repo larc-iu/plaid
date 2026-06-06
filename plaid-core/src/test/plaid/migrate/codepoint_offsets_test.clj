@@ -42,15 +42,15 @@
       (is (= #{(str tok)}
              (result-ids (qe/run db admin-id
                                  {"find" ["?t"]
-                                  "where" [["token" "?t" {"layer" "CpProj/words" "value" "cat"}]]}))))
+                                  "where" [["token" "?t" {"layer" tokl "value" "cat"}]]}))))
       (is (empty? (:results (qe/run db admin-id
                                     {"find" ["?t"]
-                                     "where" [["token" "?t" {"layer" "CpProj/words" "value" "at"}]]})))))
+                                     "where" [["token" "?t" {"layer" tokl "value" "at"}]]})))))
     (testing "?t.value dot-path agrees with the REST surface"
       (is (= #{(str tok)}
              (result-ids (qe/run db admin-id
                                  {"find" ["?t"]
-                                  "where" [["token" "?t" {"layer" "CpProj/words"}]
+                                  "where" [["token" "?t" {"layer" tokl}]
                                            ["=" "?t.value" "cat"]]})))))))
 
 (deftest astral-bounds-are-code-point

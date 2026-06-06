@@ -42,27 +42,27 @@
     {:sl sl}))
 
 (deftest regex-unanchored
-  (build!)
-  (testing "substring-style match finds both walk* forms"
-    (is (= #{"walking" "walks"}
-           (values [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" "walk"}}]])))))
+  (let [{:keys [sl]} (build!)]
+    (testing "substring-style match finds both walk* forms"
+      (is (= #{"walking" "walks"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "walk"}}]]))))))
 
 (deftest regex-anchored
-  (build!)
-  (testing "anchors work because the regex runs on the decoded scalar, not the JSON"
-    (is (= #{"walking"}
-           (values [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" "^walking$"}}]])))
-    (is (= #{"talked"}
-           (values [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" "ed$"}}]])))))
+  (let [{:keys [sl]} (build!)]
+    (testing "anchors work because the regex runs on the decoded scalar, not the JSON"
+      (is (= #{"walking"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "^walking$"}}]])))
+      (is (= #{"talked"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "ed$"}}]]))))))
 
 (deftest regex-case-insensitive
-  (build!)
-  (testing "flags i folds case"
-    (is (= #{"walking" "walks" "WALK"}
-           (values [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" "walk" "flags" "i"}}]]))))
-  (testing "without the flag, case matters"
-    (is (= #{"WALK"}
-           (values [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" "WALK"}}]])))))
+  (let [{:keys [sl]} (build!)]
+    (testing "flags i folds case"
+      (is (= #{"walking" "walks" "WALK"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "walk" "flags" "i"}}]]))))
+    (testing "without the flag, case matters"
+      (is (= #{"WALK"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "WALK"}}]]))))))
 
 (deftest regex-unicode-case-folding
   ;; The `i` flag compiles to `(?iu)`, so case folding is Unicode-aware, not
@@ -77,17 +77,17 @@
     (h/create-span admin-request sl [t0] "ЦИЯ")  ; uppercase Cyrillic
     (testing "flags i folds case for non-ASCII letters"
       (is (= #{"ЦИЯ"}
-             (values [["span" "?s" {"layer" "RxUni/lemma" "value" {"regex" "ция$" "flags" "i"}}]]))))
+             (values [["span" "?s" {"layer" sl "value" {"regex" "ция$" "flags" "i"}}]]))))
     (testing "without the flag, non-ASCII case still matters"
       (is (= #{}
-             (values [["span" "?s" {"layer" "RxUni/lemma" "value" {"regex" "ция$"}}]]))))))
+             (values [["span" "?s" {"layer" sl "value" {"regex" "ция$"}}]]))))))
 
 (deftest regex-composes-with-not
-  (build!)
-  (testing "spans NOT matching walk.* — same span correlated, regex negated"
-    (is (= #{"talked" "ran"}
-           (values [["span" "?s" {"layer" "RxProj/lemma"}]
-                    ["not" ["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" "walk" "flags" "i"}}]]])))))
+  (let [{:keys [sl]} (build!)]
+    (testing "spans NOT matching walk.* — same span correlated, regex negated"
+      (is (= #{"talked" "ran"}
+             (values [["span" "?s" {"layer" sl}]
+                      ["not" ["span" "?s" {"layer" sl "value" {"regex" "walk" "flags" "i"}}]]]))))))
 
 (deftest regex-redos-is-aborted
   (let [pid  (h/create-test-project admin-request "RxDos")
@@ -106,7 +106,7 @@
         (let [start (System/nanoTime)
               code (try (qe/run db "admin@example.com"
                                 {"find" ["?s"]
-                                 "where" [["span" "?s" {"layer" "RxDos/lemma" "value" {"regex" "(.*a){28}"}}]]})
+                                 "where" [["span" "?s" {"layer" sl "value" {"regex" "(.*a){28}"}}]]})
                         nil
                         (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))
               ms   (/ (- (System/nanoTime) start) 1e6)]

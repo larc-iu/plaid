@@ -85,13 +85,17 @@ your language's idiom (see <<Clients and casing>>).
 
 | `find`          | usually | Non-empty list of variables to return, in column order. Omitted only with an aggregate `return` (see <<Return shapes>>).
 | `where`         | yes | Non-empty list of clauses (the pattern).
-| `scope`         | no  | Restrict to specific projects. Default: every project you can read.
+| `scope`         | no  | Restrict to specific projects, by id (see <<Scope and access control>>). Default: every project you can read.
 | `limit`         | no  | Max rows. Default 1000, hard cap 100,000 (see <<Result-size guardrails>>).
 | `order-by`      | no  | Sort the rows (see <<Ordering>>). Without it, row order is unspecified.
 | `return`        | no  | `ids` (default), `entities`, `count`, or an aggregate spec (see <<Return shapes>>).
-| `strict-layers` | no  | If `true`, scalar layer references must be ids (see <<Layer addressing>>).
 | `bindings`      | no  | Substitute `?name` placeholders with literals you supply (see <<Bindings>>).
 |===
+
+NOTE: For legibility, examples in this reference write a layer as a readable name
+(e.g. `pos`, `UPOS`) where a real query carries the layer's UUID — layers are
+addressed by id only (see <<Layer addressing>>). Read `"layer": "pos"` as "the id of
+the layer called pos".
 
 == Variables
 
@@ -734,43 +738,23 @@ The body may itself contain `or`, `seq`, or another `not`.
 
 == Layer addressing
 
-Wherever a clause takes a `layer`, you may identify a layer in one of three
-ways. The engine works out which from the shape of the reference:
-
-* **Path**: `"ProjectName/LayerName"`. Any reference containing a `/`.
-* **ID**: the raw layer UUID. Any reference shaped like a UUID; always
-  unambiguous.
-* **Bare label**: anything else, matched first against layer aliases, then
-  against layer names.
+Wherever a clause takes a `layer`, a scalar reference is the layer's **ID** (its
+UUID) — that is the only way to name a *specific* layer. There is no addressing by
+layer name, alias, or `Project/Layer` path: names and aliases are non-unique across a
+multi-tenant instance (two unrelated projects routinely share a layer name), so
+resolving one to a single layer is brittle, whereas an ID always identifies exactly
+one layer.
 
 [,python]
 ----
-["span", "?s", {"layer": "pos"}]                        # alias, else name
-["span", "?s", {"layer": "My UD Project/UPOS"}]         # path
-["span", "?s", {"layer": "98ef7a32-...-1327101afee3"}]  # id
+["span", "?s", {"layer": "98ef7a32-...-1327101afee3"}]   # by id
 ----
 
-An **alias** is a stable label in the layer's config under the reserved `plaid` /
-`alias` pair; set it with `PUT …/config/plaid/alias` and body `"pos"`, which stores
-`{"plaid": {"alias": "pos"}}`. Aliases suit cross-project conventions; an ID is
-best in application code.
-
-A bare label or a path must identify exactly one layer. Names and aliases are
-non-unique (two projects can share a name; an alias is a shared convention), so a
-reference matching several layers in your scope is an ambiguous 400, not a
-silent match-them-all:
-
-[,python]
-----
-# 400: reference "pos" is ambiguous: it matches 3 layers in your scope
-["span", "?s", {"layer": "pos"}]
-----
-
-Pin it with the layer ID, narrow `scope` to one project, or use a layer variable to
-match many layers on purpose. Setting `"strict-layers": true` on the query
-rejects every scalar name / path / alias reference (400); only layer ids and
-layer variables are then allowed. A query-building UI can turn this on to be
-unambiguous by construction.
+A non-ID reference (a name, alias, or path) is a 400. In practice this is no burden:
+anything that knows a layer's name fetched it from the API and already holds its ID,
+so it just passes the ID. To select a layer *by name*, bind it with a layer variable
+and a `*-layer` clause (next section) — the match is then explicit, and you can see
+every layer it binds instead of a name silently resolving to one.
 
 === Layer variables
 
@@ -790,9 +774,10 @@ same (otherwise unspecified) layer:
 
 **Project the layer**: put a layer variable in `find` to get the layer ID back.
 
-**Intentional multi-layer match**: constrain a layer variable with a `*-layer`
-clause. Because layer names are not unique, this is the sanctioned way to match the
-same layer across many projects, the thing a scalar reference refuses:
+**Match by name**: constrain a layer variable with a `*-layer` clause. Since a scalar
+reference is an ID only, this is how you select layers by *name* — and because it
+binds a variable, it transparently matches every same-named layer in your scope
+(across projects), rather than resolving to one:
 
 [,python]
 ----
@@ -836,14 +821,15 @@ layer:
 ["text-layer",  "?txtl", {"name": "Transcription"}]
 ----
 
-A scalar reference pins the parent in a single clause. It must resolve to
-exactly one layer (the name / alias / path / id rules of <<Layer addressing>>,
-and it obeys `strict-layers`):
+A scalar reference pins the parent in a single clause. Like the `layer` slot on an
+entity, it is a layer **ID** (see <<Layer addressing>>); to pin the parent by name
+instead, bind it as a variable and name it with a `*-layer` clause (the chained form
+above):
 
 [,python]
 ----
-# same as the two clauses above
-["token-layer", "?tl", {"text-layer": "Transcription"}]
+# the token layer's text layer, pinned by id
+["token-layer", "?tl", {"text-layer": "98ef7a32-...-1327101afee3"}]
 ----
 
 Token-layer nesting (sentence > word) uses `parent-token-layer`; the inverse
@@ -867,16 +853,16 @@ A query only ever sees data in projects you can read; access control is
 applied server-side from your authenticated identity and cannot be widened by
 the request. By default the scope is all your readable projects.
 
-Narrow it with `scope`:
+Narrow it with `scope`, by project **ID** (projects, like layers, are identified by
+id only — project names are non-unique):
 
 [,python]
 ----
-"scope": {"projects": ["Project A", "Project B"]}   # by name (non-unique!)
-"scope": {"project_ids": ["<uuid>", "<uuid>"]}      # by ID (unambiguous)
+"scope": {"project_ids": ["<uuid>", "<uuid>"]}
 ----
 
 The requested scope is intersected with what you can read, so you can only ever
-narrow, never widen. If that intersection is empty (you named only projects you
+narrow, never widen. If that intersection is empty (you scoped only to projects you
 cannot read, or you can read none), the query is a 400, not an empty result. Vocab
 layers are global; a vocab item is visible when some project in your scope has been
 granted its layer.
@@ -1047,9 +1033,8 @@ The official clients pass your query body through their normal request/response
 pipeline, which converts naming conventions automatically:
 
 * Top-level and `scope` keys are recased to the wire format. Python
-  `order_by` / `strict_layers` / `project_ids` and JavaScript `orderBy` /
-  `strictLayers` / `projectIds` both become `order-by` / `strict-layers` /
-  `project-ids` on the wire.
+  `order_by` / `project_ids` and JavaScript `orderBy` / `projectIds` both become
+  `order-by` / `project-ids` on the wire.
 * Clause heads, variables, and values are plain string values, and pass
   through untouched: write `"span"`, `"?s1"`, `"vocab-link"`, `"NOUN"` literally in
   every language. Constraint keys inside a clause (`layer`, `value`, `begin`, …)
@@ -1124,7 +1109,7 @@ client.query({
               ["vocab-link", "?t", "?v"]],
 })
 
-# restrict to one project by ID (works even with duplicate names)
+# restrict to one project by ID
 client.query({
     "find": ["?s"],
     "where": [["span", "?s", {"layer": "UPOS", "value": "NOUN"}]],

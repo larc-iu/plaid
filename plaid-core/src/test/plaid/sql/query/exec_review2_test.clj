@@ -1,8 +1,8 @@
 (ns plaid.sql.query.exec-review2-test
   "Round-2 review fixes at the exec/SQL level: conjunctive constraint AND (a var
-  in two entity clauses must satisfy both — no last-wins merge), an ambiguous
-  scalar layer reference is a 400 (not a silent IN-list fan-out / implicit OR),
-  and the query timeout (408)."
+  in two entity clauses must satisfy both — no last-wins merge), a scalar layer
+  reference must be a layer id (a name/path is a 400 — layers are identified by id
+  only), and the query timeout (408)."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
@@ -31,38 +31,40 @@
         t1 (id (h/create-token admin-request tokl text 3 5))]
     (h/create-span admin-request sl [t0] "NOUN")
     (h/create-span admin-request sl [t1] "VERB")
-    pid))
+    {:pid pid :pos sl}))
 
 ;; ---------------------------------------------------------------------------
 ;; Conjunctive AND across repeated vars (was: last-wins merge -> false positives)
 ;; ---------------------------------------------------------------------------
 
 (deftest repeated-var-constraints-are-anded
-  (build! "RP1")
-  (testing "value NOUN in one clause AND value VERB in another is unsatisfiable (0), not VERB"
-    (is (= 0 (:count (qe/run db "admin@example.com"
-                             {"find" ["?s"]
-                              "where" [["span" "?s" {"layer" "RP1/pos" "value" "NOUN"}]
-                                       ["span" "?s" {"layer" "RP1/pos" "value" "VERB"}]]})))))
-  (testing "compatible constraints split across clauses combine (AND), not drop"
-    (is (= 1 (:count (qe/run db "admin@example.com"
-                             {"find" ["?s"]
-                              "where" [["span" "?s" {"layer" "RP1/pos"}]
-                                       ["span" "?s" {"value" "NOUN"}]]}))))))
+  (let [{:keys [pos]} (build! "RP1")]
+    (testing "value NOUN in one clause AND value VERB in another is unsatisfiable (0), not VERB"
+      (is (= 0 (:count (qe/run db "admin@example.com"
+                               {"find" ["?s"]
+                                "where" [["span" "?s" {"layer" pos "value" "NOUN"}]
+                                         ["span" "?s" {"layer" pos "value" "VERB"}]]})))))
+    (testing "compatible constraints split across clauses combine (AND), not drop"
+      (is (= 1 (:count (qe/run db "admin@example.com"
+                               {"find" ["?s"]
+                                "where" [["span" "?s" {"layer" pos}]
+                                         ["span" "?s" {"value" "NOUN"}]]})))))))
 
 ;; ---------------------------------------------------------------------------
-;; Ambiguous scalar layer reference -> 400
+;; Scalar layer reference must be a layer id (a name/path is a 400)
 ;; ---------------------------------------------------------------------------
 
-(deftest ambiguous-layer-name-is-400
-  (build! "RP1")
-  (build! "RP2")
-  (testing "a bare layer name matching layers in two in-scope projects is a 400 (no silent fan-out)"
-    (is (= 400 (code-of #(qe/run db "admin@example.com"
-                                 {"find" ["?s"] "where" [["span" "?s" {"layer" "pos" "value" "NOUN"}]]})))))
-  (testing "a unique path still resolves to exactly one layer"
-    (is (= 1 (:count (qe/run db "admin@example.com"
-                             {"find" ["?s"] "where" [["span" "?s" {"layer" "RP1/pos" "value" "NOUN"}]]}))))))
+(deftest scalar-layer-ref-must-be-an-id
+  (let [{:keys [pos]} (build! "RP1")]
+    (testing "a bare layer name is a 400 (layers are identified by id only)"
+      (is (= 400 (code-of #(qe/run db "admin@example.com"
+                                   {"find" ["?s"] "where" [["span" "?s" {"layer" "pos" "value" "NOUN"}]]})))))
+    (testing "a Project/Layer path is also a 400 (no name/path resolution)"
+      (is (= 400 (code-of #(qe/run db "admin@example.com"
+                                   {"find" ["?s"] "where" [["span" "?s" {"layer" "RP1/pos" "value" "NOUN"}]]})))))
+    (testing "the layer id resolves to exactly that layer"
+      (is (= 1 (:count (qe/run db "admin@example.com"
+                               {"find" ["?s"] "where" [["span" "?s" {"layer" pos "value" "NOUN"}]]})))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Query timeout -> 408

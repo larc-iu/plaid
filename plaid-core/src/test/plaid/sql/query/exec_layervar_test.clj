@@ -73,7 +73,7 @@
         t0 (id (h/create-token admin-request tokl text 0 2))]
     (id (h/create-span admin-request pos [t0] "NOUN"))))
 
-(deftest layer-var-by-name-is-the-multi-match-escape
+(deftest layer-var-by-name-matches-across-projects
   (let [n1 (build-named! "MA1")
         n2 (build-named! "MA2")]
     (testing "[:span-layer ?sl {:name \"pos\"}] matches NOUN on the 'pos' layer of BOTH projects"
@@ -82,7 +82,7 @@
                        "where" [["span" "?s" {"layer" "?sl" "value" "NOUN"}]
                                 ["span-layer" "?sl" {"name" "pos"}]]})]
         (is (= #{(str n1) (str n2)} (set (map first (tuples r)))))))
-    (testing "a bare scalar name 'pos' is ambiguous (400); the layer var is the sanctioned way to match both"
+    (testing "a bare scalar name 'pos' is not a layer id (400); the layer var is how you match by name"
       (is (= 400 (try (qe/run db "admin@example.com"
                               {"find" ["?s"] "where" [["span" "?s" {"layer" "pos" "value" "NOUN"}]]})
                       (catch clojure.lang.ExceptionInfo e (:code (ex-data e)))))))))
@@ -95,7 +95,7 @@
                              "where" [["span" "?a" {"layer" "?sl"}] ["token" "?t" {"layer" "?sl"}]]})
                     (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))))))
 
-(deftest layer-alias-scalar-and-var
+(deftest layer-alias-as-clause-filter
   (let [pid  (h/create-test-project admin-request "AliasProj")
         txtl (id (h/create-text-layer admin-request pid "text"))
         tokl (id (h/create-token-layer admin-request txtl "words"))
@@ -106,35 +106,29 @@
         s  (id (h/create-span admin-request pos [t0] "NOUN"))]
     ;; aliases live under the reserved "plaid"/"alias" editor-config pair (nested)
     (prj/assoc-editor-config-pair db pos "plaid" "alias" "lexZZ")
-    (testing "scalar alias addressing resolves the aliased layer"
-      (is (= [[(str s)]]
-             (tuples (qe/run db "admin@example.com"
-                             {"find" ["?s"] "where" [["span" "?s" {"layer" "lexZZ" "value" "NOUN"}]]})))))
-    (testing "a layer var constrained by :alias matches the same layer"
+    (testing "a layer var constrained by :alias matches the aliased layer"
       (is (= [[(str s)]]
              (tuples (qe/run db "admin@example.com"
                              {"find" ["?s"]
                               "where" [["span" "?s" {"layer" "?sl" "value" "NOUN"}]
                                        ["span-layer" "?sl" {"alias" "lexZZ"}]]})))))))
 
-(deftest strict-layers-mode
+(deftest scalar-layer-ref-must-be-an-id
   (let [{:keys [pos pos-noun]} (build!)]
-    (testing "strict-layers rejects a name/path scalar layer reference"
+    (testing "a name/path scalar layer reference is a 400 (layers are identified by id only)"
       (is (= 400 (try (qe/run db "admin@example.com"
-                              {"find" ["?s"] "where" [["span" "?s" {"layer" "LVProj/pos"}]]
-                               "strict-layers" true})
+                              {"find" ["?s"] "where" [["span" "?s" {"layer" "LVProj/pos"}]]})
                       (catch clojure.lang.ExceptionInfo e (:code (ex-data e)))))))
-    (testing "strict-layers allows a layer id"
+    (testing "a layer id resolves to that layer"
       (is (= [[(str pos-noun)]]
              (tuples (qe/run db "admin@example.com"
-                             {"find" ["?s"] "where" [["span" "?s" {"layer" (str pos) "value" "NOUN"}]]
-                              "strict-layers" true})))))
-    (testing "strict-layers allows a layer variable"
+                             {"find" ["?s"] "where" [["span" "?s" {"layer" (str pos) "value" "NOUN"}]]})))))
+    (testing "a layer variable (bound by a layer clause) matches by name"
       (is (= 1 (:count (qe/run db "admin@example.com"
                                {"find" ["?s"]
                                 "where" [["span" "?s" {"layer" "?sl" "value" "NOUN"}]
                                          ["span-layer" "?sl" {"name" "pos"}]]
-                                "strict-layers" true "return" "count"})))))))
+                                "return" "count"})))))))
 
 (deftest layer-var-plus-literal-both-apply
   ;; Regression (round-6): a var carrying BOTH a layer variable and a literal layer
@@ -187,7 +181,7 @@
     (testing "tokens not covered by any span on a layer NAMED feat"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "NLProj/words"}]
+                       "where" [["token" "?t" {"layer" tokl}]
                                 ["not" ["covers" "?s" "?t"]
                                  ["span" "?s" {"layer" "?SL"}]
                                  ["span-layer" "?SL" {"name" "feat"}]]]})]

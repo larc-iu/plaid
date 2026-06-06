@@ -903,7 +903,6 @@ A query is an object with one required part, `where`, and several optional ones:
 | `orderBy`      | no      | Sort the matches (see <<Ordering>>).
 | `return`       | no      | The shape of the result: `ids` (the default), `entities`, `count`, or an aggregate (see <<Results>>).
 | `limit`        | no      | Cap how many matches come back.
-| `strictLayers` | no      | Require every layer to be named by id (see <<Layer References>>).
 |===
 
 Everything expressive lives in `where`.
@@ -1171,16 +1170,21 @@ An `or` may sit inside a `not`, a `not` inside one branch of an `or`, and so on,
 
 == Layer References
 
-Several of the examples above wrote `layer: "pos"`.
-Plaid works out which of a few forms you meant from the shape of the reference:
+Several of the examples above wrote `layer: "pos"` for readability.
+In a real query a layer is referenced by its **id** (its UUID), and only by its id:
 
-* if it contains a slash, it is a **path**, written `"ProjectName/LayerName"`;
-* if it looks like a UUID, it is the layer's **id**, which is always unambiguous;
-* otherwise it is a bare label, matched first against layer **aliases** and then against layer **names**.
+[,javascript]
+----
+["span", "?s", { layer: "98ef7a32-…-1327101afee3" }]
+----
 
-An alias is the form to reach for when the same kind of layer turns up across many projects under a shared label (see <<Metadata and Config>>).
-It is not a field of its own; it is just one reserved entry in the layer's `config`.
-Plaid reads it from the `plaid` namespace under the key `alias`, so a layer aliased `pos` has a config of `{ "plaid": { "alias": "pos" } }`.
+There is no referencing a layer by name, alias, or `"ProjectName/LayerName"` path.
+Layer names and aliases are not unique — two unrelated projects might each have a layer called `pos` — so a name cannot reliably stand for one layer, whereas an id always does; a non-id reference is refused.
+This is rarely any trouble: inside a program you already hold the id of whatever you loaded, so you just pass it.
+
+When you genuinely want to select a layer _by name_ — including the same-named layer across several projects at once — you do it with a layer variable and a describing clause, which is explicit about what it matches (next section).
+You can describe a layer by its `name`, or by an **alias**: a shared label you set in the layer's `config` under the `plaid` / `alias` pair (see <<Metadata and Config>>), handy when the same kind of layer recurs across projects under a common name.
+It is not a field of its own; Plaid reads it from the `plaid` namespace under the key `alias`, so a layer aliased `pos` has a config of `{ "plaid": { "alias": "pos" } }`.
 You set it through the layer's `setConfig` method, the same way you set any other config value:
 
 [,javascript]
@@ -1188,21 +1192,6 @@ You set it through the layer's `setConfig` method, the same way you set any othe
 // give this span layer the alias "pos"
 await client.spanLayers.setConfig(spanLayerId, "plaid", "alias", "pos");
 ----
-
-From then on, `layer: "pos"` in a query will find this layer (and any other layer that carries the same alias).
-
-A name has to point at exactly one layer.
-Layer names and aliases are not guaranteed to be unique (two different projects might each have a layer called `pos`), so when a name could mean several layers at once, Plaid stops and says so rather than quietly searching all of them:
-
-[,javascript]
-----
-// error: the reference "pos" is ambiguous (it matches 3 layers you can read)
-["span", "?s", { layer: "pos" }]
-----
-
-Inside a program it is usually best to name layers by id: you already hold the id of whatever you have loaded, and an id can never be ambiguous.
-If you would like Plaid to _insist_ on ids, add `strictLayers: true` to the query; with that on, a layer named by anything other than an id (or a layer variable, just below) is refused.
-A tool that builds queries on a user's behalf can switch this on to be certain its queries are never ambiguous.
 
 === Layer Variables
 
@@ -1219,7 +1208,7 @@ Naming the same layer variable in two clauses requires both entities to be on th
 ----
 
 You can also put a layer variable in `find`, to get the layer itself back, and you can describe the layer with a clause of its own.
-That last point is how you _deliberately_ ask across many projects at once, the very thing a plain name refuses to do:
+That describing clause is how you select layers _by name_ — and because it binds a variable, it can deliberately match the same-named layer across every project you can read, showing you exactly which layers it found:
 
 [,javascript]
 ----

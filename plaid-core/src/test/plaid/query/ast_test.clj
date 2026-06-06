@@ -184,10 +184,7 @@
     (is (= :entities (:return (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "entities"}))))
     (is (= :count (:return (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "count"})))))
   (testing "an unknown :return is rejected"
-    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "kwic"})))))
-  (testing ":strict-layers must be a boolean"
-    (is (true? (:strict-layers (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "strict-layers" true}))))
-    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "strict-layers" "yes"}))))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]] "return" "kwic"}))))))
 
 ;; ---------------------------------------------------------------------------
 ;; :or — clause-level disjunction (DNF -> branches)
@@ -360,11 +357,11 @@
     (is (= ["NOUN" "VERB"] (:value (cmap-of (ast/parse {"find" ["?s"]
                                                         "where" [["span" "?s" {"value" "?v"}]]
                                                         "bindings" {"?v" ["NOUN" "VERB"]}}))))))
-  (testing "a placeholder splices into :scope ids too"
-    (is (= ["MyProj"] (:projects (:scope (ast/parse {"find" ["?s"]
-                                                     "where" [["span" "?s" {"layer" "p"}]]
-                                                     "scope" {"projects" ["?p"]}
-                                                     "bindings" {"?p" "MyProj"}}))))))
+  (testing "a placeholder splices into :scope project-ids too"
+    (is (= ["proj-123"] (:project-ids (:scope (ast/parse {"find" ["?s"]
+                                                          "where" [["span" "?s" {"layer" "p"}]]
+                                                          "scope" {"project-ids" ["?p"]}
+                                                          "bindings" {"?p" "proj-123"}}))))))
   (testing "no chaining: a binding value that looks like a var stays a literal string"
     (let [v (:value (cmap-of (ast/parse {"find" ["?s"]
                                          "where" [["span" "?s" {"value" "?a"}]]
@@ -493,8 +490,10 @@
                                               "return" {"group" 5 "aggregates" [["count"]]}}))))
     (is (= 400 (code-of #(ast/parse+validate {"where" [["span" "?s" {"layer" "p"}]]
                                               "return" {"group" [] "aggregates" 5}})))))
-  (testing "a non-list :scope :projects / :project-ids is rejected"
-    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"projects" 5}}))))
+  (testing "scope by project name (:projects) is rejected; an unknown scope key is rejected"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"projects" ["P"]}}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"projetcs" ["P"]}})))))
+  (testing "a non-list :scope :project-ids is rejected"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"project-ids" 5}}))))))
 
 (deftest attr-predicate-ops

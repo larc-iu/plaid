@@ -43,23 +43,19 @@
 
 (defn effective-scope
   "The set of project-id strings the user may query, intersected with the AST's
-  requested `:scope` (`{:projects [names] :project-ids [ids]}`). Admins see all
-  projects. Throws 400 if a requested scope resolves to nothing accessible."
+  requested `:scope` (`{:project-ids [ids]}`). Projects are identified by id only —
+  there is no scope-by-name (project names are non-unique across a multi-tenant
+  instance). Admins see all projects. Throws 400 if a requested scope resolves to
+  nothing accessible."
   [db user-id requested]
   (let [admin? (usr/admin? (usr/get db user-id))
         accessible (set (map str (if admin? (prj/get-all-ids db) (prj/get-accessible-ids db user-id))))]
-    (if (or (nil? requested) (and (empty? (:projects requested)) (empty? (:project-ids requested))))
+    (if (or (nil? requested) (empty? (:project-ids requested)))
       accessible
-      (let [{:keys [projects project-ids]} requested
-            named (when (seq projects)
-                    (->> (psc/q db {:select [:id :name] :from [:projects]
-                                    :where [:in :name (vec projects)]})
-                         (map (comp str :id)) set))
-            ;; project ids are case-insensitive UUIDs; lower-case requested ids so an
-            ;; uppercase one still intersects the (lowercased) accessible set
-            explicit (set (map (comp str/lower-case str) project-ids))
-            requested-set (set/union (or named #{}) explicit)
-            scoped (set/intersection accessible requested-set)]
+      ;; project ids are case-insensitive UUIDs; lower-case requested ids so an
+      ;; uppercase one still intersects the (lowercased) accessible set
+      (let [explicit (set (map (comp str/lower-case str) (:project-ids requested)))
+            scoped (set/intersection accessible explicit)]
         (when (empty? scoped)
           (err! "None of the requested projects are accessible to you" {:requested requested}))
         scoped))))
@@ -68,71 +64,57 @@
 ;; Layer-alias index (per layer kind, within scope)
 ;; ---------------------------------------------------------------------------
 
-(defn- build-index
-  "Build a lookup index for one layer kind over the in-scope projects.
-  Returns {:by-id #{id} :by-name {name [ids]} :by-alias {alias [ids]}
-           :by-path {\"Project/Layer\" [ids]}}.
+(defn- in-scope-layer-ids
+  "The set of layer-id strings of `kind` visible in `scope` (a set of project-id
+  strings). Layers are identified by id only, so this is just the id universe a
+  scalar reference is checked against — no name/alias/path index.
 
   Vocab layers are global (no project_id column); they are scoped by the
-  `project_vocabs` grants of the in-scope projects, so a vocab layer is
-  visible iff some in-scope project has been granted it."
-  [db scope kind proj-id->name]
-  (let [rows (when (seq scope)
-               (if (= kind :vocab)
-                 (psc/q db {:select-distinct [:vl.id :vl.name :vl.config [:pv.project_id :project_id]]
-                            :from [[:vocab_layers :vl]]
-                            :join [[:project_vocabs :pv] [:= :pv.vocab_layer_id :vl.id]]
-                            :where [:in :pv.project_id (vec scope)]})
-                 (psc/q db {:select [:id :name :project_id :config]
-                            :from [(layer-table kind)]
-                            :where [:in :project_id (vec scope)]})))]
-    (reduce
-     (fn [ix {:keys [id name project_id config]}]
-       (let [id (str id)
-             ;; alias lives under the reserved "plaid"/"alias" editor-config pair
-             ;; (config is stored NESTED, {"plaid":{"alias":"pos"}}, by
-             ;; assoc-editor-config-pair — NOT a flat "plaid/alias" key)
-             alias (get-in (psc/parse-config config) ["plaid" "alias"])
-             pname (proj-id->name (str project_id))
-             path (when pname (str pname "/" name))]
-         (cond-> ix
-           true        (update :by-id conj id)
-           name        (update-in [:by-name name] (fnil conj []) id)
-           alias       (update-in [:by-alias alias] (fnil conj []) id)
-           path        (update-in [:by-path path] (fnil conj []) id))))
-     {:by-id #{} :by-name {} :by-alias {} :by-path {}}
-     rows)))
+  `project_vocabs` grants of the in-scope projects, so a vocab layer is visible iff
+  some in-scope project has been granted it."
+  [db scope kind]
+  (->> (when (seq scope)
+         (if (= kind :vocab)
+           (psc/q db {:select-distinct [:vl.id]
+                      :from [[:vocab_layers :vl]]
+                      :join [[:project_vocabs :pv] [:= :pv.vocab_layer_id :vl.id]]
+                      :where [:in :pv.project_id (vec scope)]})
+           (psc/q db {:select [:id]
+                      :from [(layer-table kind)]
+                      :where [:in :project_id (vec scope)]})))
+       (map (comp str :id))
+       set))
+
+(defn- layer-clause-name
+  "The layer-clause head name for `kind` (an entity kind like `:span` or a layer
+  kind like `:text-layer`) — used only to phrase the 'bind it with a … clause' hint."
+  [kind]
+  (let [k (clojure.core/name kind)]
+    (if (str/ends-with? k "-layer") k (str k "-layer"))))
 
 (defn- resolve-ref
-  "Resolve one scalar layer reference against a kind's index, in order:
-  path (\"Project/Layer\") -> uuid (by id) -> bare string (alias, then name).
-  A scalar reference must identify EXACTLY ONE layer — names, paths, and aliases
-  are all non-unique (two projects can share a name, an alias is shared by
-  convention), so a reference matching several layers is an *ambiguous* 400, not
-  a silent `IN (…)` fan-out (which would be an implicit OR over layers). Returns
-  a one-element vector of layer-id strings. To match several layers on purpose,
-  list their ids or (future) bind a layer variable."
-  [index kind ref]
-  (let [s (str ref)
-        ids (distinct
-             (cond
-               (str/includes? s "/") (get-in index [:by-path s])
-               ;; UUIDs are case-insensitive (RFC 4122); ids are stored/normalized
-               ;; lowercase, so match an uppercase/mixed-case ref against the lowered form.
-               (uuid-string? s)      (let [ls (str/lower-case s)]
-                                       (when (contains? (:by-id index) ls) [ls]))
-               :else                 (concat (get-in index [:by-alias s])
-                                             (get-in index [:by-name s]))))]
+  "Resolve one scalar layer reference. Layers are identified by id ONLY: a reference
+  must be a layer id (UUID) visible in the queried scope. Names, aliases and
+  `Project/Layer` paths are not accepted — they are non-unique across a multi-tenant
+  instance, and an id matches at most one layer (so there is no ambiguity). To select
+  a layer by name, bind it with a layer-var clause instead. Returns a one-element
+  vector of the (lower-cased) id string; throws 400 otherwise."
+  [scope-ids kind ref]
+  (let [s (str ref)]
     (cond
-      (empty? ids)
-      (err! (str "No " (clojure.core/name kind) " layer matching " (pr-str ref)
+      (not (uuid-string? s))
+      (err! (str (clojure.core/name kind) " layer reference " (pr-str ref)
+                 " must be a layer id. Layers are identified by id only — to match by"
+                 " name, bind the layer with a clause, e.g. [\"" (layer-clause-name kind)
+                 "\" \"?l\" {\"name\" \"…\"}], then reference ?l.")
+            {:layer ref :kind kind})
+      ;; UUIDs are case-insensitive (RFC 4122); ids are stored/normalized lowercase,
+      ;; so match an uppercase/mixed-case ref against the lowered form.
+      (not (contains? scope-ids (str/lower-case s)))
+      (err! (str "No " (clojure.core/name kind) " layer with id " (pr-str ref)
                  " is visible in the queried project scope")
             {:layer ref :kind kind})
-      (> (count ids) 1)
-      (err! (str (clojure.core/name kind) " layer reference " (pr-str ref) " is ambiguous — it matches "
-                 (count ids) " layers in your scope. Qualify it with a layer id (or narrow :scope to one project).")
-            {:layer ref :kind kind :matches (vec ids)})
-      :else (vec ids))))
+      :else [(str/lower-case s)])))
 
 ;; ---------------------------------------------------------------------------
 ;; Resolve the whole query
@@ -146,19 +128,13 @@
   (let [scope (effective-scope db user-id (:scope ast*))
         _ (when (empty? scope)
             (err! "You have no accessible projects to query" {}))
-        proj-id->name (into {} (map (juxt (comp str :id) :name))
-                            (psc/q db {:select [:id :name] :from [:projects]
-                                       :where [:in :id (vec scope)]}))
         index-cache (atom {})
         get-index (fn [kind]
                     (or (@index-cache kind)
-                        (let [ix (build-index db scope kind proj-id->name)]
+                        (let [ix (in-scope-layer-ids db scope kind)]
                           (swap! index-cache assoc kind ix)
                           ix)))
         layer-named? #{:span :token :relation :vocab}
-        ;; strict-layers: a scalar layer reference must be a layer id (names,
-        ;; paths, aliases are non-unique) — use an id or a layer variable.
-        strict? (boolean (:strict-layers ast*))
         resolve-clause
         (fn resolve-clause [clause]
           (let [[head v cmap] clause]
@@ -167,28 +143,19 @@
               (= head :not) (into [:not] (map resolve-clause (rest clause)))
               ;; :related* [?a ?b {:layer L}] — resolve L against the RELATION index
               (= head :related*)
-              (let [[_ a b cmap] clause]
-                (when (and strict? (not (uuid-string? (str (:layer cmap)))))
-                  (err! (str "strict-layers is on: :related* layer " (pr-str (:layer cmap))
-                             " must be a layer id")
-                        {:layer (:layer cmap)}))
-                (let [ids (resolve-ref (get-index :relation) :relation (:layer cmap))]
-                  [head a b (assoc cmap ::layer-ids (vec ids))]))
+              (let [[_ a b cmap] clause
+                    ids (resolve-ref (get-index :relation) :relation (:layer cmap))]
+                [head a b (assoc cmap ::layer-ids (vec ids))])
               ;; a :layer that is a VARIABLE is a layer node (compiled as a join),
               ;; not a reference to resolve — leave it for the compiler
               (and (layer-named? head) (map? cmap) (contains? cmap :layer)
                    (not (symbol? (:layer cmap))))
-              (do
-                (when (and strict? (not (uuid-string? (str (:layer cmap)))))
-                  (err! (str "strict-layers is on: layer reference " (pr-str (:layer cmap))
-                             " must be a layer id (or a layer variable), not a name/path/alias")
-                        {:layer (:layer cmap)}))
-                (let [ids (resolve-ref (get-index head) head (:layer cmap))]
-                  [head v (assoc cmap ::layer-ids (vec ids))]))
+              (let [ids (resolve-ref (get-index head) head (:layer cmap))]
+                [head v (assoc cmap ::layer-ids (vec ids))])
               ;; a LAYER clause may carry structural slots referencing a parent layer
               ;; (token-layer's :text-layer / :parent-token-layer, span-layer's
               ;; :token-layer, relation-layer's :span-layer). A scalar ref is resolved
-              ;; to id(s) against the PARENT kind's index; a var slot is left for the
+              ;; to an id against the PARENT kind's index; a var slot is left for the
               ;; compiler (a join). Mirrors the entity :layer branch above.
               (seq (ast/layer-slots-for head))
               [head v
@@ -196,13 +163,8 @@
                 (fn [cm [slot parent-kind]]
                   (let [ref (get cm slot)]
                     (if (and (some? ref) (not (symbol? ref)))
-                      (do
-                        (when (and strict? (not (uuid-string? (str ref))))
-                          (err! (str "strict-layers is on: " (clojure.core/name head) " " (clojure.core/name slot)
-                                     " reference " (pr-str ref) " must be a layer id (or a layer variable)")
-                                {:layer ref :slot slot}))
-                        (assoc-in cm [::slot-layer-ids slot]
-                                  (vec (resolve-ref (get-index parent-kind) parent-kind ref))))
+                      (assoc-in cm [::slot-layer-ids slot]
+                                (vec (resolve-ref (get-index parent-kind) parent-kind ref)))
                       cm)))
                 cmap
                 (ast/layer-slots-for head))]

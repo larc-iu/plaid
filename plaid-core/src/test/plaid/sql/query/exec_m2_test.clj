@@ -43,34 +43,35 @@
     (h/create-span admin-request gl [m0] "PPTC")
     (h/create-span admin-request gl [m1] "PPTC")
     (h/create-span admin-request gl [m2] "OTHER")
-    {:pid pid :m0 m0 :m1 m1 :m2 m2 :w0 w0 :w1 w1 :w2 w2}))
+    {:pid pid :m0 m0 :m1 m1 :m2 m2 :w0 w0 :w1 w1 :w2 w2
+     :sent sent :word word :morph morph :gl gl}))
 
 (deftest within-and-first-in
-  (let [{:keys [m0]} (build-hierarchy-corpus!)]
+  (let [{:keys [m0 gl morph word sent]} (build-hierarchy-corpus!)]
     (testing "morpheme glossed PPTC inside a word that is sentence-initial"
       ;; m0 (word [0,2], the first word) qualifies; m1 (word [3,5], not
       ;; sentence-initial) is glossed PPTC but its word is not first-in.
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?m"]
-                       "where" [["span" "?g" {"layer" "gloss" "value" "PPTC"}]
+                       "where" [["span" "?g" {"layer" gl "value" "PPTC"}]
                                 ["covers" "?g" "?m"]
-                                ["token" "?m" {"layer" "morphemes"}]
-                                ["within" "?m" "?w"] ["token" "?w" {"layer" "words"}]
-                                ["within" "?w" "?s"] ["token" "?s" {"layer" "sentences"}]
+                                ["token" "?m" {"layer" morph}]
+                                ["within" "?m" "?w"] ["token" "?w" {"layer" word}]
+                                ["within" "?w" "?s"] ["token" "?s" {"layer" sent}]
                                 ["first-in" "?w" "?s"]]})]
         (is (= 1 (:count r)))
         (is (= [[(str m0)]] (tuples r)))))))
 
 (deftest within-without-first-in
-  (let [{:keys [m0 m1]} (build-hierarchy-corpus!)]
+  (let [{:keys [m0 m1 gl morph word sent]} (build-hierarchy-corpus!)]
     (testing "drop first-in: both PPTC morphemes (in words within the sentence) match"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?m"]
-                       "where" [["span" "?g" {"layer" "gloss" "value" "PPTC"}]
+                       "where" [["span" "?g" {"layer" gl "value" "PPTC"}]
                                 ["covers" "?g" "?m"]
-                                ["token" "?m" {"layer" "morphemes"}]
-                                ["within" "?m" "?w"] ["token" "?w" {"layer" "words"}]
-                                ["within" "?w" "?s"] ["token" "?s" {"layer" "sentences"}]]})]
+                                ["token" "?m" {"layer" morph}]
+                                ["within" "?m" "?w"] ["token" "?w" {"layer" word}]
+                                ["within" "?w" "?s"] ["token" "?s" {"layer" sent}]]})]
         (is (= 2 (:count r)))
         (is (= #{(str m0) (str m1)} (set (map first (tuples r)))))))))
 
@@ -85,8 +86,8 @@
           inner (id (h/create-token admin-request tokl text 1 3))
           r (qe/run db "admin@example.com"
                     {"find" ["?c" "?p"]
-                     "where" [["token" "?c" {"layer" "toks"}]
-                              ["token" "?p" {"layer" "toks"}]
+                     "where" [["token" "?c" {"layer" tokl}]
+                              ["token" "?p" {"layer" tokl}]
                               ["within" "?c" "?p"]]})]
       ;; only inner-within-outer; NOT (outer,outer)/(inner,inner) self, NOT (outer,inner)
       (is (= 1 (:count r)))

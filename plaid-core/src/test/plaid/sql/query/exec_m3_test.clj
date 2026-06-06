@@ -33,16 +33,17 @@
         t2 (id (h/create-token admin-request tokl text 6 8))]
     {:noun0 (id (h/create-span admin-request sl [t0] "NOUN"))
      :verb1 (id (h/create-span admin-request sl [t1] "VERB"))
-     :noun2 (id (h/create-span admin-request sl [t2] "NOUN"))}))
+     :noun2 (id (h/create-span admin-request sl [t2] "NOUN"))
+     :tokl tokl :sl sl}))
 
 (deftest seq-plain-noun-verb
-  (let [{:keys [noun0 verb1]} (build-nvn-corpus!)]
+  (let [{:keys [noun0 verb1 tokl sl]} (build-nvn-corpus!)]
     (testing "[:seq {words} [NOUN :as ?s1] [VERB :as ?s2]] finds the adjacent pair"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?s1" "?s2"]
-                       "where" [["seq" {"layer" "words"}
-                                 ["span" {"layer" "pos" "value" "NOUN"} "as" "?s1"]
-                                 ["span" {"layer" "pos" "value" "VERB"} "as" "?s2"]]]})]
+                       "where" [["seq" {"layer" tokl}
+                                 ["span" {"layer" sl "value" "NOUN"} "as" "?s1"]
+                                 ["span" {"layer" sl "value" "VERB"} "as" "?s2"]]]})]
         (is (= ["s1" "s2"] (:columns r)))
         (is (= 1 (:count r)))
         (is (= [[(str noun0) (str verb1)]] (tuples r)))))))
@@ -72,41 +73,42 @@
      :noun1 (id (h/create-span admin-request sl [t1] "NOUN"))
      :det2 (id (h/create-span admin-request sl [t2] "DET"))
      :adj3 (id (h/create-span admin-request sl [t3] "ADJ"))
-     :noun4 (id (h/create-span admin-request sl [t4] "NOUN"))}))
+     :noun4 (id (h/create-span admin-request sl [t4] "NOUN"))
+     :tokl tokl :sl sl}))
 
-(def ^:private det-adj?-noun-query
+(defn- det-adj?-noun-query [tokl sl]
   {"find" ["?d" "?n"]
-   "where" [["seq" {"layer" "words"}
-             ["span" {"layer" "pos" "value" "DET"} "as" "?d"]
-             ["?" ["span" {"layer" "pos" "value" "ADJ"}]]
-             ["span" {"layer" "pos" "value" "NOUN"} "as" "?n"]]]})
+   "where" [["seq" {"layer" tokl}
+             ["span" {"layer" sl "value" "DET"} "as" "?d"]
+             ["?" ["span" {"layer" sl "value" "ADJ"}]]
+             ["span" {"layer" sl "value" "NOUN"} "as" "?n"]]]})
 
 (deftest seq-optional-adjective-unions-both-lengths
-  (let [{:keys [det0 noun1 det2 noun4]} (build-det-adj-noun-corpus!)]
+  (let [{:keys [det0 noun1 det2 noun4 tokl sl]} (build-det-adj-noun-corpus!)]
     (testing "DET ADJ? NOUN catches both the adjacent and the ADJ-separated pair"
-      (let [r (qe/run db "admin@example.com" det-adj?-noun-query)]
+      (let [r (qe/run db "admin@example.com" (det-adj?-noun-query tokl sl))]
         (is (= ["d" "n"] (:columns r)))
         (is (= 2 (:count r)))
         (is (= #{[(str det0) (str noun1)] [(str det2) (str noun4)]}
                (set (tuples r))))))))
 
 (deftest seq-rep-range-matches-each-length
-  (let [{:keys [det0 noun1 det2 noun4]} (build-det-adj-noun-corpus!)]
+  (let [{:keys [det0 noun1 det2 noun4 tokl sl]} (build-det-adj-noun-corpus!)]
     (testing ":rep 0 2 over ADJ subsumes both DET NOUN and DET ADJ NOUN"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?d" "?n"]
-                       "where" [["seq" {"layer" "words"}
-                                 ["span" {"layer" "pos" "value" "DET"} "as" "?d"]
-                                 ["rep" 0 2 ["span" {"layer" "pos" "value" "ADJ"}]]
-                                 ["span" {"layer" "pos" "value" "NOUN"} "as" "?n"]]]})]
+                       "where" [["seq" {"layer" tokl}
+                                 ["span" {"layer" sl "value" "DET"} "as" "?d"]
+                                 ["rep" 0 2 ["span" {"layer" sl "value" "ADJ"}]]
+                                 ["span" {"layer" sl "value" "NOUN"} "as" "?n"]]]})]
         (is (= #{[(str det0) (str noun1)] [(str det2) (str noun4)]}
                (set (tuples r))))))))
 
 (deftest seq-union-respects-limit
-  (build-det-adj-noun-corpus!)
-  (testing "a :limit applies once around the whole UNION"
-    (let [r (qe/run db "admin@example.com" (assoc det-adj?-noun-query "limit" 1))]
-      (is (= 1 (:count r))))))
+  (let [{:keys [tokl sl]} (build-det-adj-noun-corpus!)]
+    (testing "a :limit applies once around the whole UNION"
+      (let [r (qe/run db "admin@example.com" (assoc (det-adj?-noun-query tokl sl) "limit" 1))]
+        (is (= 1 (:count r)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Canonical token order (begin, precedence NULLS LAST, end, id)
@@ -133,25 +135,25 @@
         b (id (h/create-token admin-request tokl text 0 2 1))
         c (id (h/create-token admin-request tokl text 0 2 2))
         d (id (h/create-token admin-request tokl text 2 4 nil))]
-    {:a a :b b :c c :d d}))
+    {:a a :b b :c c :d d :tokl tokl}))
 
 (deftest precedes-uses-canonical-total-order
-  (let [{:keys [a b c d]} (build-precedence-corpus!)]
+  (let [{:keys [a b c d tokl]} (build-precedence-corpus!)]
     (testing ":precedes immediate-successor chain is A->B->C->D (precedence outranks extent)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?x" "?y"]
-                       "where" [["token" "?x" {"layer" "toks"}]
-                                ["token" "?y" {"layer" "toks"}]
+                       "where" [["token" "?x" {"layer" tokl}]
+                                ["token" "?y" {"layer" tokl}]
                                 ["precedes" "?x" "?y"]]})]
         (is (= #{[(str a) (str b)] [(str b) (str c)] [(str c) (str d)]}
                (set (tuples r))))))))
 
 (deftest precedes-star-uses-canonical-total-order
-  (let [{:keys [a b c d]} (build-precedence-corpus!)]
+  (let [{:keys [a b c d tokl]} (build-precedence-corpus!)]
     (testing ":precedes* from A reaches B, C, D (transitive, same total order)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?y"]
-                       "where" [["token" "?a" {"layer" "toks" "begin" 0 "end" 4}]
-                                ["token" "?y" {"layer" "toks"}]
+                       "where" [["token" "?a" {"layer" tokl "begin" 0 "end" 4}]
+                                ["token" "?y" {"layer" tokl}]
                                 ["precedes*" "?a" "?y"]]})]
         (is (= #{(str b) (str c) (str d)} (set (map first (tuples r)))))))))

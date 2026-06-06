@@ -35,14 +35,15 @@
      :Q (id (h/create-span admin-request pl [t0 t1 t2] "Q"))
      :N (id (h/create-span admin-request nl [t0 t1] "N"))
      :A (id (h/create-span admin-request sl [t0] "A"))
-     :C (id (h/create-span admin-request sl [t3] "C"))}))
+     :C (id (h/create-span admin-request sl [t3] "C"))
+     :phrase pl :ner nl :pos sl}))
 
 (deftest contains-token-superset
-  (let [{:keys [N A]} (build!)]
+  (let [{:keys [N A phrase pos]} (build!)]
     (testing "phrase contains the ner span it covers, and the pos span at t0, not t3"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?b"]
-                       "where" [["span" "?p" {"layer" "TopoProj/phrase"}]
+                       "where" [["span" "?p" {"layer" phrase}]
                                 ["contains" "?p" "?b"]]})]
         ;; P/Q (t0,t1,t2) contain: N(t0,t1), A(t0), and each other (P⊇Q, Q⊇P). Not C(t3).
         (is (contains? (found r) (str N)))
@@ -50,35 +51,35 @@
     (testing "C (t3) is contained by no phrase"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?b"]
-                       "where" [["span" "?p" {"layer" "TopoProj/phrase"}]
-                                ["span" "?b" {"layer" "TopoProj/pos"}]
+                       "where" [["span" "?p" {"layer" phrase}]
+                                ["span" "?b" {"layer" pos}]
                                 ["contains" "?p" "?b"]]})]
         (is (= #{(str A)} (found r)))))))
 
 (deftest overlaps-shared-token
-  (let [{:keys [A]} (build!)]
+  (let [{:keys [A ner pos]} (build!)]
     (testing "ner (t0,t1) overlaps the pos span at t0 but not the one at t3"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?b"]
-                       "where" [["span" "?n" {"layer" "TopoProj/ner"}]
-                                ["span" "?b" {"layer" "TopoProj/pos"}]
+                       "where" [["span" "?n" {"layer" ner}]
+                                ["span" "?b" {"layer" pos}]
                                 ["overlaps" "?n" "?b"]]})]
         (is (= #{(str A)} (found r)))))))
 
 (deftest coextensive-same-tokens
-  (let [{:keys [P Q]} (build!)]
+  (let [{:keys [P Q phrase ner]} (build!)]
     (testing "P and Q cover the same tokens -> coextensive (both orderings), self excluded"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?a"]
-                       "where" [["span" "?a" {"layer" "TopoProj/phrase"}]
-                                ["span" "?b" {"layer" "TopoProj/phrase"}]
+                       "where" [["span" "?a" {"layer" phrase}]
+                                ["span" "?b" {"layer" phrase}]
                                 ["coextensive" "?a" "?b"]]})]
         (is (= #{(str P) (str Q)} (found r)))))
     (testing "N is not coextensive with any phrase (strict subset)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?a"]
-                       "where" [["span" "?a" {"layer" "TopoProj/ner"}]
-                                ["span" "?b" {"layer" "TopoProj/phrase"}]
+                       "where" [["span" "?a" {"layer" ner}]
+                                ["span" "?b" {"layer" phrase}]
                                 ["coextensive" "?a" "?b"]]})]
         (is (empty? (found r)))))))
 

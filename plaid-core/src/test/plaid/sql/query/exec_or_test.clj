@@ -29,55 +29,55 @@
     {:noun0 (id (h/create-span admin-request sl [t0] "NOUN"))
      :verb1 (id (h/create-span admin-request sl [t1] "VERB"))
      :noun2 (id (h/create-span admin-request sl [t2] "NOUN"))
-     :t0 t0 :t1 t1 :t2 t2}))
+     :t0 t0 :t1 t1 :t2 t2 :pos sl}))
 
 (deftest or-is-union
-  (let [{:keys [noun0 verb1 noun2]} (build!)]
+  (let [{:keys [noun0 verb1 noun2 pos]} (build!)]
     (testing "a span tagged NOUN OR VERB returns all three (the marquee disjunction case)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?s"]
-                       "where" [["or" [["span" "?s" {"layer" "OrProj/pos" "value" "NOUN"}]]
-                                 [["span" "?s" {"layer" "OrProj/pos" "value" "VERB"}]]]]})]
+                       "where" [["or" [["span" "?s" {"layer" pos "value" "NOUN"}]]
+                                 [["span" "?s" {"layer" pos "value" "VERB"}]]]]})]
         (is (= 3 (:count r)))
         (is (= #{(str noun0) (str verb1) (str noun2)} (set (map first (tuples r)))))))))
 
 (deftest or-distributes-conjunctive-clauses
-  (let [{:keys [t0 t1 t2]} (build!)]
+  (let [{:keys [t0 t1 t2 pos]} (build!)]
     (testing "tokens covered by a span that is NOUN or VERB — the outer :covers applies in both branches"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
                        "where" [["covers" "?s" "?t"]
-                                ["or" [["span" "?s" {"layer" "OrProj/pos" "value" "NOUN"}]]
-                                 [["span" "?s" {"layer" "OrProj/pos" "value" "VERB"}]]]]})]
+                                ["or" [["span" "?s" {"layer" pos "value" "NOUN"}]]
+                                 [["span" "?s" {"layer" pos "value" "VERB"}]]]]})]
         (is (= #{(str t0) (str t1) (str t2)} (set (map first (tuples r)))))))))
 
 (deftest or-dedups-rows-matching-both-branches
-  (let [{:keys [noun0 verb1 noun2]} (build!)]
+  (let [{:keys [noun0 verb1 noun2 pos]} (build!)]
     (testing "a row satisfying BOTH branches is returned once (UNION set semantics)"
       ;; branch 1 = NOUN spans (2); branch 2 = all pos spans (3). The 2 NOUNs
       ;; satisfy both, so the union is 3 distinct, not 5.
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?s"]
-                       "where" [["or" [["span" "?s" {"layer" "OrProj/pos" "value" "NOUN"}]]
-                                 [["span" "?s" {"layer" "OrProj/pos"}]]]]})]
+                       "where" [["or" [["span" "?s" {"layer" pos "value" "NOUN"}]]
+                                 [["span" "?s" {"layer" pos}]]]]})]
         (is (= 3 (:count r)))
         (is (= #{(str noun0) (str verb1) (str noun2)} (set (map first (tuples r)))))))))
 
 (deftest value-alternation-matches-as-one-query
-  (let [{:keys [noun0 verb1 noun2]} (build!)]
+  (let [{:keys [noun0 verb1 noun2 pos]} (build!)]
     (testing "{:value [NOUN VERB]} matches the same set as the :or, via a single IN (1 branch)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?s"]
-                       "where" [["span" "?s" {"layer" "OrProj/pos" "value" ["NOUN" "VERB"]}]]})]
+                       "where" [["span" "?s" {"layer" pos "value" ["NOUN" "VERB"]}]]})]
         (is (= 3 (:count r)))
         (is (= #{(str noun0) (str verb1) (str noun2)} (set (map first (tuples r)))))))))
 
 (deftest or-count-is-distinct-union
-  (build!)
-  (testing ":return :count over an :or counts the distinct union"
-    (is (= {:return :count :count 3 :truncated false}
-           (qe/run db "admin@example.com"
-                   {"find" ["?s"]
-                    "where" [["or" [["span" "?s" {"layer" "OrProj/pos" "value" "NOUN"}]]
-                              [["span" "?s" {"layer" "OrProj/pos" "value" "VERB"}]]]]
-                    "return" "count"})))))
+  (let [{:keys [pos]} (build!)]
+    (testing ":return :count over an :or counts the distinct union"
+      (is (= {:return :count :count 3 :truncated false}
+             (qe/run db "admin@example.com"
+                     {"find" ["?s"]
+                      "where" [["or" [["span" "?s" {"layer" pos "value" "NOUN"}]]
+                                [["span" "?s" {"layer" pos "value" "VERB"}]]]]
+                      "return" "count"}))))))

@@ -32,45 +32,45 @@
         s0 (id (h/create-span admin-request sl [t0] "NOUN"))
         s1 (id (h/create-span admin-request sl [t1] "NOUN"))
         s2 (id (h/create-span admin-request sl [t2] "VERB"))]
-    {:t0 t0 :t1 t1 :t2 t2 :s0 s0 :s1 s1 :s2 s2}))
+    {:t0 t0 :t1 t1 :t2 t2 :s0 s0 :s1 s1 :s2 s2 :sl sl :tokl tokl}))
 
 (deftest value-as-join-var
-  (let [{:keys [s0 s1]} (build!)]
+  (let [{:keys [s0 s1 sl]} (build!)]
     (testing "two DISTINCT pos spans sharing a value -> only the values with a twin"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?a"]
-                       "where" [["span" "?a" {"layer" "ScProj/pos" "value" {"var" "?v"}}]
-                                ["span" "?b" {"layer" "ScProj/pos" "value" {"var" "?v"}}]
+                       "where" [["span" "?a" {"layer" sl "value" {"var" "?v"}}]
+                                ["span" "?b" {"layer" sl "value" {"var" "?v"}}]
                                 ["!=" "?a" "?b"]]})]
         ;; only the two NOUN spans have a same-value partner; the lone VERB drops
         (is (= #{(str s0) (str s1)} (set (map str (ids r)))))
         (is (= #{"NOUN"} (span-vals r)))))))
 
 (deftest self-match-footgun-without-inequality
-  (let [{:keys [s0 s1 s2]} (build!)]
+  (let [{:keys [s0 s1 s2 sl]} (build!)]
     (testing "WITHOUT != the self-pair survives, so every span matches (the footgun)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?a"]
-                       "where" [["span" "?a" {"layer" "ScProj/pos" "value" {"var" "?v"}}]
-                                ["span" "?b" {"layer" "ScProj/pos" "value" {"var" "?v"}}]]})]
+                       "where" [["span" "?a" {"layer" sl "value" {"var" "?v"}}]
+                                ["span" "?b" {"layer" sl "value" {"var" "?v"}}]]})]
         (is (= #{(str s0) (str s1) (str s2)} (set (map str (ids r)))))))))
 
 (deftest inequality-on-entity-ids
-  (let [{:keys [s0 s1]} (build!)]
+  (let [{:keys [s0 s1 sl]} (build!)]
     (testing "[!= ?a ?b] compares entity ids -> distinct NOUN spans only"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?a"]
-                       "where" [["span" "?a" {"layer" "ScProj/pos" "value" "NOUN"}]
-                                ["span" "?b" {"layer" "ScProj/pos" "value" "NOUN"}]
+                       "where" [["span" "?a" {"layer" sl "value" "NOUN"}]
+                                ["span" "?b" {"layer" sl "value" "NOUN"}]
                                 ["!=" "?a" "?b"]]})]
         (is (= #{(str s0) (str s1)} (set (map str (ids r)))))))))
 
 (deftest scalar-predicate-with-literal
-  (let [{:keys [t0 t1]} (build!)]
+  (let [{:keys [t0 t1 tokl]} (build!)]
     (testing "bind a token's begin to ?n, then [< ?n 5] -> tokens before offset 5"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?t"]
-                       "where" [["token" "?t" {"layer" "ScProj/words" "begin" {"var" "?n"}}]
+                       "where" [["token" "?t" {"layer" tokl "begin" {"var" "?n"}}]
                                 ["<" "?n" 5]]})]
         (is (= #{(str t0) (str t1)} (set (map str (ids r)))))))))
 
@@ -89,7 +89,7 @@
     (testing "[< ?v 25] on a numeric :value is a NUMERIC compare (5,10 — not 100)"
       (let [r (qe/run db "admin@example.com"
                       {"find" ["?s"]
-                       "where" [["span" "?s" {"layer" "NumProj/n" "value" {"var" "?v"}}]
+                       "where" [["span" "?s" {"layer" sl "value" {"var" "?v"}}]
                                 ["<" "?v" 25]]})]
         (is (= #{(str s5) (str s10)} (set (map (comp str first) (:results r)))))))))
 
@@ -140,12 +140,12 @@
     (testing "shared value-var joins span :value (JSON) to vocab :form (plain) by value"
       (let [shared (qe/run db "admin@example.com"
                            {"find" ["?s" "?v"]
-                            "where" [["span" "?s" {"layer" "lemma" "value" {"var" "?x"}}]
-                                     ["vocab" "?v" {"layer" "lex" "form" {"var" "?x"}}]]})
+                            "where" [["span" "?s" {"layer" sl "value" {"var" "?x"}}]
+                                     ["vocab" "?v" {"layer" vl "form" {"var" "?x"}}]]})
             pred   (qe/run db "admin@example.com"
                            {"find" ["?s" "?v"]
-                            "where" [["span" "?s" {"layer" "lemma" "value" {"var" "?a"}}]
-                                     ["vocab" "?v" {"layer" "lex" "form" {"var" "?b"}}]
+                            "where" [["span" "?s" {"layer" sl "value" {"var" "?a"}}]
+                                     ["vocab" "?v" {"layer" vl "form" {"var" "?b"}}]
                                      ["=" "?a" "?b"]]})]
         (is (= [[sp-cat v-cat]] (:results shared)) "only the cat span joins the cat vocab item")
         (is (= (set (:results shared)) (set (:results pred))) "shared-var form == =-predicate form")))))
@@ -167,21 +167,21 @@
                                 "return" "count"})))))
     (testing "an uppercased scope project-id is accepted"
       (is (= 1 (:count (qe/run db "admin@example.com"
-                               {"find" ["?s"] "where" [["span" "?s" {"layer" "pos"}]]
+                               {"find" ["?s"] "where" [["span" "?s" {"layer" sl}]]
                                 "scope" {"project-ids" [(clojure.string/upper-case (str pid))]} "return" "count"})))))))
 
 (deftest token-surface-value
   ;; #5: a token's :value is its surface substring (computed from the text body),
   ;; usable as a constraint and as a ?t.value dot-path. Tokens: aa[0,2] bb[3,5] cc[6,8].
-  (let [{:keys [t0 t1]} (build!)]
+  (let [{:keys [t0 t1 tokl]} (build!)]
     (testing "{value} constraint matches the surface substring"
       (is (= #{t0} (ids (qe/run db "admin@example.com"
-                                {"find" ["?t"] "where" [["token" "?t" {"layer" "words" "value" "aa"}]]})))))
+                                {"find" ["?t"] "where" [["token" "?t" {"layer" tokl "value" "aa"}]]})))))
     (testing "?t.value dot-path predicate"
       (is (= #{t1} (ids (qe/run db "admin@example.com"
-                                {"find" ["?t"] "where" [["token" "?t" {"layer" "words"}] ["=" "?t.value" "bb"]]})))))
+                                {"find" ["?t"] "where" [["token" "?t" {"layer" tokl}] ["=" "?t.value" "bb"]]})))))
     (testing "regex on the surface + alternation"
       (is (= 3 (:count (qe/run db "admin@example.com"
-                               {"find" ["?t"] "where" [["token" "?t" {"layer" "words" "value" {"regex" "."}}]] "return" "count"}))))
+                               {"find" ["?t"] "where" [["token" "?t" {"layer" tokl "value" {"regex" "."}}]] "return" "count"}))))
       (is (= 2 (:count (qe/run db "admin@example.com"
-                               {"find" ["?t"] "where" [["token" "?t" {"layer" "words" "value" ["aa" "bb"]}]] "return" "count"})))))))
+                               {"find" ["?t"] "where" [["token" "?t" {"layer" tokl "value" ["aa" "bb"]}]] "return" "count"})))))))

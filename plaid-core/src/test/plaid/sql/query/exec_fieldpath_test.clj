@@ -35,36 +35,36 @@
         b  (id (h/create-span admin-request pos [t1] "VERB" {"score" 3}))
         c  (id (h/create-span admin-request pos [t2] "NOUN"))]
     (prj/assoc-editor-config-pair db pos "plaid" "color" "red")
-    {:pos pos :t0 t0 :t1 t1 :t2 t2 :t3 t3 :a a :b b :c c}))
+    {:pos pos :tokl tokl :t0 t0 :t1 t1 :t2 t2 :t3 t3 :a a :b b :c c}))
 
 (deftest core-attr-predicate
-  (let [{:keys [t2 t3]} (build!)]
+  (let [{:keys [t2 t3 tokl]} (build!)]
     (testing "?t.begin >= 6 selects the later tokens"
       (is (= #{(str t2) (str t3)}
-             (ids (run {"find" ["?t"] "where" [["token" "?t" {"layer" "FP/words"}] [">=" "?t.begin" 6]]})))))
+             (ids (run {"find" ["?t"] "where" [["token" "?t" {"layer" tokl}] [">=" "?t.begin" 6]]})))))
     (testing "a dot-path is identical to the value-var equivalent"
-      (is (= (ids (run {"find" ["?t"] "where" [["token" "?t" {"layer" "FP/words"}] [">=" "?t.begin" 6]]}))
-             (ids (run {"find" ["?t"] "where" [["token" "?t" {"layer" "FP/words" "begin" {"var" "?b"}}] [">=" "?b" 6]]})))))))
+      (is (= (ids (run {"find" ["?t"] "where" [["token" "?t" {"layer" tokl}] [">=" "?t.begin" 6]]}))
+             (ids (run {"find" ["?t"] "where" [["token" "?t" {"layer" tokl "begin" {"var" "?b"}}] [">=" "?b" 6]]})))))))
 
 (deftest value-join-via-dots
-  (let [{:keys [a c]} (build!)]
+  (let [{:keys [a c pos]} (build!)]
     (testing "two distinct spans with the same value (?a.value = ?b.value)"
       (let [r (run {"find" ["?a" "?b"]
-                    "where" [["span" "?a" {"layer" "FP/pos"}] ["span" "?b" {"layer" "FP/pos"}]
+                    "where" [["span" "?a" {"layer" pos}] ["span" "?b" {"layer" pos}]
                              ["=" "?a.value" "?b.value"] ["!=" "?a" "?b"]]})
             pairs (set (map (fn [[x y]] #{(str x) (str y)}) (:results r)))]
         ;; only the two NOUN spans pair up
         (is (= #{#{(str a) (str c)}} pairs))))))
 
 (deftest metadata-path-predicate
-  (let [{:keys [a]} (build!)]
+  (let [{:keys [a pos]} (build!)]
     (testing "?s.metadata.score >= 5 (B is 3, C absent -> excluded)"
       (is (= #{(str a)}
-             (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" "FP/pos"}] [">=" "?s.metadata.score" 5]]})))))
+             (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}] [">=" "?s.metadata.score" 5]]})))))
     (testing "metadata keys are case-sensitive (canonicalization is only for QL vocab)"
       (is (= #{(str a)}
-             (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" "FP/pos"}] ["=" "?s.metadata.caseKey" "X"]]}))))
-      (is (empty? (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" "FP/pos"}] ["=" "?s.metadata.casekey" "X"]]})))))))
+             (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}] ["=" "?s.metadata.caseKey" "X"]]}))))
+      (is (empty? (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}] ["=" "?s.metadata.casekey" "X"]]})))))))
 
 (deftest config-path-predicate
   (let [{:keys [a b c]} (build!)]
@@ -78,22 +78,22 @@
                                       ["=" "?sl.config.plaid.color" "blue"]]})))))))
 
 (deftest order-by-and-aggregate-via-dots
-  (let [{:keys [t0 t1 t2 t3]} (build!)]
+  (let [{:keys [t0 t1 t2 t3 tokl]} (build!)]
     (testing "order-by a dotted field, descending"
       (is (= [(str t3) (str t2) (str t1) (str t0)]
              (mapv (comp str first)
-                   (:results (run {"find" ["?t"] "where" [["token" "?t" {"layer" "FP/words"}]]
+                   (:results (run {"find" ["?t"] "where" [["token" "?t" {"layer" tokl}]]
                                    "order-by" [["?t.begin" "desc"]]}))))))
     (testing "aggregate over a dotted field (sum/max of token begin)"
-      (let [r (run {"where" [["token" "?t" {"layer" "FP/words"}]]
+      (let [r (run {"where" [["token" "?t" {"layer" tokl}]]
                     "return" {"group" [] "aggregates" [["sum" "?t.begin"] ["max" "?t.begin"]]}})]
         (is (= [[18 9]] (:results r)))))))   ; 0+3+6+9=18, max 9
 
 (deftest group-by-field-path
-  (build!)
-  (testing "GROUP BY a dotted field (span value) with a count per group"
-    (let [r (run {"where" [["span" "?s" {"layer" "FP/pos"}]]
-                  "return" {"group" ["?s.value"] "aggregates" [["count"]]}})
-          m (into {} (map (fn [row] [(first row) (second row)]) (:results r)))]
-      (is (= ["s_value" "count"] (:columns r)))
-      (is (= {"NOUN" 2 "VERB" 1} m)))))   ; A,C are NOUN; B is VERB
+  (let [{:keys [pos]} (build!)]
+    (testing "GROUP BY a dotted field (span value) with a count per group"
+      (let [r (run {"where" [["span" "?s" {"layer" pos}]]
+                    "return" {"group" ["?s.value"] "aggregates" [["count"]]}})
+            m (into {} (map (fn [row] [(first row) (second row)]) (:results r)))]
+        (is (= ["s_value" "count"] (:columns r)))
+        (is (= {"NOUN" 2 "VERB" 1} m))))))   ; A,C are NOUN; B is VERB

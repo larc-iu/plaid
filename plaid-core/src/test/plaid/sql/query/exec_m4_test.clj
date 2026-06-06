@@ -30,10 +30,10 @@
                      (let [t (id (h/create-token admin-request tokl text b e))]
                        (id (h/create-span admin-request sl [t] "NOUN"))))
                    offs)]
-    {:pid pid :span-ids sids}))
+    {:pid pid :span-ids sids :sl sl}))
 
-(def ^:private noun-q
-  {"find" ["?s"] "where" [["span" "?s" {"layer" "pos" "value" "NOUN"}]]})
+(defn- noun-q [pos]
+  {"find" ["?s"] "where" [["span" "?s" {"layer" pos "value" "NOUN"}]]})
 
 ;; ---------------------------------------------------------------------------
 ;; Guardrail policy (pure)
@@ -53,12 +53,12 @@
 ;; ---------------------------------------------------------------------------
 
 (deftest count-is-exact-and-ignores-limit
-  (build-corpus! "CountProj" 3)
-  (testing ":count returns the true number of matches, unaffected by :limit"
-    (is (= {:return :count :count 3 :truncated false}
-           (qe/run db "admin@example.com" (assoc noun-q "return" "count"))))
-    (is (= 3 (:count (qe/run db "admin@example.com"
-                             (assoc noun-q "return" "count" "limit" 1)))))))
+  (let [{:keys [sl]} (build-corpus! "CountProj" 3)]
+    (testing ":count returns the true number of matches, unaffected by :limit"
+      (is (= {:return :count :count 3 :truncated false}
+             (qe/run db "admin@example.com" (assoc (noun-q sl) "return" "count"))))
+      (is (= 3 (:count (qe/run db "admin@example.com"
+                               (assoc (noun-q sl) "return" "count" "limit" 1))))))))
 
 (deftest count-query-is-bounded
   (testing "the count query caps its inner subquery so a runaway cross-product can't materialize"
@@ -75,9 +75,9 @@
 ;; ---------------------------------------------------------------------------
 
 (deftest entities-hydrate-to-rest-wire-shape
-  (let [{:keys [span-ids]} (build-corpus! "EntProj" 2)]
+  (let [{:keys [span-ids sl]} (build-corpus! "EntProj" 2)]
     (testing "each cell is the full namespaced entity map (same shape as GET /spans/:id)"
-      (let [r (qe/run db "admin@example.com" (assoc noun-q "return" "entities"))
+      (let [r (qe/run db "admin@example.com" (assoc (noun-q sl) "return" "entities"))
             ents (map first (:results r))]
         (is (= :entities (:return r)))
         (is (= 2 (:count r)))
@@ -107,13 +107,13 @@
           _  (h/create-vocab-link admin-request kemal [t0])]
       (testing "token entity"
         (let [e (-> (qe/run db "admin@example.com"
-                            {"find" ["?t"] "where" [["token" "?t" {"layer" "EntKinds/words" "begin" 0}]]
+                            {"find" ["?t"] "where" [["token" "?t" {"layer" tokl "begin" 0}]]
                              "return" "entities"}) :results ffirst)]
           (is (= (str t0) (str (:token/id e))))
           (is (= 0 (:token/begin e)))))
       (testing "relation entity carries source/target"
         (let [e (-> (qe/run db "admin@example.com"
-                            {"find" ["?r"] "where" [["relation" "?r" {"layer" "EntKinds/dep" "value" "nsubj"}]]
+                            {"find" ["?r"] "where" [["relation" "?r" {"layer" rl "value" "nsubj"}]]
                              "return" "entities"}) :results ffirst)]
           (is (= (str r0) (str (:relation/id e))))
           (is (= "nsubj" (:relation/value e)))
@@ -131,7 +131,7 @@
     (let [c1 (build-corpus! "EP1" 2)
           _  (build-corpus! "EP2" 2)]
       (h/add-project-reader admin-request (:pid c1) "user1@example.com")
-      (let [r (qe/run db "user1@example.com" (assoc noun-q "return" "entities"))]
+      (let [r (qe/run db "user1@example.com" (assoc (noun-q (:sl c1)) "return" "entities"))]
         (is (= 2 (:count r)))
         (is (= (set (map str (:span-ids c1)))
                (set (map (comp str :span/id first) (:results r)))))))))
@@ -141,16 +141,16 @@
 ;; ---------------------------------------------------------------------------
 
 (deftest truncated-flag-reflects-limit
-  (build-corpus! "TruncProj" 3)
-  (testing "hitting the effective limit sets :truncated"
-    (let [r (qe/run db "admin@example.com" (assoc noun-q "limit" 2))]
-      (is (= 2 (:count r)))
-      (is (true? (:truncated r)))))
-  (testing "a limit above the match count does not truncate"
-    (let [r (qe/run db "admin@example.com" (assoc noun-q "limit" 10))]
-      (is (= 3 (:count r)))
-      (is (false? (:truncated r)))))
-  (testing "no :limit on a small result is not truncated (default 1000 not reached)"
-    (let [r (qe/run db "admin@example.com" noun-q)]
-      (is (= 3 (:count r)))
-      (is (false? (:truncated r))))))
+  (let [{:keys [sl]} (build-corpus! "TruncProj" 3)]
+    (testing "hitting the effective limit sets :truncated"
+      (let [r (qe/run db "admin@example.com" (assoc (noun-q sl) "limit" 2))]
+        (is (= 2 (:count r)))
+        (is (true? (:truncated r)))))
+    (testing "a limit above the match count does not truncate"
+      (let [r (qe/run db "admin@example.com" (assoc (noun-q sl) "limit" 10))]
+        (is (= 3 (:count r)))
+        (is (false? (:truncated r)))))
+    (testing "no :limit on a small result is not truncated (default 1000 not reached)"
+      (let [r (qe/run db "admin@example.com" (noun-q sl))]
+        (is (= 3 (:count r)))
+        (is (false? (:truncated r)))))))
