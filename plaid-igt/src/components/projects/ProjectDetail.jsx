@@ -99,6 +99,7 @@ export const ProjectDetail = () => {
 
       <DocumentList
         documents={documents}
+        project={project}
         projectId={projectId}
         client={client}
         onDocumentCreated={handleDocumentCreated}
