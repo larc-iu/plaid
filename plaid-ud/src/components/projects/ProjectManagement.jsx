@@ -3,8 +3,10 @@ import { useParams, Link } from 'react-router-dom';
 import {
   Title, Text, Button, Alert, Paper, Stack, Group, Center, Loader, Table, Badge,
   Select, Modal, TextInput, PasswordInput, Checkbox, Breadcrumbs, Anchor, Code,
+  Menu, ActionIcon,
 } from '@mantine/core';
-import { IconPlus } from '@tabler/icons-react';
+import { useDebouncedValue } from '@mantine/hooks';
+import { IconPlus, IconSearch, IconDotsVertical } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
@@ -15,15 +17,36 @@ const PERMISSION_OPTIONS = [
   { value: 'writer', label: 'Writer' },
   { value: 'maintainer', label: 'Maintainer' },
 ];
+const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
+const SEARCH_LIMIT = 25;
 
 const EMPTY_USER_FORM = { username: '', password: '', confirmPassword: '', isAdmin: false };
+
+// Role a given user holds on a project, from the project's ACL arrays.
+const roleOf = (project, userId) => {
+  if (project?.maintainers?.includes(userId)) return 'maintainer';
+  if (project?.writers?.includes(userId)) return 'writer';
+  if (project?.readers?.includes(userId)) return 'reader';
+  return 'none';
+};
 
 export const ProjectManagement = ({ embedded = false }) => {
   const { projectId } = useParams();
   const { user, getClient } = useAuth();
   const [project, setProject] = useState(null);
-  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Project members (users with a role here), resolved from the ACL — admins
+  // excluded (they reach everything implicitly, so they're not "members").
+  const [members, setMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(true);
+
+  // Search-to-add. The roster isn't fetched wholesale; we query the server.
+  const [search, setSearch] = useState('');
+  const [debouncedSearch] = useDebouncedValue(search, 250);
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   // User creation form state
   const [showCreateUserForm, setShowCreateUserForm] = useState(false);
@@ -38,64 +61,101 @@ export const ProjectManagement = ({ embedded = false }) => {
 
   const isAdmin = user?.isAdmin || false;
 
-  const fetchData = async () => {
+  const fetchProject = async () => {
     try {
       setLoading(true);
       const client = getClient();
       const projectData = await client.projects.get(projectId);
       setProject(projectData);
-      const usersData = await client.users.list();
-      setUsers(usersData);
+      return projectData;
     } catch (err) {
-      console.error('Error fetching data:', err);
+      console.error('Error fetching project:', err);
       notifyError('Failed to load project data');
+      return null;
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    fetchProject();
   }, [projectId]);
 
-  // Get user's current permission level for the project
-  const getUserPermissionLevel = (userId) => {
-    if (!project) return 'none';
-    if (project.maintainers?.includes(userId)) return 'maintainer';
-    if (project.writers?.includes(userId)) return 'writer';
-    if (project.readers?.includes(userId)) return 'reader';
-    return 'none';
-  };
+  // Resolve the ACL member ids to user objects (for usernames + admin flag).
+  // The member set is project-sized, not instance-sized, so per-id GETs are fine.
+  useEffect(() => {
+    if (!project) return;
+    let cancelled = false;
+    (async () => {
+      setMembersLoading(true);
+      const client = getClient();
+      const ids = [...new Set([
+        ...(project.maintainers || []),
+        ...(project.writers || []),
+        ...(project.readers || []),
+      ])];
+      try {
+        const resolved = await Promise.all(ids.map(id =>
+          client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))));
+        const rows = resolved
+          .filter(u => !u.isAdmin)
+          .map(u => ({ ...u, role: roleOf(project, u.id) }))
+          .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+        if (!cancelled) setMembers(rows);
+      } catch (err) {
+        console.error('Error resolving members:', err);
+        if (!cancelled) setMembers([]);
+      } finally {
+        if (!cancelled) setMembersLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [project, getClient]);
 
-  // Handle permission change
-  const handlePermissionChange = async (userId, newLevel) => {
+  // Search the directory (server-side ?q=). Runs once the box is touched, so an
+  // empty query browses everyone (first page); typing filters. Members already
+  // on the project are dropped from the results.
+  useEffect(() => {
+    if (!searchActive) return;
+    let cancelled = false;
+    (async () => {
+      setSearchLoading(true);
+      const client = getClient();
+      try {
+        const page = await client.users.listPage({ q: debouncedSearch || undefined, limit: SEARCH_LIMIT });
+        const memberIds = new Set(members.map(m => m.id));
+        const results = (page.entries || []).filter(u => !memberIds.has(u.id));
+        if (!cancelled) setSearchResults(results);
+      } catch (err) {
+        console.error('User search failed:', err);
+        if (!cancelled) setSearchResults([]);
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [debouncedSearch, searchActive, members, getClient]);
+
+  // Add / change / remove a project role for a user.
+  const setRole = async (userId, newLevel) => {
     try {
       const client = getClient();
-      const currentLevel = getUserPermissionLevel(userId);
+      const current = roleOf(project, userId);
+      if (current === newLevel) return;
 
-      // Remove current permission if any
-      if (currentLevel === 'maintainer') {
-        await client.projects.removeMaintainer(projectId, userId);
-      } else if (currentLevel === 'writer') {
-        await client.projects.removeWriter(projectId, userId);
-      } else if (currentLevel === 'reader') {
-        await client.projects.removeReader(projectId, userId);
-      }
+      if (current === 'maintainer') await client.projects.removeMaintainer(projectId, userId);
+      else if (current === 'writer') await client.projects.removeWriter(projectId, userId);
+      else if (current === 'reader') await client.projects.removeReader(projectId, userId);
 
-      // Add new permission if not 'none'
-      if (newLevel === 'maintainer') {
-        await client.projects.addMaintainer(projectId, userId);
-      } else if (newLevel === 'writer') {
-        await client.projects.addWriter(projectId, userId);
-      } else if (newLevel === 'reader') {
-        await client.projects.addReader(projectId, userId);
-      }
+      if (newLevel === 'maintainer') await client.projects.addMaintainer(projectId, userId);
+      else if (newLevel === 'writer') await client.projects.addWriter(projectId, userId);
+      else if (newLevel === 'reader') await client.projects.addReader(projectId, userId);
 
-      notifySuccess('User permissions updated');
-      await fetchData(); // Refresh data
+      notifySuccess('Permissions updated');
+      await fetchProject(); // re-resolves members + refreshes search filter
     } catch (err) {
       console.error('Error updating permissions:', err);
-      notifyError('Failed to update user permissions');
+      notifyError('Failed to update permissions');
     }
   };
 
@@ -125,7 +185,6 @@ export const ProjectManagement = ({ embedded = false }) => {
       setShowCreateUserForm(false);
       setNewUserForm(EMPTY_USER_FORM);
       setCreateUserError('');
-      await fetchData(); // Refresh users list
     } catch (err) {
       console.error('Error creating user:', err);
       if (err.status === 409 || (err.message && err.message.includes('409'))) {
@@ -175,7 +234,7 @@ export const ProjectManagement = ({ embedded = false }) => {
       notifySuccess('User updated successfully');
       setEditingUser(null);
       setEditUserForm(EMPTY_USER_FORM);
-      await fetchData(); // Refresh users list
+      await fetchProject();
     } catch (err) {
       console.error('Error updating user:', err);
       setEditUserError('Failed to update user: ' + (err.message || 'Unknown error'));
@@ -192,7 +251,7 @@ export const ProjectManagement = ({ embedded = false }) => {
           await getClient().users.delete(target.id);
           notifySuccess('User deleted successfully');
           setEditingUser(null);
-          await fetchData(); // Refresh users list
+          await fetchProject();
         } catch (err) {
           console.error('Error deleting user:', err);
           notifyError('Failed to delete user: ' + (err.message || 'Unknown error'));
@@ -240,57 +299,128 @@ export const ProjectManagement = ({ embedded = false }) => {
         </Button>
       )}
 
-      {/* Users and Permissions Management */}
+      {/* Current members */}
+      <Paper withBorder radius="md" mb="lg">
+        <Group px="lg" py="md" justify="space-between" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+          <Title order={3} size="h4">Members</Title>
+          <Text size="sm" c="dimmed">{members.length} with access</Text>
+        </Group>
+
+        {membersLoading ? (
+          <Center py="xl"><Loader size="sm" /></Center>
+        ) : members.length === 0 ? (
+          <Text px="lg" py="md" size="sm" c="dimmed">
+            No one has been granted access yet. Use “Add a user” below.
+          </Text>
+        ) : (
+          <Table.ScrollContainer minWidth={520}>
+            <Table verticalSpacing="sm" horizontalSpacing="lg">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>User</Table.Th>
+                  <Table.Th>Project role</Table.Th>
+                  {isAdmin && <Table.Th w={48} />}
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {members.map(m => (
+                  <Table.Tr key={m.id}>
+                    <Table.Td>
+                      <Text size="sm" fw={500}>{m.username}</Text>
+                      <Text size="xs" c="dimmed">ID: {m.id}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Select
+                        data={PERMISSION_OPTIONS}
+                        value={m.role}
+                        onChange={(value) => setRole(m.id, value)}
+                        disabled={m.id === user.id}
+                        allowDeselect={false}
+                        w={150}
+                        size="sm"
+                        description={m.id === user.id ? 'Your own access' : undefined}
+                      />
+                    </Table.Td>
+                    {isAdmin && (
+                      <Table.Td>
+                        <Menu position="bottom-end" withinPortal>
+                          <Menu.Target>
+                            <ActionIcon variant="subtle" color="gray" aria-label="User actions">
+                              <IconDotsVertical size={16} />
+                            </ActionIcon>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            <Menu.Item onClick={() => startEditingUser(m)}>Edit user…</Menu.Item>
+                          </Menu.Dropdown>
+                        </Menu>
+                      </Table.Td>
+                    )}
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Paper>
+
+      {/* Add a user (server-side search) */}
       <Paper withBorder radius="md" mb="lg">
         <Group px="lg" py="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-          <Title order={3} size="h4">User Permissions</Title>
+          <Title order={3} size="h4">Add a user</Title>
         </Group>
-        <Table.ScrollContainer minWidth={600}>
-          <Table verticalSpacing="sm" horizontalSpacing="lg">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>User</Table.Th>
-                <Table.Th>Role</Table.Th>
-                <Table.Th>Project Permission</Table.Th>
-                {isAdmin && <Table.Th>Actions</Table.Th>}
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {users.map(userItem => (
-                <Table.Tr key={userItem.id}>
-                  <Table.Td>
-                    <Text size="sm" fw={500}>{userItem.username}</Text>
-                    <Text size="sm" c="dimmed">ID: {userItem.id}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge color={userItem.isAdmin ? 'grape' : 'gray'} variant="light">
-                      {userItem.isAdmin ? 'Admin' : 'User'}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Select
-                      data={PERMISSION_OPTIONS}
-                      value={getUserPermissionLevel(userItem.id)}
-                      onChange={(value) => handlePermissionChange(userItem.id, value)}
-                      disabled={userItem.id === user.id}
-                      allowDeselect={false}
-                      w={160}
-                      size="sm"
-                      description={userItem.id === user.id ? 'Cannot change own permissions' : undefined}
-                    />
-                  </Table.Td>
-                  {isAdmin && (
-                    <Table.Td>
-                      <Button variant="subtle" size="compact-sm" onClick={() => startEditingUser(userItem)}>
-                        Edit
-                      </Button>
-                    </Table.Td>
-                  )}
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+        <Stack px="lg" py="md" gap="sm">
+          <TextInput
+            leftSection={<IconSearch size={16} />}
+            placeholder="Search users by name…"
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+            onFocus={() => setSearchActive(true)}
+          />
+          {searchActive && (
+            searchLoading ? (
+              <Center py="md"><Loader size="sm" /></Center>
+            ) : searchResults.length === 0 ? (
+              <Text size="sm" c="dimmed" py="xs">
+                {debouncedSearch ? 'No matching users.' : 'No other users to add.'}
+              </Text>
+            ) : (
+              <Stack gap={0}>
+                {searchResults.map((u, i) => (
+                  <Group
+                    key={u.id}
+                    justify="space-between"
+                    wrap="nowrap"
+                    py="xs"
+                    style={{ borderTop: i ? '1px solid var(--mantine-color-gray-1)' : undefined }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <Group gap="xs" wrap="nowrap">
+                        <Text size="sm" fw={500} truncate>{u.username}</Text>
+                        {u.isAdmin && <Badge size="xs" color="grape" variant="light">Admin</Badge>}
+                      </Group>
+                      <Text size="xs" c="dimmed" truncate>ID: {u.id}</Text>
+                    </div>
+                    <Menu position="bottom-end" withinPortal>
+                      <Menu.Target>
+                        <Button size="compact-sm" variant="light" leftSection={<IconPlus size={14} />}>
+                          Add
+                        </Button>
+                      </Menu.Target>
+                      <Menu.Dropdown>
+                        <Menu.Label>Add as…</Menu.Label>
+                        {GRANT_ROLES.map(role => (
+                          <Menu.Item key={role} onClick={() => setRole(u.id, role)}>
+                            {role.charAt(0).toUpperCase() + role.slice(1)}
+                          </Menu.Item>
+                        ))}
+                      </Menu.Dropdown>
+                    </Menu>
+                  </Group>
+                ))}
+              </Stack>
+            )
+          )}
+        </Stack>
       </Paper>
 
       {/* API Access Section */}
