@@ -81,6 +81,13 @@ function App() {
               </AppLayout>
             </ProtectedRoute>
           } />
+          <Route path="/projects/:projectId/tokens" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ProjectSettingsView />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
           <Route path="/projects/:projectId/settings" element={
             <ProtectedRoute>
               <AppLayout>

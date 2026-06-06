@@ -1,441 +1,447 @@
-import { useState, useMemo, memo } from 'react';
-import { Copy, Check, UserPlus, Trash2, AlertTriangle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { UserPlus, Search, Plus, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 
-export const AccessManagement = memo(({
-  project,
-  users,
-  user,
-  projectId,
-  client,
-  onDataUpdate,
-  onUsersUpdate
-}) => {
-  const [copied, setCopied] = useState(false);
+// Mirrors plaid-ud's ProjectManagement. The full user roster isn't fetched
+// (doesn't scale + is admin-gated); instead "Members" come from the project's
+// ACL and new grants come from a server-side `?q=` search.
+const ROLE_OPTIONS = [
+  { value: 'none', label: 'No access' },
+  { value: 'reader', label: 'Reader' },
+  { value: 'writer', label: 'Writer' },
+  { value: 'maintainer', label: 'Maintainer' },
+];
+const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
+const SEARCH_LIMIT = 25;
+const EMPTY_USER = { username: '', password: '', isAdmin: false };
+
+const roleOf = (project, userId) => {
+  if (project?.maintainers?.includes(userId)) return 'maintainer';
+  if (project?.writers?.includes(userId)) return 'writer';
+  if (project?.readers?.includes(userId)) return 'reader';
+  return 'none';
+};
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+export const AccessManagement = ({ project, user, projectId, client, onDataUpdate }) => {
+  const isAdmin = !!user?.isAdmin;
+
+  // Members (explicitly-granted users, resolved from the ACL — admins who were
+  // explicitly added show with a badge; implicit admins never appear).
+  const [members, setMembers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(true);
   const [updatingUser, setUpdatingUser] = useState(null);
-  const [hoveredUser, setHoveredUser] = useState(null);
-  const [addUserModalOpened, setAddUserModalOpened] = useState(false);
-  const openAddUserModal = () => setAddUserModalOpened(true);
-  const closeAddUserModal = () => setAddUserModalOpened(false);
-  const [deleteUserModalOpened, setDeleteUserModalOpened] = useState(false);
-  const openDeleteUserModal = () => setDeleteUserModalOpened(true);
-  const closeDeleteUserModal = () => setDeleteUserModalOpened(false);
-  const [newUserData, setNewUserData] = useState({
-    username: '',
-    password: '',
-    isAdmin: false
-  });
-  const [userToDelete, setUserToDelete] = useState(null);
-  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
-  const [creatingUser, setCreatingUser] = useState(false);
-  const [deletingUser, setDeletingUser] = useState(false);
 
-  // Get user's role in the project
-  const getUserRole = (userId) => {
-    if (!project) return 'none';
-    if (project.maintainers?.includes(userId)) return 'maintainer';
-    if (project.writers?.includes(userId)) return 'writer';
-    if (project.readers?.includes(userId)) return 'reader';
-    return 'none';
-  };
+  // Search-to-add.
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
-  const handleRoleChange = async (userId, newRole) => {
+  // Admin user CRUD.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newUser, setNewUser] = useState(EMPTY_USER);
+  const [creating, setCreating] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState(EMPTY_USER);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Resolve ACL member ids to user objects (project-sized, so per-id GETs are fine).
+  useEffect(() => {
+    if (!project) return;
+    let cancelled = false;
+    (async () => {
+      setMembersLoading(true);
+      const ids = [...new Set([
+        ...(project.maintainers || []),
+        ...(project.writers || []),
+        ...(project.readers || []),
+      ])];
+      try {
+        const resolved = await Promise.all(ids.map(id =>
+          client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))));
+        const rows = resolved
+          .map(u => ({ ...u, role: roleOf(project, u.id) }))
+          .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+        if (!cancelled) setMembers(rows);
+      } catch (err) {
+        console.error('Error resolving members:', err);
+        if (!cancelled) setMembers([]);
+      } finally {
+        if (!cancelled) setMembersLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [project, client]);
+
+  // Server-side search (?q=). Runs once the box is touched; empty browses the
+  // first page. Members already on the project are dropped.
+  useEffect(() => {
+    if (!searchActive) return;
+    let cancelled = false;
+    (async () => {
+      setSearchLoading(true);
+      try {
+        const page = await client.users.listPage({ q: debouncedSearch || undefined, limit: SEARCH_LIMIT });
+        const memberIds = new Set(members.map(m => m.id));
+        const results = (page.entries || []).filter(u => !memberIds.has(u.id));
+        if (!cancelled) setSearchResults(results);
+      } catch (err) {
+        console.error('User search failed:', err);
+        if (!cancelled) setSearchResults([]);
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [debouncedSearch, searchActive, members, client]);
+
+  const setRole = async (userId, newRole) => {
     if (userId === user.id) {
-      notifyError('You cannot change your own role in the project', 'Cannot modify own permissions');
+      notifyError('You cannot change your own role', 'Cannot modify own permissions');
       return;
     }
-
+    const current = roleOf(project, userId);
+    if (current === newRole) return;
     try {
       setUpdatingUser(userId);
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
+      if (current === 'maintainer') await client.projects.removeMaintainer(projectId, userId);
+      else if (current === 'writer') await client.projects.removeWriter(projectId, userId);
+      else if (current === 'reader') await client.projects.removeReader(projectId, userId);
 
-      // Add new permission (if not 'none'). Old permission is automatically unassigned on addition,
-      // and removing reader removes all other permissions.
-      if (newRole === 'maintainer') {
-        await client.projects.addMaintainer(projectId, userId);
-      } else if (newRole === 'writer') {
-        await client.projects.addWriter(projectId, userId);
-      } else if (newRole === 'reader') {
-        await client.projects.addReader(projectId, userId);
-      } else if (newRole === 'none') {
-        await client.projects.removeReader(projectId, userId);
-      }
+      if (newRole === 'maintainer') await client.projects.addMaintainer(projectId, userId);
+      else if (newRole === 'writer') await client.projects.addWriter(projectId, userId);
+      else if (newRole === 'reader') await client.projects.addReader(projectId, userId);
 
-      // Refresh project data to update permissions
-      await onDataUpdate();
-
-      notifySuccess(`User role has been updated to ${newRole}`, 'Role updated');
+      await onDataUpdate(); // re-resolves members
+      notifySuccess('Permissions updated', 'Success');
     } catch (err) {
       console.error('Error updating role:', err);
-      notifyError('Failed to update user role', 'Error');
+      notifyError('Failed to update permissions', 'Error');
     } finally {
       setUpdatingUser(null);
     }
   };
 
-  const handleCopyToken = () => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      navigator.clipboard.writeText(token);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      notifySuccess('Your authentication token has been copied to clipboard', 'Token copied');
-    }
-  };
-
-  const handleAddUser = async () => {
-    if (!newUserData.username || !newUserData.password) {
-      notifyError('Please provide both Username and Password', 'Missing Information');
+  const handleCreateUser = async () => {
+    if (!newUser.username || !newUser.password) {
+      notifyError('Please provide both a username and password', 'Missing information');
       return;
     }
-
     try {
-      setCreatingUser(true);
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-
-      // Create the user
-      await client.users.create(newUserData.username, newUserData.password, newUserData.isAdmin);
-
-      // Refresh the users list
-      await onUsersUpdate();
-
-      notifySuccess(`User "${newUserData.username}" has been created successfully`, 'User created');
-
-      // Reset form and close modal
-      setNewUserData({ username: '', password: '', isAdmin: false });
-      closeAddUserModal();
-
+      setCreating(true);
+      await client.users.create(newUser.username, newUser.password, newUser.isAdmin);
+      notifySuccess(`User "${newUser.username}" created`, 'User created');
+      setNewUser(EMPTY_USER);
+      setCreateOpen(false);
     } catch (err) {
       console.error('Error creating user:', err);
-      notifyError('Failed to create user. Please try again.', 'Error');
+      const exists = err.status === 409 || (err.message && err.message.includes('409'));
+      notifyError(exists ? `A user "${newUser.username}" already exists.` : 'Failed to create user.', 'Error');
     } finally {
-      setCreatingUser(false);
+      setCreating(false);
     }
   };
 
-  const handleAddUserModalOpen = () => {
-    setNewUserData({ username: '', password: '', isAdmin: false });
-    openAddUserModal();
+  const startEdit = (u) => {
+    setEditForm({ username: u.username, password: '', isAdmin: u.isAdmin || false });
+    setEditingUser(u);
   };
 
-  const handleDeleteUserClick = (userId, username) => {
-    if (userId === user.id) {
-      notifyError('You cannot delete your own user account', 'Cannot delete own account');
-      return;
+  const handleUpdateUser = async () => {
+    try {
+      setSavingEdit(true);
+      const newUsername = editForm.username !== editingUser.username ? editForm.username : undefined;
+      const newPassword = editForm.password || undefined;
+      const newIsAdmin = editForm.isAdmin !== (editingUser.isAdmin || false) ? editForm.isAdmin : undefined;
+      await client.users.update(editingUser.id, newPassword, newUsername, newIsAdmin);
+      notifySuccess('User updated', 'Success');
+      setEditingUser(null);
+      await onDataUpdate();
+    } catch (err) {
+      console.error('Error updating user:', err);
+      notifyError('Failed to update user: ' + (err.message || 'Unknown error'), 'Error');
+    } finally {
+      setSavingEdit(false);
     }
-
-    setUserToDelete({ id: userId, username });
-    setDeleteConfirmationText('');
-    openDeleteUserModal();
   };
 
   const handleDeleteUser = async () => {
-    if (!userToDelete) return;
-
-    if (deleteConfirmationText !== userToDelete.id) {
-      notifyError('User ID does not match. Please type the exact user ID.', 'Invalid confirmation');
-      return;
-    }
-
+    if (!deleteTarget) return;
     try {
-      setDeletingUser(true);
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-
-      // Delete the user
-      await client.users.delete(userToDelete.id);
-
-      // Refresh the users list
-      await onUsersUpdate();
-
-      notifySuccess(`User "${userToDelete.username}" has been deleted successfully`, 'User deleted');
-
-      // Close modal and reset state
-      closeDeleteUserModal();
-      setUserToDelete(null);
-      setDeleteConfirmationText('');
-
+      setDeleting(true);
+      await client.users.delete(deleteTarget.id);
+      notifySuccess(`User "${deleteTarget.username}" deleted`, 'User deleted');
+      setDeleteTarget(null);
+      setEditingUser(null);
+      await onDataUpdate();
     } catch (err) {
       console.error('Error deleting user:', err);
-      notifyError('Failed to delete user. Please try again.', 'Error');
+      notifyError('Failed to delete user: ' + (err.message || 'Unknown error'), 'Error');
     } finally {
-      setDeletingUser(false);
+      setDeleting(false);
     }
   };
 
-  // Prepare table data with user roles - memoized to prevent unnecessary re-renders
-  const tableData = useMemo(() => {
-    const data = users.map(u => ({
-      ...u,
-      role: getUserRole(u.id)
-    }));
-
-    // Sort by: 1) Admin status (admins first), 2) Role priority (maintainer > writer > reader > none), 3) Username alphabetically
-    const roleMap = { maintainer: 3, writer: 2, reader: 1, none: 0 };
-    data.sort((a, b) => {
-      // First sort by admin status (admins first)
-      if (a.isAdmin !== b.isAdmin) {
-        return b.isAdmin - a.isAdmin;
-      }
-
-      // Then sort by role priority (higher number = higher priority)
-      const roleA = roleMap[a.role] || 0;
-      const roleB = roleMap[b.role] || 0;
-      if (roleA !== roleB) {
-        return roleB - roleA;
-      }
-
-      // Finally sort by username alphabetically
-      return a.username.localeCompare(b.username);
-    });
-
-    return data;
-  }, [users, project]);
-
   return (
     <div className="tw flex flex-col gap-6 pt-4">
-      {/* User Management Section */}
-      <div className="rounded-lg border bg-card p-4">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">User Management</h2>
-          {user.isAdmin && (
-            <Button onClick={handleAddUserModalOpen}>
-              <UserPlus className="h-4 w-4" /> Add User
-            </Button>
-          )}
+      {/* Members */}
+      <div className="rounded-lg border bg-card">
+        <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+          <h2 className="text-lg font-semibold">Members</h2>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">{members.length} with access</span>
+            {isAdmin && (
+              <Button size="sm" onClick={() => { setNewUser(EMPTY_USER); setCreateOpen(true); }}>
+                <UserPlus className="h-4 w-4" /> Create User
+              </Button>
+            )}
+          </div>
         </div>
 
-        <table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th className="px-3 py-2 text-left font-medium">User ID</th>
-              <th className="px-3 py-2 text-left font-medium">Username</th>
-              <th className="px-3 py-2 text-left font-medium">Admin Status</th>
-              <th className="px-3 py-2 text-left font-medium">Project Role</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tableData.map(record => (
-              <tr key={record.id} className="group border-t hover:bg-muted/50">
-                <td className="px-3 py-2">
-                  <span className="text-muted-foreground">{record.id}</span>
-                </td>
-                <td className="px-3 py-2">{record.username}</td>
-                <td className="px-3 py-2">
-                  {record.isAdmin ? (
-                    <Badge variant="destructive">Admin</Badge>
-                  ) : (
-                    <Badge variant="secondary">User</Badge>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <div
-                    className="flex items-center justify-between gap-2"
-                    onMouseEnter={() => setHoveredUser(record.id)}
-                    onMouseLeave={() => setHoveredUser(null)}
-                  >
+        {membersLoading ? (
+          <div className="flex justify-center py-8 text-muted-foreground">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
+          </div>
+        ) : members.length === 0 ? (
+          <p className="px-4 py-4 text-sm text-muted-foreground">
+            No one has been granted access yet. Use “Add a user” below.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-muted-foreground">
+                <th className="px-4 py-2 font-medium">User</th>
+                <th className="px-4 py-2 font-medium">Project role</th>
+                {isAdmin && <th className="w-12 px-4 py-2" />}
+              </tr>
+            </thead>
+            <tbody>
+              {members.map(m => (
+                <tr key={m.id} className="border-t">
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{m.username}</span>
+                      {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
+                    </div>
+                    <span className="text-xs text-muted-foreground">{m.id}</span>
+                  </td>
+                  <td className="px-4 py-2">
                     <Select
-                      value={record.isAdmin && "admin" || record.role}
-                      onValueChange={(value) => handleRoleChange(record.id, value)}
-                      disabled={updatingUser === record.id || record.id === user.id || record.isAdmin}
+                      value={m.role}
+                      onValueChange={(v) => setRole(m.id, v)}
+                      disabled={m.id === user.id || updatingUser === m.id}
                     >
-                      <SelectTrigger className="h-8 flex-1">
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {[
-                          { value: 'none', label: 'No Access' },
-                          { value: 'reader', label: 'Reader' },
-                          { value: 'writer', label: 'Writer' },
-                          { value: 'maintainer', label: 'Maintainer' },
-                        ].map(o => (
-                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                        ))}
+                        {ROLE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    {user.isAdmin && (
-                      <Button
-                        size="icon"
-                        variant="destructive"
-                        className={`h-8 w-8 shrink-0 transition-opacity ${record.id !== user.id ? 'group-hover:opacity-100' : ''} opacity-0`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleDeleteUserClick(record.id, record.username);
-                        }}
-                        disabled={deletingUser}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  </td>
+                  {isAdmin && (
+                    <td className="px-4 py-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="User actions">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => startEdit(m)}>Edit user…</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
-      <div className="border-t" />
-
-      {/* API Token Section */}
-      <div className="rounded-lg border bg-card p-4">
-        <h2 className="mb-4 text-lg font-semibold">API Token</h2>
-        <p className="mb-4 text-sm">
-          Use your authentication token to access the API programmatically from external services like parsers or scripts.
-        </p>
-
-        <div className="flex items-center gap-2">
-          <Button onClick={handleCopyToken}>
-            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            {copied ? 'Copied!' : 'Copy Token'}
-          </Button>
+      {/* Add a user (server-side search) */}
+      <div className="rounded-lg border bg-card">
+        <div className="border-b px-4 py-3">
+          <h2 className="text-lg font-semibold">Add a user</h2>
         </div>
+        <div className="flex flex-col gap-2 px-4 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-8"
+              placeholder="Search users by name…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onFocus={() => setSearchActive(true)}
+            />
+          </div>
 
-        <p className="mt-4 text-xs text-muted-foreground">
-          Keep your token secure. You can use it to initialize a Python PlaidClient instance.
-        </p>
+          {searchActive && (
+            searchLoading ? (
+              <div className="flex justify-center py-4 text-muted-foreground">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
+              </div>
+            ) : searchResults.length === 0 ? (
+              <p className="py-1 text-sm text-muted-foreground">
+                {debouncedSearch ? 'No matching users.' : 'No other users to add.'}
+              </p>
+            ) : (
+              <div className="flex flex-col">
+                {searchResults.map((u, i) => (
+                  <div
+                    key={u.id}
+                    className={`flex items-center justify-between gap-2 py-2 ${i ? 'border-t' : ''}`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-medium">{u.username}</span>
+                        {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+                      </div>
+                      <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="outline"><Plus className="h-4 w-4" /> Add</Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Add as…</DropdownMenuLabel>
+                        {GRANT_ROLES.map(role => (
+                          <DropdownMenuItem key={role} onSelect={() => setRole(u.id, role)}>
+                            {cap(role)}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </div>
       </div>
 
-      {/* Add User Modal */}
-      <Dialog open={addUserModalOpened} onOpenChange={(o) => { if (!o) closeAddUserModal(); }}>
+      {/* Create User dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add New User</DialogTitle>
-          </DialogHeader>
-
+          <DialogHeader><DialogTitle>Create New User</DialogTitle></DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label>Username</Label>
+              <Label>User ID</Label>
               <Input
-                placeholder="Enter username"
-                value={newUserData.username}
-                onChange={(event) => setNewUserData({ ...newUserData, username: event.target.value })}
+                placeholder="e.g. john.doe"
+                value={newUser.username}
+                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                autoFocus
               />
             </div>
-
             <div className="flex flex-col gap-1.5">
               <Label>Password</Label>
               <Input
-                placeholder="Enter initial password"
                 type="password"
-                value={newUserData.password}
-                onChange={(event) => setNewUserData({ ...newUserData, password: event.target.value })}
+                value={newUser.password}
+                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
               />
             </div>
-
             <div className="flex items-start gap-2">
-              <Switch
-                id="admin"
-                checked={newUserData.isAdmin}
-                onCheckedChange={(c) => setNewUserData({ ...newUserData, isAdmin: c })}
-              />
+              <Switch id="new-admin" checked={newUser.isAdmin} onCheckedChange={(c) => setNewUser({ ...newUser, isAdmin: c })} />
               <div>
-                <Label htmlFor="admin">Admin Status</Label>
+                <Label htmlFor="new-admin">Admin user</Label>
                 <p className="text-xs text-muted-foreground">Grant this user admin privileges</p>
               </div>
             </div>
           </div>
-
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={closeAddUserModal}
-              disabled={creatingUser}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddUser}
-              disabled={creatingUser}
-            >
-              {!creatingUser && <UserPlus className="h-4 w-4" />}
-              {creatingUser ? 'Creating...' : 'Create User'}
-            </Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>Cancel</Button>
+            <Button onClick={handleCreateUser} disabled={creating}>{creating ? 'Creating…' : 'Create User'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete User Modal */}
-      <Dialog open={deleteUserModalOpened} onOpenChange={(o) => { if (!o) closeDeleteUserModal(); }}>
+      {/* Edit User dialog */}
+      <Dialog open={!!editingUser} onOpenChange={(o) => { if (!o) setEditingUser(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
-          </DialogHeader>
-
-          <div className="flex flex-col gap-4">
-            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                <div className="text-sm">
-                  <p className="font-medium text-destructive">Caution</p>
-                  <p className="mt-1 text-muted-foreground">
-                    You are about to delete user:
-                    <br/><br/>
-                    <strong>"{userToDelete?.username}"</strong><br/>
-                    (<strong>{userToDelete?.id}</strong>)
-                  </p>
+          <DialogHeader><DialogTitle>{editingUser ? `Edit User: ${editingUser.username}` : ''}</DialogTitle></DialogHeader>
+          {editingUser && (
+            <>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label>Username</Label>
+                  <Input value={editForm.username} onChange={(e) => setEditForm({ ...editForm, username: e.target.value })} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>New password (leave blank to keep current)</Label>
+                  <Input type="password" value={editForm.password} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} />
+                </div>
+                <div className="flex items-start gap-2">
+                  <Switch id="edit-admin" checked={editForm.isAdmin} onCheckedChange={(c) => setEditForm({ ...editForm, isAdmin: c })} />
+                  <Label htmlFor="edit-admin">Admin user</Label>
                 </div>
               </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <p className="text-sm">
-                To confirm deletion, please type the user ID <strong>{userToDelete?.id}</strong> below:
-              </p>
-              <Input
-                value={deleteConfirmationText}
-                onChange={(event) => setDeleteConfirmationText(event.target.value)}
-                placeholder="Enter user ID"
-              />
-              {deleteConfirmationText && deleteConfirmationText !== userToDelete?.id && (
-                <p className="text-xs text-destructive">User ID does not match</p>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={closeDeleteUserModal}
-              disabled={deletingUser}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteUser}
-              disabled={deleteConfirmationText !== userToDelete?.id || deletingUser}
-            >
-              <Trash2 className="h-4 w-4" />
-              {deletingUser ? 'Deleting...' : 'Delete User'}
-            </Button>
-          </DialogFooter>
+              <DialogFooter className="sm:justify-between">
+                <Button
+                  variant="destructive"
+                  onClick={() => setDeleteTarget(editingUser)}
+                  disabled={editingUser.id === user.id || savingEdit}
+                >
+                  Delete User
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setEditingUser(null)} disabled={savingEdit}>Cancel</Button>
+                  <Button onClick={handleUpdateUser} disabled={savingEdit}>{savingEdit ? 'Saving…' : 'Update User'}</Button>
+                </div>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirm */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete user?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Permanently delete <strong>{deleteTarget?.username}</strong> ({deleteTarget?.id}). This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDeleteUser(); }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? 'Deleting…' : 'Delete User'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
-});
+};

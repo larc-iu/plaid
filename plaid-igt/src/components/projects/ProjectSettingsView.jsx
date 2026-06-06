@@ -1,42 +1,37 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Users, Settings } from 'lucide-react';
+import { Users, KeyRound, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AccessManagement } from './AccessManagement';
+import { ProjectAccessTokens } from './ProjectAccessTokens';
 import { ProjectSettings } from './ProjectSettings';
 
 // Project administration, reached from the document view's "Project Settings"
-// button (maintainer-only). Two route-backed tabs — Access Management and
-// Settings — at /projects/:id/access and /projects/:id/settings, so deep links
-// keep working and the active tab follows the path. Mirrors plaid-ud's separate
-// settings shell.
+// button (maintainer-only). Route-backed tabs — Access Management, Access Tokens,
+// and Settings — at /projects/:id/access, /tokens, /settings, so deep links keep
+// working and the active tab follows the path. Mirrors plaid-ud's settings shell.
 export const ProjectSettingsView = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, client } = useAuth();
   const [project, setProject] = useState(null);
-  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const activeTab = location.pathname.endsWith('/settings') ? 'settings' : 'access';
+  const activeTab = location.pathname.endsWith('/tokens') ? 'tokens'
+    : location.pathname.endsWith('/settings') ? 'settings'
+      : 'access';
 
-  // Flexible fetch: project and/or the user roster (only fetched for managers).
-  const fetchData = async ({ includeProject = false, includeUsers = false, showLoadingSpinner = false } = {}) => {
+  // Project only — AccessManagement resolves its own members + searches the
+  // directory, so the full user roster isn't fetched here.
+  const fetchProject = async (showLoadingSpinner = false) => {
     try {
       if (showLoadingSpinner) setLoading(true);
       if (!client) throw new Error('Not authenticated');
-      let proj = project;
-      if (includeProject) {
-        proj = await client.projects.get(projectId);
-        setProject(proj);
-      }
-      if (includeUsers && proj && (user.isAdmin || proj.maintainers?.includes(user.id))) {
-        const usersData = await client.users.list();
-        setUsers(usersData);
-      }
+      const data = await client.projects.get(projectId);
+      setProject(data);
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
@@ -44,18 +39,15 @@ export const ProjectSettingsView = () => {
         return;
       }
       setError('Failed to load data');
-      console.error('Error fetching data:', err);
+      console.error('Error fetching project:', err);
     } finally {
       if (showLoadingSpinner) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData({ includeProject: true, includeUsers: true, showLoadingSpinner: true });
+    fetchProject(true);
   }, [projectId]);
-
-  const updateProjectData = () => fetchData({ includeProject: true });
-  const updateUsersData = () => fetchData({ includeUsers: true });
 
   const canManage = !!user && !!project && (user.isAdmin || project.maintainers?.includes(user.id));
 
@@ -104,19 +96,21 @@ export const ProjectSettingsView = () => {
       <Tabs value={activeTab} onValueChange={(v) => navigate(`/projects/${projectId}/${v}`)}>
         <TabsList className="tw">
           <TabsTrigger value="access"><Users className="h-4 w-4" /> Access Management</TabsTrigger>
+          <TabsTrigger value="tokens"><KeyRound className="h-4 w-4" /> Access Tokens</TabsTrigger>
           <TabsTrigger value="settings"><Settings className="h-4 w-4" /> Settings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="access">
           <AccessManagement
             project={project}
-            users={users}
             user={user}
             projectId={projectId}
             client={client}
-            onDataUpdate={updateProjectData}
-            onUsersUpdate={updateUsersData}
+            onDataUpdate={() => fetchProject()}
           />
+        </TabsContent>
+        <TabsContent value="tokens">
+          <ProjectAccessTokens />
         </TabsContent>
         <TabsContent value="settings">
           <ProjectSettings project={project} projectId={projectId} client={client} />
