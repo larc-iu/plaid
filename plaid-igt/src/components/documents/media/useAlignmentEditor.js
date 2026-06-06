@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { cpSlice, cpLength } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 
@@ -26,7 +27,7 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
       (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0)
     );
 
-    const textLength = doc.body?.length || 0;
+    const textLength = cpLength(doc.body || '');
 
     // Find constraints from neighboring alignment tokens
     let leftBoundary = 0;
@@ -51,7 +52,7 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   const getAvailableText = useCallback(() => {
     const { leftBoundary, rightBoundary } = getAvailableTextBoundaries();
     const fullText = doc.body || '';
-    return fullText.substring(leftBoundary, rightBoundary);
+    return cpSlice(fullText, leftBoundary, rightBoundary);
   }, [getAvailableTextBoundaries, doc]);
 
   // Check if baseline text is available for alignment

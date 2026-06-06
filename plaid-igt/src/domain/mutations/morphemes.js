@@ -12,6 +12,8 @@
 // invalid input. `throw` inside `_withSaving` is reserved for unexpected
 // failure paths the server is reporting.
 
+import { cpSlice } from '@larc-iu/plaid-client';
+
 const morphemesInWord = (morphemeTokens, word) =>
   (morphemeTokens || []).filter(m => m.begin === word.begin && m.end === word.end);
 
@@ -21,7 +23,7 @@ const sortByPrecedence = (ms) =>
 const formOf = (morpheme, body) => {
   const meta = morpheme?.metadata;
   if (meta && Object.prototype.hasOwnProperty.call(meta, 'form')) return meta.form ?? '';
-  return body.slice(morpheme.begin, morpheme.end);
+  return cpSlice(body, morpheme.begin, morpheme.end);
 };
 
 export const morphemeMutations = {

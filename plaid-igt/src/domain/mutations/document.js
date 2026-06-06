@@ -2,6 +2,8 @@
 // delete, media upload/delete). See IgtDocument.js for the `this` API
 // (_withSaving, _applyRawPatch, _reload, layerInfo, body, etc.).
 
+import { cpLength } from '@larc-iu/plaid-client';
+
 export const documentMutations = {
   // Full baseline-text replacement. The Sentences token layer is
   // `:partitioning`, so wiping its tokens cascades through Words and
@@ -26,7 +28,7 @@ export const documentMutations = {
 
     return this._withSaving('Failed to save baseline text', async () => {
       const textId = primaryTextLayer.text?.id;
-      const newLen = newBody.length;
+      const newLen = cpLength(newBody);
       const sentenceTokenIds = (sentenceTokenLayer.tokens || []).map(t => t.id);
       const alignmentTokenIds = (alignmentTokenLayer?.tokens || []).map(t => t.id);
       const tokensToWipe = [...sentenceTokenIds, ...alignmentTokenIds];

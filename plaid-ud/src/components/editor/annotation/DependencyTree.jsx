@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { cpSlice } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
 import './DependencyTree.css';
@@ -64,7 +65,7 @@ export const DependencyTree = ({
         y: TOKEN_Y // Use original TOKEN_Y for consistent arc drawing
       }))
     : tokens.map((token, index) => {
-        const tokenForm = textContent.substring(token.begin, token.end);
+        const tokenForm = cpSlice(textContent, token.begin, token.end);
         const matchingLemmaSpan = lemmaSpans.find(span => 
           (span.tokens && span.tokens.includes(token.id)) || span.begin === token.id
         );

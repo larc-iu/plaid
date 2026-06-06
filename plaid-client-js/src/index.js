@@ -1609,3 +1609,7 @@ class PlaidClient {
 
 export default PlaidClient;
 export { PlaidClient };
+
+// Unicode code-point helpers for text offsets (token begin/end are code-point
+// indices). See ./codepoint.js.
+export { cpLength, cpSlice, utf16ToCp, cpToUtf16, cpIndexOf } from './codepoint.js';

@@ -9,6 +9,12 @@
 // to mirror locally, so create/edit/delete reload after a successful write.
 // `alignBaseline` and `updateAlignmentBounds` skip the text edit and patch
 // optimistically.
+//
+// Offsets (token begin/end, text-edit op index/value) are Unicode CODE POINTS,
+// so measurement/slicing/search uses cpLength/cpSlice/cpIndexOf, not the UTF-16
+// `.length`/`.substring`/`.indexOf` (which mis-place tokens around astral text).
+
+import { cpLength, cpSlice, cpIndexOf } from '@larc-iu/plaid-client';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
@@ -63,7 +69,7 @@ export const alignmentMutations = {
     let insertPosition;
     let temporalInversion = false;
     if (!insertAfterToken && !insertBeforeToken) {
-      insertPosition = existingText.length;
+      insertPosition = cpLength(existingText);
     } else if (!insertAfterToken && insertBeforeToken) {
       insertPosition = 0;
     } else if (insertAfterToken && !insertBeforeToken) {
@@ -86,22 +92,22 @@ export const alignmentMutations = {
       insertedText = trimmed + spaceAfter;
       insertBegin = 0;
       tokenBegin = 0;
-      tokenEnd = trimmed.length;
-    } else if (insertPosition >= existingText.length) {
+      tokenEnd = cpLength(trimmed);
+    } else if (insertPosition >= cpLength(existingText)) {
       const spaceBefore = existingText ? ' ' : '';
       insertedText = spaceBefore + trimmed;
-      insertBegin = existingText.length;
-      tokenBegin = existingText.length + (spaceBefore ? 1 : 0);
-      tokenEnd = tokenBegin + trimmed.length;
+      insertBegin = cpLength(existingText);
+      tokenBegin = cpLength(existingText) + (spaceBefore ? 1 : 0);
+      tokenEnd = tokenBegin + cpLength(trimmed);
     } else {
-      const before = existingText.substring(0, insertPosition);
-      const after = existingText.substring(insertPosition);
+      const before = cpSlice(existingText, 0, insertPosition);
+      const after = cpSlice(existingText, insertPosition);
       const spaceBefore = before.endsWith(' ') ? '' : ' ';
       const spaceAfter = after.startsWith(' ') ? '' : ' ';
       insertedText = spaceBefore + trimmed + spaceAfter;
       insertBegin = insertPosition;
       tokenBegin = insertPosition + (spaceBefore ? 1 : 0);
-      tokenEnd = tokenBegin + trimmed.length;
+      tokenEnd = tokenBegin + cpLength(trimmed);
     }
 
     const overlap = findOverlappingAlignment(alignmentTokens, tokenBegin, tokenEnd);
@@ -112,7 +118,7 @@ export const alignmentMutations = {
       return false;
     }
 
-    const newTextLength = existingText.length + insertedText.length;
+    const newTextLength = cpLength(existingText) + cpLength(insertedText);
     const hasExistingSentences = (sentenceTokenLayer.tokens || []).length > 0;
 
     return this._withSaving('Failed to create alignment', async () => {
@@ -174,8 +180,8 @@ export const alignmentMutations = {
     const currentText = this.body;
     const tokenBegin = existingAlignment.begin;
     const tokenEnd = existingAlignment.end;
-    const newAlignmentEnd = tokenBegin + trimmed.length;
-    const newTextLength = currentText.length - (tokenEnd - tokenBegin) + trimmed.length;
+    const newAlignmentEnd = tokenBegin + cpLength(trimmed);
+    const newTextLength = cpLength(currentText) - (tokenEnd - tokenBegin) + cpLength(trimmed);
 
     const overlap = findOverlappingAlignment(alignmentTokens, tokenBegin, newAlignmentEnd, existingAlignmentId);
     if (overlap) {
@@ -254,7 +260,7 @@ export const alignmentMutations = {
       (a, b) => (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0)
     );
     let leftBoundary = 0;
-    let rightBoundary = fullText.length;
+    let rightBoundary = cpLength(fullText);
     for (const token of sortedTokens) {
       const tokenTimeBegin = token.metadata?.timeBegin || 0;
       const tokenTimeEnd = token.metadata?.timeEnd || 0;
@@ -266,14 +272,14 @@ export const alignmentMutations = {
       }
     }
 
-    const availableText = fullText.substring(leftBoundary, rightBoundary);
-    const startInAvailable = availableText.indexOf(trimmed);
+    const availableText = cpSlice(fullText, leftBoundary, rightBoundary);
+    const startInAvailable = cpIndexOf(availableText, trimmed);
     if (startInAvailable === -1) {
       this.setError('Selected text not found in available text range');
       return false;
     }
     const actualBegin = leftBoundary + startInAvailable;
-    const actualEnd = actualBegin + trimmed.length;
+    const actualEnd = actualBegin + cpLength(trimmed);
 
     const overlap = findOverlappingAlignment(alignmentTokens, actualBegin, actualEnd);
     if (overlap) {
@@ -333,12 +339,12 @@ export const alignmentMutations = {
     const currentText = this.body;
     const tokenBegin = existingAlignment.begin;
     const tokenEnd = existingAlignment.end;
-    let beforeText = currentText.substring(0, tokenBegin);
-    let afterText = currentText.substring(tokenEnd);
+    let beforeText = cpSlice(currentText, 0, tokenBegin);
+    let afterText = cpSlice(currentText, tokenEnd);
     beforeText = beforeText.replace(/\s+$/, '');
     afterText = afterText.replace(/^\s+/, '');
-    const numDeleted = currentText.length - (afterText.length + beforeText.length);
-    const index = beforeText.length;
+    const numDeleted = cpLength(currentText) - (cpLength(afterText) + cpLength(beforeText));
+    const index = cpLength(beforeText);
 
     return this._withSaving('Failed to delete alignment', async () => {
       await this._client.texts.update(textId, [{ type: 'delete', index, value: numDeleted }]);

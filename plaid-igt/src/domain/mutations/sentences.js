@@ -7,6 +7,8 @@
 // bulkDelete + bulkCreate batch. `merge` and `split` are partition-preserving
 // and are the supported boundary edits.
 
+import { cpLength } from '@larc-iu/plaid-client';
+
 export const sentenceMutations = {
   async mergeSentence(sentenceId) {
     const info = this.layerInfo;
@@ -80,7 +82,7 @@ export const sentenceMutations = {
     }
     if (sentenceTokens.length === 0) return false;
 
-    const bodyLen = this.body.length;
+    const bodyLen = cpLength(this.body);
     const sentenceIds = sentenceTokens.map(s => s.id);
 
     return this._withSaving('Failed to clear sentences', async () => {

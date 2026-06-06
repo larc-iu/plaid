@@ -278,3 +278,16 @@ export declare class PlaidClient {
 }
 
 export default PlaidClient;
+
+// --- Unicode code-point helpers for text offsets ---------------------------
+// Token begin/end offsets are 0-based Unicode code-point indices (not UTF-16).
+/** Number of Unicode code points in `s` (not `s.length`). */
+export function cpLength(s: string): number;
+/** Substring of `s` by code-point indices [begin, end) (end optional). */
+export function cpSlice(s: string, begin: number, end?: number): string;
+/** UTF-16 index -> code-point index in `s`. */
+export function utf16ToCp(s: string, u: number): number;
+/** Code-point index -> UTF-16 index in `s` (clamps past the end). */
+export function cpToUtf16(s: string, cp: number): number;
+/** Like indexOf, but the result and `fromCp` are code-point indices; -1 if absent. */
+export function cpIndexOf(s: string, sub: string, fromCp?: number): number;

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { cpLength } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
@@ -94,9 +95,11 @@ export const useTokenOperations = () => {
       const spanRange = document.createRange();
       spanRange.setStart(spanElement.firstChild || spanElement, 0);
       spanRange.setEnd(range.startContainer, range.startOffset);
-      const selectionStart = spanRange.toString().length;
-      const selectionLength = selectedText.length;
-      if (selectionStart < 0 || selectionStart + selectionLength > spanElement.textContent.length) {
+      // Code-point counts: piece.begin / token offsets are code points, and the
+      // DOM Range strings are UTF-16, so measure them in code points too.
+      const selectionStart = cpLength(spanRange.toString());
+      const selectionLength = cpLength(selectedText);
+      if (selectionStart < 0 || selectionStart + selectionLength > cpLength(spanElement.textContent)) {
         return;
       }
       const actualStart = piece.begin + selectionStart;

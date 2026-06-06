@@ -1,4 +1,5 @@
 import React from 'react';
+import { cpSlice } from '@larc-iu/plaid-client';
 import { ZoomIn, ZoomOut, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
@@ -331,7 +332,7 @@ export const Timeline = ({
                     // Create selection from alignment token
                     handleSelectionCreate(displayStart, displayEnd);
                   }}
-                  title={`${(doc.body || '').substring(token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
+                  title={`${cpSlice(doc.body || '', token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
                 >
                   {/* Left resize handle */}
                   {!readOnly && (
@@ -359,7 +360,7 @@ export const Timeline = ({
                     paddingLeft: tokenWidth > 20 ? '6px' : '2px',
                     paddingRight: tokenWidth > 20 ? '6px' : '2px'
                   }}>
-                    {(doc.body || '').substring(token.begin, token.end) || ''}
+                    {cpSlice(doc.body || '', token.begin, token.end) || ''}
                   </div>
                   
                   {/* Right resize handle */}

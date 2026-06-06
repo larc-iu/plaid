@@ -8,6 +8,8 @@
 // findSentenceForToken) are produced together so they stay in sync with
 // `sentences`.
 
+import { cpSlice } from '@larc-iu/plaid-client';
+
 export function deriveDocumentData(raw, layerInfo, project) {
   const configuredMetadata = {};
   const fields = project?.config?.plaid?.documentMetadata;
@@ -60,7 +62,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
       text: t.text,
       begin: t.begin,
       end: t.end,
-      content: body.slice(t.begin, t.end),
+      content: cpSlice(body,t.begin, t.end),
       metadata: t.metadata || {},
       annotations: {},
       orthographies: collectOrthographies(t, primaryTokenLayer),
@@ -83,7 +85,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         begin: m.begin,
         end: m.end,
         precedence: m.precedence ?? 1,
-        content: body.slice(m.begin, m.end),
+        content: cpSlice(body,m.begin, m.end),
         metadata: m.metadata || {},
         annotations: collectAnnotations(m, spanLayers.morpheme),
         vocabItem: vocabLinksByToken[m.id] || null
@@ -184,7 +186,7 @@ function computePieces(sentence, tokens, body) {
     if (t.begin > lastEnd) {
       pieces.push({
         type: 'gap',
-        content: body.slice(lastEnd, t.begin),
+        content: cpSlice(body,lastEnd, t.begin),
         isToken: false,
         begin: lastEnd,
         end: t.begin
@@ -196,7 +198,7 @@ function computePieces(sentence, tokens, body) {
   if (lastEnd < sentence.end) {
     pieces.push({
       type: 'gap',
-      content: body.slice(lastEnd, sentence.end),
+      content: cpSlice(body,lastEnd, sentence.end),
       isToken: false,
       begin: lastEnd,
       end: sentence.end

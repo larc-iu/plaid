@@ -3,6 +3,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { cpSlice } from '@larc-iu/plaid-client';
 import { cn } from '@/lib/utils';
 import { notifySuccess } from '@/utils/feedback';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
@@ -46,10 +47,7 @@ export const TimeAlignmentPopover = ({
       if (existingAlignment) {
         setMode('edit');
         // Extract text using token positions from primary text layer
-        const tokenText = (doc.body || '').substring(
-          existingAlignment.begin,
-          existingAlignment.end
-        ) || '';
+        const tokenText = cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || '';
         setText(tokenText);
       } else {
         // Default to 'new' mode, let user choose
@@ -229,7 +227,7 @@ export const TimeAlignmentPopover = ({
               <p className="mb-1 text-sm font-medium">Content</p>
               <p className="flex min-h-[60px] items-center rounded border bg-muted px-3 py-2 text-sm">
                 {existingAlignment ?
-                  (doc.body || '').substring(existingAlignment.begin, existingAlignment.end) || 'No content' :
+                  cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || 'No content' :
                   'No alignment data for this time range'
                 }
               </p>

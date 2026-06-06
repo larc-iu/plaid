@@ -38,7 +38,9 @@ export function buildRawDoc(opts = {}) {
     id: `m-${i + 1}`, text: textId, begin: w.begin, end: w.end, precedence: 1, metadata: {},
   }));
 
-  const sentences = opts.sentences ?? [{ id: 's-1', begin: 0, end: body.length }];
+  // Code-point length (offsets are code points) so astral-text fixtures get a
+  // correct default sentence covering the whole body.
+  const sentences = opts.sentences ?? [{ id: 's-1', begin: 0, end: [...body].length }];
   const sentenceTokens = sentences.map(s => ({ id: s.id, text: textId, begin: s.begin, end: s.end }));
 
   return {

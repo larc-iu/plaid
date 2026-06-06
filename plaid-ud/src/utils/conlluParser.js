@@ -3,6 +3,10 @@
  * Filters out ellipsis tokens (IDs like "4.1") but captures multi-word tokens (IDs like "1-3")
  */
 
+// Token offsets are Unicode CODE POINTS, so locate/measure forms in code points
+// (cpIndexOf / cpLength), not the UTF-16 indexOf / .length.
+import { cpLength, cpIndexOf } from '@larc-iu/plaid-client';
+
 export function parseCoNLLU(text) {
   const lines = text.split('\n');
   const sentences = [];
@@ -222,7 +226,7 @@ export function buildConlluHierarchy(parsedData) {
     let warnedSyntheticOffsets = false;
     for (const unit of units) {
       const form = unit.surfaceForm || '';
-      const idx = form ? sentenceText.indexOf(form, searchPos) : -1;
+      const idx = form ? cpIndexOf(sentenceText, form, searchPos) : -1;
       if (idx === -1) {
         if (!warnedSyntheticOffsets) {
           console.warn(
@@ -232,11 +236,11 @@ export function buildConlluHierarchy(parsedData) {
           warnedSyntheticOffsets = true;
         }
         const begin = positions.length === 0 ? 0 : positions[positions.length - 1].end;
-        positions.push({ begin, end: begin + form.length });
-        searchPos = begin + form.length;
+        positions.push({ begin, end: begin + cpLength(form) });
+        searchPos = begin + cpLength(form);
       } else {
-        positions.push({ begin: idx, end: idx + form.length });
-        searchPos = idx + form.length;
+        positions.push({ begin: idx, end: idx + cpLength(form) });
+        searchPos = idx + cpLength(form);
       }
     }
     return positions;
@@ -258,9 +262,10 @@ export function buildConlluHierarchy(parsedData) {
     // their sentence — otherwise the server's nesting constraint rejects the
     // word bulk-create.
     const maxEnd = unitPositions.reduce((acc, p) => Math.max(acc, p.end), 0);
-    const overflowed = maxEnd > rawSentenceText.length;
+    const rawLen = cpLength(rawSentenceText);
+    const overflowed = maxEnd > rawLen;
     const sentenceText = overflowed
-      ? rawSentenceText + ' '.repeat(maxEnd - rawSentenceText.length)
+      ? rawSentenceText + ' '.repeat(maxEnd - rawLen)
       : rawSentenceText;
     // When we had to pad, the body no longer matches the `# text =`
     // metadata. Drop the stored `text` key so the exporter falls back to
@@ -271,11 +276,11 @@ export function buildConlluHierarchy(parsedData) {
       ? Object.fromEntries(Object.entries(sentenceMetadata).filter(([k]) => k !== 'text'))
       : sentenceMetadata;
 
-    const sentenceStart = text.length;
+    const sentenceStart = cpLength(text);
     text += sentenceText;
     const isLast = sentIdx === parsedData.sentences.length - 1;
     if (!isLast) text += '\n';
-    const sentenceEnd = text.length; // includes the trailing newline for non-last sentences
+    const sentenceEnd = cpLength(text); // includes the trailing newline for non-last sentences
 
     const words = units.map((unit, unitIdx) => {
       const begin = sentenceStart + unitPositions[unitIdx].begin;

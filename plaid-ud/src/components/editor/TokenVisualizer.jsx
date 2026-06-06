@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Alert, Text } from '@mantine/core';
+import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
 import { containsToken } from '../../utils/udLayerUtils.js';
 import { notifyError } from '../../utils/feedback.jsx';
 import classes from './TokenVisualizer.module.css';
@@ -68,7 +69,7 @@ export const TokenVisualizer = ({
 
   const formOf = (m, word) => {
     const f = morphemeForms.get(m.id);
-    return (f != null && f !== '') ? f : text.slice(word.begin, word.end);
+    return (f != null && f !== '') ? f : cpSlice(text, word.begin, word.end);
   };
 
   // --- keyboard boundary nudge on the hovered word ---
@@ -87,7 +88,7 @@ export const TokenVisualizer = ({
         case 'D': ne -= 1; break;
         default: return;
       }
-      if (nb < 0 || ne > text.length || nb >= ne) return;
+      if (nb < 0 || ne > cpLength(text) || nb >= ne) return;
       event.preventDefault();
       try {
         await onWordUpdate?.(hoveredWord.id, nb, ne);
@@ -177,7 +178,7 @@ export const TokenVisualizer = ({
   const validateAndSave = async () => {
     const nb = parseInt(editBegin, 10);
     const ne = parseInt(editEnd, 10);
-    if (Number.isNaN(nb) || Number.isNaN(ne) || nb < 0 || ne > text.length || nb >= ne) {
+    if (Number.isNaN(nb) || Number.isNaN(ne) || nb < 0 || ne > cpLength(text) || nb >= ne) {
       reportError('Invalid range');
       return;
     }
@@ -204,7 +205,7 @@ export const TokenVisualizer = ({
   // --- morpheme editor (multiword tokens) ---
   const openMorphemeEditor = (word) => {
     const ms = morphemesByWord.get(word.id) || [];
-    setDraftForms(ms.length ? ms.map(m => formOf(m, word)) : [text.slice(word.begin, word.end)]);
+    setDraftForms(ms.length ? ms.map(m => formOf(m, word)) : [cpSlice(text, word.begin, word.end)]);
     setMorphemeWord(word);
     setHoveredWord(null);
   };
@@ -272,6 +273,12 @@ export const TokenVisualizer = ({
       end = idx + selectedText.length;
     }
 
+    // The DOM walk + indexOf above produce UTF-16 positions in the rendered
+    // text (which equals the body); convert to canonical code-point offsets
+    // before comparing to token offsets / sending to the server.
+    start = utf16ToCp(text, start);
+    end = utf16ToCp(text, end);
+
     if (wordTokens.some(w => start < w.end && end > w.begin)) {
       reportError('Cannot create word: selection overlaps an existing word');
       return;
@@ -287,17 +294,22 @@ export const TokenVisualizer = ({
     const original = originalText;
     const current = text;
     if (!original || original === current) return words;
+    // Work in code points (token offsets are code points). Compare code-point
+    // sequences so editPos / lengthDiff / search indices are all code-point.
+    const oCps = Array.from(original);
+    const cCps = Array.from(current);
+    const curLen = cCps.length;
     let editPos = 0;
-    while (editPos < Math.min(original.length, current.length) && original[editPos] === current[editPos]) editPos += 1;
-    const lengthDiff = current.length - original.length;
+    while (editPos < Math.min(oCps.length, cCps.length) && oCps[editPos] === cCps[editPos]) editPos += 1;
+    const lengthDiff = cCps.length - oCps.length;
 
     return words.map(word => {
-      const wordText = original.slice(word.begin, word.end);
+      const wordText = cpSlice(original, word.begin, word.end);
       if (word.end <= editPos) return word;
       if (word.begin >= editPos) {
         const nb = word.begin + lengthDiff;
         const ne = word.end + lengthDiff;
-        if (nb >= 0 && ne <= current.length && current.slice(nb, ne) === wordText) {
+        if (nb >= 0 && ne <= curLen && cpSlice(current, nb, ne) === wordText) {
           return { ...word, begin: nb, end: ne, adjusted: true };
         }
       }
@@ -306,10 +318,10 @@ export const TokenVisualizer = ({
       let bestScore = -1;
       let from = 0;
       while (true) {
-        const idx = current.indexOf(wordText, from);
+        const idx = cpIndexOf(current, wordText, from);
         if (idx === -1) break;
         const score = 1000 - Math.abs(idx - word.begin);
-        if (score > bestScore) { bestScore = score; best = { begin: idx, end: idx + wordText.length }; }
+        if (score > bestScore) { bestScore = score; best = { begin: idx, end: idx + cpLength(wordText) }; }
         from = idx + 1;
       }
       if (best) return { ...word, begin: best.begin, end: best.end, adjusted: true };
@@ -339,7 +351,7 @@ export const TokenVisualizer = ({
   }
 
   const renderWordBadge = (word) => {
-    const wordText = text.slice(word.begin, word.end);
+    const wordText = cpSlice(text, word.begin, word.end);
     const display = word.begin === word.end ? '∅' : wordText;
     const isSentStart = sentenceInitialWordIds.has(word.id);
     const morphs = morphemesByWord.get(word.id) || [];
@@ -418,16 +430,16 @@ export const TokenVisualizer = ({
           >
             <div style={{ marginBottom: '0.75rem' }}>
               <div className={classes.popoverTitle}>Edit Word Range</div>
-              <div className={classes.popoverSub}>Word: &quot;{text.slice(editingWord.begin, editingWord.end)}&quot;</div>
+              <div className={classes.popoverSub}>Word: &quot;{cpSlice(text, editingWord.begin, editingWord.end)}&quot;</div>
             </div>
             <div className={classes.rangeGrid}>
               <div>
                 <label className={classes.fieldLabel}>Begin</label>
-                <input type="number" value={editBegin} onChange={(e) => setEditBegin(e.target.value)} className={classes.numInput} min="0" max={text.length} />
+                <input type="number" value={editBegin} onChange={(e) => setEditBegin(e.target.value)} className={classes.numInput} min="0" max={cpLength(text)} />
               </div>
               <div>
                 <label className={classes.fieldLabel}>End</label>
-                <input type="number" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} className={classes.numInput} min="1" max={text.length} />
+                <input type="number" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} className={classes.numInput} min="1" max={cpLength(text)} />
               </div>
             </div>
             <div className={classes.popoverActions}>
@@ -442,7 +454,7 @@ export const TokenVisualizer = ({
             className={`tv-overlay ${classes.popover} ${classes.popoverLeft}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className={classes.popoverTitle}>Morphemes of &quot;{text.slice(word.begin, word.end)}&quot;</div>
+            <div className={classes.popoverTitle}>Morphemes of &quot;{cpSlice(text, word.begin, word.end)}&quot;</div>
             <div className={classes.popoverHint}>One form = an ordinary word; multiple = a multiword token.</div>
             <div className={classes.morphList}>
               {draftForms.map((form, i) => (
@@ -494,7 +506,7 @@ export const TokenVisualizer = ({
       const els = [];
       words.forEach((word, wi) => {
         if (word.begin > lastEnd) {
-          els.push(<span key={`bt-${si}-${wi}`} className={classes.plainText}>{text.slice(lastEnd, word.begin)}</span>);
+          els.push(<span key={`bt-${si}-${wi}`} className={classes.plainText}>{cpSlice(text, lastEnd, word.begin)}</span>);
         }
         els.push(renderWordBadge(word));
         lastEnd = Math.max(lastEnd, word.end);
@@ -502,8 +514,8 @@ export const TokenVisualizer = ({
       return <div key={`s-${si}`} className={classes.sentence}>{els}</div>;
     });
 
-    if (lastEnd < text.length) {
-      blocks.push(<div key="trail" className={classes.plainText}>{text.slice(lastEnd)}</div>);
+    if (lastEnd < cpLength(text)) {
+      blocks.push(<div key="trail" className={classes.plainText}>{cpSlice(text, lastEnd)}</div>);
     }
     if (invalid.length) {
       blocks.push(

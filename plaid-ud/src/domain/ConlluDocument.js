@@ -1,3 +1,4 @@
+import { cpLength, cpSlice, utf16ToCp } from '@larc-iu/plaid-client';
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { basicTokenize } from '../utils/basicTokenize.js';
@@ -125,7 +126,7 @@ export class ConlluDocument {
       const morphemeMeta = []; // parallel to morphemeOps
       hierarchy.sentences.forEach((s, sentIdx) => {
         s.words.forEach(w => {
-          const wordSubstring = hierarchy.text.substring(w.begin, w.end);
+          const wordSubstring = cpSlice(hierarchy.text, w.begin, w.end);
           w.morphemes.forEach(m => {
             morphemeOps.push({
               tokenLayerId: morphemeTokenLayer.id,
@@ -343,7 +344,7 @@ export class ConlluDocument {
 
     const buildMorphemeEntry = (morphemeToken, tokenIndex, word) => {
       const id = morphemeToken.id;
-      const substring = body.substring(morphemeToken.begin, morphemeToken.end);
+      const substring = cpSlice(body,morphemeToken.begin, morphemeToken.end);
       const formSpan = (formIndex.get(id) || [])[0] || null;
       const lemma = (lemmaIndex.get(id) || [])[0] || null;
       const upos = (uposIndex.get(id) || [])[0] || null;
@@ -361,7 +362,7 @@ export class ConlluDocument {
         xpos,
         feats,
         word: word || null,
-        wordForm: word ? body.substring(word.begin, word.end) : tokenForm,
+        wordForm: word ? cpSlice(body,word.begin, word.end) : tokenForm,
         spanIds: {
           form: formSpan?.id || null,
           lemma: lemma?.id || null,
@@ -375,7 +376,7 @@ export class ConlluDocument {
 
     const effectiveSentences = sentenceTokens.length > 0
       ? sentenceTokens
-      : [{ id: '__all__', begin: 0, end: body.length }];
+      : [{ id: '__all__', begin: 0, end: cpLength(body) }];
 
     const rows = [];
 
@@ -419,7 +420,7 @@ export class ConlluDocument {
 
       rows.push({
         id: sentence.id ?? sentenceIdx,
-        text: body.substring(sentence.begin, sentence.end),
+        text: cpSlice(body,sentence.begin, sentence.end),
         sentenceToken: sentenceTokens.length > 0 ? sentence : null,
         tokens: morphemeEntries,
         relations,
@@ -536,17 +537,20 @@ export class ConlluDocument {
 
     return this._withSaving('Failed to create tokens', async () => {
       const body = textContent;
-      const len = body.length;
+      const len = cpLength(body);
 
       // Sentences: gap-free partition of [0, len). Runs of newlines end a
       // sentence and are kept with the preceding sentence so there are no gaps.
+      // The regex matches in UTF-16 (m.index), so convert each boundary to a
+      // code-point offset (sentence tokens are code-point ranges).
       const sentenceRanges = [];
       let start = 0;
       const newlineRun = /\n+/g;
       let m;
       while ((m = newlineRun.exec(body)) !== null) {
-        sentenceRanges.push([start, m.index + m[0].length]);
-        start = m.index + m[0].length;
+        const endCp = utf16ToCp(body, m.index + m[0].length);
+        sentenceRanges.push([start, endCp]);
+        start = endCp;
       }
       if (start < len) sentenceRanges.push([start, len]);
       if (sentenceRanges.length === 0) sentenceRanges.push([0, len]);
@@ -584,7 +588,7 @@ export class ConlluDocument {
         const lemmaOps = morphemeIds.map((tokenId, i) => ({
           spanLayerId: lemmaLayer.id,
           tokens: [tokenId],
-          value: body.substring(wordRanges[i][0], wordRanges[i][1])
+          value: cpSlice(body,wordRanges[i][0], wordRanges[i][1])
         }));
         try {
           await this._client.spans.bulkCreate(lemmaOps);
@@ -712,7 +716,7 @@ export class ConlluDocument {
       // the word's surface form. Morpheme begin/end are in body coordinates,
       // so substring(body, word.begin, word.end) is the authoritative surface.
       const body = this.body;
-      const wordSubstring = body.substring(word.begin, word.end);
+      const wordSubstring = cpSlice(body,word.begin, word.end);
       const isMwt = cleanForms.length > 1;
       const existingMeta = word.metadata || {};
       // Decide whether the word's metadata needs to change.
@@ -849,7 +853,7 @@ export class ConlluDocument {
       let lemmaSpanId = null;
       if (lemmaLayer?.id && morphemeId) {
         try {
-          const lr = await this._client.spans.bulkCreate([{ spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: textContent.substring(begin, end) }]);
+          const lr = await this._client.spans.bulkCreate([{ spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: cpSlice(textContent,begin, end) }]);
           lemmaSpanId = lr?.ids?.[0] || null;
         } catch (lemmaError) {
           console.error('Failed to create lemma span:', lemmaError);
@@ -871,7 +875,7 @@ export class ConlluDocument {
         }
         if (lemmaSpanId && morphemeId && infoNext.lemmaLayer) {
           if (!Array.isArray(infoNext.lemmaLayer.spans)) infoNext.lemmaLayer.spans = [];
-          infoNext.lemmaLayer.spans.push({ id: lemmaSpanId, tokens: [morphemeId], value: textContent.substring(begin, end) });
+          infoNext.lemmaLayer.spans.push({ id: lemmaSpanId, tokens: [morphemeId], value: cpSlice(textContent,begin, end) });
         }
       });
     });
@@ -1073,7 +1077,7 @@ export class ConlluDocument {
         const token = tokenLayer?.tokens?.find(t => t.id === tokenId);
         const hasOffsets = token && typeof token.begin === 'number' && typeof token.end === 'number' && typeof textBody === 'string';
         const lemmaValue = hasOffsets
-          ? textBody.substring(token.begin, token.end)
+          ? cpSlice(textBody, token.begin, token.end)
           : token?.form || token?.text || '';
 
         const apiResponse = await this._client.spans.create(lemmaLayer.id, [tokenId], lemmaValue);
