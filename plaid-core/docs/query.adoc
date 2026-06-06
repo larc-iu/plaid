@@ -156,7 +156,7 @@ type (and its table and access-control scope); the **constraint map** filters it
 | Kind | Constraints | Notes
 
 | `span`     | `layer`, `value`, `doc`, `metadata`                   | `value` matches the stored annotation value.
-| `token`    | `layer`, `doc`, `begin`, `end`, `metadata`            | `begin` / `end` are character offsets.
+| `token`    | `layer`, `value`, `doc`, `begin`, `end`, `metadata`   | `value` is the token's surface text (the slice of the text body); `begin` / `end` are character offsets.
 | `relation` | `layer`, `value`, `doc`, `source`, `target`, `metadata` | `source` / `target` may be inline variables (see <<Relationship clauses>>).
 | `vocab`    | `layer`, `form`, `metadata`                           | Vocab items are global; scoped via project grants (see <<Scope and access control>>).
 | `document` | `name`, `id`, `metadata`                              | A document.
@@ -198,7 +198,7 @@ Supported names, by type:
 | Kind | Readable fields
 
 | `span`          | `value`, `doc`, `id`, `metadata.KEY…`
-| `token`         | `begin`, `end`, `precedence`, `doc`, `id`, `metadata.KEY…`
+| `token`         | `value`, `begin`, `end`, `precedence`, `doc`, `id`, `metadata.KEY…`
 | `relation`      | `value`, `doc`, `id`, `metadata.KEY…`
 | `vocab`         | `form`, `id`, `metadata.KEY…`
 | `document`      | `name`, `id`, `metadata.KEY…`
@@ -544,7 +544,7 @@ Each element is `[kind, {constraints}]`, optionally followed by `"as", "?var"` t
 capture it. A `span` element matches a token that the span covers; a `token`
 element matches the sequence token directly. An element's constraint map accepts
 the same keys as the standalone clause of that kind (a `span` element takes
-`value` / `doc` / `metadata`, a `token` element `begin` / `end` / `metadata`). The
+`value` / `doc` / `metadata`, a `token` element `value` / `begin` / `end` / `metadata`). The
 `seq` config map takes `layer` (required) and an optional `doc` to pin the whole
 sequence to one document.
 
