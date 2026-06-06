@@ -416,8 +416,8 @@
   (testing "unknown / wrong-kind fields are rejected"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] [">" "?t.bogus" 5]]})))
         "unknown attr")
-    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] [">" "?t.value" 5]]})))
-        "value is not a token field")
+    (is (some? (ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["=" "?t.value" "cat"]]}))
+        "value IS now a token field (the surface substring)")
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
                                                                      ["=" "?sl.metadata.x" 1]]})))
         "metadata is entity-only, config is layer-only"))

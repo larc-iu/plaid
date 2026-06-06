@@ -466,3 +466,16 @@
     (testing "explicit null again clears even after a concrete value"
       (assert-ok (patch! {:precedence nil}))
       (is (nil? (prec))))))
+
+(deftest token-get-includes-surface-value
+  ;; :token/value — the surface substring of the text body[begin,end] — is exposed
+  ;; on token reads as a first-class attribute.
+  (let [proj (create-test-project admin-request "TknSurf")
+        doc (create-test-document admin-request proj "D")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tid (-> (create-text admin-request tl doc "hello world") :body :id)
+        tkl (-> (create-token-layer admin-request tl "Tok") :body :id)
+        tok (-> (create-token admin-request tkl tid 6 11) :body :id)
+        r (get-token admin-request tok)]
+    (assert-ok r)
+    (is (= "world" (-> r :body :token/value)) "GET returns the surface substring")))

@@ -87,12 +87,16 @@
                                ["covers" "?s" "?t"]
                                ["token" "?t" {"layer" "OrdProj/words"}]]
                       "order-by" [["?s" "value"]]}))))
-  (testing "ordering a token by :value (not a token attribute) is a 400"
+  (testing "ordering a token by a non-token field (e.g. form) is a 400"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"unknown field"
          (ast/expand {"find" ["?t"]
                       "where" [["token" "?t" {"layer" "OrdProj/words"}]]
-                      "order-by" [["?t" "value"]]}))))
+                      "order-by" [["?t" "form"]]}))))
+  (testing "ordering a token by :value (the surface substring) IS now allowed"
+    (is (some? (ast/expand {"find" ["?t"]
+                            "where" [["token" "?t" {"layer" "OrdProj/words"}]]
+                            "order-by" [["?t" "value"]]}))))
   (testing "a ?__-prefixed find var is reserved (would collide with __ord_N) -> 400"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"reserved"

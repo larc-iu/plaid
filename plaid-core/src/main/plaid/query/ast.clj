@@ -55,7 +55,9 @@
 ;; Entity clauses: [:kind ?var {constraint-map}]. Value = set of allowed constraint keys.
 (def ^:private entity-clauses
   {:span     #{:layer :value :doc :metadata}
-   :token    #{:layer :doc :begin :end :metadata}
+   ;; :token :value is the SURFACE substring (text body[begin,end]) — computed, the
+   ;; domain's :token/value — not an annotation like span/relation :value.
+   :token    #{:layer :value :doc :begin :end :metadata}
    :relation #{:layer :value :doc :source :target :metadata}
    :vocab    #{:layer :form :metadata}
    :document #{:name :id :metadata}
@@ -152,7 +154,7 @@
 ;; included so they can be compared/ordered too.
 (def ^:private entity-field-attrs
   {:span     #{:value :doc :id}
-   :token    #{:begin :end :precedence :doc :id}
+   :token    #{:value :begin :end :precedence :doc :id}
    :relation #{:value :doc :id}
    :vocab    #{:form :id}
    :document #{:name :id}

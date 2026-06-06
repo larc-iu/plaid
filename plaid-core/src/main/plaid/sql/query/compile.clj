@@ -202,6 +202,24 @@
     (bind-scalar! st (:var v) col enc json?)
     (emit-match! st col v enc regex-col)))
 
+;; --- token surface form (the domain's :token/value) -----------------------
+;; A token carries only offsets; its surface is the substring of its text body.
+;; There is no `value` column, so slice it: join the token's text (once, cached by
+;; alias) and `substr(body, begin+1, end-begin)` (SQLite substr is 1-based, len arg).
+(defn- token-text-alias!
+  [st a]
+  (or (get-in @st [:token-text a])
+      (let [tx (next-alias! st "txt")]
+        (add-from! st [:texts tx])
+        (add-where! st [:= (col a :text_id) (col tx :id)])
+        (swap! st assoc-in [:token-text a] tx)
+        tx)))
+
+(defn- token-surface-sql
+  [st a]
+  (let [tx (token-text-alias! st a)]
+    [:substr (col tx :body) [:+ (col a :begin) [:inline 1]] [:- (col a :end_) (col a :begin)]]))
+
 (defn- emit-entity-filters!
   "Emit the value/form/doc/begin/end/name/body/id/metadata predicates from one
   entity constraint map (`kind` is the host entity's kind, for metadata's
@@ -210,11 +228,15 @@
   query scope: a constraint that re-states an outer var inside a `:not` must land
   inside that NOT EXISTS subquery as a correlated predicate, not on the outer alias."
   [st kind a cmap]
-  ;; :value is stored JSON-encoded; a regex matches the DECODED scalar
-  ;; (json_extract '$') so patterns aren't fighting the surrounding quotes.
+  ;; :value — for span/relation it is the JSON-encoded annotation (regex matches the
+  ;; DECODED scalar); for a TOKEN it is the SURFACE substring (plain text, sliced
+  ;; from the text body), so match/regex run on the substr expression directly.
   (when (contains? cmap :value)
-    (emit-field! st (col a :value) (:value cmap) psc/write-json
-                 [:json_extract (col a :value) [:inline "$"]] true))
+    (if (= kind :token)
+      (let [surf (token-surface-sql st a)]
+        (emit-field! st surf (:value cmap) identity surf false))
+      (emit-field! st (col a :value) (:value cmap) psc/write-json
+                   [:json_extract (col a :value) [:inline "$"]] true)))
   ;; :form (vocab_items.form) is plain TEXT — regex runs on the column directly.
   (when (contains? cmap :form)
     (emit-field! st (col a :form) (:form cmap) identity (col a :form) false))
@@ -639,8 +661,13 @@
       (err-500! (str "Field path " (ast/field->str fr) " reached the compiler unvalidated: " (:error res)) {:fr fr}))
     (case (:type res)
       (:core :layer-attr)
-      (if (= (:attr res) :alias)
+      (cond
+        (= (:attr res) :alias)
         {:sql [:json_extract (col a :config) [:inline "$.plaid.alias"]] :enc identity}
+        ;; a token's :value is the surface substring (no column), not a JSON annotation
+        (and (= kind :token) (= (:attr res) :value))
+        {:sql (token-surface-sql st a) :enc identity}
+        :else
         (let [{:keys [column enc json?]} (attr->col (:attr res))]
           {:sql (if json? [:json_extract (col a column) [:inline "$"]] (col a column)) :enc enc}))
       :config

@@ -35,7 +35,9 @@
                 :token/end
                 :token/layer
                 :token/document
-                :token/precedence])
+                :token/precedence
+                ;; computed surface = text body[begin,end]; enriched on reads (see `get`)
+                :token/value])
 
 ;; ============================================================
 ;; Row mappers
@@ -134,10 +136,16 @@
       (metadata/add-metadata-to-response db core "token" (:token/id raw)))))
 
 (defn get
-  "Look up a token by id. Returns the formatted (API-shape) map or nil."
+  "Look up a token by id. Returns the formatted (API-shape) map or nil. Enriches
+  `:token/value` — the surface substring of the text body[begin,end] — so a token
+  carries its surface form like any other attribute (matches `get-tokens`)."
   [db id]
   (when-let [row (psc/fetch-by-id db :tokens id)]
-    (format db (row->token row))))
+    (let [tok (row->token row)
+          body (fetch-text-body db (:token/text tok))
+          tok (cond-> tok
+                body (assoc :token/value (subs body (:token/begin tok) (:token/end tok))))]
+      (format db tok))))
 
 (defn project-id
   "Find the project id for a token. Single-entity lookup via the

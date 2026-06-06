@@ -169,3 +169,19 @@
       (is (= 1 (:count (qe/run db "admin@example.com"
                                {"find" ["?s"] "where" [["span" "?s" {"layer" "pos"}]]
                                 "scope" {"project-ids" [(clojure.string/upper-case (str pid))]} "return" "count"})))))))
+
+(deftest token-surface-value
+  ;; #5: a token's :value is its surface substring (computed from the text body),
+  ;; usable as a constraint and as a ?t.value dot-path. Tokens: aa[0,2] bb[3,5] cc[6,8].
+  (let [{:keys [t0 t1]} (build!)]
+    (testing "{value} constraint matches the surface substring"
+      (is (= #{t0} (ids (qe/run db "admin@example.com"
+                                {"find" ["?t"] "where" [["token" "?t" {"layer" "words" "value" "aa"}]]})))))
+    (testing "?t.value dot-path predicate"
+      (is (= #{t1} (ids (qe/run db "admin@example.com"
+                                {"find" ["?t"] "where" [["token" "?t" {"layer" "words"}] ["=" "?t.value" "bb"]]})))))
+    (testing "regex on the surface + alternation"
+      (is (= 3 (:count (qe/run db "admin@example.com"
+                               {"find" ["?t"] "where" [["token" "?t" {"layer" "words" "value" {"regex" "."}}]] "return" "count"}))))
+      (is (= 2 (:count (qe/run db "admin@example.com"
+                               {"find" ["?t"] "where" [["token" "?t" {"layer" "words" "value" ["aa" "bb"]}]] "return" "count"})))))))
