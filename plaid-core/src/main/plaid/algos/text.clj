@@ -1,6 +1,7 @@
 (ns plaid.algos.text
   (:require [taoensso.timbre :as log]
-            [editscript.core :as e]))
+            [editscript.core :as e]
+            [plaid.util.codepoint :as cp]))
 
 (comment
   (def x1 "hello world " #_"The ice-cream melted")
@@ -107,51 +108,96 @@
    :index index
    :value value})
 
+(defn- surrogate? [cp] (<= 0xD800 (long cp) 0xDFFF))
+
+(defn- codepoint-proxy
+  "Build a per-call bijection between the Unicode code points present in `old`
+  and `new` and single non-surrogate BMP proxy chars, then return the proxy
+  encodings of both strings plus a `decode` fn (proxy substring -> real string).
+
+  Why: `editscript` diffs Java *chars* (UTF-16 code units), so a char-level diff
+  of astral text can cut INSIDE a surrogate pair — producing an edit op whose
+  boundary falls mid-code-point. Diffing the proxy strings instead (one BMP char
+  per code point) makes the diff CODE-POINT granular: op boundaries always land
+  on code-point boundaries, so offsets/token shifts are correct and the body
+  reconstructs exactly. Returns nil when there are more distinct code points than
+  the BMP proxy pool can hold (caller falls back) — unreachable for real text."
+  [^String old ^String new]
+  (let [ocps (vec (.toArray (.codePoints old)))
+        ncps (vec (.toArray (.codePoints new)))
+        dcps (vec (distinct (concat ocps ncps)))
+        n (count dcps)
+        pool (->> (range 1 0x10000) (remove surrogate?) (take n) vec)]
+    (when (= n (count pool))
+      (let [pchars (mapv char pool)
+            cp->px (zipmap dcps pchars)
+            px->cp (zipmap pchars dcps)
+            ->px (fn [cps] (apply str (map cp->px cps)))
+            decode (fn [^String s]
+                     (apply str (map #(String. (Character/toChars (int (px->cp %)))) s)))]
+        {:old* (->px ocps) :new* (->px ncps) :decode decode}))))
+
 (defn diff
+  "Diff `old` -> `new` into a vector of insert/delete edit-ops. Op `:index` and
+  the `:delete` `:value` count are **Unicode code-point** positions, matching the
+  canonical token-offset unit; insert `:value` is the literal inserted string.
+  Applying the ops to `old` reconstructs `new` exactly, including astral text.
+
+  The diff is computed at code-point granularity (via `codepoint-proxy`) so an
+  edit boundary never splits a surrogate pair — otherwise a char-level diff of
+  e.g. an interior emoji deletion would mis-shift the surrounding tokens."
   [old new]
-  (let [results (editscript-diff old new)]
-    (loop [head (first results)
-           tail (rest results)
-           ops []
-           i 0]
-      (let [code (if-not (nil? head) (first head))
-            value (if-not (nil? head) (second head))]
-        (cond
-          (nil? head)
-          ops
+  (if-let [{:keys [old* new* decode]} (codepoint-proxy old new)]
+    (let [results (editscript-diff old* new*)]
+      (loop [head (first results)
+             tail (rest results)
+             ops []
+             i 0]
+        (let [code (if-not (nil? head) (first head))
+              value (if-not (nil? head) (second head))]
+          (cond
+            (nil? head)
+            ops
 
-          ;; equality
-          (= 0 code)
-          (recur (first tail)
-                 (rest tail)
-                 ops
-                 (+ i (count value)))
+            ;; equality (value is a proxy substring; only its length matters)
+            (= 0 code)
+            (recur (first tail) (rest tail) ops (+ i (count value)))
 
-          ;; insertion
-          (= 1 code)
-          (recur (first tail)
-                 (rest tail)
-                 (conj ops (insert-op i value))
-                 (+ i (count value)))
+            ;; insertion — decode the proxy value back to the real string
+            (= 1 code)
+            (recur (first tail) (rest tail)
+                   (conj ops (insert-op i (decode value)))
+                   (+ i (count value)))
 
-          ;; deletion
-          (= -1 code)
-          (recur (first tail)
-                 (rest tail)
-                 (conj ops (delete-op i (count value)))
-                 i))))))
+            ;; deletion (count is in code points = proxy chars)
+            (= -1 code)
+            (recur (first tail) (rest tail)
+                   (conj ops (delete-op i (count value)))
+                   i)
 
+            :else
+            (throw (ex-info "Unknown diff op code" {:code 500 :op-code code}))))))
+    ;; Fallback: more distinct code points than the proxy pool (not reachable
+    ;; for real text) — whole-string replace. Correct, just not minimal.
+    [(delete-op 0 (cp/cp-count old)) (insert-op 0 new)]))
+
+;; i is a code-point index, v a code-point count / inserted string.
 (defn- insert-str [s i v]
-  (str (subs s 0 i) v (subs s i)))
+  (str (cp/cp-subs s 0 i) v (cp/cp-subs s i)))
 
 (defn- delete-str [s i v]
-  (str (subs s 0 i) (subs s (+ i v))))
+  (str (cp/cp-subs s 0 i) (cp/cp-subs s (+ i v))))
 
 (defn apply-text-edit
   "Given an operation, a text and tokens, shift :token/begin and :token/end on a list
   of tokens as appropriate. Operations are maps, with :type of either :delete or :insert,
   :index indicating the position in the string, and :value for the value being inserted
   or the number of tokens to be deleted.
+
+  :index and the :delete :value count are **Unicode code-point** positions — the
+  same unit as the :token/begin/:token/end of the `tokens` passed in, and as the
+  ops produced by `diff`. (Slicing the body uses plaid.util.codepoint, so astral
+  text shifts correctly.)
 
   Op examples:
 
@@ -185,7 +231,7 @@
         ;; - token opens before index but closes later (expand the token)
         ;; - token opens and closes after index (add offset to both indices)
         :insert
-        (let [offset (count value)
+        (let [offset (cp/cp-count value)
               unaffected-tokens (filterv #(<= (:token/end %) index) tokens)
               affected-tokens (filterv #(> (:token/end %) index) tokens)]
           {:text (update text :text/body insert-str index value)
@@ -272,82 +318,3 @@
                           (assoc :tokens (:tokens result))
                           (update :deleted into (:deleted result)))]
         (recur new-accum (first ops) (rest ops))))))
-
-(defn separate-into-lines
-  "Given a sequence of token maps and strings, separate them into lines
-  based on the occurrence of the newline character. A token will be split if
-  it contains a newline character in the output of this function, even though
-  all copies will have the same ID, in order to facilitate display. (Newlines in
-  tokens are virtually unheard of, so this shouldn't be a big deal.)
-  Also add a :token/line attribute which is the 0-indexed line number of the token."
-  [tokens-and-strings {:text/keys [body]}]
-  (let [token-text (fn [{:token/keys [begin end] :as token}]
-                     (subs body begin end))]
-    (loop [accum-lines []
-           current-line []
-           head (first tokens-and-strings)
-           tail (rest tokens-and-strings)]
-      (let [line-number (count accum-lines)]
-        (cond
-          (nil? head)
-          (conj accum-lines current-line)
-
-          ;; string with newline
-          (and (string? head) (clojure.string/index-of head "\n"))
-          (let [newline-index (clojure.string/index-of head "\n")
-                current-line (conj current-line (subs head 0 newline-index))]
-            (recur (conj accum-lines current-line)
-                   []
-                   (subs head (inc newline-index))
-                   tail))
-
-          ;; token with newline
-          (and (map? head) (clojure.string/index-of (token-text head) "\n"))
-          (let [newline-index (clojure.string/index-of (token-text head) "\n")
-                current-line (conj current-line (-> head
-                                                    (assoc :token/end (+ newline-index (:token/begin head)))
-                                                    (assoc :token/line line-number)))
-                new-head (assoc head :token/begin (+ (:token/begin head) (inc newline-index)))
-                new-head-text (token-text new-head)]
-            (recur (conj accum-lines current-line)
-                   []
-                   (if-not (empty? new-head-text) new-head (first tail))
-                   (if-not (empty? new-head-text) tail (rest tail))))
-
-          ;; plain token
-          (map? head)
-          (recur accum-lines
-                 (conj current-line (assoc head :token/line line-number))
-                 (first tail)
-                 (rest tail))
-
-          ;; plain string
-          :else
-          (recur accum-lines
-                 (conj current-line head)
-                 (first tail)
-                 (rest tail)))))))
-
-(defn add-untokenized-substrings
-  "Takes a sequence of tokens, finds which parts of the text aren't covered by the tokens, and inserts
-  strings into the token sequence where no token was able to include the text."
-  [tokens {:text/keys [body]}]
-  (let [tokens (sort-by :token/begin tokens)]
-    (loop [extended []
-           last-end 0
-           {:token/keys [begin end] :as token} (first tokens)
-           remaining-tokens (rest tokens)]
-      (cond (and (nil? token) (not= last-end (count body)))
-            (conj extended (subs body last-end))
-
-            (nil? token)
-            extended
-
-            :else
-            (let [additions (if (= last-end begin)
-                              [token]
-                              [(subs body last-end begin) token])]
-              (recur (into extended additions)
-                     end
-                     (first remaining-tokens)
-                     (rest remaining-tokens)))))))

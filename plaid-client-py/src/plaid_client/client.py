@@ -1658,8 +1658,8 @@ class TokensResource(_Resource):
 
         Args:
             token_id: The token ID
-            begin: New start offset. Omit to leave unchanged.
-            end: New end offset. Omit to leave unchanged.
+            begin: New start offset, inclusive (Unicode code points). Omit to leave unchanged.
+            end: New end offset, exclusive (Unicode code points). Omit to leave unchanged.
             precedence: Ordering precedence. Omit to leave unchanged; pass an
                 int to set; pass ``None`` explicitly to CLEAR it (revert to no
                 explicit ordering).
@@ -1675,11 +1675,16 @@ class TokensResource(_Resource):
         Tokens may be zero-width and may overlap. For tokens sharing the
         same ``begin``, ``precedence`` controls the linear ordering.
 
+        Offsets are 0-based indices in Unicode CODE POINTS (not UTF-16 code
+        units or bytes): a supplementary-plane character (emoji, SMP script)
+        counts as one. Python ``str`` is code-point native, so ``len(s)`` and
+        ``s[begin:end]`` already give the right offsets and surface.
+
         Args:
             token_layer_id: The token layer ID
             text: The text ID
-            begin: Start offset (inclusive)
-            end: End offset (exclusive)
+            begin: Start offset, inclusive (Unicode code points)
+            end: End offset, exclusive (Unicode code points)
             precedence: Ordering precedence. Omit to leave unset; pass ``None``
                 to send JSON null.
             metadata: Metadata map. Omit to leave unset; pass ``None`` to send
@@ -1707,7 +1712,7 @@ class TokensResource(_Resource):
         return self._request('DELETE', '/api/v1/tokens/bulk', body=body)
 
     def split(self, token_id: str, position: int) -> Any:
-        """Split a token at a character offset.
+        """Split a token at a Unicode code-point offset.
 
         The original token becomes the left half (keeping its ID, spans, and
         vocab-links); a new token is created for the right half and its ID is
@@ -1715,7 +1720,7 @@ class TokensResource(_Resource):
 
         Args:
             token_id: The token ID
-            position: Offset to split at (strictly between begin and end)
+            position: Code-point offset to split at (strictly between begin and end)
         """
         return self._request('POST', f'/api/v1/tokens/{token_id}/split',
                              body=_body_of(position=position))
@@ -1744,8 +1749,8 @@ class TokensResource(_Resource):
 
         Args:
             token_id: The token ID
-            begin: New start offset. Omit to leave unchanged.
-            end: New end offset. Omit to leave unchanged.
+            begin: New start offset, inclusive (Unicode code points). Omit to leave unchanged.
+            end: New end offset, exclusive (Unicode code points). Omit to leave unchanged.
         """
         return self._request('POST', f'/api/v1/tokens/{token_id}/shift',
                              body=_body_of(begin=begin, end=end))

@@ -26,7 +26,8 @@
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
-            [plaid.sql.constraints.token :as tc])
+            [plaid.sql.constraints.token :as tc]
+            [plaid.util.codepoint :as cp])
   (:refer-clojure :exclude [get merge format]))
 
 (def attr-keys [:token/id
@@ -77,19 +78,25 @@
 ;; Internal helpers
 ;; ============================================================
 
-(defn- check-token-bounds! [begin end text-body]
-  (cond
-    (or (not (int? end)) (not (int? begin)))
-    (throw (ex-info "Token end and begin must be numeric"
-                    {:end end :begin begin :code 400}))
-    (neg? (- end begin))
-    (throw (ex-info "Token has non-positive extent"
-                    {:begin begin :end end :code 400}))
-    (< begin 0)
-    (throw (ex-info "Token has a negative start index" {:begin begin :code 400}))
-    (> end (count text-body))
-    (throw (ex-info "Token ends beyond the end of its associated text"
-                    {:end end :text-length (count text-body) :code 400}))))
+(defn- check-token-bounds!
+  "Validate a token's [begin,end] against the text body (offsets are code
+  points). `text-cp-length` may be supplied precomputed so a batch loop doesn't
+  re-scan the (code-point) body length per token — cp-count is O(body length)."
+  ([begin end text-body]
+   (check-token-bounds! begin end text-body (cp/cp-count text-body)))
+  ([begin end text-body text-cp-length]
+   (cond
+     (or (not (int? end)) (not (int? begin)))
+     (throw (ex-info "Token end and begin must be numeric"
+                     {:end end :begin begin :code 400}))
+     (neg? (- end begin))
+     (throw (ex-info "Token has non-positive extent"
+                     {:begin begin :end end :code 400}))
+     (< begin 0)
+     (throw (ex-info "Token has a negative start index" {:begin begin :code 400}))
+     (> end text-cp-length)
+     (throw (ex-info "Token ends beyond the end of its associated text"
+                     {:end end :text-length text-cp-length :code 400})))))
 
 (defn- check-token-precedence! [precedence]
   (when-not (or (nil? precedence) (int? precedence))
@@ -144,7 +151,7 @@
     (let [tok (row->token row)
           body (fetch-text-body db (:token/text tok))
           tok (cond-> tok
-                body (assoc :token/value (subs body (:token/begin tok) (:token/end tok))))]
+                body (assoc :token/value (cp/cp-subs body (:token/begin tok) (:token/end tok))))]
       (format db tok))))
 
 (defn project-id
@@ -185,8 +192,11 @@
     (if (empty? tokens)
       []
       (when-let [body (fetch-text-body db (:token/text (first tokens)))]
-        (mapv #(assoc % :token/value (subs body (:token/begin %) (:token/end %)))
-              tokens)))))
+        ;; One cp->utf16 index for the whole body, reused per token: O(n+k)
+        ;; instead of O(n*k) from per-token offsetByCodePoints walks.
+        (let [slice (cp/cp-slicer body)]
+          (mapv #(assoc % :token/value (slice (:token/begin %) (:token/end %)))
+                tokens))))))
 
 (defn get-span-ids
   "Return the IDs of spans that reference this token (via the
@@ -717,7 +727,7 @@
        (when (nil? text-row)
          (throw (ex-info (psc/err-msg-not-found "Text" text-id) {:id text-id :code 400})))
        (let [text-body (:body text-row)
-             text-length (count text-body)
+             text-length (cp/cp-count text-body)
              text-layer-id (:text_layer_id text-row)
              token-layer-set (token-layer-ids-of-text-layer tx text-layer-id)]
          (when-not (contains? token-layer-set layer-id)
@@ -734,9 +744,10 @@
                                   :token/precedence (:token/precedence a)
                                   ::metadata (:metadata a)}))
                              attrs-vec)]
-           ;; Per-token bounds + precedence check.
+           ;; Per-token bounds + precedence check. Pass the precomputed
+           ;; code-point length so the loop is O(K), not O(K * body-length).
            (doseq [t records]
-             (check-token-bounds! (:token/begin t) (:token/end t) text-body)
+             (check-token-bounds! (:token/begin t) (:token/end t) text-body text-length)
              (check-token-precedence! (:token/precedence t)))
            ;; Constraint enforcement (overlap + intra-batch + nesting).
            (tc/enforce! tx :bulk-create
@@ -968,8 +979,8 @@
            new-begin (or (:token/begin attrs) begin)
            new-end (or (:token/end attrs) end)
            text-body (fetch-text-body tx text-id)
-           text-length (count text-body)]
-       (check-token-bounds! new-begin new-end text-body)
+           text-length (cp/cp-count text-body)]
+       (check-token-bounds! new-begin new-end text-body text-length)
        (let [dlids (tc/descendant-layer-ids tx layer)
              ;; Step 1: pre-flight overlap check. For partitioning
              ;; layers this also returns the neighbor adjustments we

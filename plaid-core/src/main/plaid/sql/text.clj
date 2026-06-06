@@ -30,7 +30,8 @@
   (:require [plaid.algos.text :as ta]
             [plaid.sql.common :as psc]
             [plaid.sql.metadata :as metadata]
-            [plaid.sql.operation :as op :refer [submit-operation!]])
+            [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.util.codepoint :as cp])
   (:refer-clojure :exclude [get]))
 
 (def attr-keys [:text/id
@@ -186,6 +187,10 @@
 ;; Update body
 ;; ============================================================
 
+;; Offsets are Unicode code points throughout: `plaid.algos.text/diff` produces
+;; code-point-indexed ops (it diffs at code-point granularity) and
+;; `apply-text-edits` shifts code-point token offsets, so no unit conversion is
+;; needed here.
 (defn update-body
   "Change the textual content of `eid`, reindexing tokens to match.
 
@@ -232,12 +237,15 @@
              token-rows (psc/q tx {:select [:*]
                                    :from [:tokens]
                                    :where [:= :text_id eid]})
-             tokens (mapv row->token token-rows)
+             tokens (mapv row->token token-rows)            ; code-point offsets
              indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
              {new-text :text new-tokens :tokens deleted-ids :deleted}
              (ta/apply-text-edits ops text-map tokens)
              new-body (:text/body new-text)
-             new-text-length (count new-body)
+             ;; Code-point length: feeds compensate-partition-layers! /
+             ;; validate-partition!, which compare it against (code-point)
+             ;; token offsets, so the unit must match.
+             new-text-length (cp/cp-count new-body)
              ;; Use requiring-resolve to keep this file decoupled from
              ;; plaid.sql.token at load time. (token.clj does not require
              ;; text.clj today, but if it ever did, deferring resolution

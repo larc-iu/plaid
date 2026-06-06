@@ -88,6 +88,11 @@
 (def ^:private tables-to-truncate
   ["audit_writes"
    "operations"
+   ;; data_migrations tracks one-time DATA-migration markers (codepoint-offsets).
+   ;; Unlike schema_migrations (DDL state, kept), these are about data that IS
+   ;; truncated between tests, so a stale "complete" marker must not leak and make
+   ;; a later test's ensure-converted! silently skip. No FK refs → order-free.
+   "data_migrations"
    ;; api_tokens: after operations (operations.token_id → api_tokens) and
    ;; before the users wipe below (api_tokens.user_id → users).
    "api_tokens"

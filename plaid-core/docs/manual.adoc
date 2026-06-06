@@ -434,7 +434,7 @@ For each **token layer**, each document may have many **token**s, which are defi
 
 Note the following:
 
-1. `begin` and `end` must form valid substring indices for the given text.
+1. `begin` and `end` must form valid substring indices for the given text. They are 0-based offsets measured in **Unicode code points** (`begin` inclusive, `end` exclusive) — not UTF-16 code units or bytes, so a supplementary-plane character (an emoji, or a Supplementary-Plane script such as Gothic, cuneiform, or CJK Extension B) counts as a single position. Code-point offsets are language-neutral: Python's `str` indexing and SQLite's `substr`/`length` already count code points, and Plaid's server and clients all agree on this unit.
 2. By default, zero-length tokens where `begin == end` are valid.
 3. By default, tokens may overlap.
 4. Plaid sorts tokens by `begin` when determining their linear order in the document. For tokens with identical `begin`, Plaid uses the optional `precedence` value wherever available, such that tokens with lower precedence appear earlier in linear order.
@@ -646,7 +646,7 @@ Although all token layers must depend on a text layer, a token layer may also de
 As with the parent text layer, this must be done at time of layer creation and it is immutable.
 This models nesting between levels of tokenization, which is commonly needed for most approaches to interlinear glossed text, where morphemes are nested within whole words which are nested within sentences.
 
-Nesting is expressed purely through character offsets: a child token belongs to the parent token whose extent contains it.
+Nesting is expressed purely through code-point offsets: a child token belongs to the parent token whose extent contains it.
 There is no separate parent pointer on each token to keep in sync.
 These rules apply to nested token layers:
 

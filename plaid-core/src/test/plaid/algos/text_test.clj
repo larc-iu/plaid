@@ -151,3 +151,34 @@
       (is (= [] deleted)
           (str "Boundary-touching delete must NOT remove zw; got " deleted))
       (is (= [{:token/id :zw :token/begin 1 :token/end 1}] tokens)))))
+
+;; Offsets and edit-op indices are Unicode CODE POINTS; `diff` is code-point
+;; granular (it diffs over a surrogate-free proxy), so an astral edit never cuts
+;; a surrogate pair. Regression guard: diffing+applying an edit between two ASTRAL
+;; strings must reconstruct the new body EXACTLY. Earlier broken versions either
+;; corrupted the body (UTF-16 indices sliced at code-point boundaries) or
+;; mis-shifted tokens (editscript cutting a shared surrogate pair).
+(deftest astral-diff-reconstructs-body-exactly
+  (doseq [[old new] [["hello😀world" "hello😁world"] ; shared high surrogate
+                     ["😀X" "😁X"]
+                     ["😀😁😂" "😀😂"]               ; delete a middle astral char
+                     ["😀😀" "😀😁"]
+                     ["😀" "🎯"]                     ; different high surrogate
+                     ["𐌰𐌱𐌲" "𐌰𐌲"]                  ; Gothic (SMP) interior delete
+                     ["a😀b" "a😀😁b"]]]
+    (let [{:keys [text]} (ta/apply-text-edits (ta/diff old new) {:text/body old} [])]
+      (is (= new (:text/body text))
+          (str "body must reconstruct exactly for " (pr-str old) " -> " (pr-str new))))))
+
+(deftest astral-interior-delete-shifts-tokens-correctly
+  ;; "😀😁😂" -> "😀😂": deleting the MIDDLE astral char (the three emoji share
+  ;; the high surrogate D83D). Correct result: 😁's token is deleted, 😂's token
+  ;; shifts left by ONE code point. A char-level diff cut the pair and instead
+  ;; left 😁's token pointing at 😂 while 😂's collapsed to zero-width.
+  (let [tokens [(tok :a 0 1) (tok :b 1 2) (tok :c 2 3)]
+        {result-text :text result-tokens :tokens deleted :deleted}
+        (ta/apply-text-edits (ta/diff "😀😁😂" "😀😂") {:text/body "😀😁😂"} tokens)]
+    (is (= "😀😂" (:text/body result-text)))
+    (is (= [:b] deleted))
+    (is (= [[:a 0 1] [:c 1 2]]
+           (mapv (juxt :token/id :token/begin :token/end) result-tokens)))))

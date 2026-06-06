@@ -1248,10 +1248,16 @@ class PlaidClient {
        * using begin and end offsets. Tokens may be zero-width and may overlap.
        * For tokens sharing the same begin, precedence controls the linear
        * ordering.
+       *
+       * Offsets are 0-based indices in Unicode CODE POINTS (not UTF-16 code
+       * units): a supplementary-plane character (emoji, SMP script) is one
+       * position. JS strings are UTF-16, so do NOT use `str.length` /
+       * `str.substring` to compute offsets — count code points instead
+       * (e.g. `[...str].length`, or iterate with `codePointAt`).
        * @param {string} tokenLayerId - The token layer ID
        * @param {string} text - The text ID
-       * @param {number} begin - Start offset (inclusive)
-       * @param {number} end - End offset (exclusive)
+       * @param {number} begin - Start offset, inclusive (Unicode code points)
+       * @param {number} end - End offset, exclusive (Unicode code points)
        * @param {number} [precedence] - Ordering precedence
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
@@ -1278,8 +1284,8 @@ class PlaidClient {
       /**
        * Update a token.
        * @param {string} tokenId - The token ID
-       * @param {number} [begin] - New start offset
-       * @param {number} [end] - New end offset
+       * @param {number} [begin] - New start offset, inclusive (Unicode code points)
+       * @param {number} [end] - New end offset, exclusive (Unicode code points)
        * @param {?number} [precedence] - Ordering precedence. Omit (undefined)
        *   to leave unchanged; pass a number to set; pass null explicitly to
        *   CLEAR it (revert to no explicit ordering). bodyOf keeps null but
@@ -1302,10 +1308,10 @@ class PlaidClient {
       bulkDelete: (body) =>
         this._request('DELETE', '/api/v1/tokens/bulk', { body }),
       /**
-       * Split a token at a character offset. The original token becomes the left half
-       * (keeps its ID, spans, vocab-links); the new right token's ID is returned.
+       * Split a token at a Unicode code-point offset. The original token becomes the
+       * left half (keeps its ID, spans, vocab-links); the new right token's ID is returned.
        * @param {string} tokenId - The token ID
-       * @param {number} position - Offset to split at (strictly between begin and end)
+       * @param {number} position - Code-point offset to split at (strictly between begin and end)
        */
       split: (tokenId, position) =>
         this._request('POST', `/api/v1/tokens/${tokenId}/split`, {
@@ -1328,8 +1334,8 @@ class PlaidClient {
        * auto-adjusted to preserve the partition; on non-overlapping layers a shift that
        * would create an overlap is rejected.
        * @param {string} tokenId - The token ID
-       * @param {number} [begin] - New start offset
-       * @param {number} [end] - New end offset
+       * @param {number} [begin] - New start offset, inclusive (Unicode code points)
+       * @param {number} [end] - New end offset, exclusive (Unicode code points)
        */
       shift: (tokenId, begin, end) =>
         this._request('POST', `/api/v1/tokens/${tokenId}/shift`, {

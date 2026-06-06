@@ -52,8 +52,9 @@
                              "\n"
                              "\n<body>token-layer-id</body>: the layer in which to insert this token."
                              "\n<body>text</body>: the text in which this token is found."
-                             "\n<body>begin</body>: the inclusive character-based offset at which this token begins in the body of the text specified by <body>text</body>"
-                             "\n<body>end</body>: the exclusive character-based offset at which this token ends in the body of the text specified by <body>text</body>"
+                             "\nOffsets are 0-based indices in Unicode CODE POINTS (not UTF-16 code units or bytes): a supplementary-plane character such as an emoji or an SMP script counts as one."
+                             "\n<body>begin</body>: the inclusive code-point offset at which this token begins in the body of the text specified by <body>text</body>"
+                             "\n<body>end</body>: the exclusive code-point offset at which this token ends in the body of the text specified by <body>text</body>"
                              "\n<body>precedence</body>: used for tokens with the same <body>begin</body> value in order to indicate their preferred linear order.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]
@@ -85,8 +86,8 @@
                                   "are:\n"
                                   "<body>token-layer-id</body>, the token's layer\n"
                                   "<body>text</body>, the ID of the token's text\n"
-                                  "<body>begin</body>, the character index at which the token begins (inclusive)\n"
-                                  "<body>end</body>, the character index at which the token ends (exclusive)\n"
+                                  "<body>begin</body>, the inclusive Unicode code-point offset at which the token begins\n"
+                                  "<body>end</body>, the exclusive Unicode code-point offset at which the token ends\n"
                                   "<body>precedence</body>, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same <body>begin</body>\n"
                                   "<body>metadata</body>, an optional map of metadata")
                     :openapi {:x-client-method "bulk-create"}
@@ -152,8 +153,8 @@
                               {:status 404 :body {:error "Token not found"}})))}
          :patch {:summary (str "Update a token. Supported keys:"
                                "\n"
-                               "\n<body>begin</body>: start index of the token"
-                               "\n<body>end</body>: end index of the token"
+                               "\n<body>begin</body>: start offset of the token (0-based, inclusive, Unicode code points)"
+                               "\n<body>end</body>: end offset of the token (0-based, exclusive, Unicode code points)"
                                "\n<body>precedence</body>: ordering value for the token relative to other tokens with the same <body>begin</body>--lower means earlier"
                                "\n"
                                "\nExtent changes are subject to the layer's <body>overlap-mode</body>: on "
@@ -212,7 +213,8 @@
                                  {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
     ["/split"
-     {:post {:summary (str "Split a token at a character offset. The original token becomes the left half (keeps ID, "
+     {:post {:summary (str "Split a token at <body>position</body>, a 0-based Unicode code-point offset into the text "
+                           "body. The original token becomes the left half (keeps ID, "
                            "spans, vocab-links). Returns the new right token's ID. If the layer has child token "
                            "layers, every descendant token that straddles the split position is split there too, so "
                            "nesting is preserved at every level (a split aligned to an existing child boundary needs "

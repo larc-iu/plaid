@@ -1,0 +1,13 @@
+-- Intentionally a NO-OP that KEEPS the table. This is a data-migration tracking
+-- table, NOT plain schema: dropping it would erase the record of which texts
+-- already had their token offsets reinterpreted as code points, and a re-apply
+-- (or the startup hook) would then re-convert already-converted offsets and
+-- SILENTLY CORRUPT them (the conversion is not idempotent without these markers).
+-- Data migrations are forward-only — there is no safe rollback once conversion
+-- has run.
+--
+-- The statement must be batch-safe: migratus runs down statements via JDBC
+-- addBatch/executeBatch, which rejects result-returning statements (so a bare
+-- `SELECT 1` throws "query returns results"). A WHERE-false UPDATE returns a
+-- row count, touches nothing, and preserves the table.
+UPDATE data_migrations SET id = id WHERE 1 = 0;
