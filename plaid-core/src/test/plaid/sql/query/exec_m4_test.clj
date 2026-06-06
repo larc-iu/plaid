@@ -41,12 +41,12 @@
 
 (deftest effective-limit-policy
   (let [eff #'qe/effective-limit]
-    (testing "no :limit -> default 100"
-      (is (= 100 (eff nil))))
+    (testing "no :limit -> default 1000"
+      (is (= 1000 (eff nil))))
     (testing "explicit :limit below the cap is honored"
       (is (= 50 (eff 50))))
-    (testing "explicit :limit above the cap is clamped to 1000"
-      (is (= 1000 (eff 99999))))))
+    (testing "explicit :limit above the cap is clamped to 100000"
+      (is (= 100000 (eff 999999))))))
 
 ;; ---------------------------------------------------------------------------
 ;; :return :count
@@ -150,7 +150,7 @@
     (let [r (qe/run db "admin@example.com" (assoc noun-q "limit" 10))]
       (is (= 3 (:count r)))
       (is (false? (:truncated r)))))
-  (testing "no :limit on a small result is not truncated (default 100 not reached)"
+  (testing "no :limit on a small result is not truncated (default 1000 not reached)"
     (let [r (qe/run db "admin@example.com" noun-q)]
       (is (= 3 (:count r)))
       (is (false? (:truncated r))))))

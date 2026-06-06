@@ -105,12 +105,14 @@
 
 (def ^:private default-limit
   "Rows returned when the query specifies no :limit."
-  100)
+  1000)
 
 (def ^:private hard-cap
   "Maximum rows ever returned for an :ids/:entities query; an explicit :limit
-  above this is clamped down."
-  1000)
+  above this is clamped down. Generous by design (trusted callers); note that an
+  :entities result this large is slow — hydration is one fetch per distinct
+  entity. Matches the :count / aggregate-group caps."
+  100000)
 
 (def ^:private count-cap
   "Upper bound on the work a :count query will do. The count is computed over an
