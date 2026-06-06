@@ -616,8 +616,8 @@ class TextsResource(_Resource):
 
 
 class UsersResource(_Resource):
-    def list(self, *, as_of: str | None = None) -> Any:
-        """List all users.
+    def list(self, *, q: str | None = None, as_of: str | None = None) -> Any:
+        """List (or search) users. Admin-or-maintainer only.
 
         Transparently follows server-side pagination cursors and returns the
         full flat list.
@@ -625,34 +625,38 @@ class UsersResource(_Resource):
         Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
 
         Args:
+            q: Filter to usernames containing this text (case-insensitive)
             as_of: Temporal query timestamp
         """
         return list_all(self._client, '/api/v1/users',
-                        query={'as-of': as_of})
+                        query={'q': q, 'as-of': as_of})
 
-    def list_page(self, *, limit: int | None = None, cursor: str | None = None,
-                  as_of: str | None = None) -> Any:
-        """List one page of users.
+    def list_page(self, *, q: str | None = None, limit: int | None = None,
+                  cursor: str | None = None, as_of: str | None = None) -> Any:
+        """List one page of users (optionally filtered by ``q``).
 
         Args:
+            q: Filter to usernames containing this text (case-insensitive)
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
             as_of: Temporal query timestamp
         """
         return list_page(self._client, '/api/v1/users',
-                         limit=limit, cursor=cursor, query={'as-of': as_of})
+                         limit=limit, cursor=cursor, query={'q': q, 'as-of': as_of})
 
-    def iter_pages(self, *, page_size: int = 1000, as_of: str | None = None):
+    def iter_pages(self, *, q: str | None = None, page_size: int = 1000,
+                   as_of: str | None = None):
         """Iterate over pages of users, yielding each page's entries list.
 
         Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
 
         Args:
+            q: Filter to usernames containing this text (case-insensitive)
             page_size: Page size (1..1000)
             as_of: Temporal query timestamp
         """
         return iter_pages(self._client, '/api/v1/users',
-                          page_size=page_size, query={'as-of': as_of})
+                          page_size=page_size, query={'q': q, 'as-of': as_of})
 
     def create(self, username: str, password: str, is_admin: bool) -> Any:
         """Create a new user.

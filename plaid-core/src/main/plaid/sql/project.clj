@@ -224,6 +224,15 @@
                   :where [:= :user_id user-id]})
        (mapv :project_id)))
 
+(defn maintainer-of-any?
+  "True iff `user-id` maintains at least one project. Gates access to the
+  user directory (list/search): maintainers need it to grant project roles."
+  [db user-id]
+  (boolean (psc/q1 db {:select [[1 :one]]
+                       :from [:project_users]
+                       :where [:and [:= :user_id user-id] [:= :role "maintainer"]]
+                       :limit 1})))
+
 (defn- batch-hydrate-projects
   "Hydrate `project-ids` into the same per-project shape as `(get db id)`
   — :project/readers/writers/maintainers, :project/text-layers (with

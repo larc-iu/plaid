@@ -10,18 +10,18 @@
     :middleware [pra/wrap-login-required]}
 
    [""
-    {:get {:summary "List all users (admin-only), keyset-paginated by username"
-           ;; Task #95: previously returned the full user roster to any
-           ;; authenticated caller — a needless enumeration surface for
-           ;; account-spraying / password-spray attacks. Locked down to
-           ;; admins; non-admins get 403 (no special-case "your own
-           ;; record" payload — they already know who they are via /me).
-           ;; Returns the uniform {:entries :next-cursor} pagination
+    {:get {:summary "List/search users, keyset-paginated by username"
+           ;; Task #95 locked the roster down to admins (it was an account-
+           ;; enumeration surface for any authenticated caller). It's now also
+           ;; open to project MAINTAINERS, who need to find users to grant
+           ;; project access — see `wrap-user-directory-access`. Ordinary
+           ;; readers/writers still get 403. Optional `?q=` filters to usernames
+           ;; containing that text. Returns the uniform {:entries :next-cursor}
            ;; envelope (default page 100, max 1000).
-           :middleware [pra/wrap-admin-required]
-           :parameters {:query (into [:map] pagination/query-params)}
+           :middleware [pra/wrap-user-directory-access]
+           :parameters {:query (into [:map [:q {:optional true} string?]] pagination/query-params)}
            :handler (fn [{db :db {query :query} :parameters}]
-                      (pagination/list-response query (fn [opts] (user/get-all db opts))))}
+                      (pagination/list-response query (fn [opts] (user/get-all db (assoc opts :q (:q query))))))}
      :post {:summary "Create a new user"
             :middleware [pra/wrap-admin-required]
             :parameters {:body {:username string? :password string? :is-admin boolean?}}

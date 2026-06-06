@@ -263,6 +263,19 @@
        :body {:error "Admin privileges required for this operation."}}
       (handler request))))
 
+(defn wrap-user-directory-access
+  "Allows reading the user directory (list/search) to admins OR any user who
+  maintains at least one project — maintainers need it to find users to grant
+  project access. Everyone else gets 403 (the roster stays unenumerable for
+  ordinary readers/writers; see the account-enumeration note on the list route)."
+  [handler]
+  (fn [request]
+    (if (or (user/admin? (:user/record request))
+            (prj/maintainer-of-any? (:db request) (->user-id request)))
+      (handler request)
+      {:status 403
+       :body {:error "Listing users requires admin or project-maintainer privileges."}})))
+
 (def ^:private levels
   {:project/readers [:project/readers :project/writers :project/maintainers]
    :project/writers [:project/writers :project/maintainers]

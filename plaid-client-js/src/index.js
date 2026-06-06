@@ -526,33 +526,37 @@ class PlaidClient {
 
     this.users = {
       /**
-       * List all users. Transparently follows pagination cursors and returns
-       * the full flat array.
+       * List (or search) users. Transparently follows pagination cursors and
+       * returns the full flat array. Admin-or-maintainer only.
        * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
-       * @param {string} [asOf] - Temporal query timestamp
-       */
-      list: (asOf) =>
-        listAll(this, '/api/v1/users', { query: { 'as-of': asOf } }),
-      /**
-       * Fetch a single page of users.
        * @param {object} [opts]
+       * @param {string} [opts.q] - Filter to usernames containing this text (case-insensitive)
+       * @param {string} [opts.asOf] - Temporal query timestamp
+       */
+      list: ({ q, asOf } = {}) =>
+        listAll(this, '/api/v1/users', { query: { q, 'as-of': asOf } }),
+      /**
+       * Fetch a single page of users (optionally filtered by `q`).
+       * @param {object} [opts]
+       * @param {string} [opts.q] - Filter to usernames containing this text (case-insensitive)
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @param {string} [opts.asOf] - Temporal query timestamp
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listPage: ({ limit, cursor, asOf } = {}) =>
-        listPage(this, '/api/v1/users', { limit, cursor, query: { 'as-of': asOf } }),
+      listPage: ({ q, limit, cursor, asOf } = {}) =>
+        listPage(this, '/api/v1/users', { limit, cursor, query: { q, 'as-of': asOf } }),
       /**
        * Async-iterate users page by page; yields each page's entries array.
        * @param {object} [opts]
+       * @param {string} [opts.q] - Filter to usernames containing this text (case-insensitive)
        * @param {number} [opts.pageSize] - Per-request page size
        * @param {string} [opts.asOf] - Temporal query timestamp
        * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
        * @returns {AsyncGenerator<Array>}
        */
-      iterPages: ({ pageSize, asOf } = {}) =>
-        iterPages(this, '/api/v1/users', { pageSize, query: { 'as-of': asOf } }),
+      iterPages: ({ q, pageSize, asOf } = {}) =>
+        iterPages(this, '/api/v1/users', { pageSize, query: { q, 'as-of': asOf } }),
       /**
        * Create a new user
        * @param {string} username - The username

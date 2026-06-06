@@ -8,9 +8,11 @@
                                     rest-handler
                                     with-admin
                                     admin-token
-                                    admin-request with-clean-db]]))
+                                    admin-request
+                                    with-test-users
+                                    user1-request with-clean-db]]))
 
-(use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
 
 (defn parse-response-body [response]
@@ -102,3 +104,28 @@
         (is (= (:status resp) 401))
         ;; Same generic message — must not leak that the user doesn't exist.
         (is (= body {:error "Invalid credentials"}))))))
+
+(deftest user-list-search-and-auth
+  ;; The roster list/search (GET /users) is admin-OR-maintainer only, with a
+  ;; `?q=` username filter used by the project-permissions UI.
+  (testing "?q= filters to matching usernames (case-insensitive substring)"
+    (doseq [u ["alice@example.com" "bob@example.com"]]
+      (rest-handler (-> (admin-request :post "/api/v1/users")
+                        (mock/json-body {:username u :password "password1" :is-admin false}))))
+    (let [resp (rest-handler (admin-request :get "/api/v1/users?q=ALIC"))
+          body (parse-response-body resp)
+          names (set (map :user/username (:entries body)))]
+      (is (= 200 (:status resp)))
+      (is (contains? names "alice@example.com"))
+      (is (not (contains? names "bob@example.com")))))
+
+  (testing "a non-admin, non-maintainer may NOT list users (403)"
+    (let [resp (rest-handler (user1-request :get "/api/v1/users"))]
+      (is (= 403 (:status resp)))))
+
+  (testing "once user1 maintains a project, they MAY list users (200)"
+    (let [created (rest-handler (-> (user1-request :post "/api/v1/projects")
+                                    (mock/json-body {:name "user1 project"})))]
+      (is (= 201 (:status created)))
+      (let [resp (rest-handler (user1-request :get "/api/v1/users"))]
+        (is (= 200 (:status resp)))))))

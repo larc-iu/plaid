@@ -59,18 +59,24 @@
 
   Paginated arity `([db opts])` keyset-paginates on `:username` (a
   unique column, so a sufficient total order on its own) and returns the
-  uniform `{:entries [...] :next-cursor <raw-vals-or-nil>}` envelope."
+  uniform `{:entries [...] :next-cursor <raw-vals-or-nil>}` envelope. An
+  optional `:q` filters to usernames containing that text (case-insensitive
+  substring) — used by the project-permissions UI to find users to grant
+  access without paging the whole roster."
   ([db]
    (->> (psc/q db {:select [:*] :from [:users] :order-by [:username]})
         (map row->user)
         (map #(select-keys % [:user/id :user/username :user/is-admin]))))
-  ([db {:keys [limit cursor-vals]}]
-   (pagination/paginate db {:from :users
-                            :order-by [:username]
-                            :limit limit
-                            :cursor-vals cursor-vals
-                            :row->entity (fn [row] (-> (row->user row)
-                                                       (select-keys [:user/id :user/username :user/is-admin])))})))
+  ([db {:keys [limit cursor-vals q]}]
+   (pagination/paginate db (cond-> {:from :users
+                                    :order-by [:username]
+                                    :limit limit
+                                    :cursor-vals cursor-vals
+                                    :row->entity (fn [row] (-> (row->user row)
+                                                               (select-keys [:user/id :user/username :user/is-admin])))}
+                             (not (clojure.string/blank? q))
+                             (assoc :base-where [:like [:lower :username]
+                                                 (str "%" (clojure.string/lower-case q) "%")])))))
 
 (defn find-by-username
   "Find a user by username. Returns full internal record."
