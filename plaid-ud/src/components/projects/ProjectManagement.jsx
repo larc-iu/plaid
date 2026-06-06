@@ -83,6 +83,9 @@ export const ProjectManagement = ({ embedded = false }) => {
 
   // Resolve the ACL member ids to user objects (for usernames + admin flag).
   // The member set is project-sized, not instance-sized, so per-id GETs are fine.
+  // Everyone here was EXPLICITLY granted a role — including admins who were
+  // explicitly added (they get an "Admin" badge). Admins with only implicit
+  // global access are never in the ACL arrays, so they don't show up.
   useEffect(() => {
     if (!project) return;
     let cancelled = false;
@@ -98,7 +101,6 @@ export const ProjectManagement = ({ embedded = false }) => {
         const resolved = await Promise.all(ids.map(id =>
           client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))));
         const rows = resolved
-          .filter(u => !u.isAdmin)
           .map(u => ({ ...u, role: roleOf(project, u.id) }))
           .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
         if (!cancelled) setMembers(rows);
@@ -326,7 +328,10 @@ export const ProjectManagement = ({ embedded = false }) => {
                 {members.map(m => (
                   <Table.Tr key={m.id}>
                     <Table.Td>
-                      <Text size="sm" fw={500}>{m.username}</Text>
+                      <Group gap="xs" wrap="nowrap">
+                        <Text size="sm" fw={500}>{m.username}</Text>
+                        {m.isAdmin && <Badge size="xs" color="grape" variant="light">Admin</Badge>}
+                      </Group>
                       <Text size="xs" c="dimmed">ID: {m.id}</Text>
                     </Table.Td>
                     <Table.Td>
