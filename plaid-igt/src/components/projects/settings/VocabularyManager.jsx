@@ -217,8 +217,9 @@ export const VocabularyManager = ({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Vocabularies Table */}
-      <div className="rounded-lg border bg-card p-4">
+      {/* Vocabularies Table. Embedded in a settings section, the parent supplies
+          the card chrome — don't nest another bordered card. */}
+      <div className={showTitle ? 'rounded-lg border bg-card p-4' : ''}>
         {showTitle && <p className="mb-4 text-sm font-medium">Available Vocabularies</p>}
 
         <div className="overflow-hidden rounded-md border">

@@ -180,8 +180,9 @@ export const DocumentMetadataManager = ({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Metadata Fields Table */}
-      <div className="rounded-lg border bg-card p-4">
+      {/* Metadata Fields Table. When embedded in a settings section the parent
+          already supplies the card chrome, so don't nest another bordered card. */}
+      <div className={showTitle ? 'rounded-lg border bg-card p-4' : ''}>
         {showTitle && <p className="mb-4 text-sm font-medium">Available Metadata Fields</p>}
 
         <div className="overflow-hidden rounded-md border">
@@ -268,7 +269,7 @@ export const DocumentMetadataManager = ({
         </div>
 
         {/* Add Custom Field */}
-        <div className="p-4">
+        <div className={showTitle ? 'p-4' : 'mt-4'}>
           <p className="mb-4 text-sm font-medium">Add Custom Field</p>
           <div className="flex items-center gap-2">
             <Input

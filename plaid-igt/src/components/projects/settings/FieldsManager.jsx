@@ -237,8 +237,9 @@ export const FieldsManager = ({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Annotation Fields Section */}
-      <div className="rounded-lg border bg-card p-4">
+      {/* Annotation Fields Section. Embedded in a settings section, the parent
+          supplies the card chrome — don't nest another bordered card. */}
+      <div className={showTitle ? 'rounded-lg border bg-card p-4' : ''}>
         {showTitle && <p className="mb-4 text-sm font-medium">Annotation Fields</p>}
 
         {/* Fields table */}
@@ -350,8 +351,9 @@ export const FieldsManager = ({
         </div>
       </div>
 
-      {/* Ignored Tokens Section */}
-      <div className="rounded-lg border bg-card p-4">
+      {/* Ignored Tokens Section. Bare when embedded — the parent settings card
+          supplies the chrome; gap-8 from the outer stack separates the subsections. */}
+      <div className={showTitle ? 'rounded-lg border bg-card p-4' : ''}>
         <p className="mb-4 text-sm font-medium">Ignored Tokens</p>
         <div className="mb-6 text-sm text-muted-foreground">
           Configure which tokens should be ignored when applying{' '}
