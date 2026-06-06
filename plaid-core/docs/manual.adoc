@@ -916,6 +916,8 @@ The `plaid` namespace is reserved for conventions that every app agrees on, whic
 An app's own private configuration, such as its vocabularies, its colors, and the meanings of its fields, belongs instead under that app's own namespace, where no other app will mistake it for shared information.
 Keeping these two kinds of configuration apart is what allows several apps to coexist on one project.
 
+We also advise app developers to consider the _absence_ of a role tag to be a meaningful signal: if a layer is not tagged with a role, then as a matter of convention, no other app should read or modify it.
+
 == Reconciliation Across Apps
 
 In <<Data Integrity>>, we discussed various ways of maintaining app-specific data model invariants _within_ a certain app.
