@@ -427,3 +427,18 @@
     (let [fr (nth (last (:where (ast/parse {"find" ["?t"]
                                             "where" [["token" "?t" {"layer" "w"}] ["=" "?t.metadata.caseKey" "X"]]}))) 1)]
       (is (= ["metadata" "caseKey"] (ast/field-path fr)) "user key kept verbatim"))))
+
+(deftest field-paths-review-fixes
+  (testing "group by a field path is allowed (mirrors aggregate sources)"
+    (is (some? (ast/expand {"where" [["token" "?t" {"layer" "w"}]]
+                            "return" {"group" ["?t.begin"] "aggregates" [["count"]]}}))))
+  (testing "config / metadata need a key (symmetric)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
+                                                                     ["=" "?sl.config" "x"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["=" "?t.metadata" "x"]]})))))
+  (testing "metadata/config on the wrong kind of var is a clean 400 (not a 500 at compile)"
+    ;; metadata on a scalar value-var head
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w" "begin" {"var" "?b"}}]
+                                                                     ["=" "?b.metadata.k" "x"]]}))))
+    ;; config on an entity var
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["=" "?s.config.k" "x"]]}))))))

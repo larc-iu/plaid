@@ -205,12 +205,15 @@
           head (canon-seg (first path))]
       (cond
         (= head "metadata")
-        (cond layer? {:error "metadata is only available on entity variables"}
+        ;; metadata is entity-only (a scalar var or a layer var has none) and needs a key
+        (cond (not (contains? entity-field-attrs kind)) {:error "metadata is only available on entity variables"}
               (< (count path) 2) {:error "metadata needs a key (e.g. .metadata.author)"}
               :else {:type :metadata :key (second path) :subpath (vec (drop 2 path))})
         (= head "config")
-        (if layer? {:type :config :subpath (vec (rest path))}
-            {:error "config is only available on layer variables"})
+        ;; config is layer-only and needs a key (symmetric with metadata)
+        (cond (not layer?) {:error "config is only available on layer variables"}
+              (< (count path) 2) {:error "config needs a key (e.g. .config.editor.color)"}
+              :else {:type :config :subpath (vec (rest path))})
         :else
         (let [attr (field-attr-by-canon head)
               allowed (if layer? layer-field-attrs (get entity-field-attrs kind))]
@@ -614,8 +617,9 @@
   (let [{:keys [group aggregates]} ret]
     (when-not (vector? group)
       (err! :validate ":return :group must be a list of vars"))
-    (when-not (every? var? group)
-      (err! :validate (str ":return :group may only contain vars, got: " (pr-str (remove var? group)))))
+    (when-not (every? #(or (var? %) (field-ref? %)) group)
+      (err! :validate (str ":return :group may only contain variables or field paths, got: "
+                           (pr-str (remove #(or (var? %) (field-ref? %)) group)))))
     (when-not (and (vector? aggregates) (seq aggregates))
       (err! :validate ":return :aggregates must be a non-empty list"))
     (doseq [[op src] aggregates]

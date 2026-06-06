@@ -88,3 +88,12 @@
       (let [r (run {"where" [["token" "?t" {"layer" "FP/words"}]]
                     "return" {"group" [] "aggregates" [["sum" "?t.begin"] ["max" "?t.begin"]]}})]
         (is (= [[18 9]] (:results r)))))))   ; 0+3+6+9=18, max 9
+
+(deftest group-by-field-path
+  (build!)
+  (testing "GROUP BY a dotted field (span value) with a count per group"
+    (let [r (run {"where" [["span" "?s" {"layer" "FP/pos"}]]
+                  "return" {"group" ["?s.value"] "aggregates" [["count"]]}})
+          m (into {} (map (fn [row] [(first row) (second row)]) (:results r)))]
+      (is (= ["s_value" "count"] (:columns r)))
+      (is (= {"NOUN" 2 "VERB" 1} m)))))   ; A,C are NOUN; B is VERB
