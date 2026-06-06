@@ -22,6 +22,22 @@ const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
 
 const sortByBegin = (a, b) => a.begin - b.begin;
 
+// A token at text position `posBegin` with the given `timeBegin` inverts
+// temporal order if it would sit earlier in time than its left positional
+// neighbor, or later in time than its right one (temporal order must track
+// text order). Returns 'previous' | 'next' | null.
+const findTemporalInversion = (tokens, posBegin, timeBegin, excludeId = null) => {
+  let left = null, right = null;
+  for (const t of tokens || []) {
+    if (t.id === excludeId) continue;
+    if (t.begin < posBegin) { if (!left || t.begin > left.begin) left = t; }
+    else if (t.begin > posBegin) { if (!right || t.begin < right.begin) right = t; }
+  }
+  if (left && timeBegin < (left.metadata?.timeBegin ?? -Infinity)) return 'previous';
+  if (right && timeBegin > (right.metadata?.timeBegin ?? Infinity)) return 'next';
+  return null;
+};
+
 export const alignmentMutations = {
   // Create a new alignment by inserting `text` into the body at a position
   // chosen to preserve temporal ordering, then creating the alignment token
@@ -30,6 +46,10 @@ export const alignmentMutations = {
     const trimmed = (text || '').trim();
     if (!trimmed) {
       this.setError('Alignment text is required');
+      return false;
+    }
+    if (timeEnd < timeBegin) {
+      this.setError('Invalid time range: end must be at or after start');
       return false;
     }
     const info = this.layerInfo;
@@ -110,11 +130,22 @@ export const alignmentMutations = {
       tokenEnd = tokenBegin + cpLength(trimmed);
     }
 
-    const overlap = findOverlappingAlignment(alignmentTokens, tokenBegin, tokenEnd);
+    if (temporalInversion) {
+      this.setError('Cannot insert alignment: temporal and positional ordering conflict. Delete the conflicting alignment first.');
+      return false;
+    }
+    // Overlap must be checked in POST-insert coordinates: the server's text-edit
+    // cascade shifts every existing token at/after the insert point right by the
+    // inserted length. Projecting first prevents a false "overlap" against a
+    // temporal neighbor that the cascade moves clear (bug bash 2026-06-06: a
+    // mid-insert between two single-space-separated alignments always tripped it).
+    const shiftLen = cpLength(insertedText);
+    const projectedTokens = alignmentTokens.map(t =>
+      t.begin >= insertBegin ? { ...t, begin: t.begin + shiftLen, end: t.end + shiftLen } : t
+    );
+    const overlap = findOverlappingAlignment(projectedTokens, tokenBegin, tokenEnd);
     if (overlap) {
-      this.setError(temporalInversion
-        ? 'Cannot insert alignment: temporal and positional ordering conflict. Delete the conflicting alignment first.'
-        : 'The new alignment range overlaps an existing alignment.');
+      this.setError('The new alignment range overlaps an existing alignment.');
       return false;
     }
 
@@ -157,6 +188,10 @@ export const alignmentMutations = {
       this.setError('Alignment text is required');
       return false;
     }
+    if (timeEnd < timeBegin) {
+      this.setError('Invalid time range: end must be at or after start');
+      return false;
+    }
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
     const alignmentTokenLayer = info.alignmentTokenLayer;
@@ -183,7 +218,22 @@ export const alignmentMutations = {
     const newAlignmentEnd = tokenBegin + cpLength(trimmed);
     const newTextLength = cpLength(currentText) - (tokenEnd - tokenBegin) + cpLength(trimmed);
 
-    const overlap = findOverlappingAlignment(alignmentTokens, tokenBegin, newAlignmentEnd, existingAlignmentId);
+    const inversion = findTemporalInversion(alignmentTokens, tokenBegin, timeBegin, existingAlignmentId);
+    if (inversion) {
+      this.setError(`The new time range would put this alignment out of temporal order with the ${inversion} alignment.`);
+      return false;
+    }
+
+    // Overlap check in POST-edit coordinates: replacing [tokenBegin, tokenEnd)
+    // with `trimmed` shifts every later token by (newLen - oldLen). Without
+    // projecting, growing the text past the next token reads as a false overlap.
+    const editDelta = cpLength(trimmed) - (tokenEnd - tokenBegin);
+    const projectedTokens = alignmentTokens.map(t =>
+      (t.id !== existingAlignmentId && t.begin >= tokenEnd)
+        ? { ...t, begin: t.begin + editDelta, end: t.end + editDelta }
+        : t
+    );
+    const overlap = findOverlappingAlignment(projectedTokens, tokenBegin, newAlignmentEnd, existingAlignmentId);
     if (overlap) {
       this.setError('The updated alignment range would overlap an existing alignment.');
       return false;
@@ -240,6 +290,10 @@ export const alignmentMutations = {
       this.setError('Alignment text is required');
       return false;
     }
+    if (timeEnd < timeBegin) {
+      this.setError('Invalid time range: end must be at or after start');
+      return false;
+    }
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
     const alignmentTokenLayer = info.alignmentTokenLayer;
@@ -275,7 +329,13 @@ export const alignmentMutations = {
     const availableText = cpSlice(fullText, leftBoundary, rightBoundary);
     const startInAvailable = cpIndexOf(availableText, trimmed);
     if (startInAvailable === -1) {
-      this.setError('Selected text not found in available text range');
+      // Distinguish "text isn't in the body at all" from "text is present but
+      // lies outside the time-ordered window between neighboring alignments"
+      // (the latter would otherwise misleadingly read as 'not found').
+      const existsAnywhere = cpIndexOf(fullText, trimmed) !== -1;
+      this.setError(existsAnywhere
+        ? 'The selected text lies outside the range available for this time slot — a neighboring alignment would be out of temporal order. Adjust the time range or the neighboring alignments.'
+        : 'Selected text not found in the baseline.');
       return false;
     }
     const actualBegin = leftBoundary + startInAvailable;
@@ -360,6 +420,17 @@ export const alignmentMutations = {
     const token = (alignmentTokenLayer?.tokens || []).find(t => t.id === alignmentId);
     if (!token) {
       this.setError('Alignment not found');
+      return false;
+    }
+    if (timeEnd < timeBegin) {
+      this.setError('Invalid time range: end must be at or after start');
+      return false;
+    }
+    // Bounds are metadata-only with no _reload, so a temporal/positional
+    // inversion here would persist silently. Guard it like createAlignment does.
+    const inversion = findTemporalInversion(alignmentTokenLayer?.tokens || [], token.begin, timeBegin, alignmentId);
+    if (inversion) {
+      this.setError(`The new time range would put this alignment out of temporal order with the ${inversion} alignment.`);
       return false;
     }
 
