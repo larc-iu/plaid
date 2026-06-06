@@ -850,6 +850,100 @@ Fortunately, we think this is not an onerous imposition in most real-world circu
 
 NOTE: The token layer constraints described in <<Token Layer Constraints>> are the exception to this caveat. Because they are enforced on the server, they cannot be circumvented by a malicious client, and they hold no matter how a request is crafted.
 
+= Layer Interoperability
+
+Plaid's goal is to provide infrastructure that will allow you to point multiple apps at the same project, with data being shared across apps as much as possible.
+For example, someone might gloss their texts in an interlinear (IGT) editor and, on the very same documents, build a dependency treebank in a Universal Dependencies (UD) editor.
+Done well, this is close to magical: no import/export is needed to work on the same data across two different apps.
+Done poorly, the two apps will quietly corrupt each other's data.
+In this chapter, we consider this very scenario as an example, and describe a discipline to be followed by app developers to ensure that apps play as well as they can with each other.
+
+== Structural Sharing
+
+For most linguistic annotation applications built on top of Plaid, the layers can be divided into two categories.
+First are **substrate layers**: these are the primary text layer and some token layers, including the token layer for sentences, words, and maybe morphemes.
+There are many different apps that would be interested in working with these.
+
+Then there are **annotation layers**: these hold information that probably only exactly one app cares about, such as a Universal Dependencies part-of-speech tag.
+These annotations typically do not need to be shared between apps.
+
+Now, recall from <<Metadata and Config>> that each app writes its configuration under its own namespace.
+This configuration can help two different apps, such as one used for UD and another used for IGT, to track only the annotations each cares about: the UD app would use configuration cues to know where to look for its tag and dependency layers, and similarly, the IGT app can use configuration to find the gloss layers it uses, which can happily sit side by side on the same tokens.
+For annotations, each app is oblivious to the other, because each app only ever looks at the layers it created.
+
+The substrate is the part that the apps do share, but even here they will only agree up to a point.
+A sentence is a sentence in both apps, and the same is usually true of a word.
+Below the word, though, the apps may have different needs, and one and the same word may be divided in two different ways.
+In the UD app, the layer beneath the word holds CoNLL-U _syntactic words_, which sometimes disagree with the CoNLL-U _tokens_ above them: the English token _teacher's_, for example, is a multiword token holding the two syntactic words _teacher_ and _'s_.
+In the IGT app, the layer that is closest in purpose to UD's syntactic word layer holds morphemes, which split on all morphology, so that this same word, _teacher's_, is instead divided into the three morphemes _teach_, _-er_, and _'s_.
+It is therefore not always possible to share all token layers across apps.
+
+A reasonable rule of thumb, then, is to share the substrate as far down as the apps agree, and to let them branch below that point.
+In our example, the two apps would share the text, the sentence layer, and the word layer, and then, beneath the word layer, the UD app would add its syntactic-word layer while the IGT app adds its morpheme layer.
+(Recall from <<Token Layer Hierarchy>> that a single token layer may have more than one child layer, so both of these can sit side by side under the shared word layer.)
+The apps agree all the way down to the word, and only then go their separate ways.
+If two apps genuinely do mean the same thing by a layer, so that their morpheme segmentation really is identical, then they are free to share it as well; but this should always be a deliberate decision rather than a silent assumption.
+
+== Roles
+
+Suppose that a third app comes along that has no knowledge of the UD or IGT apps, and that it wants to find out what the extant layers mean.
+While there is no perfect solution to this, Plaid provides a small shared vocabulary of **roles** recorded in each layer's configuration under the `plaid` namespace.
+A layer carries at most one role, and the inventory is deliberately small:
+
+[cols="1,1,3"]
+|===
+| Role | Layer | What the layer holds
+
+| `baseline` | text layer | The primary text being annotated, over which all the other layers are built.
+| `sentence` | token layer | Sentence segmentation, normally a `partitioning` layer at the root.
+| `word` | token layer | The orthographic word: a whitespace-and-punctuation tokenization (CoNLL-U's _token_).
+| `syntactic-word` | token layer | Grammatical words beneath the orthographic word (CoNLL-U's _word_, e.g. the pieces of a multiword token like _teacher's_).
+| `morpheme` | token layer | Morpheme segmentation beneath the word.
+| `time-alignment` | token layer | Tokens aligned to a media timeline, for audio or video.
+|===
+
+Plaid itself attaches no meaning to these values.
+These names are rather blessed conventional names for communicating the meaning of a layer that apps are expected to honor when present.
+The app that first sets the project up might record the roles of its sentence and word layers like this:
+
+[,js]
+----
+await client.tokenLayers.setConfig(sentenceLayerId, "plaid", "role", "sentence");
+await client.tokenLayers.setConfig(wordLayerId, "plaid", "role", "word");
+----
+
+The `plaid` namespace is reserved for conventions that every app agrees on, which makes it the right home for these shared role tags.
+An app's own private configuration, such as its vocabularies, its colors, and the meanings of its fields, belongs instead under that app's own namespace, where no other app will mistake it for shared information.
+Keeping these two kinds of configuration apart is what allows several apps to coexist on one project.
+
+== Reconciliation Across Apps
+
+In <<Data Integrity>>, we discussed various ways of maintaining app-specific data model invariants _within_ a certain app.
+Here, we consider the more difficult matter of one app updating a shared substrate layer in a way that invalidates a different app's data model invariants.
+
+Suppose that a sentence has been annotated for UD, and that later on, someone opens the same sentence in the IGT app and splits the sentence.
+From the IGT app's perspective, this is a totally unproblematic change to make.
+However, on the UD side, it is a strict requirement that all dependency relations must _never_ cross sentence boundaries, and this change in the IGT app at the shared sentence tokenization layer has caused an invariant violation in the UD app.
+
+There is no way for Plaid itself to know about this invariant, because it is application-specific.
+Our only option, then, as long as this layer is shared, is to somehow have the UD app deal with this violation the next time that document is opened.
+
+The discipline that resolves this is easy to state, and in the interest of smooth interoperability, we encourage all app developers to adhere to it:
+
+**Every time an app opens a document, it should validate all its invariants and automatically repair any violations that may have been introduced by other apps.**
+
+In our running example, the next time the document is opened in the UD app, the UD app would validate the data and realize that a relation is straddling a sentence boundary.
+The simplest thing to do at this point would be to delete the offending relation.
+Although information is lost this way, we are able to restore data integrity without requiring any human intervention.
+Ideally, the app would also loudly tell the user what happened, and perhaps even encourage or require review.
+And indeed, in general, some invariant violations in other situations might **require** human intervention in order to avoid worse consequences.
+
+[NOTE]
+====
+It is worth running this same reconciliation not only when a document is first opened, but also whenever a document that is already on screen changes underneath you, for instance in response to a real-time update delivered through <<Real-time Messaging>>.
+Opening the document is the baseline; reconciling on a live update is the very same idea, applied at the moment the substrate comes back into view.
+====
+
 = Querying
 
 So far we have retrieved data by asking for it directly: a document by its id, a project's documents, and so on.
@@ -933,7 +1027,7 @@ You do not need to absorb them now, but it is worth knowing they are here to ref
 | `vocab`    | a vocab item | `layer`, `form`, `metadata`
 | `document` | a document   | `name`, `id`, `metadata`
 | `text`     | a text       | `body`, `doc`, `metadata`
-| `span-layer`, `token-layer`, `relation-layer`, `vocab-layer` | a layer | `name`, `alias`
+| `span-layer`, `token-layer`, `relation-layer`, `vocab-layer` | a layer | `name`
 |===
 
 .Relationship clauses; each relates the two entities you name
@@ -1178,20 +1272,13 @@ In a real query a layer is referenced by its **id** (its UUID), and only by its 
 ["span", "?s", { layer: "98ef7a32-…-1327101afee3" }]
 ----
 
-There is no referencing a layer by name, alias, or `"ProjectName/LayerName"` path.
-Layer names and aliases are not unique — two unrelated projects might each have a layer called `pos` — so a name cannot reliably stand for one layer, whereas an id always does; a non-id reference is refused.
+There is no referencing a layer by name or `"ProjectName/LayerName"` path.
+Layer names are not unique — two unrelated projects might each have a layer called `pos` — so a name cannot reliably stand for one layer, whereas an id always does; a non-id reference is refused.
 This is rarely any trouble: inside a program you already hold the id of whatever you loaded, so you just pass it.
 
 When you genuinely want to select a layer _by name_ — including the same-named layer across several projects at once — you do it with a layer variable and a describing clause, which is explicit about what it matches (next section).
-You can describe a layer by its `name`, or by an **alias**: a shared label you set in the layer's `config` under the `plaid` / `alias` pair (see <<Metadata and Config>>), handy when the same kind of layer recurs across projects under a common name.
-It is not a field of its own; Plaid reads it from the `plaid` namespace under the key `alias`, so a layer aliased `pos` has a config of `{ "plaid": { "alias": "pos" } }`.
-You set it through the layer's `setConfig` method, the same way you set any other config value:
-
-[,javascript]
-----
-// give this span layer the alias "pos"
-await client.spanLayers.setConfig(spanLayerId, "plaid", "alias", "pos");
-----
+The describing clause matches a layer by its `name`, shown in the next section.
+A name is a loose handle, though: when you want the same _kind_ of layer to line up across projects deliberately, give those layers a shared **role** in their `config` (see <<Layer Interoperability>>) and select on that config value rather than relying on a shared name.
 
 === Layer Variables
 
@@ -1222,7 +1309,7 @@ await client.query({
 });
 ----
 
-The describing clause is named after the kind of layer (`span-layer`, `token-layer`, `relation-layer`, or `vocab-layer`) and you constrain it by `name` or `alias`.
+The describing clause is named after the kind of layer (`span-layer`, `token-layer`, `relation-layer`, or `vocab-layer`) and you constrain it by `name`.
 Naming one layer variable as, say, a span's layer in one clause and a token's layer in another is a mistake, and Plaid will tell you so.
 
 == Scope

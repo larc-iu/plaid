@@ -207,7 +207,7 @@ Supported names, by type:
 | `vocab`         | `form`, `id`, `layer`, `metadata.KEY…`
 | `document`      | `name`, `id`, `metadata.KEY…`
 | `text`          | `body`, `doc`, `id`, `metadata.KEY…`
-| layer variable  | `name`, `id`, `alias`, `config.KEY…`
+| layer variable  | `name`, `id`, `config.KEY…`
 |===
 
 `doc` is the document id and `id` is the entity's own id. `metadata` and
@@ -547,8 +547,8 @@ Two more predicates work on a field path (or, for `in`, also a variable):
 ["in", "?s.value", ["NOUN", "PROPN"]]         # membership / alternation
 ----
 
-* `~` matches a **text** field (`value`, `form`, `name`, `body`, the layer
-  `alias`, a `metadata`/`config` value, or a token's surface `value`) against a
+* `~` matches a **text** field (`value`, `form`, `name`, `body`, a
+  `metadata`/`config` value, or a token's surface `value`) against a
   regular expression. The right side is a bare pattern string or a
   `{"regex": …, "flags": "i"?}` spec (only the `i` — case-insensitive — flag is
   supported). Regexes run against the decoded text, so anchors (`^`, `$`) work.
@@ -740,7 +740,7 @@ The body may itself contain `or`, `seq`, or another `not`.
 
 Wherever a clause takes a `layer`, a scalar reference is the layer's **ID** (its
 UUID) — that is the only way to name a *specific* layer. There is no addressing by
-layer name, alias, or `Project/Layer` path: names and aliases are non-unique across a
+layer name or `Project/Layer` path: names are non-unique across a
 multi-tenant instance (two unrelated projects routinely share a layer name), so
 resolving one to a single layer is brittle, whereas an ID always identifies exactly
 one layer.
@@ -750,7 +750,7 @@ one layer.
 ["span", "?s", {"layer": "98ef7a32-...-1327101afee3"}]   # by id
 ----
 
-A non-ID reference (a name, alias, or path) is a 400. In practice this is no burden:
+A non-ID reference (a name or path) is a 400. In practice this is no burden:
 anything that knows a layer's name fetched it from the API and already holds its ID,
 so it just passes the ID. To select a layer *by name*, bind it with a layer variable
 and a `*-layer` clause (next section) — the match is then explicit, and you can see
@@ -787,8 +787,8 @@ binds a variable, it transparently matches every same-named layer in your scope
 ----
 
 The layer-constraint clause matches the entity's kind: `span-layer`,
-`token-layer`, `relation-layer`, `vocab-layer`. It constrains by `name` or
-`alias`; an unconstrained layer variable ranges over every layer of its kind in
+`token-layer`, `relation-layer`, `vocab-layer`. It constrains by `name`;
+an unconstrained layer variable ranges over every layer of its kind in
 scope. A layer variable used for two different kinds is a 400 kind conflict.
 
 === Layer structure
@@ -844,7 +844,7 @@ direction (a text layer's token layers) is written from the child side:
 
 Unlike the other layer kinds, `text-layer` has no parent slot of its own — its
 parent is the project, which `scope` already confines. It is otherwise an ordinary
-layer variable (match it by `name` / `alias`, project it in `find`); and like any
+layer variable (match it by `name`, project it in `find`); and like any
 layer variable, a structural join only ever reaches layers in projects you can read.
 
 == Scope and access control

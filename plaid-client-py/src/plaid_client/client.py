@@ -1831,7 +1831,7 @@ class PlaidClient:
                 'limit': 100,
             })
 
-        A ``layer`` is referenced by its id (its UUID) only — not by name, alias,
+        A ``layer`` is referenced by its id (its UUID) only — not by name
         or path. To match a layer by name, bind it with a ``*-layer`` clause (e.g.
         ``['span-layer', '?sl', {'name': 'pos'}]``) and use the variable.
 

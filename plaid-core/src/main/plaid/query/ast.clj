@@ -104,15 +104,15 @@
 
 ;; Layer-constraint clauses: [:span-layer ?sl {constraint-map}]. The head IS the
 ;; layer kind; binds/constrains a LAYER variable. Value = allowed constraint keys.
-;; Besides its own attributes (:name/:alias) a layer clause may name its immutable
+;; Besides its own attribute (:name) a layer clause may name its immutable
 ;; PARENT layer through a structural slot (see `layer-slot->kind`). `:text-layer` is
 ;; a queryable kind only so a token layer's text-layer parent can be bound/constrained.
 (def ^:private layer-clauses
-  {:text-layer     #{:name :alias}
-   :token-layer    #{:name :alias :text-layer :parent-token-layer}
-   :span-layer     #{:name :alias :token-layer}
-   :relation-layer #{:name :alias :span-layer}
-   :vocab-layer    #{:name :alias}})
+  {:text-layer     #{:name}
+   :token-layer    #{:name :text-layer :parent-token-layer}
+   :span-layer     #{:name :token-layer}
+   :relation-layer #{:name :span-layer}
+   :vocab-layer    #{:name}})
 
 ;; Structural slots: a layer clause may reference its PARENT layer (the immutable FK
 ;; in the data model) by a slot named after the domain attribute. The slot value is a
@@ -178,8 +178,8 @@
 ;; id literal (no ordering, no name resolution — see the G4 check in `validate`).
 (def ^:private ref-attrs #{:layer :source :target})
 
-;; Layer variables expose name/id/alias as scalar fields, plus open `config` keys.
-(def ^:private layer-field-attrs #{:name :id :alias})
+;; Layer variables expose name/id as scalar fields, plus open `config` keys.
+(def ^:private layer-field-attrs #{:name :id})
 
 ;; Fields with no meaningful order (opaque ids): ordering predicate ops
 ;; (< > <= >=) are rejected on these, though `=`/`!=` and order-by are fine.
@@ -227,7 +227,7 @@
 ;; canonical-segment -> core attr keyword (the QL-vocabulary head segment).
 (def ^:private field-attr-by-canon
   (into {} (map (fn [a] [(canon-seg (name a)) a]))
-        [:value :doc :id :begin :end :precedence :form :name :body :alias
+        [:value :doc :id :begin :end :precedence :form :name :body
          :layer :source :target]))
 
 (defn- dotted-name? [x]
@@ -911,21 +911,21 @@
             (err! :validate (str "Unknown constraint key(s) " (vec unknown) " on :" (name head)
                                  " (allowed: " (vec (sort allowed)) ")"))))
         ;; a structural slot references ONE parent layer: a layer variable or a
-        ;; scalar reference (name/alias/path/id) — like :layer, no list (alternation)
+        ;; scalar reference (a layer id) — like :layer, no list (alternation)
         ;; or map (regex / value-variable).
         (doseq [[slot _] (layer-slots-for head) :when (contains? cmap slot)]
           (let [x (get cmap slot)]
             (when-not (or (var? x) (string? x) (number? x))
               (err! :validate (str ":" (name head) " :" (name slot)
                                    " must be a layer variable or a single layer reference"
-                                   " (name/alias/path/id), got: " (pr-str x))))))
-        ;; :name/:alias match a layer by a literal string only (no value-var/regex/list
+                                   " (a layer id), got: " (pr-str x))))))
+        ;; :name matches a layer by a literal string only (no value-var/regex/list
         ;; map) — reject a map/vector with a clean 400 rather than a 500 at compile.
-        (doseq [k [:name :alias] :when (contains? cmap k)]
+        (doseq [k [:name] :when (contains? cmap k)]
           (let [x (get cmap k)]
             (when-not (or (string? x) (number? x))
               (err! :validate (str ":" (name head) " :" (name k) " must be a string ("
-                                   (name head) " matches by exact name/alias), got: " (pr-str x)))))))
+                                   (name head) " matches by exact name), got: " (pr-str x)))))))
 
       (= head :related*)
       (let [[a b cmap] args]
@@ -1078,14 +1078,14 @@
                                          " reference; " other " is a " (name got)
                                          ", expected a " (name want) " variable"))))))))))
     ;; `~` clauses: the LHS field must resolve to a TEXT field (value/form/name/body/
-    ;; alias/metadata/config). Reject numeric/opaque/reference fields with a clean 400.
+    ;; metadata/config). Reject numeric/opaque/reference fields with a clean 400.
     (doseq [clause (:where ast) :when (= op-match (first clause))]
       (let [lhs (second clause)]
         (validate-field-ref! kinds positive lhs false)
         (let [res (field-resolve (get kinds (field-var lhs)) (field-path lhs))
               text? (or (#{:metadata :config} (:type res))
                         (and (#{:core :layer-attr} (:type res))
-                             (#{:value :form :name :body :alias} (:attr res))))]
+                             (#{:value :form :name :body} (:attr res))))]
           (when-not text?
             (err! :validate (str "~ requires a text field on the left; " (field->str lhs)
                                  " is not a text field (regex matches text, not numbers/ids)"))))))

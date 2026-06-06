@@ -258,7 +258,7 @@
 (defn- ensure-layer-var!
   "Allocate a layer-table alias for a LAYER variable `v` of `kind` and emit its
   SCOPE predicate (project_id IN scope; vocab layers are global -> via
-  project_vocabs grants), registering it in :scoped. Its FILTERS — `:name`/`:alias`
+  project_vocabs grants), registering it in :scoped. Its FILTERS — `:name`
   and the structural-slot joins — are emitted SEPARATELY, per clause, by
   `emit-layer-filters!` (like `emit-entity-filters!` for entity clauses), so a layer
   var re-stated inside a `:not` gets its predicates INSIDE that NOT EXISTS subquery
@@ -345,7 +345,7 @@
     (get-in @st [:var->alias v])))
 
 (defn- emit-layer-filters!
-  "Emit one layer clause's `:name`/`:alias` filters and structural-slot joins
+  "Emit one layer clause's `:name` filter and structural-slot joins
   against the layer var's alias `a` (`kind` = the clause head). Separated from
   `ensure-layer-var!` (which only allocates the table + scope) so a correlated layer
   var re-stated inside a `:not` gets these predicates INSIDE the NOT EXISTS subquery
@@ -355,10 +355,6 @@
   [st a kind cs constraints]
   (when (contains? cs :name)
     (add-where! st (atomic-pred (col a :name) (:name cs) identity)))
-  ;; :alias lives in config JSON under the reserved "plaid"/"alias" pair
-  (when (contains? cs :alias)
-    (add-where! st (atomic-pred [:json_extract (col a :config) [:inline "$.plaid.alias"]]
-                                (:alias cs) identity)))
   ;; structural slots: join this layer's FK to its referenced parent layer
   (doseq [[slot _parent-kind] (ast/layer-slots-for kind)
           :when (contains? cs slot)]
@@ -595,7 +591,7 @@
       (cond
         (= :not (first c)) (compile-not! sub-st constraints c)   ; nested NOT EXISTS
         ;; layer clauses: the pre-loop ensure-var! allocated + scoped the var; emit
-        ;; its name/alias/structural filters INSIDE the subquery so a CORRELATED outer
+        ;; its name/structural filters INSIDE the subquery so a CORRELATED outer
         ;; layer var's predicates are negated here, not silently dropped.
         (contains? layer-entity-table (first c))
         (let [[head v cmap] c]
@@ -663,8 +659,6 @@
     (case (:type res)
       (:core :layer-attr)
       (cond
-        (= (:attr res) :alias)
-        {:sql [:json_extract (col a :config) [:inline "$.plaid.alias"]] :enc identity}
         ;; a token's :value is the surface substring (no column), not a JSON annotation
         (and (= kind :token) (= (:attr res) :value))
         {:sql (token-surface-sql st a) :enc identity}
@@ -873,7 +867,7 @@
     (doseq [v (ast/positive-binding-vars (:where resolved))]
       (ensure-var! st v constraints))
     ;; emit each positive entity/layer clause's filters against its var's alias —
-    ;; per-clause so two clauses on one var AND. Layer filters (name/alias/structural
+    ;; per-clause so two clauses on one var AND. Layer filters (name/structural
     ;; slots) are emitted here too (not in ensure-layer-var!) so the :not path can
     ;; correlate them; see emit-layer-filters!.
     (doseq [clause (:where resolved)]

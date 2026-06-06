@@ -456,8 +456,8 @@
   (testing "a scalar slot reference stays a literal string (not var-ized)"
     (let [p (ast/parse {"find" ["?tl"] "where" [["token-layer" "?tl" {"text-layer" "Transcription"}]]})]
       (is (= "Transcription" (get-in (first (:where p)) [2 :text-layer])))))
-  (testing "text-layer is a queryable kind with name + alias"
-    (is (some? (ast/parse+validate {"find" ["?x"] "where" [["text-layer" "?x" {"name" "T" "alias" "t"}]]}))))
+  (testing "text-layer is a queryable kind with a name filter"
+    (is (some? (ast/parse+validate {"find" ["?x"] "where" [["text-layer" "?x" {"name" "T"}]]}))))
   (testing "kind conflict: a var used as two different layer kinds is a 400"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?x"]
                                               "where" [["span-layer" "?x" {"token-layer" "?x"}]]})))))
@@ -477,11 +477,12 @@
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
                                               "where" [["span" "?s" {"layer" "p" "value" {"var" "?v"}}]
                                                        ["=" "?v" {"a" 1}]]})))))
-  (testing "a value-var or regex map on a layer clause's :name/:alias is rejected"
+  (testing "a value-var or regex map on a layer clause's :name is rejected"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}]
-                                                                     ["span-layer" "?sl" {"name" {"var" "?v"}}]]}))))
+                                                                     ["span-layer" "?sl" {"name" {"var" "?v"}}]]})))))
+  (testing "the removed :alias constraint key is now rejected as unknown"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}]
-                                                                     ["span-layer" "?sl" {"alias" {"regex" "^p"}}]]})))))
+                                                                     ["span-layer" "?sl" {"alias" "pos"}]]})))))
   (testing "a non-map :metadata value is rejected (not a parse-time crash)"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p" "metadata" "foo"}]]}))))
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p" "metadata" 7}]]})))))

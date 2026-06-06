@@ -61,13 +61,13 @@
         scoped))))
 
 ;; ---------------------------------------------------------------------------
-;; Layer-alias index (per layer kind, within scope)
+;; In-scope layer-id universe (per layer kind, within scope)
 ;; ---------------------------------------------------------------------------
 
 (defn- in-scope-layer-ids
   "The set of layer-id strings of `kind` visible in `scope` (a set of project-id
   strings). Layers are identified by id only, so this is just the id universe a
-  scalar reference is checked against — no name/alias/path index.
+  scalar reference is checked against — no name- or path-based lookup.
 
   Vocab layers are global (no project_id column); they are scoped by the
   `project_vocabs` grants of the in-scope projects, so a vocab layer is visible iff
@@ -94,7 +94,7 @@
 
 (defn- resolve-ref
   "Resolve one scalar layer reference. Layers are identified by id ONLY: a reference
-  must be a layer id (UUID) visible in the queried scope. Names, aliases and
+  must be a layer id (UUID) visible in the queried scope. Names and
   `Project/Layer` paths are not accepted — they are non-unique across a multi-tenant
   instance, and an id matches at most one layer (so there is no ambiguity). To select
   a layer by name, bind it with a layer-var clause instead. Returns a one-element

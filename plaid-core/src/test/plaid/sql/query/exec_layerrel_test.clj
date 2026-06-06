@@ -150,7 +150,7 @@
 
 (deftest name-filter-inside-not-correlates
   ;; Regression (pre-existing, surfaced by the review): a correlated layer var's
-  ;; :name/:alias filter inside :not was dropped too (NOT EXISTS (SELECT 1 WHERE TRUE)
+  ;; :name filter inside :not was dropped too (NOT EXISTS (SELECT 1 WHERE TRUE)
   ;; -> always false -> always empty). Now emitted inside the subquery.
   (let [{:keys [noun verb]} (build! "LR8")]
     (testing "spans on a layer named 'pos' that is NOT also named 'deprel' -> all pos spans"

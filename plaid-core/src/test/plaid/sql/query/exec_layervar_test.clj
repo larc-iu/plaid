@@ -95,8 +95,11 @@
                              "where" [["span" "?a" {"layer" "?sl"}] ["token" "?t" {"layer" "?sl"}]]})
                     (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))))))
 
-(deftest layer-alias-as-clause-filter
-  (let [pid  (h/create-test-project admin-request "AliasProj")
+(deftest layer-selected-by-config-role
+  ;; The cross-project "pick the layer that plays role X" job once done by the
+  ;; removed :alias clause filter is now done with an ordinary config-key predicate
+  ;; on a layer variable — roles live under the reserved "plaid"/"role" config pair.
+  (let [pid  (h/create-test-project admin-request "RoleProj")
         txtl (id (h/create-text-layer admin-request pid "text"))
         tokl (id (h/create-token-layer admin-request txtl "words"))
         pos  (id (h/create-span-layer admin-request tokl "pos"))
@@ -104,14 +107,14 @@
         text (id (h/create-text admin-request txtl doc "aa"))
         t0 (id (h/create-token admin-request tokl text 0 2))
         s  (id (h/create-span admin-request pos [t0] "NOUN"))]
-    ;; aliases live under the reserved "plaid"/"alias" editor-config pair (nested)
-    (prj/assoc-editor-config-pair db pos "plaid" "alias" "lexZZ")
-    (testing "a layer var constrained by :alias matches the aliased layer"
+    (prj/assoc-editor-config-pair db pos "plaid" "role" "lex")
+    (testing "a layer var filtered by its config role matches the right layer"
       (is (= [[(str s)]]
              (tuples (qe/run db "admin@example.com"
                              {"find" ["?s"]
                               "where" [["span" "?s" {"layer" "?sl" "value" "NOUN"}]
-                                       ["span-layer" "?sl" {"alias" "lexZZ"}]]})))))))
+                                       ["span-layer" "?sl" {}]
+                                       ["=" "?sl.config.plaid.role" "lex"]]})))))))
 
 (deftest scalar-layer-ref-must-be-an-id
   (let [{:keys [pos pos-noun]} (build!)]
