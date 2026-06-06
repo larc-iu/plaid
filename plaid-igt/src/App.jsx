@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
+import { ProjectSettingsView } from './components/projects/ProjectSettingsView';
 import { ProjectSetup } from './components/projects/ProjectSetup';
 import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { DocumentDetail } from './components/documents/DocumentDetail';
@@ -67,6 +68,23 @@ function App() {
             <ProtectedRoute>
               <AppLayout>
                 <ProjectDetail />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          {/* Project administration (tabbed: access management + settings),
+              reached from the document view's "Project Settings" button. */}
+          <Route path="/projects/:projectId/access" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ProjectSettingsView />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/projects/:projectId/settings" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ProjectSettingsView />
               </AppLayout>
             </ProtectedRoute>
           } />
