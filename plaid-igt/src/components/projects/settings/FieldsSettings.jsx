@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { FieldsManager } from './FieldsManager';
 import { notifyError } from '@/utils/feedback';
+import {
+  findBaselineTextLayer, findWordTokenLayer, findSentenceTokenLayer,
+  findMorphemeTokenLayer, readScope, readIgnoredTokens, IGT_NAMESPACE
+} from '@/domain/igtConfig';
 
 export const FieldsSettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -31,22 +35,17 @@ export const FieldsSettings = ({ projectId, client }) => {
         return null;
       }
 
-      // Find the text layer that has plaid configuration
-      const textLayer = project.textLayers.find(layer => layer.config?.plaid);
+      // Find the baseline text layer (the shared substrate).
+      const textLayer = findBaselineTextLayer(project.textLayers);
       if (!textLayer) {
-        // No plaid-configured text layer found, return null for defaults
+        // No baseline text layer found, return null for defaults
         return null;
       }
 
-      if (!textLayer.tokenLayers || textLayer.tokenLayers.length === 0) {
-        // No token layers yet, return null for defaults
-        return null;
-      }
-
-      // Get the primary token layer, sentence token layer, and morpheme layer
-      const primaryTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.primary);
-      const sentenceTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.sentence);
-      const morphemeTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.morpheme);
+      // Get the word, sentence, and morpheme token layers by role.
+      const primaryTokenLayer = findWordTokenLayer(textLayer.tokenLayers);
+      const sentenceTokenLayer = findSentenceTokenLayer(textLayer.tokenLayers);
+      const morphemeTokenLayer = findMorphemeTokenLayer(textLayer.tokenLayers);
 
       if (!primaryTokenLayer) {
         return null;
@@ -55,7 +54,7 @@ export const FieldsSettings = ({ projectId, client }) => {
       // Morpheme layer is now mandatory, so we don't need to set state
 
       // Extract ignored tokens configuration from primary token layer
-      const ignoredTokensConfig = primaryTokenLayer.config?.plaid?.ignoredTokens;
+      const ignoredTokensConfig = readIgnoredTokens(primaryTokenLayer.config);
 
       // Extract fields configuration from span layers under all token layers
       const primarySpanLayers = primaryTokenLayer.spanLayers || [];
@@ -64,10 +63,10 @@ export const FieldsSettings = ({ projectId, client }) => {
       const allSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers, ...morphemeSpanLayers];
 
       const fieldsWithScope = allSpanLayers
-        .filter(spanLayer => spanLayer.config?.plaid?.scope) // Only span layers with plaid scope config
+        .filter(spanLayer => readScope(spanLayer.config)) // Only span layers with a scope
         .map(spanLayer => ({
           name: spanLayer.name,
-          scope: spanLayer.config.plaid.scope,
+          scope: readScope(spanLayer.config),
           isCustom: !isPredefinedField(spanLayer.name)
         }));
 
@@ -124,18 +123,14 @@ export const FieldsSettings = ({ projectId, client }) => {
         throw new Error('No text layers found in project');
       }
 
-      // Find the text layer that has plaid configuration
-      const textLayer = project.textLayers.find(layer => layer.config?.plaid);
+      // Find the baseline text layer (the shared substrate).
+      const textLayer = findBaselineTextLayer(project.textLayers);
       if (!textLayer) {
-        throw new Error('No plaid-configured text layer found in project');
+        throw new Error('No baseline text layer found in project');
       }
 
-      if (!textLayer.tokenLayers || textLayer.tokenLayers.length === 0) {
-        throw new Error('No token layers found in project');
-      }
-
-      const primaryTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.primary);
-      const sentenceTokenLayer = textLayer.tokenLayers.find(layer => layer.config?.plaid?.sentence);
+      const primaryTokenLayer = findWordTokenLayer(textLayer.tokenLayers);
+      const sentenceTokenLayer = findSentenceTokenLayer(textLayer.tokenLayers);
 
       if (!primaryTokenLayer) {
         throw new Error('No primary token layer found in project');
@@ -155,7 +150,7 @@ export const FieldsSettings = ({ projectId, client }) => {
           ignoredTokensConfig.blacklist = data.ignoredTokens.explicitIgnoredTokens || [];
         }
 
-        await client.tokenLayers.setConfig(primaryTokenLayerId, "plaid", "ignoredTokens", ignoredTokensConfig);
+        await client.tokenLayers.setConfig(primaryTokenLayerId, IGT_NAMESPACE, "ignoredTokens", ignoredTokensConfig);
       }
 
       // Handle span layers for fields
@@ -165,7 +160,7 @@ export const FieldsSettings = ({ projectId, client }) => {
       const currentFields = data.fields || [];
 
       // Find span layers that have plaid scope config (these are managed by us)
-      const managedSpanLayers = existingSpanLayers.filter(layer => layer.config?.plaid?.scope);
+      const managedSpanLayers = existingSpanLayers.filter(layer => readScope(layer.config));
 
       // Create new span layers for new fields
       for (const field of currentFields) {
@@ -180,11 +175,11 @@ export const FieldsSettings = ({ projectId, client }) => {
 
           // Create new span layer
           const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
-          await client.spanLayers.setConfig(spanLayer.id, "plaid", "scope", field.scope);
+          await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, "scope", field.scope);
         } else {
           // Update existing span layer scope if changed
-          if (existingLayer.config.plaid.scope !== field.scope) {
-            await client.spanLayers.setConfig(existingLayer.id, "plaid", "scope", field.scope);
+          if (readScope(existingLayer.config) !== field.scope) {
+            await client.spanLayers.setConfig(existingLayer.id, IGT_NAMESPACE, "scope", field.scope);
           }
         }
       }

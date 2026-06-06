@@ -3,13 +3,12 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import {
   UD_NAMESPACE,
-  UD_TEXT_CONFIG_KEY,
-  UD_TOKEN_CONFIG_KEYS,
   UD_SPAN_CONFIG_KEYS,
   UD_RELATION_CONFIG_KEY,
   UD_LAYER_LABELS,
   getUdLayerInfo
 } from '../../utils/udLayerUtils.js';
+import { PLAID_NAMESPACE, ROLE_KEY, ROLES, readRole } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import {
@@ -100,15 +99,20 @@ export const ProjectConfiguration = ({ embedded = false }) => {
     return '';
   };
 
-  // Find an existing UD-flagged child layer (idempotent re-configuration), else null.
+  // Find an existing UD annotation layer (idempotent re-configuration), else null.
   const findFlagged = (layers, namespace, key) =>
     (layers || []).find(layer => layer.config?.[namespace]?.[key] === true) || null;
+  // Substrate layers are matched by their shared ROLE. This is also how UD adopts
+  // a substrate created by another app: we reuse its baseline/sentence/word layers
+  // and only create the layers UD additionally needs below the word.
+  const findByRole = (layers, role) =>
+    (layers || []).find(layer => readRole(layer.config) === role) || null;
 
-  const ensureTokenLayer = async (client, textLayerId, existingTextLayer, configKey, name, overlapMode, parentId) => {
-    const existing = findFlagged(existingTextLayer?.tokenLayers, UD_NAMESPACE, configKey);
+  const ensureTokenLayer = async (client, textLayerId, existingTextLayer, role, name, overlapMode, parentId) => {
+    const existing = findByRole(existingTextLayer?.tokenLayers, role);
     if (existing) return existing;
     const created = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
-    await client.tokenLayers.setConfig(created.id, UD_NAMESPACE, configKey, true);
+    await client.tokenLayers.setConfig(created.id, PLAID_NAMESPACE, ROLE_KEY, role);
     return created;
   };
 
@@ -153,24 +157,27 @@ export const ProjectConfiguration = ({ embedded = false }) => {
         textLayerId = textLayer.id;
         existingTextLayer = null;
       }
-      await client.textLayers.setConfig(textLayerId, UD_NAMESPACE, UD_TEXT_CONFIG_KEY, true);
+      await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
 
-      // 2. Token-layer hierarchy: sentences (partitioning) > words (non-overlapping) > morphemes (any)
+      // 2. Token-layer hierarchy, tagged by shared role: sentence (partitioning) >
+      //    word (non-overlapping) > syntactic-word (any). UD's "Morphemes" layer
+      //    holds syntactic words, so its role is `syntactic-word` (a sibling of
+      //    IGT's `morpheme` layer under the shared word layer).
       const sentenceLayer = await ensureTokenLayer(
         client, textLayerId, existingTextLayer,
-        UD_TOKEN_CONFIG_KEYS.sentence, 'Sentences', 'partitioning', undefined
+        ROLES.SENTENCE, 'Sentences', 'partitioning', undefined
       );
       const wordLayer = await ensureTokenLayer(
         client, textLayerId, existingTextLayer,
-        UD_TOKEN_CONFIG_KEYS.word, 'Words', 'non-overlapping', sentenceLayer.id
+        ROLES.WORD, 'Words', 'non-overlapping', sentenceLayer.id
       );
       const morphemeLayer = await ensureTokenLayer(
         client, textLayerId, existingTextLayer,
-        UD_TOKEN_CONFIG_KEYS.morpheme, 'Morphemes', 'any', wordLayer.id
+        ROLES.SYNTACTIC_WORD, 'Morphemes', 'any', wordLayer.id
       );
 
-      // 3. Annotation span layers, all under the morpheme layer
-      const existingMorphemeLayer = findFlagged(existingTextLayer?.tokenLayers, UD_NAMESPACE, UD_TOKEN_CONFIG_KEYS.morpheme);
+      // 3. Annotation span layers, all under the syntactic-word ("Morphemes") layer
+      const existingMorphemeLayer = findByRole(existingTextLayer?.tokenLayers, ROLES.SYNTACTIC_WORD);
       const spanLayers = {};
       for (const key of SPAN_KEYS_IN_ORDER) {
         spanLayers[key] = await ensureSpanLayer(
@@ -271,7 +278,7 @@ export const ProjectConfiguration = ({ embedded = false }) => {
             <Title order={2} size="h4" mb="xs">Token Hierarchy &amp; Annotations</Title>
             <Text size="sm" c="dimmed" mb="md">
               Saving creates (or completes) the three-layer token hierarchy and the annotation layers below.
-              Existing UD-flagged layers are reused, so this is safe to re-run.
+              Existing layers are reused — including a shared substrate set up by another app — so this is safe to re-run.
             </Text>
             <List size="sm" spacing={4}>
               <List.Item><Text span fw={500}>Sentences</Text> token layer (partitioning)</List.Item>

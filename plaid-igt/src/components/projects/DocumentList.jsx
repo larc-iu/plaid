@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
+import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 
 // Sortable column header button (renders an arrow for the active column).
@@ -88,7 +89,7 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
       if (!client) throw new Error('Authentication required');
       const newDocument = await client.documents.create(projectId, documentName.trim());
       const projectData = await client.projects.get(projectId);
-      const primaryTextLayer = projectData?.textLayers?.find((layer) => layer.config?.plaid?.primary);
+      const primaryTextLayer = findBaselineTextLayer(projectData?.textLayers);
       if (primaryTextLayer) {
         await client.texts.create(primaryTextLayer.id, newDocument.id, '', {});
       }

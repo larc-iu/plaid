@@ -1,4 +1,5 @@
 import { getIgtLayerInfo } from './layerInfo.js';
+import { planMorphemeReconcile } from './igtReconcile.js';
 import {
   deriveDocumentData,
   deriveSentences,
@@ -225,6 +226,52 @@ export class IgtDocument {
     }
     this._dataVersion++;
     this._emit();
+  }
+
+  // Reconcile-on-open: repair IGT invariants another app may have broken while
+  // editing the shared substrate. Currently the morpheme layer: every word must
+  // have a full-width morpheme, and morphemes whose extent matches no word are
+  // orphans. Heal downward (the word tokenization is authoritative): delete
+  // orphan morphemes and create a default morpheme for each bare word. Loud +
+  // recoverable. Deliberately NOT via _withSaving (a heal failure must not
+  // reload-and-revert the freshly loaded document).
+  async reconcileOnOpen() {
+    const info = this.layerInfo;
+    const { wordsNeedingMorpheme, orphanMorphemeIds } = planMorphemeReconcile(info);
+    if (!wordsNeedingMorpheme.length && !orphanMorphemeIds.length) {
+      return { created: 0, deleted: 0 };
+    }
+    const morphemeLayer = info.morphemeTokenLayer;
+    const textId = info.primaryTextLayer?.text?.id;
+    if (!morphemeLayer?.id || !textId) return { created: 0, deleted: 0 };
+
+    try {
+      this._client.beginBatch();
+      if (orphanMorphemeIds.length) this._client.tokens.bulkDelete(orphanMorphemeIds);
+      wordsNeedingMorpheme.forEach(w => {
+        this._client.tokens.create(morphemeLayer.id, textId, w.begin, w.end, 1);
+      });
+      const results = await this._client.submitBatch();
+      // Op order: the optional bulkDelete first, then one create per bare word.
+      const createResults = orphanMorphemeIds.length ? results.slice(1) : results;
+      const newIds = createResults.map(r => r?.body?.id ?? r?.id);
+      const removed = new Set(orphanMorphemeIds);
+
+      this._applyRawPatch((next, infoNext) => {
+        const layer = infoNext.morphemeTokenLayer;
+        if (!layer) return;
+        if (!Array.isArray(layer.tokens)) layer.tokens = [];
+        if (removed.size) layer.tokens = layer.tokens.filter(m => !removed.has(m.id));
+        wordsNeedingMorpheme.forEach((w, i) => {
+          const id = newIds[i];
+          if (id) layer.tokens.push({ id, text: textId, begin: w.begin, end: w.end, precedence: 1, metadata: {} });
+        });
+      });
+      return { created: wordsNeedingMorpheme.length, deleted: orphanMorphemeIds.length };
+    } catch (err) {
+      console.error('reconcileOnOpen failed:', err);
+      return { created: 0, deleted: 0, error: err };
+    }
   }
 
   // ============================================================

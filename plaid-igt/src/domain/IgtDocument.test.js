@@ -312,7 +312,7 @@ describe('vocab links (read path must reflect optimistic write)', () => {
 describe('document-level + alignment mutations (tabs now depend on these)', () => {
   const metaProject = {
     id: 'proj-1', vocabs: [],
-    config: { plaid: { documentMetadata: [{ name: 'Date' }, { name: 'Speakers' }] } },
+    config: { igt: { documentMetadata: [{ name: 'Date' }, { name: 'Speakers' }] } },
   };
 
   it('saveNameAndMetadata updates name + merges metadata over existing', async () => {

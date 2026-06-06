@@ -1,6 +1,9 @@
 // Test helpers for the IgtDocument domain layer: an in-memory fake plaid-client
 // and a builder for the raw document shape that `client.documents.get(id, true)`
-// returns (camelCased layers, config.plaid.* flags). Not imported by app code.
+// returns (camelCased layers; substrate bound by config.plaid.role, private
+// config under config.igt.*). Not imported by app code.
+
+import { ROLES } from '@larc-iu/plaid-client';
 
 let idCounter = 0;
 export const resetIds = () => { idCounter = 0; };
@@ -16,13 +19,13 @@ export function buildRawDoc(opts = {}) {
   const textId = 'text-1';
 
   const wordSpanLayers = (opts.wordFields ?? ['POS']).map((name, i) => ({
-    id: `wsl-${i}`, name, config: { plaid: { scope: 'Word' } }, spans: [],
+    id: `wsl-${i}`, name, config: { igt: { scope: 'Word' } }, spans: [],
   }));
   const morphSpanLayers = (opts.morphFields ?? ['Gloss']).map((name, i) => ({
-    id: `msl-${i}`, name, config: { plaid: { scope: 'Morpheme' } }, spans: [],
+    id: `msl-${i}`, name, config: { igt: { scope: 'Morpheme' } }, spans: [],
   }));
   const sentSpanLayers = (opts.sentFields ?? ['Translation']).map((name, i) => ({
-    id: `ssl-${i}`, name, config: { plaid: { scope: 'Sentence' } }, spans: [],
+    id: `ssl-${i}`, name, config: { igt: { scope: 'Sentence' } }, spans: [],
   }));
 
   const words = opts.words ?? [
@@ -50,24 +53,24 @@ export function buildRawDoc(opts = {}) {
     metadata: opts.metadata ?? {},
     textLayers: [
       {
-        id: 'tl-1', name: 'Main Text', config: { plaid: { primary: true } },
+        id: 'tl-1', name: 'Main Text', config: { plaid: { role: ROLES.BASELINE } },
         text: { id: textId, body },
         tokenLayers: [
           {
-            id: 'sentL', name: 'Sentences', config: { plaid: { sentence: true } },
+            id: 'sentL', name: 'Sentences', config: { plaid: { role: ROLES.SENTENCE } },
             tokens: sentenceTokens, spanLayers: sentSpanLayers, vocabs: [],
           },
           {
             id: 'wordL', name: 'Words',
-            config: { plaid: { primary: true, orthographies: opts.orthographies ?? [{ name: 'IPA' }] } },
+            config: { plaid: { role: ROLES.WORD }, igt: { orthographies: opts.orthographies ?? [{ name: 'IPA' }] } },
             tokens: wordTokens, spanLayers: wordSpanLayers, vocabs: opts.wordVocabs ?? [],
           },
           {
-            id: 'morphL', name: 'Morphemes', config: { plaid: { morpheme: true } },
+            id: 'morphL', name: 'Morphemes', config: { plaid: { role: ROLES.MORPHEME } },
             tokens: morphemes, spanLayers: morphSpanLayers, vocabs: opts.morphVocabs ?? [],
           },
           {
-            id: 'alignL', name: 'Alignment', config: { plaid: { alignment: true } },
+            id: 'alignL', name: 'Alignment', config: { plaid: { role: ROLES.TIME_ALIGNMENT } },
             tokens: opts.alignmentTokens ?? [], spanLayers: [], vocabs: [],
           },
         ],

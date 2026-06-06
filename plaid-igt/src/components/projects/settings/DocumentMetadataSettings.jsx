@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { DocumentMetadataManager } from './DocumentMetadataManager.jsx';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 
 export const DocumentMetadataSettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +26,7 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
       const project = await client.projects.get(projectId);
 
       // Extract current metadata configuration
-      const currentConfig = project.config?.plaid?.documentMetadata;
+      const currentConfig = readDocumentMetadata(project.config);
 
       if (currentConfig && Array.isArray(currentConfig)) {
         // Convert API format back to component format
@@ -65,7 +66,7 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
         name: field.name
       }));
 
-      await client.projects.setConfig(projectId, "plaid", "documentMetadata", apiConfig);
+      await client.projects.setConfig(projectId, IGT_NAMESPACE, "documentMetadata", apiConfig);
 
       notifySuccess('Document metadata configuration has been updated', 'Settings Saved');
     } catch (error) {

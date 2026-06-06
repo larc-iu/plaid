@@ -1,5 +1,6 @@
 import { cpLength, cpSlice, utf16ToCp } from '@larc-iu/plaid-client';
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
+import { interSententialRelationIds } from '../utils/udReconcile.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { basicTokenize } from '../utils/basicTokenize.js';
 import { notifyError } from '../utils/feedback.jsx';
@@ -689,6 +690,33 @@ export class ConlluDocument {
         }
       });
     });
+  }
+
+  // Reconcile-on-open: repair UD invariants that another app may have broken
+  // while editing the shared substrate. Currently: delete dependency relations
+  // that now cross a sentence boundary (e.g. after another app split a sentence).
+  // Heal downward — drop the invalid relation; never move the sentence. Loud +
+  // recoverable (an ordinary audited delete). Deliberately NOT via _withSaving:
+  // this runs once on a freshly loaded doc, and a heal failure must not trigger
+  // _withSaving's reload-and-revert (which would discard the just-loaded doc).
+  async reconcileOnOpen() {
+    const ids = interSententialRelationIds(this.layerInfo);
+    if (!ids.length) return { deletedRelations: 0 };
+    try {
+      this._client.beginBatch();
+      ids.forEach(id => this._client.relations.delete(id));
+      await this._client.submitBatch();
+      const removed = new Set(ids);
+      this._applyRawPatch((next, info) => {
+        if (info.relationLayer?.relations) {
+          info.relationLayer.relations = info.relationLayer.relations.filter(r => !removed.has(r.id));
+        }
+      });
+      return { deletedRelations: ids.length };
+    } catch (err) {
+      console.error('reconcileOnOpen failed:', err);
+      return { deletedRelations: 0, error: err };
+    }
   }
 
   // Set a word's morphemes from a list of forms. One form = an ordinary

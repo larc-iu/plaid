@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
+import { readInitialized } from '@/domain/igtConfig';
 
 // Default project view: the document list. Mirrors plaid-ud — the project
 // landing IS the documents, and project administration (access + settings) is
@@ -43,14 +44,19 @@ export const ProjectDetail = () => {
     fetchData(true);
   }, [projectId]);
 
-  // Unconfigured projects go to the setup wizard.
+  const canManage = !!user && !!project && (user.isAdmin || project.maintainers?.includes(user.id));
+
+  // A project not yet set up for IGT: maintainers go to the setup/adopt wizard;
+  // non-maintainers can't create layers, so they get an informational notice
+  // (rendered below) rather than a dead-end redirect into a wizard they can't
+  // complete.
   useEffect(() => {
-    if (project && !project.config?.plaid?.initialized) {
+    if (project && !readInitialized(project.config) && canManage) {
       navigate(`/projects/${projectId}/setup`, { replace: true });
     }
-  }, [project, projectId, navigate]);
+  }, [project, projectId, navigate, canManage]);
 
-  const canManage = !!user && !!project && (user.isAdmin || project.maintainers?.includes(user.id));
+  const needsSetupNotice = !!project && !readInitialized(project.config) && !canManage;
 
   const handleDocumentCreated = (newDocument) => {
     setDocuments(prev => [...prev, newDocument]);
@@ -69,6 +75,17 @@ export const ProjectDetail = () => {
       <div className="tw mx-auto max-w-5xl px-4 py-8">
         <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error || 'The requested project could not be found.'}
+        </div>
+      </div>
+    );
+  }
+
+  if (needsSetupNotice) {
+    return (
+      <div className="tw mx-auto max-w-5xl px-4 py-8">
+        <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+        <div role="status" className="mt-4 rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground">
+          This project hasn’t been set up for IGT yet. Ask a project maintainer to add IGT support.
         </div>
       </div>
     );

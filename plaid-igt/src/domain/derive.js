@@ -9,10 +9,11 @@
 // `sentences`.
 
 import { cpSlice } from '@larc-iu/plaid-client';
+import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
 
 export function deriveDocumentData(raw, layerInfo, project) {
   const configuredMetadata = {};
-  const fields = project?.config?.plaid?.documentMetadata;
+  const fields = readDocumentMetadata(project?.config);
   if (Array.isArray(fields) && raw?.metadata) {
     fields.forEach(field => {
       if (field?.name && Object.prototype.hasOwnProperty.call(raw.metadata, field.name)) {
@@ -158,7 +159,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
 
 function collectOrthographies(token, primaryTokenLayer) {
   const out = {};
-  const configs = primaryTokenLayer?.config?.plaid?.orthographies || [];
+  const configs = readOrthographies(primaryTokenLayer?.config) || [];
   configs.forEach(c => {
     const key = `orthog:${c.name}`;
     out[c.name] = token.metadata?.[key] || '';

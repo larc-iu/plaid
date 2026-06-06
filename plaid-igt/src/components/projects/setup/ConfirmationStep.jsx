@@ -4,6 +4,12 @@ import { Check, X, RefreshCw, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
+import {
+  IGT_NAMESPACE, readInitialized,
+  findBaselineTextLayer, findSentenceTokenLayer, findWordTokenLayer,
+  findMorphemeTokenLayer, findAlignmentTokenLayer,
+} from '@/domain/igtConfig';
 
 export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const navigate = useNavigate();
@@ -51,7 +57,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       if (resumeProjectId) {
         try {
           const existingProject = await client.projects.get(resumeProjectId);
-          if (existingProject?.config?.plaid?.initialized === true) {
+          if (readInitialized(existingProject?.config)) {
             notifyError(
               'This project is already initialized with Plaid Base. Re-running setup is not supported — create a new project instead.',
               'Project Already Initialized'
@@ -79,74 +85,106 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         setCreatedProjectId(newProject.id);
       }
 
-      // Step 2: Create/configure text layer
-      let textLayerId = null;
-      if (isNewProject) {
-        // For new projects, always create a default text layer
+      // Step 2: Find or create the substrate, ADOPTING a shared substrate that
+      // another Plaid app may already have set up. Substrate layers are matched
+      // by their shared role, so we reuse an existing baseline/sentence/word
+      // rather than duplicating them, and create only what IGT additionally
+      // needs (its morpheme + alignment layers). New projects have no substrate,
+      // so this finds nothing and creates the whole skeleton.
+      let existingTextLayers = [];
+      try {
+        const proj = await client.projects.get(currentProjectId);
+        existingTextLayers = proj?.textLayers || [];
+      } catch { /* brand-new / empty project: nothing to adopt */ }
+      const adoptedBaseline = findBaselineTextLayer(existingTextLayers);
+
+      let textLayerId = adoptedBaseline?.id ?? null;
+      if (textLayerId) {
+        updateProgress(20, 'Using shared text layer...');
+        await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+      } else if (isNewProject) {
         updateProgress(20, 'Creating text layer...');
         const textLayer = await client.textLayers.create(currentProjectId, 'Main Text');
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
-        // Mark as plaid-managed
-        await client.textLayers.setConfig(textLayerId, "plaid", "primary", true);
+        await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
       } else if (setupData.layerSelection?.textLayerType === 'new' && setupData.layerSelection?.newTextLayerName) {
         updateProgress(20, 'Creating text layer...');
         const textLayer = await client.textLayers.create(currentProjectId, setupData.layerSelection.newTextLayerName);
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
-        // Mark as plaid-managed
-        await client.textLayers.setConfig(textLayerId, "plaid", "primary", true);
+        await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
       } else if (setupData.layerSelection?.textLayerType === 'existing' && setupData.layerSelection?.selectedTextLayerId) {
         textLayerId = setupData.layerSelection.selectedTextLayerId;
         updateProgress(20, 'Using existing text layer...');
-        // Mark as plaid-managed
-        await client.textLayers.setConfig(textLayerId, "plaid", "primary", true);
+        await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
       }
 
-      // Token layers are created in hierarchy order: sentence → word → morpheme.
-      // Sentence is a :partitioning root layer covering the entire text.
-      // Word is :non-overlapping, nested under sentence (server enforces words don't cross sentence boundaries).
-      // Morpheme is :any, nested under word (server cascades word delete → morpheme delete).
-      // Alignment is a separate :non-overlapping root layer (time-aligned, independent of text hierarchy).
+      // Token layers, matched-or-created by role: sentence → word → morpheme,
+      // plus a separate alignment root. Adopting a foreign substrate reuses its
+      // sentence/word and adds only IGT's morpheme + alignment layers (the
+      // morpheme layer becomes a sibling of e.g. UD's syntactic-word layer).
       let sentenceTokenLayerId = null;
       let tokenLayerId = null;
       let morphemeLayerId = null;
       let alignmentTokenLayerId = null;
 
       if (textLayerId) {
-        // Step 3: Create sentence token layer (partitioning root)
-        updateProgress(28, 'Creating sentence layer...');
-        const sentenceTokenLayer = await client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
-        sentenceTokenLayerId = sentenceTokenLayer.id;
-        resources.sentenceTokenLayer = sentenceTokenLayer;
-        await client.tokenLayers.setConfig(sentenceTokenLayerId, "plaid", "sentence", true);
+        const existingTokenLayers = (adoptedBaseline?.id === textLayerId ? adoptedBaseline?.tokenLayers : []) || [];
 
-        // Step 4: Create word/primary token layer (non-overlapping, nested in sentence)
-        const tokenLayerName = (!isNewProject && setupData.layerSelection?.newTokenLayerName)
-          ? setupData.layerSelection.newTokenLayerName
-          : 'Main Tokens';
-        updateProgress(32, 'Creating token layer...');
-        const tokenLayer = await client.tokenLayers.create(textLayerId, tokenLayerName, 'non-overlapping', sentenceTokenLayerId);
-        tokenLayerId = tokenLayer.id;
-        resources.tokenLayer = tokenLayer;
-        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "primary", true);
+        // Sentence (partitioning root)
+        const foundSentence = findSentenceTokenLayer(existingTokenLayers);
+        if (foundSentence) {
+          sentenceTokenLayerId = foundSentence.id;
+        } else {
+          updateProgress(28, 'Creating sentence layer...');
+          const sentenceTokenLayer = await client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
+          sentenceTokenLayerId = sentenceTokenLayer.id;
+          resources.sentenceTokenLayer = sentenceTokenLayer;
+          await client.tokenLayers.setConfig(sentenceTokenLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
+        }
 
-        // Step 5: Create morpheme token layer (any, nested in word)
-        const morphemeLayerName = (!isNewProject && setupData.layerSelection?.newMorphemeLayerName)
-          ? setupData.layerSelection.newMorphemeLayerName
-          : 'Main Morphemes';
-        updateProgress(35, 'Creating morpheme layer...');
-        const morphemeLayer = await client.tokenLayers.create(textLayerId, morphemeLayerName, 'any', tokenLayerId);
-        morphemeLayerId = morphemeLayer.id;
-        resources.morphemeLayer = morphemeLayer;
-        await client.tokenLayers.setConfig(morphemeLayerId, "plaid", "morpheme", true);
+        // Word (non-overlapping, nested in sentence)
+        const foundWord = findWordTokenLayer(existingTokenLayers);
+        if (foundWord) {
+          tokenLayerId = foundWord.id;
+        } else {
+          const tokenLayerName = (!isNewProject && setupData.layerSelection?.newTokenLayerName)
+            ? setupData.layerSelection.newTokenLayerName
+            : 'Main Tokens';
+          updateProgress(32, 'Creating token layer...');
+          const tokenLayer = await client.tokenLayers.create(textLayerId, tokenLayerName, 'non-overlapping', sentenceTokenLayerId);
+          tokenLayerId = tokenLayer.id;
+          resources.tokenLayer = tokenLayer;
+          await client.tokenLayers.setConfig(tokenLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
+        }
 
-        // Step 6: Create alignment token layer (non-overlapping, root, time-aligned)
-        updateProgress(38, 'Creating alignment token layer...');
-        const alignmentTokenLayer = await client.tokenLayers.create(textLayerId, 'Time Alignment', 'non-overlapping');
-        alignmentTokenLayerId = alignmentTokenLayer.id;
-        resources.alignmentTokenLayer = alignmentTokenLayer;
-        await client.tokenLayers.setConfig(alignmentTokenLayerId, "plaid", "alignment", true);
+        // Morpheme (any, nested in word) — IGT-specific; a UD substrate has none.
+        const foundMorpheme = findMorphemeTokenLayer(existingTokenLayers);
+        if (foundMorpheme) {
+          morphemeLayerId = foundMorpheme.id;
+        } else {
+          const morphemeLayerName = (!isNewProject && setupData.layerSelection?.newMorphemeLayerName)
+            ? setupData.layerSelection.newMorphemeLayerName
+            : 'Main Morphemes';
+          updateProgress(35, 'Creating morpheme layer...');
+          const morphemeLayer = await client.tokenLayers.create(textLayerId, morphemeLayerName, 'any', tokenLayerId);
+          morphemeLayerId = morphemeLayer.id;
+          resources.morphemeLayer = morphemeLayer;
+          await client.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.MORPHEME);
+        }
+
+        // Alignment (non-overlapping root, time-aligned)
+        const foundAlignment = findAlignmentTokenLayer(existingTokenLayers);
+        if (foundAlignment) {
+          alignmentTokenLayerId = foundAlignment.id;
+        } else {
+          updateProgress(38, 'Creating alignment token layer...');
+          const alignmentTokenLayer = await client.tokenLayers.create(textLayerId, 'Time Alignment', 'non-overlapping');
+          alignmentTokenLayerId = alignmentTokenLayer.id;
+          resources.alignmentTokenLayer = alignmentTokenLayer;
+          await client.tokenLayers.setConfig(alignmentTokenLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.TIME_ALIGNMENT);
+        }
       }
 
       // Step 5: Configure orthographies on token layer
@@ -159,7 +197,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
           }));
 
         // Always save the config to indicate user choice, even if empty
-        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "orthographies", orthographiesConfig);
+        await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, "orthographies", orthographiesConfig);
       }
 
       // Step 6: Create span layers for annotation fields
@@ -191,7 +229,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
               const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
 
               // Set the scope in the span layer's config
-              await client.spanLayers.setConfig(spanLayer.id, "plaid", "scope", field.scope);
+              await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, "scope", field.scope);
 
               createdSpanLayers.push(spanLayer);
             } catch (fieldError) {
@@ -216,7 +254,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
           ignoredTokensConfig.blacklist = setupData.fields.ignoredTokens.explicitIgnoredTokens || [];
         }
 
-        await client.tokenLayers.setConfig(tokenLayerId, "plaid", "ignoredTokens", ignoredTokensConfig);
+        await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, "ignoredTokens", ignoredTokensConfig);
       }
 
       // Step 8: Handle vocabularies
@@ -270,11 +308,11 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       const metadataConfig = enabledFields.map(field => ({
         name: field.name
       }));
-      await client.projects.setConfig(currentProjectId, "plaid", "documentMetadata", metadataConfig);
+      await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, "documentMetadata", metadataConfig);
 
       // Step 10: Mark project as initialized
       updateProgress(90, 'Finalizing setup...');
-      await client.projects.setConfig(currentProjectId, "plaid", "initialized", true);
+      await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, "initialized", true);
 
       // Complete
       updateProgress(100, 'Setup complete!');

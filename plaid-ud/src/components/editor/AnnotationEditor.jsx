@@ -12,8 +12,8 @@ import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
-import { notifySuccess } from '../../utils/feedback.jsx';
-import { canEditProject } from '../../utils/permissions.js';
+import { notifySuccess, notifyWarning } from '../../utils/feedback.jsx';
+import { canEditProject, canManageProject } from '../../utils/permissions.js';
 
 const DRAWER_WIDTH = 384;
 
@@ -71,6 +71,25 @@ export const AnnotationEditor = () => {
         ConlluDocument.load(client, projectId, documentId)
       ]);
       setProject(projectData);
+      // Reconcile-on-open: heal UD invariants another app may have broken while
+      // this editor was closed (e.g. a sentence split that left a dependency
+      // relation crossing a boundary). Edit permission only, and BEFORE entering
+      // strict mode so the repair's own write doesn't trip OCC. Loud + recoverable.
+      if (canEditProject(projectData, user)) {
+        try {
+          const { deletedRelations } = await next.reconcileOnOpen();
+          if (deletedRelations > 0) {
+            notifyWarning(
+              `Removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
+              'crossed a sentence boundary, likely from an edit in another app. Please review.',
+              'Document repaired',
+              { autoClose: false }
+            );
+          }
+        } catch (e) {
+          console.error('Reconcile-on-open failed:', e);
+        }
+      }
       setDoc(next);
       client.enterStrictMode(documentId);
       setLoadError('');
@@ -155,9 +174,9 @@ export const AnnotationEditor = () => {
 
     if (isAdmin || isMaintainer) {
       navigate(`/projects/${projectId}/configuration`, { replace: true });
-    } else {
-      navigate('/projects', { replace: true });
     }
+    // Non-maintainers can't configure/adopt; rather than bouncing them out, the
+    // render shows a clear "not set up for UD" notice (see below).
   }, [loading, layerInfo, project, projectId, user, navigate, activeDocument]);
 
   // Bind annotation/relation handlers to the current document. When viewing
@@ -330,6 +349,22 @@ export const AnnotationEditor = () => {
   ) : null;
 
   // Always render the main container with drawer to maintain state.
+  // A project not set up for UD, opened by a non-maintainer: maintainers are
+  // redirected to /configuration to set it up/adopt it; everyone else gets a
+  // clear notice instead of a broken editor or a silent bounce.
+  if (!loading && layerInfo && !layerInfo.isConfigured && !canManageProject(project, user)) {
+    return (
+      <Box style={{ width: '100%', minHeight: '100vh' }}>
+        <Center py={64}>
+          <Alert color="yellow" title="Not set up for UD" maw={520} icon={<IconInfoCircle size={18} />}>
+            This project hasn’t been set up for Universal Dependencies yet. Ask a project
+            maintainer to add UD support.
+          </Alert>
+        </Center>
+      </Box>
+    );
+  }
+
   return (
     <Box style={{ width: '100%', minHeight: '100vh' }}>
       <HistoryDrawer

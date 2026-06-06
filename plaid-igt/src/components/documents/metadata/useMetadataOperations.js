@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess } from '@/utils/feedback';
+import { readDocumentMetadata } from '@/domain/igtConfig';
 
 // Metadata tab operations, backed by the shared IgtDocument. All transient
 // editing state (isEditing / drafts / modal / spinners) is component-local;
@@ -14,7 +15,7 @@ export const useMetadataOperations = () => {
 
   const document = doc.document;
   const project = doc.project;
-  const metadataFields = project?.config?.plaid?.documentMetadata || [];
+  const metadataFields = readDocumentMetadata(project?.config) || [];
 
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);

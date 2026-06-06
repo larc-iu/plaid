@@ -1617,3 +1617,4 @@ export { PlaidClient };
 // Unicode code-point helpers for text offsets (token begin/end are code-point
 // indices). See ./codepoint.js.
 export { cpLength, cpSlice, utf16ToCp, cpToUtf16, cpIndexOf } from './codepoint.js';
+export { PLAID_NAMESPACE, ROLE_KEY, ROLES, readRole, hasRole } from './roles.js';

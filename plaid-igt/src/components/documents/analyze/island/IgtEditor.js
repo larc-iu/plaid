@@ -16,6 +16,7 @@ import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
+import { readOrthographies, readIgnoredTokens } from '@/domain/igtConfig';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -391,12 +392,12 @@ export class IgtEditor {
       return html`<div class="igt-island__empty">No tokens yet — tokenize the document first (Tokenize tab).</div>`;
     }
 
-    const orthographies = (info.primaryTokenLayer.config?.plaid?.orthographies || []).map((o) => o.name);
+    const orthographies = (readOrthographies(info.primaryTokenLayer.config) || []).map((o) => o.name);
     const wordFields = info.spanLayers.word.map((l) => l.name);
     const morphFields = info.spanLayers.morpheme.map((l) => l.name);
     const sentFields = info.spanLayers.sentence.map((l) => l.name);
     const hasMorphemes = !!info.morphemeTokenLayer;
-    const ignoredCfg = info.primaryTokenLayer.config?.plaid?.ignoredTokens || null;
+    const ignoredCfg = readIgnoredTokens(info.primaryTokenLayer.config);
 
     const ctx = { orthographies, wordFields, morphFields, sentFields, hasMorphemes, ignoredCfg };
 

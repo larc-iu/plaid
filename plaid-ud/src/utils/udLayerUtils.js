@@ -1,6 +1,7 @@
 import {
   UPOS_TAGS, UNIVERSAL_DEPRELS, readVocab, readColorMap, readFeatureInventory
 } from './udVocab.js';
+import { ROLES, readRole } from '@larc-iu/plaid-client';
 
 const UD_NAMESPACE = 'ud';
 
@@ -12,18 +13,13 @@ const UD_NAMESPACE = 'ud';
 export const containsToken = (parent, child) =>
   parent.begin <= child.begin && child.end <= parent.end && child.begin < parent.end;
 
-export const UD_TEXT_CONFIG_KEY = 'textLayer';
 export const UD_RELATION_CONFIG_KEY = 'dependency';
 
-// The three token layers of the UD hierarchy: sentences > words > morphemes.
-// - sentences:  overlap-mode "partitioning" (root) — tile the whole text
-// - words:      overlap-mode "non-overlapping", parent = sentences — UD surface tokens
-// - morphemes:  overlap-mode "any", parent = words — UD syntactic words (annotations live here)
-export const UD_TOKEN_CONFIG_KEYS = {
-  sentence: 'sentenceTokenLayer',
-  word: 'wordTokenLayer',
-  morpheme: 'morphemeTokenLayer'
-};
+// The three token layers of the UD hierarchy, bound by their shared role:
+// - sentences:  role `sentence`, overlap-mode "partitioning" (root) — tiles the text
+// - words:      role `word`, overlap-mode "non-overlapping", parent = sentences — surface tokens
+// - morphemes:  role `syntactic-word`, overlap-mode "any", parent = words — UD syntactic
+//               words (annotations live here); a sibling of IGT's `morpheme` layer.
 
 // Span layers, all attached to the MORPHEME token layer.
 export const UD_SPAN_CONFIG_KEYS = {
@@ -49,15 +45,18 @@ export const UD_LAYER_LABELS = {
 
 const hasConfigFlag = (config, key) => config?.[UD_NAMESPACE]?.[key] === true;
 
-// Internal helpers for getUdLayerInfo — find a UD-flagged layer at each level.
+// Substrate layers (text + token layers) are bound by their shared ROLE
+// (config.plaid.role), so a UD project and a project set up by another app
+// resolve the same way. Annotation span / relation layers stay private to UD
+// and are bound by the `ud` config flags (findUdSpanLayer/findUdRelationLayer).
 const findUdTextLayer = (document) => {
   if (!document?.textLayers) return null;
-  return document.textLayers.find(layer => hasConfigFlag(layer.config, UD_TEXT_CONFIG_KEY)) || null;
+  return document.textLayers.find(layer => readRole(layer.config) === ROLES.BASELINE) || null;
 };
 
-const findUdTokenLayer = (textLayer, configKey) => {
+const findUdTokenLayerByRole = (textLayer, role) => {
   if (!textLayer?.tokenLayers) return null;
-  return textLayer.tokenLayers.find(layer => hasConfigFlag(layer.config, configKey)) || null;
+  return textLayer.tokenLayers.find(layer => readRole(layer.config) === role) || null;
 };
 
 const findUdSpanLayer = (tokenLayer, configKey) => {
@@ -116,14 +115,16 @@ export const getUdLayerInfo = (document) => {
   const textLayer = findUdTextLayer(document);
   if (!textLayer) missingLayers.push('textLayer');
 
-  // Token layers (sentences > words > morphemes)
-  const sentenceTokenLayer = findUdTokenLayer(textLayer, UD_TOKEN_CONFIG_KEYS.sentence);
+  // Token layers (sentences > words > morphemes), bound by shared role.
+  const sentenceTokenLayer = findUdTokenLayerByRole(textLayer, ROLES.SENTENCE);
   if (!sentenceTokenLayer) missingLayers.push('sentenceTokenLayer');
 
-  const wordTokenLayer = findUdTokenLayer(textLayer, UD_TOKEN_CONFIG_KEYS.word);
+  const wordTokenLayer = findUdTokenLayerByRole(textLayer, ROLES.WORD);
   if (!wordTokenLayer) missingLayers.push('wordTokenLayer');
 
-  const morphemeTokenLayer = findUdTokenLayer(textLayer, UD_TOKEN_CONFIG_KEYS.morpheme);
+  // UD's "Morphemes" token layer holds SYNTACTIC WORDS (CoNLL-U words / MWT
+  // splits), so its shared role is `syntactic-word`, NOT `morpheme`.
+  const morphemeTokenLayer = findUdTokenLayerByRole(textLayer, ROLES.SYNTACTIC_WORD);
   if (!morphemeTokenLayer) missingLayers.push('morphemeTokenLayer');
 
   // All annotation span layers hang off the morpheme token layer.

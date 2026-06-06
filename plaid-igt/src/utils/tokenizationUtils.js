@@ -11,6 +11,7 @@
  */
 
 import { cpSlice, cpLength, utf16ToCp } from '@larc-iu/plaid-client';
+import { findBaselineTextLayer, findWordTokenLayer, readIgnoredTokens } from '../domain/igtConfig.js';
 
 /**
  * Check if a character is Unicode punctuation (category "P")
@@ -233,15 +234,9 @@ export function tokenizeSentences(text, existingSentenceTokens = []) {
  * @returns {Object|null} Ignored tokens configuration or null if not found
  */
 export function getIgnoredTokensConfig(project) {
-  const primaryTextLayer = project?.textLayers?.find(
-    layer => layer.config?.plaid?.primary
-  );
-  
-  const primaryTokenLayer = primaryTextLayer?.tokenLayers?.find(
-    layer => layer.config?.plaid?.primary
-  );
-  
-  return primaryTokenLayer?.config?.plaid?.ignoredTokens || null;
+  const primaryTextLayer = findBaselineTextLayer(project?.textLayers);
+  const primaryTokenLayer = findWordTokenLayer(primaryTextLayer?.tokenLayers);
+  return readIgnoredTokens(primaryTokenLayer?.config);
 }
 
 /**

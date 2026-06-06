@@ -3,11 +3,10 @@ import { Modal, TextInput, Button, Group, Stack, Alert, Paper, Text, List } from
 import { useAuth } from '../../contexts/AuthContext';
 import {
   UD_NAMESPACE,
-  UD_TEXT_CONFIG_KEY,
-  UD_TOKEN_CONFIG_KEYS,
   UD_SPAN_CONFIG_KEYS,
   UD_RELATION_CONFIG_KEY
 } from '../../utils/udLayerUtils.js';
+import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
 
 export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
   const [projectName, setProjectName] = useState('');
@@ -50,29 +49,34 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
       const textLayerId = b2[0].body.id;
 
       // B3: textLayer.setConfig + sentenceLayer.create
+      // Substrate layers are tagged with their shared ROLE (config.plaid.role)
+      // so a project set up here is interoperable with other Plaid apps.
       client.beginBatch();
-      client.textLayers.setConfig(textLayerId, UD_NAMESPACE, UD_TEXT_CONFIG_KEY, true);
+      client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
       client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
       const b3 = await client.submitBatch();
       const sentenceLayerId = b3[1].body.id;
 
       // B4: sentenceLayer.setConfig + wordLayer.create
       client.beginBatch();
-      client.tokenLayers.setConfig(sentenceLayerId, UD_NAMESPACE, UD_TOKEN_CONFIG_KEYS.sentence, true);
+      client.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
       client.tokenLayers.create(textLayerId, 'Words', 'non-overlapping', sentenceLayerId);
       const b4 = await client.submitBatch();
       const wordLayerId = b4[1].body.id;
 
       // B5: wordLayer.setConfig + morphemeLayer.create
       client.beginBatch();
-      client.tokenLayers.setConfig(wordLayerId, UD_NAMESPACE, UD_TOKEN_CONFIG_KEYS.word, true);
+      client.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
       client.tokenLayers.create(textLayerId, 'Morphemes', 'any', wordLayerId);
       const b5 = await client.submitBatch();
       const morphemeLayerId = b5[1].body.id;
 
       // B6: morphemeLayer.setConfig + all 5 span layer creates
       client.beginBatch();
-      client.tokenLayers.setConfig(morphemeLayerId, UD_NAMESPACE, UD_TOKEN_CONFIG_KEYS.morpheme, true);
+      // UD's "Morphemes" layer holds SYNTACTIC WORDS (MWT splits), so its role is
+      // `syntactic-word`, NOT `morpheme`. IGT's true-morpheme layer is a sibling
+      // under the shared word layer. Getting this wrong corrupts segmentation.
+      client.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
       for (const [name] of SPAN_LAYER_SPECS) {
         client.spanLayers.create(morphemeLayerId, name);
       }

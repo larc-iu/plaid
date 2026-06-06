@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { readVocabFields, IGT_NAMESPACE } from '@/domain/igtConfig';
 import {
   Dialog,
   DialogContent,
@@ -70,8 +71,9 @@ export const VocabularyDetail = () => {
       // Extract custom fields from config
       const fields = [];
       const configs = {};
-      if (vocabularyData.config?.plaid?.fields) {
-        Object.entries(vocabularyData.config.plaid.fields).forEach(([fieldName, fieldConfig]) => {
+      const vocabFields = readVocabFields(vocabularyData.config);
+      if (vocabFields) {
+        Object.entries(vocabFields).forEach(([fieldName, fieldConfig]) => {
           if (fieldName.toLowerCase() !== 'form') {
             fields.push(fieldName);
             // Handle both old boolean format and new object format
@@ -131,8 +133,9 @@ export const VocabularyDetail = () => {
       // Extract custom fields from config
       const fields = [];
       const configs = {};
-      if (vocabularyData.config?.plaid?.fields) {
-        Object.entries(vocabularyData.config.plaid.fields).forEach(([fieldName, fieldConfig]) => {
+      const vocabFields = readVocabFields(vocabularyData.config);
+      if (vocabFields) {
+        Object.entries(vocabFields).forEach(([fieldName, fieldConfig]) => {
           if (fieldName.toLowerCase() !== 'form') {
             fields.push(fieldName);
             // Handle both old boolean format and new object format
@@ -176,7 +179,7 @@ export const VocabularyDetail = () => {
           customFields.forEach(field => {
             fieldsConfig[field] = fieldConfigs[field] || { inline: false };
           });
-          await client.vocabLayers.setConfig(savedVocabulary.id, 'plaid', 'fields', fieldsConfig);
+          await client.vocabLayers.setConfig(savedVocabulary.id, IGT_NAMESPACE, 'fields', fieldsConfig);
         }
 
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
@@ -253,9 +256,9 @@ export const VocabularyDetail = () => {
         });
 
         if (Object.keys(fieldsConfig).length > 0) {
-          await client.vocabLayers.setConfig(vocabularyId, 'plaid', 'fields', fieldsConfig);
+          await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'fields', fieldsConfig);
         } else {
-          await client.vocabLayers.deleteConfig(vocabularyId, 'plaid', 'fields');
+          await client.vocabLayers.deleteConfig(vocabularyId, IGT_NAMESPACE, 'fields');
         }
 
         notifySuccess('Custom fields updated successfully', 'Success');

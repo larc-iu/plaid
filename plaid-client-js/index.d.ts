@@ -291,3 +291,24 @@ export function utf16ToCp(s: string, u: number): number;
 export function cpToUtf16(s: string, cp: number): number;
 /** Like indexOf, but the result and `fromCp` are code-point indices; -1 if absent. */
 export function cpIndexOf(s: string, sub: string, fromCp?: number): number;
+
+// --- Shared layer-role vocabulary (cross-app interoperability) --------------
+// Substrate layers are tagged with a role at `config.plaid.role` (a scalar) so
+// that different apps can share a project. See the manual, "Layer Interoperability".
+/** The reserved config namespace for cross-app conventions. */
+export const PLAID_NAMESPACE: 'plaid';
+/** The config key, under `plaid`, holding a layer's role. */
+export const ROLE_KEY: 'role';
+/** The fixed role inventory; only these values are interoperable across apps. */
+export const ROLES: {
+  readonly BASELINE: 'baseline';
+  readonly SENTENCE: 'sentence';
+  readonly WORD: 'word';
+  readonly SYNTACTIC_WORD: 'syntactic-word';
+  readonly MORPHEME: 'morpheme';
+  readonly TIME_ALIGNMENT: 'time-alignment';
+};
+/** The role recorded on a layer's `config`, or null if none. */
+export function readRole(config?: object): string | null;
+/** True if `layer`'s config carries the given role. */
+export function hasRole(layer: { config?: object } | undefined, role: string): boolean;

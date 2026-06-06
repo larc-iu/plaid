@@ -5,6 +5,12 @@
  * organized by sentences containing tokens with their annotations.
  */
 
+import {
+  findBaselineTextLayer, findWordTokenLayer, findSentenceTokenLayer,
+  findAlignmentTokenLayer, findMorphemeTokenLayer, readScope,
+  readOrthographies, readDocumentMetadata
+} from '../domain/igtConfig.js';
+
 /**
  * Main parser function that transforms raw document response
  * @param {Object} rawDocument - Raw document response from API
@@ -65,14 +71,12 @@ export function parseDocument(rawDocument, client, project) {
  * @returns {Object} Core document data
  */
 function extractDocumentData(rawDocument, project) {
-  const primaryTextLayer = rawDocument.textLayers?.find(
-    layer => layer.config?.plaid?.primary
-  );
-  
+  const primaryTextLayer = findBaselineTextLayer(rawDocument.textLayers);
+
   // Extract configured metadata fields if project config is available
   const configuredMetadata = {};
-  if (project?.config?.plaid?.documentMetadata && rawDocument.metadata) {
-    const metadataFields = project.config.plaid.documentMetadata;
+  const metadataFields = readDocumentMetadata(project?.config);
+  if (metadataFields && rawDocument.metadata) {
     metadataFields.forEach(field => {
       if (field.name && Object.prototype.hasOwnProperty.call(rawDocument.metadata, field.name)) {
         configuredMetadata[field.name] = rawDocument.metadata[field.name];
@@ -97,11 +101,11 @@ function extractDocumentData(rawDocument, project) {
  * @returns {Object} Object containing identified layers
  */
 function findPrimaryLayers(textLayers) {
-  const primaryTextLayer = textLayers.find(layer => layer.config?.plaid?.primary);
-  const primaryTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.primary);
-  const sentenceTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.sentence);
-  const alignmentTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.alignment);
-  const morphemeTokenLayer = primaryTextLayer.tokenLayers.find(layer => layer.config?.plaid?.morpheme);
+  const primaryTextLayer = findBaselineTextLayer(textLayers);
+  const primaryTokenLayer = findWordTokenLayer(primaryTextLayer.tokenLayers);
+  const sentenceTokenLayer = findSentenceTokenLayer(primaryTextLayer.tokenLayers);
+  const alignmentTokenLayer = findAlignmentTokenLayer(primaryTextLayer.tokenLayers);
+  const morphemeTokenLayer = findMorphemeTokenLayer(primaryTextLayer.tokenLayers);
 
   // Collect all span layers and categorize by scope
   const spanLayers = {
@@ -113,7 +117,7 @@ function findPrimaryLayers(textLayers) {
   // Collect span layers from primary token layer
   if (primaryTokenLayer.spanLayers) {
     primaryTokenLayer.spanLayers.forEach(spanLayer => {
-      const scope = spanLayer.config?.plaid?.scope;
+      const scope = readScope(spanLayer.config);
       if (scope === 'Token' || scope === 'Word') {
         spanLayers.token.push(spanLayer);
       }
@@ -123,7 +127,7 @@ function findPrimaryLayers(textLayers) {
   // Collect span layers from morpheme token layer
   if (morphemeTokenLayer?.spanLayers) {
     morphemeTokenLayer.spanLayers.forEach(spanLayer => {
-      const scope = spanLayer.config?.plaid?.scope;
+      const scope = readScope(spanLayer.config);
       if (scope === 'Morpheme') {
         spanLayers.morpheme.push(spanLayer);
       }
@@ -133,7 +137,7 @@ function findPrimaryLayers(textLayers) {
   // Collect span layers from sentence token layer
   if (sentenceTokenLayer.spanLayers) {
     sentenceTokenLayer.spanLayers.forEach(spanLayer => {
-      const scope = spanLayer.config?.plaid?.scope;
+      const scope = readScope(spanLayer.config);
       if (scope === 'Sentence') {
         spanLayers.sentence.push(spanLayer);
       }
@@ -203,7 +207,7 @@ function collectOrthographies(token, primaryTokenLayer) {
   const orthographies = {};
   
   // Get orthography configurations from the primary token layer
-  const orthographyConfigs = primaryTokenLayer.config?.plaid?.orthographies || [];
+  const orthographyConfigs = readOrthographies(primaryTokenLayer.config) || [];
   
   // Initialize all configured orthographies
   orthographyConfigs.forEach(orthoConfig => {

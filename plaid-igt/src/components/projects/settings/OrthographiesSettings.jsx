@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { OrthographiesManager } from './OrthographiesManager.jsx';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { findBaselineTextLayer, findWordTokenLayer, readOrthographies, IGT_NAMESPACE } from '@/domain/igtConfig';
 
 export const OrthographiesSettings = ({ projectId, client }) => {
   const [, setIsLoading] = useState(false);
@@ -31,26 +32,23 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         return null;
       }
 
-      // Find the text layer that has plaid configuration
-      const textLayer = project.textLayers.find(layer => layer.config?.plaid);
+      // Find the baseline text layer (the shared substrate).
+      const textLayer = findBaselineTextLayer(project.textLayers);
       if (!textLayer) {
-        // No plaid-configured text layer found, return null for defaults
+        // No baseline text layer found, return null for defaults
         return null;
       }
 
-      if (!textLayer.tokenLayers || textLayer.tokenLayers.length === 0) {
-        // No token layers yet, return null for defaults
-        return null;
-      }
-
-      // Get the first token layer (assuming main token layer)
-      const tokenLayer = textLayer.tokenLayers[0];
+      // The word token layer holds the orthographies config.
+      const tokenLayer = findWordTokenLayer(textLayer.tokenLayers);
+      if (!tokenLayer) return null;
 
       // Extract current orthographies configuration
-      const currentConfig = tokenLayer.config?.plaid?.orthographies;
+      const currentConfig = readOrthographies(tokenLayer.config);
 
       // Check if orthographies config has been explicitly set (even if empty)
-      const hasOrthographiesConfig = tokenLayer.config?.plaid && Object.prototype.hasOwnProperty.call(tokenLayer.config.plaid, 'orthographies');
+      const hasOrthographiesConfig = tokenLayer.config?.[IGT_NAMESPACE]
+        && Object.prototype.hasOwnProperty.call(tokenLayer.config[IGT_NAMESPACE], 'orthographies');
 
       if (hasOrthographiesConfig) {
         // Config has been set, respect it even if empty
@@ -103,17 +101,17 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         throw new Error('No text layers found in project');
       }
 
-      // Find the text layer that has plaid configuration
-      const textLayer = project.textLayers.find(layer => layer.config?.plaid);
+      // Find the baseline text layer (the shared substrate).
+      const textLayer = findBaselineTextLayer(project.textLayers);
       if (!textLayer) {
-        throw new Error('No plaid-configured text layer found in project');
+        throw new Error('No baseline text layer found in project');
       }
 
-      if (!textLayer.tokenLayers || textLayer.tokenLayers.length === 0) {
-        throw new Error('No token layers found in project');
+      const wordTokenLayer = findWordTokenLayer(textLayer.tokenLayers);
+      if (!wordTokenLayer) {
+        throw new Error('No word token layer found in project');
       }
-
-      const tokenLayerId = textLayer.tokenLayers[0].id;
+      const tokenLayerId = wordTokenLayer.id;
 
       // Convert to API format (filter out baseline, only store non-baseline orthographies)
       const nonBaselineOrthographies = data.orthographies
@@ -122,7 +120,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
           name: orth.name
         }));
 
-      await client.tokenLayers.setConfig(tokenLayerId, "plaid", "orthographies", nonBaselineOrthographies);
+      await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, "orthographies", nonBaselineOrthographies);
 
       notifySuccess('Orthographies configuration has been updated', 'Settings Saved');
     } catch (error) {

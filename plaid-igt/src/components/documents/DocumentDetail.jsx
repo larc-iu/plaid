@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, notifyWarning } from '@/utils/feedback';
 import { History, FileText, Type, Mic, Play, Table } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
@@ -59,6 +59,33 @@ const DocumentEditor = () => {
     })();
     return () => { cancelled = true; };
   }, [client, projectId, documentId, asOf, navigate]);
+
+  // Reconcile-on-open: once the document and the user's permissions are known,
+  // heal IGT invariants another app may have broken in the shared substrate
+  // (e.g. a word UD created that has no morpheme, or an orphaned morpheme left
+  // by a word edit). Edit permission only, and not while time-travelling (asOf
+  // is a read-only snapshot). Loud + recoverable. Idempotent, so it is safe to
+  // re-run; it no-ops when there is nothing to repair.
+  useEffect(() => {
+    if (!doc || asOf || !permissions?.canWrite) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { created = 0, deleted = 0 } = await doc.reconcileOnOpen();
+        if (cancelled || created + deleted === 0) return;
+        const parts = [];
+        if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
+        if (deleted) parts.push(`removed ${deleted} orphaned morpheme${deleted === 1 ? '' : 's'}`);
+        notifyWarning(
+          `Repaired this document after an edit in another app: ${parts.join(' and ')}. Please review.`,
+          'Document repaired'
+        );
+      } catch (e) {
+        console.error('Reconcile-on-open failed:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [doc, asOf, permissions?.canWrite]);
 
   const handleOpenHistory = () => {
     history.setOpen(true);
