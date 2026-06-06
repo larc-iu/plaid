@@ -137,3 +137,28 @@
     (testing "strict-layers allows a structural variable"
       (is (= #{(str noun) (str verb)}
              (ids (run (assoc chain "strict-layers" true))))))))
+
+(deftest structural-slot-inside-not-correlates
+  ;; Regression (review f58a7e2): a structural slot on a CORRELATED layer var inside
+  ;; :not was a no-op in compile-not!, so the FK correlation was dropped — the :not
+  ;; degraded to "exists ANY layer named sentences", returning empty for everything.
+  (let [{:keys [sentl wordl]} (build! "LR7")]
+    (testing "token layers WITHOUT a parent named 'sentences' -> sentences (no parent), NOT words"
+      (let [got (ids (run {"find" ["?tl"]
+                           "where" [["token-layer" "?tl" {}]
+                                    ["not" ["token-layer" "?tl" {"parent-token-layer" "?p"}]
+                                     ["token-layer" "?p" {"name" "sentences"}]]]}))]
+        (is (contains? got (str sentl)) "sentences has no parent -> kept")
+        (is (not (contains? got (str wordl))) "words' parent IS sentences -> excluded")))))
+
+(deftest name-filter-inside-not-correlates
+  ;; Regression (pre-existing, surfaced by the review): a correlated layer var's
+  ;; :name/:alias filter inside :not was dropped too (NOT EXISTS (SELECT 1 WHERE TRUE)
+  ;; -> always false -> always empty). Now emitted inside the subquery.
+  (let [{:keys [noun verb]} (build! "LR8")]
+    (testing "spans on a layer named 'pos' that is NOT also named 'deprel' -> all pos spans"
+      (is (= #{(str noun) (str verb)}
+             (ids (run {"find" ["?s"]
+                        "where" [["span" "?s" {"layer" "?sl"}]
+                                 ["span-layer" "?sl" {"name" "pos"}]
+                                 ["not" ["span-layer" "?sl" {"name" "deprel"}]]]})))))))
