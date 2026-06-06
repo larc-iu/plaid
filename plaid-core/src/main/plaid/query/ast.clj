@@ -119,14 +119,24 @@
 (def ^:private deferred-clauses
   #{})
 
-;; Attributes a :find var of each kind may be ORDER BY'd on. Backend-agnostic
-;; domain set; the compiler maps each to a column. Only :find vars are orderable
-;; (they are bound in every UNION branch, so the sort column is always present).
-(def ^:private order-attrs
+;; Scalar fields of each entity kind addressable via a dot-path (`?t.begin`),
+;; order-by, or an aggregate. Backend-agnostic domain set; the compiler maps each
+;; to a column. `:metadata` (open keys) is handled separately. Document/text are
+;; included so they can be compared/ordered too.
+(def ^:private entity-field-attrs
   {:span     #{:value :doc :id}
    :token    #{:begin :end :precedence :doc :id}
    :relation #{:value :doc :id}
-   :vocab    #{:form :id}})
+   :vocab    #{:form :id}
+   :document #{:name :id}
+   :text     #{:body :doc :id}})
+
+;; Layer variables expose name/id/alias as scalar fields, plus open `config` keys.
+(def ^:private layer-field-attrs #{:name :id :alias})
+
+;; Fields with no meaningful order (opaque ids): ordering predicate ops
+;; (< > <= >=) are rejected on these, though `=`/`!=` and order-by are fine.
+(def ^:private unordered-field-attrs #{:id :doc})
 
 ;; ---------------------------------------------------------------------------
 ;; Errors
@@ -136,6 +146,80 @@
   ([stage msg] (err! stage msg {}))
   ([stage msg data]
    (throw (ex-info msg (merge {:code 400 :query-error/stage stage} data)))))
+
+;; ---------------------------------------------------------------------------
+;; Field references — dotted paths: ?t.begin / ?s.metadata.k… / ?sl.config.k…
+;; ---------------------------------------------------------------------------
+;; A field reference is a `?var` followed by a dotted path. It is a scalar TERM
+;; (usable in predicates / order-by / aggregates), never a bindable variable. The
+;; QL-vocabulary segment (a core attr, or the `metadata`/`config` boundary word)
+;; is CANONICALIZED so it is idiom-agnostic (camel/snake/kebab all match); keys
+;; AFTER `metadata`/`config` are kept verbatim (case-sensitive user keys). Dots
+;; are the separator, so metadata/config keys containing a literal `.` are not
+;; reachable this way (use the `metadata` constraint map for those).
+
+(def ^:private field-key ::field)
+(def ^:private layer-kinds (set (keys layer-clauses)))
+(defn- layer-kind? [k] (contains? layer-kinds k))
+
+(defn field-ref? [x] (and (map? x) (contains? x field-key)))
+(defn field-var  [fr] (:var  (get fr field-key)))
+(defn field-path [fr] (:path (get fr field-key)))
+(defn field->str [fr] (str (field-var fr) (apply str (map #(str "." %) (field-path fr)))))
+
+(defn- canon-seg [s] (-> s str/lower-case (str/replace #"[-_]" "")))
+
+;; canonical-segment -> core attr keyword (the QL-vocabulary head segment).
+(def ^:private field-attr-by-canon
+  (into {} (map (fn [a] [(canon-seg (name a)) a]))
+        [:value :doc :id :begin :end :precedence :form :name :body :alias]))
+
+(defn- dotted-name? [x]
+  (let [n (cond (symbol? x) (name x) (string? x) x :else nil)]
+    (boolean (and n (str/starts-with? n "?") (str/includes? n ".")))))
+
+(defn- ->field-ref [x]
+  (let [n (if (symbol? x) (name x) x)
+        parts (str/split n #"\.")]
+    (when (some str/blank? parts)
+      (err! :parse (str "Malformed field path " (pr-str x) " (empty path segment)")))
+    {field-key {:var (symbol (first parts)) :path (vec (rest parts))}}))
+
+(declare ->var)
+(defn- ->term
+  "Normalize a predicate/aggregate scalar term: a dotted field path -> field-ref;
+  a `?name` -> var; anything else -> literal (passes through)."
+  [x]
+  (if (dotted-name? x) (->field-ref x) (->var x)))
+
+(defn field-resolve
+  "Interpret a field-ref's `path` against the head var's `kind`. Returns one of
+  `{:type :core :attr kw}` / `{:type :layer-attr :attr kw}` /
+  `{:type :metadata :key str :subpath [str]}` / `{:type :config :subpath [str]}`,
+  or `{:error msg}` for an invalid path. Shared by validate (errors -> 400) and
+  the compiler (builds SQL)."
+  [kind path]
+  (if (empty? path)
+    {:error "needs at least one attribute"}
+    (let [layer? (layer-kind? kind)
+          head (canon-seg (first path))]
+      (cond
+        (= head "metadata")
+        (cond layer? {:error "metadata is only available on entity variables"}
+              (< (count path) 2) {:error "metadata needs a key (e.g. .metadata.author)"}
+              :else {:type :metadata :key (second path) :subpath (vec (drop 2 path))})
+        (= head "config")
+        (if layer? {:type :config :subpath (vec (rest path))}
+            {:error "config is only available on layer variables"})
+        :else
+        (let [attr (field-attr-by-canon head)
+              allowed (if layer? layer-field-attrs (get entity-field-attrs kind))]
+          (cond
+            (or (nil? attr) (not (contains? allowed attr)))
+            {:error (str "unknown field " (pr-str (first path)) " (allowed: " (vec (sort (or allowed #{}))) ")")}
+            (> (count path) 1) {:error (str "field " (pr-str (first path)) " is a scalar and takes no sub-path")}
+            layer? {:type :layer-attr :attr attr}
+            :else {:type :core :attr attr}))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Parse: tolerant JSON-ish map -> canonical EDN AST
@@ -263,26 +347,35 @@
        (= head :or)  (normalize-or-clause (rest clause) d)
        (= head :not) (normalize-not-clause (rest clause) d)
        ;; predicate: terms are vars or literals (numbers/strings pass through)
-       (pred-ops head) (into [head] (map ->var) (rest clause))
+       ;; predicate terms may be field paths (?t.begin), vars, or literals
+       (pred-ops head) (into [head] (map ->term) (rest clause))
        :else (into [head]
                    (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
                    (rest clause))))))
 
 (defn- normalize-order-spec
-  "Canonicalize one :order-by entry to `[?var :attr :dir]` (dir defaults :asc)."
+  "Canonicalize one :order-by entry to `[field-ref :dir]` (dir defaults :asc).
+  Accepts a dotted field `[\"?t.begin\" dir?]` or the legacy `[\"?t\" \"begin\" dir?]`."
   [spec]
-  (when-not (and (sequential? spec) (<= 2 (count spec) 3))
-    (err! :parse (str "Each :order-by entry must be [var attr] or [var attr dir], got: " (pr-str spec))))
-  (let [[v attr dir] spec]
-    [(->var v) (->kw attr) (if (nil? dir) :asc (->kw dir))]))
+  (when-not (sequential? spec)
+    (err! :parse (str "Each :order-by entry must be a list, got: " (pr-str spec))))
+  (if (dotted-name? (first spec))
+    (do (when-not (<= 1 (count spec) 2)
+          (err! :parse (str ":order-by entry " (pr-str spec) " takes [field] or [field dir]")))
+        (let [[f dir] spec] [(->field-ref f) (if (nil? dir) :asc (->kw dir))]))
+    (do (when-not (<= 2 (count spec) 3)
+          (err! :parse (str ":order-by entry " (pr-str spec) " takes [var attr] or [var attr dir]")))
+        (let [[v attr dir] spec]
+          [{field-key {:var (->var v) :path [(name (->kw attr))]}} (if (nil? dir) :asc (->kw dir))]))))
 
 (defn- normalize-agg-entry
-  "Canonicalize one aggregate to `[:op]` (count) or `[:op ?src]`."
+  "Canonicalize one aggregate to `[:op]` (count) or `[:op src]` (src = a value var
+  or a field path)."
   [entry]
   (when-not (and (sequential? entry) (<= 1 (count entry) 2))
     (err! :parse (str "Each aggregate must be [op] or [op var], got: " (pr-str entry))))
   (let [[op src] entry]
-    (cond-> [(->kw op)] (some? src) (conj (->var src)))))
+    (cond-> [(->kw op)] (some? src) (conj (->term src)))))
 
 (defn- normalize-return
   "`:return` is either a keyword (:ids/:entities/:count) or an aggregate spec map
@@ -290,7 +383,7 @@
   [v]
   (if (map? v)
     (let [m (reduce-kv (fn [a k vv] (assoc a (->kw k) vv)) {} v)]
-      {:group (mapv ->var (:group m []))
+      {:group (mapv ->term (:group m []))
        :aggregates (mapv normalize-agg-entry (:aggregates m []))})
     (->kw v)))
 
@@ -406,6 +499,11 @@
   [kinds v k]
   (when-not (var? v)
     (err! :validate (str "Expected a var where one is required, got: " (pr-str v))))
+  ;; a dotted name is a field path, not a bindable variable — reject it in every
+  ;; var-binding position (entity/rel/layer clause slots all flow through here).
+  (when (str/includes? (name v) ".")
+    (err! :validate (str "Field path " v " cannot be used where a variable is bound; "
+                         "dotted paths are only valid in predicates, order-by, and aggregates")))
   (if-let [prev (get kinds v)]
     (if (= prev k)
       kinds
@@ -500,10 +598,12 @@
   (map? (:return ast)))
 
 (defn aggregate-vars
-  "The vars an aggregate :return references: its group keys + each aggregate's
-  source var. These are the vars projected through the (UNION'd) match query."
+  "The (head) vars an aggregate :return references: its group keys + each
+  aggregate's source. A field-path group/source contributes its head var (which
+  must be bound), so these are the vars every UNION branch must bind."
   [ret]
-  (into (vec (:group ret)) (keep second) (:aggregates ret)))
+  (->> (into (vec (:group ret)) (keep second) (:aggregates ret))
+       (mapv #(if (field-ref? %) (field-var %) %))))
 
 ;; ---------------------------------------------------------------------------
 ;; Validate
@@ -523,8 +623,8 @@
         (err! :validate (str ":return aggregate op " (pr-str op) " is not supported (one of "
                              (vec (sort agg-ops)) ")")))
       (if (agg-needs-source op)
-        (when-not (var? src)
-          (err! :validate (str ":return aggregate :" (name op) " needs a source variable")))
+        (when-not (or (var? src) (field-ref? src))
+          (err! :validate (str ":return aggregate :" (name op) " needs a source (a value variable or field path)")))
         (when (some? src)
           (err! :validate (str ":return aggregate :" (name op) " takes no source variable")))))))
 
@@ -539,6 +639,11 @@
           (err! :validate ":find must be a non-empty list of vars"))
         (when-not (every? var? (:find ast))
           (err! :validate (str ":find may only contain vars, got: " (pr-str (remove var? (:find ast))))))
+        ;; a dotted name is a field path, not an entity to return — reject it (a
+        ;; ?-name with a dot passes var? but is not bindable). Use return: entities.
+        (when-let [dotted (seq (filter #(str/includes? (name %) ".") (:find ast)))]
+          (err! :validate (str ":find takes entity variables, not field paths: " (vec dotted)
+                               " — use return \"entities\" to get full entities")))
         ;; ?__-prefixed names are reserved for internal columns (e.g. order-by's
         ;; hidden __ord_N projections); reject them to avoid alias collisions.
         (when-let [reserved (seq (filter #(str/starts-with? (name %) "?__") (:find ast)))]
@@ -565,15 +670,11 @@
   (when (contains? ast :strict-layers)
     (when-not (boolean? (:strict-layers ast))
       (err! :validate (str ":strict-layers must be true or false, got: " (pr-str (:strict-layers ast))))))
-  (when-let [ob (:order-by ast)]
-    (let [find-set (set (:find ast))]
-      (doseq [[v attr dir] ob]
-        (when-not (var? v)
-          (err! :validate (str ":order-by var must be a var, got: " (pr-str v))))
-        (when-not (find-set v)
-          (err! :validate (str ":order-by may only reference :find vars; " v " is not selected")))
-        (when-not (#{:asc :desc} dir)
-          (err! :validate (str ":order-by direction must be asc or desc, got: " (pr-str dir)))))))
+  ;; order-by entries are [field-ref dir]; the dir is a shape concern here, the
+  ;; field/find-var checks happen in `validate` (they need inferred kinds).
+  (doseq [[_fr dir] (:order-by ast)]
+    (when-not (#{:asc :desc} dir)
+      (err! :validate (str ":order-by direction must be asc or desc, got: " (pr-str dir)))))
   ast)
 
 (defn- check-regex-spec!
@@ -731,6 +832,20 @@
       :else
       (err! :validate (str "Unknown clause head :" (name head))))))
 
+(defn- validate-field-ref!
+  "Validate a field-ref term against the inferred `kinds`. `ordering?` true means
+  it sits under an ordering predicate (< > <= >=), where opaque-id fields are
+  rejected. Throws :code 400 on any problem."
+  [kinds positive fr ordering?]
+  (let [v (field-var fr)]
+    (when-not (positive v)
+      (err! :validate (str "Field path " (field->str fr) " references unbound variable " v)))
+    (let [res (field-resolve (get kinds v) (field-path fr))]
+      (when (:error res)
+        (err! :validate (str "Field path " (field->str fr) ": " (:error res))))
+      (when (and ordering? (#{:core :layer-attr} (:type res)) (unordered-field-attrs (:attr res)))
+        (err! :validate (str "Field " (field->str fr) " is an id with no order; use = / != (not < > <= >=)"))))))
+
 (defn validate
   "Validate a canonical AST. Runs shape checks, per-clause checks, var-kind
   inference (conflict detection), and the safety check (every :find var is
@@ -751,37 +866,44 @@
     (doseq [v (:find ast)]
       (when (= :scalar (get kinds v))
         (err! :validate (str "Var " v " binds a value (not an entity) and cannot be a :find var"))))
-    ;; predicate clauses: every var term must be positively bound; entity-var
-    ;; comparisons are := / :!= only (ids have no order).
+    ;; predicate clauses: terms are field paths, vars, or literals. Every var/path
+    ;; head must be positively bound; ordering ops (< > <= >=) are rejected on
+    ;; entity/layer ids (no order) but allowed on scalar fields/value-vars.
     (doseq [clause (:where ast) :when (pred-ops (first clause))]
-      (let [[op a b] clause]
-        (doseq [t [a b] :when (var? t)]
-          (when-not (positive t)
-            (err! :validate (str "Predicate :" (name op) " references unbound var " t))))
-        ;; ordering ops are only meaningful on scalar values; any non-scalar var
-        ;; (entity OR layer) resolves to an opaque id with no order. Reject by the
-        ;; complement (anything that isn't a scalar) so new kinds are covered too.
-        (when (and (order-pred-ops op)
-                   (some #(and (var? %) (not= :scalar (get kinds %))) [a b]))
-          (err! :validate (str "Predicate :" (name op) " cannot order entity/layer variables "
-                               "(ids are unordered); use := or :!=")))))
-    (doseq [[v attr _] (:order-by ast)]
-      (let [k (get kinds v)
-            allowed (order-attrs k)]
-        (when-not (and allowed (allowed attr))
-          (err! :validate (str ":order-by cannot sort a " (name (or k :unknown)) " var (" v ") by "
-                               attr "; allowed: " (vec (sort (or allowed #{}))))))))
-    ;; aggregate spec: group + source vars must be positively bound; aggregate
-    ;; SOURCE vars must be scalar (a value to aggregate, not an entity id).
+      (let [[op a b] clause
+            ordering? (order-pred-ops op)]
+        (doseq [t [a b]]
+          (cond
+            (field-ref? t) (validate-field-ref! kinds positive t ordering?)
+            (var? t) (do (when-not (positive t)
+                           (err! :validate (str "Predicate :" (name op) " references unbound var " t)))
+                         (when (and ordering? (not= :scalar (get kinds t)))
+                           (err! :validate (str "Predicate :" (name op) " cannot order entity/layer variables "
+                                                "(ids are unordered); use := or :!="))))
+            :else nil))))
+    ;; order-by: each entry is [field-ref dir]; the head must be a :find var (so
+    ;; the sort column is present in every UNION branch). Any field is sortable
+    ;; (ids give a stable order), so ordering? is false here.
+    (let [find-set (set (:find ast))]
+      (doseq [[fr _dir] (:order-by ast)]
+        (when-not (find-set (field-var fr))
+          (err! :validate (str ":order-by may only reference :find vars; " (field-var fr) " is not selected")))
+        (validate-field-ref! kinds positive fr false)))
+    ;; aggregate spec: group keys + sources must be bound; a source is a value
+    ;; variable or a field path (not an entity id), a group is a var or field path.
     (when (aggregate? ast)
       (let [ret (:return ast)]
         (doseq [v (aggregate-vars ret)]
           (when-not (positive v)
             (err! :validate (str ":return references unbound var " v))))
+        (doseq [g (:group ret) :when (field-ref? g)]
+          (validate-field-ref! kinds positive g false))
         (doseq [[op src] (:aggregates ret) :when src]
-          (when-not (= :scalar (get kinds src))
+          (cond
+            (field-ref? src) (validate-field-ref! kinds positive src false)
+            (not= :scalar (get kinds src))
             (err! :validate (str ":return aggregate :" (name op) " source " src
-                                 " must be a value variable ({... {var " src "}}), not an entity"))))))
+                                 " must be a value variable or field path, not an entity"))))))
     (-> ast
         (assoc :return (or (:return ast) :ids))
         (assoc ::var-kinds kinds))))

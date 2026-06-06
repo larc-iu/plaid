@@ -395,3 +395,35 @@
                                      "bindings" {"?v" []}}))))
     ;; non-map :bindings
     (is (= 400 (code-of #(ast/parse {"find" ["?s"] "where" [["span" "?s" {}]] "bindings" "nope"}))))))
+
+(deftest field-paths
+  (testing "a dotted predicate term parses to a field-ref and validates"
+    (is (some? (ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] [">=" "?t.begin" 5]]})))
+    (is (some? (ast/parse+validate {"find" ["?a" "?b"]
+                                    "where" [["span" "?a" {"layer" "p"}] ["span" "?b" {"layer" "p"}]
+                                             ["=" "?a.value" "?b.value"] ["!=" "?a" "?b"]]})))
+    (is (some? (ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] [">=" "?t.metadata.score" 5]]})))
+    (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
+                                                           ["=" "?sl.config.color" "red"]]}))))
+  (testing "a dotted name in :find is rejected (use return entities)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t.begin"] "where" [["token" "?t" {"layer" "w"}]]})))))
+  (testing "a dotted name in a clause's var slot is rejected (not a bindable variable)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s.x" {"layer" "p"}]]})))))
+  (testing "ordering preds on an opaque id field (.id/.doc) are rejected; = / != are fine"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] [">" "?t.id" "x"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["<" "?t.doc" "x"]]}))))
+    (is (some? (ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["=" "?t.doc" "x"]]}))))
+  (testing "unknown / wrong-kind fields are rejected"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] [">" "?t.bogus" 5]]})))
+        "unknown attr")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] [">" "?t.value" 5]]})))
+        "value is not a token field")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
+                                                                     ["=" "?sl.metadata.x" 1]]})))
+        "metadata is entity-only, config is layer-only"))
+  (testing "an idiom-mismatched core attr still resolves (canonicalized), metadata keys stay verbatim"
+    ;; ?t.Begin canonicalizes to begin; only the QL-vocab segment is canonicalized
+    (is (some? (ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] [">=" "?t.Begin" 5]]})))
+    (let [fr (nth (last (:where (ast/parse {"find" ["?t"]
+                                            "where" [["token" "?t" {"layer" "w"}] ["=" "?t.metadata.caseKey" "X"]]}))) 1)]
+      (is (= ["metadata" "caseKey"] (ast/field-path fr)) "user key kept verbatim"))))

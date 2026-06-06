@@ -89,7 +89,7 @@
                       "order-by" [["?s" "value"]]}))))
   (testing "ordering a token by :value (not a token attribute) is a 400"
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"order-by cannot sort a token"
+         clojure.lang.ExceptionInfo #"unknown field"
          (ast/expand {"find" ["?t"]
                       "where" [["token" "?t" {"layer" "OrdProj/words"}]]
                       "order-by" [["?t" "value"]]}))))

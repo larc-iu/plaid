@@ -564,11 +564,67 @@
    :<= :<=
    :>= :>=})
 
+;; --- field references (dot paths): ?t.begin / ?s.metadata.k / ?sl.config.k ----
+;; attr keyword -> {:column kw :enc fn :json? bool}. The column lives on the
+;; entity/layer alias; :value is stored JSON-encoded so it is DECODED for
+;; comparison (json? true); doc/id are opaque id strings (enc str).
+(def ^:private attr->col
+  {:begin      {:column :begin       :enc identity :json? false}
+   :end        {:column :end_        :enc identity :json? false}
+   :precedence {:column :precedence  :enc identity :json? false}
+   :value      {:column :value       :enc identity :json? true}
+   :form       {:column :form        :enc identity :json? false}
+   :name       {:column :name        :enc identity :json? false}
+   :body       {:column :body        :enc identity :json? false}
+   :doc        {:column :document_id :enc str      :json? false}
+   :id         {:column :id          :enc str      :json? false}})
+
+(defn- json-path
+  "A SQLite `$`-path string from verbatim (case-sensitive) key segments. Used as a
+  BOUND parameter to json_extract (never inlined), so user keys can't inject SQL."
+  [segs]
+  (str "$" (apply str (map #(str "." %) segs))))
+
+(defn- field-expr
+  "Resolve a field-ref term to {:sql expr :enc enc}. `ast/field-resolve` interprets
+  the path against the host var's kind; this builds the column / decoded column /
+  config json_extract / correlated metadata scalar-subquery on the var's alias."
+  [st fr]
+  (let [v    (ast/field-var fr)
+        kind (get-in @st [:kinds v])
+        a    (or (get-in @st [:var->alias v])
+                 (err-500! (str "Field path " (ast/field->str fr) " head var was never bound") {:var v}))
+        res  (ast/field-resolve kind (ast/field-path fr))]
+    (when (:error res)
+      (err-500! (str "Field path " (ast/field->str fr) " reached the compiler unvalidated: " (:error res)) {:fr fr}))
+    (case (:type res)
+      (:core :layer-attr)
+      (if (= (:attr res) :alias)
+        {:sql [:json_extract (col a :config) [:inline "$.plaid.alias"]] :enc identity}
+        (let [{:keys [column enc json?]} (attr->col (:attr res))]
+          {:sql (if json? [:json_extract (col a column) [:inline "$"]] (col a column)) :enc enc}))
+      :config
+      {:sql [:json_extract (col a :config) (json-path (:subpath res))] :enc identity}
+      :metadata
+      (let [em (next-alias! st "emf")
+            et (or (kind->meta-type kind) (err-500! (str "kind " kind " has no metadata entity-type") {:kind kind}))]
+        {:sql {:select [[[:json_extract (col em :value) (json-path (:subpath res))] :v]]
+               :from   [[:entity_metadata em]]
+               :where  [:and
+                        [:= (col em :entity_type) et]
+                        [:= (col em :entity_id) (col a :id)]
+                        [:= (col em :key) (:key res)]]
+               :limit  1}
+         :enc identity}))))
+
 (defn- resolve-term
-  "Resolve a predicate term to {:sql expr :enc enc} (a bound var: entity -> its
-  .id, scalar -> its bound column) or {:lit v} (a literal)."
+  "Resolve a predicate term to {:sql expr :enc enc} (a field path -> its column/
+  subquery, a bound var: entity -> its .id, scalar -> its bound column) or
+  {:lit v} (a literal)."
   [st t]
-  (if (ast/var? t)
+  (cond
+    (ast/field-ref? t) (field-expr st t)
+    (ast/var? t)
     (let [kind (get-in @st [:kinds t])]
       (if (= :scalar kind)
         (let [{:keys [sql enc json?]} (or (get-in @st [:scalar-col t])
@@ -583,7 +639,7 @@
                        (err-500! (str "Entity var " t " in a predicate was never bound") {:var t}))
                    :id)
          :enc str}))
-    {:lit t}))
+    :else {:lit t}))
 
 (defn- compile-pred!
   "Compile `[op a b]` to a WHERE comparison. A literal is encoded with the OTHER
@@ -612,19 +668,6 @@
 ;; hidden `__ord_N` so it survives the UNION; exec applies the ORDER BY at
 ;; assembly (outside any compound SELECT). NULLS LAST throughout (only
 ;; :precedence is nullable) so missing values sort to the end either direction.
-(def ^:private order-col
-  {:begin :begin :end :end_ :precedence :precedence
-   :value :value :doc :document_id :id :id :form :form})
-
-(defn- order-sort-expr
-  "The expression an :order-by attribute sorts on. :value is stored JSON-encoded,
-  so sort on its DECODED scalar (consistent with how regex matches :value) rather
-  than the quoted JSON text."
-  [a attr]
-  (if (= attr :value)
-    [:json_extract (col a :value) [:inline "$"]]
-    (col a (order-col attr))))
-
 (defn order-directive
   "The ORDER BY directive ([[col dir] ...]) compile-query attached as metadata,
   or nil. exec reads it from the head branch and applies it once at assembly."
@@ -632,15 +675,14 @@
   (::order-by (meta hq)))
 
 (defn- order-projection
-  "For each :order-by spec, a [hidden-select-pair  order-by-pair]. The select
-  pair exposes the sort column under `:__ord_N`; the order-by pair references it."
+  "For each :order-by spec `[field-ref dir]`, a [hidden-select-pair order-by-pair].
+  The select pair exposes the sort expression (`field-expr`, e.g. a decoded :value
+  or a metadata subquery) under `:__ord_N`; the order-by pair references it."
   [st order-by]
   (map-indexed
-   (fn [i [v attr dir]]
-     (let [a (get-in @st [:var->alias v])
-           ord-kw (keyword (str "__ord_" i))]
-       (when (nil? a) (err-500! (str "Order var " v " was never bound to a table") {:var v}))
-       [[(order-sort-expr a attr) ord-kw]
+   (fn [i [fr dir]]
+     (let [ord-kw (keyword (str "__ord_" i))]
+       [[(:sql (field-expr st fr)) ord-kw]
         [ord-kw (if (= dir :desc) :desc-nulls-last :asc-nulls-last)]]))
    order-by))
 
@@ -656,23 +698,36 @@
   [hq]
   (::aggregate (meta hq)))
 
+(defn- term-label
+  "Output column label for an aggregate source / group key: a value var `?b` ->
+  \"b\"; a field path `?t.begin` -> \"t_begin\" (alnum-cleaned, so it's a safe
+  positional-free label)."
+  [t]
+  (if (ast/field-ref? t)
+    (str/join "_" (cons (subs (name (ast/field-var t)) 1)
+                        (map #(str/replace % #"[^A-Za-z0-9]+" "") (ast/field-path t))))
+    (subs (name t) 1)))
+
 (defn- scalar-agg-expr
-  "SQL for a scalar var used as a group/aggregate value: json_extract-decoded if
-  its column is JSON-encoded (:value), else the bound column."
-  [st v]
-  (let [{:keys [sql json?]} (or (get-in @st [:scalar-col v])
-                                (err-500! (str "Aggregate/group var " v " was never bound to a column") {:var v}))]
-    (if json? [:json_extract sql [:inline "$"]] sql)))
+  "SQL for an aggregate/group VALUE: a field path -> its (decoded) expression; a
+  scalar var -> its bound column (json_extract-decoded if JSON-encoded, e.g. :value)."
+  [st src]
+  (if (ast/field-ref? src)
+    (:sql (field-expr st src))
+    (let [{:keys [sql json?]} (or (get-in @st [:scalar-col src])
+                                  (err-500! (str "Aggregate/group var " src " was never bound to a column") {:var src}))]
+      (if json? [:json_extract sql [:inline "$"]] sql))))
 
 (defn- group-expr
-  "SQL for a group-key var: a scalar var -> its (decoded) column; an entity/layer
-  var -> its id."
-  [st v]
-  (if (= :scalar (get-in @st [:kinds v]))
-    (scalar-agg-expr st v)
-    (col (or (get-in @st [:var->alias v])
-             (err-500! (str "Group var " v " was never bound to a table") {:var v}))
-         :id)))
+  "SQL for a group key: a field path / scalar var -> its (decoded) value; an
+  entity/layer var -> its id."
+  [st g]
+  (cond
+    (ast/field-ref? g) (:sql (field-expr st g))
+    (= :scalar (get-in @st [:kinds g])) (scalar-agg-expr st g)
+    :else (col (or (get-in @st [:var->alias g])
+                   (err-500! (str "Group var " g " was never bound to a table") {:var g}))
+               :id)))
 
 (defn- aggregate-projection
   "Returns {:select <distinct-match projection> :plan <plan for exec>}. ALL the
@@ -690,9 +745,9 @@
         ;; column N denotes the SAME variable in every branch of a UNION.
         e-vars (sort-by name (keys (:var->alias @st)))
         e-proj (map-indexed (fn [i v] [(col (get-in @st [:var->alias v]) :id) (keyword (str "__e_" i))]) e-vars)
-        label (fn [op src] (if src (str (name op) "_" (subs (name src) 1)) (name op)))
+        label (fn [op src] (if src (str (name op) "_" (term-label src)) (name op)))
         plan {:group-cols (mapv second g-proj)
-              :group-labels (mapv #(subs (name %) 1) group-vars)
+              :group-labels (mapv term-label group-vars)
               :aggs (mapv (fn [[op src]] {:op op :col (when src (src->kw src)) :label (label op src)})
                           (:aggregates ret))}]
     {:select (vec (concat g-proj a-proj e-proj)) :plan plan}))
