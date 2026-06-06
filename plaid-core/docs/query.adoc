@@ -86,10 +86,11 @@ your language's idiom (see <<Clients and casing>>).
 | `find`          | usually | Non-empty list of variables to return, in column order. Omitted only with an aggregate `return` (see <<Return shapes>>).
 | `where`         | yes | Non-empty list of clauses (the pattern).
 | `scope`         | no  | Restrict to specific projects. Default: every project you can read.
-| `limit`         | no  | Max rows. Default 100, hard cap 1000 (see <<Result-size guardrails>>).
+| `limit`         | no  | Max rows. Default 1000, hard cap 100,000 (see <<Result-size guardrails>>).
 | `order-by`      | no  | Sort the rows (see <<Ordering>>). Without it, row order is unspecified.
 | `return`        | no  | `ids` (default), `entities`, `count`, or an aggregate spec (see <<Return shapes>>).
 | `strict-layers` | no  | If `true`, scalar layer references must be ids (see <<Layer addressing>>).
+| `bindings`      | no  | Substitute `?name` placeholders with literals you supply (see <<Bindings>>).
 |===
 
 == Variables
@@ -99,6 +100,51 @@ The name is arbitrary; what matters is that the same name in two clauses refers 
 the same entity (that is the join). Every variable in `find` must be bound by some
 positive clause in `where`. Names beginning with `?__` are reserved for the
 engine; a `find` variable may not use one.
+
+== Bindings
+
+If some value, like the ID of a layer, is known before the query is executed, you
+may put it into the query as a literal, like the span layer ID below:
+
+[,python]
+----
+{
+  "find": ["?s"],
+  "where": [["span", "?s", {"layer": "0194e8a1-…-uuid", "value": "NOUN"}]],
+}
+----
+
+However, it's often more convenient to use **bindings** instead, where a variable
+takes the value's place, and the variable is separately bound in a `"bindings"`
+map:
+
+[,python]
+----
+{
+  "find": ["?s"],
+  "where": [["span", "?s", {"layer": "?lyr", "value": "?tag"}]],
+  "bindings": {"?lyr": "0194e8a1-…-uuid", "?tag": "NOUN"}
+}
+----
+
+This is a convenience for you: these two example queries are behaviorally
+identical, and under the hood, before the latter query is executed, it is
+transformed into the former query by having all bound variables substituted
+with their bound values.
+
+A binding value is a scalar (string / number / boolean) or a non-empty
+list of scalars. A list in a `value` position matches any of them
+(see <<Value matching>>):
+
+[,python]
+----
+# with bindings {"?tags": ["NOUN", "PROPN"]}
+["span", "?s", {"layer": "UPOS", "value": "?tags"}]
+----
+
+Bindings are strict. Every binding must be referenced, and a placeholder may only
+stand where a literal is allowed; using one where a variable is required (in
+`find`, as the entity slot of a clause, in `order-by`) is an error.
 
 == Entity clauses
 
@@ -131,6 +177,47 @@ nothing.
 ["relation", "?r", {"layer": "deprel", "value": "nsubj"}]  # an nsubj edge
 ["vocab", "?v", {"form": "Kemal"}]                    # the lexeme "Kemal"
 ----
+
+== Field access (dot paths)
+
+A `?variable` followed by a **dot path** (`?t.begin`) reads one of that entity's
+fields. The result is a scalar, usable in a <<Predicate clauses,predicate>>, in
+<<Ordering,order-by>>, or in an <<Aggregates,aggregate>>. So to keep only the
+tokens that begin at or after offset 5:
+
+[,python]
+----
+["token", "?t", {"layer": "Words"}],
+[">=", "?t.begin", 5]
+----
+
+Supported names, by type:
+
+[cols="1,3"]
+|===
+| Kind | Readable fields
+
+| `span`          | `value`, `doc`, `id`, `metadata.KEY…`
+| `token`         | `begin`, `end`, `precedence`, `doc`, `id`, `metadata.KEY…`
+| `relation`      | `value`, `doc`, `id`, `metadata.KEY…`
+| `vocab`         | `form`, `id`, `metadata.KEY…`
+| `document`      | `name`, `id`, `metadata.KEY…`
+| `text`          | `body`, `doc`, `id`, `metadata.KEY…`
+| layer variable  | `name`, `id`, `alias`, `config.KEY…`
+|===
+
+`doc` is the document id and `id` is the entity's own id. `metadata` and
+`config` go deeper: the segment after them is a key, and you can keep descending
+into nested objects (`?s.metadata.author.name`, `?sl.config.editor.color`).
+
+The field name itself (`begin`, `value`, the `metadata`/`config` word) is part
+of the query language, so it is matched loosely: case and `-`/`_` are ignored,
+and you may spell it in whatever idiom your client uses (`?t.begin` and
+`?t.Begin` are the same). The keys after `metadata`/`config`, though, are your
+data: they are matched exactly, case-sensitive and byte for byte
+(`?s.metadata.caseMarker` is not `?s.metadata.casemarker`), mirroring how
+metadata and config are stored. A key containing a literal `.` can't be reached
+with a dot path. Use the <<Metadata,`metadata` constraint>> for those.
 
 == Constraints
 
@@ -238,7 +325,7 @@ primary search key.
 
 === Filtering by document
 
-An annotation's `doc` is its document's id. To select by document name (or any
+An annotation's `doc` is its document's ID. To select by document name (or any
 document property), bind the annotation's `doc` to a value variable and equate it
 to a `document` clause:
 
@@ -255,11 +342,17 @@ without a `document` clause at all.
 == Relationship clauses
 
 A relationship clause is `[op, "?a", "?b"]`, a named edge between two variables.
-This is where the structure between entities comes from. In the diagrams below,
-tokens are boxed words, a bracket marks the tokens a span covers, and an arrow is a
-relation edge.
+This is where the structure between entities comes from. Each operator fixes the
+entity kind of both operands, shown as `(kind, kind)` after the signature; a
+variable used at the wrong kind (a span where a token is required) is a 400. Only
+spans, tokens, relations, and vocab items take part in these clauses; documents
+and texts do not.
 
-**`["covers", "?span", "?token"]`**: the span includes that token.
+In the diagrams below, tokens are boxed words, a bracket marks the tokens a span
+covers, and an arrow is a relation edge.
+
+**Coverage.** `["covers", "?span", "?token"]` (`span`, `token`): the span
+includes that token.
 
 ....
    ┌─ ?s ─┐
@@ -267,20 +360,22 @@ relation edge.
       ?t
 ....
 
-**`["precedes", "?t1", "?t2"]`**: `?t2` is the immediate next token after `?t1`. +
-**`["precedes*", "?t1", "?t2"]`**: `?t1` comes somewhere before `?t2`, not just right
-before.
+**Precedence.** `["precedes", "?t1", "?t2"]` (`token`, `token`): `?t2` is the
+immediate next token after `?t1`.
 
 ....
-   precedes:
-     [ dogs ][ run ]
-        ?t1    ?t2
-         └──▶──┘
+   [ dogs ][ run ]
+      ?t1    ?t2
+       └──▶──┘
+....
 
-   precedes*:
-     [ the ][ big ][ dog ]
-       ?t1           ?t2
-        └──── … ───▶┘
+`["precedes*", "?t1", "?t2"]` (`token`, `token`): `?t1` comes somewhere before
+`?t2`, not just right before.
+
+....
+   [ the ][ big ][ dog ]
+     ?t1           ?t2
+      └──── … ───▶┘
 ....
 
 "Next" and "before" follow Plaid's standard reading order `(begin, precedence,
@@ -288,46 +383,53 @@ end, id)`, the order tokens appear in as you read a document. Both are scoped to
 single text and a single token layer: a word token never precedes a morpheme
 token, and neither relation reaches across texts.
 
-**`["within", "?child", "?parent"]`**: the extent of `?child` sits inside the extent
-of `?parent`. +
-**`["first-in", "?token", "?container"]`**: `?token` is within `?container` and is the
-first token of its layer there.
+**Nesting.** `["within", "?child", "?parent"]` (`token`, `token`): the extent of
+`?child` sits inside the extent of `?parent`.
 
 ....
-   within:
-     word       [  replayed  ]
-     morphemes  [re][play][ed]
-                     ?child
+   word       [  replayed  ]
+   morphemes  [re][play][ed]
+                   ?child
+....
 
-   first-in:
-     sentence  [ the dog runs ]
-     words     [the][dog][runs]
-                ?token
+**First token.** `["first-in", "?token", "?container"]` (`token`, `token`):
+`?token` is within `?container` and is the first token of its layer there.
+
+....
+   sentence  [ the dog runs ]
+   words     [the][dog][runs]
+              ?token
 ....
 
 Both compare tokens by their character offsets, so they work across layers: naming
 child and parent on different token layers (morpheme within word within sentence)
-is how you walk a hierarchy. Containment is non-strict, so a child whose extent
+is how you walk a hierarchy. Nesting is non-strict, so a child whose extent
 exactly fills its parent still counts, but a token is never within itself.
 `first-in` also requires that no token on the same layer as `?token` in the
 container comes before it in that same reading order.
 
-**`["overlaps", "?a", "?b"]`**: the two spans share at least one token. +
-**`["contains", "?a", "?b"]`**: span `?a` covers every token span `?b` does. +
-**`["coextensive", "?a", "?b"]`**: the two spans cover exactly the same tokens.
+**Overlap.** `["overlaps", "?a", "?b"]` (`span`, `span`): the two spans share at
+least one token.
 
 ....
-   overlaps (share a token):
        [a][b][c][d]
    ?x  └───────┘
    ?y        └────┘
+....
 
-   contains (every ?b token is in ?a):
+**Containment.** `["contains", "?a", "?b"]` (`span`, `span`): span `?a` covers
+every token span `?b` does.
+
+....
        [a][b][c]
    ?a  └───────┘
    ?b     └─┘
+....
 
-   coextensive (same tokens):
+**Coextension.** `["coextensive", "?a", "?b"]` (`span`, `span`): the two spans
+cover exactly the same tokens.
+
+....
        [a][b][c]
    ?x  └───────┘
    ?y  └───────┘
@@ -338,12 +440,22 @@ works too, and all three exclude a span from matching itself. That is why
 `coextensive` is useful: it finds two different spans over the same tokens (e.g. a
 POS span lined up with an NER span).
 
-**`["source", "?relation", "?span"]`**: the span at the relation's source end. +
-**`["target", "?relation", "?span"]`**: the span at the relation's target end.
+**Source.** `["source", "?relation", "?span"]` (`relation`, `span`): the span at
+the relation's source end.
 
 ....
-   [ Fido ] ──nsubj──▶ [ barks ]
-    ?head               ?dep
+            ?relation
+   [ Fido ] ──────▶ [ barks ]
+     ?span
+....
+
+**Target.** `["target", "?relation", "?span"]` (`relation`, `span`): the span at
+the relation's target end.
+
+....
+            ?relation
+   [ Fido ] ──────▶ [ barks ]
+                       ?span
 ....
 
 The two ends can be written inline on the `relation` clause or as separate edges;
@@ -359,17 +471,17 @@ the two are equivalent:
 ["target", "?r", "?d"]
 ----
 
-**`["related*", "?a", "?b", {layer}]`**: `?b` is reached from `?a` by following one or
-more relation edges on the named layer.
+**Reachability.** `["related*", "?a", "?b", {layer}]` (`span`, `span`): `?b` is
+reached from `?a` by following one or more relation edges on the named layer.
 
 ....
    [x] ──▶ [y] ──▶ [z]
    ?a               ?b
 ....
 
-Both vars are spans, and the trailing map is required: it names the relation
-`layer`, and may add a `value` each edge must carry (a literal or a list of
-literals only; a regex or value variable there is a 400). It follows one or more
+The trailing map is required: it names the relation `layer`, and may add a
+`value` each edge must carry (a literal or a list of literals only; a regex or
+value variable there is a 400). It follows one or more
 hops, never zero, so `?a related* ?a` matches only through a cycle. Every span
 reached along the path must itself sit in a span layer within your scope, so the
 search never crosses into a project you cannot read.
@@ -380,7 +492,8 @@ search never crosses into a project you cannot read.
 ["related*", "?head", "?node", {"layer": "dep"}]
 ----
 
-**`["vocab-link", "?token", "?vocab"]`**: the token is linked to that vocab item.
+**Vocab link.** `["vocab-link", "?token", "?vocab"]` (`token`, `vocab`): the
+token is linked to that vocab item.
 
 ....
    [ Fido ] ──▶  vocab { form: "Fido" }
@@ -419,6 +532,14 @@ form of a chain of `covers` + `precedes`.
  ["span", {"layer": "UPOS", "value": "NOUN"}, "as", "?n"]]
 ----
 
+....
+   seq over Words: DET then NOUN
+     Words  [ the ][ dog ]
+              └───▶───┘
+     UPOS   [DET ] [NOUN ]
+             ?d      ?n
+....
+
 Each element is `[kind, {constraints}]`, optionally followed by `"as", "?var"` to
 capture it. A `span` element matches a token that the span covers; a `token`
 element matches the sequence token directly. An element's constraint map accepts
@@ -448,6 +569,14 @@ Wrap an element to repeat it:
  ["span", {"layer": "UPOS", "value": "NOUN"}, "as", "?n"]]
 ----
 
+....
+   DET  ( ADJ )?  NOUN     ( )? matches ADJ 0 or 1 times
+    ?d            ?n
+
+   matches  the dog       (DET NOUN)
+            the big dog   (DET ADJ NOUN)
+....
+
 Only fixed (non-quantified) elements may be named with `"as"`; a quantified
 element is anonymous filler. Unbounded quantifiers (`*`, `+`) are not supported;
 use a bounded `rep`. A bounded quantifier is tried at each allowed length, so the
@@ -465,6 +594,13 @@ clauses (all of which must hold together). The query matches if any group matche
        [["span", "?s", {"layer": "UPOS", "value": "VERB"}]]]
 ----
 
+....
+   ?s is NOUN or VERB:
+          ┌─ NOUN
+     ?s ──┤
+          └─ VERB
+....
+
 Surrounding clauses (the ones outside the `or`) apply to every branch. Rules:
 
 * At least 2 groups, each a non-empty list of clauses.
@@ -480,8 +616,8 @@ branches.
 
 == Negation (`not`)
 
-`["not", clause, …]` matches when the clauses inside it, taken together, have no
-match in your data.
+`["not", clause, …]` takes one or more clauses and matches when they have no
+joint match in your data.
 
 [,python]
 ----
@@ -491,23 +627,33 @@ match in your data.
         ["span", "?s", {"layer": "UPOS", "value": "NOUN"}]]
 ----
 
-How variables behave is the important part:
+....
+   words with no covering NOUN span:
+     [ runs ]       ✓ kept: no NOUN span covers it
+        ?t
 
-* A variable also used in the ordinary (non-`not`) part is tied to that binding:
-  the `not` is checked for that specific value. Above, `?t` is used outside, so
-  `not` means "this particular `?t` has no covering NOUN span."
-* A variable used only inside the `not` means "there is no such thing"
-  ("there is no `?s` such that…"). It is not bound by the outer query, so it
-  may not be a `find` variable.
+     ┌NOUN┐
+     [ dog ]        ✗ dropped: a NOUN span covers it
+        ?t
+....
 
-`not` composes with everything: it distributes into `or` branches, and its body
-may contain `or` / `seq` / `not`. `NOT(A OR B)` becomes `NOT(A) AND NOT(B)`; a
-nested `not` is a double negation.
+What the `not` means depends on which variables it shares with the rest of the
+query:
+
+* A variable also used outside the `not` is held to that binding, so the `not`
+  is checked once per value. Above, `?t` appears outside, so the `not` reads
+  "this particular `?t` has no covering NOUN span."
+* A variable used only inside the `not` is existential: "there is no such
+  thing." Here `?s` is only inside, giving "there is no NOUN span covering
+  `?t`." Such a variable stays local to the `not` and cannot be a `find`
+  variable.
+
+The body may itself contain `or`, `seq`, or another `not`.
 
 == Layer addressing
 
-Wherever a clause takes a `layer`, name it one of three ways. The engine
-works out which from the shape of the reference:
+Wherever a clause takes a `layer`, you may identify a layer in one of three
+ways. The engine works out which from the shape of the reference:
 
 * **Path**: `"ProjectName/LayerName"`. Any reference containing a `/`.
 * **ID**: the raw layer UUID. Any reference shaped like a UUID; always
@@ -524,7 +670,7 @@ works out which from the shape of the reference:
 
 An **alias** is a stable label in the layer's config under the reserved `plaid` /
 `alias` pair; set it with `PUT …/config/plaid/alias` and body `"pos"`, which stores
-`{"plaid": {"alias": "pos"}}`. Aliases suit cross-project conventions; an id is
+`{"plaid": {"alias": "pos"}}`. Aliases suit cross-project conventions; an ID is
 best in application code.
 
 A bare label or a path must identify exactly one layer. Names and aliases are
@@ -538,7 +684,7 @@ silent match-them-all:
 ["span", "?s", {"layer": "pos"}]
 ----
 
-Pin it with the layer id, narrow `scope` to one project, or use a layer variable to
+Pin it with the layer ID, narrow `scope` to one project, or use a layer variable to
 match many layers on purpose. Setting `"strict-layers": true` on the query
 rejects every scalar name / path / alias reference (400); only layer ids and
 layer variables are then allowed. A query-building UI can turn this on to be
@@ -560,7 +706,7 @@ same (otherwise unspecified) layer:
 ["span", "?b", {"layer": "?sl", "value": "VERB"}]
 ----
 
-**Project the layer**: put a layer variable in `find` to get the layer id back.
+**Project the layer**: put a layer variable in `find` to get the layer ID back.
 
 **Intentional multi-layer match**: constrain a layer variable with a `*-layer`
 clause. Because layer names are not unique, this is the sanctioned way to match the
@@ -578,6 +724,61 @@ The layer-constraint clause matches the entity's kind: `span-layer`,
 `alias`; an unconstrained layer variable ranges over every layer of its kind in
 scope. A layer variable used for two different kinds is a 400 kind conflict.
 
+=== Layer structure
+
+A layer clause can also name the layer's immutable **parent layer**: the edge
+the data model records (a token layer's text layer and optional parent token
+layer, a span layer's token layer, a relation layer's span layer). The slot is
+named after the attribute and holds either a layer variable (binding the parent
+as a node you can constrain further or project) or a scalar layer reference
+(resolved to one layer), exactly like the `layer` slot on an entity.
+
+[cols="1,2"]
+|===
+| Layer clause | Structural slots
+
+| `token-layer`    | `text-layer`, `parent-token-layer`
+| `span-layer`     | `token-layer`
+| `relation-layer` | `span-layer`
+|===
+
+Chain the slots through shared variables to filter an entity by an ancestor
+layer:
+
+[,python]
+----
+# a span whose span layer's token layer is under a text layer "Transcription"
+["span",        "?s",    {"layer": "?sl"}],
+["span-layer",  "?sl",   {"token-layer": "?tl"}],
+["token-layer", "?tl",   {"text-layer": "?txtl"}],
+["text-layer",  "?txtl", {"name": "Transcription"}]
+----
+
+A scalar reference pins the parent in a single clause. It must resolve to
+exactly one layer (the name / alias / path / id rules of <<Layer addressing>>,
+and it obeys `strict-layers`):
+
+[,python]
+----
+# same as the two clauses above
+["token-layer", "?tl", {"text-layer": "Transcription"}]
+----
+
+Token-layer nesting (sentence > word) uses `parent-token-layer`; the inverse
+direction (a text layer's token layers) is written from the child side:
+
+[,python]
+----
+# the token layer named "words" whose parent layer is named "sentences"
+["token-layer", "?w", {"parent-token-layer": "?s", "name": "words"}],
+["token-layer", "?s", {"name": "sentences"}]
+----
+
+Unlike the other layer kinds, `text-layer` has no parent slot of its own — its
+parent is the project, which `scope` already confines. It is otherwise an ordinary
+layer variable (match it by `name` / `alias`, project it in `find`); and like any
+layer variable, a structural join only ever reaches layers in projects you can read.
+
 == Scope and access control
 
 A query only ever sees data in projects you can read; access control is
@@ -589,7 +790,7 @@ Narrow it with `scope`:
 [,python]
 ----
 "scope": {"projects": ["Project A", "Project B"]}   # by name (non-unique!)
-"scope": {"project_ids": ["<uuid>", "<uuid>"]}      # by id (unambiguous)
+"scope": {"project_ids": ["<uuid>", "<uuid>"]}      # by ID (unambiguous)
 ----
 
 The requested scope is intersected with what you can read, so you can only ever
@@ -601,8 +802,9 @@ granted its layer.
 == Ordering
 
 Without `order-by`, rows come back in an unspecified order. `order-by` is a list of
-`[variable, attribute]` (or `[variable, attribute, "desc"]`) entries, applied left
-to right:
+entries applied left to right; each entry is a <<Field access,dot path>>
+(`["?t.begin"]`, or `["?t.begin", "desc"]`) — or, equivalently, the longer
+`[variable, attribute]` / `[variable, attribute, "desc"]` form:
 
 [,python]
 ----
@@ -617,9 +819,10 @@ client.query({
 ----
 
 * The variable must be one you `find` (you can only sort by a returned column).
-* The attribute depends on the variable's kind: tokens take `begin` / `end` /
-  `precedence` / `doc` / `id`; spans and relations take `value` / `doc` / `id`;
-  vocab items take `form` / `id`. Documents and texts have no orderable attribute.
+* You can sort by any of that variable's fields — see the <<Field access>> table
+  for the full list per kind (e.g. a document by `name`, a text by `body`) —
+  including a `metadata` / `config` path, which is only expressible with the
+  dotted form (`["?s.metadata.score", "desc"]`).
 * Direction is `"asc"` (default) or `"desc"`. Missing values (e.g. a null
   `precedence`) always sort last, either direction.
 * Ordering applies across the whole result, including `or` / `seq` queries (which
@@ -629,9 +832,9 @@ client.query({
 
 Set `return` to choose the result shape.
 
-=== ids
+=== IDs
 
-The default. `results` is a list of rows, one id per `find` variable in order;
+The default. `results` is a list of rows, one ID per `find` variable in order;
 `columns` echoes the variable names without `?`.
 
 [,json]
@@ -643,7 +846,7 @@ The default. `results` is a list of rows, one id per `find` variable in order;
  "truncated": false}
 ----
 
-=== entities
+=== Entities
 
 The same envelope, but each cell is the full entity object, exactly the shape
 the corresponding `GET` endpoint returns (id, layer, value, and nested data like a
@@ -657,7 +860,7 @@ r["results"][0][0]
 # -> {"id": "...", "layer": "...", "value": "NOUN", "tokens": ["..."], ...}
 ----
 
-=== count
+=== Count
 
 A scalar count of distinct matches. It ignores `limit` and is computed up to
 100,000; a larger result reports `count: 100000, truncated: true`. It counts
@@ -693,11 +896,11 @@ client.query({
 * Ops: `count` (counts matches, no source), and `sum` / `avg` / `min` / `max`
   over a value variable. `sum` / `avg` assume the value is numeric (a `value`
   is JSON-decoded first); `min` / `max` work on anything comparable.
-* Group keys are bound variables (an entity groups by its id; a value variable
+* Group keys are bound variables (an entity groups by its ID; a value variable
   groups by its value). `"group": []` gives one overall row. Result columns are the
   group variable names followed by one column per aggregate (`op` for `count`,
   `op_var` otherwise).
-* Groups are not matches, so they are not subject to the 100/1000 row cap, but
+* Groups are not matches, so they are not subject to the 1000/100,000 row cap, but
   an explicit `limit` is honored (clamped to a backstop of 100,000 group rows);
   past that the result is `truncated`. The 30-second time limit still applies. The
   envelope's top-level `count` is the number of group rows returned.
@@ -705,7 +908,7 @@ client.query({
 * When the pattern uses `or` / `seq`, every branch must bind the same
   set of entity and layer variables, not just the same `find` vars, else 400.
 
-Fan-out matters. A "match" is a binding of all the query's variables, so a
+Grouping matters. A "match" is a binding of all the query's variables, so a
 one-to-many join repeats the aggregated value once per match. If you bind extra
 entities (e.g. add `["covers", "?s", "?t"]`), a span's value is counted once per
 token it covers: `sum` / `avg` over `?s` inflate, and the aggregate `count`
@@ -719,9 +922,10 @@ distinct tuples of the `find` variables.
 
 `ids` / `entities` queries are paginated by `limit`:
 
-* No `limit`: 100 rows.
-* An explicit `limit` is honored up to a hard cap of 1000 (a larger value is
-  clamped).
+* No `limit`: 1000 rows.
+* An explicit `limit` is honored up to a hard cap of 100,000 (a larger value is
+  clamped). `ids` results are cheap; an `entities` result this large is slow, since
+  each row is hydrated with a fetch.
 * `truncated: true` means you hit the effective limit and there may be more.
 
 There is no cursor yet; to page a large result, add more selective clauses or query
@@ -838,69 +1042,10 @@ client.query({
               ["vocab-link", "?t", "?v"]],
 })
 
-# restrict to one project by id (works even with duplicate names)
+# restrict to one project by ID (works even with duplicate names)
 client.query({
     "find": ["?s"],
     "where": [["span", "?s", {"layer": "UPOS", "value": "NOUN"}]],
     "scope": {"project_ids": ["5b7ce985-...-6d1186cbd822"]},
 })
 ----
-
-== Clause reference
-
-**Entities**: `[kind, "?var", {constraints}]`:
-
-[cols="1,3"]
-|===
-| Kind | Constraint keys
-
-| `span`     | `layer` `value` `doc` `metadata`
-| `token`    | `layer` `doc` `begin` `end` `metadata`
-| `relation` | `layer` `value` `doc` `source` `target` `metadata`
-| `vocab`    | `layer` `form` `metadata`
-| `document` | `name` `id` `metadata`
-| `text`     | `body` `doc` `metadata`
-|===
-
-A constraint may be a literal, a list (any of these, on `value` `form` `doc` `begin`
-`end` `name` `body` `id`), a regex (on `value` `form` `name` `body`), or a value
-variable (on `value` `form` `begin` `end` `doc`). `metadata` is a map from each
-metadata key to such a value.
-
-**Relationships**: `[op, "?a", "?b"]`, plus `["related*", "?a", "?b", {layer,
-value?}]`:
-
-`covers` · `precedes` · `precedes*` · `within` · `first-in` · `overlaps` ·
-`contains` · `coextensive` · `source` · `target` · `vocab-link` · `related*`
-
-**Predicates**: `[op, a, b]` where `op` is one of `=` `!=` `<` `>` `<=` `>=` and each
-term is a bound variable or a literal. Entity vars compare ids (`=` / `!=` only).
-
-**Sequence**: `["seq", {layer, doc?}, element, …]` where each element is
-`[kind, {constraints}]` (optionally `…, "as", "?var"`) or a quantifier wrapper
-`["?", element]` / `["rep", n, m, element]`.
-
-**Disjunction**: `["or", group, group, …]` (≥2 groups; each a list of clauses).
-Matches if any group matches; the matching rows are merged, with duplicates removed.
-
-**Negation**: `["not", clause, …]`. Matches when the clauses inside it have no
-match together. Vars used outside the `not` tie to it; vars used only inside it
-cannot be in `find`.
-
-**Layer variable**: a var in the `layer` slot (`{"layer": "?sl"}`). Constrain it
-with `["span-layer", "?sl", {"name"|"alias": …}]` (or `token-layer` /
-`relation-layer` / `vocab-layer`).
-
-**Top level**: `{find, where, scope?, limit?, order-by?, return?,
-strict-layers?}`. `return` is `ids` (default) / `entities` / `count`, or an
-aggregate spec `{group: [vars], aggregates: [[op, src?], …]}`. With an aggregate
-`return`, `find` and `order-by` are omitted.
-
-== Not yet supported
-
-* Unbounded sequence quantifiers (`*`, `+`).
-* Cursor / streaming for very large result sets.
-* Historical / `as-of` querying (the language runs against current state only).
-* Bulk edits driven by query matches.
-
-These are tracked separately; the language above is the stable v0 surface.
