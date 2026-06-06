@@ -64,6 +64,24 @@
     (is (= #{"WALK"}
            (values [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" "WALK"}}]])))))
 
+(deftest regex-unicode-case-folding
+  ;; The `i` flag compiles to `(?iu)`, so case folding is Unicode-aware, not
+  ;; ASCII-only. Under a bare `(?i)` the first assertion would fail.
+  (let [pid  (h/create-test-project admin-request "RxUni")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "lemma"))
+        doc  (h/create-test-document admin-request pid "d")
+        text (id (h/create-text admin-request txtl doc "a"))
+        t0   (id (h/create-token admin-request tokl text 0 1))]
+    (h/create-span admin-request sl [t0] "ЦИЯ")  ; uppercase Cyrillic
+    (testing "flags i folds case for non-ASCII letters"
+      (is (= #{"ЦИЯ"}
+             (values [["span" "?s" {"layer" "RxUni/lemma" "value" {"regex" "ция$" "flags" "i"}}]]))))
+    (testing "without the flag, non-ASCII case still matters"
+      (is (= #{}
+             (values [["span" "?s" {"layer" "RxUni/lemma" "value" {"regex" "ция$"}}]]))))))
+
 (deftest regex-composes-with-not
   (build!)
   (testing "spans NOT matching walk.* — same span correlated, regex negated"

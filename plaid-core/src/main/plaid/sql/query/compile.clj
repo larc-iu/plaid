@@ -130,12 +130,13 @@
   *** Dialect seam *** — the ONE place a regex predicate is emitted:
     SQLite:   REGEXP(pattern, col) — a UDF registered per query connection in
               exec.clj (Java Pattern under the hood). Case-insensitivity is an
-              inline `(?i)` on the pattern.
+              inline `(?iu)` on the pattern — `u` adds UNICODE_CASE so folding
+              works for non-ASCII letters too (e.g. Cyrillic Ц/ц), not just ASCII.
     Postgres: would be `col ~ pattern` / `col ~* pattern` — change THIS fn only."
   [col pattern case-insensitive?]
   ;; HoneySQL renders :regexp as the infix `col REGEXP pattern`, which SQLite
   ;; maps to `regexp(pattern, col)` — exactly our UDF's (pattern, value) arg order.
-  [:regexp col (if case-insensitive? (str "(?i)" pattern) pattern)])
+  [:regexp col (if case-insensitive? (str "(?iu)" pattern) pattern)])
 
 (defn- value-pred
   "The predicate for one text-match spec: a regex spec `{:regex .. :flags}` ->
