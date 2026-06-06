@@ -45,7 +45,25 @@ def test_bindings_keys_and_values_pass_through_verbatim():
     assert out['bindings'] == {'?lyr': '0194-uuid', '?tags': ['NOUN', 'PROPN']}
 
 
+def test_layer_structural_slot_keys_recase():
+    # the layer structural slots (text-layer, parent-token-layer, token-layer,
+    # span-layer) are object KEYS inside a clause's constraint map, so they recase
+    # snake <-> kebab like any key; the layer-reference VALUE is a string and is
+    # left verbatim. Clause heads are literal strings (write them kebab).
+    out = transform_request({
+        'find': ['?s'],
+        'where': [['span', '?s', {'layer': '?sl'}],
+                  ['span-layer', '?sl', {'token_layer': '?tl'}],
+                  ['token-layer', '?tl', {'text_layer': 'Transcription',
+                                          'parent_token_layer': '?p'}]],
+    })
+    assert out['where'][1][2] == {'token-layer': '?tl'}
+    assert out['where'][2][2] == {'text-layer': 'Transcription',
+                                  'parent-token-layer': '?p'}
+
+
 if __name__ == '__main__':
     test_field_path_value_is_not_recased()
     test_bindings_keys_and_values_pass_through_verbatim()
+    test_layer_structural_slot_keys_recase()
     print('ok')

@@ -809,9 +809,14 @@
                   (when-not (var? (:var v))
                     (err! :validate (str ":" (name k) " :var must be a ?-variable, got: " (pr-str (:var v))))))
               :else
-              (err! :validate (str ":" (name head) " constraint :" (name k)
-                                   " has an unrecognized spec " (pr-str v)
-                                   " (expected a regex {:regex ..} or a value variable {:var ..})"))))))
+              (let [accepts (cond-> []
+                              (regex-keys k)  (conj "a regex {:regex ..}")
+                              (scalar-keys k) (conj "a value variable {:var ..}"))]
+                (err! :validate (str ":" (name head) " constraint :" (name k)
+                                     " has an unrecognized spec " (pr-str v)
+                                     (if (seq accepts)
+                                       (str " (expected " (str/join " or " accepts) ")")
+                                       " (this constraint takes a literal or list, not a map value)"))))))))
 
       (contains? rel-clauses head)
       (let [arity (rel-clauses head)]

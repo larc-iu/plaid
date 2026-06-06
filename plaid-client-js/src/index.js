@@ -1438,7 +1438,13 @@ class PlaidClient {
      *     limit: 100,
      *   });
      *
-     * @param {Object} body - The query AST ({find, where, scope?, limit?, return?}).
+     * Optional keys: `scope` (restrict to named projects/ids), `orderBy`
+     * (sort rows), `strictLayers` (require layer ids, not names), and `bindings`
+     * (substitute `?name` placeholders with literals). `return` may also be an
+     * aggregate spec `{group, aggregates}`. See the query language reference.
+     *
+     * @param {Object} body - The query AST ({find, where, scope?, limit?, orderBy?,
+     *   return?, strictLayers?, bindings?}).
      * @returns {Promise<Object>} For 'ids'/'entities': {columns, results, count, truncated}.
      *   For 'count': {return: 'count', count}. Entity cells are full entity objects
      *   (same shape as the GET endpoints).

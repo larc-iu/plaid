@@ -1822,8 +1822,15 @@ class PlaidClient:
                 'limit': 100,
             })
 
+        Optional keys: ``scope`` (restrict to named projects/ids), ``order_by``
+        (sort rows), ``strict_layers`` (require layer ids, not names), and
+        ``bindings`` (substitute ``?name`` placeholders with literals). ``return``
+        may also be an aggregate spec ``{group, aggregates}``. See the query
+        language reference.
+
         Args:
-            body: The query AST ({find, where, scope?, limit?, return?}).
+            body: The query AST ({find, where, scope?, limit?, order_by?,
+                return?, strict_layers?, bindings?}).
 
         Returns:
             For 'ids'/'entities': {columns, results, count, truncated}. For
