@@ -183,7 +183,13 @@
   to the outer column as a correlated predicate.)"
   [st v col-ref enc json?]
   (if-let [bound (get-in @st [:scalar-col v])]
-    (add-where! st [:= (:sql bound) col-ref])
+    ;; join the two columns by VALUE. A JSON-encoded column (:value on span/relation)
+    ;; stores the text "cat" (with quotes); a plain column (:form/:name/:body/:doc/
+    ;; begin/end) stores cat. Decode whichever side is JSON-encoded before comparing —
+    ;; mirroring resolve-term — else a value<->form join is `"cat" = cat` and silently
+    ;; never matches. (value<->value: both decode, still equal.)
+    (let [decode (fn [sql j?] (if j? [:json_extract sql [:inline "$"]] sql))]
+      (add-where! st [:= (decode (:sql bound) (:json? bound)) (decode col-ref json?)]))
     (swap! st assoc-in [:scalar-col v] {:sql col-ref :enc enc :json? json?})))
 
 (defn- emit-field!

@@ -55,7 +55,9 @@
                     (->> (psc/q db {:select [:id :name] :from [:projects]
                                     :where [:in :name (vec projects)]})
                          (map (comp str :id)) set))
-            explicit (set (map str project-ids))
+            ;; project ids are case-insensitive UUIDs; lower-case requested ids so an
+            ;; uppercase one still intersects the (lowercased) accessible set
+            explicit (set (map (comp str/lower-case str) project-ids))
             requested-set (set/union (or named #{}) explicit)
             scoped (set/intersection accessible requested-set)]
         (when (empty? scoped)
@@ -115,7 +117,10 @@
         ids (distinct
              (cond
                (str/includes? s "/") (get-in index [:by-path s])
-               (uuid-string? s)      (when (contains? (:by-id index) s) [s])
+               ;; UUIDs are case-insensitive (RFC 4122); ids are stored/normalized
+               ;; lowercase, so match an uppercase/mixed-case ref against the lowered form.
+               (uuid-string? s)      (let [ls (str/lower-case s)]
+                                       (when (contains? (:by-id index) ls) [ls]))
                :else                 (concat (get-in index [:by-alias s])
                                              (get-in index [:by-name s]))))]
     (cond

@@ -282,12 +282,17 @@
                                 ;; :metadata is a map of arbitrary metadata KEYS (kept
                                 ;; verbatim — case-sensitive strings) to value specs
                                 ;; (each spec keyword-ized if it's a regex map).
+                                ;; (a non-map :metadata is left as-is so validate-metadata!
+                                ;; can reject it with a clean 400, rather than reduce-kv
+                                ;; throwing an uncaught error here at parse time)
                                 (= k :metadata)
-                                (reduce-kv (fn [a mk spec]
-                                             (assoc a mk (if (map? spec)
-                                                           (reduce-kv (fn [s ik iv] (assoc s (->kw ik) iv)) {} spec)
-                                                           spec)))
-                                           {} v)
+                                (if (map? v)
+                                  (reduce-kv (fn [a mk spec]
+                                               (assoc a mk (if (map? spec)
+                                                             (reduce-kv (fn [s ik iv] (assoc s (->kw ik) iv)) {} spec)
+                                                             spec)))
+                                             {} v)
+                                  v)
                                 ;; a map value is a special spec: a regex {:regex ..}
                                 ;; or a value variable {:var "?v"}. Keyword-ize the
                                 ;; keys and var-ize the :var payload. (A plain string
@@ -413,9 +418,16 @@
   `{:group [vars] :aggregates [[op src?]...]}`."
   [v]
   (if (map? v)
-    (let [m (reduce-kv (fn [a k vv] (assoc a (->kw k) vv)) {} v)]
-      {:group (mapv ->term (:group m []))
-       :aggregates (mapv normalize-agg-entry (:aggregates m []))})
+    (let [m (reduce-kv (fn [a k vv] (assoc a (->kw k) vv)) {} v)
+          g (:group m []) a (:aggregates m [])]
+      ;; guard non-list group/aggregates at parse so mapv doesn't throw an uncaught
+      ;; error (validate-aggregate-spec! gives the richer message once shaped)
+      (when-not (sequential? g)
+        (err! :parse (str ":return :group must be a list, got: " (pr-str g))))
+      (when-not (sequential? a)
+        (err! :parse (str ":return :aggregates must be a list, got: " (pr-str a))))
+      {:group (mapv ->term g)
+       :aggregates (mapv normalize-agg-entry a)})
     (->kw v)))
 
 ;; ---------------------------------------------------------------------------
@@ -511,7 +523,13 @@
       (contains? m :scope)  (assoc :scope (let [s (:scope m)]
                                             (when-not (map? s)
                                               (err! :parse (str ":scope must be a map with :projects and/or :project-ids, got: " (pr-str s))))
-                                            (reduce-kv (fn [a k v] (assoc a (->kw k) v)) {} s)))
+                                            (let [sc (reduce-kv (fn [a k v] (assoc a (->kw k) v)) {} s)]
+                                              ;; projects/project-ids must be lists if present
+                                              ;; (else effective-scope's empty?/seq throws a 500)
+                                              (doseq [k [:projects :project-ids]]
+                                                (when (and (contains? sc k) (not (sequential? (get sc k))))
+                                                  (err! :parse (str ":scope " k " must be a list, got: " (pr-str (get sc k))))))
+                                              sc)))
       (contains? m :limit)  (assoc :limit (:limit m))
       (contains? m :order-by) (assoc :order-by (let [ob (:order-by m)]
                                                  (when-not (sequential? ob)
@@ -844,7 +862,14 @@
             (when-not (or (var? x) (string? x) (number? x))
               (err! :validate (str ":" (name head) " :" (name slot)
                                    " must be a layer variable or a single layer reference"
-                                   " (name/alias/path/id), got: " (pr-str x)))))))
+                                   " (name/alias/path/id), got: " (pr-str x))))))
+        ;; :name/:alias match a layer by a literal string only (no value-var/regex/list
+        ;; map) — reject a map/vector with a clean 400 rather than a 500 at compile.
+        (doseq [k [:name :alias] :when (contains? cmap k)]
+          (let [x (get cmap k)]
+            (when-not (or (string? x) (number? x))
+              (err! :validate (str ":" (name head) " :" (name k) " must be a string ("
+                                   (name head) " matches by exact name/alias), got: " (pr-str x)))))))
 
       (= head :related*)
       (let [[a b cmap] args]
@@ -872,9 +897,15 @@
       (do
         (when-not (= (count args) 2)
           (err! :validate (str "Predicate :" (name head) " takes exactly 2 terms, got " (count args))))
+        ;; a term is a var, a field path (a ::field map), or a scalar literal. A
+        ;; non-field map / vector / non-var symbol is a clean 400 — not a silent
+        ;; empty result or an uncaught HoneySQL 500 at compile.
         (doseq [t args]
-          (when (and (symbol? t) (not (var? t)))
-            (err! :validate (str "Predicate :" (name head) " term " (pr-str t) " is not a var or literal")))))
+          (cond
+            (or (var? t) (field-ref? t)) nil
+            (or (string? t) (number? t) (boolean? t)) nil
+            :else (err! :validate (str "Predicate :" (name head) " term " (pr-str t)
+                                       " is not a variable, field path, or literal")))))
 
       (= head :not)
       (do

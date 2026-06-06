@@ -472,3 +472,27 @@
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?tl"] "where" [["token-layer" "?tl" {"text-layer" {"regex" "x"}}]]})))))
   (testing "a dotted name in a slot var position is a 400 (slots bind, paths don't)"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?tl"] "where" [["token-layer" "?tl" {"text-layer" "?x.name"}]]}))))))
+
+(deftest malformed-input-400-not-500
+  ;; edge-hunt: each of these used to throw an uncaught error (-> opaque 500) or slip
+  ;; through validation; all must be a clean 400.
+  (testing "a map predicate term (not a var/field-path/literal) is rejected"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "p" "value" {"var" "?v"}}]
+                                                       ["=" "?v" {"a" 1}]]})))))
+  (testing "a value-var or regex map on a layer clause's :name/:alias is rejected"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}]
+                                                                     ["span-layer" "?sl" {"name" {"var" "?v"}}]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}]
+                                                                     ["span-layer" "?sl" {"alias" {"regex" "^p"}}]]})))))
+  (testing "a non-map :metadata value is rejected (not a parse-time crash)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p" "metadata" "foo"}]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p" "metadata" 7}]]})))))
+  (testing "a non-list :return :group / :aggregates is rejected"
+    (is (= 400 (code-of #(ast/parse+validate {"where" [["span" "?s" {"layer" "p"}]]
+                                              "return" {"group" 5 "aggregates" [["count"]]}}))))
+    (is (= 400 (code-of #(ast/parse+validate {"where" [["span" "?s" {"layer" "p"}]]
+                                              "return" {"group" [] "aggregates" 5}})))))
+  (testing "a non-list :scope :projects / :project-ids is rejected"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"projects" 5}}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"project-ids" 5}}))))))

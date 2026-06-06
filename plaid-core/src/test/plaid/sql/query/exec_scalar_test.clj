@@ -119,3 +119,53 @@
                                               "where" [["span" "?s" {"layer" "ScProj/pos" "value" gloss}]]})))]
         (is (= gloss (:value (nth clause 2))) (str gloss " must remain a literal"))
         (is (string? (:value (nth clause 2))))))))
+
+(deftest value-var-join-across-encoding-boundary
+  ;; regression (edge-hunt): a shared value-var across a JSON-encoded :value and a
+  ;; plain :form silently returned 0 (bind-scalar! compared raw columns: "cat" vs cat).
+  ;; Must match like the equivalent =-predicate form.
+  (let [pid  (h/create-test-project admin-request "VVJoin")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "lemma"))
+        doc  (h/create-test-document admin-request pid "d1")
+        text (id (h/create-text admin-request txtl doc "aa bb"))
+        t0 (id (h/create-token admin-request tokl text 0 2))
+        t1 (id (h/create-token admin-request tokl text 3 5))
+        sp-cat (id (h/create-span admin-request sl [t0] "cat"))
+        _      (id (h/create-span admin-request sl [t1] "dog"))
+        vl  (id (h/create-vocab-layer admin-request "lex"))
+        _   (h/link-vocab-to-project admin-request pid vl)
+        v-cat (id (h/create-vocab-item admin-request vl "cat"))]
+    (testing "shared value-var joins span :value (JSON) to vocab :form (plain) by value"
+      (let [shared (qe/run db "admin@example.com"
+                           {"find" ["?s" "?v"]
+                            "where" [["span" "?s" {"layer" "lemma" "value" {"var" "?x"}}]
+                                     ["vocab" "?v" {"layer" "lex" "form" {"var" "?x"}}]]})
+            pred   (qe/run db "admin@example.com"
+                           {"find" ["?s" "?v"]
+                            "where" [["span" "?s" {"layer" "lemma" "value" {"var" "?a"}}]
+                                     ["vocab" "?v" {"layer" "lex" "form" {"var" "?b"}}]
+                                     ["=" "?a" "?b"]]})]
+        (is (= [[sp-cat v-cat]] (:results shared)) "only the cat span joins the cat vocab item")
+        (is (= (set (:results shared)) (set (:results pred))) "shared-var form == =-predicate form")))))
+
+(deftest layer-and-scope-uuid-refs-are-case-insensitive
+  ;; regression (edge-hunt): an uppercase/mixed-case layer-id or scope project-id
+  ;; gave a false "not visible / not accessible" 400; UUIDs are case-insensitive.
+  (let [pid  (h/create-test-project admin-request "CaseProj")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "pos"))
+        doc  (h/create-test-document admin-request pid "d1")
+        text (id (h/create-text admin-request txtl doc "aa"))
+        t0 (id (h/create-token admin-request tokl text 0 2))
+        _  (id (h/create-span admin-request sl [t0] "NOUN"))]
+    (testing "an uppercased layer id resolves the same layer"
+      (is (= 1 (:count (qe/run db "admin@example.com"
+                               {"find" ["?s"] "where" [["span" "?s" {"layer" (clojure.string/upper-case (str sl)) "value" "NOUN"}]]
+                                "return" "count"})))))
+    (testing "an uppercased scope project-id is accepted"
+      (is (= 1 (:count (qe/run db "admin@example.com"
+                               {"find" ["?s"] "where" [["span" "?s" {"layer" "pos"}]]
+                                "scope" {"project-ids" [(clojure.string/upper-case (str pid))]} "return" "count"})))))))
