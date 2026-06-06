@@ -928,7 +928,7 @@ You do not need to absorb them now, but it is worth knowing they are here to ref
 | Clause | Describes | Conditions you may give
 
 | `span`     | a span       | `layer`, `value`, `doc`, `metadata`
-| `token`    | a token      | `layer`, `doc`, `begin`, `end`, `metadata`
+| `token`    | a token      | `layer`, `value`, `doc`, `begin`, `end`, `metadata`
 | `relation` | a relation   | `layer`, `value`, `doc`, `source`, `target`, `metadata`
 | `vocab`    | a vocab item | `layer`, `form`, `metadata`
 | `document` | a document   | `name`, `id`, `metadata`
@@ -979,7 +979,7 @@ where: [
 
 == Value Matching
 
-A `value` (on a span or relation) or a `form` (on a vocab item) can be matched in three ways (a fourth, the value variable, comes in <<Value Variables>>):
+A `value` (on a span or relation, or a token's surface text) or a `form` (on a vocab item) can be matched in three ways (a fourth, the value variable, comes in <<Value Variables>>):
 
 * a plain string is an **exact match**;
 * a list, like `value: ["NOUN", "PROPN"]`, means **any of these**;
@@ -997,7 +997,7 @@ The pattern is an ordinary regular expression; the one option, `flags: "i"`, mak
 Reach for it when you want a family of forms (a prefix, a suffix, a stem) rather than one exact string.
 
 These forms are not confined to `value` and `form`.
-A regular expression may be used wherever a text value is matched: a span or relation `value`, a vocab `form`, a document `name`, or a text `body`.
+A regular expression may be used wherever a text value is matched: a span, token, or relation `value`, a vocab `form`, a document `name`, or a text `body`.
 A list, meaning "any of these", works on all of those and also on a token's `begin` and `end`, a `doc`, and a document `id`.
 
 == Metadata
@@ -1314,7 +1314,7 @@ One thing to watch: a "match" is a binding of _all_ the variables in the query, 
 This is the one place the query language *summarises* rather than *finds*, and it is deliberately small: these five operations, grouped however you like, and nothing more elaborate.
 
 So that a very broad query cannot overwhelm the server, results are capped.
-An `ids` or `entities` query returns at most a hundred matches by default, and at most a thousand even if you ask for more with `limit`.
+An `ids` or `entities` query returns at most a thousand matches by default, and at most a hundred thousand even if you ask for more with `limit`.
 When there are more matches than were returned, the result's `truncated` flag is set, so you know it was cut short.
 And a query that takes too long to run (about thirty seconds) is stopped rather than allowed to run away; if that happens, the pattern is too broad, and the remedy is to add a condition that pins it down further, or to narrow the `scope`.
 
