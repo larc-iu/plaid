@@ -8,10 +8,13 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     admin-request with-admin with-clean-db
-                                    assert-created assert-status]]
+                                    assert-created assert-ok assert-status]]
             [plaid.test-helpers :refer [create-test-project create-test-document
                                         create-text-layer create-text create-token-layer
-                                        create-token create-span-layer create-span]]))
+                                        create-token create-span-layer create-span
+                                        create-vocab-layer create-vocab-item
+                                        update-vocab-item-metadata
+                                        patch-vocab-item-metadata]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
@@ -77,3 +80,30 @@
           sl (-> (create-span-layer admin-request tkl "SL") :body :id)
           res (create-span admin-request sl [tok] "v" {"author" "me" "scores" [1 2 3]})]
       (assert-created res))))
+
+;; vocab-item has hand-written (non-generator) metadata routes that previously
+;; omitted the shape guard the doc-scoped entities enforce. These pin the guard
+;; onto the dedicated PUT and PATCH metadata routes.
+
+(deftest put-vocab-item-overdeep-metadata-returns-400
+  (testing "PUT /vocab-items/:id/metadata rejects a 12-deep map with 400"
+    (let [vocab (-> (create-vocab-layer admin-request "VItemShapePutVocab") :body :id)
+          item (-> (create-vocab-item admin-request vocab "w") :body :id)
+          res (update-vocab-item-metadata admin-request item (nested-map 12))]
+      (assert-status 400 res)
+      (is (re-find #"(?i)depth|metadata" (-> res :body :error))))))
+
+(deftest patch-vocab-item-overdeep-metadata-returns-400
+  (testing "PATCH /vocab-items/:id/metadata rejects a 12-deep map with 400"
+    (let [vocab (-> (create-vocab-layer admin-request "VItemShapePatchVocab") :body :id)
+          item (-> (create-vocab-item admin-request vocab "w") :body :id)
+          res (patch-vocab-item-metadata admin-request item (nested-map 12))]
+      (assert-status 400 res)
+      (is (re-find #"(?i)depth|metadata" (-> res :body :error))))))
+
+(deftest vocab-item-shallow-metadata-still-ok
+  (testing "well-shaped vocab-item metadata still succeeds via PUT and PATCH"
+    (let [vocab (-> (create-vocab-layer admin-request "VItemShapeOkVocab") :body :id)
+          item (-> (create-vocab-item admin-request vocab "w") :body :id)]
+      (assert-ok (update-vocab-item-metadata admin-request item {"a" "1"}))
+      (assert-ok (patch-vocab-item-metadata admin-request item {"b" "2"})))))
