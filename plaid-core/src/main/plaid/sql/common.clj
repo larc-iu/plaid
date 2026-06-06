@@ -15,6 +15,7 @@
             [taoensso.timbre :as log]
             [plaid.server.config :refer [config]])
   (:import (com.zaxxer.hikari HikariConfig HikariDataSource)
+           (java.security SecureRandom)
            (java.time Instant)
            (java.util UUID)))
 
@@ -38,12 +39,39 @@
     (string? x) (str/lower-case x)
     :else (throw (ex-info "Cannot render UUID" {:value x :code 400}))))
 
+(def ^:private ^SecureRandom secure-random
+  "Shared CSPRNG for id generation. SecureRandom#nextLong is thread-safe
+  (internally synchronized), so one instance suffices. Using a CSPRNG keeps
+  the 74 random bits unguessable — same non-enumerability the old v4
+  `UUID/randomUUID` gave us."
+  (SecureRandom.))
+
 (defn new-uuid
-  "Generate a fresh java.util.UUID. The SQL layer stores these as TEXT
-  via the JDBC driver's UUID#toString rendering; reads coerce TEXT back
-  to UUID in the q/q1 result builder (see `coerce-id-cols` below)."
+  "Generate a fresh time-ordered UUIDv7 (RFC 9562): a 48-bit big-endian
+  Unix-millisecond timestamp in the high bits, then 74 random bits. Same
+  128-bit `java.util.UUID` shape and TEXT storage as the previous v4
+  generator — the only behavioral change is that ids minted close in time
+  now sort close together, so inserts into the id / foreign-key B-tree
+  indexes stay local instead of scattering randomly. Still non-enumerable
+  (74 CSPRNG bits). Sub-millisecond ties are unordered (random low bits, no
+  monotonic counter) — callers that need a total commit order key on
+  `operations.ts`, not on the id (see the strict-monotonic ts logic above).
+
+  The SQL layer stores these as TEXT via the JDBC driver's UUID#toString
+  rendering; reads coerce TEXT back to UUID in the q/q1 result builder (see
+  `coerce-id-cols` below)."
   ^UUID []
-  (UUID/randomUUID))
+  (let [ts  (System/currentTimeMillis)        ; 48-bit Unix ms timestamp
+        hi  (.nextLong secure-random)         ; supplies rand_a (12 bits)
+        lo  (.nextLong secure-random)         ; supplies rand_b (62 bits)
+        ;; msb: ts(48) | version(4)=0x7 | rand_a(12)
+        msb (bit-or (bit-shift-left ts 16)
+                    0x7000
+                    (bit-and hi 0x0FFF))
+        ;; lsb: variant(2)=0b10 | rand_b(62)
+        lsb (bit-or (bit-shift-left 1 63)
+                    (bit-and lo 0x3FFFFFFFFFFFFFFF))]
+    (UUID. msb lsb)))
 
 (def ^:private uuid-shape-pattern
   "Canonical 8-4-4-4-12 hex with hyphens (lowercase or uppercase).
