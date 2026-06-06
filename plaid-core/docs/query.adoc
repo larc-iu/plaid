@@ -210,9 +210,9 @@ Supported names, by type:
 `config` go deeper: the segment after them is a key, and you can keep descending
 into nested objects (`?s.metadata.author.name`, `?sl.config.editor.color`).
 
-`layer` (every entity) and `source`/`target` (a relation's endpoint spans) are
-**reference fields** — opaque id columns, the dot-path spelling of the `layer` /
-`source` / `target` constraint slots. Like other ids they take only `=`, `!=`,
+`layer` (every annotation entity — span/token/relation/vocab) and `source`/`target`
+(a relation's endpoint spans) are **reference fields** — opaque id columns, the
+dot-path spelling of the `layer` / `source` / `target` constraint slots. Like other ids they take only `=`, `!=`,
 and `in` (no ordering), and they compare to a **variable or an id**, never a
 name: `["=", "?s.layer", "?sl"]` joins to a layer variable, and
 `["=", "?r.source", "?sp"]` is the same as the `<<Relationship clauses,source>>`
@@ -577,8 +577,8 @@ neither is preferred, and neither is going away. Pick whichever reads better.
 | `{"value": {"regex": "^N"}}`
 | `["~", "?s.value", "^N"]`
 
-| `{"begin": 5}` (and `<`, `>`, …)
-| `["=", "?t.begin", 5]`
+| `{"begin": 5}`
+| `["=", "?t.begin", 5]` (and `<`, `>`, …)
 
 | `{"layer": "?sl"}`
 | `["=", "?s.layer", "?sl"]`
@@ -593,6 +593,12 @@ neither is preferred, and neither is going away. Pick whichever reads better.
 The triple form's strength is composition: a bare `["span", "?s"]` plus
 predicates lets you filter on fields of *different* entities and join them, where
 a single constraint map only describes one entity.
+
+The two forms return the same rows for the categorical (string) values that
+annotations almost always carry. The one nuance is a *numeric* annotation value:
+a predicate/field-path reads it as a number (so `["=", "?s.value", 5]` matches a
+stored `5.0`), while the constraint map compares the stored text (`{"value": 5}`
+does not). Stick to one form when comparing numeric annotation values.
 
 == Sequences (`seq`)
 

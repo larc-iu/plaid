@@ -496,3 +496,66 @@
   (testing "a non-list :scope :projects / :project-ids is rejected"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"projects" 5}}))))
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"project-ids" 5}}))))))
+
+(deftest attr-predicate-ops
+  ;; the Datalog-style `~` (regex) and `in` (membership) ops + reference dot-paths
+  (testing "~ / in / reference paths on bound vars validate"
+    (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.value" "^N"]]}))
+        "bare-string regex")
+    (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.value" {"regex" "^n" "flags" "i"}]]}))
+        "regex spec + flags")
+    (is (some? (ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["~" "?t.value" "^a"]]}))
+        "~ on a token surface")
+    (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.metadata.k" "x"]]}))
+        "~ on metadata")
+    (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["in" "?s.value" ["NOUN" "PROPN"]]]}))
+        "in alternation")
+    (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
+                                                           ["=" "?s.layer" "?sl"]]}))
+        "?s.layer join to a layer var")
+    (is (some? (ast/parse+validate {"find" ["?sp"] "where" [["relation" "?r" {"layer" "dep"}] ["span" "?sp" {"layer" "p"}]
+                                                            ["=" "?r.source" "?sp"]]}))
+        "?r.source join to a span var"))
+  (testing "the regex op parses to the keyword named \"~\", with the LHS a field-ref"
+    (let [clause (last (:where (ast/parse {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.value" "^N"]]})))]
+      (is (= (keyword "~") (first clause)))
+      (is (ast/field-ref? (second clause)))
+      (is (= {:regex "^N"} (nth clause 2)) "bare string normalized to a regex spec")))
+  (testing "~ requires a TEXT field on the left (numeric/opaque/reference rejected)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["~" "?t.begin" "1"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.id" "x"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.layer" "x"]]})))))
+  (testing "~ requires a field-ref LHS and a regex RHS"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s" "x"]]})))
+        "a bare var LHS is rejected")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.value" 5]]})))
+        "a non-string/non-regex-map RHS is rejected")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.value" {"regex" "("}]]})))
+        "an invalid regex is a 400 at validation"))
+  (testing "in requires a non-empty list of literals"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["in" "?s.value" []]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["in" "?s.value" [{"a" 1}]]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["in" "NOUN" ["x"]]]})))
+        "a literal LHS is rejected"))
+  (testing "~ / in reject extra arguments (not silently dropped)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.value" "x" "y"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["in" "?s.value" ["x"] ["y"]]]})))))
+  (testing "G4: a name literal against a reference field is a loud 400 (= and in)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["=" "?s.layer" "pos"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?r"] "where" [["relation" "?r" {"layer" "dep"}] ["!=" "?r.source" "span"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["in" "?s.layer" ["pos"]]]}))))
+    (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]
+                                                           ["=" "?s.layer" "11111111-1111-1111-1111-111111111111"]]}))
+        "a UUID literal IS accepted (no resolution, scope confines results)"))
+  (testing "ordering ops on a reference field are rejected"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
+                                                                     ["<" "?s.layer" "?sl"]]})))))
+  (testing "~ / in are not allowed inside :not (v0, like other predicates)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]
+                                                                     [:not ["~" "?s.value" "x"]]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]
+                                                                     [:not ["in" "?s.value" ["x"]]]]})))))
+  (testing "a reference field on the wrong kind is an unknown-field 400 (document has no layer)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?d"] "where" [["document" "?d" {}] ["=" "?d.layer" "?x"]]})))))
+  (testing "the regex op does not alias a typed word (\"match\" is an unknown clause head)"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["match" "?s.value" "x"]]}))))))

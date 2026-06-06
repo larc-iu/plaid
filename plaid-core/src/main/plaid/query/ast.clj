@@ -85,6 +85,16 @@
 (def ^:private pred-ops #{:= :!= :< :> :<= :>=})
 (def ^:private order-pred-ops #{:< :> :<= :>=})
 
+;; "Attribute predicate" clauses — the Datalog-style decomposition of constraint-map
+;; entries: `["~" ?s.value {:regex ..}]` (regex, the standalone form of the `:value
+;; {:regex}` constraint) and `["in" ?s.value [..]]` (membership, the standalone form
+;; of a list/alternation constraint). Compiled on the predicate path (no desugar).
+;; The regex head is the keyword named "~"; `:~` is not a readable literal (`~` is the
+;; unquote reader macro), so it is constructed and referenced through `op-match`. Using
+;; the literal "~" (not a word like "match") also means no other wire token aliases it.
+(def ^:private op-match (keyword "~"))
+(def ^:private attr-pred-ops #{op-match :in})
+
 ;; Aggregate ops for `:return {:group [...] :aggregates [[op src?]...]}`. `:count`
 ;; counts matches (no source); the rest aggregate a scalar variable. SUM/AVG
 ;; assume the scalar is numeric; MIN/MAX work on anything comparable.
@@ -151,14 +161,21 @@
 ;; Scalar fields of each entity kind addressable via a dot-path (`?t.begin`),
 ;; order-by, or an aggregate. Backend-agnostic domain set; the compiler maps each
 ;; to a column. `:metadata` (open keys) is handled separately. Document/text are
-;; included so they can be compared/ordered too.
+;; included so they can be compared/ordered too. `:layer`/`:source`/`:target` are
+;; opaque FK references (see `ref-attrs`): the dot-path form of the `:layer` /
+;; `:source` / `:target` constraint slots.
 (def ^:private entity-field-attrs
-  {:span     #{:value :doc :id}
-   :token    #{:value :begin :end :precedence :doc :id}
-   :relation #{:value :doc :id}
-   :vocab    #{:form :id}
+  {:span     #{:value :doc :id :layer}
+   :token    #{:value :begin :end :precedence :doc :id :layer}
+   :relation #{:value :doc :id :layer :source :target}
+   :vocab    #{:form :id :layer}
    :document #{:name :id}
    :text     #{:body :doc :id}})
+
+;; Reference fields: a dot-path to a FK id column (a layer or a relation endpoint).
+;; They behave like opaque ids — only `=` / `!=` / `in` against a variable or an
+;; id literal (no ordering, no name resolution — see the G4 check in `validate`).
+(def ^:private ref-attrs #{:layer :source :target})
 
 ;; Layer variables expose name/id/alias as scalar fields, plus open `config` keys.
 (def ^:private layer-field-attrs #{:name :id :alias})
@@ -175,6 +192,14 @@
   ([stage msg] (err! stage msg {}))
   ([stage msg data]
    (throw (ex-info msg (merge {:code 400 :query-error/stage stage} data)))))
+
+(defn- uuid-like?
+  "True if `s` looks like a UUID. Used to keep `?s.layer`/`?r.source`/`?r.target`
+  reference comparisons to a variable or an id — a bare name literal is a loud 400,
+  not a silent compare-to-string. (Local regex so ast.clj stays backend-agnostic.)"
+  [s]
+  (boolean (and (string? s)
+                (re-matches #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" s))))
 
 ;; ---------------------------------------------------------------------------
 ;; Field references — dotted paths: ?t.begin / ?s.metadata.k… / ?sl.config.k…
@@ -201,7 +226,8 @@
 ;; canonical-segment -> core attr keyword (the QL-vocabulary head segment).
 (def ^:private field-attr-by-canon
   (into {} (map (fn [a] [(canon-seg (name a)) a]))
-        [:value :doc :id :begin :end :precedence :form :name :body :alias]))
+        [:value :doc :id :begin :end :precedence :form :name :body :alias
+         :layer :source :target]))
 
 (defn- dotted-name? [x]
   (let [n (cond (symbol? x) (name x) (string? x) x :else nil)]
@@ -250,6 +276,10 @@
             (or (nil? attr) (not (contains? allowed attr)))
             {:error (str "unknown field " (pr-str (first path)) " (allowed: " (vec (sort (or allowed #{}))) ")")}
             (> (count path) 1) {:error (str "field " (pr-str (first path)) " is a scalar and takes no sub-path")}
+            ;; a FK reference (entity-only; layer vars never reach here — :layer/
+            ;; :source/:target aren't in layer-field-attrs, so the unknown-field
+            ;; error above fires first)
+            (ref-attrs attr) {:type :ref :attr attr}
             layer? {:type :layer-attr :attr attr}
             :else {:type :core :attr attr}))))))
 
@@ -371,6 +401,16 @@
   (into [:seq (normalize-constraints (first args))]
         (map #(normalize-seq-element % depth) (rest args))))
 
+(defn- normalize-regex-rhs
+  "Normalize a `:~` right-hand side: a bare string `\"^N\"` is sugar for `{:regex \"^N\"}`;
+  a map has its keys keyword-ized (so `{\"regex\" .. \"flags\" ..}` matches the spec
+  validator). Anything else passes through for `validate` to 400."
+  [rhs]
+  (cond
+    (string? rhs) {:regex rhs}
+    (map? rhs)    (reduce-kv (fn [a k v] (assoc a (->kw k) v)) {} rhs)
+    :else         rhs))
+
 (defn- normalize-clause
   ([clause] (normalize-clause clause 0))
   ([clause depth]
@@ -387,6 +427,18 @@
        ;; predicate: terms are vars or literals (numbers/strings pass through)
        ;; predicate terms may be field paths (?t.begin), vars, or literals
        (pred-ops head) (into [head] (map ->term) (rest clause))
+       ;; attribute predicates: ->term only the LHS — the RHS is a regex spec
+       ;; (`~`) or a literal members list (`in`) and must NOT be var-ized. Arity is
+       ;; checked HERE (destructuring would otherwise silently drop extra args, unlike
+       ;; the comparison preds above which keep every term for validate to count).
+       (= head op-match) (let [args (rest clause)]
+                           (when-not (= (count args) 2)
+                             (err! :parse (str "~ takes a field path and a regex, got " (count args) " term(s)")))
+                           [op-match (->term (first args)) (normalize-regex-rhs (second args))])
+       (= head :in)      (let [args (rest clause)]
+                           (when-not (= (count args) 2)
+                             (err! :parse (str "in takes a term and a list, got " (count args) " term(s)")))
+                           [:in (->term (first args)) (second args)])
        :else (into [head]
                    (map (fn [a] (if (map? a) (normalize-constraints a) (->var a))))
                    (rest clause))))))
@@ -909,11 +961,37 @@
             :else (err! :validate (str "Predicate :" (name head) " term " (pr-str t)
                                        " is not a variable, field path, or literal")))))
 
+      ;; `["~" field-path regex-spec]` — regex match. Shape only here; the LHS must be
+      ;; a TEXT field, checked in `validate` once kinds are inferred.
+      (= head op-match)
+      (let [[lhs spec] args]
+        (when-not (= (count args) 2)
+          (err! :validate (str "~ takes a field path and a regex, got " (count args) " term(s)")))
+        (when-not (field-ref? lhs)
+          (err! :validate (str "~ left-hand side must be a field path (e.g. ?s.value), got: " (pr-str lhs))))
+        (when-not (and (map? spec) (contains? spec :regex))
+          (err! :validate (str "~ right-hand side must be a regex string or {:regex ..}, got: " (pr-str spec))))
+        (check-regex-spec! "~" spec))
+
+      ;; `[:in term [literal ..]]` — membership. Shape only here; a reference LHS
+      ;; needs id (not name) members, checked in `validate`.
+      (= head :in)
+      (let [[lhs members] args]
+        (when-not (= (count args) 2)
+          (err! :validate (str "in takes a term and a list, got " (count args) " term(s)")))
+        (when-not (or (field-ref? lhs) (var? lhs))
+          (err! :validate (str "in left-hand side must be a field path or variable, got: " (pr-str lhs))))
+        (when-not (and (sequential? members) (seq members))
+          (err! :validate (str "in right-hand side must be a non-empty list of literals, got: " (pr-str members))))
+        (when-not (every? scalar-literal? members)
+          (err! :validate (str "in list may only contain literals, got: "
+                               (pr-str (vec (remove scalar-literal? members)))))))
+
       (= head :not)
       (do
         (when (empty? args)
           (err! :validate ":not needs at least one clause to negate"))
-        (when (some #(pred-ops (first %)) args)
+        (when (some #(let [h (first %)] (or (pred-ops h) (attr-pred-ops h))) args)
           (err! :validate "Predicate clauses are not supported inside :not (v0)"))
         ;; recurse: the negated body is entity/relationship clauses and nested
         ;; :not (a nested NOT EXISTS); any :or/:seq inside a :not were already
@@ -935,7 +1013,9 @@
       (when (:error res)
         (err! :validate (str "Field path " (field->str fr) ": " (:error res))))
       (when (and ordering? (#{:core :layer-attr} (:type res)) (unordered-field-attrs (:attr res)))
-        (err! :validate (str "Field " (field->str fr) " is an id with no order; use = / != (not < > <= >=)"))))))
+        (err! :validate (str "Field " (field->str fr) " is an id with no order; use = / != (not < > <= >=)")))
+      (when (and ordering? (= :ref (:type res)))
+        (err! :validate (str "Field " (field->str fr) " is a reference id with no order; use = / != (not < > <= >=)"))))))
 
 (defn validate
   "Validate a canonical AST. Runs shape checks, per-clause checks, var-kind
@@ -971,7 +1051,43 @@
                          (when (and ordering? (not= :scalar (get kinds t)))
                            (err! :validate (str "Predicate :" (name op) " cannot order entity/layer variables "
                                                 "(ids are unordered); use := or :!="))))
-            :else nil))))
+            :else nil))
+        ;; G4: a reference field (?s.layer / ?r.source / ?r.target) compares only to
+        ;; a variable or an id literal — a bare NAME would silently compare the FK to
+        ;; the string and never match. There is NO name resolution on this path (that
+        ;; lives in the constraint map / a layer-var clause), so reject it loudly.
+        (doseq [[t other] [[a b] [b a]] :when (field-ref? t)]
+          (let [res (field-resolve (get kinds (field-var t)) (field-path t))]
+            (when (and (= :ref (:type res))
+                       (not (var? other)) (not (field-ref? other)) (not (uuid-like? other)))
+              (err! :validate (str "Field " (field->str t) " is a layer/entity reference; compare it to a "
+                                   "variable or an id, not " (pr-str other)
+                                   " — use a layer id or a layer-var clause for matching by name")))))))
+    ;; `~` clauses: the LHS field must resolve to a TEXT field (value/form/name/body/
+    ;; alias/metadata/config). Reject numeric/opaque/reference fields with a clean 400.
+    (doseq [clause (:where ast) :when (= op-match (first clause))]
+      (let [lhs (second clause)]
+        (validate-field-ref! kinds positive lhs false)
+        (let [res (field-resolve (get kinds (field-var lhs)) (field-path lhs))
+              text? (or (#{:metadata :config} (:type res))
+                        (and (#{:core :layer-attr} (:type res))
+                             (#{:value :form :name :body :alias} (:attr res))))]
+          (when-not text?
+            (err! :validate (str "~ requires a text field on the left; " (field->str lhs)
+                                 " is not a text field (regex matches text, not numbers/ids)"))))))
+    ;; `:in` clauses: the LHS term must be bound; a reference LHS needs id members
+    ;; (UUIDs), not names — same footgun as the G4 `=` check.
+    (doseq [clause (:where ast) :when (= :in (first clause))]
+      (let [[_ lhs members] clause]
+        (cond
+          (field-ref? lhs) (validate-field-ref! kinds positive lhs false)
+          (var? lhs) (when-not (positive lhs)
+                       (err! :validate (str "in references unbound var " lhs))))
+        (when (field-ref? lhs)
+          (let [res (field-resolve (get kinds (field-var lhs)) (field-path lhs))]
+            (when (and (= :ref (:type res)) (not (every? uuid-like? members)))
+              (err! :validate (str "in on reference field " (field->str lhs)
+                                   " requires layer/entity ids (UUIDs), not names")))))))
     ;; order-by: each entry is [field-ref dir]; the head must be a :find var (so
     ;; the sort column is present in every UNION branch). Any field is sortable
     ;; (ids give a stable order), so ordering? is false here.

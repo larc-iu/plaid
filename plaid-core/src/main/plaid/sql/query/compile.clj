@@ -627,6 +627,10 @@
    :<= :<=
    :>= :>=})
 
+;; The regex attribute-predicate head: the keyword named "~" (`:~` is not a readable
+;; literal — `~` is the unquote reader macro). Mirrors `ast/op-match`.
+(def ^:private op-match (keyword "~"))
+
 ;; --- field references (dot paths): ?t.begin / ?s.metadata.k / ?sl.config.k ----
 ;; attr keyword -> {:column kw :enc fn :json? bool}. The column lives on the
 ;; entity/layer alias; :value is stored JSON-encoded so it is DECODED for
@@ -671,6 +675,15 @@
         :else
         (let [{:keys [column enc json?]} (attr->col (:attr res))]
           {:sql (if json? [:json_extract (col a column) [:inline "$"]] (col a column)) :enc enc}))
+      :ref
+      ;; a FK reference column: ?s.layer -> the kind-aware *_layer_id; a relation's
+      ;; ?r.source/?r.target -> source_span_id/target_span_id. Opaque ids (enc str),
+      ;; so `["=" "?s.layer" "?sl"]` joins to the layer var's id exactly like {:layer ?sl}.
+      {:sql (col a (case (:attr res)
+                     :layer  (layer-fk kind)
+                     :source :source_span_id
+                     :target :target_span_id))
+       :enc str}
       :config
       {:sql [:json_extract (col a :config) (json-path (:subpath res))] :enc identity}
       :metadata
@@ -719,6 +732,27 @@
         tb (resolve-term st b)
         side (fn [t other] (if (contains? t :lit) ((or (:enc other) identity) (:lit t)) (:sql t)))]
     (add-where! st [(pred-honeysql-op op) (side ta tb) (side tb ta)])))
+
+(defn- compile-regex-pred!
+  "Compile `[:~ field-path regex-spec]` to a REGEXP match. The LHS is always a
+  field-ref (ast enforces a text field); `field-expr` decodes a JSON :value / slices
+  a token surface, so the regex runs on the same text the constraint-map regex does."
+  [st clause]
+  (let [[_ lhs spec] clause
+        {:keys [sql]} (field-expr st lhs)]
+    (add-where! st (regex-pred sql (:regex spec)
+                               (boolean (some-> (:flags spec) (str/includes? "i")))))))
+
+(defn- compile-in-pred!
+  "Compile `[:in term [literal ..]]` to `term IN (..)`. Resolves the term (a field
+  path or a bound var) and encodes the members with ITS encoder via `atomic-pred`.
+  For a `:value` term `resolve-term`/`field-expr` decode the column (json_extract,
+  enc=identity), so members compare raw against the decoded text — the same rows as
+  the constraint-map path's raw-column-vs-JSON-encoded-members `IN`."
+  [st clause]
+  (let [[_ lhs members] clause
+        {:keys [sql enc]} (resolve-term st lhs)]
+    (add-where! st (atomic-pred sql (vec members) (or enc identity)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Assemble
@@ -861,6 +895,8 @@
         (contains? layer-entity-table (first clause)) nil
         (contains? entity-table (first clause)) (compile-relation-inline! st constraints clause)
         (pred-honeysql-op (first clause)) (compile-pred! st clause)
+        (= op-match (first clause)) (compile-regex-pred! st clause)
+        (= :in (first clause)) (compile-in-pred! st clause)
         :else (compile-rel! st constraints clause)))
     (assert-acl-invariant! st)
     (if (ast/aggregate? resolved)
