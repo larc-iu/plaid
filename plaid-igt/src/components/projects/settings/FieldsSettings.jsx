@@ -227,14 +227,10 @@ export const FieldsSettings = ({ projectId, client }) => {
     );
   }
 
+  // The two cards (Annotation Fields + Ignored Tokens) come from the manager
+  // itself, so this wrapper just provides the `.tw` scope — no outer card.
   return (
-    <div className="tw rounded-lg border bg-card p-4">
-      <p className="text-lg font-medium">Annotation Fields</p>
-      <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Configure annotation fields for your project. Word scope fields apply to words,
-        Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire sentences.
-      </p>
-
+    <div className="tw">
       <FieldsManager
         onLoadData={handleLoadData}
         onSaveChanges={handleSaveChanges}

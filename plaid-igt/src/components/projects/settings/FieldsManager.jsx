@@ -237,10 +237,21 @@ export const FieldsManager = ({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Annotation Fields Section. Embedded in a settings section, the parent
-          supplies the card chrome — don't nest another bordered card. */}
-      <div className={showTitle ? 'rounded-lg border bg-card p-4' : ''}>
-        {showTitle && <p className="mb-4 text-sm font-medium">Annotation Fields</p>}
+      {/* Annotation Fields Section — its own card. In setup (showTitle) the step
+          supplies the lead-in text; embedded in settings the card carries its own
+          title + description. */}
+      <div className="rounded-lg border bg-card p-4">
+        {showTitle ? (
+          <p className="mb-4 text-sm font-medium">Annotation Fields</p>
+        ) : (
+          <>
+            <p className="text-lg font-medium">Annotation Fields</p>
+            <p className="mb-4 mt-1 text-sm text-muted-foreground">
+              Configure annotation fields for your project. Word scope fields apply to words,
+              Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire sentences.
+            </p>
+          </>
+        )}
 
         {/* Fields table */}
         <div className="overflow-hidden rounded-md border">
@@ -351,10 +362,10 @@ export const FieldsManager = ({
         </div>
       </div>
 
-      {/* Ignored Tokens Section. Bare when embedded — the parent settings card
-          supplies the chrome; gap-8 from the outer stack separates the subsections. */}
-      <div className={showTitle ? 'rounded-lg border bg-card p-4' : ''}>
-        <p className="mb-4 text-sm font-medium">Ignored Tokens</p>
+      {/* Ignored Tokens Section — its own card, separated from Annotation Fields
+          by the outer gap-8. */}
+      <div className="rounded-lg border bg-card p-4">
+        <p className={showTitle ? 'mb-4 text-sm font-medium' : 'mb-1 text-lg font-medium'}>Ignored Tokens</p>
         <div className="mb-6 text-sm text-muted-foreground">
           Configure which tokens should be ignored when applying{' '}
           <Badge variant="secondary" className={scopeBadgeClasses['Word']}>Word</Badge> scope annotations.

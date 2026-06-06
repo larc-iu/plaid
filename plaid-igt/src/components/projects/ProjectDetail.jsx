@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Settings } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { DocumentList } from './DocumentList';
 
 // Default project view: the document list. Mirrors plaid-ud — the project
@@ -84,17 +82,8 @@ export const ProjectDetail = () => {
           <span>/</span>
           <span className="text-foreground">{project.name}</span>
         </nav>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
-            <p className="mt-1 text-xs text-muted-foreground">{project.id}</p>
-          </div>
-          {canManage && (
-            <Button variant="outline" onClick={() => navigate(`/projects/${projectId}/access`)}>
-              <Settings className="h-4 w-4" /> Project Settings
-            </Button>
-          )}
-        </div>
+        <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+        <p className="mt-1 text-xs text-muted-foreground">{project.id}</p>
       </div>
 
       <DocumentList
@@ -102,6 +91,7 @@ export const ProjectDetail = () => {
         project={project}
         projectId={projectId}
         client={client}
+        canManage={canManage}
         onDocumentCreated={handleDocumentCreated}
       />
     </div>

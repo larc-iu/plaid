@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, ArrowUp, ArrowDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, ArrowUp, ArrowDown, Settings } from 'lucide-react';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +31,8 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
   );
 };
 
-export const DocumentList = ({ documents, project, projectId, client, onDocumentCreated }) => {
+export const DocumentList = ({ documents, project, projectId, client, canManage, onDocumentCreated }) => {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [documentName, setDocumentName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -133,9 +135,16 @@ export const DocumentList = ({ documents, project, projectId, client, onDocument
     <div className="tw mt-2">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">Documents</h2>
-        <Button onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4" /> Create Document
-        </Button>
+        <div className="flex items-center gap-2">
+          {canManage && (
+            <Button variant="outline" onClick={() => navigate(`/projects/${projectId}/access`)}>
+              <Settings className="h-4 w-4" /> Project Settings
+            </Button>
+          )}
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4" /> Create Document
+          </Button>
+        </div>
       </div>
 
       {documents.length === 0 ? (
