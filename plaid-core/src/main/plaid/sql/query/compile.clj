@@ -627,10 +627,6 @@
    :<= :<=
    :>= :>=})
 
-;; The regex attribute-predicate head: the keyword named "~" (`:~` is not a readable
-;; literal — `~` is the unquote reader macro). Mirrors `ast/op-match`.
-(def ^:private op-match (keyword "~"))
-
 ;; --- field references (dot paths): ?t.begin / ?s.metadata.k / ?sl.config.k ----
 ;; attr keyword -> {:column kw :enc fn :json? bool}. The column lives on the
 ;; entity/layer alias; :value is stored JSON-encoded so it is DECODED for
@@ -895,7 +891,7 @@
         (contains? layer-entity-table (first clause)) nil
         (contains? entity-table (first clause)) (compile-relation-inline! st constraints clause)
         (pred-honeysql-op (first clause)) (compile-pred! st clause)
-        (= op-match (first clause)) (compile-regex-pred! st clause)
+        (= ast/op-match (first clause)) (compile-regex-pred! st clause)
         (= :in (first clause)) (compile-in-pred! st clause)
         :else (compile-rel! st constraints clause)))
     (assert-acl-invariant! st)

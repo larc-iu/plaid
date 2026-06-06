@@ -555,7 +555,6 @@ Two more predicates work on a field path (or, for `in`, also a variable):
   ids, not names.
 * Like the comparison predicates, `~` and `in` are not allowed inside `not`.
 
-[[constraints-two-ways]]
 === Constraints, two ways
 
 Most things you can say in an entity clause's **constraint map** you can also say
@@ -596,9 +595,10 @@ a single constraint map only describes one entity.
 
 The two forms return the same rows for the categorical (string) values that
 annotations almost always carry. The one nuance is a *numeric* annotation value:
-a predicate/field-path reads it as a number (so `["=", "?s.value", 5]` matches a
-stored `5.0`), while the constraint map compares the stored text (`{"value": 5}`
-does not). Stick to one form when comparing numeric annotation values.
+a predicate/field-path reads it as a number (so `["=", "?s.value", 5]` and
+`["in", "?s.value", [5]]` match a stored `5.0`), while the constraint map
+compares the stored text (`{"value": 5}` does not). Stick to one form when
+comparing numeric annotation values.
 
 == Sequences (`seq`)
 

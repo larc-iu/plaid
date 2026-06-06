@@ -133,7 +133,14 @@
       (let [triple (run {"find" ["?s"] "where" [["span" "?s"] ["=" "?s.layer" (str pos)]]})
             cmap   (run {"find" ["?s"] "where" [["span" "?s" {"layer" (str pos)}]]})]
         (is (= #{(str a) (str b) (str c) (str d)} (ids triple)))
-        (is (= (ids cmap) (ids triple)))))))
+        (is (= (ids cmap) (ids triple)))))
+    (testing "[in ?s.layer [<pos-uuid>]] is the membership form of the same id filter"
+      (is (= #{(str a) (str b) (str c) (str d)}
+             (ids (run {"find" ["?s"] "where" [["span" "?s"] ["in" "?s.layer" [(str pos)]]]})))))
+    (testing "a reference field is usable in order-by (sorts by the id string, no error)"
+      (let [r (run {"find" ["?s"] "where" [["span" "?s" {"layer" "AP/pos"}]]
+                    "order-by" [["?s.layer"]]})]
+        (is (= #{(str a) (str b) (str c) (str d)} (set (map (comp str first) (:results r)))))))))
 
 (deftest relation-endpoint-ref-equivalence
   (let [{:keys [a b]} (build!)]

@@ -92,7 +92,8 @@
 ;; The regex head is the keyword named "~"; `:~` is not a readable literal (`~` is the
 ;; unquote reader macro), so it is constructed and referenced through `op-match`. Using
 ;; the literal "~" (not a word like "match") also means no other wire token aliases it.
-(def ^:private op-match (keyword "~"))
+;; Public so the compiler shares this one definition (the dispatch matches on it).
+(def op-match (keyword "~"))
 (def ^:private attr-pred-ops #{op-match :in})
 
 ;; Aggregate ops for `:return {:group [...] :aggregates [[op src?]...]}`. `:count`
@@ -1052,17 +1053,29 @@
                            (err! :validate (str "Predicate :" (name op) " cannot order entity/layer variables "
                                                 "(ids are unordered); use := or :!="))))
             :else nil))
-        ;; G4: a reference field (?s.layer / ?r.source / ?r.target) compares only to
-        ;; a variable or an id literal — a bare NAME would silently compare the FK to
-        ;; the string and never match. There is NO name resolution on this path (that
-        ;; lives in the constraint map / a layer-var clause), so reject it loudly.
+        ;; G4: a reference field (?s.layer / ?r.source / ?r.target) compares only to a
+        ;; variable or an id literal, and the variable must be the KIND the reference
+        ;; targets. Both guards exist for the same reason — a bare NAME, or a wrong-kind
+        ;; var, silently compares the FK to a value it can never equal and matches
+        ;; nothing. There is NO name resolution on this path (that lives in the
+        ;; constraint map / a layer-var clause), and the constraint-map form rejects a
+        ;; wrong-kind var as a kind conflict — so reject both loudly here too.
         (doseq [[t other] [[a b] [b a]] :when (field-ref? t)]
           (let [res (field-resolve (get kinds (field-var t)) (field-path t))]
-            (when (and (= :ref (:type res))
-                       (not (var? other)) (not (field-ref? other)) (not (uuid-like? other)))
-              (err! :validate (str "Field " (field->str t) " is a layer/entity reference; compare it to a "
-                                   "variable or an id, not " (pr-str other)
-                                   " — use a layer id or a layer-var clause for matching by name")))))))
+            (when (= :ref (:type res))
+              (when (and (not (var? other)) (not (field-ref? other)) (not (uuid-like? other)))
+                (err! :validate (str "Field " (field->str t) " is a layer/entity reference; compare it to a "
+                                     "variable or an id, not " (pr-str other)
+                                     " — use a layer id or a layer-var clause for matching by name")))
+              (when (var? other)
+                (let [want (case (:attr res)
+                             :layer (entity->layer-kind (get kinds (field-var t)))
+                             (:source :target) :span)
+                      got  (get kinds other)]
+                  (when (and want got (not= got want))
+                    (err! :validate (str "Field " (field->str t) " is a " (name (:attr res))
+                                         " reference; " other " is a " (name got)
+                                         ", expected a " (name want) " variable"))))))))))
     ;; `~` clauses: the LHS field must resolve to a TEXT field (value/form/name/body/
     ;; alias/metadata/config). Reject numeric/opaque/reference fields with a clean 400.
     (doseq [clause (:where ast) :when (= op-match (first clause))]

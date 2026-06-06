@@ -547,6 +547,18 @@
     (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]
                                                            ["=" "?s.layer" "11111111-1111-1111-1111-111111111111"]]}))
         "a UUID literal IS accepted (no resolution, scope confines results)"))
+  (testing "G4: a wrong-KIND variable against a reference field is a loud 400 (parity with the map form)"
+    ;; ?s.layer targets a span-layer; comparing to a span var would silently never match
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["span" "?sp" {"layer" "q"}]
+                                                                     ["=" "?s.layer" "?sp"]]}))))
+    ;; ?r.source targets a span; comparing to a token var is rejected
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?r"] "where" [["relation" "?r" {"layer" "dep"}] ["token" "?t" {"layer" "w"}]
+                                                                     ["=" "?r.source" "?t"]]}))))
+    ;; the right kinds are accepted: ?s.layer = a span-layer var, ?r.source = a span var
+    (is (some? (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
+                                                           ["=" "?s.layer" "?sl"]]})))
+    (is (some? (ast/parse+validate {"find" ["?r"] "where" [["relation" "?r" {"layer" "dep"}] ["span" "?sp" {"layer" "p"}]
+                                                           ["=" "?r.source" "?sp"]]}))))
   (testing "ordering ops on a reference field are rejected"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
                                                                      ["<" "?s.layer" "?sl"]]})))))
