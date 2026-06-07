@@ -8,6 +8,7 @@ import {
   getIgnoredTokensConfig,
   validateTokenization
 } from '../../utils/tokenizationUtils.js';
+import { reparentSpans, reparentVocabLinks } from './reparent.js';
 
 const findCoincidentMorphemeIds = (morphemeTokens, targets) => {
   if (!Array.isArray(morphemeTokens) || morphemeTokens.length === 0) return [];
@@ -53,7 +54,7 @@ export const tokenMutations = {
       const removedWordIds = new Set(toMerge.slice(1).map(t => t.id));
       const removedMorphIds = new Set(coincident);
 
-      this._applyRawPatch((next, infoNext) => {
+      this._applyRawPatch((next, infoNext, vocabs) => {
         if (infoNext.primaryTokenLayer?.tokens) {
           const first = infoNext.primaryTokenLayer.tokens.find(t => t.id === firstToken.id);
           if (first) first.end = lastToken.end;
@@ -62,6 +63,13 @@ export const tokenMutations = {
         if (removedMorphIds.size > 0 && infoNext.morphemeTokenLayer?.tokens) {
           infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(m => !removedMorphIds.has(m.id));
         }
+        // Server reparents word-scope spans + vocab links from the merged-away
+        // words onto firstToken (token.clj merge-tokens); mirror that so they
+        // don't vanish until the next reload. Morpheme-scope spans/links on the
+        // deleted coincident morphemes are cascade-DELETED server-side, so they
+        // are correctly left to drop out (orphaned, never rendered).
+        reparentSpans(infoNext.spanLayers?.word, removedWordIds, firstToken.id);
+        reparentVocabLinks(vocabs, removedWordIds, firstToken.id);
       });
     });
   },

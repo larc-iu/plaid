@@ -8,6 +8,7 @@
 // and are the supported boundary edits.
 
 import { cpLength } from '@larc-iu/plaid-client';
+import { reparentSpans } from './reparent.js';
 
 export const sentenceMutations = {
   async mergeSentence(sentenceId) {
@@ -32,6 +33,10 @@ export const sentenceMutations = {
         const p = tokens.find(t => t.id === prev.id);
         if (p) p.end = sentence.end;
         infoNext.sentenceTokenLayer.tokens = tokens.filter(t => t.id !== sentenceId);
+        // Server reparents the merged-away sentence's spans (translation, notes,
+        // …) onto prev (token.clj merge-tokens); mirror so they don't vanish
+        // until the next reload.
+        reparentSpans(infoNext.spanLayers?.sentence, new Set([sentenceId]), prev.id);
       });
     });
   },

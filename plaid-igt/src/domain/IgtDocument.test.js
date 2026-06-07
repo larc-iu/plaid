@@ -241,6 +241,35 @@ describe('word-token structural ops', () => {
     expect(toks[0].end).toBe(7);
   });
 
+  it('mergeTokens reparents word-scope spans + vocab links onto the survivor', async () => {
+    // Mirrors the server cascade (token.clj merge-tokens reparents spans/links
+    // off the merged-away token); the optimistic patch must too, or they'd
+    // vanish from the UI until a reload.
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 3 }, { id: 'w-2', begin: 4, end: 7 }],
+      morphemes: [],
+      body: 'the cat',
+      // Annotation + vocab link live on the SECOND (merged-away) word.
+      wordVocabs: [{
+        id: 'v1', name: 'Lexicon',
+        vocabLinks: [{ id: 'lk-1', tokens: ['w-2'], vocabItem: { id: 'vi-1', form: 'CAT', metadata: {} } }],
+      }],
+    });
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [{ id: 'sp-1', tokens: ['w-2'], value: 'N' }];
+    const doc = makeDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: [], vocabLinks: [] } },
+    });
+    await doc.mergeTokens(['w-1', 'w-2']);
+    const toks = doc.sentences[0].tokens;
+    expect(toks).toHaveLength(1);
+    expect(toks[0].id).toBe('w-1');
+    // The POS annotation and vocab link followed onto the surviving token.
+    expect(toks[0].annotations.POS?.value).toBe('N');
+    expect(toks[0].vocabItem?.form).toBe('CAT');
+  });
+
   it('deleteToken cascades to coincident morphemes and their spans', async () => {
     const raw = buildRawDoc({
       words: [{ id: 'w-1', begin: 0, end: 3 }, { id: 'w-2', begin: 4, end: 7 }],
@@ -271,6 +300,26 @@ describe('sentence boundary ops', () => {
     expect(ss[0].begin).toBe(0);
     expect(ss[0].end).toBe(4);
     expect(ss[1].begin).toBe(4);
+  });
+
+  it('mergeSentence reparents the merged-away sentence spans onto prev', async () => {
+    // Two sentences; a Translation annotation lives on the SECOND one. After
+    // merging it into the first, the server reparents that span onto the
+    // survivor — the optimistic patch must mirror it.
+    const raw = buildRawDoc({
+      body: 'the cat',
+      sentences: [{ id: 's-1', begin: 0, end: 4 }, { id: 's-2', begin: 4, end: 7 }],
+    });
+    raw.textLayers[0].tokenLayers[0].spanLayers[0].spans = [{ id: 'tr-2', tokens: ['s-2'], value: 'the cat (gloss)' }];
+    const doc = makeDoc({ raw });
+    expect(doc.sentences).toHaveLength(2);
+    await doc.mergeSentence('s-2');
+    const ss = doc.sentences;
+    expect(ss).toHaveLength(1);
+    expect(ss[0].id).toBe('s-1');
+    expect(ss[0].end).toBe(7);
+    // The translation followed onto the surviving sentence.
+    expect(ss[0].annotations.Translation?.value).toBe('the cat (gloss)');
   });
 });
 
@@ -306,6 +355,33 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     expect(doc.sentences[0].tokens[1].vocabItem?.form).toBe('CAT');
     await doc.unlinkVocab('w-2');
     expect(doc.sentences[0].tokens[1].vocabItem).toBeNull();
+  });
+
+  // Regression: `vocabLayers.get` (the source of `_vocabularies`) does NOT
+  // return vocab-links — they're embedded in the document GET under each token
+  // layer's `.vocabs[].vocabLinks`. If those aren't folded into `_vocabularies`,
+  // links only ever exist as in-session optimistic patches and vanish on the
+  // next load (looking deleted even though they're still on the server).
+  it('surfaces vocab-links embedded in raw even when _vocabularies has none', () => {
+    const raw = buildRawDoc({
+      morphVocabs: [{
+        id: 'v1', name: 'Lexicon',
+        vocabLinks: [{ id: 'lk-1', tokens: ['m-2'], vocabItem: { id: 'vi-1', form: 'DOG', metadata: {} } }],
+      }],
+      wordVocabs: [{
+        id: 'v1', name: 'Lexicon',
+        vocabLinks: [{ id: 'lk-2', tokens: ['w-1'], vocabItem: { id: 'vi-2', form: 'THE', metadata: {} } }],
+      }],
+    });
+    // _vocabularies has the layer + items but NO links (mirrors vocabLayers.get).
+    const doc = makeDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: [], vocabLinks: [] } },
+    });
+    // Word link (w-1) and morpheme link (m-2, second word's morpheme) both show.
+    expect(doc.sentences[0].tokens[0].vocabItem?.form).toBe('THE');
+    expect(doc.sentences[0].tokens[1].morphemes[0].vocabItem?.form).toBe('DOG');
   });
 });
 

@@ -158,7 +158,11 @@ export function makeFakeClient(opts = {}) {
       get: async () => opts.project ?? { id: 'proj-1', vocabs: [] },
     },
     vocabLayers: {
-      get: async (id) => (opts.vocabularies?.[id] ?? { id, items: [], vocabLinks: [] }),
+      // Mirrors the real endpoint: returns the layer + items but NOT vocab-links
+      // (those are embedded in the document GET under tokenLayer.vocabs[] and
+      // folded in by mergeRawVocabLinks). Tests pass `opts.vocabularies` to
+      // pre-seed links on the loaded table directly.
+      get: async (id) => (opts.vocabularies?.[id] ?? { id, items: [] }),
     },
   };
   return client;

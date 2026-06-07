@@ -34,7 +34,11 @@ export class IgtDocument {
   constructor({ raw, project = null, vocabularies = {}, client = null, projectId = null, asOf = null }) {
     this._raw = raw;
     this._project = project;
-    this._vocabularies = vocabularies;
+    // Fold the document-embedded vocab-links (under raw's token layers) into the
+    // separately-loaded vocabularies — `vocabLayers.get` returns items but not
+    // links, so this is the only way links survive a fresh load. See
+    // mergeRawVocabLinks. Reload re-folds explicitly (it bypasses the ctor).
+    this._vocabularies = mergeRawVocabLinks(raw, vocabularies);
     this._client = client;
     this._projectId = projectId;
     // The as-of timestamp this doc was loaded at (null = live). Threaded through
@@ -219,7 +223,8 @@ export class IgtDocument {
     this._raw = updated;
     if (this._project) {
       try {
-        this._vocabularies = await loadProjectVocabularies(this._client, this._project, at);
+        const reloaded = await loadProjectVocabularies(this._client, this._project, at);
+        this._vocabularies = mergeRawVocabLinks(updated, reloaded);
       } catch (err) {
         console.warn('Vocab reload failed:', err);
       }
@@ -379,6 +384,44 @@ async function loadProjectVocabularies(client, project, asOf) {
   const out = {};
   results.forEach(v => { if (v) out[v.id] = v; });
   return out;
+}
+
+// ----- helper: fold document-embedded vocab-links into loaded vocabularies -----
+// `loadProjectVocabularies` (via `vocabLayers.get`) returns each vocab's *items*
+// but NOT its vocab-links. The document GET, however, embeds every
+// document-scoped vocab-link (each carrying its `vocabItem`) under the token
+// layer its tokens belong to: `raw.textLayers[].tokenLayers[].vocabs[].vocabLinks`.
+// Fold those links into the matching `vocabularies[vocabId]` so they survive a
+// fresh load / reload. Without this, links only ever exist as in-session
+// optimistic patches and vanish on the next load — the word/morpheme renders
+// unlinked, looking deleted even though the link is still on the server. A
+// single vocab's links can be split across several token layers (e.g. word +
+// morpheme), so accumulate and dedupe by link id.
+function mergeRawVocabLinks(raw, vocabularies) {
+  const vocabs = vocabularies || {};
+  const seenByVocab = new Map(); // vocabId -> Set<linkId>
+  (raw?.textLayers || []).forEach(textLayer => {
+    (textLayer.tokenLayers || []).forEach(tokenLayer => {
+      (tokenLayer.vocabs || []).forEach(v => {
+        if (!v?.id) return;
+        let entry = vocabs[v.id];
+        if (!entry) entry = vocabs[v.id] = { id: v.id, name: v.name, items: [], vocabLinks: [] };
+        if (!Array.isArray(entry.vocabLinks)) entry.vocabLinks = [];
+        let seen = seenByVocab.get(v.id);
+        if (!seen) {
+          seen = new Set(entry.vocabLinks.map(l => l.id));
+          seenByVocab.set(v.id, seen);
+        }
+        (v.vocabLinks || []).forEach(link => {
+          if (link && link.id != null && !seen.has(link.id)) {
+            seen.add(link.id);
+            entry.vocabLinks.push(link);
+          }
+        });
+      });
+    });
+  });
+  return vocabs;
 }
 
 // ----- compose mixins onto the prototype -----
