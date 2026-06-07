@@ -1,0 +1,14 @@
+# Development overlay (loaded by `user/start`, never written to data/).
+# Only the keys that differ from the bundled defaults need to appear here;
+# everything else falls back to resources/config.toml.
+
+[server]
+# Dev runs on 8085 so it doesn't collide with a local prod jar (8080).
+port = 8085
+
+[logging]
+level = "debug"
+
+# History shadow replica on in dev (default-off in the bundled config).
+[history]
+enabled = true

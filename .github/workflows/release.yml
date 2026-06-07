@@ -129,10 +129,11 @@ jobs:
           # `plaid.server.main` self-heals the JDK access flags: it probes for
           # --add-opens / --enable-native-access and, if absent, re-execs the
           # JVM with them (PLAID_NO_REEXEC guards the child). So a bare
-          # `java -jar` must boot unattended. prod.edn listens on :8080 and the
-          # JWT secret + SQLite db auto-generate, so no config/env is needed.
-          # We assert /health reports the release version (proving version.edn
-          # was bundled), then tear the process(es) down.
+          # `java -jar` must boot unattended. The server listens on :8080 by
+          # default and the config.toml + JWT secret + SQLite db all
+          # auto-generate, so no config/env is needed. We assert /health reports
+          # the release version (proving version.edn was bundled), then tear the
+          # process(es) down.
           JAR="plaid-core/target/plaid-${{ steps.ver.outputs.version }}.jar"
           java -jar "$JAR" &
           for i in $(seq 1 30); do
@@ -265,7 +266,9 @@ jobs:
           \`--enable-native-access\` JVM flags, so a bare \`java -jar\` works.
           Listens on \`:8080\` by default.
 
-          ## Minimum config
+          ## Config
+          A fully-commented \`data/config.toml\` is written on first launch;
+          edit it and restart to change settings. Also:
           - \`PLAID_JWT_SECRET\` (or a generated secret file) for token signing
           - SQLite database path (defaults to \`data/plaid.db\`)
 

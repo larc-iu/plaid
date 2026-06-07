@@ -84,6 +84,18 @@
         (println "                       -jar <path-to-jar>"))
       (System/exit 1))))
 
+(defn- parse-args
+  "Pull recognized flags out of the raw command line. Currently just
+   `--config <path>`, which points at an operator-supplied TOML config file.
+   When absent, the config defstate falls back to PLAID_CONFIG / data/config.toml
+   and auto-writes the commented template on first launch."
+  [args]
+  (loop [a (seq args) m {}]
+    (cond
+      (nil? a) m
+      (= "--config" (first a)) (recur (nnext a) (assoc m :config (second a)))
+      :else (recur (next a) m))))
+
 (defn -main [& args]
   (when (and (or (needs-add-opens?) (needs-native-access?))
              (not (System/getenv "PLAID_NO_REEXEC")))
@@ -111,4 +123,4 @@
                            (binding [*out* *err*]
                              (println "mount/stop did not complete within 25s; abandoning"))
                            (.interrupt stopper))))))
-  (mount/start-with-args {:config "config/prod.edn"}))
+  (mount/start-with-args (parse-args args)))

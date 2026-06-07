@@ -44,7 +44,9 @@
 
 (defn start-internal "Start the web server + services" []
   (start-nrepl!)
-  (let [result (mount/start)]
+  ;; Dev loads the classpath overlay config.dev.toml (debug logging + history
+  ;; on) on top of the bundled defaults; nothing is written to data/.
+  (let [result (mount/start-with-args {:config "config.dev.toml"})]
     (def db plaid.server.sql/datasource)
     result))
 

@@ -1,0 +1,138 @@
+# =============================================================================
+# Plaid server configuration
+# =============================================================================
+#
+# This file is written automatically to data/config.toml on first launch with
+# every setting set to its default. Edit it and restart the server to apply
+# changes. Settings left out of this file fall back to the defaults shown here,
+# so you can delete anything you don't want to override.
+#
+# To load config from a different location, pass `--config /path/to/config.toml`
+# on the command line, or set the PLAID_CONFIG environment variable.
+#
+# NOTE: the JWT signing secret is NOT configured here. It is read from the
+# PLAID_JWT_SECRET environment variable, or auto-generated into
+# data/jwt-secret.txt (owner-only permissions) on first launch.
+
+# -----------------------------------------------------------------------------
+# HTTP server
+# -----------------------------------------------------------------------------
+[server]
+# Port the HTTP API listens on.
+port = 8080
+
+# Maximum size (in megabytes) of a non-multipart request body (e.g. JSON/EDN
+# REST payloads). Multipart media uploads are capped separately by
+# [media] max_file_size_mb.
+max_json_body_mb = 10
+
+# Filesystem/classpath location static assets are served from. Advanced;
+# most deployments never change this. Uncomment to override.
+# static_resources_path = "resources"
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+[logging]
+# Minimum log level. One of: trace, debug, info, warn, error, fatal, report.
+level = "info"
+
+# -----------------------------------------------------------------------------
+# Authentication
+# -----------------------------------------------------------------------------
+[auth]
+# Session token (JWT) lifetime, in seconds. Default is 30 days (2592000).
+# Shorten for tighter-security deployments.
+jwt_ttl_seconds = 2592000
+
+# -----------------------------------------------------------------------------
+# API surface
+# -----------------------------------------------------------------------------
+[api]
+# Whether to expose the auto-generated OpenAPI spec at /api/v1/openapi.json.
+# Set to false to reduce surface area on hardened deployments.
+expose_openapi = true
+
+# -----------------------------------------------------------------------------
+# Media uploads
+# -----------------------------------------------------------------------------
+[media]
+# Maximum size (in megabytes) of a single uploaded media file.
+max_file_size_mb = 200
+
+# -----------------------------------------------------------------------------
+# Database (SQLite)
+# -----------------------------------------------------------------------------
+[database]
+# Path to the SQLite database file. Created (with its parent directory) on
+# first launch if absent.
+path = "data/plaid.db"
+
+# Minimum / maximum allowed length for user-supplied names (projects, layers,
+# documents, etc.).
+min_name_length = 1
+max_name_length = 500
+
+# Queries slower than this many milliseconds are logged. Uncomment to override
+# (default 500).
+# slow_query_threshold_ms = 500
+
+# --- Connection pool + SQLite PRAGMA tuning (advanced) -----------------------
+# Uncomment and adjust any of these to override the defaults.
+# max_pool_size = 10            # HikariCP maximum pool size
+# connection_timeout_ms = 30000 # HikariCP connection timeout
+# busy_timeout_ms = 5000        # SQLite busy_timeout PRAGMA
+# journal_mode = "WAL"          # SQLite journal_mode PRAGMA
+# synchronous = "NORMAL"        # SQLite synchronous PRAGMA
+
+# -----------------------------------------------------------------------------
+# CORS (cross-origin requests)
+# -----------------------------------------------------------------------------
+# By default no cross-origin requests are allowed: frontends must be served
+# from the same origin as the API.
+[cors]
+# Exact origin strings to allow (NOT regexes), e.g.
+#   allowed_origins = ["https://app.example.com", "https://staging.example.com"]
+# Each entry is anchored and matched exactly. Empty list = same-origin only.
+allowed_origins = []
+
+# HTTP methods permitted for cross-origin requests.
+allowed_methods = ["get", "put", "post", "patch", "delete", "options"]
+
+# Request headers permitted for cross-origin requests.
+allowed_headers = ["Authorization", "Content-Type"]
+
+# -----------------------------------------------------------------------------
+# Document locks
+# -----------------------------------------------------------------------------
+[locks]
+# How long (milliseconds) a document lock is held before it expires.
+expiration_ms = 60000
+
+# -----------------------------------------------------------------------------
+# Real-time events (SSE)
+# -----------------------------------------------------------------------------
+[events]
+# Heartbeat interval (milliseconds) for server-sent-event streams.
+heartbeat_interval_ms = 30000
+# Number of consecutive missed heartbeats before a client is dropped.
+heartbeat_max_misses = 2
+
+# -----------------------------------------------------------------------------
+# History (time-travel replica)
+# -----------------------------------------------------------------------------
+# Optional read-only XTDB replica fed from the audit log, enabling
+# "document X as of time T" reads via ?as-of=<ISO-8601> on document GET
+# endpoints. Disabled by default; opt in when you want time travel.
+[history]
+enabled = false
+# Where the replica stores its data and transaction log.
+storage_path = "data/history-storage"
+log_path = "data/history-log"
+# On an empty replica, replay the full audit history from the beginning.
+cold_replay_on_empty = true
+# Tailer poll loop tuning.
+tailer_poll_interval_ms = 5000
+tailer_batch_size = 500
+tailer_max_lag_warn_ms = 60000
+tailer_max_disk_warn_mb = 5000

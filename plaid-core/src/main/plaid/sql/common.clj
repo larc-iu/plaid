@@ -335,8 +335,8 @@
 
 (def default-pool-config
   "Defaults baked into `build-datasource` when the caller passes no
-  override. Mirror these in defaults.edn so operators can see the
-  shape of `:plaid.sql.common/pool`."
+  override. Mirror these under [database] in resources/config.toml so
+  operators can see the available pool/PRAGMA knobs."
   {:max-pool-size 10
    :connection-timeout-ms 30000
    :busy-timeout-ms 5000

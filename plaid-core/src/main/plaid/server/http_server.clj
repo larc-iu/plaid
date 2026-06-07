@@ -32,7 +32,7 @@
         http-kit-config-with-max-body (assoc http-kit-config :max-body max-body-bytes)
         port (:port http-kit-config-with-max-body)]
     (when (nil? port)
-      (throw (Exception. "http-server cannot start: no :port configured. Set :org.httpkit.server/config :port in your config (defaults.edn already provides 8085).")))
+      (throw (Exception. "http-server cannot start: no :port configured. Set [server] port in your config.toml (the bundled default is 8080).")))
     (log/info "Starting server on port" port "with max body size" max-body-bytes "bytes")
     (let [stop-server (http-kit/run-server middleware http-kit-config-with-max-body)]
       (fn []

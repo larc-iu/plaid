@@ -30,6 +30,10 @@ builds/
 !/plaid-core/resources/
 /plaid-core/resources/*
 !/plaid-core/resources/migrations/
+# keep the hand-authored TOML config template + dev overlay tracked (they
+# ship in the jar and are the source of operator-facing defaults)
+!/plaid-core/resources/config.toml
+!/plaid-core/resources/config.dev.toml
 mutations.ednl
 Gemfile.lock
 .aider*

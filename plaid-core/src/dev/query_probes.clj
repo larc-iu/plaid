@@ -24,7 +24,7 @@
   works even when called from outside a started mount stack (e.g. from a
   separate process while the dev server is running)."
   []
-  (or (-> (cfg/load-config! {:config-path "config/dev.edn"})
+  (or (-> (cfg/load-config! {:config-path "config.dev.toml"})
           :plaid.server.sql/config
           :main-db-path)
       "data/plaid.db"))

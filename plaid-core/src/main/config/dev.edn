@@ -1,9 +1,0 @@
-{:taoensso.timbre/logging-config
- {:min-level :debug}
-
- :plaid.server.sql/config
- {:main-db-path "data/plaid.db"}
-
- ;; history shadow replica on in dev (default-off in defaults.edn);
- ;; deep-merged over the defaults, so only this key flips.
- :plaid.history/config {:enabled? true}}

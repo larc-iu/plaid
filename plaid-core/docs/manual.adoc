@@ -1416,6 +1416,19 @@ For the history of a document, who changed what and when, see the <<Audit Log>>.
 
 For more details, see link:query.html[the query language reference].
 
+= Configuration
+
+Plaid is configured through a single https://toml.io[TOML] file. You do not have to create it: on first launch Plaid writes `config.toml` into the data directory (`data/config.toml`) with every setting at its default value. To change something, edit that file and restart the server.
+
+To load a config file from a non-default location, either pass `--config` on the command line or set the `PLAID_CONFIG` environment variable:
+
+[source,console]
+----
+$ java -jar plaid.jar --config /etc/plaid/config.toml
+# or
+$ PLAID_CONFIG=/etc/plaid/config.toml java -jar plaid.jar
+----
+
 = Development
 
 For information on how to work on **Plaid itself** (not an app which uses Plaid), see link:dev.html[the development  guide].
