@@ -90,7 +90,15 @@ export class IgtEditor {
     this._popover = null; // { tokenId, kind } | null
     this._popoverPos = null; // { left, top } fixed-position coords (escapes the grid's overflow clip)
     this._popoverSearch = '';
-    this._onChange = () => this._scheduleRender();
+    // Save-status pill state machine: idle -> saving -> saved(-> idle after a beat).
+    // Updated imperatively on every doc emit (incl. isSaving-only emits that don't
+    // bump dataVersion), so the indicator reflects in-flight saves without
+    // re-rendering the grid and jittering input focus.
+    this._statusState = 'idle';
+    this._savedTimer = null;
+    // Whether the keyboard/scope help legend is expanded.
+    this._helpOpen = false;
+    this._onChange = () => { this._syncStatus(); this._scheduleRender(); };
     this._unsub = doc.subscribe(this._onChange);
     // Any click outside an opener/popover (those stopPropagation) closes it.
     this._onDocClick = () => this._closePopover();
@@ -101,7 +109,23 @@ export class IgtEditor {
     this._onWinChange = () => this._closePopover();
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
+    // Right-edge "more content" fade: recompute when any grid scrolls (capture —
+    // scroll doesn't bubble) or the window resizes. Cheap; a handful of grids.
+    this._onScrollResize = () => this._updateScrollCues();
+    window.addEventListener('scroll', this._onScrollResize, true);
+    window.addEventListener('resize', this._onScrollResize);
     this._render(true);
+  }
+
+  // Toggle .is-clipped-right on each sentence whose grid can still scroll right,
+  // so a half-glossed sentence never silently looks complete.
+  _updateScrollCues() {
+    this.container.querySelectorAll('.igt-grid').forEach((grid) => {
+      const sentence = grid.closest('.igt-sentence');
+      if (!sentence) return;
+      const canRight = grid.scrollWidth - grid.clientWidth - grid.scrollLeft > 2;
+      sentence.classList.toggle('is-clipped-right', canRight);
+    });
   }
 
   setReadOnly(ro) {
@@ -125,6 +149,9 @@ export class IgtEditor {
     document.removeEventListener('click', this._onDocClick);
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
+    window.removeEventListener('scroll', this._onScrollResize, true);
+    window.removeEventListener('resize', this._onScrollResize);
+    clearTimeout(this._savedTimer);
     render(nothing, this.container);
   }
 
@@ -132,8 +159,27 @@ export class IgtEditor {
   _openPopover(tokenId, kind, anchorEl) {
     this._popover = { tokenId, kind };
     this._popoverSearch = '';
+    this._popoverActiveIndex = 0;
+    this._popoverReturnId = tokenId;
     this._popoverPos = this._computePopoverPos(anchorEl);
     this._render(true);
+    // Focus the search box now that it's in the DOM (lit-html `autofocus` is
+    // unreliable on nodes inserted by a re-render rather than initial parse).
+    const search = this.container.querySelector('.igt-vocab-pop__search');
+    if (search) { try { search.focus(); } catch { /* noop */ } }
+  }
+
+  // Move the highlighted popover row. `total` includes the virtual "create" row
+  // when present, so ↓ past the last item lands on Create (keyboard-reachable).
+  _movePopoverActive(delta, total) {
+    if (total <= 0) return;
+    const cur = this._popoverActiveIndex ?? 0;
+    this._popoverActiveIndex = Math.max(0, Math.min(total - 1, cur + delta));
+    this._render(true);
+    // lit-html reuses the search node across this render, so focus is retained;
+    // keep the active row visible.
+    const active = this.container.querySelector('.igt-vocab-pop .is-active');
+    if (active?.scrollIntoView) active.scrollIntoView({ block: 'nearest' });
   }
   // Position the popover (210px wide) below the opener as fixed coords, clamped
   // to the viewport — so edge columns don't overflow and the grid's overflow-x
@@ -153,27 +199,102 @@ export class IgtEditor {
     }
     return { left, top };
   }
-  _closePopover() {
+  // returnFocus: send focus back to the opener (for keyboard-driven closes —
+  // Escape / Enter-select). Mouse/scroll/outside-click closes must NOT, or they
+  // would steal focus from wherever the user clicked.
+  _closePopover(returnFocus = false) {
     if (!this._popover) return;
+    const returnId = this._popoverReturnId;
     this._popover = null;
     this._popoverPos = null;
     this._popoverSearch = '';
+    this._popoverActiveIndex = 0;
+    this._popoverReturnId = null;
     this._render(true);
+    if (returnFocus && returnId != null) {
+      const opener = this.container.querySelector(`[data-vocab-opener="${returnId}"]`);
+      if (opener) { try { opener.focus(); } catch { /* noop */ } }
+    }
   }
-  async _toggleVocab(tokenId, item, isLinked) {
-    this._closePopover();
-    if (isLinked) await this._run(() => this.doc.unlinkVocab(tokenId));
-    else await this._run(() => this.doc.linkVocab(tokenId, item.id));
+  async _toggleVocab(tokenId, item, isLinked, returnFocus = false) {
+    const kind = this._popover?.kind;
+    this._closePopover(returnFocus);
+    if (isLinked) {
+      await this._run(() => this.doc.unlinkVocab(tokenId));
+    } else {
+      const ok = await this._run(() => this.doc.linkVocab(tokenId, item.id));
+      if (ok && kind === 'morpheme') this._suggestMorphemeGloss(tokenId);
+    }
   }
-  async _createVocab(tokenId, vocabId, form) {
-    this._closePopover();
+  async _createVocab(tokenId, vocabId, form, returnFocus = false) {
+    const kind = this._popover?.kind;
+    this._closePopover(returnFocus);
     if (!form) return;
-    await this._run(() => this.doc.createAndLinkVocabItem(tokenId, vocabId, form));
+    const ok = await this._run(() => this.doc.createAndLinkVocabItem(tokenId, vocabId, form));
+    if (ok && kind === 'morpheme') this._suggestMorphemeGloss(tokenId);
+  }
+
+  // Throughput aid: after a morpheme is linked, fill any EMPTY morpheme-scoped
+  // annotation cells on it from the most recent earlier morpheme with the same
+  // form that already has a value for that field. Only fills blanks — never
+  // overwrites the user's existing glosses — so it's a safe consistency nudge.
+  _suggestMorphemeGloss(morphId) {
+    const fields = (this.doc.layerInfo.spanLayers.morpheme || []).map((l) => l.name);
+    if (!fields.length) return;
+    // Flatten all morphemes in document order with their forms.
+    const all = [];
+    for (const s of this.doc.sentences) {
+      for (const t of s.tokens) for (const m of (t.morphemes || [])) all.push(m);
+    }
+    const target = all.find((m) => m.id === morphId);
+    if (!target) return;
+    const form = morphFormOf(target);
+    if (!form) return;
+    const targetIdx = all.indexOf(target);
+    for (const name of fields) {
+      const existing = target.annotations?.[name]?.value ?? '';
+      if (existing !== '') continue; // never clobber
+      // Search earlier same-form morphemes (most recent first) for a value.
+      let suggestion = '';
+      for (let i = targetIdx - 1; i >= 0; i--) {
+        if (morphFormOf(all[i]) !== form) continue;
+        const v = all[i].annotations?.[name]?.value ?? '';
+        if (v !== '') { suggestion = v; break; }
+      }
+      if (suggestion) this._run(() => this.doc.updateMorphemeSpan(morphId, name, suggestion));
+    }
   }
 
   _scheduleRender() {
     if (this.doc.dataVersion === this._lastDataVersion) return;
     this._render();
+  }
+
+  // Drive the save-status pill from doc.isSaving (no grid re-render).
+  _syncStatus() {
+    if (this.doc.isSaving) {
+      this._statusState = 'saving';
+      clearTimeout(this._savedTimer);
+    } else if (this._statusState === 'saving') {
+      // Save just finished: flash "Saved" briefly unless it failed (the error
+      // banner/toast covers failures).
+      if (this.doc.error) {
+        this._statusState = 'idle';
+      } else {
+        this._statusState = 'saved';
+        clearTimeout(this._savedTimer);
+        this._savedTimer = setTimeout(() => { this._statusState = 'idle'; this._paintStatus(); }, 1600);
+      }
+    }
+    this._paintStatus();
+  }
+
+  _paintStatus() {
+    const el = this.container.querySelector('.igt-status');
+    if (!el) return;
+    const s = this._statusState || 'idle';
+    el.dataset.state = s;
+    el.textContent = s === 'saving' ? 'Saving…' : s === 'saved' ? 'Saved ✓' : '';
   }
 
   // Enqueue a doc mutation thunk so it runs after any in-flight one. Returns a
@@ -196,6 +317,10 @@ export class IgtEditor {
     this.container.classList.toggle('igt-island--readonly', !!this.readOnly);
     render(this._template(), this.container);
     this._restorePendingFocus();
+    this._updateScrollCues();
+    // Size sentence textareas to their content (uncontrolledValue may have just
+    // written a programmatic value, e.g. on load / reload).
+    this.container.querySelectorAll('textarea.igt-field--sentence').forEach((el) => this._autoGrow(el));
   }
 
   _restorePendingFocus() {
@@ -241,13 +366,68 @@ export class IgtEditor {
   };
 
   _basicKeydown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
-    else if (e.key === 'Escape') {
+    if (e.key === 'Enter') {
+      // Commit and advance to the next cell in the same tier (the "fill a row
+      // across" glossing workflow). Shift+Enter goes back. Falls back to blur
+      // (which commits) when there's no next cell.
+      e.preventDefault();
+      if (!this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.target.blur();
+    } else if (e.key === 'Escape') {
       e.preventDefault();
       e.target.value = e.target.dataset.orig ?? '';
       e.target.blur();
+    } else if (e.key === 'ArrowDown') {
+      if (this._navMove(e.target, 'down')) e.preventDefault();
+    } else if (e.key === 'ArrowUp') {
+      if (this._navMove(e.target, 'up')) e.preventDefault();
     }
   };
+
+  // All focusable editable cells in DOM order (the "+" placeholder and disabled
+  // inputs are excluded — they aren't navigation targets).
+  _navFields() {
+    return [...this.container.querySelectorAll('.igt-field:not(.igt-morph-field--placeholder)')]
+      .filter((el) => !el.disabled);
+  }
+
+  // Geometry-based cell navigation: 'next'/'prev' move along the same row (tier),
+  // 'down'/'up' move between rows in the same column band. Works across the
+  // word/morpheme sub-grid without a coordinate model. Focusing the target blurs
+  // the current input, which commits it. Returns true if it moved.
+  _navMove(current, dir) {
+    const cr = current.getBoundingClientRect();
+    const cx = cr.left + cr.width / 2;
+    const cy = cr.top + cr.height / 2;
+    const rowTol = 12; // same-row band
+    const colTol = 64; // same-column band
+    let best = null;
+    let bestScore = Infinity;
+    for (const el of this._navFields()) {
+      if (el === current) continue;
+      const r = el.getBoundingClientRect();
+      const ex = r.left + r.width / 2;
+      const ey = r.top + r.height / 2;
+      let score = Infinity;
+      if (dir === 'next') {
+        if (Math.abs(ey - cy) > rowTol || ex <= cx + 1) continue;
+        score = ex - cx;
+      } else if (dir === 'prev') {
+        if (Math.abs(ey - cy) > rowTol || ex >= cx - 1) continue;
+        score = cx - ex;
+      } else if (dir === 'down') {
+        if (ey <= cy + 1 || Math.abs(ex - cx) > colTol) continue;
+        score = (ey - cy) + Math.abs(ex - cx) * 3;
+      } else if (dir === 'up') {
+        if (ey >= cy - 1 || Math.abs(ex - cx) > colTol) continue;
+        score = (cy - ey) + Math.abs(ex - cx) * 3;
+      }
+      if (score < bestScore) { bestScore = score; best = el; }
+    }
+    if (!best) return false;
+    best.focus();
+    try { best.select(); } catch { /* not selectable */ }
+    return true;
+  }
 
   // Commit an annotation/orthography cell on blur if its value changed. Routed
   // through the op chain so it serializes with structural edits.
@@ -260,13 +440,33 @@ export class IgtEditor {
     this._run(() => apply(next));
   }
 
-  _field({ key, value, apply, extraClass = '', sentence = false }) {
-    const filled = (value ?? '') !== '';
+  _field({ key, value, apply, extraClass = '', sentence = false, ariaLabel }) {
+    const v = value ?? '';
+    const filled = v !== '';
+    // Sentence-scoped fields (e.g. free Translation) are full free-text values —
+    // an auto-growing textarea that wraps, rather than a one-line scrolling input.
+    if (sentence) {
+      return html`<textarea
+        class="igt-field igt-field--sentence ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${extraClass}"
+        data-cell-key=${key}
+        aria-label=${ariaLabel ?? nothing}
+        rows="1"
+        ?disabled=${this.readOnly}
+        ${uncontrolledValue(v)}
+        @focus=${this._onFieldFocus}
+        @input=${this._onSentenceInput}
+        @keydown=${this._sentenceKeydown}
+        @blur=${(e) => this._commitField(e, apply)}
+      ></textarea>`;
+    }
     return html`<input
-      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${sentence ? 'igt-field--sentence' : ''} ${extraClass}"
+      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${extraClass}"
       data-cell-key=${key}
+      aria-label=${ariaLabel ?? nothing}
+      title=${filled ? v : nothing}
+      size=${this._fieldSize(v)}
       ?disabled=${this.readOnly}
-      ${uncontrolledValue(value ?? '')}
+      ${uncontrolledValue(v)}
       @focus=${this._onFieldFocus}
       @input=${this._onFieldInput}
       @keydown=${this._basicKeydown}
@@ -274,10 +474,39 @@ export class IgtEditor {
     >`;
   }
 
+  _onSentenceInput = (e) => {
+    this._onFieldInput(e);
+    this._autoGrow(e.target);
+  };
+
+  // Enter commits (the value is logically one translation); Shift+Enter inserts
+  // a newline; Escape reverts.
+  _sentenceKeydown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); }
+    else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.target.value = e.target.dataset.orig ?? '';
+      this._autoGrow(e.target);
+      e.target.blur();
+    }
+  };
+
+  _autoGrow(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }
+
   // ---- morpheme form field (adds split/merge/delete key handling) ----
   _morphFormKeydown(morph, word, siblings) {
     return async (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); return; }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.target.blur();
+        return;
+      }
+      if (e.key === 'ArrowDown') { if (this._navMove(e.target, 'down')) e.preventDefault(); return; }
+      if (e.key === 'ArrowUp') { if (this._navMove(e.target, 'up')) e.preventDefault(); return; }
       if (e.key === 'Escape') {
         e.preventDefault();
         e.target.value = e.target.dataset.orig ?? '';
@@ -297,6 +526,18 @@ export class IgtEditor {
       };
 
       if (e.key === '-') {
+        if (e.altKey) {
+          // Alt+- inserts a literal hyphen (clitic / reduplication forms) rather
+          // than splitting the morpheme.
+          e.preventDefault();
+          const s = el.selectionStart ?? el.value.length;
+          const en = el.selectionEnd ?? s;
+          el.value = el.value.slice(0, s) + '-' + el.value.slice(en);
+          const c = s + 1;
+          try { el.setSelectionRange(c, c); } catch { /* noop */ }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return;
+        }
         e.preventDefault();
         const pos = el.selectionStart ?? el.value.length;
         const left = el.value.slice(0, pos);
@@ -384,12 +625,24 @@ export class IgtEditor {
     }
     const info = doc.layerInfo;
     if (!info.primaryTokenLayer) {
-      return html`<div class="igt-island__empty">This document has no primary token layer configured.</div>`;
+      return html`
+        <div class="igt-island__empty igt-island__empty--warn">
+          <div class="igt-empty__title">This document isn't set up for interlinear analysis yet</div>
+          <p class="igt-empty__body">No primary <em>word</em> token layer is configured for this project. An
+            administrator needs to finish project setup before the interlinear grid can be used.</p>
+        </div>`;
     }
     const sentences = doc.sentences;
     const hasTokens = sentences.some((s) => s.tokens.length > 0);
     if (!hasTokens) {
-      return html`<div class="igt-island__empty">No tokens yet — tokenize the document first (Tokenize tab).</div>`;
+      return html`
+        <div class="igt-island__empty">
+          <div class="igt-empty__title">Nothing to analyze yet</div>
+          <p class="igt-empty__body">Interlinear glossing happens here once the text is split into words. Head to
+            the <strong>Tokenize</strong> tab to break the baseline text into sentences and words first.</p>
+          ${this.readOnly ? nothing : html`<button type="button" class="igt-empty__cta"
+            @click=${(e) => { e.stopPropagation(); this._navigateTab('tokenize'); }}>Go to Tokenize →</button>`}
+        </div>`;
     }
 
     const orthographies = (readOrthographies(info.primaryTokenLayer.config) || []).map((o) => o.name);
@@ -402,22 +655,124 @@ export class IgtEditor {
     const ctx = { orthographies, wordFields, morphFields, sentFields, hasMorphemes, ignoredCfg };
 
     return html`
-      ${doc.error ? html`<div class="igt-island__error">${doc.error}</div>` : nothing}
+      ${this._toolbar(sentences, ctx)}
+      ${this._helpOpen ? this._legend(ctx) : nothing}
+      ${doc.error ? html`<div class="igt-island__error" role="alert">${doc.error}</div>` : nothing}
       ${repeat(sentences, (s) => s.id, (s, i) => this._sentence(s, i, ctx))}
     `;
   }
 
+  // Glossing progress: morphemes with at least one filled gloss field / total.
+  _glossStats(sentences, ctx) {
+    if (!ctx.hasMorphemes || !ctx.morphFields.length) return null;
+    let total = 0;
+    let done = 0;
+    for (const s of sentences) {
+      for (const t of s.tokens) {
+        for (const m of (t.morphemes || [])) {
+          total += 1;
+          if (ctx.morphFields.some((n) => (m.annotations?.[n]?.value ?? '') !== '')) done += 1;
+        }
+      }
+    }
+    return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
+  }
+
+  _toolbar(sentences, ctx) {
+    const stats = this._glossStats(sentences, ctx);
+    const nSent = sentences.length;
+    return html`
+      <div class="igt-toolbar">
+        <div class="igt-toolbar__left">
+          <span class="igt-toolbar__count">${nSent} sentence${nSent === 1 ? '' : 's'}</span>
+          ${stats ? html`
+            <span class="igt-progress" title=${`${stats.done} of ${stats.total} morphemes have a gloss`}>
+              <span class="igt-progress__bar"><span class="igt-progress__fill" style=${`width:${stats.pct}%`}></span></span>
+              <span class="igt-progress__text">${stats.done}/${stats.total} glossed</span>
+            </span>
+            ${!this.readOnly && stats.done < stats.total
+              ? html`<button type="button" class="igt-toolbar__btn" @click=${(e) => { e.stopPropagation(); this._jumpToNextEmptyGloss(); }}>Next empty gloss →</button>`
+              : nothing}
+          ` : nothing}
+        </div>
+        <div class="igt-toolbar__right">
+          <span class="igt-status" role="status" aria-live="polite" data-state=${this._statusState || 'idle'}></span>
+          <button type="button" class="igt-help-btn" aria-expanded=${this._helpOpen ? 'true' : 'false'}
+            aria-label="Keyboard & scope help" title="Keyboard & scope help"
+            @click=${(e) => { e.stopPropagation(); this._toggleHelp(); }}>?</button>
+        </div>
+      </div>
+    `;
+  }
+
+  _legend(ctx) {
+    return html`
+      <div class="igt-legend">
+        <div class="igt-legend__row">
+          <strong>Scopes</strong>
+          <span class="igt-legend__chip igt-legend__chip--orth">Orthography</span>
+          <span class="igt-legend__chip igt-legend__chip--word">Word</span>
+          ${ctx.hasMorphemes ? html`<span class="igt-legend__chip igt-legend__chip--morph">Morpheme</span>` : nothing}
+          <span class="igt-legend__chip igt-legend__chip--sent">Sentence</span>
+        </div>
+        <div class="igt-legend__row">
+          <strong>Navigate</strong>
+          <span><kbd>Enter</kbd> next cell · <kbd>⇧</kbd><kbd>Enter</kbd> previous · <kbd>↑</kbd><kbd>↓</kbd> move rows · <kbd>Tab</kbd> next field · <kbd>Esc</kbd> cancel edit</span>
+        </div>
+        ${ctx.hasMorphemes ? html`
+          <div class="igt-legend__row">
+            <strong>Morphemes</strong>
+            <span>type <kbd>-</kbd> to split · <kbd>⌫</kbd> at start merges with previous · <kbd>Alt</kbd>+<kbd>-</kbd> literal hyphen · the <kbd>+</kbd> column adds one</span>
+          </div>` : nothing}
+        <div class="igt-legend__row">
+          <strong>Lexicon</strong>
+          <span>click <em>+ link</em> under a word or morpheme to link it to a lexicon entry; linking a morpheme copies a matching gloss from earlier in the text</span>
+        </div>
+      </div>
+    `;
+  }
+
+  _toggleHelp() {
+    this._helpOpen = !this._helpOpen;
+    this._render(true);
+  }
+
+  // Ask the React shell (DocumentDetail) to switch the active editor tab. The
+  // island is framework-agnostic, so this goes out as a DOM CustomEvent the
+  // shell listens for, rather than calling a router directly.
+  _navigateTab(tab) {
+    window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab } }));
+  }
+
+  // Focus + scroll to the first empty morpheme-gloss cell after the current one
+  // (wrapping), so a linguist can chase down un-glossed morphemes quickly.
+  _jumpToNextEmptyGloss() {
+    const empties = [...this.container.querySelectorAll('.igt-field[data-cell-key^="ma:"].igt-field--empty')]
+      .filter((el) => !el.disabled);
+    if (!empties.length) return;
+    const active = document.activeElement;
+    let target = empties[0];
+    if (active && active.dataset?.cellKey?.startsWith('ma:')) {
+      const after = empties.find((el) => el.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_PRECEDING);
+      if (after) target = after;
+    }
+    target.scrollIntoView({ block: 'center', inline: 'center' });
+    target.focus();
+    try { target.select(); } catch { /* noop */ }
+  }
+
   _sentence(sentence, index, ctx) {
     return html`
-      <div class="igt-sentence">
-        <span class="igt-sentence__num">${index + 1}</span>
+      <div class="igt-sentence" role="group" aria-label=${`Sentence ${index + 1}`}>
+        <h3 class="igt-sr-only">Sentence ${index + 1}</h3>
+        <span class="igt-sentence__num" aria-hidden="true">${index + 1}</span>
         <div class="igt-grid">
           ${this._labels(ctx)}
           <div class="igt-tokens">
             ${repeat(sentence.tokens, (t) => t.id, (t) => this._tokenCol(t, ctx))}
           </div>
         </div>
-        ${this._sentenceAnnos(sentence, ctx)}
+        ${this._sentenceAnnos(sentence, index, ctx)}
       </div>
     `;
   }
@@ -426,12 +781,18 @@ export class IgtEditor {
     return html`
       <div class="igt-labels">
         <div class="igt-row-label igt-row-label--spacer"></div>
-        ${ctx.orthographies.map((n) => html`<div class="igt-row-label">${n}</div>`)}
-        ${ctx.wordFields.map((n) => html`<div class="igt-row-label">${n}</div>`)}
+        ${ctx.orthographies.map((n) => html`<div class="igt-row-label igt-row-label--orth" title=${`${n} (orthography)`}>${n}</div>`)}
+        ${ctx.wordFields.map((n) => html`<div class="igt-row-label igt-row-label--word" title=${`${n} (word)`}>${n}</div>`)}
         ${ctx.hasMorphemes ? html`<div class="igt-row-label igt-row-label--morph">Morphemes</div>` : nothing}
-        ${ctx.hasMorphemes ? ctx.morphFields.map((n) => html`<div class="igt-row-label igt-row-label--morph">${n}</div>`) : nothing}
+        ${ctx.hasMorphemes ? ctx.morphFields.map((n) => html`<div class="igt-row-label igt-row-label--morph" title=${`${n} (morpheme)`}>${n}</div>`) : nothing}
       </div>
     `;
+  }
+
+  // Cross-browser content sizing fallback (for browsers without CSS
+  // field-sizing): the input's `size` attr tracks its value's code-point length.
+  _fieldSize(v) {
+    return Math.max(5, [...(v ?? '')].length + 1);
   }
 
   _tokenCol(token, ctx) {
@@ -447,16 +808,18 @@ export class IgtEditor {
               key: `or:${token.id}:${name}`,
               value: token.orthographies?.[name] ?? '',
               apply: (v) => this.doc.updateOrthography(token.id, name, v),
+              ariaLabel: `${name} for ${token.content}`,
             })}
           </div>
         `)}
         ${ctx.wordFields.map((name) => ignored
-          ? html`<div class="igt-cell igt-cell--ignored"></div>`
+          ? html`<div class="igt-cell igt-cell--ignored" title=${`${token.content} — excluded from word annotation`}></div>`
           : html`<div class="igt-cell">
               ${this._field({
                 key: `wa:${token.id}:${name}`,
                 value: token.annotations?.[name]?.value ?? '',
                 apply: (v) => this.doc.updateTokenSpan(token.id, name, v),
+                ariaLabel: `${name} for ${token.content}`,
               })}
             </div>`)}
         ${ctx.hasMorphemes ? this._morphemes(token, ctx) : nothing}
@@ -486,6 +849,9 @@ export class IgtEditor {
               data-cell-key=${`mf:${morph.id}`}
               data-word=${word.id}
               data-prec=${morph.precedence ?? 1}
+              aria-label=${`Morpheme form${value ? ` ${value}` : ''}`}
+              title=${filled ? value : nothing}
+              size=${this._fieldSize(value)}
               ?disabled=${this.readOnly}
               ${uncontrolledValue(value)}
               @focus=${this._onMorphFormFocus}
@@ -503,6 +869,7 @@ export class IgtEditor {
               value: morph.annotations?.[name]?.value ?? '',
               apply: (v) => this.doc.updateMorphemeSpan(morph.id, name, v),
               extraClass: 'igt-morph-field',
+              ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
             })}
           </div>
         `)}
@@ -518,6 +885,8 @@ export class IgtEditor {
             class="igt-field igt-morph-field igt-morph-field--placeholder igt-field--empty"
             data-word=${word.id}
             placeholder="+"
+            title="Add a morpheme (type a form, then Enter)"
+            aria-label="Add a morpheme"
             @keydown=${this._placeholderKeydown()}
             @blur=${(e) => this._commitPlaceholder(e, word)}
           >
@@ -527,7 +896,7 @@ export class IgtEditor {
     `;
   }
 
-  _sentenceAnnos(sentence, ctx) {
+  _sentenceAnnos(sentence, index, ctx) {
     if (!ctx.sentFields.length) return nothing;
     return html`
       <div class="igt-sentence-annos">
@@ -539,6 +908,7 @@ export class IgtEditor {
               value: sentence.annotations?.[name]?.value ?? '',
               apply: (v) => this.doc.updateSentenceSpan(sentence.id, name, v),
               sentence: true,
+              ariaLabel: `${name} for sentence ${index + 1}`,
             })}
           </div>
         `)}
@@ -547,24 +917,29 @@ export class IgtEditor {
   }
 
   // Display a baseline form (word/morpheme) with a vocab-link affordance: the
-  // linked item's form as a hint (click to manage), or a small "link" control
-  // when nothing is linked. `face` may be a string or an input template.
-  // opts: { id, vocabItem, formText, kind }
+  // linked item's form as a chip (click to manage), or an always-visible "link"
+  // control when nothing is linked. Both are real <button>s so they're keyboard-
+  // focusable and operable (Enter/Space). `face` may be a string or an input
+  // template. opts: { id, vocabItem, formText, kind }
   _vocabFace(face, opts) {
     const { id, vocabItem, formText, kind } = opts;
     const hasVocabs = Object.keys(this.doc.vocabularies || {}).length > 0;
     const open = this._popover && this._popover.tokenId === id;
     const canLink = hasVocabs && !this.readOnly;
     const openerClick = (e) => {
-      if (!canLink) return;
       e.stopPropagation();
       open ? this._closePopover() : this._openPopover(id, kind, e.currentTarget);
     };
     let opener = nothing;
     if (vocabItem) {
-      opener = html`<span class="igt-vocab__opener igt-vocab__hint" title=${vocabItem.form} @click=${openerClick}>${vocabItem.form}</span>`;
+      opener = html`<button type="button" class="igt-vocab__opener igt-vocab__hint"
+        data-vocab-opener=${id} ?disabled=${!canLink}
+        title=${`Linked to "${vocabItem.form}"${canLink ? ' — manage' : ''}`}
+        @click=${openerClick}>${vocabItem.form}</button>`;
     } else if (canLink) {
-      opener = html`<span class="igt-vocab__opener igt-vocab__link" @click=${openerClick}>link</span>`;
+      opener = html`<button type="button" class="igt-vocab__opener igt-vocab__link"
+        data-vocab-opener=${id} title="Link to a lexicon entry"
+        @click=${openerClick}>link</button>`;
     }
     return html`
       <span class="igt-vocab">
@@ -589,19 +964,44 @@ export class IgtEditor {
       if (i > 0) { const [x] = items.splice(i, 1); items.unshift(x); }
     }
     const limited = items.slice(0, 30);
+    const createAvailable = !!(createVocabId && formText);
+    // Rows the keyboard can land on: every item plus the virtual "create" row.
+    const total = limited.length + (createAvailable ? 1 : 0);
+    const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
     const pos = this._popoverPos;
     const posStyle = pos ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;` : '';
+
+    const selectActive = () => {
+      if (activeIdx < limited.length) {
+        const it = limited[activeIdx];
+        const linked = currentItem && it.id === currentItem.id;
+        this._toggleVocab(tokenId, it, linked, true);
+      } else if (createAvailable) {
+        this._createVocab(tokenId, createVocabId, formText, true);
+      }
+    };
+    const onSearchKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); this._closePopover(true); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); this._movePopoverActive(1, total); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); this._movePopoverActive(-1, total); }
+      else if (e.key === 'Enter') { e.preventDefault(); selectActive(); }
+      else if (e.key === 'Tab') { e.preventDefault(); } // trap focus in the search box
+    };
+
     return html`
-      <div class="igt-vocab-pop" style=${posStyle} @click=${(e) => e.stopPropagation()}>
-        <input class="igt-vocab-pop__search" placeholder="Search lexicon…" autofocus
+      <div class="igt-vocab-pop" style=${posStyle} role="dialog" aria-label="Link to lexicon"
+        @click=${(e) => e.stopPropagation()}>
+        <input class="igt-vocab-pop__search" placeholder="Search lexicon…"
+          aria-label="Search lexicon"
           .value=${live(this._popoverSearch || '')}
-          @input=${(e) => { this._popoverSearch = e.target.value; this._render(true); }}
-          @keydown=${(e) => { if (e.key === 'Escape') this._closePopover(); }}>
+          @input=${(e) => { this._popoverSearch = e.target.value; this._popoverActiveIndex = 0; this._render(true); }}
+          @keydown=${onSearchKey}>
         <div class="igt-vocab-pop__list">
           ${limited.length
-            ? limited.map((it) => {
+            ? limited.map((it, i) => {
                 const linked = currentItem && it.id === currentItem.id;
-                return html`<button class="igt-vocab-pop__item ${linked ? 'is-linked' : ''}"
+                return html`<button type="button" class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${i === activeIdx ? 'is-active' : ''}"
+                  @mousemove=${() => { if (this._popoverActiveIndex !== i) { this._popoverActiveIndex = i; this._render(true); } }}
                   @click=${(e) => { e.stopPropagation(); this._toggleVocab(tokenId, it, linked); }}>
                   <span>${it.form}</span>
                   ${vocabs.length > 1 ? html`<span class="igt-vocab-pop__vname">${it._vocabName}</span>` : nothing}
@@ -610,12 +1010,13 @@ export class IgtEditor {
               })
             : html`<div class="igt-vocab-pop__empty">No matches</div>`}
         </div>
-        ${createVocabId && formText
-          ? html`<button class="igt-vocab-pop__create"
+        ${createAvailable
+          ? html`<button type="button" class="igt-vocab-pop__create ${activeIdx === limited.length ? 'is-active' : ''}"
               @click=${(e) => { e.stopPropagation(); this._createVocab(tokenId, createVocabId, formText); }}>
               + Create "${formText}"
             </button>`
           : nothing}
+        <div class="igt-vocab-pop__hintbar"><kbd>↑</kbd><kbd>↓</kbd> navigate · <kbd>↵</kbd> select · <kbd>esc</kbd> close</div>
       </div>
     `;
   }

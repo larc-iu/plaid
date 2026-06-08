@@ -4,10 +4,12 @@
    colors carried over from the old DocumentAnalyze.css for visual continuity. */
 
 .igt-island {
-  --igt-blue: #3b82f6;
-  --igt-row-h: 40px;
-  --igt-morph-h: 32px;
-  --igt-label-w: 120px;
+  --igt-blue: #2563eb;
+  --igt-violet: #6d28d9;
+  --igt-green: #15803d;
+  --igt-row-h: 34px;
+  --igt-morph-h: 30px;
+  --igt-label-w: 124px;
   width: 100%;
   font-size: 14px;
   color: #111827;
@@ -29,30 +31,161 @@
   color: #6b7280;
 }
 
+/* Visually-hidden but available to assistive tech (per-sentence headings). */
+.igt-sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- save-status pill ---- */
+.igt-statusbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 22px;
+  margin-bottom: 4px;
+}
+.igt-status {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  padding: 1px 8px;
+  border-radius: 10px;
+  transition: opacity 0.15s;
+}
+.igt-status[data-state="saving"] { color: #b45309; background: #fffbeb; }
+.igt-status[data-state="saved"] { color: #15803d; background: #f0fdf4; }
+.igt-status[data-state="idle"] { background: transparent; }
+
+/* ---- toolbar (progress / jump / help / save status) ---- */
+.igt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 4px 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #eef0f4;
+  flex-wrap: wrap;
+}
+.igt-toolbar__left, .igt-toolbar__right { display: flex; align-items: center; gap: 12px; }
+.igt-toolbar__count { font-size: 12px; font-weight: 600; color: #4b5563; }
+.igt-progress { display: flex; align-items: center; gap: 6px; }
+.igt-progress__bar {
+  width: 96px; height: 6px; border-radius: 4px; background: #e5e7eb; overflow: hidden;
+}
+.igt-progress__fill { display: block; height: 100%; background: var(--igt-violet); border-radius: 4px; transition: width 0.2s; }
+.igt-progress__text { font-size: 11px; color: #6b7280; }
+.igt-toolbar__btn {
+  font: inherit; font-size: 12px; font-weight: 500;
+  color: #1d4ed8; background: #eff4ff; border: 1px solid #c7d7fe;
+  border-radius: 6px; padding: 3px 9px; cursor: pointer;
+}
+.igt-toolbar__btn:hover { background: #e0eaff; }
+.igt-toolbar__btn:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+.igt-help-btn {
+  font: inherit; font-weight: 700; line-height: 1;
+  width: 22px; height: 22px; border-radius: 50%;
+  color: #4b5563; background: #f3f4f6; border: 1px solid #e5e7eb; cursor: pointer;
+}
+.igt-help-btn:hover { background: #e5e7eb; }
+.igt-help-btn[aria-expanded="true"] { background: var(--igt-blue); color: #fff; border-color: var(--igt-blue); }
+.igt-help-btn:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 2px; }
+
+/* ---- help / scope legend ---- */
+.igt-legend {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #374151;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.igt-legend__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.igt-legend__row > strong { flex: 0 0 84px; color: #111827; }
+.igt-legend__chip {
+  font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px;
+  border-left: 3px solid transparent;
+}
+.igt-legend__chip--orth { background: #f1f5f9; color: #475569; border-left-color: #94a3b8; }
+.igt-legend__chip--word { background: #eff6ff; color: #1d4ed8; border-left-color: var(--igt-blue); }
+.igt-legend__chip--morph { background: #f4f1fb; color: var(--igt-violet); border-left-color: var(--igt-violet); }
+.igt-legend__chip--sent { background: #f0fdf4; color: var(--igt-green); border-left-color: var(--igt-green); }
+.igt-legend kbd {
+  font: inherit; font-size: 10px; background: #fff; border: 1px solid #d1d5db;
+  border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: #374151;
+}
+
+/* ---- richer empty states ---- */
+.igt-island__empty--warn { color: #92400e; }
+.igt-empty__title { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 6px; }
+.igt-island__empty--warn .igt-empty__title { color: #92400e; }
+.igt-empty__body { max-width: 460px; margin: 0 auto 14px; font-size: 13px; line-height: 1.5; color: #6b7280; }
+.igt-empty__cta {
+  font: inherit; font-weight: 600; font-size: 13px;
+  color: #fff; background: var(--igt-blue); border: none;
+  border-radius: 7px; padding: 8px 16px; cursor: pointer;
+}
+.igt-empty__cta:hover { background: #1d4ed8; }
+.igt-empty__cta:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 2px; }
+
 /* ---- sentence block ---- */
 .igt-sentence {
   position: relative;
-  padding: 10px 10px 10px 28px;
-  border-radius: 6px;
-  margin-bottom: 8px;
+  padding: 12px 12px 12px 34px;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  margin-bottom: 14px;
 }
 .igt-sentence:nth-child(odd) { background: #ffffff; }
-.igt-sentence:nth-child(even) { background: #f8faff; }
+.igt-sentence:nth-child(even) { background: #fbfcfe; }
 
 .igt-sentence__num {
   position: absolute;
-  left: 6px;
+  left: 8px;
   top: 12px;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #eef2ff;
+  text-align: center;
   font-size: 11px;
-  font-weight: 600;
-  color: #9ca3af;
+  font-weight: 700;
+  color: #4b5563;
 }
+
+/* Right-edge fade shown only when the grid can scroll further right, so a
+   half-glossed sentence never silently looks complete. Toggled in JS by
+   _updateScrollCues via .is-clipped-right on the sentence. */
+.igt-sentence::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  right: 1px;
+  width: 36px;
+  border-radius: 0 8px 8px 0;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0), #ffffff 78%);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.igt-sentence:nth-child(even)::after { background: linear-gradient(to right, rgba(251, 252, 254, 0), #fbfcfe 78%); }
+.igt-sentence.is-clipped-right::after { opacity: 1; }
 
 /* ---- the interlinear grid ---- */
 .igt-grid {
   display: flex;
   align-items: flex-start;
   overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .igt-labels {
@@ -75,9 +208,27 @@
   color: #374151;
   white-space: nowrap;
   padding-right: 8px;
+  padding-left: 8px;
+  border-left: 3px solid transparent;
 }
-.igt-row-label--morph { height: var(--igt-morph-h); font-weight: 500; color: #6d28d9; }
-.igt-row-label--spacer { height: var(--igt-row-h); }
+/* Scope accents: orthography (slate), word (blue), morpheme (violet). The
+   sentence-scoped Translation label is styled separately below. */
+.igt-row-label--orth { border-left-color: #94a3b8; }
+.igt-row-label--word { border-left-color: var(--igt-blue); }
+.igt-row-label--morph {
+  height: var(--igt-morph-h);
+  font-weight: 600;
+  color: var(--igt-violet);
+  border-left-color: var(--igt-violet);
+}
+/* Header spacer cell — extend the word-header band across the label column so
+   the gray header no longer "notches" around the labels. */
+.igt-row-label--spacer {
+  height: var(--igt-row-h);
+  background: #eef1f5;
+  border-left-color: transparent;
+  border-top-left-radius: 6px;
+}
 
 .igt-tokens {
   display: flex;
@@ -89,17 +240,18 @@
   display: flex;
   flex-direction: column;
   min-width: 72px;
-  width: min-content;
-  border-left: 1px solid transparent;
+  width: max-content;
+  border-left: 1px solid #f1f3f5;
 }
+.igt-token-col:first-child { border-left: none; }
 
 .igt-token-form {
   height: var(--igt-row-h);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 8px;
-  background: #eee;
+  padding: 0 10px;
+  background: #eef1f5;
   font-weight: 600;
   white-space: nowrap;
   cursor: default;
@@ -111,25 +263,37 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 2px;
 }
 .igt-cell--ignored { background: repeating-linear-gradient(45deg, #fafafa, #fafafa 4px, #f0f0f0 4px, #f0f0f0 8px); }
 
-/* ---- editable field ---- */
+/* ---- editable field ----
+   field-sizing lets supporting browsers grow the input to its content (no more
+   truncated glosses); the `size` attribute (set in the template from the value
+   length) is the cross-browser fallback. tabular-nums aligns gloss abbreviations
+   like 3PL.PRS / DEF.M.SG. A hairline bottom border gives an idle "editable" cue
+   so a filled value no longer looks like static text. */
 .igt-field {
-  width: 100%;
-  min-width: 56px;
+  width: auto;
+  min-width: 4.5ch;
   box-sizing: border-box;
   border: none;
+  border-bottom: 1px solid #e9ecf0;
+  border-radius: 2px;
   background: transparent;
   text-align: center;
   font: inherit;
-  padding: 4px 6px;
+  font-variant-numeric: tabular-nums;
+  field-sizing: content;
+  padding: 3px 6px;
   outline: none;
-  transition: outline 0.15s, background-color 0.15s;
+  transition: outline 0.12s, background-color 0.12s, border-color 0.12s;
 }
+.igt-field:hover:not(:disabled) { background: #f4f6f9; border-bottom-color: #c3c9d2; }
 .igt-field:focus {
   outline: 2px solid var(--igt-blue);
   outline-offset: -1px;
+  border-bottom-color: transparent;
   background: #fff;
 }
 .igt-field--empty { color: #9ca3af; font-style: italic; }
@@ -145,19 +309,22 @@
 .igt-morph-col {
   display: flex;
   flex-direction: column;
-  min-width: 56px;
-  width: min-content;
+  min-width: 52px;
+  width: max-content;
   padding: 0 2px;
 }
-.igt-morph-col--placeholder { opacity: 0.55; }
-.igt-morph-col--placeholder:focus-within { opacity: 1; }
+/* The "add morpheme" column is a slim rail by default; it expands to a normal
+   column when focused so the type-to-create input is usable. */
+.igt-morph-col--placeholder { min-width: 22px; padding: 0; }
+.igt-morph-col--placeholder:focus-within { min-width: 52px; padding: 0 2px; }
 
 .igt-morph-form {
   height: var(--igt-morph-h);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f3f0fb;
+  background: #f4f1fb;
+  border-radius: 3px;
 }
 .igt-morph-cell {
   height: var(--igt-morph-h);
@@ -165,7 +332,19 @@
   align-items: center;
   justify-content: center;
 }
-.igt-morph-field { min-width: 48px; }
+.igt-morph-field { min-width: 4ch; }
+
+/* slim "+" add-morpheme affordance */
+.igt-morph-field--placeholder {
+  min-width: 18px;
+  color: #6b7280;
+  background: transparent;
+  border-bottom-color: transparent;
+  cursor: pointer;
+}
+.igt-morph-col--placeholder:hover .igt-morph-field--placeholder { color: var(--igt-violet); background: #f4f1fb; }
+.igt-morph-field--placeholder:focus { cursor: text; color: #111827; }
+.igt-morph-field--placeholder::placeholder { color: #b6bdc9; opacity: 1; }
 
 /* ---- vocab link affordance ---- */
 .igt-vocab {
@@ -173,27 +352,43 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  line-height: 1.1;
+  line-height: 1.15;
 }
-.igt-vocab__opener { cursor: pointer; }
+.igt-vocab__opener {
+  font: inherit;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 7px;
+  min-height: 20px;
+  border-radius: 8px;
+}
+.igt-vocab__opener:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+/* Linked: show the lexicon form as a small blue chip (distinct from a gloss). */
 .igt-vocab__hint {
-  font-size: 10px;
-  font-style: italic;
-  color: var(--igt-blue);
-  max-width: 100%;
+  font-size: 11px;
+  font-weight: 500;
+  color: #1d4ed8;
+  background: #e7eefe;
+  max-width: 16ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.igt-vocab__hint:hover:not(:disabled) { background: #d6e4fd; }
+/* Unlinked: a faint but ALWAYS-visible affordance (was opacity:0 hover-only) —
+   de-emphasized at rest, AA-contrast, prominent on hover/focus. */
 .igt-vocab__link {
-  font-size: 9px;
-  color: #c0c4cc;
+  font-size: 10px;
+  color: #6b7280;
   text-decoration: underline dotted;
-  opacity: 0;
-  transition: opacity 0.12s;
+  text-underline-offset: 2px;
 }
+.igt-vocab__link::before { content: '+\00A0'; text-decoration: none; }
 .igt-vocab:hover .igt-vocab__link,
-.igt-vocab__link:focus { opacity: 1; }
+.igt-vocab__link:hover,
+.igt-vocab__link:focus-visible { color: #1d4ed8; font-weight: 500; }
+.igt-vocab__opener:disabled { cursor: default; }
 .igt-island--readonly .igt-vocab__opener { cursor: default; }
 
 /* ---- vocab link popover ---- */
@@ -242,10 +437,13 @@
   cursor: pointer;
 }
 .igt-vocab-pop__item:hover { background: #eef2ff; }
+.igt-vocab-pop__item.is-active { background: #e0e7ff; border-color: #c7d2fe; }
 .igt-vocab-pop__item.is-linked { background: #dcfce7; border-color: #86efac; }
-.igt-vocab-pop__vname { font-size: 9px; color: #9ca3af; }
-.igt-vocab-pop__x { font-size: 9px; color: #b91c1c; }
-.igt-vocab-pop__empty { padding: 6px; font-size: 12px; color: #9ca3af; }
+.igt-vocab-pop__item.is-linked.is-active { background: #bbf7d0; border-color: #4ade80; }
+.igt-vocab-pop__item:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: -1px; }
+.igt-vocab-pop__vname { font-size: 10px; color: #6b7280; }
+.igt-vocab-pop__x { font-size: 10px; color: #b91c1c; }
+.igt-vocab-pop__empty { padding: 6px; font-size: 12px; color: #6b7280; }
 .igt-vocab-pop__create {
   width: 100%;
   margin-top: 4px;
@@ -256,6 +454,13 @@
   color: #1d4ed8;
   font: inherit;
   cursor: pointer;
+}
+.igt-vocab-pop__create.is-active { background: #dbeafe; border-style: solid; }
+.igt-vocab-pop__create:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+.igt-vocab-pop__hintbar { margin-top: 5px; font-size: 10px; color: #9aa3b2; text-align: center; }
+.igt-vocab-pop__hintbar kbd {
+  font: inherit; font-size: 9px; background: #f3f4f6; border: 1px solid #e5e7eb;
+  border-radius: 3px; padding: 0 3px; color: #4b5563;
 }
 
 /* ---- sentence-scoped annotations (below grid) ---- */
@@ -279,10 +484,15 @@
   color: #15803d;
 }
 .igt-field--sentence {
+  field-sizing: auto; /* width/height are controlled by flex + _autoGrow */
+  flex: 1 1 auto;
+  min-width: 320px;
+  max-width: 680px;
   text-align: left;
-  min-width: 240px;
-  max-width: 560px;
+  line-height: 1.4;
   border-bottom: 1px solid #e5e7eb;
+  resize: none;
+  overflow: hidden;
 }
 
 .igt-island--readonly .igt-field { cursor: default; }

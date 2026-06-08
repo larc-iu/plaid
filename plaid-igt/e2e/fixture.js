@@ -8,7 +8,14 @@
 //
 // Run standalone to print the IDs:  node e2e/fixture.js
 import PlaidClient from '@larc-iu/plaid-client';
+import { ROLES } from '@larc-iu/plaid-client';
 import { readToken } from './fixtures.js';
+
+// Editor binds the shared substrate by role (config.plaid.role) and reads its
+// own settings under the `igt` namespace — see src/domain/igtConfig.js. (Pre-
+// 2026-06-06 this used config.plaid.{primary,sentence,morpheme,...}; that is now
+// stale and renders "no primary token layer configured".)
+const roleOf = (l) => l?.config?.plaid?.role;
 
 const CORE_URL = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const PROJECT_NAME = 'E2E IGT Fixture';
@@ -43,33 +50,34 @@ async function ensureFixture() {
   // If the project is already fully initialized, just make sure it has a
   // document and return — don't rebuild the (immutable) layer hierarchy.
   const full = await client.projects.get(projectId);
-  if (full?.config?.plaid?.initialized === true) {
+  if (full?.config?.igt?.initialized === true) {
     await ensureVocab(client, projectId);
     return ensureDocument(client, projectId, full);
   }
 
-  // 2. Text layer (primary)
+  // 2. Text layer (primary) — tagged with the shared `baseline` role.
   const textLayer = await client.textLayers.create(projectId, 'Main Text');
-  await client.textLayers.setConfig(textLayer.id, 'plaid', 'primary', true);
+  await client.textLayers.setConfig(textLayer.id, 'plaid', 'role', ROLES.BASELINE);
 
   // 3. Token layers: sentence (partitioning root) > word (non-overlapping) >
   //    morpheme (any); plus an independent alignment layer (non-overlapping root).
+  //    Each carries its shared role under config.plaid.role.
   const sentenceLayer = await client.tokenLayers.create(textLayer.id, 'Sentences', 'partitioning');
-  await client.tokenLayers.setConfig(sentenceLayer.id, 'plaid', 'sentence', true);
+  await client.tokenLayers.setConfig(sentenceLayer.id, 'plaid', 'role', ROLES.SENTENCE);
 
   const wordLayer = await client.tokenLayers.create(textLayer.id, 'Main Tokens', 'non-overlapping', sentenceLayer.id);
-  await client.tokenLayers.setConfig(wordLayer.id, 'plaid', 'primary', true);
+  await client.tokenLayers.setConfig(wordLayer.id, 'plaid', 'role', ROLES.WORD);
 
   const morphemeLayer = await client.tokenLayers.create(textLayer.id, 'Main Morphemes', 'any', wordLayer.id);
-  await client.tokenLayers.setConfig(morphemeLayer.id, 'plaid', 'morpheme', true);
+  await client.tokenLayers.setConfig(morphemeLayer.id, 'plaid', 'role', ROLES.MORPHEME);
 
   const alignmentLayer = await client.tokenLayers.create(textLayer.id, 'Time Alignment', 'non-overlapping');
-  await client.tokenLayers.setConfig(alignmentLayer.id, 'plaid', 'alignment', true);
+  await client.tokenLayers.setConfig(alignmentLayer.id, 'plaid', 'role', ROLES.TIME_ALIGNMENT);
 
-  // 4. Orthographies on the word layer (baseline excluded)
-  await client.tokenLayers.setConfig(wordLayer.id, 'plaid', 'orthographies', [{ name: 'IPA' }]);
+  // 4. Orthographies on the word layer (baseline excluded) — igt namespace.
+  await client.tokenLayers.setConfig(wordLayer.id, 'igt', 'orthographies', [{ name: 'IPA' }]);
 
-  // 5. Span layers for a few annotation fields at each scope
+  // 5. Span layers for a few annotation fields at each scope (igt scope marker).
   const fields = [
     { name: 'Gloss', scope: 'Morpheme', parent: morphemeLayer.id },
     { name: 'Part of Speech', scope: 'Word', parent: wordLayer.id },
@@ -77,23 +85,23 @@ async function ensureFixture() {
   ];
   for (const f of fields) {
     const sl = await client.spanLayers.create(f.parent, f.name);
-    await client.spanLayers.setConfig(sl.id, 'plaid', 'scope', f.scope);
+    await client.spanLayers.setConfig(sl.id, 'igt', 'scope', f.scope);
   }
 
-  // 6. Ignored tokens (unicode punctuation, no whitelist)
-  await client.tokenLayers.setConfig(wordLayer.id, 'plaid', 'ignoredTokens', {
+  // 6. Ignored tokens (unicode punctuation, no whitelist) — igt namespace.
+  await client.tokenLayers.setConfig(wordLayer.id, 'igt', 'ignoredTokens', {
     type: 'unicodePunctuation',
     whitelist: [],
   });
 
-  // 7. Document metadata fields
-  await client.projects.setConfig(projectId, 'plaid', 'documentMetadata', [
+  // 7. Document metadata fields — igt namespace.
+  await client.projects.setConfig(projectId, 'igt', 'documentMetadata', [
     { name: 'Date' },
     { name: 'Speakers' },
   ]);
 
-  // 8. Mark initialized
-  await client.projects.setConfig(projectId, 'plaid', 'initialized', true);
+  // 8. Mark initialized — igt namespace.
+  await client.projects.setConfig(projectId, 'igt', 'initialized', true);
 
   await ensureVocab(client, projectId);
   const finalProject = await client.projects.get(projectId);
@@ -116,13 +124,13 @@ async function ensureVocab(client, projectId) {
 }
 
 function resolveLayers(project) {
-  const tl = (project.textLayers || []).find((l) => l.config?.plaid?.primary) || (project.textLayers || [])[0];
+  const tl = (project.textLayers || []).find((l) => roleOf(l) === ROLES.BASELINE) || (project.textLayers || [])[0];
   const tokenLayers = tl?.tokenLayers || [];
   return {
     textLayerId: tl?.id,
-    sentenceLayerId: tokenLayers.find((l) => l.config?.plaid?.sentence)?.id,
-    wordLayerId: tokenLayers.find((l) => l.config?.plaid?.primary)?.id,
-    morphemeLayerId: tokenLayers.find((l) => l.config?.plaid?.morpheme)?.id,
+    sentenceLayerId: tokenLayers.find((l) => roleOf(l) === ROLES.SENTENCE)?.id,
+    wordLayerId: tokenLayers.find((l) => roleOf(l) === ROLES.WORD)?.id,
+    morphemeLayerId: tokenLayers.find((l) => roleOf(l) === ROLES.MORPHEME)?.id,
   };
 }
 
@@ -143,14 +151,14 @@ async function ensureDocument(client, projectId, project) {
 // Analyze interlinear grid has something to render. No-op if already tokenized.
 async function seedTokensIfEmpty(client, documentId, layers) {
   const raw = await client.documents.get(documentId, true);
-  const tl = (raw.textLayers || []).find((l) => l.config?.plaid?.primary);
+  const tl = (raw.textLayers || []).find((l) => roleOf(l) === ROLES.BASELINE);
   const text = tl?.text;
   if (!text?.body) return;
-  const wordLayer = (tl.tokenLayers || []).find((l) => l.config?.plaid?.primary);
+  const wordLayer = (tl.tokenLayers || []).find((l) => roleOf(l) === ROLES.WORD);
   if ((wordLayer?.tokens || []).length > 0) return; // already seeded
   const body = text.body;
 
-  const sentLayer = (tl.tokenLayers || []).find((l) => l.config?.plaid?.sentence);
+  const sentLayer = (tl.tokenLayers || []).find((l) => roleOf(l) === ROLES.SENTENCE);
   if (layers.sentenceLayerId && (sentLayer?.tokens || []).length === 0) {
     await client.tokens.bulkCreate([{ tokenLayerId: layers.sentenceLayerId, text: text.id, begin: 0, end: body.length }]);
   }
