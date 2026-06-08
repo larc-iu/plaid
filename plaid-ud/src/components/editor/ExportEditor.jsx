@@ -13,7 +13,7 @@ export const ExportEditor = () => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const { getClient } = useAuth();
+  const { getClient, logout } = useAuth();
 
   useConlluDocument(doc);
 
@@ -21,7 +21,7 @@ export const ExportEditor = () => {
     let cancelled = false;
     const run = async () => {
       const client = getClient();
-      if (!client) { window.location.href = '/login'; return; }
+      if (!client) { logout(); return; }
       try {
         setLoading(true);
         const [projectData, next] = await Promise.all([
@@ -34,7 +34,7 @@ export const ExportEditor = () => {
         setLoadError('');
       } catch (err) {
         if (cancelled) return;
-        if (err.status === 401) { window.location.href = '/login'; return; }
+        if (err.status === 401) { logout(); return; }
         setLoadError('Failed to load document: ' + (err.message || 'Unknown error'));
         console.error('Error fetching data:', err);
       } finally {

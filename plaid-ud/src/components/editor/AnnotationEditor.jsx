@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Group, Button, Badge, Loader, Text, Center, Alert, Stack } from '@mantine/core';
-import { IconHistory, IconBolt, IconFileOff, IconInfoCircle } from '@tabler/icons-react';
+import { Box, Group, Button, Badge, Loader, Text, Center, Alert, Stack, Select, ActionIcon, Popover } from '@mantine/core';
+import { IconHistory, IconBolt, IconFileOff, IconInfoCircle, IconAdjustments } from '@tabler/icons-react';
+import { ServiceSummary } from './ServiceSummary.jsx';
+import { ServiceParamForm } from './ServiceParamForm.jsx';
 import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
@@ -44,7 +46,12 @@ export const AnnotationEditor = () => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const { getClient, user } = useAuth();
+  const { getClient, user, logout } = useAuth();
+  // Reconcile-on-open is a WRITE (it can seed syntactic-words + delete
+  // relations), so it must run at most once per document — otherwise StrictMode's
+  // double-invoke of the mount effect would seed duplicates. Track the last
+  // document we reconciled; navigation to a new doc re-arms it.
+  const reconciledDocRef = useRef(null);
 
   // Which annotation rows are expanded (document-wide). Persisted to localStorage.
   const [visibleFields, setVisibleFields] = useState(loadVisibleFields);
@@ -57,11 +64,11 @@ export const AnnotationEditor = () => {
 
   useConlluDocument(doc);
 
-  const fetchData = async (initial) => {
+  const fetchData = async (initial, doReconcile = initial) => {
     if (!projectId || !documentId) return;
     const client = getClient();
     if (!client) {
-      window.location.href = '/login';
+      logout();
       return;
     }
     try {
@@ -76,21 +83,28 @@ export const AnnotationEditor = () => {
       // relation crossing a boundary). Only on the INITIAL open (not on every
       // refresh), with edit permission, and BEFORE entering strict mode so the
       // repair's own write doesn't trip OCC. Loud on success AND on failure.
-      if (initial && canEditProject(projectData, user)) {
+      if (initial && doReconcile && canEditProject(projectData, user)) {
         try {
-          const { deletedRelations, error } = await next.reconcileOnOpen();
+          const { deletedRelations, createdSyntacticWords, error } = await next.reconcileOnOpen();
           if (error) {
-            notifyError(
-              'Could not auto-repair this document; a dependency relation may cross a sentence boundary. Try reloading.',
-              'Repair failed'
-            );
-          } else if (deletedRelations > 0) {
-            notifyWarning(
-              `Removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
-              'crossed a sentence boundary, likely from an edit in another app. Please review.',
-              'Document repaired',
-              { autoClose: false }
-            );
+            notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
+          } else {
+            const parts = [];
+            if (createdSyntacticWords > 0) {
+              parts.push(`added ${createdSyntacticWords} word${createdSyntacticWords === 1 ? '' : 's'} ` +
+                'to the annotation grid');
+            }
+            if (deletedRelations > 0) {
+              parts.push(`removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
+                'crossed a sentence boundary');
+            }
+            if (parts.length) {
+              notifyWarning(
+                `This document was edited in another app: ${parts.join('; ')}. Please review.`,
+                'Document repaired',
+                { autoClose: false }
+              );
+            }
           }
         } catch (e) {
           console.error('Reconcile-on-open failed:', e);
@@ -102,7 +116,7 @@ export const AnnotationEditor = () => {
       setLoadError('');
     } catch (err) {
       if (err.status === 401) {
-        window.location.href = '/login';
+        logout();
         return;
       }
       setLoadError('Failed to load document: ' + (err.message || 'Unknown error'));
@@ -113,7 +127,12 @@ export const AnnotationEditor = () => {
   };
 
   useEffect(() => {
-    fetchData(true);
+    // Reconcile once per document. Setting the ref synchronously here (not
+    // inside async fetchData) closes the StrictMode race where both effect runs
+    // pass the check before either has marked the doc reconciled.
+    const doReconcile = reconciledDocRef.current !== documentId;
+    if (doReconcile) reconciledDocRef.current = documentId;
+    fetchData(true, doReconcile);
     // Strict mode is entered in fetchData to OCC-guard annotation edits. It's
     // client-GLOBAL, so it must be exited when we leave this document/editor —
     // otherwise it leaks onto unrelated writes (e.g. tokenizing in the Text
@@ -207,6 +226,14 @@ export const AnnotationEditor = () => {
     requestParse,
     clearParseStatus,
     canParse,
+    parseServices,
+    selectedServiceId,
+    setSelectedService,
+    selectedService,
+    paramSchema,
+    paramValues,
+    paramErrors,
+    setParam,
   } = useNlpService(projectId, documentId);
 
   // History drawer handlers
@@ -306,16 +333,50 @@ export const AnnotationEditor = () => {
           <Button onClick={handleCloseHistory}>Return to Current</Button>
         )}
 
-        {hasText && canEdit && (
-          <Button
-            color="green"
-            leftSection={<IconBolt size={16} />}
-            onClick={requestParse}
-            disabled={!canParse || isParsing}
-            loading={isParsing}
-          >
-            Auto Parse
-          </Button>
+        {hasText && canEdit && hasServices && !selectedHistoryEntry && (
+          <Group gap="xs">
+            <Select
+              size="sm"
+              w={220}
+              data={parseServices.map((s) => ({ value: s.serviceId, label: s.serviceName }))}
+              value={selectedServiceId}
+              onChange={(v) => v && setSelectedService(v)}
+              allowDeselect={false}
+              disabled={isParsing}
+              aria-label="Parsing service"
+            />
+
+            <ServiceSummary service={selectedService} />
+
+            {paramSchema.length > 0 && (
+              <Popover width={320} position="bottom-end" withArrow shadow="md">
+                <Popover.Target>
+                  <ActionIcon variant="light" color="gray" size="lg" aria-label="Service options" disabled={isParsing}>
+                    <IconAdjustments size={18} />
+                  </ActionIcon>
+                </Popover.Target>
+                <Popover.Dropdown>
+                  <ServiceParamForm
+                    schema={paramSchema}
+                    values={paramValues}
+                    errors={paramErrors}
+                    onChange={setParam}
+                    disabled={isParsing}
+                  />
+                </Popover.Dropdown>
+              </Popover>
+            )}
+
+            <Button
+              color="green"
+              leftSection={<IconBolt size={16} />}
+              onClick={requestParse}
+              disabled={!canParse || isParsing}
+              loading={isParsing}
+            >
+              Auto Parse
+            </Button>
+          </Group>
         )}
       </Group>
     </Group>

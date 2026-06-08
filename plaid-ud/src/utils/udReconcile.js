@@ -62,3 +62,32 @@ export const interSententialRelationIds = (layerInfo) => {
     })
     .map(rel => rel.id);
 };
+
+/**
+ * Extents of words that lack a full-width syntactic-word ("morpheme") token.
+ *
+ * UD annotations live on the syntactic-word layer, and the grid is built from
+ * those tokens — so a word with no syntactic-word is invisible and
+ * unannotatable. Another app (e.g. IGT) can create orthographic words on the
+ * shared substrate without UD's syntactic-word layer, leaving words "bare".
+ * This is the symmetric counterpart to IGT's "every word ≥1 morpheme" heal:
+ * UD seeds one default full-width syntactic-word per bare word on open.
+ *
+ * Coverage is by exact extent: a syntactic-word always spans its parent word's
+ * full [begin, end) (the full-width rule), and words are non-overlapping, so an
+ * extent key maps a word to its syntactic-words 1:1. A word is "bare" iff no
+ * syntactic-word shares its extent.
+ *
+ * @param {object} layerInfo the result of getUdLayerInfo (bound layers)
+ * @returns {Array<{begin:number,end:number}>} extents needing a syntactic-word
+ */
+export const wordsNeedingSyntacticWord = (layerInfo) => {
+  const wordTokens = layerInfo?.wordTokenLayer?.tokens || [];
+  const morphemeTokens = layerInfo?.morphemeTokenLayer?.tokens || [];
+  if (!wordTokens.length) return [];
+
+  const covered = new Set(morphemeTokens.map(m => `${m.begin}:${m.end}`));
+  return wordTokens
+    .filter(w => !covered.has(`${w.begin}:${w.end}`))
+    .map(w => ({ begin: w.begin, end: w.end }));
+};

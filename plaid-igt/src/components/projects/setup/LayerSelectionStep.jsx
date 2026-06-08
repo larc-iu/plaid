@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Info } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { Info, Check } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -8,17 +7,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { findBaselineTextLayer } from '@/domain/igtConfig';
 
+// When initializing an EXISTING project, the only thing a user might need to
+// decide is which text layer is the baseline — and even that is automatic when
+// another Plaid app has already tagged one (role=baseline). The word, morpheme,
+// sentence, and alignment token layers are ALWAYS found-or-created by role and
+// auto-named; they are purely internal (the app never surfaces their names to
+// the user, unlike span layers), so we never prompt for a name. See the
+// interoperability model in plaid-core/docs/manual.adoc.
 export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Extract text layers from project data
-  const textLayers = useMemo(() => {
-    if (!project) return [];
-    return project.textLayers || [];
-  }, [project]);
+  const textLayers = useMemo(() => project?.textLayers || [], [project]);
+
+  // A baseline text layer already tagged by another Plaid app is adopted
+  // automatically — the user chooses nothing.
+  const adoptedBaseline = useMemo(() => findBaselineTextLayer(textLayers), [textLayers]);
 
   // Fetch project data on mount
   useEffect(() => {
@@ -43,91 +50,38 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
     }
   }, [projectId, client]);
 
-  // Ensure token/morpheme layer types are always 'new' (the only supported option,
-  // since overlap-mode and parent-token-layer-id are immutable after creation).
-  // Also auto-select text layer when there's exactly one.
-  //
-  // Runs exactly once per project load (guarded by a ref) so we don't re-fire
-  // every time the parent re-renders with a fresh onDataChange identity.
+  // Seed a sensible default exactly once per project load (guarded by a ref so
+  // it doesn't re-fire on every parent re-render). When a role-tagged baseline
+  // exists we adopt it; otherwise auto-select the sole text layer, or default to
+  // creating a new one when the project has none.
   const didInitDefaultsRef = useRef(false);
   useEffect(() => {
-    if (!project || !textLayers) return;
+    if (!project) return;
     if (didInitDefaultsRef.current) return;
-
-    const updates = {};
-    let needsUpdate = false;
-
-    if (data?.tokenLayerType !== 'new') {
-      updates.tokenLayerType = 'new';
-      needsUpdate = true;
-    }
-    if (data?.morphemeLayerType !== 'new') {
-      updates.morphemeLayerType = 'new';
-      needsUpdate = true;
-    }
-
-    // Auto-select text layer if there's exactly one
-    if (textLayers.length === 1 && !data?.textLayerType) {
-      updates.textLayerType = 'existing';
-      updates.selectedTextLayerId = textLayers[0].id;
-      needsUpdate = true;
-    }
-
     didInitDefaultsRef.current = true;
 
-    if (needsUpdate) {
-      onDataChange({ ...data, ...updates });
+    if (adoptedBaseline) {
+      onDataChange({ ...data, textLayerType: 'adopted', adoptedBaselineId: adoptedBaseline.id });
+    } else if (textLayers.length === 1) {
+      onDataChange({ ...data, textLayerType: 'existing', selectedTextLayerId: textLayers[0].id });
+    } else if (textLayers.length === 0) {
+      onDataChange({ ...data, textLayerType: 'new' });
     }
-  }, [project, textLayers, data, onDataChange]);
+  }, [project, textLayers, adoptedBaseline, data, onDataChange]);
 
   const handleTextLayerTypeChange = (value) => {
-    const newData = {
+    onDataChange({
       ...data,
       textLayerType: value,
       selectedTextLayerId: null,
-      newTextLayerName: ''
-    };
-    onDataChange(newData);
+    });
   };
 
   const handleTextLayerSelectionChange = (value) => {
-    const newData = {
-      ...data,
-      selectedTextLayerId: value
-    };
-    onDataChange(newData);
-  };
-
-  const handleNewTextLayerNameChange = (event) => {
     onDataChange({
       ...data,
-      newTextLayerName: event.currentTarget.value
+      selectedTextLayerId: value,
     });
-  };
-
-  const handleNewTokenLayerNameChange = (event) => {
-    onDataChange({
-      ...data,
-      newTokenLayerName: event.currentTarget.value
-    });
-  };
-
-  const handleNewMorphemeLayerNameChange = (event) => {
-    onDataChange({
-      ...data,
-      newMorphemeLayerName: event.currentTarget.value
-    });
-  };
-
-  // Check if we have a valid text layer selection
-  const hasValidTextLayerSelection = () => {
-    if (data?.textLayerType === 'existing') {
-      return !!data?.selectedTextLayerId;
-    }
-    if (data?.textLayerType === 'new') {
-      return !!(data?.newTextLayerName?.trim());
-    }
-    return false;
   };
 
   if (loading) {
@@ -153,6 +107,28 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
     );
   }
 
+  // A Plaid-compatible baseline already exists (e.g. this project was set up in
+  // another Plaid app). Nothing to choose — reassure and move on.
+  if (adoptedBaseline) {
+    return (
+      <div className="tw flex flex-col gap-6">
+        <div className="rounded-md border border-border bg-muted p-4">
+          <div className="flex items-start gap-2">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+            <div className="text-sm">
+              <p className="font-medium">This project already has a compatible text layer</p>
+              <p className="mt-1 text-muted-foreground">
+                Plaid Base will reuse the existing baseline text layer and automatically
+                create any word, morpheme, sentence, and alignment layers it needs.
+                There's nothing to configure here — continue to the next step.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const selectableTextLayers = textLayers.filter(layer => layer.id);
 
   return (
@@ -160,13 +136,10 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
       {/* Explanatory header */}
       <div>
         <p className="text-sm">
-          Choose a text layer for Plaid Base to use, then provide names for the new
-          token and morpheme layers that will be created.
+          Choose the text layer Plaid Base should use as the baseline.
           <strong> Text layers</strong> contain the baseline text content of your documents.
-          <strong> Token layers</strong> define the units for analysis (words and morphemes)
-          and serve as the foundation for further annotation layers. Token and morpheme
-          layers are always created fresh because their overlap mode and hierarchy are
-          fixed at creation time.
+          The word and morpheme token layers are created automatically — you don't need to
+          name them.
         </p>
       </div>
 
@@ -222,70 +195,21 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
             Create new text layer
           </label>
           {data?.textLayerType === 'new' && (
-            <div className="ml-6">
-              <Input
-                placeholder="Enter text layer name"
-                value={data?.newTextLayerName || ''}
-                onChange={handleNewTextLayerNameChange}
-              />
-            </div>
+            <p className="ml-6 text-sm text-muted-foreground">
+              A new baseline text layer will be created automatically.
+            </p>
           )}
         </div>
-      </div>
-
-      {/* Token Layer (always new) */}
-      <div className="rounded-lg border bg-card p-4">
-        <p className="mb-4 font-medium">Primary Token Layer</p>
-
-        {!hasValidTextLayerSelection() ? (
-          <p className="text-sm text-muted-foreground">Please select a text layer first</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">
-              A new primary (word-level) token layer will be created. Name it:
-            </p>
-            <Input
-              placeholder="e.g. Main Tokens"
-              value={data?.newTokenLayerName || ''}
-              onChange={handleNewTokenLayerNameChange}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Morpheme Layer (always new) */}
-      <div className="rounded-lg border bg-card p-4">
-        <p className="mb-4 font-medium">Morpheme Token Layer</p>
-
-        {!hasValidTextLayerSelection() ? (
-          <p className="text-sm text-muted-foreground">Please select a text layer first</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">
-              A new morpheme token layer will be created under the primary token layer. Name it:
-            </p>
-            <Input
-              placeholder="e.g. Main Morphemes"
-              value={data?.newMorphemeLayerName || ''}
-              onChange={handleNewMorphemeLayerNameChange}
-            />
-          </div>
-        )}
       </div>
     </div>
   );
 };
 
-// Validation function for this step
+// Validation function for this step. Token/morpheme layers are never named by
+// the user, so the only requirement is a resolved baseline text layer.
 LayerSelectionStep.isValid = (data) => {
-  // Must have valid text layer selection
-  const hasValidTextLayer =
-    (data?.textLayerType === 'existing' && data?.selectedTextLayerId) ||
-    (data?.textLayerType === 'new' && data?.newTextLayerName?.trim());
-
-  // Token and morpheme layers are always created new; require non-empty names.
-  const hasValidTokenLayer = !!(data?.newTokenLayerName?.trim());
-  const hasValidMorphemeLayer = !!(data?.newMorphemeLayerName?.trim());
-
-  return hasValidTextLayer && hasValidTokenLayer && hasValidMorphemeLayer;
+  if (data?.textLayerType === 'adopted') return true;
+  if (data?.textLayerType === 'existing') return !!data?.selectedTextLayerId;
+  if (data?.textLayerType === 'new') return true;
+  return false;
 };

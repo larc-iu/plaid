@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
@@ -22,6 +23,7 @@ const DocumentEditor = () => {
   const { projectId, documentId } = useParams();
   const navigate = useNavigate();
   const client = useStrictClient();
+  const { logout } = useAuth();
 
   // The single shared IgtDocument for the whole editor. `asOf` drives time-travel:
   // selecting a history entry reloads this doc at that snapshot.
@@ -35,7 +37,7 @@ const DocumentEditor = () => {
 
   useEffect(() => {
     if (!client) {
-      navigate('/login');
+      logout();
       return undefined;
     }
     let cancelled = false;
@@ -50,7 +52,7 @@ const DocumentEditor = () => {
       } catch (e) {
         if (cancelled) return;
         if (e.message === 'Not authenticated' || e.status === 401) {
-          navigate('/login');
+          logout();
           return;
         }
         console.error('Failed to load document:', e);
@@ -98,6 +100,26 @@ const DocumentEditor = () => {
     })();
     return () => { cancelled = true; };
   }, [doc, asOf, permissions?.canWrite]);
+
+  // The interlinear island is framework-agnostic; its empty-state CTA asks to
+  // switch tabs via a DOM event rather than reaching into the router.
+  useEffect(() => {
+    const onNav = (e) => { const t = e.detail?.tab; if (t) setActiveTab(t); };
+    window.addEventListener('igt:navigate-tab', onNav);
+    return () => window.removeEventListener('igt:navigate-tab', onNav);
+  }, []);
+
+  // Land on Analyze when the document is already tokenized — the work surface
+  // shouldn't be buried behind Metadata. Once, on the first live load only (not
+  // on time-travel reloads or after the user has navigated tabs themselves).
+  const didAutoTabRef = useRef(false);
+  useEffect(() => {
+    if (!doc || asOf || didAutoTabRef.current) return;
+    didAutoTabRef.current = true;
+    try {
+      if ((doc.sentences || []).some((s) => s.tokens.length > 0)) setActiveTab('analyze');
+    } catch { /* derivation not ready; leave default */ }
+  }, [doc, asOf]);
 
   const handleOpenHistory = () => {
     history.setOpen(true);
@@ -163,7 +185,7 @@ const DocumentEditor = () => {
         className="transition-[margin] duration-200"
         style={{ marginLeft: history.open ? '400px' : '0', minHeight: '100vh' }}
       >
-        <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className={`mx-auto px-4 py-8 ${activeTab === 'analyze' ? 'max-w-[1700px]' : 'max-w-5xl'}`}>
           <div className="tw">
             <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
               <Link to="/projects" className="hover:text-foreground">Projects</Link>

@@ -1,6 +1,6 @@
 import { cpLength, cpSlice, utf16ToCp } from '@larc-iu/plaid-client';
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
-import { interSententialRelationIds } from '../utils/udReconcile.js';
+import { interSententialRelationIds, wordsNeedingSyntacticWord } from '../utils/udReconcile.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { basicTokenize } from '../utils/basicTokenize.js';
 import { notifyError } from '../utils/feedback.jsx';
@@ -693,29 +693,75 @@ export class ConlluDocument {
   }
 
   // Reconcile-on-open: repair UD invariants that another app may have broken
-  // while editing the shared substrate. Currently: delete dependency relations
-  // that now cross a sentence boundary (e.g. after another app split a sentence).
-  // Heal downward — drop the invalid relation; never move the sentence. Loud +
-  // recoverable (an ordinary audited delete). Deliberately NOT via _withSaving:
-  // this runs once on a freshly loaded doc, and a heal failure must not trigger
-  // _withSaving's reload-and-revert (which would discard the just-loaded doc).
+  // while editing the shared substrate. Two repairs, both healing DOWNWARD
+  // toward the substrate (never reverting it), loud + recoverable (ordinary
+  // audited writes):
+  //   1. Seed a default full-width syntactic-word for every word that lacks one
+  //      (another app, e.g. IGT, can leave words bare — UD annotations live on
+  //      the syntactic-word layer, so a bare word is invisible/unannotatable).
+  //   2. Delete dependency relations that now cross a sentence boundary (e.g.
+  //      after another app split a sentence).
+  // Deliberately NOT via _withSaving: this runs once on a freshly loaded doc,
+  // and a heal failure must not trigger _withSaving's reload-and-revert (which
+  // would discard the just-loaded doc). A single-flight guard plus the editor's
+  // per-document gate keep StrictMode's double-invoke from double-healing (which
+  // would otherwise seed duplicate syntactic-words).
   async reconcileOnOpen() {
-    const ids = interSententialRelationIds(this.layerInfo);
-    if (!ids.length) return { deletedRelations: 0 };
+    if (this._reconciling) return { deletedRelations: 0, createdSyntacticWords: 0 };
+    this._reconciling = true;
     try {
-      this._client.beginBatch();
-      ids.forEach(id => this._client.relations.delete(id));
-      await this._client.submitBatch();
-      const removed = new Set(ids);
-      this._applyRawPatch((next, info) => {
-        if (info.relationLayer?.relations) {
-          info.relationLayer.relations = info.relationLayer.relations.filter(r => !removed.has(r.id));
+      const info = this.layerInfo;
+      const relIds = interSententialRelationIds(info);
+      const { morphemeTokenLayer, textLayer } = info;
+      const textId = textLayer?.text?.id;
+      const seedExtents = (morphemeTokenLayer?.id && textId)
+        ? wordsNeedingSyntacticWord(info)
+        : [];
+
+      if (!relIds.length && !seedExtents.length) {
+        return { deletedRelations: 0, createdSyntacticWords: 0 };
+      }
+
+      let createdSyntacticWords = 0;
+      let deletedRelations = 0;
+
+      // (1) Seed one default full-width syntactic-word per bare word. Healed to
+      // a valid-but-empty state the normal grid already surfaces (no spans —
+      // the user fills annotations in).
+      if (seedExtents.length) {
+        this._client.beginBatch();
+        this._client.tokens.bulkCreate(seedExtents.map(e => ({
+          tokenLayerId: morphemeTokenLayer.id,
+          text: textId,
+          begin: e.begin,
+          end: e.end,
+          precedence: 0
+        })));
+        await this._client.submitBatch();
+        createdSyntacticWords = seedExtents.length;
+      }
+
+      // (2) Drop now-inter-sentential dependency relations. If a concurrent open
+      // already deleted them the batch 404s, but the goal state holds — treat
+      // not-found as success rather than a failed repair.
+      if (relIds.length) {
+        try {
+          this._client.beginBatch();
+          relIds.forEach(id => this._client.relations.delete(id));
+          await this._client.submitBatch();
+        } catch (err) {
+          if (err?.status !== 404) throw err;
         }
-      });
-      return { deletedRelations: ids.length };
+        deletedRelations = relIds.length;
+      }
+
+      await this._reload();
+      return { deletedRelations, createdSyntacticWords };
     } catch (err) {
       console.error('reconcileOnOpen failed:', err);
-      return { deletedRelations: 0, error: err };
+      return { deletedRelations: 0, createdSyntacticWords: 0, error: err };
+    } finally {
+      this._reconciling = false;
     }
   }
 

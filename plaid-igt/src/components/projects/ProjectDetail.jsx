@@ -11,7 +11,7 @@ import { readInitialized } from '@/domain/igtConfig';
 export const ProjectDetail = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { user, client } = useAuth();
+  const { user, client, logout } = useAuth();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,8 @@ export const ProjectDetail = () => {
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
-        navigate('/login');
+        // Clear the rejected token before leaving, else /login bounces back.
+        logout();
         return;
       }
       setError('Failed to load data');

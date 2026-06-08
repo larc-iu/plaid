@@ -37,7 +37,7 @@ export const DocumentList = () => {
   const [hasWordLayer, setHasWordLayer] = useState(true);
   const [wordsLoading, setWordsLoading] = useState(true);
   const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
-  const { user, getClient } = useAuth();
+  const { user, getClient, logout } = useAuth();
 
   const fetchProjectAndDocuments = async () => {
     try {
@@ -58,8 +58,8 @@ export const DocumentList = () => {
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
-        // Redirect to login instead of showing error
-        window.location.href = '/login';
+        // Clear the rejected token before redirecting, else /login bounces back.
+        logout();
         return;
       }
       setError('Failed to load project and documents');

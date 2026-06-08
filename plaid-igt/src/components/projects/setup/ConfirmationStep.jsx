@@ -108,9 +108,10 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
         needsBaselineTag = true;
-      } else if (setupData.layerSelection?.textLayerType === 'new' && setupData.layerSelection?.newTextLayerName) {
+      } else if (setupData.layerSelection?.textLayerType === 'new') {
         updateProgress(20, 'Creating text layer...');
-        const textLayer = await client.textLayers.create(currentProjectId, setupData.layerSelection.newTextLayerName);
+        // Text layer name is internal (matched by role, never surfaced) — auto-named.
+        const textLayer = await client.textLayers.create(currentProjectId, 'Main Text');
         textLayerId = textLayer.id;
         resources.textLayer = textLayer;
         needsBaselineTag = true;
@@ -150,15 +151,15 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
           findSentenceTokenLayer(existingTokenLayers), ROLES.SENTENCE, 'sentenceTokenLayer',
           'Sentences', 'partitioning', undefined, 28, 'Creating sentence layer...');
 
-        const wordName = (!isNewProject && setupData.layerSelection?.newTokenLayerName) || 'Main Tokens';
+        // Word/morpheme token layers are internal (matched by role, never
+        // surfaced to the user) — always auto-named, never prompted for.
         tokenLayerId = await ensureTokenLayer(
           findWordTokenLayer(existingTokenLayers), ROLES.WORD, 'tokenLayer',
-          wordName, 'non-overlapping', sentenceTokenLayerId, 32, 'Creating token layer...');
+          'Main Tokens', 'non-overlapping', sentenceTokenLayerId, 32, 'Creating token layer...');
 
-        const morphName = (!isNewProject && setupData.layerSelection?.newMorphemeLayerName) || 'Main Morphemes';
         morphemeLayerId = await ensureTokenLayer(
           findMorphemeTokenLayer(existingTokenLayers), ROLES.MORPHEME, 'morphemeLayer',
-          morphName, 'any', tokenLayerId, 35, 'Creating morpheme layer...');
+          'Main Morphemes', 'any', tokenLayerId, 35, 'Creating morpheme layer...');
 
         alignmentTokenLayerId = await ensureTokenLayer(
           findAlignmentTokenLayer(existingTokenLayers), ROLES.TIME_ALIGNMENT, 'alignmentTokenLayer',
@@ -365,21 +366,23 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">Text Layer:</p>
-            {layerData.textLayerType === 'existing' ? (
+            {layerData.textLayerType === 'adopted' ? (
+              <Badge className="border-transparent bg-blue-100 text-blue-700">Reusing existing baseline</Badge>
+            ) : layerData.textLayerType === 'existing' ? (
               <Badge className="border-transparent bg-blue-100 text-blue-700">Existing: {layerData.selectedTextLayerId}</Badge>
             ) : layerData.textLayerType === 'new' ? (
-              <Badge className="border-transparent bg-green-100 text-green-700">New: {layerData.newTextLayerName}</Badge>
+              <Badge className="border-transparent bg-green-100 text-green-700">New: Main Text</Badge>
             ) : (
               <Badge variant="secondary">Not configured</Badge>
             )}
           </div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">Token Layer:</p>
-            <Badge className="border-transparent bg-green-100 text-green-700">New: {layerData.newTokenLayerName || 'Main Tokens'}</Badge>
+            <Badge className="border-transparent bg-green-100 text-green-700">Main Tokens</Badge>
           </div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">Morpheme Layer:</p>
-            <Badge className="border-transparent bg-green-100 text-green-700">New: {layerData.newMorphemeLayerName || 'Main Morphemes'}</Badge>
+            <Badge className="border-transparent bg-green-100 text-green-700">Main Morphemes</Badge>
           </div>
         </div>
       </div>

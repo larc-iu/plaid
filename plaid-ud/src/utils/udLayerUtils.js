@@ -1,9 +1,27 @@
 import {
   UPOS_TAGS, UNIVERSAL_DEPRELS, readVocab, readColorMap, readFeatureInventory
 } from './udVocab.js';
-import { ROLES, findByRole } from '@larc-iu/plaid-client';
+import { ROLES, findByRole, readRole } from '@larc-iu/plaid-client';
 
 const UD_NAMESPACE = 'ud';
+
+// Token-layer roles UD owns. A token layer carrying any OTHER role means another
+// Plaid app participates in this shared substrate (e.g. IGT's `morpheme` or
+// `time-alignment`). Used to warn before destructive substrate ops.
+const UD_TOKEN_ROLES = new Set([ROLES.SENTENCE, ROLES.WORD, ROLES.SYNTACTIC_WORD]);
+
+// True when the substrate is shared with another app — some token layer under
+// the baseline carries a role UD doesn't own. Clearing tokens cascades into
+// those layers and would destroy the other app's annotations, so callers should
+// warn. Accepts the bound layerInfo (its textLayer retains the FULL tokenLayers
+// list, including foreign siblings).
+export const hasForeignSubstrateParticipants = (layerInfo) => {
+  const tokenLayers = layerInfo?.textLayer?.tokenLayers || [];
+  return tokenLayers.some(tk => {
+    const role = readRole(tk.config);
+    return role && !UD_TOKEN_ROLES.has(role);
+  });
+};
 
 // Half-open containment: a child is contained in a parent iff its range fits
 // AND the parent has non-zero remaining extent at the child's begin. This

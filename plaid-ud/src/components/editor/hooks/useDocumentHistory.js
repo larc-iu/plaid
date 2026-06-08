@@ -8,7 +8,7 @@ export const useDocumentHistory = (documentId) => {
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [hasLoadedAudit, setHasLoadedAudit] = useState(false);
-  const { getClient } = useAuth();
+  const { getClient, logout } = useAuth();
 
   // Fetch audit log entries
   const fetchAuditLog = useCallback(async () => {
@@ -18,7 +18,7 @@ export const useDocumentHistory = (documentId) => {
       setLoadingAudit(true);
       const client = getClient();
       if (!client) {
-        window.location.href = '/login';
+        logout();
         return;
       }
 
@@ -27,7 +27,7 @@ export const useDocumentHistory = (documentId) => {
       setHasLoadedAudit(true);
     } catch (err) {
       if (err.status === 401) {
-        window.location.href = '/login';
+        logout();
         return;
       }
       notifyError('Failed to load audit log: ' + (err.message || 'Unknown error'));
@@ -45,7 +45,7 @@ export const useDocumentHistory = (documentId) => {
       setLoadingHistorical(true);
       const client = getClient();
       if (!client) {
-        window.location.href = '/login';
+        logout();
         return null;
       }
 
@@ -54,7 +54,7 @@ export const useDocumentHistory = (documentId) => {
       return historicalDoc;
     } catch (err) {
       if (err.status === 401) {
-        window.location.href = '/login';
+        logout();
         return null;
       }
       // Time travel to a past state failed (non-200). Fail loudly via a toast

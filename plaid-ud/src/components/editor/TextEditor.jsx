@@ -4,7 +4,7 @@ import {
   SimpleGrid, Stack, Title, Textarea, Button, Group, Text, Alert, Paper, Center, Loader,
 } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { missingUdLayerLabels } from '../../utils/udLayerUtils.js';
+import { missingUdLayerLabels, hasForeignSubstrateParticipants } from '../../utils/udLayerUtils.js';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { confirmDelete } from '../../utils/feedback.jsx';
@@ -21,7 +21,7 @@ export const TextEditor = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
-  const { getClient, user } = useAuth();
+  const { getClient, user, logout } = useAuth();
 
   // Subscribe the component to the doc's version counter so any mutation
   // (sentences/words/morphemes/spans/relations + isSaving + error) triggers
@@ -31,7 +31,7 @@ export const TextEditor = () => {
   const fetchData = async (initial) => {
     const client = getClient();
     if (!client) {
-      window.location.href = '/login';
+      logout();
       return;
     }
     try {
@@ -55,7 +55,7 @@ export const TextEditor = () => {
       setLoadError('');
     } catch (err) {
       if (err.status === 401) {
-        window.location.href = '/login';
+        logout();
         return;
       }
       setLoadError('Failed to load document: ' + (err.message || 'Unknown error'));
@@ -102,9 +102,16 @@ export const TextEditor = () => {
 
   const handleClearTokens = () => {
     if (!doc) return;
+    // Tokens may belong to a substrate shared with another app (e.g. IGT). The
+    // clear cascades into that app's tokens/annotations, so warn explicitly.
+    const shared = hasForeignSubstrateParticipants(doc.layerInfo);
     confirmDelete({
       title: 'Clear all tokens',
-      message: 'Are you sure you want to clear all tokens? This action cannot be undone.',
+      message: shared
+        ? "These tokens are shared with another app on this project (e.g. interlinear " +
+          "glossing). Clearing them here will also delete that app's annotations on this " +
+          "document. This cannot be undone — are you sure?"
+        : 'Are you sure you want to clear all tokens? This action cannot be undone.',
       confirmLabel: 'Clear',
       onConfirm: async () => {
         const ok = await doc.clearTokens();

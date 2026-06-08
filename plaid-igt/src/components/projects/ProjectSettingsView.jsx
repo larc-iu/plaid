@@ -15,7 +15,7 @@ export const ProjectSettingsView = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, client } = useAuth();
+  const { user, client, logout } = useAuth();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -35,7 +35,7 @@ export const ProjectSettingsView = () => {
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
-        navigate('/login');
+        logout();
         return;
       }
       setError('Failed to load data');

@@ -22,7 +22,7 @@ import { VocabularyMaintainers } from './VocabularyMaintainers';
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
   const navigate = useNavigate();
-  const { user, client } = useAuth();
+  const { user, client, logout } = useAuth();
   const isNewVocabulary = !vocabularyId;
 
   const [vocabulary, setVocabulary] = useState(null);
@@ -98,7 +98,7 @@ export const VocabularyDetail = () => {
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
-        navigate('/login');
+        logout();
         return;
       }
       setError('Failed to load vocabulary');

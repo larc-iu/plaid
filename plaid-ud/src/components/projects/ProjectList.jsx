@@ -28,7 +28,7 @@ export const ProjectList = () => {
   const [wordCounts, setWordCounts] = useState({});
   const [wordsLoading, setWordsLoading] = useState(true);
   const [sort, setSort] = useState({ key: 'updated', dir: 'desc' });
-  const { getClient } = useAuth();
+  const { getClient, logout } = useAuth();
   const navigate = useNavigate();
 
   const fetchProjects = async () => {
@@ -43,8 +43,9 @@ export const ProjectList = () => {
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
-        // Redirect to login instead of showing error
-        window.location.href = '/login';
+        // A rejected token is invalid — log out (clears the stored token) before
+        // redirecting, so /login doesn't bounce straight back here (infinite loop).
+        logout();
         return;
       }
       setError('Failed to load projects');
