@@ -15,6 +15,8 @@ import { useMediaOperations } from './useMediaOperations.js';
 import { MediaPlayer } from './MediaPlayer.jsx';
 import { Timeline } from './Timeline.jsx';
 import { MediaUpload } from './MediaUpload.jsx';
+import { ServiceSummary } from '../services/ServiceSummary.jsx';
+import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
 
 export function DocumentMedia() {
   const { doc, readOnly } = useDocumentCtx();
@@ -63,7 +65,10 @@ export function DocumentMedia() {
               className="flex flex-col gap-1.5"
               onMouseEnter={mediaOps.handleAsrDropdownInteraction}
             >
-              <Label>Transcription Service</Label>
+              <div className="flex items-center gap-1.5">
+                <Label>Transcription Service</Label>
+                <ServiceSummary service={mediaOps.selectedService} />
+              </div>
               <Select
                 value={mediaOps.asrAlgorithm}
                 onValueChange={mediaOps.handleAlgorithmChange}
@@ -82,7 +87,7 @@ export function DocumentMedia() {
 
             <Button
                 onClick={mediaOps.handleTranscribe}
-                disabled={!mediaOps.isUsingAsrService || mediaOps.isProcessing || mediaOps.isUploading || readOnly}
+                disabled={!mediaOps.isUsingAsrService || mediaOps.isProcessing || mediaOps.isUploading || readOnly || Object.keys(mediaOps.paramErrors || {}).length > 0}
             >
               <Mic className="h-4 w-4" />
               {mediaOps.isProcessing ? 'Transcribing…' : 'Transcribe'}
@@ -97,6 +102,19 @@ export function DocumentMedia() {
             Clear Alignments
           </Button>
         </div>
+
+        {/* Service arguments (only when a service with parameters is selected) */}
+        {mediaOps.paramSchema?.length > 0 && (
+          <div className="mb-4">
+            <ServiceParamForm
+              schema={mediaOps.paramSchema}
+              values={mediaOps.paramValues}
+              errors={mediaOps.paramErrors}
+              onChange={mediaOps.setParamValue}
+              disabled={readOnly || mediaOps.isProcessing || mediaOps.isUploading}
+            />
+          </div>
+        )}
 
         {/* Progress */}
         <div style={{ minHeight: '80px' }}>

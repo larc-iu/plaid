@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { cpLength } from '@larc-iu/plaid-client';
+import { cpLength, filterServicesByTask, TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
+import { useServiceParams } from '../hooks/useServiceParams.js';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
 // Tokenize tab operations, backed by the shared IgtDocument. Structural edits
@@ -41,25 +42,28 @@ export const useTokenOperations = () => {
   }, [project?.id, discoverServices]);
 
   // Populate options when services change; restore cached selection once.
+  // Services are matched by their declared `tasks` (legacy `tok:` id-prefix as a
+  // fallback), not hard-coded prefixes.
   useEffect(() => {
     const options = [{ value: 'rule-based-punctuation', label: 'Rule-based Punctuation' }];
-    availableServices.forEach((service) => {
-      if (service.serviceId.startsWith('tok:')) {
-        options.push({ value: `service:${service.serviceId}`, label: service.serviceName });
-      }
+    filterServicesByTask(availableServices, TASKS.TOKENIZE).forEach((service) => {
+      options.push({ value: `service:${service.serviceId}`, label: service.serviceName });
     });
     setAlgorithmOptions(options);
+    const has = (val) => options.some((opt) => opt.value === val);
+
+    // One-time: restore a cached selection once services have been discovered.
     if (options.length > 1 && !hasRestoredCache) {
       const cached = localStorage.getItem('plaid_tokenization_algorithm');
-      const isAvailable = cached && options.some((opt) => opt.value === cached);
-      if (isAvailable) {
-        setAlgorithmState(cached);
-      } else {
-        if (cached) localStorage.removeItem('plaid_tokenization_algorithm');
-        setAlgorithmState('rule-based-punctuation');
-      }
+      if (cached && has(cached)) setAlgorithmState(cached);
+      else if (cached) localStorage.removeItem('plaid_tokenization_algorithm');
       setHasRestoredCache(true);
+      return;
     }
+    // Every (re)discovery: if the selected service has vanished, fall back to the
+    // built-in (mirrors the media tab; a no-op when the selection is still valid).
+    setAlgorithmState((cur) =>
+      cur.startsWith('service:') && !has(cur) ? 'rule-based-punctuation' : cur);
   }, [availableServices, hasRestoredCache]);
 
   const setAlgorithm = (value) => {
@@ -67,6 +71,15 @@ export const useTokenOperations = () => {
     if (value) localStorage.setItem('plaid_tokenization_algorithm', value);
     else localStorage.removeItem('plaid_tokenization_algorithm');
   };
+
+  // The selected NLP service (null for the built-in rule-based option) and its
+  // user-controllable arguments.
+  const selectedServiceId = algorithm.startsWith('service:') ? algorithm.slice(8) : null;
+  const selectedService = selectedServiceId
+    ? availableServices.find((s) => s.serviceId === selectedServiceId) || null
+    : null;
+  const { schema: paramSchema, values: paramValues, setParam: setParamValue, coerced: coerceParams, errors: paramErrors } =
+    useServiceParams(selectedService, 'plaid_tokenization_params_');
 
   const updateProgress = (percent, operation) => {
     setTokenizationProgress(percent);
@@ -114,6 +127,14 @@ export const useTokenOperations = () => {
 
   // --- Tokenization (built-in delegates to doc; NLP service stays here) ---
   const handleTokenize = async () => {
+    // Block on unmet required service arguments before doing any work.
+    if (algorithm.startsWith('service:')) {
+      const missing = Object.values(paramErrors);
+      if (missing.length) {
+        notifyError(missing[0], 'Missing required option');
+        return;
+      }
+    }
     setIsTokenizing(true);
     setTokenizationProgress(0);
     try {
@@ -126,6 +147,9 @@ export const useTokenOperations = () => {
           doc.document.id,
           serviceId,
           {
+            // User-controlled arguments declared by the service, spread FIRST so
+            // the fixed layer/doc params below always win over any same-named arg.
+            ...coerceParams(),
             documentId: doc.document.id,
             textLayerId: layers.primaryTextLayer?.id,
             primaryTokenLayerId: layers.primaryTokenLayer.id,
@@ -199,6 +223,12 @@ export const useTokenOperations = () => {
     algorithm,
     setAlgorithm,
     algorithmOptions,
+    // selected-service args + summary
+    selectedService,
+    paramSchema,
+    paramValues,
+    setParamValue,
+    paramErrors,
     isTokenizing,
     tokenizationProgress,
     currentOperation,

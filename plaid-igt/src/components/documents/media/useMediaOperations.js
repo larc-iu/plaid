@@ -1,8 +1,10 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
+import { filterServicesByTask, TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
+import { useServiceParams } from '../../documents/hooks/useServiceParams.js';
 
 // Matches the old Mantine useHotkeys default: ignore key events from form fields.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
@@ -50,6 +52,15 @@ export const useMediaOperations = () => {
     progressPercent,
     progressMessage
   } = useServiceRequest();
+
+  // The selected ASR service (null for none) and its user-controllable
+  // arguments. Defined before handleTranscribe so it can merge the args.
+  const selectedServiceId = asrAlgorithm.startsWith('service:') ? asrAlgorithm.slice(8) : null;
+  const selectedService = selectedServiceId
+    ? availableServices.find((s) => s.serviceId === selectedServiceId) || null
+    : null;
+  const { schema: paramSchema, values: paramValues, setParam: setParamValue, coerced: coerceParams, errors: paramErrors } =
+    useServiceParams(selectedService, 'plaid_asr_params_');
 
   // Get authenticated media URL with proper base path handling
   const getAuthenticatedMediaUrl = (serverUrl) => {
@@ -189,6 +200,13 @@ export const useMediaOperations = () => {
       return;
     }
 
+    // Block on unmet required service arguments before doing any work.
+    const missing = Object.values(paramErrors);
+    if (missing.length) {
+      notifyError(missing[0], 'Missing required option');
+      return;
+    }
+
     // Find text, alignment token, and sentence token layers
     const primaryTextLayer = doc.layerInfo.primaryTextLayer;
     const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
@@ -202,6 +220,9 @@ export const useMediaOperations = () => {
         documentId,
         serviceId,
         {
+          // User-controlled arguments declared by the service, spread FIRST so
+          // the fixed layer/doc params below always win over any same-named arg.
+          ...coerceParams(),
           documentId: documentId,
           textLayerId: primaryTextLayer.id,
           alignmentTokenLayerId: alignmentTokenLayer.id,
@@ -225,7 +246,7 @@ export const useMediaOperations = () => {
       console.error('Transcription failed:', error);
       updateProgress(0, '');
     }
-  }, [asrAlgorithm, doc, project, requestService, updateProgress]);
+  }, [asrAlgorithm, doc, project, requestService, updateProgress, coerceParams, paramErrors]);
 
   const handleClearAlignments = useCallback(async () => {
     if (!alignmentTokens.length) return;
@@ -330,21 +351,13 @@ export const useMediaOperations = () => {
     }
   }, [project.id, discoverServices]);
 
-  // Populate ASR options when available services change
+  // Populate ASR options when available services change. Services are matched by
+  // their declared `tasks` (legacy `asr:` id-prefix as a fallback).
   useEffect(() => {
-    // Build options list with discovered ASR services
-    const options = [];
-
-    // Add discovered ASR services (filter by asr: prefix)
-    availableServices.forEach(service => {
-      if (service.serviceId.startsWith('asr:')) {
-        options.push({
-          value: `service:${service.serviceId}`,
-          label: service.serviceName
-        });
-      }
-    });
-
+    const options = filterServicesByTask(availableServices, TASKS.TRANSCRIBE).map(service => ({
+      value: `service:${service.serviceId}`,
+      label: service.serviceName,
+    }));
     setAsrAlgorithmOptions(options);
   }, [availableServices]);
 
@@ -408,6 +421,12 @@ export const useMediaOperations = () => {
     isProcessing,
     progressPercent,
     progressMessage,
+    // selected-service args + summary
+    selectedService,
+    paramSchema,
+    paramValues,
+    setParamValue,
+    paramErrors,
 
     // Upload state
     isUploading,

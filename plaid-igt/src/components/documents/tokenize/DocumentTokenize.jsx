@@ -18,6 +18,8 @@ import {
 import { useTokenOperations } from './useTokenOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { ServiceSummary } from '../services/ServiceSummary.jsx';
+import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
 import Lazy from '../../lazy';
 import './DocumentTokenize.css';
 
@@ -161,7 +163,10 @@ export function DocumentTokenize() {
           <div className="flex items-end justify-between flex-wrap gap-2 mb-4">
             <div className="flex items-end gap-3">
               <div className="flex flex-col gap-1.5" onMouseEnter={handleAlgorithmDropdownClick}>
-                <Label>Tokenization Algorithm</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label>Tokenization Algorithm</Label>
+                  <ServiceSummary service={ops.selectedService} />
+                </div>
                 <Select value={ops.algorithm} onValueChange={ops.setAlgorithm} disabled={readOnly}>
                   <SelectTrigger style={{ width: 280 }}>
                     <SelectValue />
@@ -178,7 +183,7 @@ export function DocumentTokenize() {
 
               <Button
                 onClick={ops.handleTokenize}
-                disabled={ops.isTokenizing || ops.isProcessing || !text?.body || !layers?.primaryTokenLayer || !hasSentencePartition || readOnly}
+                disabled={ops.isTokenizing || ops.isProcessing || !text?.body || !layers?.primaryTokenLayer || !hasSentencePartition || readOnly || Object.keys(ops.paramErrors || {}).length > 0}
               >
                 <Play className="h-4 w-4" />
                 {(ops.isTokenizing || ops.isProcessing) ? 'Tokenizing...' : 'Tokenize'}
@@ -203,6 +208,19 @@ export function DocumentTokenize() {
               </Button>
             </div>
           </div>
+
+          {/* Service arguments (only when a service with parameters is selected) */}
+          {ops.paramSchema?.length > 0 && (
+            <div className="mb-4">
+              <ServiceParamForm
+                schema={ops.paramSchema}
+                values={ops.paramValues}
+                errors={ops.paramErrors}
+                onChange={ops.setParamValue}
+                disabled={readOnly || ops.isTokenizing || ops.isProcessing}
+              />
+            </div>
+          )}
 
           {/* Progress */}
           <div className="rounded-lg border bg-card p-4" style={{ minHeight: '120px' }}>
