@@ -3,7 +3,58 @@ import threading
 import stanza
 import requests
 import traceback
-from plaid_client import PlaidClient
+from plaid_client import PlaidClient, TASKS, Param, build_extras
+
+
+# Stanza ships UD models for many languages; offer a common subset. (value, label)
+STANZA_LANGUAGES = [
+    ('en', 'English'), ('de', 'German'), ('fr', 'French'), ('es', 'Spanish'),
+    ('it', 'Italian'), ('pt', 'Portuguese'), ('nl', 'Dutch'), ('ru', 'Russian'),
+    ('zh', 'Chinese'), ('ja', 'Japanese'), ('ar', 'Arabic'), ('ko', 'Korean'),
+]
+
+PARSER_SUMMARY = """\
+Runs the [Stanza](https://stanfordnlp.github.io/stanza/) neural pipeline —
+tokenization, POS tagging, lemmatization, and dependency parsing — and writes
+the result into the project's sentence / word / morpheme layers plus the UD
+annotation spans (Form, Lemma, UPOS, XPOS, Features) and dependency relations.
+
+- **Language** selects which Stanza models to use. The first parse in a given
+  language downloads its models (one-time) and is slower.
+
+> Re-running replaces the document's existing tokens and annotations.
+"""
+
+# Standardized self-description carried in `extras` for discovery. The parameter
+# `language` is read back as `request_data['language']` in the handler.
+PARSER_EXTRAS = build_extras(
+    tasks=[TASKS.PARSE],
+    summary=PARSER_SUMMARY,
+    parameters=[
+        Param.enum('language', 'Language', STANZA_LANGUAGES, default='en',
+                   description='Language models Stanza uses for parsing.'),
+    ],
+)
+
+
+class PipelineProvider:
+    """Lazily build and cache one Stanza pipeline per language.
+
+    The pipelines are not thread-safe, so callers must build + drive them under
+    the shared parse lock (see `make_handler`). Each distinct language used adds
+    one cached pipeline (and a one-time model download)."""
+
+    def __init__(self, processors='tokenize,pos,lemma,depparse'):
+        self.processors = processors
+        self._cache = {}
+
+    def get(self, language):
+        pipe = self._cache.get(language)
+        if pipe is None:
+            print(f"Loading Stanza pipeline for '{language}'…", flush=True)
+            pipe = stanza.Pipeline(language, processors=self.processors)
+            self._cache[language] = pipe
+        return pipe
 
 
 def get_token(api_url):
@@ -411,7 +462,7 @@ SERVICE_INFO = {
 }
 
 
-def make_handler(client, pipeline, parse_lock):
+def make_handler(client, pipeline_provider, parse_lock):
     """Build a per-project service-request handler bound to that project's own
     `client`. Each served project gets its own client so batch state (which is
     per-client, mutable instance state) never collides across projects' SSE
@@ -427,6 +478,8 @@ def make_handler(client, pipeline, parse_lock):
         """
         print(f"Received service request: {request_data}")
         document_id = request_data.get('document_id')
+        # User-controlled argument (declared in PARSER_EXTRAS' parameter schema).
+        language = request_data.get('language', 'en')
         try:
             # Get document content
             document = client.documents.get(document_id, include_body=True)
@@ -437,15 +490,18 @@ def make_handler(client, pipeline, parse_lock):
                 return
 
             # Send progress updates
-            response_helper.progress(10, "Starting document parsing...")
+            response_helper.progress(10, f"Starting document parsing ({language})...")
 
             # Serialize the actual parse across ALL served projects: the Stanza
-            # pipeline is shared and not thread-safe, and parse_document drives
+            # pipelines are shared and not thread-safe, and parse_document drives
             # this project's client through batch mode. With one SSE thread per
             # served project, two requests could otherwise run concurrently; the
             # lock makes them run one at a time. (Document fetch + the empty
             # check above stay outside the lock — they're per-client reads.)
+            # Building the per-language pipeline also happens under the lock,
+            # since Stanza model loading is not thread-safe.
             with parse_lock:
+                pipeline = pipeline_provider.get(language)
                 success = parse_document(pipeline, client, document_id, text_content)
 
             if success:
@@ -462,15 +518,17 @@ def make_handler(client, pipeline, parse_lock):
     return handle_service_request
 
 
-def serve_project(api_url, token, project_id, pipeline, parse_lock):
+def serve_project(api_url, token, project_id, pipeline_provider, parse_lock):
     """Register the Stanza service on a single project. Returns its
     ServiceRegistration (one SSE connection / daemon thread)."""
     client = PlaidClient(api_url, token)
     # Audit attribution comes from the named API token the client authenticates
     # with (its name shows up as the actor in the audit log). Mint one in the
     # web UI under Profile → API Tokens.
-    handler = make_handler(client, pipeline, parse_lock)
-    return client.messages.serve(project_id, SERVICE_INFO, handler)
+    handler = make_handler(client, pipeline_provider, parse_lock)
+    # The standardized self-description (tasks/summary/parameters) rides along
+    # for discovery as the 4th `serve` argument.
+    return client.messages.serve(project_id, SERVICE_INFO, handler, PARSER_EXTRAS)
 
 
 def main():
@@ -519,17 +577,20 @@ def main():
             sys.exit(1)
         targets = [(project_id, proj.get("name", project_id))]
 
-    print("Loading Stanza pipeline…")
-    pipeline = stanza.Pipeline('en', processors='tokenize,pos,lemma,depparse')
+    # Pipelines are built lazily per requested language and cached; preload the
+    # default so the common case is warm at startup.
+    print("Loading Stanza pipeline (en)…")
+    pipeline_provider = PipelineProvider(processors='tokenize,pos,lemma,depparse')
+    pipeline_provider.get('en')
     # One global lock serializes parses across every project's SSE thread (the
-    # pipeline is shared + not thread-safe). Parsing is CPU-bound, so one-at-a-
+    # pipelines are shared + not thread-safe). Parsing is CPU-bound, so one-at-a-
     # time is the right model regardless.
     parse_lock = threading.Lock()
 
     registrations = []
     for pid, pname in targets:
         try:
-            reg = serve_project(api_url, token, pid, pipeline, parse_lock)
+            reg = serve_project(api_url, token, pid, pipeline_provider, parse_lock)
             registrations.append((pid, pname, reg))
             print(f"  Serving project {pname} ({pid})")
         except Exception as e:

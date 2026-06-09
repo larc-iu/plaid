@@ -4,15 +4,33 @@ Whisper ASR Service
 Complete Whisper ASR implementation with both model and service in one file.
 """
 
-import sys
 import argparse
 import tempfile
 import shutil
-import torch
 import whisper
 from typing import List, Dict, Any
 from client.asr import ASRModel, Alignment, AlignmentProcessor
 from client.base_service import BaseService
+from plaid_client import TASKS, Param
+
+
+WHISPER_MODEL_SIZES = [
+    ('tiny', 'Tiny — fastest, least accurate'),
+    ('base', 'Base'),
+    ('small', 'Small'),
+    ('medium', 'Medium'),
+    ('large', 'Large — slowest, most accurate'),
+]
+
+SUMMARY = """\
+OpenAI **Whisper** speech-to-text. Downloads the document's attached media,
+transcribes it, and writes time-aligned segments.
+
+- **Model size**: larger models are more accurate but slower and need more
+  memory. The operator's launch `--model` sets the default and the first model
+  loaded; choosing a different size per request loads/caches it on demand.
+- **Language**: leave blank to auto-detect, or force an ISO code (e.g. `en`).
+"""
 
 
 class WhisperASRModel(ASRModel):
@@ -22,39 +40,49 @@ class WhisperASRModel(ASRModel):
     
     def __init__(self, model_name: str = "base", keep_loaded: bool = True):
         """Initialize the Whisper ASR model."""
-        self.model_name = model_name
+        self.model_name = model_name  # default/preferred size
         self.keep_loaded = keep_loaded
-        self.model = None
+        self._models: Dict[str, Any] = {}  # size -> loaded model (cached iff keep_loaded)
 
-        print(f"Whisper model: {model_name} (keep_loaded={keep_loaded})")
+        print(f"Whisper default model: {model_name} (keep_loaded={keep_loaded})")
 
         if self.keep_loaded:
-            self.load_model()
-    
-    def load_model(self):
-        """Load the Whisper model"""
-        if self.model is None:
-            self.model = whisper.load_model(self.model_name)
-            print(f"Whisper model loaded successfully on {self.model.device}")
+            self.load_model(self.model_name)
 
-    def unload_model(self):
-        """Unload the model from memory if not keeping it loaded"""
-        if not self.keep_loaded and self.model is not None:
-            print("Unloading Whisper model from memory...")
-            del self.model
-            self.model = None
+    def load_model(self, model_name: str = None):
+        """Load (and cache, when keep_loaded) the Whisper model of a given size."""
+        name = model_name or self.model_name
+        model = self._models.get(name)
+        if model is None:
+            print(f"Loading Whisper model '{name}'...")
+            model = whisper.load_model(name)
+            print(f"Whisper model '{name}' loaded on {model.device}")
+            if self.keep_loaded:
+                self._models[name] = model
+        return model
 
-    def transcribe_with_alignments(self, audio_path: str) -> List[Alignment]:
+    def transcribe_with_alignments(self, audio_path: str, model_size: str = None,
+                                   language: str = None) -> List[Alignment]:
         """
         Transcribe audio and return segment-level alignments.
+
+        Args:
+            audio_path: Local path to the audio file.
+            model_size: Optional per-request model size (defaults to the
+                operator-configured size).
+            language: Optional ISO language code to force (None = auto-detect).
         """
-        self.load_model()
-        
-        print(f"Transcribing audio file: {audio_path}")
-        
+        name = model_size or self.model_name
+        model = self.load_model(name)
+
+        print(f"Transcribing audio file: {audio_path} (model={name}, language={language or 'auto'})")
+
         try:
-            result = self.model.transcribe(audio_path)
-            
+            options = {}
+            if language:
+                options['language'] = language
+            result = model.transcribe(audio_path, **options)
+
             alignments = []
             for segment in result["segments"]:
                 segment_text = segment["text"].strip()
@@ -79,8 +107,10 @@ class WhisperASRModel(ASRModel):
         except Exception as e:
             raise RuntimeError(f"Whisper transcription failed: {str(e)}")
         finally:
-            self.unload_model()
-    
+            if not self.keep_loaded:
+                # Not cached; drop the reference so it can be reclaimed.
+                del model
+
     def get_model_info(self) -> Dict[str, Any]:
         """Return information about the Whisper model."""
         return {
@@ -99,7 +129,16 @@ class WhisperASRService(BaseService):
         super().__init__(
             service_id='asr:whisper-asr',
             service_name='Whisper ASR',
-            description='Automatic Speech Recognition using OpenAI\'s Whisper'
+            description='Automatic Speech Recognition using OpenAI\'s Whisper',
+            tasks=[TASKS.TRANSCRIBE],
+            summary=SUMMARY,
+            parameters=[
+                Param.enum('model_size', 'Model size', WHISPER_MODEL_SIZES, default='base',
+                           description='Larger models are more accurate but slower and use more memory.'),
+                Param.string('language', 'Language (optional)', default='',
+                             placeholder='auto-detect (e.g. en, es, de)',
+                             description='ISO code to force a language; blank = auto-detect.'),
+            ],
         )
         self.asr_model = None
         self.alignment_processor = None
@@ -111,10 +150,11 @@ class WhisperASRService(BaseService):
         # Add common arguments
         self.setup_parser_common_args(parser)
         
-        # Add ASR-specific arguments
-        parser.add_argument('--model', default='large', 
+        # Add ASR-specific arguments. The default matches the `model_size`
+        # parameter's default so the preloaded model is the one UI requests use.
+        parser.add_argument('--model', default='base',
                           choices=['tiny', 'base', 'small', 'medium', 'large'],
-                          help='Whisper model size (default: large)')
+                          help='Whisper model size to preload as the default (default: base)')
         parser.add_argument('--no-keep-loaded', action='store_true',
                           help='Unload model from memory after each transcription')
         
@@ -134,11 +174,15 @@ class WhisperASRService(BaseService):
     
     def process_request(self, request_data: dict, response_helper) -> None:
         """Process ASR request"""
-        # Extract required parameters
-        document_id = request_data.get('documentId')
-        text_layer_id = request_data.get('textLayerId')
-        alignment_token_layer_id = request_data.get('alignmentTokenLayerId')
-        sentence_token_layer_id = request_data.get('sentenceTokenLayerId')
+        # Request data reaches a Python service in snake_case (the client recases
+        # the JS UI's camelCase keys symmetrically on the wire).
+        document_id = request_data.get('document_id')
+        text_layer_id = request_data.get('text_layer_id')
+        alignment_token_layer_id = request_data.get('alignment_token_layer_id')
+        sentence_token_layer_id = request_data.get('sentence_token_layer_id')
+        # User-controlled arguments (declared in the service's parameter schema).
+        model_size = request_data.get('model_size') or None
+        language = request_data.get('language') or None
         
         # Validate required parameters
         if not document_id:
@@ -176,9 +220,10 @@ class WhisperASRService(BaseService):
             audio_file = self.alignment_processor.download_media_file(self.client, full_media_url, temp_dir)
             
             # Transcribe audio with ASR model
-            response_helper.progress(30, "Loading ASR model...")
+            response_helper.progress(30, f"Loading ASR model ({model_size or self.asr_model.model_name})...")
             response_helper.progress(40, "Transcribing audio...")
-            alignments = self.asr_model.transcribe_with_alignments(audio_file)
+            alignments = self.asr_model.transcribe_with_alignments(
+                audio_file, model_size=model_size, language=language)
             
             if not alignments:
                 raise ValueError("No transcription results generated")
