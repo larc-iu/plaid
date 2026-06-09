@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { cpSlice } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
 import './DependencyTree.css';
@@ -65,8 +64,12 @@ export const DependencyTree = ({
         y: TOKEN_Y // Use original TOKEN_Y for consistent arc drawing
       }))
     : tokens.map((token, index) => {
-        const tokenForm = cpSlice(textContent, token.begin, token.end);
-        const matchingLemmaSpan = lemmaSpans.find(span => 
+        // `textContent` is the provider object from SentenceRow (a `.substring`
+        // that resolves a token's form by exact begin/end), NOT a raw string —
+        // don't slice it. This fallback runs on the first render after tokens
+        // appear (e.g. just after a parse) before token positions are measured.
+        const tokenForm = textContent.substring(token.begin, token.end);
+        const matchingLemmaSpan = lemmaSpans.find(span =>
           (span.tokens && span.tokens.includes(token.id)) || span.begin === token.id
         );
         
