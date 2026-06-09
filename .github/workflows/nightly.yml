@@ -7,6 +7,15 @@ name: Nightly Tests
 # Notification: GitHub emails the repository owner automatically when a
 # SCHEDULED workflow run fails, so no extra notify step is needed. Wire a Slack
 # / webhook step under `if: failure()` later if you want louder alerts.
+#
+# Cost guard: the cheap `check` job below gates the expensive suite on "did
+# master move since the last nightly?". Cron can't be made conditional, so we
+# still spin up a few-second runner nightly, but the ~3-minute Clojure suite
+# only runs when there's a fresh commit. A skipped suite reports the run as
+# success (skipped jobs don't fail a run), so quiet nights stay green and
+# silent. `workflow_dispatch` always runs the suite regardless of commit age.
+# The window is intentionally ~26h (not 24h) to absorb GitHub's schedule jitter
+# — a false skip (missing a commit) is worse than an occasional redundant run.
 
 on:
   schedule:
@@ -18,7 +27,30 @@ permissions:
   contents: read
 
 jobs:
+  # Cheap gate: skip the suite on nights where master hasn't moved.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      recent: ${{ steps.check.outputs.recent }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: check
+        name: Commit since the last nightly?
+        run: |
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          age_h=$(( (now - last) / 3600 ))
+          if [ $(( now - last )) -lt 93600 ]; then   # ~26h window
+            echo "Last commit ${age_h}h ago — running suite."
+            echo "recent=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Last commit ${age_h}h ago — no changes since last nightly, skipping suite."
+            echo "recent=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
+    needs: check
+    if: needs.check.outputs.recent == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
