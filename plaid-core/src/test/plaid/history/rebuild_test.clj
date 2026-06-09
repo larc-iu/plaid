@@ -261,10 +261,15 @@
         ;; re-applies forward until caught up. The end state must match
         ;; pass 1 exactly — self-healing.
         (with-open [node-b (start-disk-node storage logp)]
-          ;; Reopen must NOT be a cold-start-from-epoch (that would mean
-          ;; nothing persisted at all). Some durable state survived.
-          (is (some? (history/cursor-read node-b))
-              "a cursor survived close/reopen (on-disk persistence is partial, not total loss)")
+          ;; Reopen may recover partial durable state OR cold-start from
+          ;; epoch — XTDB's :local log flushes asynchronously and .close
+          ;; forces no durable flush, so how much (if anything) survives is
+          ;; nondeterministic. EITHER WAY the tailer heals: a regressed or
+          ;; nil cursor just re-tails the OLTP audit log forward to the same
+          ;; state. That convergence — not cursor persistence — is the
+          ;; property under test, so we don't assert anything survived (an
+          ;; earlier `(some? (cursor-read node-b))` assertion here flaked
+          ;; exactly when the async flush hadn't fired before close).
           (drain-tailer! ds node-b)
           (let [snapshot-b (full-snapshot node-b)
                 cursor-b (history/cursor-read node-b)]
