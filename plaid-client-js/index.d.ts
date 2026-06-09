@@ -4,18 +4,56 @@ interface Page<T = any> {
   nextCursor: string | null;
 }
 
+/** One choice for an `enum` / `multiselect` service parameter. */
+interface ServiceParamOption {
+  value: string;
+  label: string;
+}
+
+/** A single user-controllable argument a service advertises. */
+interface ServiceParam {
+  /** Key the value is sent under in the request payload. */
+  key: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'enum' | 'multiselect';
+  description?: string;
+  default?: any;
+  required?: boolean;
+  /** Required for `enum` / `multiselect`. */
+  options?: ServiceParamOption[];
+  /** `number` only. */
+  min?: number;
+  max?: number;
+  step?: number;
+  /** `string` only. */
+  placeholder?: string;
+  multiline?: boolean;
+}
+
+/** A service's standardized self-description (lives in `extras`). */
+interface ServiceExtras {
+  schemaVersion?: number;
+  /** Tasks this service serves; from the TASKS vocabulary. */
+  tasks?: string[];
+  /** Rich human description (markdown), beyond the short `description`. */
+  summary?: string;
+  /** Ordered parameter schema, rendered into a form by the UI. */
+  parameters?: ServiceParam[];
+  [key: string]: any;
+}
+
 interface ServiceInfo {
   serviceId: string;
   serviceName: string;
   description: string;
-  extras?: any;
+  extras?: ServiceExtras;
 }
 
 interface DiscoveredService {
   serviceId: string;
   serviceName: string;
   description: string;
-  extras: any;
+  extras: ServiceExtras;
 }
 
 interface ServiceRegistration {
@@ -312,3 +350,27 @@ export const ROLES: {
 export function readRole(config?: object): string | null;
 /** The first layer in `layers` carrying the given role, or null. */
 export function findByRole<T extends { config?: object }>(layers: T[] | undefined, role: string): T | null;
+
+// --- Service self-description helpers ----------------------------------------
+// Standardize how a service advertises (in `extras`) the tasks it serves, a
+// summary, and a parameter schema — so a UI can offer service selection, an
+// argument form, and a summary at a fixed integration point. See the manual,
+// "Describing a service".
+/** The controlled task vocabulary — the fixed integration-point goals. */
+export const TASKS: {
+  readonly TOKENIZE: 'tokenize';
+  readonly PARSE: 'parse';
+  readonly TRANSCRIBE: 'transcribe';
+};
+/** Whether a service serves a task (declared `extras.tasks`, legacy id-prefix fallback). */
+export function servesTask(service: DiscoveredService, task: string): boolean;
+/** The discovered services that serve `task`. */
+export function filterServicesByTask(services: DiscoveredService[] | undefined, task: string): DiscoveredService[];
+/** The parameter schema a service declares (ordered), or []. */
+export function getParamSchema(service: DiscoveredService): ServiceParam[];
+/** A service's human summary: `extras.summary`, else `description`, else ''. */
+export function getServiceSummary(service: DiscoveredService): string;
+/** Default form values keyed by param key. */
+export function buildDefaultValues(schema: ServiceParam[]): Record<string, any>;
+/** Coerce/validate raw form values against the schema. */
+export function coerceParamValues(schema: ServiceParam[], raw: Record<string, any>): { values: Record<string, any>; errors: Record<string, string> };

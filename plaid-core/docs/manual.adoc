@@ -298,6 +298,43 @@ console.log("Service returned:", result);
 
 If the service reports an error, or the timeout elapses, the request fails with that error rather than returning a result.
 
+=== Describing a service: tasks, summary, and parameters
+
+The fields above (`service_name`, `description`) are enough for a human to recognize a service, but an application that plugs services into a fixed slot—"tokenize this document", "parse it", "transcribe the audio"—needs more: which services are eligible for that slot, what arguments each accepts, and what each one does. A service advertises all of this in its **`extras`**, an open metadata map that rides along with registration and comes back verbatim from discovery. Filling it in with the standard shape below lets a client offer the user a service picker, an arguments form, and a readable summary—without hard-coding anything about a particular service.
+
+[,python]
+----
+from plaid_client import TASKS, Param, build_extras
+
+extras = build_extras(
+    tasks=[TASKS.TOKENIZE],                          # which slots this service fills
+    summary="## My Tokenizer\nSplits text into words and sentences…",  # markdown
+    parameters=[                                       # user-controllable arguments
+        Param.enum("language", "Language",
+                   [("english", "English"), ("german", "German")],
+                   default="english",
+                   description="Model language."),
+    ],
+)
+# Pass it as the service's extras (a BaseService subclass assembles this for you):
+client.messages.serve(project_id, service_info, handle_request, extras)
+----
+
+The standard `extras` keys are:
+
+`tasks`:: A list of the slots this service fills, drawn from a small fixed vocabulary: `tokenize`, `parse`, `transcribe`. A client offering a "tokenize" action lists exactly the services whose `tasks` include `tokenize`.
+`summary`:: A longer, human-readable description (Markdown), shown on demand—use it for what the one-line `description` is too short to say.
+`parameters`:: An ordered list of the arguments a user may set per request. Each entry is a small descriptor; the client renders a form from it and sends the chosen values as part of the request data.
+
+A parameter descriptor has a `key` (the field its value is sent under), a `label`, and a `type`, plus optional `description`, `default`, and `required`. The types are `string` (optional `placeholder`, `multiline`), `number` (optional `min`, `max`, `step`), `boolean`, and `enum`/`multiselect` (each with `options`, a list of `{value, label}`). The `Param.*` builders produce these in Python; in JavaScript you write the equivalent objects.
+
+[NOTE]
+====
+A parameter's `key` is a *value*—the literal field name the argument is sent under—so it travels over the wire unchanged: a client reads the key exactly as the service declared it (`model_size`), sends the argument under that key, and it arrives back at the service unchanged. Because a snake_case or camelCase key contains no wire separator, this round-trips in either direction, so the rule is simply: declare each `key` in your own language's convention and read the argument back under that same key. (The `extras` *field names*—`schema_version`, `tasks`, `parameters`, …—are different: those are recased like the rest of the API, so a Python author writes `schema_version` and a JavaScript client sees `schemaVersion`. Only the `key` is exempt, because it is a value rather than a field name.)
+====
+
+Helpers in both clients save you from re-implementing this shape. On the **service-authoring** side (Python), `Param.*` build the parameter descriptors and `build_extras` assembles the whole object (a `BaseService` subclass does this for you). On the **selecting/UI** side (JavaScript), `filterServicesByTask` picks the services for a slot and `getServiceSummary`/`getParamSchema` read a service's summary and parameter schema. The value logic—turning a schema into initial form values and validated request values—exists in both: `buildDefaultValues`/`coerceParamValues` in JavaScript, `default_values`/`coerce` in Python.
+
 === Ephemerality
 
 Services are tracked **only while connected**. There is no queue and no persistence: a service that isn't running at the moment of a request won't appear in discovery, and a request to a service that is absent (or that disconnects mid-request) fails immediately rather than waiting for the service to come back.
@@ -948,473 +985,91 @@ Opening the document is the baseline; reconciling on a live update is the very s
 
 = Querying
 
-So far we have retrieved data by asking for it directly: a document by its id, a project's documents, and so on.
-Often, though, you want to find data by its _shape_ rather than its name: every place a particular word form occurs, every noun immediately followed by a verb, every word that has not been given a part-of-speech tag yet.
-Answering questions like these is what Plaid's **querying** is for.
-You write down a **pattern**, a description of the entities you are looking for and how they relate to one another, and Plaid hands back every place in your data that matches it.
-This happens in a single request, and it searches across every project you are allowed to read.
-
-A pattern is built out of ordinary data: objects and arrays, the same kind of JSON you have seen throughout this manual.
-You run it with the client's `query` method.
-The examples here are written in JavaScript; the Python client takes the very same pattern, only with Python's punctuation (a `dict` of lists rather than an object of arrays).
-They reuse the little part-of-speech project from <<An Example>> (the "Fido barks" project), whose word layer we will call `words` and whose tag layer we will call `pos`.
-This chapter is the example-led introduction; for the complete clause-by-clause reference, including every operator, limit, and error, see link:query.html[the query language reference].
+Plaid offers a rich query system for powering searches across one or even multiple projects.
+Here, we consider a few examples to give you a feel for it. For full details, see link:query.html[the query language reference].
+The examples below use the JavaScript client and the small "Fido barks" project from <<An Example>>.
 
 == A First Query
 
-The smallest useful query says what to **find**, and lists in **where** the conditions a match must satisfy:
+A simple query specifies what to `find`, and lists the conditions a match must satisfy in `where`:
 
 [,javascript]
 ----
-const result = await client.query({
+const posLayerId = /* ... some UUID ...*/;
+// every span on the pos layer whose value is NOUN
+const { results } = await client.query({
   find: ["?s"],
-  where: [["span", "?s", { layer: "pos", value: "NOUN" }]],
+  where: [["span", "?s", { layer: posLayerId, value: "NOUN" }]],
 });
-// result.results is a list of matches, one row each:
-//   [ ["<a span's id>"], ["<another span's id>"], ... ]
+// results: one row per match, each carrying the ids you asked to find
+//   here, the single span over "Fido"
 ----
 
-It helps to read that `where` line aloud, as a sentence: "a span, call it `?s`, that is on the `pos` layer and whose value is `NOUN`."
-The query returns every span for which that sentence is true.
-Each match is a row, and each row carries one id for every name you listed in `find`.
-
-The `?s` is a **variable**: any name you like, written with a question mark in front.
-You make the names up.
-What makes them useful is a single rule: writing the same name twice means "the same thing in both places."
-That rule is the whole of how you relate one entity to another, and it is where querying starts to earn its keep.
-
-== Query Structure
-
-Before we meet the rest of the constructs one at a time, here is the whole territory at a glance, so you can see how the pieces fit and how much there is to learn.
-
-A query is an object with one required part, `where`, and several optional ones:
-
-[cols="1,1,4"]
-|===
-| Key | Required? | What it does
-
-| `where`        | yes     | The list of clauses a match must satisfy. This is the pattern itself.
-| `find`         | usually | The variables whose ids each match returns. Omitted only when you aggregate (see <<Results>>).
-| `scope`        | no      | Restrict the search to particular projects (see <<Scope>>).
-| `orderBy`      | no      | Sort the matches (see <<Ordering>>).
-| `return`       | no      | The shape of the result: `ids` (the default), `entities`, `count`, or an aggregate (see <<Results>>).
-| `limit`        | no      | Cap how many matches come back.
-|===
-
-Everything expressive lives in `where`.
-Its clauses come in a few families, and the rest of this chapter takes them one family at a time:
-
-[cols="1,4"]
-|===
-| Family | What a clause in it does
-
-| Entity clause       | Describes one entity and gives it a name: a `span`, `token`, `relation`, `vocab` item, `document`, or `text`.
-| Layer clause        | Describes a layer and gives it a name, for when the layer itself is part of the question.
-| Relationship clause | Ties two already-named entities together: one token `precedes` another, a span `covers` a token, and so on.
-| Comparison          | Relates two named things by `=`, `!=`, `<`, `>`, `\<=`, or `>=`.
-| Combinator          | Builds larger patterns out of smaller ones: `or`, `not`, and the `seq` shorthand for sequences.
-|===
-
-The two tables below name every entity and relationship clause in one place; the sections that follow explain each in turn.
-You do not need to absorb them now, but it is worth knowing they are here to refer back to.
-
-.Entity and layer clauses, with the conditions each accepts
-[cols="2,2,3"]
-|===
-| Clause | Describes | Conditions you may give
-
-| `span`     | a span       | `layer`, `value`, `doc`, `metadata`
-| `token`    | a token      | `layer`, `value`, `doc`, `begin`, `end`, `metadata`
-| `relation` | a relation   | `layer`, `value`, `doc`, `source`, `target`, `metadata`
-| `vocab`    | a vocab item | `layer`, `form`, `metadata`
-| `document` | a document   | `name`, `id`, `metadata`
-| `text`     | a text       | `body`, `doc`, `metadata`
-| `span-layer`, `token-layer`, `relation-layer`, `vocab-layer` | a layer | `name`
-|===
-
-.Relationship clauses; each relates the two entities you name
-[cols="2,3"]
-|===
-| Clause | Holds when
-
-| `["covers", "?span", "?token"]`              | the span includes that token
-| `["precedes", "?t1", "?t2"]`                 | `?t2` is the very next token after `?t1`
-| `["precedes*", "?t1", "?t2"]`                | `?t1` comes somewhere before `?t2`
-| `["within", "?child", "?parent"]`            | the child token sits inside the parent's stretch of text
-| `["first-in", "?token", "?container"]`       | the token is the first one of its layer inside the container
-| `["overlaps", "?a", "?b"]`                   | the two spans share at least one token they cover
-| `["contains", "?a", "?b"]`                   | span `?a` covers every token that span `?b` does
-| `["coextensive", "?a", "?b"]`                | the two spans cover exactly the same tokens
-| `["related*", "?a", "?b", { layer: "dep" }]` | span `?b` is reachable from `?a` along relation edges on the named layer
-| `["source", "?relation", "?span"]`           | the span is the relation's source
-| `["target", "?relation", "?span"]`           | the span is the relation's target
-| `["vocab-link", "?token", "?vocab"]`         | the token is linked to that vocab item
-|===
-
-The ways of matching a value (an exact string, a list, a regular expression, or a bound variable) and the comparison and combinator operators each get their own section below.
-
-== Entity Clauses
-
-An **entity clause** describes one entity and gives it a name.
-You write it as `[kind, "?name", { ...conditions... }]`: the kind is the sort of entity you want, and the conditions narrow it down.
-The conditions available for each kind are listed in <<Query Structure>>; a `span`, for instance, may be constrained by its `layer`, its `value`, and the `doc` it belongs to, while a `text` is matched on its `body`, the document's raw text.
-You may give as many or as few conditions as you like, or none at all.
-
-To narrow a search to particular documents, say only the interviews, name the document and tie your annotations to it through their `doc`:
-
-[,javascript]
-----
-where: [
-  // remember which document the span is in
-  ["span", "?s", { layer: "pos", doc: { var: "?dv" } }],
-  ["document", "?d", { name: { regex: "^interview-" } }],
-  // and require it to be one of those
-  ["=", "?dv", "?d"],
-]
-----
-
-== Value Matching
-
-A `value` (on a span or relation, or a token's surface text) or a `form` (on a vocab item) can be matched in three ways (a fourth, the value variable, comes in <<Value Variables>>):
-
-* a plain string is an **exact match**;
-* a list, like `value: ["NOUN", "PROPN"]`, means **any of these**;
-* a `{ regex: ... }` spec matches part of the text with a **regular expression**.
-
-[,javascript]
-----
-// lemmas that start with "walk": walk, walks, walking, walked …
-["span", "?s", { layer: "lemma", value: { regex: "^walk" } }]
-// the same, ignoring upper/lower case
-["span", "?s", { layer: "lemma", value: { regex: "^walk", flags: "i" } }]
-----
-
-The pattern is an ordinary regular expression; the one option, `flags: "i"`, makes it ignore case.
-Reach for it when you want a family of forms (a prefix, a suffix, a stem) rather than one exact string.
-
-These forms are not confined to `value` and `form`.
-A regular expression may be used wherever a text value is matched: a span, token, or relation `value`, a vocab `form`, a document `name`, or a text `body`.
-A list, meaning "any of these", works on all of those and also on a token's `begin` and `end`, a `doc`, and a document `id`.
-
-== Metadata
-
-Any entity can also carry free-form **metadata**, the key/value pairs introduced in <<Metadata and Config>>.
-You filter on it with a `metadata` map, in which every entry must match.
-A metadata value can itself be an exact string, a list, or a `{ regex: ... }` pattern:
-
-[,javascript]
-----
-["span", "?s", { layer: "pos", metadata: { translation: "dog" } }]
-["document", "?d", { metadata: { genre: "news" } }]
-// a list means "any of these"; a { regex: ... } pattern also works
-["document", "?d", { metadata: { genre: ["news", "opinion"] } }]
-----
-
-Metadata keys are whatever you stored, exactly as written.
-It is meant for refining a search you have already narrowed, rather than as the first thing you reach for.
+Read that `where` line as a sentence: "a span, call it `?s`, on the `pos` layer, whose value is `NOUN`."
+The `?s` is a **variable** — any name you invent, written with a `?` — and every match comes back as a row holding one id per name in `find`.
 
 == Relationship Clauses
 
-A **relationship clause** relates two named entities to each other.
-You write it as `[relationship, "?a", "?b"]`; the full set is listed in <<Query Structure>>.
-With entity and relationship clauses both in hand we can ask for something with structure.
-Here is "a noun immediately followed by a verb":
+Here is a more interesting query, where we search for a noun immediately followed by a verb:
 
 [,javascript]
 ----
 await client.query({
   find: ["?noun", "?verb"],
   where: [
-    ["span", "?noun", { layer: "pos", value: "NOUN" }],
-    ["span", "?verb", { layer: "pos", value: "VERB" }],
-    ["covers", "?noun", "?t1"], ["covers", "?verb", "?t2"],
-    ["precedes", "?t1", "?t2"],
+    ["span", "?noun", { layer: posLayerId, value: "NOUN" }],
+    ["span", "?verb", { layer: posLayerId, value: "VERB" }],
+    ["covers", "?noun", "?t1"],   // the noun span covers a token ?t1
+    ["covers", "?verb", "?t2"],   // the verb span covers a token ?t2
+    ["precedes", "?t1", "?t2"],   // and ?t1 falls immediately before ?t2
   ],
 });
+// in "Fido barks": one match — the NOUN over "Fido" and the VERB over "barks"
 ----
 
-Each POS span `covers` the token it tags, and we ask for those two tokens to be adjacent with `precedes`.
-The names `?t1` and `?t2` each appear in two clauses, and it is that repetition (the same token covered by the noun span, standing just before the token covered by the verb span) that ties the whole thing into one requirement.
+When multiple clauses are provided to `where`, all must be satisfied in order to yield a match.
+In the latter three clauses, we use **relationship clauses**, which are used to enforce structural relations between entities.
+`covers` requires that a span have a token as one of its constituent tokens, and `precedes` requires that one token come immediately before another in linear order.
+These are two of several relationship clauses; the reference catalogs the rest.
 
-A relation's two ends can be written right on the relation, or as separate `source`/`target` clauses. The two are equivalent:
+== Return Types
+
+By default a match is a tuple of ids.
+Different return types are available, identified by `return`:
 
 [,javascript]
 ----
-// on the relation:
-["relation", "?r", {
-  layer: "dep", value: "nsubj",
-  source: "?head", target: "?dependent"
-}]
-// as separate clauses:
-["relation", "?r", { layer: "dep", value: "nsubj" }],
-["source", "?r", "?head"], ["target", "?r", "?dependent"]
+// a single number — the total match count
+await client.query({ find: ["?s"], where: [["span", "?s", { layer: posLayerId }]],
+                     return: "count" });
+// -> { return: "count", count: 2, truncated: false }   // two pos spans
+
+// or full entities, exactly as a GET would return them
+await client.query({ find: ["?s"], where: [["span", "?s", { layer: posLayerId, value: "NOUN" }]],
+                     return: "entities" });
+// -> results[0][0] is { id, layer, document, value: "NOUN", tokens: [...] }
 ----
 
-[NOTE]
-====
-"Next" and "before", what `precedes` and `precedes*` mean, follow the same order in which tokens are read in a document: by where each one begins, and then, for tokens that begin together, by their `precedence` (see <<Tokens>>).
-`precedes` is the immediately following token; `precedes*` is any token further along.
-Neither ever reaches across two documents, or across two token layers.
+== Visibility
 
-`within` and `first-in` compare tokens purely by their offsets, so a child is "within" a parent whenever the parent's stretch of text covers the child's.
-Name the child and parent on different token layers (a morpheme within a word within a sentence) when you want to climb the <<Token Layer Hierarchy,hierarchy>>.
-
-`related*` follows one or more relation edges, so it is transitive but never zero-length: `?a` reaches `?b` only through an actual chain of edges, not by being the same span. If you constrain the edges with a `value`, that value must be a plain string or a list of strings; a regex or a `{ var: ... }` is not accepted there.
-====
-
-== Value Variables
-
-So far a name has stood for an **entity**, a span or a token.
-A name can also stand for a **value**.
-Write `{ var: "?v" }` where a condition's value would go, and instead of filtering, the clause remembers what it found there, so that the same name used elsewhere has to match it.
-This is how you ask for two things that agree without naming the value yourself, two words with the same lemma, say:
-
-[,javascript]
-----
-where: [
-  ["span", "?a", { layer: "lemma", value: { var: "?v" } }],
-  // the same ?v, so the same lemma
-  ["span", "?b", { layer: "lemma", value: { var: "?v" } }],
-  // but two different spans
-  ["!=", "?a", "?b"],
-]
-----
-
-The `{ var: ... }` wrapper is deliberate: a plain string is always a literal, so a real value that happens to start with `?` is never mistaken for a name.
-A value variable may stand in for any of the scalar conditions: a `value`, a `form`, a token's `begin` or `end`, or a `doc`.
-
-== Comparisons
-
-That last line above, `["!=", "?a", "?b"]`, is a **comparison** clause.
-You write it as `[operator, a, b]`, relating two things you have already named.
-Between two entities only `"="` and `"!="` make sense, "the very same one" or "a different one", and the `"!="` above is what keeps a span from pairing with itself.
-Between values you may also use `"<"`, `">"`, `"\<="`, and `">="`; binding a token's `begin` to a name and writing `["<", "?n", 5]` finds the tokens that start before the fifth character.
-
-== Sequences
-
-"This token, then that one" comes up so often that there is a shorthand for it.
-A `seq` clause walks along a single token layer, matching each token in turn, each one immediately after the last:
-
-[,javascript]
-----
-["seq", { layer: "words" },
- ["span", { layer: "pos", value: "DET" }, "as", "?det"],
- ["span", { layer: "pos", value: "NOUN" }, "as", "?noun"]]
-----
-
-That matches a determiner immediately followed by a noun.
-Each line describes the token at the next position, here by the POS span that tags it, and you can capture a fixed position into a name by adding `"as"` and the name.
-
-A position can be made optional, or allowed to repeat, by wrapping it.
-`["?", ...]` means "zero or one of these", and `["rep", n, m, ...]` means "between _n_ and _m_ of these" (with _m_ at most 16):
-
-[,javascript]
-----
-// a determiner, an optional adjective, then a noun
-["seq", { layer: "words" },
- ["span", { layer: "pos", value: "DET" }, "as", "?det"],
- ["?", ["span", { layer: "pos", value: "ADJ" }]],
- ["span", { layer: "pos", value: "NOUN" }, "as", "?noun"]]
-----
-
-Only the fixed positions, the ones you know will be there, may be captured with `"as"`.
-
-== Boolean Combinators
-
-By default, listing several clauses in `where` means all of them must hold at once: the conditions are joined by "and".
-When you want alternatives, or exceptions, you ask for them explicitly.
-
-For "either this or that", wrap the alternatives in an `or` clause.
-Each alternative is itself a little list of clauses, and a match needs only one of the alternatives to hold:
-
-[,javascript]
-----
-// a span tagged either NOUN or VERB
-["or", [["span", "?s", { layer: "pos", value: "NOUN" }]],
-       [["span", "?s", { layer: "pos", value: "VERB" }]]]
-----
-
-When the only thing that differs between the alternatives is a single value, a tag that may be any of several, there is a shorter way to write it.
-Give a list of values, meaning "any of these":
-
-[,javascript]
-----
-["span", "?s", { layer: "pos", value: ["NOUN", "PROPN"] }]
-----
-
-For "there is no such thing", use a `not` clause.
-It holds exactly when the pattern inside it matches nothing at all:
-
-[,javascript]
-----
-// words that have not been given a POS tag
-await client.query({
-  find: ["?t"],
-  where: [
-    ["token", "?t", { layer: "words" }],
-    ["not", ["covers", "?s", "?t"], ["span", "?s", { layer: "pos" }]],
-  ],
-});
-----
-
-A name used inside a `not` is read in one of two ways, and it is worth being clear about which.
-If you have already named the thing in the ordinary (non-`not`) part of the query, like `?t`, the token, above, then the `not` is a statement about that particular thing: "this token has no POS span covering it."
-A name that appears _only_ inside the `not`, like `?s`, the span, is read as "there is no such span at all", and for that reason it cannot be one of the names you `find` (there would be nothing to hand back).
-
-These three ways of combining, the implicit "and", `or`, and `not`, may be nested inside one another freely.
-An `or` may sit inside a `not`, a `not` inside one branch of an `or`, and so on, so any combination of conditions you can state in words, you can write as a query.
-
-== Layer References
-
-Several of the examples above wrote `layer: "pos"` for readability.
-In a real query a layer is referenced by its **id** (its UUID), and only by its id:
-
-[,javascript]
-----
-["span", "?s", { layer: "98ef7a32-…-1327101afee3" }]
-----
-
-There is no referencing a layer by name or `"ProjectName/LayerName"` path.
-Layer names are not unique — two unrelated projects might each have a layer called `pos` — so a name cannot reliably stand for one layer, whereas an id always does; a non-id reference is refused.
-This is rarely any trouble: inside a program you already hold the id of whatever you loaded, so you just pass it.
-
-When you genuinely want to select a layer _by name_ — including the same-named layer across several projects at once — you do it with a layer variable and a describing clause, which is explicit about what it matches (next section).
-The describing clause matches a layer by its `name`, shown in the next section.
-A name is a loose handle, though: when you want the same _kind_ of layer to line up across projects deliberately, give those layers a shared **role** in their `config` (see <<Layer Interoperability>>) and select on that config value rather than relying on a shared name.
-
-=== Layer Variables
-
-Sometimes the layer is not something you want to settle in advance: which layer it is, is part of what you are asking.
-For that, the `layer` slot can hold a variable, exactly as an entity can.
-
-Naming the same layer variable in two clauses requires both entities to be on the _same_ layer, whichever one that turns out to be:
-
-[,javascript]
-----
-// a NOUN and a VERB span that sit on the same layer, no matter which
-["span", "?a", { layer: "?sl", value: "NOUN" }],
-["span", "?b", { layer: "?sl", value: "VERB" }]
-----
-
-You can also put a layer variable in `find`, to get the layer itself back, and you can describe the layer with a clause of its own.
-That describing clause is how you select layers _by name_ — and because it binds a variable, it can deliberately match the same-named layer across every project you can read, showing you exactly which layers it found:
-
-[,javascript]
-----
-// every NOUN span on any layer named "pos", in all the projects you can read
-await client.query({
-  find: ["?s"],
-  where: [
-    ["span", "?s", { layer: "?sl", value: "NOUN" }],
-    ["span-layer", "?sl", { name: "pos" }],
-  ],
-});
-----
-
-The describing clause is named after the kind of layer (`span-layer`, `token-layer`, `relation-layer`, or `vocab-layer`) and you constrain it by `name`.
-Naming one layer variable as, say, a span's layer in one clause and a token's layer in another is a mistake, and Plaid will tell you so.
-
-== Scope
-
-A query only ever looks at projects you are allowed to read.
-This is decided on the server, from who you are, and nothing in a query can widen it.
-With no further instruction, a query searches every project you can read.
-
-To search fewer, give a `scope`:
+Normal permissions restrictions apply to queries: a query submitted by a user is only executed over data that user has permission to read.
+In order to further restrict visibility to e.g. a single project, the `scope` parameter may be provided in a query:
 
 [,javascript]
 ----
 await client.query({
   find: ["?s"],
-  where: [["span", "?s", { layer: "pos", value: "NOUN" }]],
-  scope: { projectIds: ["<a project's id>", "<another's>"] },
+  where: [["span", "?s", { layer: posLayerId, value: "NOUN" }]],
+  scope: { projectIds: ["<a project's id>"] },
 });
 ----
 
-Whatever you put in `scope` is narrowed down to what you can already read, so `scope` can only ever restrict a search, never grant access to something new.
-(Vocab layers are shared between projects, so a vocab item is visible to you when any project in your scope has been given its layer.)
+Queries always read the current state of your data: there is no time-travel parameter (one passed as `asOf` is refused).
+For a document's history, see the <<Audit Log>>.
 
-== Ordering
+== Further Reading
 
-Unless you say otherwise, the matches come back in no particular order: the database hands them over in whatever order is convenient, which can change from one run to the next.
-When the order matters, say you want a concordance that reads top-to-bottom through the text, add an `orderBy`.
-
-It is a list of `[variable, attribute]` pairs, read left to right, just like sorting a spreadsheet by one column and then another:
-
-[,javascript]
-----
-// every NOUN, listed by document and then by where it sits in the text
-await client.query({
-  find: ["?t"],
-  where: [["token", "?t", { layer: "Words" }],
-          ["span",  "?s", { layer: "POS", value: "NOUN" }],
-          ["covers", "?s", "?t"]],
-  orderBy: [["?t", "doc"], ["?t", "begin"]],
-});
-----
-
-A few rules of thumb:
-
-* you can only sort by a variable you actually asked for in `find`;
-* what you can sort *by* depends on what the variable is: a token by where it begins or ends or by its position (`begin`, `end`, `precedence`) or its `doc`; a span or relation by its `value` or its `doc`; a vocab item by its `form`; and any of those by its `id`;
-* add `"desc"` as a third element, `["?t", "begin", "desc"]`, to go from last to first; the default is first to last.
-
-== Results
-
-By default a query gives you ids, but you can ask for more by setting `return`:
-
-* `"ids"` (the default): for each match, the id of every entity you named in `find`;
-* `"entities"`: the same matches, but each one expanded into the full entity (a span with its value and its tokens, and so on), exactly as the ordinary `get` for that entity would return it;
-* `"count"`: just a number, how many distinct matches there are.
-
-[,javascript]
-----
-await client.query({ find: ["?s"], where: [/* ... */], return: "count" });
-// -> { return: "count", count: 38 }
-----
-
-When a single total is not enough, when you want a number *per group*, `return` can instead be a small summary.
-You give a list of variables to `group` by and a list of `aggregates` to compute for each group.
-The aggregates are the familiar ones: `count` (how many matches), and `sum`, `avg`, `min`, and `max` of a value you have named with a variable.
-
-[,javascript]
-----
-// the number of words in each document, and how far into the
-// text they range, in ONE query
-await client.query({
-  where: [
-    ["token", "?t", {
-      layer: "Words", doc: { var: "?d" }, begin: { var: "?b" }
-    }]
-  ],
-  return: {
-    group: ["?d"],
-    aggregates: [["count"], ["min", "?b"], ["max", "?b"], ["avg", "?b"]]
-  },
-});
-// -> { return: "aggregate",
-//      columns: ["d","count","min_b","max_b","avg_b"],
-//      results: [ ["<doc-1>", 137, 0, 980, 412.6], ... ] }
-----
-
-Group by nothing (`group: []`) to get a single overall row, whose `count` is the number of matches, the same as a plain `count` return when the query binds nothing beyond what you `find`, though a one-to-many join makes them differ (see below).
-`sum` and `avg` expect the value to be a number; `min` and `max` work on anything that can be ordered.
-One thing to watch: a "match" is a binding of _all_ the variables in the query, so if your `where` ties the thing you are summing to several others (a span to each of its tokens, say), its value is counted once for each of them, and `sum`, `avg`, and `count` all come out larger (`min` and `max` are unaffected). Keep the pattern down to what you are actually measuring.
-This is the one place the query language *summarises* rather than *finds*, and it is deliberately small: these five operations, grouped however you like, and nothing more elaborate.
-
-So that a very broad query cannot overwhelm the server, results are capped.
-An `ids` or `entities` query returns at most a thousand matches by default, and at most a hundred thousand even if you ask for more with `limit`.
-When there are more matches than were returned, the result's `truncated` flag is set, so you know it was cut short.
-And a query that takes too long to run (about thirty seconds) is stopped rather than allowed to run away; if that happens, the pattern is too broad, and the remedy is to add a condition that pins it down further, or to narrow the `scope`.
-
-[NOTE]
-====
-Querying reads the **current** state of your data.
-It changes nothing, and it does not look into the past: there is no time-travel parameter, and a query that passes one (`asOf`) is refused.
-For the history of a document, who changed what and when, see the <<Audit Log>>.
-====
-
-For more details, see link:query.html[the query language reference].
+See link:query.html[the query language reference] for comprehensive information about how queries work.
 
 = Configuration
 

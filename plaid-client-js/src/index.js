@@ -1618,3 +1618,15 @@ export { PlaidClient };
 // indices). See ./codepoint.js.
 export { cpLength, cpSlice, utf16ToCp, cpToUtf16, cpIndexOf } from './codepoint.js';
 export { PLAID_NAMESPACE, ROLE_KEY, ROLES, readRole, findByRole } from './roles.js';
+// Service self-description helpers: filter discovered services by task, read a
+// service's parameter schema/summary, and build/coerce form values. See
+// ./serviceSchema.js.
+export {
+  TASKS,
+  servesTask,
+  filterServicesByTask,
+  getParamSchema,
+  getServiceSummary,
+  buildDefaultValues,
+  coerceParamValues,
+} from './serviceSchema.js';
