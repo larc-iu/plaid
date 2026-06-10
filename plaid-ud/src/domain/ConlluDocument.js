@@ -913,9 +913,12 @@ export class ConlluDocument {
     }
 
     return this._withSaving('Failed to create word', async () => {
+      // Token offsets are code points; .length is UTF-16 units and overshoots
+      // on astral characters.
+      const fullLen = cpLength(textContent);
       this._client.beginBatch();
       if (sentenceTokens.length === 0) {
-        this._client.tokens.bulkCreate([{ tokenLayerId: sentenceTokenLayer.id, text: text.id, begin: 0, end: textContent.length }]);
+        this._client.tokens.bulkCreate([{ tokenLayerId: sentenceTokenLayer.id, text: text.id, begin: 0, end: fullLen }]);
       }
       this._client.tokens.bulkCreate([{ tokenLayerId: wordTokenLayer.id, text: text.id, begin, end }]);
       this._client.tokens.bulkCreate([{ tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end }]);
@@ -937,7 +940,7 @@ export class ConlluDocument {
       this._applyRawPatch((next, infoNext) => {
         if (sentenceId && infoNext.sentenceTokenLayer) {
           if (!Array.isArray(infoNext.sentenceTokenLayer.tokens)) infoNext.sentenceTokenLayer.tokens = [];
-          infoNext.sentenceTokenLayer.tokens.push({ id: sentenceId, begin: 0, end: textContent.length });
+          infoNext.sentenceTokenLayer.tokens.push({ id: sentenceId, begin: 0, end: fullLen });
         }
         if (wordId && infoNext.wordTokenLayer) {
           if (!Array.isArray(infoNext.wordTokenLayer.tokens)) infoNext.wordTokenLayer.tokens = [];
