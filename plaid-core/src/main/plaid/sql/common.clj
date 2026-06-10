@@ -343,6 +343,48 @@
    :journal-mode "WAL"
    :synchronous "NORMAL"})
 
+(def ^:private valid-journal-modes
+  #{"delete" "truncate" "persist" "memory" "wal" "off"})
+
+(def ^:private synchronous-levels
+  "PRAGMA synchronous name → the integer SQLite reports back."
+  {"off" 0 "normal" 1 "full" 2 "extra" 3
+   "0" 0 "1" 1 "2" 2 "3" 3})
+
+(defn- read-pragmas
+  [^javax.sql.DataSource ds]
+  (with-open [c (.getConnection ds)
+              st (.createStatement c)]
+    (let [pragma (fn [p]
+                   (let [rs (.executeQuery st (str "PRAGMA " p))]
+                     (.next rs)
+                     (.getObject rs 1)))]
+      {:foreign-keys (long (pragma "foreign_keys"))
+       :journal-mode (str/lower-case (str (pragma "journal_mode")))
+       :synchronous (long (pragma "synchronous"))
+       :busy-timeout (long (pragma "busy_timeout"))})))
+
+(defn- verify-pragmas!
+  "Read the PRAGMAs back off a pooled connection and fail loudly if any
+  didn't take. A bad PRAGMA value is a silent no-op at the SQLite level
+  (`PRAGMA journal_mode = wal2` just returns the current mode), so
+  trusting the write path is not enough — this read-back catches both
+  bad values and any regression in how the pragmas are delivered to the
+  driver."
+  [ds {:keys [journal-mode synchronous busy-timeout-ms in-memory?]}]
+  (let [expected {:foreign-keys 1
+                  ;; In-memory DBs can't change journal mode — SQLite
+                  ;; pins it to "memory" regardless of what we request.
+                  :journal-mode (if in-memory? "memory" (str/lower-case journal-mode))
+                  :synchronous (synchronous-levels (str/lower-case (str synchronous)))
+                  :busy-timeout (long busy-timeout-ms)}
+        actual (read-pragmas ds)]
+    (when (not= expected actual)
+      (throw (ex-info (str "SQLite PRAGMA verification failed — pooled connections do not "
+                           "have the configured pragmas. Expected " expected
+                           ", got " actual)
+                      {:expected expected :actual actual :code 500})))))
+
 (defn build-datasource
   "Build a HikariCP DataSource for a SQLite database at the given path.
   `db-path` may be nil/empty for an in-memory database (used in tests).
@@ -400,6 +442,19 @@
                                         (coerce-numeric :connection-timeout-ms))
          busy-timeout-ms (some->> (:busy-timeout-ms cfg)
                                   (coerce-numeric :busy-timeout-ms))
+         journal-mode (let [jm (str (:journal-mode cfg))]
+                        (when-not (contains? valid-journal-modes (str/lower-case jm))
+                          (throw (ex-info (str ":journal-mode must be one of "
+                                               (sort valid-journal-modes)
+                                               ", got: " (pr-str jm))
+                                          {:key :journal-mode :value jm :code 500})))
+                        jm)
+         synchronous (let [sv (str (:synchronous cfg))]
+                       (when-not (contains? synchronous-levels (str/lower-case sv))
+                         (throw (ex-info (str ":synchronous must be one of "
+                                              "(off normal full extra), got: " (pr-str sv))
+                                         {:key :synchronous :value sv :code 500})))
+                       sv)
          in-memory? (or (nil? db-path) (= "" db-path))
          ;; URI form `file::memory:?cache=shared&mode=memory` names the
          ;; in-memory DB so multiple connections share state robustly.
@@ -411,20 +466,25 @@
          hc (doto (HikariConfig.)
               (.setJdbcUrl jdbc-url)
               (.setDriverClassName "org.sqlite.JDBC")
-              ;; WAL mode (set below) allows concurrent readers alongside the single writer,
+              ;; WAL mode allows concurrent readers alongside the single writer,
               ;; so a small pool is fine. busy_timeout gives SQLite room to retry the
               ;; writer lock before we surface SQLITE_BUSY to the caller; set Hikari's
               ;; connection timeout higher than that.
               (.setMaximumPoolSize max-pool)
               (.setConnectionTimeout (long connection-timeout-ms))
               (.setPoolName "plaid-sqlite")
-              ;; Enforce FKs + WAL on every connection (SQLite forgets FK enforcement
-              ;; per connection by default).
-              (.setConnectionInitSql
-               (str "PRAGMA foreign_keys = ON;"
-                    "PRAGMA journal_mode = " (:journal-mode cfg) ";"
-                    "PRAGMA synchronous = " (:synchronous cfg) ";"
-                    "PRAGMA busy_timeout = " (long busy-timeout-ms) ";")))]
+              ;; PRAGMAs ride on connection properties (sqlite-jdbc reads
+              ;; them into SQLiteConfig and applies per connection — same
+              ;; channel as the URL's transaction_mode). Do NOT move these
+              ;; to setConnectionInitSql: Hikari hands init SQL to the
+              ;; driver as one Statement.execute, and sqlite-jdbc silently
+              ;; drops everything after the first ';' — a multi-statement
+              ;; init string applied only foreign_keys and never enabled
+              ;; WAL. verify-pragmas! below guards this channel.
+              (.addDataSourceProperty "foreign_keys" "on")
+              (.addDataSourceProperty "journal_mode" journal-mode)
+              (.addDataSourceProperty "synchronous" synchronous)
+              (.addDataSourceProperty "busy_timeout" (str (long busy-timeout-ms))))]
      ;; In-memory SQLite lives only as long as at least one connection is open
      ;; to the named database. One pinned idle connection is enough to keep
      ;; the named in-memory DB alive across the pool's lifetime; pinning
@@ -434,7 +494,16 @@
      ;; knob). Keep it to 1.
      (when in-memory?
        (.setMinimumIdle hc 1))
-     (HikariDataSource. hc))))
+     (let [ds (HikariDataSource. hc)]
+       (try
+         (verify-pragmas! ds {:journal-mode journal-mode
+                              :synchronous synchronous
+                              :busy-timeout-ms busy-timeout-ms
+                              :in-memory? in-memory?})
+         ds
+         (catch Throwable t
+           (.close ds)
+           (throw t)))))))
 
 ;; ============================================================
 ;; Query execution (HoneySQL + next.jdbc)
