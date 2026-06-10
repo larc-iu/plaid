@@ -2,13 +2,12 @@ import { useState, useRef, useMemo } from 'react';
 import { Drawer, Loader, Text, Button, Box, Group } from '@mantine/core';
 import { IconChevronRight } from '@tabler/icons-react';
 import { EntityAvatar } from '../../common/EntityAvatar.jsx';
+import { fullTimestamp } from '../../../utils/formatTime.js';
 import classes from './HistoryDrawer.module.css';
 
 const ITEM_HEIGHT = 116; // Height of each rendered row in pixels (card + gutter; see .cardContent)
 const BUFFER_SIZE = 5; // Number of rows to render outside visible area
 const GROUP_THRESHOLD_MS = 5000; // Entries closer in time than this collapse together
-
-const formatTime = (timestamp) => new Date(timestamp).toLocaleString();
 
 const getEntryDescription = (entry) => entry.ops?.[0]?.description || 'No description available';
 
@@ -173,7 +172,7 @@ export const HistoryDrawer = ({
         <div className={classes.clamp}>{renderDescription(getEntryDescription(entry), layerNames)}</div>
       </div>
       <div style={{ flexShrink: 0, paddingTop: '0.5rem', borderTop: '1px solid var(--mantine-color-gray-1)' }}>
-        <Text size="xs" c="dimmed">{formatTime(entry.time)}</Text>
+        <Text size="xs" c="dimmed">{fullTimestamp(entry.time)}</Text>
         {entry.user && (
           <Text size="xs" c="dimmed">
             by {entry.user.username}{entry.apiToken ? ` (via ${entry.apiToken.name})` : ''}
@@ -230,7 +229,7 @@ export const HistoryDrawer = ({
             </div>
           </div>
           <div style={{ flexShrink: 0, paddingTop: '0.35rem', borderTop: '1px solid var(--mantine-color-gray-1)' }}>
-            <Text size="xs" c="dimmed">{formatTime(first.time)}</Text>
+            <Text size="xs" c="dimmed">{fullTimestamp(first.time)}</Text>
             <Text size="xs" c="dimmed">
               {group.entries.length} actions{first.user ? ` by ${first.user.username}` : ''}
               {first.apiToken ? ` (via ${first.apiToken.name})` : ''}
@@ -301,7 +300,7 @@ export const HistoryDrawer = ({
           {selectedEntry && (
             <Box p="md" bg="blue.0" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
               <Text size="sm" fw={500} c="blue.9" mb={4}>Viewing Historical State</Text>
-              <Text size="xs" c="blue.7">{formatTime(selectedEntry.time)}</Text>
+              <Text size="xs" c="blue.7">{fullTimestamp(selectedEntry.time)}</Text>
               <Button size="xs" mt="xs" onClick={() => onSelectEntry(null)}>
                 Return to Current State
               </Button>

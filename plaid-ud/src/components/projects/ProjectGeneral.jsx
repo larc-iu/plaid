@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
-import { canManageProject } from '../../utils/permissions.js';
+import { useManagedProject } from './useManagedProject.js';
 import {
   Container, Title, Text, Button, Group, Stack, Paper, TextInput, Modal, Alert, Center, Loader,
 } from '@mantine/core';
@@ -13,12 +13,10 @@ import {
 // action, deliberately tucked behind a type-the-name confirmation since it's
 // rarely needed.
 export const ProjectGeneral = ({ embedded = false }) => {
-  const { projectId } = useParams();
+  const { projectId, project, loading, fetchProject, canConfigure } = useManagedProject();
   const navigate = useNavigate();
-  const { getClient, user } = useAuth();
+  const { getClient } = useAuth();
 
-  const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [savingLocale, setSavingLocale] = useState(false);
   const [tokenizerLocale, setTokenizerLocale] = useState(''); // BCP-47, '' = 'und'
 
@@ -26,33 +24,6 @@ export const ProjectGeneral = ({ embedded = false }) => {
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const fetchProject = async () => {
-    try {
-      setLoading(true);
-      const client = getClient();
-      if (!client) throw new Error('Not authenticated');
-      const data = await client.projects.get(projectId);
-      setProject(data);
-      return data;
-    } catch (err) {
-      console.error('Failed to load project:', err);
-      notifyError('Failed to load project.');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProject();
-  }, [projectId]);
-
-  const canConfigure = canManageProject(project, user);
-
-  useEffect(() => {
-    if (project && !canConfigure) navigate('/projects');
-  }, [project, canConfigure, navigate]);
 
   // Seed the locale editor from the project's text-layer config.
   useEffect(() => {

@@ -19,8 +19,6 @@
     "@mantine/modals": "^7.17.8",
     "@mantine/notifications": "^7.17.8",
     "@tabler/icons-react": "^3.44.0",
-    "axios": "^1.10.0",
-    "d3": "^7.9.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",

@@ -5,7 +5,7 @@ import {
 } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess } from '../../utils/feedback.jsx';
-import { formatRelative } from '../../utils/formatRelative.js';
+import { timeAgo } from '../../utils/formatTime.js';
 
 export const UserProfile = () => {
   const { user, getClient, updateUser } = useAuth();
@@ -327,7 +327,7 @@ export const UserProfile = () => {
                 >
                   <div style={{ minWidth: 0 }}>
                     <Text size="sm" fw={500} truncate>{t.name}</Text>
-                    <Text size="xs" c="dimmed">Created {formatRelative(t.createdAt)}</Text>
+                    <Text size="xs" c="dimmed">Created {timeAgo(t.createdAt) || 'unknown'}</Text>
                   </div>
                   <Button variant="subtle" color="red" size="compact-sm" onClick={() => handleRevokeToken(t.id)}>
                     Revoke

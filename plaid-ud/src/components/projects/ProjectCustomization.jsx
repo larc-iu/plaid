@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import {
   UPOS_TAGS, UNIVERSAL_DEPRELS, autoColor, cleanColorMap, baseRel
 } from '../../utils/udVocab.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
-import { canManageProject } from '../../utils/permissions.js';
+import { useManagedProject } from './useManagedProject.js';
 import {
   Container, Title, Text, Button, Group, Stack, Alert, Paper, TextInput, Center, Loader,
   TagsInput, ColorInput, ActionIcon, SimpleGrid,
@@ -19,12 +18,9 @@ import { IconTrash, IconRestore } from '@tabler/icons-react';
 // layers, so the project must be configured before they can be edited. (The
 // tokenizer locale and project deletion live on the General tab.)
 export const ProjectCustomization = ({ embedded = false }) => {
-  const { projectId } = useParams();
-  const navigate = useNavigate();
-  const { getClient, user } = useAuth();
+  const { project, loading, fetchProject, canConfigure } = useManagedProject();
+  const { getClient } = useAuth();
 
-  const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [uposVocab, setUposVocab] = useState([]);
@@ -33,33 +29,6 @@ export const ProjectCustomization = ({ embedded = false }) => {
   const [deprelColors, setDeprelColors] = useState({}); // { baseRel: '#hex' }
   const [uposColors, setUposColors] = useState({});     // { UPOS: '#hex' }
   const [featureInventory, setFeatureInventory] = useState([]); // [{key, values}]
-
-  const fetchProject = async () => {
-    try {
-      setLoading(true);
-      const client = getClient();
-      if (!client) throw new Error('Not authenticated');
-      const data = await client.projects.get(projectId);
-      setProject(data);
-      return data;
-    } catch (err) {
-      console.error('Failed to load project:', err);
-      notifyError('Failed to load project.');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProject();
-  }, [projectId]);
-
-  const canConfigure = canManageProject(project, user);
-
-  useEffect(() => {
-    if (project && !canConfigure) navigate('/projects');
-  }, [project, canConfigure, navigate]);
 
   // Seed the editors from the project's current layer config.
   useEffect(() => {
