@@ -320,27 +320,70 @@
                             [:in :target_span_id (vec span-ids)]]})
          (mapv :id))))
 
-(defn- spans-becoming-orphaned
-  "Return span IDs that will be left with ZERO tokens once `token-ids`
-  are removed from span_tokens. A span is orphaned iff every one of
-  its token references is in `token-ids`."
-  [tx token-ids]
+(defn- fetch-span-token-ids
+  "Return the ordered token-id vector for `span-id` from span_tokens.
+  Mirror of plaid.sql.span/fetch-token-ids — duplicated to avoid the ns
+  dependency cycle (span already depends on this ns transitively via
+  reads)."
+  [tx span-id]
+  (->> (psc/q tx {:select [:token_id]
+                  :from [:span_tokens]
+                  :where [:= :span_id span-id]
+                  :order-by [:order_idx]})
+       (mapv :token_id)))
+
+(defn- partition-spans-by-deletion
+  "For the set of spans that reference any token in `token-ids`,
+  partition into (a) fully orphaned (every token in token-ids — DELETE,
+  along with relations referencing them), and (b) partially trimmed
+  (some tokens remain — emit a synthetic audit row carrying the trimmed
+  :tokens vector).
+
+  Returns {:orphan-span-ids [...] :span-trim-plan [{:span-id :span-row
+                                                    :pre-tokens :post-tokens} ...]}.
+
+  Same contract as partition-vocab-links-by-deletion below. The partial
+  trim previously relied silently on FK CASCADE on span_tokens.token_id,
+  which is audit-invisible: the audit log was not row-complete, and the
+  history replica kept the span's stale :tokens vector forever (as-of
+  reads showed spans referencing tokens that no longer existed at that
+  snapshot)."
+  [tx token-ids token-ids-set]
   (if (empty? token-ids)
-    []
-    (->> (psc/q tx
-                ;; spans whose token set is a subset of token-ids:
-                ;; (count tokens in token-ids) = (count tokens overall)
-                ;; for that span. Compute via a single grouped query.
-                {:select [:span_id]
-                 :from :span_tokens
-                 :group-by [:span_id]
-                 :having [:=
-                          [:count :*]
-                          [:sum
-                           [:case
-                            [:in :token_id (vec token-ids)] 1
-                            :else 0]]]})
-         (mapv :span_id))))
+    {:orphan-span-ids [] :span-trim-plan []}
+    (let [touched-span-ids (->> (psc/q tx {:select-distinct [:span_id]
+                                           :from :span_tokens
+                                           :where [:in :token_id (vec token-ids)]})
+                                (mapv :span_id))]
+      (if (empty? touched-span-ids)
+        {:orphan-span-ids [] :span-trim-plan []}
+        (let [span-rows-by-id (psc/fetch-ids-as-map tx :spans :id touched-span-ids)
+              plans (for [span-id touched-span-ids
+                          :let [pre-tokens (fetch-span-token-ids tx span-id)
+                                post-tokens (vec (remove token-ids-set pre-tokens))]]
+                      {:span-id span-id
+                       :span-row (clojure.core/get span-rows-by-id span-id)
+                       :pre-tokens pre-tokens
+                       :post-tokens post-tokens})
+              {orphans true trims false} (group-by #(empty? (:post-tokens %)) plans)]
+          {:orphan-span-ids (mapv :span-id orphans)
+           :span-trim-plan (vec trims)})))))
+
+(defn- trim-span-tokens!
+  "Emit a synthetic audit row on :spans carrying the trimmed :tokens
+  vector, then rewrite the junction table to match. Same pattern (and
+  rationale) as trim-vocab-link-tokens! below; the pre/post image shape
+  matches span/set-tokens' synthetic audit row, so the replayer consumes
+  both identically."
+  [tx {:keys [span-id span-row pre-tokens post-tokens]}]
+  (let [pre-image  (assoc span-row :tokens pre-tokens)
+        post-image (assoc span-row :tokens post-tokens)]
+    (psc/record-audit-write! tx :spans span-id :update pre-image post-image)
+    (psc/execute! tx
+                  {:delete-from :span_tokens
+                   :where [:and
+                           [:= :span_id span-id]
+                           [:not-in :token_id (if (seq post-tokens) (vec post-tokens) [nil])]]})))
 
 (defn- fetch-vocab-link-token-ids
   "Return the ordered token-id vector for `vl-id` from vocab_link_tokens.
@@ -442,23 +485,24 @@
 
 (defn multi-delete!
   "Delete every token in `eids`, AND cascade to the visible entities
-  whose existence depends on them — orphaned spans (no tokens left),
-  orphaned vocab_links (no tokens left), partially-orphaned vocab_links
-  (some but not all tokens deleted — those get TRIMMED, not deleted —
-  see v2's `multi-delete*` for the original semantics), and relations
-  whose source/target span is about to disappear. Each visible-entity
-  delete uses psc/delete-by-id! so audit_writes captures it.
+  whose existence depends on them. Spans and vocab_links that reference
+  a deleted token are each split the same way: fully orphaned (no
+  tokens left — audited DELETE) vs partially trimmed (some tokens
+  remain — synthetic :update audit row carrying the trimmed `:tokens`
+  vector; see v2's `multi-delete*` for the original semantics).
+  Relations whose source/target span is about to disappear are deleted
+  too. Each visible-entity delete uses psc/delete-by-id! so
+  audit_writes captures it.
 
   Ordering rationale: a span deletion FK-cascades to relations
   (relations.{source,target}_span_id ON DELETE CASCADE). FK cascades
   bypass audit_writes, so we delete the affected RELATIONS FIRST
-  (audited), then the spans (audited), then vocab_links — both the
-  fully orphaned ones (audited delete) and the partially trimmed ones
-  (synthetic audit row carrying the new `:tokens` vector, then the
-  junction rows actually get rewritten or FK-swept) — then the tokens
+  (audited), then the orphaned spans (audited), then the span/vocab_link
+  partial trims (synthetic audit rows + explicit junction rewrites),
+  then the orphaned vocab_links (audited delete), then the tokens
   themselves. The schema's ON DELETE CASCADE on the junction tables
-  (span_tokens, vocab_link_tokens) cleans up the junction rows when
-  the parent is gone — those are high-volume and not separately
+  (span_tokens, vocab_link_tokens) cleans up remaining junction rows
+  when a parent is gone — those are high-volume and not separately
   audited (the parent's row carries the change).
 
   entity_metadata cleanup: see `sweep-entity-metadata!` — we sweep
@@ -470,13 +514,14 @@
   (when (seq eids)
     (let [eids (vec eids)
           eids-set (set eids)
-          ;; 1. Which spans will have zero remaining tokens?
-          orphan-span-ids (spans-becoming-orphaned tx eids)
-          ;; 2. Which relations reference one of those spans?
+          ;; 1. Spans touched by this delete set — split into
+          ;;    fully-orphaned (DELETE, plus their relations) vs
+          ;;    partial-trim (synthetic audit row).
+          {:keys [orphan-span-ids span-trim-plan]}
+          (partition-spans-by-deletion tx eids eids-set)
+          ;; 2. Which relations reference an orphaned span?
           rel-ids (relations-referencing-spans tx orphan-span-ids)
-          ;; 3. Vocab_links touched by this delete set — split into
-          ;;    fully-orphaned (DELETE) vs partial-trim (synthetic
-          ;;    audit row carrying the trimmed :tokens vector).
+          ;; 3. Vocab_links touched by this delete set — same split.
           {:keys [orphan-vl-ids vl-trim-plan]}
           (partition-vocab-links-by-deletion tx eids eids-set)]
       ;; Order: relations → spans → vocab_links → tokens.
@@ -488,6 +533,9 @@
       (when (seq orphan-span-ids)
         (psc/delete-where! tx :spans [:in :id orphan-span-ids]))
       (sweep-entity-metadata! tx "span" orphan-span-ids)
+      ;; Span partial trim: emit synthetic audit + rewrite junctions.
+      (doseq [plan span-trim-plan]
+        (trim-span-tokens! tx plan))
       ;; Vocab_link partial trim: emit synthetic audit + rewrite junctions.
       (doseq [plan vl-trim-plan]
         (trim-vocab-link-tokens! tx plan))

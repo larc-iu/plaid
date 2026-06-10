@@ -546,8 +546,8 @@
                              [:= :entity_type "text"]
                              [:in :entity_id text-ids]]})))
   ;; Defensive sweep: any spans/relations/vocab_links left attached to
-  ;; the document but not removed via the token cascade (orphans
-  ;; that wouldn't trigger spans-becoming-orphaned because their token
+  ;; the document but not removed via the token cascade (orphans the
+  ;; partition-spans-by-deletion split can't see because their token
   ;; lists were already empty).
   (let [rel-ids (->> (psc/q tx {:select [:id]
                                 :from :relations

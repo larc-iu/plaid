@@ -219,9 +219,11 @@
 ;; dead-code smell worth revisiting.
 ;;   span/remove-token: `plaid.sql.span/remove-token` (the only emitter) has no
 ;;     caller. PUT /spans/:id/tokens routes to `set-tokens` (→ span/update-tokens),
-;;     and the token-delete cascade folds span-token removal under :token/delete.
-;;     Verified 2026-05-29: a token-in-a-span delete produces 0 span/remove-token
-;;     rows. Vestigial from the v2 port.
+;;     and the token-delete cascade carries span-token removal under the
+;;     :token/delete op — a synthetic :update audit row on :spans when the span
+;;     is partially trimmed (trim-span-tokens!, added 2026-06-10; before that,
+;;     partial trims were FK-swept with NO audit row), or an audited span
+;;     :delete when fully orphaned. Vestigial from the v2 port.
 (def ^:private rest-unreachable-op-types
   #{"span/remove-token"})
 
