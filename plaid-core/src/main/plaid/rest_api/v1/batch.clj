@@ -4,6 +4,7 @@
             [clojure.data.json :as json]
             [muuntaja.core :as m]
             [next.jdbc :as jdbc]
+            [plaid.history.core :as history]
             [plaid.sql.operation :as op]
             [plaid.sql.relation :as relation]
             [plaid.sql.span :as span]
@@ -257,31 +258,52 @@
       {:status 400
        :body {:error (str "Batch exceeds max of " max-batch-ops
                           " operations (received " (count raw-ops) ")")}}
-      (let [operations (preprocess-batch-operations raw-ops db)]
+      (let [operations (preprocess-batch-operations raw-ops db)
+            ;; Sub-ops' audit events buffer here instead of publishing —
+            ;; while the outer tx is open, an event would announce a
+            ;; write listeners can't read back (and that may roll back
+            ;; entirely). Flushed below AFTER commit; a throw out of
+            ;; with-transaction simply discards the buffer.
+            deferred-events (atom [])]
         (try
-          (jdbc/with-transaction [tx db]
-            (binding [op/*current-batch-id* batch-id]
-              (loop [remaining operations responses []]
-                (if (empty? remaining)
-                  (do (log/info "Batch" batch-id "ok with" (count responses) "ops")
-                      ;; Collect the union of all sub-responses' X-Document-Versions
-                      ;; headers (last-write-wins per doc-id) and surface them on
-                      ;; the outer batch response so OCC state isn't silently lost
-                      ;; for batch writes.
-                      (let [merged (merge-document-versions responses)
-                            outer {:status 200 :body responses}]
-                        (if (seq merged)
-                          (assoc outer :headers {"X-Document-Versions" (json/write-str merged)})
-                          outer)))
-                  (let [op-spec (first remaining)
-                        response (process-batch-operation rest-handler request op-spec tx)
-                        status (:status response)]
-                    (if (>= status 300)
-                      (do (log/warn "Batch" batch-id "failed; rolling back via throw")
-                          ;; throwing rolls back the tx; we catch outside and return the failure
-                          (throw (ex-info "batch-failed"
-                                          {:plaid.batch/failure {:status status :body (:body response)}})))
-                      (recur (rest remaining) (conj responses response))))))))
+          (let [result
+                (jdbc/with-transaction [tx db]
+                  (binding [op/*current-batch-id* batch-id
+                            op/*deferred-events* deferred-events]
+                    (loop [remaining operations responses []]
+                      (if (empty? remaining)
+                        (do (log/info "Batch" batch-id "ok with" (count responses) "ops")
+                            ;; Collect the union of all sub-responses' X-Document-Versions
+                            ;; headers (last-write-wins per doc-id) and surface them on
+                            ;; the outer batch response so OCC state isn't silently lost
+                            ;; for batch writes.
+                            (let [merged (merge-document-versions responses)
+                                  outer {:status 200 :body responses}]
+                              (if (seq merged)
+                                (assoc outer :headers {"X-Document-Versions" (json/write-str merged)})
+                                outer)))
+                        (let [op-spec (first remaining)
+                              response (process-batch-operation rest-handler request op-spec tx)
+                              status (:status response)]
+                          (if (>= status 300)
+                            (do (log/warn "Batch" batch-id "failed; rolling back via throw")
+                                ;; throwing rolls back the tx; we catch outside and return the failure
+                                (throw (ex-info "batch-failed"
+                                                {:plaid.batch/failure {:status status :body (:body response)}})))
+                            (recur (rest remaining) (conj responses response))))))))]
+            ;; The outer tx is committed once with-transaction returns.
+            ;; Publish the sub-ops' buffered audit events now — listeners
+            ;; that refetch on receipt see committed state — and nudge the
+            ;; history tailer once (the per-sub-op nudges fired pre-commit
+            ;; and found nothing, so without this the batch waits out the
+            ;; tailer heartbeat). Defensive try/catch: the commit is
+            ;; durable, nothing post-commit may invert success into a 5xx.
+            (try
+              (history/nudge!)
+              (op/flush-deferred-events! @deferred-events)
+              (catch Throwable t
+                (log/warn t "post-commit batch event flush failed:" (ex-message t))))
+            result)
           (catch clojure.lang.ExceptionInfo e
             (if-let [f (:plaid.batch/failure (ex-data e))]
               {:status (:status f) :body (:body f)}

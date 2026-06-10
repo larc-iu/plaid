@@ -74,12 +74,41 @@
      :op/document did
      :op/description (:description op-record)}))
 
-(defn- post-submit! [op-record user-id]
+(def ^:dynamic *deferred-events*
+  "Bound (to an atom holding a vector) by the atomic batch handler.
+  Inside an atomic batch, submit-operation*'s success path runs while
+  the OUTER tx is still open — `with-tx` runs the body inline on the
+  shared Connection — so publishing an audit event immediately would
+  announce a write that (a) listeners can't read back yet (they'd see
+  the pre-batch snapshot and never be re-notified) and (b) may roll
+  back entirely if a later sub-op fails (phantom events). When bound,
+  `post-submit!` appends the event payload here instead of publishing;
+  the batch handler flushes the buffer AFTER the outer tx commits and
+  drops it on rollback. Lock refreshes are NOT deferred — they're
+  in-memory TTL bookkeeping that should track wall clock during a long
+  batch, and they announce nothing."
+  nil)
+
+(defn- publish-op-event!
+  [op-record user-id]
   (let [v2-op (->v2-shape op-record)]
     (try
       (events/publish-audit-event! v2-op [v2-op] user-id)
       (catch Exception e
-        (log/warn "Failed to publish audit event:" (ex-message e)))))
+        (log/warn "Failed to publish audit event:" (ex-message e))))))
+
+(defn flush-deferred-events!
+  "Publish audit events buffered under *deferred-events* (a seq of
+  {:op-record .. :user-id ..}). Called by the atomic batch handler after
+  its outer tx commits — never call with the tx still open."
+  [events]
+  (doseq [{:keys [op-record user-id]} events]
+    (publish-op-event! op-record user-id)))
+
+(defn- post-submit! [op-record user-id]
+  (if *deferred-events*
+    (swap! *deferred-events* conj {:op-record op-record :user-id user-id})
+    (publish-op-event! op-record user-id))
   (when-let [doc-id (:document op-record)]
     (try
       (locks/refresh-locks! [doc-id] user-id)

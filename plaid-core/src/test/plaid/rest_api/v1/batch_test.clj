@@ -7,6 +7,7 @@
             [clojure.string]
             [ring.mock.request :as mock]
             [plaid.rest-api.v1.batch :as batch]
+            [plaid.server.events :as events]
             [plaid.sql.common :as psc]
             [plaid.fixtures :as fixtures
              :refer [with-db
@@ -176,6 +177,55 @@
             all-docs (if (= 200 (:status list-resp)) (:entries (parse-response-body list-resp)) [])]
         (is (or (nil? all-docs) (empty? all-docs))
             "No documents should exist after rollback")))))
+
+(deftest test-batch-events-deferred-to-post-commit
+  ;; Sub-ops used to publish their audit events while the outer batch tx
+  ;; was still open: a failing batch had already broadcast events for
+  ;; writes that then rolled back (phantom events — listeners refetch and
+  ;; act on changes that never existed), and even on success a listener
+  ;; that refetched on receipt read the pre-batch snapshot with no
+  ;; further notification. Events now buffer under op/*deferred-events*
+  ;; and the batch handler flushes them only after the outer tx commits.
+  (let [create-project-req (-> (admin-request :post "/api/v1/projects")
+                               (mock/json-body {:name "Batch Event Project"}))
+        project-resp (rest-handler create-project-req)
+        project-id (:id (parse-response-body project-resp))
+        published (atom [])]
+    (with-redefs [events/publish-audit-event!
+                  (fn [op _audits user-id]
+                    (swap! published conj {:op op :user-id user-id}))]
+      (testing "failed batch publishes NO events for rolled-back sub-ops"
+        (reset! published [])
+        (let [operations [{:path "/api/v1/documents"
+                           :method "post"
+                           :body {:project-id project-id :name "WillRollBack"}}
+                          {:path "/api/v1/users/nonexistent@example.com"
+                           :method "get"
+                           :body nil}]
+              response (make-batch-request operations admin-token)]
+          (is (>= (:status response) 400) "batch failed and rolled back")
+          (is (empty? @published)
+              "no phantom events — the create's write never committed")))
+      (testing "successful batch publishes one event per mutating sub-op, after commit"
+        (reset! published [])
+        (let [operations [{:path "/api/v1/documents"
+                           :method "post"
+                           :body {:project-id project-id :name "BatchDoc1"}}
+                          {:path "/api/v1/documents"
+                           :method "post"
+                           :body {:project-id project-id :name "BatchDoc2"}}]
+              response (make-batch-request operations admin-token)]
+          (is (= 200 (:status response)))
+          (is (= 2 (count @published))
+              "both sub-ops' events flushed post-commit")
+          (is (= #{:document/create} (set (map #(get-in % [:op :op/type]) @published))))))
+      (testing "a non-batch operation still publishes immediately"
+        (reset! published [])
+        (let [resp (rest-handler (-> (admin-request :post "/api/v1/documents")
+                                     (mock/json-body {:project-id project-id :name "SoloDoc"})))]
+          (is (= 201 (:status resp)))
+          (is (= 1 (count @published))
+              "single ops publish without batch deferral"))))))
 
 (deftest test-bulk-create-chunked-insert-over-parameter-limit
   ;; Fix-4 smoke test: psc/insert-many! and psc/fetch-ids-as-map both used
