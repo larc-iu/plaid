@@ -1,21 +1,11 @@
 import { Text } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
 
 // App-wide feedback primitives. Transient outcomes are toasts; destructive
 // actions go through a confirm modal (replacing the old window.confirm()).
-
-export const notifySuccess = (message, title) =>
-  notifications.show({ title, message, color: 'green' });
-
-export const notifyError = (message, title = 'Error') =>
-  notifications.show({ title, message, color: 'red' });
-
-// A loud, non-error notice (e.g. an automatic repair the user should review).
-// `options` is spread onto Mantine's notifications.show — pass `autoClose: false`
-// to make it stick until dismissed.
-export const notifyWarning = (message, title = 'Heads up', options = {}) =>
-  notifications.show({ title, message, color: 'yellow', ...options });
+// The toast functions live in notify.js (JSX-free, importable from node);
+// re-exported here so components keep one import site.
+export { notifySuccess, notifyError, notifyWarning } from './notify.js';
 
 export const confirmDelete = ({
   title = 'Confirm deletion',

@@ -3,7 +3,7 @@ import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/ud
 import { interSententialRelationIds, wordsNeedingSyntacticWord } from '../utils/udReconcile.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { basicTokenize } from '../utils/basicTokenize.js';
-import { notifyError } from '../utils/feedback.jsx';
+import { notifyError } from '../utils/notify.js';
 
 const UNDERSCORE = '_';
 
