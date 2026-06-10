@@ -152,6 +152,13 @@
   border: 1px solid #EF4444;
 }
 
+/* Keyboard-selected pill (Backspace at the empty chip input): same
+   delete-intent styling as hover, but driven by the chip-input selection. */
+.feature-tag--selected {
+  background-color: #FECACA;
+  border: 1px solid #EF4444;
+}
+
 .feature-text {
   flex: 1;
   font-family: sans-serif;
@@ -181,36 +188,23 @@
   opacity: 1;
 }
 
-.feature-input-container {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.feature-input {
-  flex: 1;
-  min-width: 0;
+/* The FEATS chip input: one slim always-present input below the pills. The
+   "+" placeholder is the add affordance (replaces the old hover-only button). */
+.feature-chip-input {
   font-size: 10px;
-  border: 1px solid #A855F7;
+  border: 1px solid transparent;
   border-radius: 2px;
   padding: 1px 3px;
   outline: none;
-}
-
-.feature-eq {
-  font-size: 10px;
-  color: #777;
-}
-
-.feature-add-btn {
-  font-size: 10px;
-  color: #777;
-  padding: 1px 3px;
-  border: 1px dashed #777;
-  border-radius: 2px;
-  width: 100%;
   background-color: transparent;
-  cursor: pointer;
-  opacity: 1;
-  transition: opacity 0.2s;
+}
+
+.feature-chip-input:focus {
+  border-color: #3b82f6;
+  background-color: #fff;
+}
+
+.feature-chip-input::placeholder {
+  color: #999;
+  font-style: italic;
 }

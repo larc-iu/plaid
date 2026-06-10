@@ -3,7 +3,6 @@ import { Autocomplete } from '@mantine/core';
 import { IconChevronRight } from '@tabler/icons-react';
 import { DependencyTree } from './DependencyTree.jsx';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
-import { notifyError } from '../../../utils/feedback.jsx';
 import { resolveColor } from '../../../utils/udVocab.js';
 import './SentenceRow.css';
 
@@ -170,9 +169,34 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
             const now = Date.now();
             if (now - lastGlobalTabPress < 55) { e.preventDefault(); return; }
             lastGlobalTabPress = now;
-          } else if (e.key === 'Escape') {
+            return;
+          }
+          if (e.key === 'Escape') {
             setLocalValue(value || '');
             inputRef.current?.blur();
+            return;
+          }
+          // Grid navigation, like the plain-input cells — but only while the
+          // dropdown is closed (open, the arrows highlight options). Escape
+          // closes the dropdown first, then arrows navigate.
+          const dropdownOpen = e.target.getAttribute('aria-expanded') === 'true';
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            if (!dropdownOpen && onNavigate?.(field, tokenIndex, e.key === 'ArrowUp' ? 'up' : 'down')) {
+              e.preventDefault();
+            }
+            return;
+          }
+          if (e.key === 'ArrowLeft') {
+            const input = inputRef.current;
+            const atStart = input && input.selectionStart === 0 && input.selectionEnd === 0;
+            if (atStart && onNavigate?.(field, tokenIndex, 'left')) e.preventDefault();
+            return;
+          }
+          if (e.key === 'ArrowRight') {
+            const input = inputRef.current;
+            const len = input?.value?.length ?? 0;
+            const atEnd = input && input.selectionStart === len && input.selectionEnd === len;
+            if (atEnd && onNavigate?.(field, tokenIndex, 'right')) e.preventDefault();
           }
         }}
         filter={optionsFilter}
@@ -222,142 +246,193 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
 });
 
 // Features cell component with hover-only delete buttons
-const FeaturesCell = React.memo(({ features, spanIds, tokenId, columnWidth, onAnnotationUpdate, onFeatureDelete, featureInventory, isReadOnly }) => {
-  const [editingFeature, setEditingFeature] = useState(false);
-  const [newKey, setNewKey] = useState('');
-  const [newValue, setNewValue] = useState('');
-  const [isHovering, setIsHovering] = useState(false);
+// FEATS is a token-field (chip input): the cell IS one slim input, with the
+// feature pills stacked above it. Arriving (Tab / arrows / click) focuses the
+// input directly, so adding is just typing — suggestions offer inventory keys
+// ("Case=") until '=' is typed, then that key's values; everything stays soft
+// (off-list features allowed), and committing an existing key overwrites it
+// (domain semantics in updateAnnotation). Keyboard deletion is the classic
+// chip-input gesture: Backspace at an empty input selects the last pill,
+// Left/Right move the selection, Backspace/Delete remove it, typing or Escape
+// clears it. Left/Right at an empty input with no selection fall through to
+// grid column navigation, like every other cell.
+const FeaturesCell = React.memo(({ features, spanIds, tokenId, tokenIndex, tabIndex, columnWidth, onAnnotationUpdate, onFeatureDelete, onNavigate, featureInventory, isReadOnly }) => {
+  const [text, setText] = useState('');
+  const [selectedPill, setSelectedPill] = useState(null); // index into features, or null
+  const [isEditing, setIsEditing] = useState(false);
   const [hoveredFeatureIndex, setHoveredFeatureIndex] = useState(null);
+  const inputRef = useRef(null);
+  // Mantine fires onOptionSubmit BEFORE its own onChange(option), so after an
+  // option-pick commit the echoed onChange would resurrect the committed text
+  // in the input. Set on commit-by-pick; onChange consumes it and swallows
+  // that one echo.
+  const optionCommittedRef = useRef(false);
 
-  // Controlled key/value pickers drawn from the configurable UD feature
-  // inventory; both are soft (native datalists), so new keys/values are allowed.
   const inv = featureInventory || { list: [], map: new Map() };
-  const featureKeys = inv.list.map((e) => e.key);
-  const valueOptions = inv.map.get(newKey) || [];
 
-  const resetEditor = () => {
-    setNewKey('');
-    setNewValue('');
-    setEditingFeature(false);
-  };
+  // Two-stage suggestions: keys (as "Key=") until '=' is typed, then values.
+  const eqIdx = text.indexOf('=');
+  const suggestions = eqIdx === -1
+    ? inv.list.map((e) => `${e.key}=`)
+    : (inv.map.get(text.slice(0, eqIdx).trim()) || []).map((v) => `${text.slice(0, eqIdx)}=${v}`);
 
-  const handleAddFeature = async () => {
-    const key = newKey.trim();
-    const val = newValue.trim();
-    if (!key || !val) {
-      notifyError('A feature needs both a name and a value.');
-      return;
-    }
-
-    try {
-      await onAnnotationUpdate(tokenId, 'features', `${key}=${val}`);
-      resetEditor();
-    } catch (error) {
+  const commit = (raw) => {
+    const t = (raw ?? text).trim();
+    const i = t.indexOf('=');
+    if (i <= 0 || i === t.length - 1) return false; // need non-empty Key=Value
+    setText('');
+    onAnnotationUpdate(tokenId, 'features', t).catch((error) => {
       console.error('Failed to add feature:', error);
-    }
+    });
+    return true;
   };
 
-  const handleRemoveFeature = async (featureIndex) => {
-    const featureSpanInfo = spanIds?.features[featureIndex];
+  const removePill = (index) => {
+    const featureSpanInfo = spanIds?.features[index];
+    setSelectedPill(null);
     if (!featureSpanInfo) {
-      console.error('No span ID found for feature at index', featureIndex);
+      console.error('No span ID found for feature at index', index);
       return;
     }
-
-    try {
-      await onFeatureDelete(featureSpanInfo.spanId);
-    } catch (error) {
+    onFeatureDelete(featureSpanInfo.spanId).catch((error) => {
       console.error('Failed to remove feature:', error);
+    });
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Tab') {
+      const now = Date.now();
+      if (now - lastGlobalTabPress < 55) { e.preventDefault(); return; }
+      lastGlobalTabPress = now;
+      return;
+    }
+    const input = inputRef.current;
+    const empty = !text;
+    // While the dropdown is open (or an option is highlighted), Enter and the
+    // vertical arrows belong to the combobox, not to us.
+    const dropdownOpen = e.target.getAttribute('aria-expanded') === 'true';
+    const optionActive = Boolean(e.target.getAttribute('aria-activedescendant'));
+
+    if (e.key === 'Enter') {
+      if (!optionActive) {
+        e.preventDefault();
+        commit();
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (selectedPill != null) { e.preventDefault(); setSelectedPill(null); return; }
+      if (!dropdownOpen) { setText(''); input?.blur(); }
+      return;
+    }
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (selectedPill != null) { e.preventDefault(); removePill(selectedPill); return; }
+      if (e.key === 'Backspace' && empty && features.length > 0) {
+        e.preventDefault();
+        setSelectedPill(features.length - 1);
+      }
+      return;
+    }
+    if (e.key === 'ArrowLeft') {
+      if (selectedPill != null) { e.preventDefault(); setSelectedPill(Math.max(0, selectedPill - 1)); return; }
+      const atStart = input && input.selectionStart === 0 && input.selectionEnd === 0;
+      if (atStart && empty && onNavigate?.('feats', tokenIndex, 'left')) e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      if (selectedPill != null) {
+        e.preventDefault();
+        setSelectedPill(selectedPill >= features.length - 1 ? null : selectedPill + 1);
+        return;
+      }
+      const len = input?.value?.length ?? 0;
+      const atEnd = input && input.selectionStart === len && input.selectionEnd === len;
+      if (atEnd && empty && onNavigate?.('feats', tokenIndex, 'right')) e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      if (!dropdownOpen && onNavigate?.('feats', tokenIndex, 'up')) e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      if (!dropdownOpen && onNavigate?.('feats', tokenIndex, 'down')) e.preventDefault();
+      return;
     }
   };
 
   return (
-    <div 
+    <div
       className="features-container"
       style={{ width: columnWidth ? `${columnWidth}px` : 'auto' }}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
     >
       {features.map((feature, index) => (
         <div
           key={`${tokenId}-feat-${index}`}
-          className={`feature-tag ${hoveredFeatureIndex === index ? 'feature-tag--hovered' : 'feature-tag--normal'}`}
+          className={`feature-tag ${selectedPill === index
+            ? 'feature-tag--selected'
+            : hoveredFeatureIndex === index ? 'feature-tag--hovered' : 'feature-tag--normal'}`}
           onMouseEnter={() => setHoveredFeatureIndex(index)}
           onMouseLeave={() => setHoveredFeatureIndex(null)}
+          onClick={isReadOnly ? undefined : () => { setSelectedPill(index); inputRef.current?.focus(); }}
         >
           <span className="feature-text">{feature}</span>
           {!isReadOnly && (
             <button
-              onClick={() => handleRemoveFeature(index)}
-              className={`feature-delete-btn ${hoveredFeatureIndex === index ? 'feature-delete-btn--visible' : 'feature-delete-btn--hidden'}`}
+              onClick={(e) => { e.stopPropagation(); removePill(index); }}
+              className={`feature-delete-btn ${(hoveredFeatureIndex === index || selectedPill === index) ? 'feature-delete-btn--visible' : 'feature-delete-btn--hidden'}`}
               title="Remove feature"
+              tabIndex={-1}
             >
               ×
             </button>
           )}
         </div>
       ))}
-      
-      {editingFeature ? (
-        <div
-          className="feature-input-container"
-          onBlur={(e) => {
-            // Commit/cancel only when focus leaves the editor entirely —
-            // tabbing between the key and value inputs keeps it open.
-            if (e.currentTarget.contains(e.relatedTarget)) return;
-            if (newKey.trim() && newValue.trim()) handleAddFeature();
-            else resetEditor();
+
+      {!isReadOnly && (
+        <Autocomplete
+          ref={inputRef}
+          id={`${tokenId}-feats`}
+          data={isEditing ? suggestions : NO_OPTIONS}
+          value={text}
+          onChange={(val) => {
+            if (optionCommittedRef.current) { optionCommittedRef.current = false; return; }
+            setText(val);
+            setSelectedPill(null);
           }}
-        >
-          <input
-            type="text"
-            value={newKey}
-            onChange={(e) => setNewKey(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleAddFeature();
-              } else if (e.key === 'Escape') {
-                resetEditor();
-              }
-            }}
-            placeholder="Feature"
-            className="feature-input"
-            list={`feat-keys-${tokenId}`}
-            autoFocus
-          />
-          <datalist id={`feat-keys-${tokenId}`}>
-            {featureKeys.map((k) => <option key={k} value={k} />)}
-          </datalist>
-          <span className="feature-eq">=</span>
-          <input
-            type="text"
-            value={newValue}
-            onChange={(e) => setNewValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleAddFeature();
-              } else if (e.key === 'Escape') {
-                resetEditor();
-              }
-            }}
-            placeholder="Value"
-            className="feature-input"
-            list={`feat-vals-${tokenId}`}
-          />
-          <datalist id={`feat-vals-${tokenId}`}>
-            {valueOptions.map((v) => <option key={v} value={v} />)}
-          </datalist>
-        </div>
-      ) : (isHovering && !isReadOnly) ? (
-        <button
-          onClick={() => setEditingFeature(true)}
-          className="feature-add-btn"
-        >
-          +
-        </button>
-      ) : null}
+          onFocus={() => setIsEditing(true)}
+          onBlur={() => {
+            // Commit a complete Key=Value on the way out; discard fragments.
+            setIsEditing(false);
+            setSelectedPill(null);
+            if (!commit()) setText('');
+          }}
+          onOptionSubmit={(option) => {
+            // A bare "Key=" pick just fills the input (keep typing the value);
+            // a full "Key=Value" pick commits immediately.
+            if (!option.endsWith('=')) {
+              optionCommittedRef.current = true;
+              commit(option);
+            }
+          }}
+          onKeyDown={handleKeyDown}
+          selectFirstOptionOnChange={false}
+          variant="unstyled"
+          size="xs"
+          tabIndex={tabIndex}
+          placeholder="+"
+          title="Add feature (Key=Value)"
+          classNames={{ input: 'feature-chip-input' }}
+          styles={{
+            root: { width: '100%', maxWidth: 'none' },
+            input: { width: '100%', height: 'auto', minHeight: 18, lineHeight: '14px', textAlign: 'center' },
+            dropdown: { minWidth: 'max-content' },
+            option: { whiteSpace: 'nowrap' }
+          }}
+          maxDropdownHeight={240}
+          comboboxProps={{ withinPortal: true }}
+        />
+      )}
     </div>
   );
 });
@@ -447,7 +522,9 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
       {visibleFields.feats ? (
         <div
           className="features-cell"
-          style={{ minHeight: `${Math.max(30, maxFeatures * 16 + 20)}px` }}
+          // Tall enough for the longest pill stack in the row, plus the
+          // always-present chip input when editable.
+          style={{ minHeight: `${Math.max(30, maxFeatures * 16 + (isReadOnly ? 8 : 26))}px` }}
         >
           <FeaturesCell
             features={data.feats.map(feat => feat.value)}
@@ -455,9 +532,12 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
               features: data.spanIds.features
             }}
             tokenId={data.token.id}
+            tokenIndex={index}
+            tabIndex={getTabIndex(index, 'feats')}
             columnWidth={columnWidth}
             onAnnotationUpdate={onAnnotationUpdate}
             onFeatureDelete={onFeatureDelete}
+            onNavigate={onNavigate}
             featureInventory={featureInventory}
             isReadOnly={isReadOnly}
           />
@@ -599,11 +679,11 @@ export const SentenceRow = React.memo(({
 
   // Calculate tab indices for row-wise navigation across all sentences
   const getTabIndex = useCallback((tokenIndex, field) => {
-    const fieldOrder = { lemma: 0, xpos: 1, upos: 2 };
+    const fieldOrder = { lemma: 0, xpos: 1, upos: 2, feats: 3 };
     const tokensInSentence = tokenData.length;
 
     // Calculate base index for this sentence (all previous sentences)
-    const sentenceBaseIndex = totalTokensBefore * 3;
+    const sentenceBaseIndex = totalTokensBefore * 4;
 
     // Row-wise: field type determines row, token index determines position in row
     const rowIndex = fieldOrder[field];
@@ -613,13 +693,14 @@ export const SentenceRow = React.memo(({
   }, [tokenData.length, totalTokensBefore]);
 
   // Arrow-key navigation within the sentence's annotation grid.
-  // Up/Down step through LEMMA → XPOS → UPOS for a fixed token column;
-  // Left/Right step through tokens at a fixed field. FEATS is omitted
-  // because its cell type is different (no editable text input to focus).
+  // Up/Down step through LEMMA → XPOS → UPOS → FEATS for a fixed token
+  // column; Left/Right step through tokens at a fixed field. Every cell's
+  // focusable input carries the id `${tokenId}-${field}` (FEATS included —
+  // its chip input is `${tokenId}-feats`).
   // Returns true on a successful focus shift so the caller can preventDefault.
   // Hidden rows are excluded so Up/Down skips over them rather than dead-ending.
   const NAV_FIELDS = useMemo(
-    () => ['lemma', 'xpos', 'upos'].filter((f) => visibleFields[f]),
+    () => ['lemma', 'xpos', 'upos', 'feats'].filter((f) => visibleFields[f]),
     [visibleFields]
   );
   const onNavigate = useCallback((field, tokenIndex, dir) => {
