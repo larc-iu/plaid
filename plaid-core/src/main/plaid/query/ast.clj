@@ -315,15 +315,21 @@
                                 ;; :metadata is a map of arbitrary metadata KEYS (kept
                                 ;; verbatim — case-sensitive strings) to value specs
                                 ;; (each spec keyword-ized if it's a regex map).
+                                ;; The REST layer keywordizes JSON object keys (same
+                                ;; as :bindings — see `placeholder-name`), so restore
+                                ;; a keyword key to its verbatim string here.
+                                ;; `(str (symbol ..))` keeps a `/`-containing key
+                                ;; intact where `name` would drop its "namespace".
                                 ;; (a non-map :metadata is left as-is so validate-metadata!
                                 ;; can reject it with a clean 400, rather than reduce-kv
                                 ;; throwing an uncaught error here at parse time)
                                 (= k :metadata)
                                 (if (map? v)
                                   (reduce-kv (fn [a mk spec]
-                                               (assoc a mk (if (map? spec)
-                                                             (reduce-kv (fn [s ik iv] (assoc s (->kw ik) iv)) {} spec)
-                                                             spec)))
+                                               (let [mk (if (keyword? mk) (str (symbol mk)) mk)]
+                                                 (assoc a mk (if (map? spec)
+                                                               (reduce-kv (fn [s ik iv] (assoc s (->kw ik) iv)) {} spec)
+                                                               spec))))
                                              {} v)
                                   v)
                                 ;; a map value is a special spec: a regex {:regex ..}

@@ -116,6 +116,32 @@
              (ids (qe/run db "admin@example.com"
                           {"find" ["?x"] "where" [["text" "?x" {"metadata" {"tag" "keep"}}]]})))))))
 
+(deftest metadata-keywordized-wire-keys
+  ;; The REST layer (muuntaja) keywordizes every JSON object key, and the
+  ;; /query route has no malli schema to coerce them back — so metadata keys
+  ;; reach the AST as keywords (`:translation`, `:orthog:IPA`). They must be
+  ;; restored to verbatim strings, not rejected. (Real-world repro: the
+  ;; plaid-igt orthography usage count.)
+  (let [{:keys [a sl]} (build!)]
+    (testing "keywordized metadata key matches like its string form"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?s"]
+                       "where" [["span" "?s" {"layer" sl "metadata" {:translation "dog"}}]]})]
+        (is (= #{(str a)} (ids r)))))
+    (testing "keyword with an interior colon (orthography-style key)"
+      ;; (keyword "orthog:IPA") is what muuntaja produces for that JSON key
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?s"]
+                       "where" [["span" "?s" {"layer" sl
+                                              "metadata" {(keyword "orthog:IPA") {"regex" "."}}}]]})]
+        (is (empty? (ids r)) "no span carries the key; parses + runs, no 400")))
+    (testing "keyword with a slash keeps its namespace part"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?s"]
+                       "where" [["span" "?s" {"layer" sl
+                                              "metadata" {(keyword "a/b") "x"}}]]})]
+        (is (empty? (ids r)))))))
+
 (deftest metadata-validation
   (testing "a bad regex inside metadata is a 400"
     (is (thrown-with-msg?
