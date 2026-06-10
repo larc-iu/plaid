@@ -678,6 +678,10 @@ export class IgtEditor {
     return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
   }
 
+  // Gloss-progress bar: held back pending a UX rethink (user call, 2026-06-10).
+  // Flip to true to restore — markup, CSS, and _glossStats are all kept.
+  static SHOW_GLOSS_PROGRESS = false;
+
   _toolbar(sentences, ctx) {
     const stats = this._glossStats(sentences, ctx);
     const nSent = sentences.length;
@@ -685,15 +689,15 @@ export class IgtEditor {
       <div class="igt-toolbar">
         <div class="igt-toolbar__left">
           <span class="igt-toolbar__count">${nSent} sentence${nSent === 1 ? '' : 's'}</span>
-          ${stats ? html`
+          ${IgtEditor.SHOW_GLOSS_PROGRESS && stats ? html`
             <span class="igt-progress" title=${`${stats.done} of ${stats.total} morphemes have a gloss`}>
               <span class="igt-progress__bar"><span class="igt-progress__fill" style=${`width:${stats.pct}%`}></span></span>
               <span class="igt-progress__text">${stats.done}/${stats.total} glossed</span>
             </span>
-            ${!this.readOnly && stats.done < stats.total
-              ? html`<button type="button" class="igt-toolbar__btn" @click=${(e) => { e.stopPropagation(); this._jumpToNextEmptyGloss(); }}>Next empty gloss →</button>`
-              : nothing}
           ` : nothing}
+          ${stats && !this.readOnly && stats.done < stats.total
+            ? html`<button type="button" class="igt-toolbar__btn" @click=${(e) => { e.stopPropagation(); this._jumpToNextEmptyGloss(); }}>Next empty gloss →</button>`
+            : nothing}
         </div>
         <div class="igt-toolbar__right">
           <span class="igt-status" role="status" aria-live="polite" data-state=${this._statusState || 'idle'}></span>
@@ -726,7 +730,7 @@ export class IgtEditor {
           </div>` : nothing}
         <div class="igt-legend__row">
           <strong>Lexicon</strong>
-          <span>click <em>+ link</em> under a word or morpheme to link it to a lexicon entry; linking a morpheme copies a matching gloss from earlier in the text</span>
+          <span>hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry; linking a morpheme copies a matching gloss from earlier in the text</span>
         </div>
       </div>
     `;
@@ -767,8 +771,8 @@ export class IgtEditor {
         <h3 class="igt-sr-only">Sentence ${index + 1}</h3>
         <span class="igt-sentence__num" aria-hidden="true">${index + 1}</span>
         <div class="igt-grid">
-          ${this._labels(ctx)}
           <div class="igt-tokens">
+            ${this._labels(ctx)}
             ${repeat(sentence.tokens, (t) => t.id, (t) => this._tokenCol(t, ctx))}
           </div>
         </div>
@@ -917,10 +921,11 @@ export class IgtEditor {
   }
 
   // Display a baseline form (word/morpheme) with a vocab-link affordance: the
-  // linked item's form as a chip (click to manage), or an always-visible "link"
-  // control when nothing is linked. Both are real <button>s so they're keyboard-
-  // focusable and operable (Enter/Space). `face` may be a string or an input
-  // template. opts: { id, vocabItem, formText, kind }
+  // linked item's form as a chip (click to manage), or a "link" control when
+  // nothing is linked (hidden at rest, revealed on column hover / keyboard
+  // focus — see .igt-vocab__link in the CSS). Both are real <button>s so
+  // they're keyboard-focusable and operable (Enter/Space). `face` may be a
+  // string or an input template. opts: { id, vocabItem, formText, kind }
   _vocabFace(face, opts) {
     const { id, vocabItem, formText, kind } = opts;
     const hasVocabs = Object.keys(this.doc.vocabularies || {}).length > 0;

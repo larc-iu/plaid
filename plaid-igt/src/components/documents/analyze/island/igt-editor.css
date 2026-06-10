@@ -197,9 +197,15 @@
   scrollbar-width: thin;
 }
 
+/* The labels column is the FIRST flex item inside the wrapping .igt-tokens
+   container, so wrapped bands flow back to the container's left edge instead
+   of staying offset by the label width. The container's small padding-left
+   gives wrapped bands a ~1em hanging indent; the matching negative margin
+   pulls the labels themselves back to the true left edge. */
 .igt-labels {
   flex: 0 0 var(--igt-label-w);
   min-width: var(--igt-label-w);
+  margin-left: -14px;
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -246,6 +252,7 @@
   row-gap: 18px;
   flex: 1 1 0;
   min-width: 0;
+  padding-left: 14px; /* hanging indent for wrapped bands (~1em) */
 }
 
 .igt-token-col {
@@ -255,7 +262,7 @@
   width: max-content;
   border-left: 1px solid #f1f3f5;
 }
-.igt-token-col:first-child { border-left: none; }
+.igt-labels + .igt-token-col { border-left: none; }
 
 .igt-token-form {
   height: var(--igt-row-h);
@@ -388,15 +395,24 @@
   white-space: nowrap;
 }
 .igt-vocab__hint:hover:not(:disabled) { background: #d6e4fd; }
-/* Unlinked: a faint but ALWAYS-visible affordance (was opacity:0 hover-only) —
-   de-emphasized at rest, AA-contrast, prominent on hover/focus. */
+/* Unlinked: hidden at rest — a "+ link" under every unlinked form is too
+   noisy (user call, 2026-06-10; a fuller vocab-linking rethink is a planned
+   P1 task). Revealed on hover anywhere in the word/morpheme column or via
+   keyboard focus; opacity (not display) keeps the layout stable and the
+   button tabbable. */
 .igt-vocab__link {
   font-size: 10px;
   color: #6b7280;
   text-decoration: underline dotted;
   text-underline-offset: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
 }
 .igt-vocab__link::before { content: '+\00A0'; text-decoration: none; }
+.igt-token-col:hover .igt-vocab__link,
+.igt-morph-col:hover .igt-vocab__link,
+.igt-vocab:focus-within .igt-vocab__link,
+.igt-vocab__link:focus-visible { opacity: 1; }
 .igt-vocab:hover .igt-vocab__link,
 .igt-vocab__link:hover,
 .igt-vocab__link:focus-visible { color: #1d4ed8; font-weight: 500; }
