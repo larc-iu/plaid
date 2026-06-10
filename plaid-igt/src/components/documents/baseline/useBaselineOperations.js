@@ -3,10 +3,9 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess } from '@/utils/feedback';
 
-// Baseline tab operations, backed by the shared IgtDocument. The whole
-// lock + wipe(sentences/alignments) + texts.update + re-partition batch (with
-// the new-text rollback branch) lives in doc.saveBaselineText; the hook just
-// owns the local editing state.
+// Baseline tab operations, backed by the shared IgtDocument. The save itself
+// (texts.update with server-side token shifting, plus the create/seed paths)
+// lives in doc.saveBaselineText; the hook just owns the local editing state.
 export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
   useIgtDocument(doc);

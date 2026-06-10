@@ -78,8 +78,9 @@ export function DocumentBaseline() {
                 <div className="flex items-start gap-2">
                   <Info className="mt-0.5 h-4 w-4 shrink-0" />
                   <p className="text-sm">
-                    <strong>Note:</strong> Editing the baseline text will affect all existing
-                    tokens and annotations. Make sure to review your changes carefully.
+                    <strong>Note:</strong> Existing tokenization and annotations are kept and
+                    adjusted to match your edits. Words inside text you delete are removed
+                    along with their annotations.
                   </p>
                 </div>
               </div>

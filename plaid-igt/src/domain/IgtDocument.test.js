@@ -414,19 +414,33 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(k).toContain('documents.setMetadata');
   });
 
-  it('saveBaselineText locks, wipes the partition, updates text, re-partitions in one batch', async () => {
+  it('saveBaselineText with surviving sentences is a plain texts.update (no lock, no wipe)', async () => {
     const doc = makeDoc();
     const ok = await doc.saveBaselineText('a whole new body');
     expect(ok).toBe(true);
     const k = kinds(doc.client);
-    expect(k).toContain('documents.acquireLock');
-    expect(k).toContain('tokens.bulkDelete');   // wipe sentences (+ alignments)
+    // The server shifts/compensates tokens itself — nothing else goes over the wire.
     expect(k).toContain('texts.update');
-    expect(k).toContain('tokens.bulkCreate');    // new single-sentence partition
-    expect(k).toContain('submitBatch');
-    expect(k).toContain('documents.releaseLock');
-    // releaseLock runs after the batch submits.
-    expect(k.indexOf('documents.releaseLock')).toBeGreaterThan(k.indexOf('submitBatch'));
+    expect(k).not.toContain('documents.acquireLock');
+    expect(k).not.toContain('tokens.bulkDelete');
+    expect(k).not.toContain('tokens.bulkCreate');
+    expect(k).not.toContain('submitBatch');
+  });
+
+  it('saveBaselineText re-seeds a full-span sentence when the save leaves no partition', async () => {
+    const raw = buildRawDoc({ sentences: [], words: [], morphemes: [] });
+    const client = makeFakeClient({ reloadDoc: raw }); // reload also shows an empty partition
+    const doc = makeDoc({ raw, client });
+    const ok = await doc.saveBaselineText('a whole new body');
+    expect(ok).toBe(true);
+    const k = kinds(doc.client);
+    expect(k).toContain('texts.update');
+    expect(k).toContain('tokens.bulkCreate');
+    expect(k).not.toContain('tokens.bulkDelete');
+    const seed = doc.client.calls.find((c) => c.kind === 'tokens.bulkCreate');
+    expect(seed.args[0]).toEqual([
+      { tokenLayerId: 'sentL', text: 'text-1', begin: 0, end: [...'a whole new body'].length },
+    ]);
   });
 
   it('createAlignment inserts text + creates the alignment token', async () => {

@@ -5,17 +5,19 @@
 import { cpLength } from '@larc-iu/plaid-client';
 
 export const documentMutations = {
-  // Full baseline-text replacement. The Sentences token layer is
-  // `:partitioning`, so wiping its tokens cascades through Words and
-  // Morphemes; alignment tokens live on a separate root layer but share text
-  // coordinates and must be wiped too so out-of-bounds tokens don't block
-  // the text update. After the text changes we re-establish the partition
-  // with a single sentence covering the whole body.
+  // Baseline-text edit. The server's text update does all the heavy lifting
+  // in one transaction: it diffs old vs new body, shifts every token on the
+  // text (sentences/words/morphemes/alignment alike), deletes tokens fully
+  // inside removed ranges, and gap-fills partitioning layers (Sentences) so
+  // the partition stays valid. Interior edits therefore preserve existing
+  // tokenization and annotations. The only client-side concern is seeding a
+  // sentence partition when the save leaves none (brand-new text, a full
+  // replacement that deleted every old sentence, or a previously emptied
+  // layer) so the Analyze tab has something to show.
   async saveBaselineText(newBody) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
     const sentenceTokenLayer = info.sentenceTokenLayer;
-    const alignmentTokenLayer = info.alignmentTokenLayer;
 
     if (!primaryTextLayer) {
       this.setError('No primary text layer found');
@@ -29,62 +31,51 @@ export const documentMutations = {
     return this._withSaving('Failed to save baseline text', async () => {
       const textId = primaryTextLayer.text?.id;
       const newLen = cpLength(newBody);
-      const sentenceTokenIds = (sentenceTokenLayer.tokens || []).map(t => t.id);
-      const alignmentTokenIds = (alignmentTokenLayer?.tokens || []).map(t => t.id);
-      const tokensToWipe = [...sentenceTokenIds, ...alignmentTokenIds];
 
-      // Validation passes before lock — don't grab a lock just to throw.
-      await this._client.documents.acquireLock(this.id);
-      let lockAcquired = true;
-      try {
-        if (textId) {
-          this._client.beginBatch();
-          if (tokensToWipe.length > 0) {
-            this._client.tokens.bulkDelete(tokensToWipe);
-          }
-          this._client.texts.update(textId, newBody);
-          if (newLen > 0) {
-            this._client.tokens.bulkCreate([{
+      if (textId) {
+        await this._client.texts.update(textId, newBody);
+      } else {
+        // No existing text — texts.create, then seed the sentence partition
+        // in a follow-up call (it needs the new text's id).
+        const newTextObj = await this._client.texts.create(primaryTextLayer.id, this.id, newBody);
+        if (newLen > 0) {
+          try {
+            await this._client.tokens.bulkCreate([{
               tokenLayerId: sentenceTokenLayer.id,
-              text: textId,
+              text: newTextObj.id,
               begin: 0,
               end: newLen
             }]);
-          }
-          await this._client.submitBatch();
-        } else {
-          // No existing text — texts.create then a second batch for the
-          // sentence partition, since batch ops can't reference ids produced
-          // earlier in the same batch.
-          const newTextObj = await this._client.texts.create(primaryTextLayer.id, this.id, newBody);
-          if (newLen > 0) {
+          } catch (bulkCreateError) {
+            console.error('Sentence partition create failed after text create; rolling back text:', bulkCreateError);
             try {
-              await this._client.tokens.bulkCreate([{
-                tokenLayerId: sentenceTokenLayer.id,
-                text: newTextObj.id,
-                begin: 0,
-                end: newLen
-              }]);
-            } catch (bulkCreateError) {
-              console.error('Sentence partition create failed after text create; rolling back text:', bulkCreateError);
-              try {
-                await this._client.texts.delete(newTextObj.id);
-              } catch (deleteError) {
-                console.error('Failed to roll back text after partition create failure:', deleteError);
-              }
-              throw bulkCreateError;
+              await this._client.texts.delete(newTextObj.id);
+            } catch (deleteError) {
+              console.error('Failed to roll back text after partition create failure:', deleteError);
             }
+            throw bulkCreateError;
           }
         }
+      }
 
-        await this._reload();
-      } finally {
-        if (lockAcquired) {
-          try {
-            await this._client.documents.releaseLock(this.id);
-          } catch (lockError) {
-            console.error('Failed to release document lock:', lockError);
-          }
+      await this._reload();
+
+      // A replacement that shares nothing with the old body deletes the old
+      // sentence tokens outright (an empty partition is server-valid), which
+      // would leave the Analyze tab blank. Seed a single full-span sentence
+      // whenever the edit leaves a non-empty body with no partition.
+      if (newLen > 0) {
+        const freshInfo = this.layerInfo;
+        const freshTextId = freshInfo.primaryTextLayer?.text?.id;
+        const sentencesAfter = freshInfo.sentenceTokenLayer?.tokens || [];
+        if (freshTextId && sentencesAfter.length === 0) {
+          await this._client.tokens.bulkCreate([{
+            tokenLayerId: sentenceTokenLayer.id,
+            text: freshTextId,
+            begin: 0,
+            end: newLen
+          }]);
+          await this._reload();
         }
       }
     });
