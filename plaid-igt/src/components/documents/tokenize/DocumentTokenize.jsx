@@ -16,6 +16,7 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { useTokenOperations } from './useTokenOperations.js';
+import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { ServiceSummary } from '../services/ServiceSummary.jsx';
@@ -39,6 +40,8 @@ export function DocumentTokenize() {
   const hasSentencePartition = existingSentenceTokens.length > 0;
 
   const [helpOpen, setHelpOpen] = useState(false);
+  // Which bulk clear is awaiting confirmation: 'tokens' | 'sentences' | null.
+  const [confirmClear, setConfirmClear] = useState(null);
 
   // Drag-to-merge selection state. Mirrored into a ref so synchronous DOM event
   // handlers (mousedown→mouseup→click) read the latest value without waiting for
@@ -193,7 +196,7 @@ export function DocumentTokenize() {
             <div className="flex items-end gap-3">
               <Button
                 variant="secondary"
-                onClick={ops.handleClearTokens}
+                onClick={() => setConfirmClear('tokens')}
                 disabled={ops.isTokenizing || ops.isProcessing || !existingTokens.length || readOnly}
               >
                 Clear Tokens
@@ -201,7 +204,7 @@ export function DocumentTokenize() {
 
               <Button
                 variant="secondary"
-                onClick={ops.handleClearSentences}
+                onClick={() => setConfirmClear('sentences')}
                 disabled={ops.isTokenizing || ops.isProcessing || !existingSentenceTokens.length || existingSentenceTokens.length === 1 || readOnly}
               >
                 Clear Sentences
@@ -257,6 +260,43 @@ export function DocumentTokenize() {
           )}
         </div>
       </div>
+
+      {/* Bulk-clear confirmations. Counts come straight from the loaded doc. */}
+      <ConfirmDeleteDialog
+        open={confirmClear === 'tokens'}
+        onOpenChange={(o) => { if (!o) setConfirmClear(null); }}
+        title="Clear All Tokens"
+        confirmLabel="Clear Tokens"
+        onConfirm={() => { setConfirmClear(null); ops.handleClearTokens(); }}
+      >
+        <p className="font-medium text-destructive">Warning</p>
+        <p className="mt-1 text-muted-foreground">
+          This deletes all <strong>{existingTokens.length.toLocaleString()} word
+          token{existingTokens.length === 1 ? '' : 's'}</strong> in this document, along with
+          their morphemes and every annotation and vocabulary link on them. This cannot be undone.
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          Sentence boundaries and sentence-level annotations are kept.
+        </p>
+      </ConfirmDeleteDialog>
+
+      <ConfirmDeleteDialog
+        open={confirmClear === 'sentences'}
+        onOpenChange={(o) => { if (!o) setConfirmClear(null); }}
+        title="Reset Sentences"
+        confirmLabel="Reset Sentences"
+        onConfirm={() => { setConfirmClear(null); ops.handleClearSentences(); }}
+      >
+        <p className="font-medium text-destructive">Warning</p>
+        <p className="mt-1 text-muted-foreground">
+          This replaces all <strong>{existingSentenceTokens.length.toLocaleString()} sentences</strong>{' '}
+          with a single sentence spanning the whole text. Sentence-level annotations
+          (e.g. translations) are deleted with their sentences. This cannot be undone.
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          Words, morphemes, and their annotations are kept.
+        </p>
+      </ConfirmDeleteDialog>
     </TooltipProvider>
   );
 }

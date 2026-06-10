@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { notifyWarning } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 
@@ -91,7 +92,10 @@ export const ProjectList = () => {
         if (!cancelled) setWordCounts(byProject);
       } catch (err) {
         console.error('Word-count query failed:', err);
-        if (!cancelled) setWordCounts({}); // leave counts unknown -> "—"
+        if (!cancelled) {
+          setWordCounts({}); // leave counts unknown -> "—"
+          notifyWarning('Word counts could not be loaded for the project list.', 'Word counts unavailable');
+        }
       } finally {
         if (!cancelled) setWordsLoading(false);
       }

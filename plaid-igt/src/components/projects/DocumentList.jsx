@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, ArrowUp, ArrowDown, Settings } from 'lucide-react';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -67,7 +67,11 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
         if (!cancelled) { setHasWordLayer(true); setWordCounts(byDoc); }
       } catch (err) {
         console.error('Word-count query failed:', err);
-        if (!cancelled) { setHasWordLayer(false); setWordCounts({}); }
+        if (!cancelled) {
+          setHasWordLayer(false);
+          setWordCounts({});
+          notifyWarning('Word counts could not be loaded for the document list.', 'Word counts unavailable');
+        }
       } finally {
         if (!cancelled) setWordsLoading(false);
       }

@@ -74,18 +74,20 @@ export const VocabularySettings = ({ projectId, client }) => {
         }
       }
 
-      // Handle linking/unlinking for existing vocabularies
-      for (const vocabId of currentLinkedVocabIds) {
-        if (!targetLinkedVocabIds.includes(vocabId)) {
-          // Unlink vocabulary
-          await client.projects.unlinkVocab(projectId, vocabId);
+      // Link new vocabularies BEFORE unlinking removed ones: a failure midway
+      // through the links leaves every previously linked vocab still in place,
+      // whereas unlink-first could strip links the user meant to keep. A
+      // failure during the unlinks leaves extra links — harmless, and a
+      // re-save (which re-diffs against fresh project state) cleans them up.
+      for (const vocabId of targetLinkedVocabIds) {
+        if (!currentLinkedVocabIds.includes(vocabId)) {
+          await client.projects.linkVocab(projectId, vocabId);
         }
       }
 
-      for (const vocabId of targetLinkedVocabIds) {
-        if (!currentLinkedVocabIds.includes(vocabId)) {
-          // Link vocabulary
-          await client.projects.linkVocab(projectId, vocabId);
+      for (const vocabId of currentLinkedVocabIds) {
+        if (!targetLinkedVocabIds.includes(vocabId)) {
+          await client.projects.unlinkVocab(projectId, vocabId);
         }
       }
 

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { notifyWarning } from '@/utils/feedback';
 
 // Constants
 const TIMELINE_HEIGHT = 100;
@@ -573,6 +574,10 @@ export const useTimelineOperations = (mediaOps) => {
         
       } catch (error) {
         console.error('Failed to generate waveform:', error);
+        notifyWarning(
+          'The audio waveform could not be generated, so the timeline shows a flat placeholder. Playback and time alignment still work.',
+          'Waveform unavailable'
+        );
         // Create fallback waveform
         const pixelRatio = window.devicePixelRatio || 1;
         const canvas = window.document.createElement('canvas');

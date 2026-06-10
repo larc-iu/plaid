@@ -443,6 +443,46 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     ]);
   });
 
+  it('snapshotWordToken + restoreWordToken round-trip the word, morphemes, spans, and links', async () => {
+    const raw = buildRawDoc({
+      body: 'cat',
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [{ id: 'm-1', text: 'text-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'cat' } }],
+      wordVocabs: [{
+        id: 'v1', name: 'Lexicon',
+        vocabLinks: [{ id: 'lk-1', tokens: ['w-1'], vocabItem: { id: 'vi-1', form: 'CAT', metadata: {} } }],
+      }],
+    });
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [{ id: 'sp-1', tokens: ['w-1'], value: 'N' }];
+    raw.textLayers[0].tokenLayers[2].spanLayers[0].spans = [{ id: 'sp-2', tokens: ['m-1'], value: 'cat.G' }];
+    const doc = makeDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: [], vocabLinks: [] } },
+    });
+
+    const snap = doc.snapshotWordToken('w-1');
+    expect(snap.word).toMatchObject({ id: 'w-1', begin: 0, end: 3 });
+    expect(snap.morphemes).toHaveLength(1);
+    expect(snap.spans).toHaveLength(2); // POS on the word + Gloss on the morpheme
+    expect(snap.vocabLinks).toEqual([{ vocabItemId: 'vi-1', tokens: ['w-1'] }]);
+
+    expect(await doc.deleteToken('w-1')).toBe(true);
+    expect(await doc.restoreWordToken(snap)).toBe(true);
+
+    const calls = doc.client.calls;
+    const tokenCreates = calls.filter(c => c.kind === 'tokens.create');
+    expect(tokenCreates).toHaveLength(2); // word + morpheme
+    const spanCreates = calls.filter(c => c.kind === 'spans.create');
+    expect(spanCreates).toHaveLength(2);
+    expect(calls.filter(c => c.kind === 'vocabLinks.create')).toHaveLength(1);
+    // Every recreated span/link must reference the NEW ids, never the dead ones.
+    const deadIds = new Set(['w-1', 'm-1']);
+    for (const c of [...spanCreates, ...calls.filter(x => x.kind === 'vocabLinks.create')]) {
+      expect(c.args[1].some(t => deadIds.has(t))).toBe(false);
+    }
+  });
+
   it('createAlignment inserts text + creates the alignment token', async () => {
     const doc = makeDoc(); // body 'the cat', no existing alignments
     const ok = await doc.createAlignment({ text: 'hi', timeBegin: 0, timeEnd: 1 });

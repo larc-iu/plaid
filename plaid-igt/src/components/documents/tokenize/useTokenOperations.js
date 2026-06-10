@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { cpLength, filterServicesByTask, TASKS } from '@larc-iu/plaid-client';
+import { cpLength, cpSlice, filterServicesByTask, TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { useServiceParams } from '../hooks/useServiceParams.js';
-import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyInfo, toast } from '@/utils/feedback';
 
 // Tokenize tab operations, backed by the shared IgtDocument. Structural edits
 // (split/merge/delete/create token + sentence split/merge) delegate straight to
@@ -88,7 +88,33 @@ export const useTokenOperations = () => {
 
   // --- Structural ops (delegate to the domain model) ---
   const splitToken = (tokenId, splitOffset) => doc.splitToken(tokenId, splitOffset);
-  const deleteToken = (tokenId) => doc.deleteToken(tokenId);
+
+  // Token deletion is a high-frequency act mid-tokenization, so it stays
+  // instant — but it's recoverable: a snapshot of everything the cascade
+  // destroys (morphemes, annotations, vocab links) backs an Undo toast.
+  const deleteToken = async (tokenId) => {
+    const snapshot = doc.snapshotWordToken(tokenId);
+    const ok = await doc.deleteToken(tokenId);
+    if (ok && snapshot) {
+      const content = cpSlice(doc.body || '', snapshot.word.begin, snapshot.word.end);
+      const annotated = snapshot.spans.length > 0 || snapshot.vocabLinks.length > 0;
+      toast(`Deleted "${content}"`, {
+        description: annotated
+          ? 'Its annotations and vocabulary links were deleted with it.'
+          : undefined,
+        duration: 8000,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            doc.restoreWordToken(snapshot).then((restored) => {
+              if (restored) notifySuccess(`Restored "${content}"`, 'Token Restored');
+            });
+          },
+        },
+      });
+    }
+    return ok;
+  };
   const mergeTokens = (tokenIds) => doc.mergeTokens(tokenIds);
   const mergeSentence = (sentenceId) => doc.mergeSentence(sentenceId);
   const splitSentence = (charPos) => doc.splitSentence(charPos);

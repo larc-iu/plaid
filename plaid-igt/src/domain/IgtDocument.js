@@ -79,7 +79,7 @@ export class IgtDocument {
       client.documents.get(documentId, true, at),
       client.projects.get(projectId, at)
     ]);
-    const vocabularies = await loadProjectVocabularies(client, project, at);
+    const { vocabularies } = await loadProjectVocabularies(client, project, at);
     return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf });
   }
 
@@ -223,10 +223,16 @@ export class IgtDocument {
     this._raw = updated;
     if (this._project) {
       try {
-        const reloaded = await loadProjectVocabularies(this._client, this._project, at);
+        const { vocabularies: reloaded, failedCount } = await loadProjectVocabularies(this._client, this._project, at);
         this._vocabularies = mergeRawVocabLinks(updated, reloaded);
+        if (failedCount > 0 && this.onError) {
+          this.onError(`${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed — vocab links may display stale values. Reload the page if they look wrong.`);
+        }
       } catch (err) {
+        // The document itself reloaded fine — keep it, but tell the user the
+        // vocab table is stale rather than silently rendering old links.
         console.warn('Vocab reload failed:', err);
+        if (this.onError) this.onError('Vocabulary data could not be refreshed — vocab links may display stale values. Reload the page if they look wrong.');
       }
     }
     this._dataVersion++;
@@ -374,16 +380,21 @@ export class IgtDocument {
 }
 
 // ----- helper: load project vocabularies -----
+// Per-vocab fetch failures don't reject — the rest of the table still loads —
+// but they're COUNTED so callers can surface "your vocab data is incomplete"
+// instead of silently rendering a partial table. Returns
+// { vocabularies, failedCount }.
 async function loadProjectVocabularies(client, project, asOf) {
   const vocabIds = (project?.vocabs || []).map(v => v.id);
-  if (vocabIds.length === 0) return {};
+  if (vocabIds.length === 0) return { vocabularies: {}, failedCount: 0 };
   const results = await Promise.all(vocabIds.map(async id => {
     try { return await client.vocabLayers.get(id, true, asOf || undefined); }
     catch (err) { console.warn(`Error fetching vocab ${id}:`, err); return null; }
   }));
-  const out = {};
-  results.forEach(v => { if (v) out[v.id] = v; });
-  return out;
+  const vocabularies = {};
+  let failedCount = 0;
+  results.forEach(v => { if (v) vocabularies[v.id] = v; else failedCount++; });
+  return { vocabularies, failedCount };
 }
 
 // ----- helper: fold document-embedded vocab-links into loaded vocabularies -----
