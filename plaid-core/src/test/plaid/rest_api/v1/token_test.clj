@@ -336,6 +336,31 @@
         (doseq [token-id token-ids]
           (assert-not-found (get-token admin-request token-id)))))))
 
+(deftest token-self-merge-rejected
+  ;; Merging a token with itself used to corrupt data: reparent-junction!'s
+  ;; NOT EXISTS misfired (every junction row is its own "already linked"
+  ;; witness), deleting ALL of the token's span/vocab-link junction rows and
+  ;; then the token — leaving live spans with zero tokens and a 200 response.
+  (let [proj (create-test-project admin-request "SelfMergeProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        text-id (-> (create-text admin-request tl doc "hello world") :body :id)
+        tkl (-> (create-token-layer admin-request tl "TKL") :body :id)
+        tok-res (create-token admin-request tkl text-id 0 5)
+        tok (-> tok-res :body :id)
+        _ (assert-created tok-res)
+        sl (-> (create-span-layer admin-request tkl "SL") :body :id)
+        span-res (create-span admin-request sl [tok] "hello-span")
+        span-id (-> span-res :body :id)
+        _ (assert-created span-res)
+        merge-res (merge-tokens admin-request tok tok)]
+    (assert-status 400 merge-res)
+    ;; Token survives, span still references it.
+    (assert-ok (get-token admin-request tok))
+    (let [span-get (get-span admin-request span-id)]
+      (assert-ok span-get)
+      (is (= [tok] (-> span-get :body :span/tokens))))))
+
 (deftest token-precedence-ordering
   ;; Task #101 (revised 2026-06-02) — :token/precedence is load-bearing on
   ;; the read side. Canonical order is (begin, precedence NULLS LAST, end,

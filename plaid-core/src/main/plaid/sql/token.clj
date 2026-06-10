@@ -916,6 +916,14 @@
              :document (:document_id t1)
              :description (str "Merge tokens " token-id-1 " and " token-id-2)
              :user user-id}]
+     ;; Self-merge must be rejected before reparent-junction! runs: with
+     ;; surviving == dying, its NOT EXISTS guard is false for every row
+     ;; (each junction row is its own "already linked to surviving"
+     ;; witness), so step 1 updates nothing and step 2 deletes ALL of the
+     ;; token's junction rows — leaving live spans/vocab-links with zero
+     ;; tokens — before the token itself is deleted.
+     (when (= token-id-1 token-id-2)
+       (throw (ex-info "Cannot merge a token with itself" {:id token-id-1 :code 400})))
      (let [t1 (psc/fetch-by-id tx :tokens token-id-1)
            t2 (psc/fetch-by-id tx :tokens token-id-2)
            _ (when (nil? t1)
