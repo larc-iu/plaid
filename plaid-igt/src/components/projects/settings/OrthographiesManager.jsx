@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
 
 // Predefined orthography setup
 const DEFAULT_ORTHOGRAPHIES = [
@@ -24,12 +25,18 @@ export const OrthographiesManager = ({
   onLoadData,
   onSaveChanges,
   onError,
+  // Async (name) => number|null of words with a non-empty value for this
+  // orthography. When provided (settings mode), removal asks for confirmation
+  // with the count; when absent (setup mode), removal is immediate.
+  onCountOrthographyUsage,
   showTitle = true,
   autoSaveDefaults = false // Only auto-save defaults in setup mode
 }) => {
   const [orthographies, setOrthographies] = useState([]);
   const [newOrthographyName, setNewOrthographyName] = useState('');
   const [isInitialized, setIsInitialized] = useState(false);
+  // { name, count } — count: undefined while counting, null if unknown.
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   // Initialize data on mount
   useEffect(() => {
@@ -144,6 +151,27 @@ export const OrthographiesManager = ({
     notifyInfo(`"${orthographyName}" has been removed`, 'Orthography Removed');
   };
 
+  // Entry point for the trash button: in settings mode open the confirm
+  // dialog right away and fill in the usage count as it resolves.
+  const requestDeleteOrthography = (orthographyName) => {
+    const orthography = orthographies.find(o => o.name === orthographyName);
+    if (orthography?.isBaseline) return;
+    if (!onCountOrthographyUsage) {
+      handleDeleteOrthography(orthographyName);
+      return;
+    }
+    setPendingDelete({ name: orthographyName, count: undefined });
+    Promise.resolve(onCountOrthographyUsage(orthographyName))
+      .then(n => setPendingDelete(p => (p?.name === orthographyName ? { name: orthographyName, count: n } : p)))
+      .catch(() => setPendingDelete(p => (p?.name === orthographyName ? { name: orthographyName, count: null } : p)));
+  };
+
+  const handleConfirmDelete = async () => {
+    const orthographyName = pendingDelete?.name;
+    setPendingDelete(null);
+    if (orthographyName) await handleDeleteOrthography(orthographyName);
+  };
+
   const handleKeyPress = (event) => {
     if (event.key === 'Enter') {
       handleAddCustomOrthography();
@@ -233,7 +261,7 @@ export const OrthographiesManager = ({
                   size="icon"
                   variant="ghost"
                   className="h-7 w-7 text-destructive hover:text-destructive"
-                  onClick={() => handleDeleteOrthography(orth.name)}
+                  onClick={() => requestDeleteOrthography(orth.name)}
                   title="Remove"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -263,6 +291,38 @@ export const OrthographiesManager = ({
           </Button>
         </div>
       </div>
+
+      {/* Orthography-removal confirmation (settings mode only). Removing an
+          orthography hides its column; the per-word values stay in token
+          metadata and reappear if an orthography with the same name is
+          re-added. */}
+      <ConfirmDeleteDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => { if (!o) setPendingDelete(null); }}
+        title="Remove Orthography"
+        confirmLabel="Remove Orthography"
+        confirmDisabled={pendingDelete?.count === undefined}
+        onConfirm={handleConfirmDelete}
+      >
+        <p className="font-medium text-destructive">Warning</p>
+        <p className="mt-1 text-muted-foreground">
+          You are about to remove the orthography <strong>"{pendingDelete?.name}"</strong>{' '}
+          from this project.
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          {pendingDelete?.count === undefined && 'Counting existing transcriptions…'}
+          {pendingDelete?.count === null && 'The number of existing transcriptions could not be determined.'}
+          {typeof pendingDelete?.count === 'number' && (
+            pendingDelete.count === 0
+              ? 'No words have a transcription in this orthography yet.'
+              : <><strong>{pendingDelete.count.toLocaleString()} word{pendingDelete.count === 1 ? '' : 's'}</strong> currently {pendingDelete.count === 1 ? 'has' : 'have'} a transcription in this orthography.</>
+          )}
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          Existing values are hidden, not deleted — re-adding an orthography with
+          the same name restores them.
+        </p>
+      </ConfirmDeleteDialog>
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { OrthographiesManager } from './OrthographiesManager.jsx';
 import { notifySuccess, notifyError } from '@/utils/feedback';
@@ -7,6 +7,8 @@ import { findBaselineTextLayer, findWordTokenLayer, readOrthographies, IGT_NAMES
 export const OrthographiesSettings = ({ projectId, client }) => {
   const [, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
+  // Word token layer id, for usage counts at delete time (set during load).
+  const wordLayerIdRef = useRef(null);
 
   // Helper to check if an orthography is predefined
   const isPredefinedOrthography = (orthographyName) => {
@@ -42,6 +44,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
       // The word token layer holds the orthographies config.
       const tokenLayer = findWordTokenLayer(textLayer.tokenLayers);
       if (!tokenLayer) return null;
+      wordLayerIdRef.current = tokenLayer.id;
 
       // Extract current orthographies configuration
       const currentConfig = readOrthographies(tokenLayer.config);
@@ -132,6 +135,20 @@ export const OrthographiesSettings = ({ projectId, client }) => {
     }
   };
 
+  // Count words with a non-empty value for this orthography (stored as the
+  // `orthog:<name>` token-metadata key). null = unknown — the delete dialog
+  // warns accordingly. `.` regex = "has at least one character".
+  const handleCountOrthographyUsage = async (orthographyName) => {
+    const layerId = wordLayerIdRef.current;
+    if (!layerId) return null;
+    const res = await client.query({
+      where: [['token', '?t', { layer: layerId, metadata: { [`orthog:${orthographyName}`]: { regex: '.' } } }]],
+      return: { group: [], aggregates: [['count']] },
+    });
+    const n = res?.results?.[0]?.[0];
+    return typeof n === 'number' ? n : null;
+  };
+
   // Handle errors
   const handleError = () => {
     setHasError(true);
@@ -167,6 +184,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         onLoadData={handleLoadData}
         onSaveChanges={handleSaveChanges}
         onError={handleError}
+        onCountOrthographyUsage={handleCountOrthographyUsage}
         showTitle={false}
       />
     </div>

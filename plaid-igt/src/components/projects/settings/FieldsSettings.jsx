@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { FieldsManager } from './FieldsManager';
 import { notifyError } from '@/utils/feedback';
@@ -10,6 +10,9 @@ import {
 export const FieldsSettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
+  // field name -> span layer id, for usage counts at delete time. Kept in
+  // sync by handleLoadData and by creates/deletes in handleSaveChanges.
+  const spanLayerIdsRef = useRef({});
 
   // Helper to check if a field is predefined
   const isPredefinedField = (fieldName) => {
@@ -62,8 +65,10 @@ export const FieldsSettings = ({ projectId, client }) => {
       const morphemeSpanLayers = morphemeTokenLayer?.spanLayers || [];
       const allSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers, ...morphemeSpanLayers];
 
-      const fieldsWithScope = allSpanLayers
-        .filter(spanLayer => readScope(spanLayer.config)) // Only span layers with a scope
+      const scopedSpanLayers = allSpanLayers.filter(spanLayer => readScope(spanLayer.config));
+      spanLayerIdsRef.current = Object.fromEntries(scopedSpanLayers.map(l => [l.name, l.id]));
+
+      const fieldsWithScope = scopedSpanLayers
         .map(spanLayer => ({
           name: spanLayer.name,
           scope: readScope(spanLayer.config),
@@ -131,6 +136,7 @@ export const FieldsSettings = ({ projectId, client }) => {
 
       const primaryTokenLayer = findWordTokenLayer(textLayer.tokenLayers);
       const sentenceTokenLayer = findSentenceTokenLayer(textLayer.tokenLayers);
+      const morphemeTokenLayer = findMorphemeTokenLayer(textLayer.tokenLayers);
 
       if (!primaryTokenLayer) {
         throw new Error('No primary token layer found in project');
@@ -153,10 +159,12 @@ export const FieldsSettings = ({ projectId, client }) => {
         await client.tokenLayers.setConfig(primaryTokenLayerId, IGT_NAMESPACE, "ignoredTokens", ignoredTokensConfig);
       }
 
-      // Handle span layers for fields
+      // Handle span layers for fields (all three scopes — omitting morpheme
+      // layers here used to make Morpheme-field deletion a silent no-op).
       const primarySpanLayers = primaryTokenLayer.spanLayers || [];
       const sentenceSpanLayers = sentenceTokenLayer?.spanLayers || [];
-      const existingSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers];
+      const morphemeSpanLayers = morphemeTokenLayer?.spanLayers || [];
+      const existingSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers, ...morphemeSpanLayers];
       const currentFields = data.fields || [];
 
       // Find span layers that have plaid scope config (these are managed by us)
@@ -167,15 +175,20 @@ export const FieldsSettings = ({ projectId, client }) => {
         const existingLayer = managedSpanLayers.find(layer => layer.name === field.name);
 
         if (!existingLayer) {
-          // Choose parent layer based on field scope
-          const parentLayerId = field.scope === 'Sentence' ? sentenceTokenLayer?.id : primaryTokenLayerId;
+          // Choose parent layer based on field scope (Morpheme fields used to
+          // be wrongly parented under the word layer, breaking annotation).
+          const parentLayerId =
+            field.scope === 'Sentence' ? sentenceTokenLayer?.id :
+            field.scope === 'Morpheme' ? morphemeTokenLayer?.id :
+            primaryTokenLayerId;
           if (!parentLayerId) {
-            throw new Error(`No ${field.scope === 'Sentence' ? 'sentence' : 'primary'} token layer found for field ${field.name}`);
+            throw new Error(`No ${field.scope.toLowerCase()} token layer found for field ${field.name}`);
           }
 
           // Create new span layer
           const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
           await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, "scope", field.scope);
+          spanLayerIdsRef.current[field.name] = spanLayer.id;
         } else {
           // Update existing span layer scope if changed
           if (readScope(existingLayer.config) !== field.scope) {
@@ -189,6 +202,7 @@ export const FieldsSettings = ({ projectId, client }) => {
         const stillExists = currentFields.find(field => field.name === existingLayer.name);
         if (!stillExists) {
           await client.spanLayers.delete(existingLayer.id);
+          delete spanLayerIdsRef.current[existingLayer.name];
         }
       }
     } catch (error) {
@@ -198,6 +212,19 @@ export const FieldsSettings = ({ projectId, client }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Count existing annotations in a field's span layer (one aggregate query).
+  // null = unknown — the delete dialog warns accordingly.
+  const handleCountFieldUsage = async (field) => {
+    const layerId = spanLayerIdsRef.current[field?.name];
+    if (!layerId) return 0; // no backing layer yet -> nothing to lose
+    const res = await client.query({
+      where: [['span', '?s', { layer: layerId }]],
+      return: { group: [], aggregates: [['count']] },
+    });
+    const n = res?.results?.[0]?.[0];
+    return typeof n === 'number' ? n : null;
   };
 
   // Handle errors
@@ -230,6 +257,7 @@ export const FieldsSettings = ({ projectId, client }) => {
         onLoadData={handleLoadData}
         onSaveChanges={handleSaveChanges}
         onError={handleError}
+        onCountFieldUsage={handleCountFieldUsage}
         showTitle={false}
       />
     </div>

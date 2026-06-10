@@ -11,6 +11,7 @@ import {
   SelectItem
 } from '@/components/ui/select';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
 
 // Default annotation fields
 const DEFAULT_FIELDS = [
@@ -38,6 +39,11 @@ export const FieldsManager = ({
   onLoadData,
   onSaveChanges,
   onError,
+  // Async (field) => number|null of existing annotations in the field's span
+  // layer. When provided (settings mode), deletion asks for confirmation with
+  // the count; when absent (setup mode — no layers exist yet), deletion is
+  // immediate.
+  onCountFieldUsage,
   showTitle = true
 }) => {
   const [fields, setFields] = useState([]);
@@ -46,6 +52,8 @@ export const FieldsManager = ({
   const [newFieldScope, setNewFieldScope] = useState('Word');
   const [hoveredField, setHoveredField] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  // { name, count } — count: undefined while counting, null if unknown.
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   // Define scope options (morpheme layer is always present)
   const scopeOptions = [
@@ -142,7 +150,7 @@ export const FieldsManager = ({
     await saveChanges(updatedFields, ignoredTokens);
 
     setNewFieldName('');
-    setNewFieldScope('Token');
+    setNewFieldScope('Word');
     notifySuccess(`"${trimmedName}" has been added with ${newFieldScope} scope`, 'Field Added');
   };
 
@@ -151,6 +159,26 @@ export const FieldsManager = ({
     await saveChanges(updatedFields, ignoredTokens);
 
     notifyInfo(`"${fieldName}" has been removed`, 'Field Removed');
+  };
+
+  // Entry point for the trash button: in settings mode open the confirm
+  // dialog right away and fill in the annotation count as it resolves.
+  const requestDeleteField = (fieldName) => {
+    if (!onCountFieldUsage) {
+      handleDeleteField(fieldName);
+      return;
+    }
+    setPendingDelete({ name: fieldName, count: undefined });
+    const field = fields.find(f => f.name === fieldName);
+    Promise.resolve(onCountFieldUsage(field))
+      .then(n => setPendingDelete(p => (p?.name === fieldName ? { name: fieldName, count: n } : p)))
+      .catch(() => setPendingDelete(p => (p?.name === fieldName ? { name: fieldName, count: null } : p)));
+  };
+
+  const handleConfirmDelete = async () => {
+    const fieldName = pendingDelete?.name;
+    setPendingDelete(null);
+    if (fieldName) await handleDeleteField(fieldName);
   };
 
   const handleMoveField = async (fieldName, direction) => {
@@ -314,7 +342,7 @@ export const FieldsManager = ({
                           className="h-7 w-7 text-destructive hover:text-destructive"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleDeleteField(record.name);
+                            requestDeleteField(record.name);
                           }}
                           title="Remove"
                         >
@@ -441,6 +469,32 @@ export const FieldsManager = ({
           )}
         </div>
       </div>
+
+      {/* Field-deletion confirmation (settings mode only). Deleting a field
+          deletes its span layer and every annotation in it, project-wide. */}
+      <ConfirmDeleteDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => { if (!o) setPendingDelete(null); }}
+        title="Delete Annotation Field"
+        confirmLabel="Delete Field"
+        confirmDisabled={pendingDelete?.count === undefined}
+        onConfirm={handleConfirmDelete}
+      >
+        <p className="font-medium text-destructive">Warning</p>
+        <p className="mt-1 text-muted-foreground">
+          You are about to permanently delete the field <strong>"{pendingDelete?.name}"</strong>{' '}
+          and all of its annotations across every document in this project.
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          {pendingDelete?.count === undefined && 'Counting existing annotations…'}
+          {pendingDelete?.count === null && 'The number of existing annotations could not be determined — the field may still contain data.'}
+          {typeof pendingDelete?.count === 'number' && (
+            pendingDelete.count === 0
+              ? 'This field has no annotations yet.'
+              : <>This field currently has <strong>{pendingDelete.count.toLocaleString()} annotation{pendingDelete.count === 1 ? '' : 's'}</strong>. This cannot be undone.</>
+          )}
+        </p>
+      </ConfirmDeleteDialog>
     </div>
   );
 };
