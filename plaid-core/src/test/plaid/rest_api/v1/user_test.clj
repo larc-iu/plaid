@@ -35,7 +35,8 @@
         (is (= body
                {:user/id               "a@b.com"
                 :user/username         "a@b.com"
-                :user/is-admin         true}))))
+                :user/is-admin         true
+                :user/deactivated-at   nil}))))
 
     (testing "Get non-existent user fails"
       (let [req (admin-request :get "/api/v1/users/nonexistent")
@@ -62,15 +63,17 @@
               body (parse-response-body resp)]
           (is (= 1 (:user/password-changes body)))))
 
-    (testing "Delete user succeeds"
+    (testing "Delete (= deactivate) user succeeds"
       (let [req (admin-request :delete "/api/v1/users/a@b.com")
             resp (rest-handler req)]
         (is (= (:status resp) 204)))
 
-      (testing "User is actually deleted"
+      (testing "User is deactivated, not deleted — still visible with deactivated-at"
         (let [req (admin-request :get "/api/v1/users/a@b.com")
-              resp (rest-handler req)]
-          (is (= (:status resp) 404))))))
+              resp (rest-handler req)
+              body (parse-response-body resp)]
+          (is (= (:status resp) 200))
+          (is (string? (:user/deactivated-at body)))))))
 
   (testing "Authentication"
     (testing "Create test user for login"
@@ -104,6 +107,79 @@
         (is (= (:status resp) 401))
         ;; Same generic message — must not leak that the user doesn't exist.
         (is (= body {:error "Invalid credentials"}))))))
+
+(deftest user-deactivation-lifecycle
+  ;; Users are never hard-deleted (operations.user_id / token_id FKs +
+  ;; audit attribution must survive). DELETE deactivates; POST
+  ;; /users/:id/activate restores login only. Before this, DELETE
+  ;; hard-deleted the row and 500'd on the operations FK for any user
+  ;; with write history.
+  (let [login (fn [user pass]
+                (rest-handler (-> (mock/request :post "/api/v1/login")
+                                  (mock/header "accept" "application/edn")
+                                  (mock/json-body {:user-id user :password pass}))))
+        bearer-get (fn [token path]
+                     (rest-handler (-> (mock/request :get path)
+                                       (mock/header "accept" "application/edn")
+                                       (mock/header "authorization" (str "Bearer " token)))))
+        _ (is (= 201 (:status (rest-handler (-> (admin-request :post "/api/v1/users")
+                                                (mock/json-body {:username "deact@example.com"
+                                                                 :password "hunter22"
+                                                                 :is-admin false}))))))
+        token (-> (login "deact@example.com" "hunter22") parse-response-body :token)
+        api-tok (-> (rest-handler (-> (mock/request :post "/api/v1/users/deact@example.com/tokens")
+                                      (mock/header "accept" "application/edn")
+                                      (mock/json-body {:name "svc"})
+                                      (mock/header "authorization" (str "Bearer " token))))
+                    parse-response-body
+                    :token)]
+    (is (string? token) "user can log in before deactivation")
+    (is (= 200 (:status (bearer-get token "/api/v1/users/deact@example.com")))
+        "session token works before deactivation")
+    (is (= 200 (:status (bearer-get api-tok "/api/v1/users/deact@example.com")))
+        "API token works before deactivation")
+
+    (testing "deactivation rejects logins, kills live tokens, stays visible"
+      (is (= 204 (:status (rest-handler (admin-request :delete "/api/v1/users/deact@example.com")))))
+      (let [resp (login "deact@example.com" "hunter22")]
+        (is (= 401 (:status resp)) "login rejected after deactivation")
+        (is (= {:error "Invalid credentials"} (parse-response-body resp))
+            "same generic message as a wrong password — no enumeration of deactivated accounts"))
+      (is (= 401 (:status (bearer-get token "/api/v1/users/deact@example.com")))
+          "pre-deactivation session token is dead immediately")
+      (is (= 401 (:status (bearer-get api-tok "/api/v1/users/deact@example.com")))
+          "API token is dead too (revoked by deactivation)")
+      (let [body (parse-response-body (rest-handler (admin-request :get "/api/v1/users")))]
+        (is (some #(and (= "deact@example.com" (:user/id %))
+                        (string? (:user/deactivated-at %)))
+                  (:entries body))
+            "deactivated user remains listed, flagged with deactivated-at"))
+      (is (= 400 (:status (rest-handler (admin-request :delete "/api/v1/users/deact@example.com"))))
+          "double deactivation is a structured 400"))
+
+    (testing "reactivation restores login only"
+      (let [resp (rest-handler (admin-request :post "/api/v1/users/deact@example.com/activate"))
+            body (parse-response-body resp)]
+        (is (= 200 (:status resp)))
+        (is (nil? (:user/deactivated-at body)) "deactivated-at cleared"))
+      (is (= 200 (:status (login "deact@example.com" "hunter22")))
+          "login works again with the same password")
+      (is (= 401 (:status (bearer-get token "/api/v1/users/deact@example.com")))
+          "the OLD token stays dead (password_changes is monotonic)")
+      (is (= 401 (:status (bearer-get api-tok "/api/v1/users/deact@example.com")))
+          "API tokens were REVOKED at deactivation, not suspended — reactivation does not resurrect them")
+      (is (= 400 (:status (rest-handler (admin-request :post "/api/v1/users/deact@example.com/activate"))))
+          "activating an active user is a structured 400"))
+
+    (testing "non-admins can do neither"
+      (is (= 403 (:status (rest-handler (user1-request :delete "/api/v1/users/deact@example.com")))))
+      (is (= 403 (:status (rest-handler (user1-request :post "/api/v1/users/deact@example.com/activate"))))))
+
+    (testing "the last-admin guard survives the rename"
+      ;; admin@example.com (the fixture admin) is the only admin here.
+      (let [resp (rest-handler (admin-request :delete "/api/v1/users/admin@example.com"))]
+        (is (= 400 (:status resp)))
+        (is (re-find #"last admin" (:error (parse-response-body resp))))))))
 
 (deftest user-list-search-and-auth
   ;; The roster list/search (GET /users) is admin-OR-maintainer only, with a

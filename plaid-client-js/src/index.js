@@ -590,11 +590,23 @@ class PlaidClient {
           queryParams: { 'as-of': asOf },
         }),
       /**
-       * Delete a user
+       * Deactivate a user. Users are never hard-deleted: deactivation
+       * rejects their logins and tokens, strips their project memberships
+       * and vocab maintainerships, and revokes their API tokens. The user
+       * stays visible in listings with a deactivated-at timestamp.
+       * Reversible via activate(), which restores login only.
        * @param {string} id - The resource ID
        */
       delete: (id) =>
         this._request('DELETE', `/api/v1/users/${id}`),
+      /**
+       * Reactivate a deactivated user, restoring their ability to log in.
+       * Project memberships, vocab maintainerships, and API tokens removed
+       * at deactivation are NOT restored — re-grant them deliberately.
+       * @param {string} id - The resource ID
+       */
+      activate: (id) =>
+        this._request('POST', `/api/v1/users/${id}/activate`),
       /**
        * Modify a user. Admins may change the username, password, and admin
        * status of any user. All other users may only modify their own username

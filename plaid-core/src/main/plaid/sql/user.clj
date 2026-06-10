@@ -19,7 +19,15 @@
    :user/username
    :user/password-hash
    :user/password-changes
-   :user/is-admin])
+   :user/is-admin
+   :user/deactivated-at])
+
+(def public-keys
+  "The externally visible projection of a user record (no password
+  fields). `:user/deactivated-at` is included deliberately: deactivated
+  users stay listable/inspectable so admins can see and reactivate
+  them."
+  [:user/id :user/username :user/is-admin :user/deactivated-at])
 
 (defn- row->user
   "Translate a `users` row (snake_case column keys) to the namespaced
@@ -32,7 +40,10 @@
      :user/password-changes (or (:password_changes row) 0)
      ;; SQLite stores booleans as 0/1 INTEGERs.
      :user/is-admin         (boolean (and (some? (:is_admin row))
-                                          (not (zero? (long (:is_admin row))))))}))
+                                          (not (zero? (long (:is_admin row))))))
+     ;; nil = active; an ISO ts = deactivated at that moment. Users are
+     ;; never hard-deleted (audit attribution must survive).
+     :user/deactivated-at   (:deactivated_at row)}))
 
 ;; reads ---------------------------------------------------------------------------
 
@@ -45,7 +56,7 @@
   "Get a user by ID formatted for external consumption."
   [db id]
   (when-let [user (get-internal db id)]
-    (select-keys user [:user/id :user/username :user/is-admin])))
+    (select-keys user public-keys)))
 
 (defn admin? [user-record]
   (boolean (:user/is-admin user-record)))
@@ -66,14 +77,14 @@
   ([db]
    (->> (psc/q db {:select [:*] :from [:users] :order-by [:username]})
         (map row->user)
-        (map #(select-keys % [:user/id :user/username :user/is-admin]))))
+        (map #(select-keys % public-keys))))
   ([db {:keys [limit cursor-vals q]}]
    (pagination/paginate db (cond-> {:from :users
                                     :order-by [:username]
                                     :limit limit
                                     :cursor-vals cursor-vals
                                     :row->entity (fn [row] (-> (row->user row)
-                                                               (select-keys [:user/id :user/username :user/is-admin])))}
+                                                               (select-keys public-keys)))}
                              (not (clojure.string/blank? q))
                              (assoc :base-where [:like [:lower :username]
                                                  (str "%" (clojure.string/lower-case q) "%")])))))
@@ -262,22 +273,48 @@
                    AND MAX(user_id) = ?" eid])
        (mapv :project_id)))
 
-(defn delete
-  "Delete a user by ID. Before the users row is removed we walk and
-  audit the two FK ON DELETE CASCADE relationships that would otherwise
-  silently sweep junction rows (project_users + vocab_maintainers).
-  Without this, an ETL replica fed from audit_writes would never see
-  the user lose their roles / maintainerships."
+(defn- revoke-all-api-tokens!
+  "Soft-revoke every active API token owned by `user-id`, inside the
+  caller's op tx (audited :update rows under the caller's op — vs
+  api-token/revoke! which opens its own op). Part of deactivation: a
+  deactivated user's machine credentials must die with their login."
+  [tx user-id ts]
+  (let [token-ids (->> (psc/q tx {:select [:id]
+                                  :from [:api_tokens]
+                                  :where [:and
+                                          [:= :user_id user-id]
+                                          [:= :revoked_at nil]]})
+                       (mapv :id))]
+    (doseq [tid token-ids]
+      (psc/update-by-id! tx :api_tokens tid {:revoked_at ts}))))
+
+(defn deactivate
+  "Deactivate a user by ID (the DELETE /users/:id semantics). Users are
+  NEVER hard-deleted: `operations.user_id`/`operations.token_id` FKs
+  deliberately block it because audit attribution must survive forever.
+  Deactivation instead:
+    - sets `deactivated_at` (audited :update; login + JWT validation
+      reject deactivated users),
+    - bumps `password_changes` so live session tokens die immediately
+      (belt and braces alongside the JWT-validation check),
+    - strips project memberships + vocab maintainerships (audited
+      synthetic rows, same as the old delete),
+    - revokes all the user's API tokens (audited).
+  The username stays reserved. Reversible via `reactivate` (which does
+  NOT restore memberships or tokens)."
   [db eid]
-  (submit-operation! [tx db {:type :user/delete
+  (submit-operation! [tx db {:type :user/deactivate
                              :project nil
                              :document nil
-                             :description (str "Delete user " eid)
+                             :description (str "Deactivate user " eid)
                              :user nil}]
                      (let [existing (psc/fetch-by-id tx :users eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
-                       ;; Task #100 V4: refuse deletion if it would leave
+                       (when (some? (:deactivated_at existing))
+                         (throw (ex-info (str "User " eid " is already deactivated")
+                                         {:code 400 :id eid})))
+                       ;; Task #100 V4: refuse deactivation if it would leave
                        ;; the system or any project without a required
                        ;; principal. Two distinct invariants, both
                        ;; reported as 400:
@@ -288,16 +325,41 @@
                        (when (and (boolean (and (some? (:is_admin existing))
                                                 (not (zero? (long (:is_admin existing))))))
                                   (zero? (count-other-admins tx eid)))
-                         (throw (ex-info (str "Cannot delete the last admin (" eid ")")
+                         (throw (ex-info (str "Cannot deactivate the last admin (" eid ")")
                                          {:code 400 :id eid})))
                        (let [orphan-projects (projects-where-user-is-sole-maintainer tx eid)]
                          (when (seq orphan-projects)
                            (throw (ex-info
-                                   (str "Cannot delete user " eid
+                                   (str "Cannot deactivate user " eid
                                         ": they are the sole maintainer of project(s) "
                                         (clojure.string/join ", " orphan-projects))
                                    {:code 400 :id eid :projects orphan-projects}))))
                        (audit-and-cascade-project-memberships! tx eid)
                        (audit-and-cascade-vocab-maintainerships! tx eid)
-                       (psc/delete-by-id! tx :users eid)
+                       (let [ts (:ts psc/*op*)]
+                         (revoke-all-api-tokens! tx eid ts)
+                         (psc/update-by-id! tx :users eid
+                                            {:deactivated_at ts
+                                             :password_changes (inc (or (:password_changes existing) 0))}))
+                       eid)))
+
+(defn reactivate
+  "Clear a user's `deactivated_at`, restoring their ability to log in.
+  Does NOT restore project memberships, vocab maintainerships, or API
+  tokens — those were genuinely removed (audited) at deactivation and
+  must be re-granted deliberately. `password_changes` keeps its bumped
+  value (it's a monotonic counter; old tokens stay dead)."
+  [db eid]
+  (submit-operation! [tx db {:type :user/reactivate
+                             :project nil
+                             :document nil
+                             :description (str "Reactivate user " eid)
+                             :user nil}]
+                     (let [existing (psc/fetch-by-id tx :users eid)]
+                       (when (nil? existing)
+                         (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
+                       (when (nil? (:deactivated_at existing))
+                         (throw (ex-info (str "User " eid " is not deactivated")
+                                         {:code 400 :id eid})))
+                       (psc/update-by-id! tx :users eid {:deactivated_at nil})
                        eid)))

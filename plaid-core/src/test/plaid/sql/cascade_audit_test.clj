@@ -7,7 +7,7 @@
     edit. It now uses a sentinel `change_type` of `:doc-version-bump`
     (the schema CHECK constraint accepts it).
 
-  - #33 — `user/delete` previously relied on FK ON DELETE CASCADE to
+  - #33 — `user/deactivate` (formerly hard delete) previously relied on FK ON DELETE CASCADE to
     sweep project_users + vocab_maintainers rows, leaving the audit
     log with no record of the membership/maintainership loss. The
     delete now walks both junction tables and emits synthetic
@@ -73,7 +73,7 @@
             "modified_at advanced")))))
 
 ;; ============================================================
-;; #33 — user/delete walks project_users + vocab_maintainers
+;; #33 — user/deactivate walks project_users + vocab_maintainers
 ;; ============================================================
 
 (defn- create-extra-user!
@@ -85,8 +85,8 @@
     (is (:success r) (str "ensure-user create returned " r))
     eid))
 
-(deftest user-delete-audits-project-and-vocab-cascade
-  (testing "deleting a user emits synthetic :projects + :vocab_layers
+(deftest user-deactivate-audits-project-and-vocab-cascade
+  (testing "deactivating a user emits synthetic :projects + :vocab_layers
             audit rows for every membership / maintainership FK-cascade
             that would otherwise have been swept silently"
     (let [victim (create-extra-user! "cascade-victim@example.com")
@@ -107,18 +107,18 @@
                                                   [:= :vocab_layer_id vid]
                                                   [:= :user_id victim]]})))
                    "victim is on vocab_maintainers for vid")
-          ;; The actual delete (admin route).
+          ;; The actual deactivation (admin DELETE route).
           resp (api-call admin-request
                          {:method :delete :path (str "/api/v1/users/" victim)})
-          _    (is (= 204 (:status resp)) "user delete succeeds (204)")
-          ;; Find the user/delete op. The op-record's `:user` is nil
-          ;; (no actor is attached to `plaid.sql.user/delete`), so we
+          _    (is (= 204 (:status resp)) "user deactivation succeeds (204)")
+          ;; Find the user/deactivate op. The op-record's `:user` is nil
+          ;; (no actor is attached to `plaid.sql.user/deactivate`), so we
           ;; key off the op_type + description (which carries the
           ;; victim's id) rather than user_id.
           op   (psc/q1 db {:select [:*] :from [:operations]
                            :where [:and
-                                   [:= :op_type "user/delete"]
-                                   [:= :description (str "Delete user " victim)]]
+                                   [:= :op_type "user/deactivate"]
+                                   [:= :description (str "Deactivate user " victim)]]
                            :order-by [[:ts :desc]] :limit 1})
           _    (is (some? op) "user/delete op recorded")
           writes (psc/q db {:select [:*] :from [:audit_writes]
@@ -173,9 +173,14 @@
           (is (not (contains? post-maints (str victim)))
               (str "post-image maintainers no longer contains the victim id (was: "
                    post-maints ")"))))
-      ;; The user row itself is still audited as a :delete.
-      (is (= 1 (count (filter #(and (= "users" (:target_table %))
-                                    (= "delete" (:change_type %))
-                                    (= (str victim) (str (:target_id %))))
-                              writes)))
-          "users row audited with change_type=delete"))))
+      ;; The user row itself is audited as an :update whose post image
+      ;; carries the deactivation timestamp (users are never hard-deleted).
+      (let [user-writes (filter #(and (= "users" (:target_table %))
+                                      (= "update" (:change_type %))
+                                      (= (str victim) (str (:target_id %))))
+                                writes)]
+        (is (= 1 (count user-writes))
+            "users row audited with change_type=update")
+        (let [post (psc/read-json (:post_image (first user-writes)))]
+          (is (string? (:deactivated_at post))
+              "post-image carries deactivated_at"))))))

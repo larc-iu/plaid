@@ -85,10 +85,27 @@
                              {:status 403
                               :body {:error "You can only modify your own username and password"}})))}
 
-      :delete {:summary "Delete a user"
+      :delete {:summary (str "Deactivate a user. Users are never hard-deleted (audit attribution must "
+                             "survive); deactivation rejects their logins and tokens, strips their project "
+                             "memberships and vocab maintainerships, and revokes their API tokens. The "
+                             "username stays reserved and the user remains visible in listings with a "
+                             "<body>deactivated-at</body> timestamp. Reversible via the activate endpoint, "
+                             "which restores login only (not memberships or tokens).")
                :middleware [pra/wrap-admin-required]
                :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
-                          (let [{:keys [success code error]} (user/delete db id)]
+                          (let [{:keys [success code error]} (user/deactivate db id)]
                             (if success
                               {:status 204}
-                              {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]]])
+                              {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+    ["/activate"
+     {:post {:summary (str "Reactivate a deactivated user, restoring their ability to log in. Project "
+                           "memberships, vocab maintainerships, and API tokens removed at deactivation "
+                           "are NOT restored — re-grant them deliberately. 400 if the user is not "
+                           "deactivated.")
+             :openapi {:x-client-method "activate"}
+             :middleware [pra/wrap-admin-required]
+             :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
+                        (let [{:keys [success code error]} (user/reactivate db id)]
+                          (if success
+                            {:status 200 :body (user/get db id)}
+                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]]])

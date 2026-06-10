@@ -680,12 +680,29 @@ class UsersResource(_Resource):
                              query_params={'as-of': as_of})
 
     def delete(self, id: str) -> Any:
-        """Delete a user.
+        """Deactivate a user.
+
+        Users are never hard-deleted: deactivation rejects their logins and
+        tokens, strips their project memberships and vocab maintainerships,
+        and revokes their API tokens. The user stays visible in listings with
+        a ``deactivated-at`` timestamp. Reversible via :meth:`activate`,
+        which restores login only.
 
         Args:
             id: The resource ID
         """
         return self._request('DELETE', f'/api/v1/users/{id}')
+
+    def activate(self, id: str) -> Any:
+        """Reactivate a deactivated user, restoring their ability to log in.
+
+        Project memberships, vocab maintainerships, and API tokens removed at
+        deactivation are NOT restored — re-grant them deliberately.
+
+        Args:
+            id: The resource ID
+        """
+        return self._request('POST', f'/api/v1/users/{id}/activate')
 
     def update(self, id: str, *, password: Any = _UNSET, username: Any = _UNSET,
                is_admin: Any = _UNSET) -> Any:

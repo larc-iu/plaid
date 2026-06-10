@@ -84,10 +84,13 @@
            :parameters {:body {:user-id string? :password string?}}
            :handler (fn [{{{:keys [user-id password]} :body} :parameters
                           db :db secret-key :secret-key :as request}]
-                      ;; Return the same generic error in both branches to avoid
-                      ;; leaking which usernames exist (user-enumeration via login).
-                      (if-let [{:user/keys [id password-changes password-hash]} (user/get-internal db user-id)]
-                        (if (hashers/check password password-hash)
+                      ;; Return the same generic error in all branches to avoid
+                      ;; leaking which usernames exist (user-enumeration via
+                      ;; login) — including the deactivated case, which must be
+                      ;; indistinguishable from a wrong password.
+                      (if-let [{:user/keys [id password-changes password-hash deactivated-at]} (user/get-internal db user-id)]
+                        (if (and (hashers/check password password-hash)
+                                 (nil? deactivated-at))
                           (let [token (sign-user-token secret-key id password-changes)]
                             ;; Successful login clears the rate-limit
                             ;; bucket — an occasional typo shouldn't lock
@@ -225,6 +228,14 @@
                 (nil? user)
                 {:status 401
                  :body {:error (str "Token invalid because user does not exist.")}}
+
+                ;; Deactivated users are rejected on BOTH token kinds.
+                ;; Deactivation also bumps password_changes and revokes the
+                ;; user's API tokens, but this check is the authority — it
+                ;; holds even if a future write path forgets one of those.
+                (some? (:user/deactivated-at user))
+                {:status 401
+                 :body {:error (str "Token invalid because user is deactivated.")}}
 
                 ;; API-token branch: revocation/existence is the only check.
                 ;; Skips the `password_changes` version check entirely so the

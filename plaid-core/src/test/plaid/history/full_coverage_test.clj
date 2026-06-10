@@ -153,8 +153,11 @@
                            :path (str "/api/v1/users/" user-id)
                            :body {:password "newcorrecthorsebatterystaple"}}))
 
-(defn- delete-user! [user-id]
+(defn- deactivate-user! [user-id]
   (api-call admin-request {:method :delete :path (str "/api/v1/users/" user-id)}))
+
+(defn- reactivate-user! [user-id]
+  (api-call admin-request {:method :post :path (str "/api/v1/users/" user-id "/activate")}))
 
 (defn- update-project-name [proj-id name]
   (api-call admin-request {:method :patch
@@ -204,7 +207,7 @@
     "token/shift-boundary" "token/split" "token/update"
     "token-layer/create" "token-layer/delete" "token-layer/shift"
     "token-layer/update"
-    "user/create" "user/delete" "user/update"
+    "user/create" "user/deactivate" "user/reactivate" "user/update"
     "api-token/create" "api-token/revoke"
     "vocab/add-maintainer" "vocab/create" "vocab/delete"
     "vocab/remove-maintainer" "vocab/update"
@@ -457,10 +460,12 @@
             _ (assert-ok (delete-document-metadata admin-request doc-throw)) ; document/delete-metadata
             _ (assert-no-content (delete-document! doc-throw))               ; document/delete
 
-            ;; ---- throwaway project + user for project/delete + user/delete ----
+            ;; ---- throwaway project + user for project/delete + user deactivation ----
             proj-throw (create-test-project admin-request "FC-ProjThrow")
             _ (assert-no-content (delete-project! proj-throw))               ; project/delete
-            _ (assert-no-content (delete-user! u-throw))                     ; user/delete
+            _ (assert-no-content (deactivate-user! u-throw))                 ; user/deactivate
+            _ (assert-ok (reactivate-user! u-throw))                         ; user/reactivate
+            _ (assert-no-content (deactivate-user! u-throw))                 ; leave them deactivated
 
             ts (latest-op-ts)
             _ (drain!)]
