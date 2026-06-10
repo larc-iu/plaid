@@ -74,6 +74,23 @@ export class ConlluDocument {
       throw new Error('No valid sentences found in CoNLL-U data');
     }
 
+    // Deliberately-unsupported data the parser dropped. Returned to the caller
+    // (the import UI toasts these) — non-support must be loud, never silent.
+    const importWarnings = [];
+    const { emptyNodes = 0, miscTokens = 0 } = parsedData.dropped || {};
+    if (emptyNodes > 0) {
+      importWarnings.push(
+        `${emptyNodes} empty node${emptyNodes === 1 ? '' : 's'} (decimal-ID rows) ` +
+        'dropped: Plaid UD does not store empty nodes or enhanced dependencies.'
+      );
+    }
+    if (miscTokens > 0) {
+      importWarnings.push(
+        `MISC values on ${miscTokens} token row${miscTokens === 1 ? '' : 's'} ` +
+        'dropped: Plaid UD does not store the MISC column (multiword-token MISC is kept).'
+      );
+    }
+
     let createdDocumentId = null;
     try {
       const documentResponse = await client.documents.create(projectId, name);
@@ -229,7 +246,7 @@ export class ConlluDocument {
         }
       }
 
-      return { documentId: createdDocumentId };
+      return { documentId: createdDocumentId, importWarnings };
     } catch (err) {
       if (createdDocumentId) {
         try {

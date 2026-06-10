@@ -12,6 +12,10 @@ export function parseCoNLLU(text) {
   const sentences = [];
   let currentSentence = null;
   let currentMetadata = {};
+  // Deliberately-unsupported data we drop on import. Counted so the UI can
+  // tell the user loudly (a toast) instead of mangling data in silence.
+  let droppedEmptyNodes = 0;
+  let droppedMiscTokens = 0;
   
   for (const line of lines) {
     const trimmedLine = line.trim();
@@ -71,10 +75,10 @@ export function parseCoNLLU(text) {
     }
     
     // Skip ellipsis tokens (e.g., "4.1"). The UD format uses decimal IDs for
-    // empty nodes (enhanced dependencies) which we don't currently model — warn
-    // so round-trip data loss is visible to the user.
+    // empty nodes (enhanced dependencies) which we don't model — counted so
+    // the caller can surface the data loss to the user.
     if (id.includes('.')) {
-      console.warn(`Dropping CoNLL-U ellipsis token (decimal ID): ${id} — empty nodes are not preserved on round-trip`);
+      droppedEmptyNodes += 1;
       continue;
     }
     
@@ -103,6 +107,14 @@ export function parseCoNLLU(text) {
       throw new Error(`Invalid token ID: ${id}`);
     }
     
+    // Word-row MISC is deliberately unsupported (it often carries annotations
+    // like entity info that tokenization changes would silently corrupt;
+    // see plaid-ud scope decisions) — count the drop so the user hears about
+    // it. MWT-line MISC IS kept, on the word token's metadata.misc.
+    if (misc !== '_' && misc !== '') {
+      droppedMiscTokens += 1;
+    }
+
     // Parse features into array
     const featuresArray = feats === '_' ? [] : feats.split('|');
     
@@ -145,7 +157,7 @@ export function parseCoNLLU(text) {
     }
   }
   
-  return { sentences };
+  return { sentences, dropped: { emptyNodes: droppedEmptyNodes, miscTokens: droppedMiscTokens } };
 }
 
 /**

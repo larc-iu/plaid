@@ -4,6 +4,7 @@ import {
 } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
+import { notifyWarning } from '../../utils/feedback.jsx';
 
 export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
   const [importText, setImportText] = useState('');
@@ -47,7 +48,12 @@ export const ImportModal = ({ projectId, isOpen, onClose, onSuccess }) => {
 
     try {
       const client = getClient();
-      await ConlluDocument.importFromConllu(client, projectId, documentName, importText);
+      const { importWarnings } = await ConlluDocument.importFromConllu(client, projectId, documentName, importText);
+      // Sticky on purpose: these report deliberately-unsupported data that was
+      // dropped — the user must see them, not catch a fading toast.
+      (importWarnings || []).forEach(msg =>
+        notifyWarning(msg, 'Some annotations were not imported', { autoClose: false })
+      );
       setSuccess(true);
       setTimeout(() => { onSuccess(); }, 2000);
     } catch (err) {
