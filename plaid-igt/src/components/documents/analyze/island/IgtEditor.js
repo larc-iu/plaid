@@ -463,7 +463,7 @@ export class IgtEditor {
       class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${extraClass}"
       data-cell-key=${key}
       aria-label=${ariaLabel ?? nothing}
-      title=${filled ? v : nothing}
+      title=${filled ? v : (ariaLabel ?? nothing)}
       size=${this._fieldSize(v)}
       ?disabled=${this.readOnly}
       ${uncontrolledValue(v)}

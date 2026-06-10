@@ -163,7 +163,9 @@
 
 /* Right-edge fade shown only when the grid can scroll further right, so a
    half-glossed sentence never silently looks complete. Toggled in JS by
-   _updateScrollCues via .is-clipped-right on the sentence. */
+   _updateScrollCues via .is-clipped-right on the sentence. Since word columns
+   WRAP (below), this only triggers in the pathological case of a single
+   column wider than the viewport — kept as a safety net. */
 .igt-sentence::after {
   content: '';
   position: absolute;
@@ -180,7 +182,14 @@
 .igt-sentence:nth-child(even)::after { background: linear-gradient(to right, rgba(251, 252, 254, 0), #fbfcfe 78%); }
 .igt-sentence.is-clipped-right::after { opacity: 1; }
 
-/* ---- the interlinear grid ---- */
+/* ---- the interlinear grid ----
+   [row labels | word columns]. Word columns WRAP into bands (FLEx-style)
+   instead of scrolling horizontally; every column is a self-contained
+   vertical stack with uniform row heights, so wrapped bands stay row-aligned.
+   The labels column labels the first band; later bands repeat the same row
+   structure (each opens with the gray word-form header), and every field
+   carries a tooltip naming its row for orientation. overflow-x stays as a
+   safety net for a single column wider than the viewport. */
 .igt-grid {
   display: flex;
   align-items: flex-start;
@@ -232,8 +241,11 @@
 
 .igt-tokens {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: flex-start;
+  row-gap: 18px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .igt-token-col {
