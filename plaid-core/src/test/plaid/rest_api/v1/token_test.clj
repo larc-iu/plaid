@@ -299,6 +299,24 @@
         (doseq [token-id token-ids]
           (assert-not-found (get-token admin-request token-id)))))
 
+    (testing "Bulk delete tokens - cross-document rejected"
+      ;; Bulk delete is per-document: auth + OCC resolve from the first
+      ;; id, so a mixed-document list must 400 with nothing deleted.
+      (let [r1 (bulk-create-tokens admin-request [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5}])
+            _ (assert-created r1)
+            r2 (bulk-create-tokens admin-request [{:token-layer-id tkl1 :text text2-id :begin 0 :end 7}])
+            _ (assert-created r2)
+            [tok-d1] (-> r1 :body :ids)
+            [tok-d2] (-> r2 :body :ids)
+            delete-res (bulk-delete-tokens admin-request [tok-d1 tok-d2])]
+        (assert-status 400 delete-res)
+        ;; Neither token was deleted.
+        (assert-ok (get-token admin-request tok-d1))
+        (assert-ok (get-token admin-request tok-d2))
+        ;; Per-document calls still work.
+        (assert-no-content (bulk-delete-tokens admin-request [tok-d1]))
+        (assert-no-content (bulk-delete-tokens admin-request [tok-d2]))))
+
     (testing "Bulk delete tokens - partial failure with spans"
       ;; Create tokens and spans, then try to delete tokens with spans
       (let [tokens [{:token-layer-id tkl1 :text text1-id :begin 0 :end 5}

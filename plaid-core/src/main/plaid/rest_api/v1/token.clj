@@ -122,7 +122,8 @@
                                     {:status 201 :body {:ids (:extra result)}}
                                     db doc-id)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
-             :delete {:summary (str "Delete multiple tokens in a single operation. Provide an array of IDs. As with "
+             :delete {:summary (str "Delete multiple tokens in a single operation. Provide an array of IDs. All "
+                                    "tokens must belong to the same document (400 otherwise). As with "
                                     "single delete, each deleted token also drags down the descendant tokens nested "
                                     "within it (and their dependent spans, relations, and vocab-links) if the layer "
                                     "has child token layers.")

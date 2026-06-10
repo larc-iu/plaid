@@ -768,7 +768,8 @@
 ;; ============================================================
 
 (defn bulk-delete
-  "Delete every token in `eids`. Each token's descendant subtree is
+  "Delete every token in `eids`. All tokens must belong to the same
+  document (400 otherwise). Each token's descendant subtree is
   cascade-deleted alongside it, and the visible-entity cascade
   (relations / spans / vocab_links) runs once over the full set."
   [db eids user-id]
@@ -780,11 +781,11 @@
                                    :token/begin (:begin r)
                                    :token/end (:end_ r)})
                           token-rows)
-        ;; Group by [layer, doc] tuple — not just layer. A partitioning
-        ;; layer can span documents, and the partitioning
-        ;; all-or-nothing check + the orphan guard both work per
-        ;; (layer, doc) pair. See enforce-overlap-bulk-delete in
-        ;; plaid.sql.constraints.token.
+        ;; Group by [layer, doc] tuple — the shape the partitioning
+        ;; all-or-nothing check + the orphan guard consume. The doc
+        ;; component is constant (single-document check below), but
+        ;; multiple layers per call are fine. See
+        ;; enforce-overlap-bulk-delete in plaid.sql.constraints.token.
         tokens-by-layer-doc (group-by (juxt :token/layer :token/document) token-light)
         first-t (first token-light)
         doc-id (:token/document first-t)]
@@ -795,6 +796,15 @@
              :document doc-id
              :description (str "Bulk delete " (count eids) " tokens")
              :user user-id}]
+     ;; Document consistency (mirrors span/relation bulk-delete). One
+     ;; document also means one project, which is what makes the
+     ;; route's authorize-by-first-id sound — without it a writer of
+     ;; project A could smuggle project-B token ids into the list.
+     ;; Token→document is immutable, so the pre-tx fetch is safe here.
+     (let [doc-ids (distinct (map :token/document token-light))]
+       (when (> (count doc-ids) 1)
+         (throw (ex-info "Not all tokens belong to the same document"
+                         {:document-ids doc-ids :code 400}))))
      (let [;; dlids depend only on the layer, so key the cache by layer
            ;; and dedupe over the (layer, doc) tuples.
            dlids-by-layer (into {}
