@@ -392,6 +392,57 @@
         (is (= (:last-seq pre-cursor) (:last-seq post-cursor))
             "cursor seq unchanged")))))
 
+(deftest stall-recovery-does-not-rewrite-backlog-system-time
+  ;; H3 regression (2026-06-10): set-stalled!/set-running! used to write
+  ;; the cursor doc WITHOUT :system-time, committing at wall-clock now and
+  ;; jumping the node's system-time head past every unapplied backlog op.
+  ;; guard-monotonic then force-advanced the whole backlog onto a
+  ;; wall-clock millisecond ramp — as-of reads inside the rewritten window
+  ;; silently returned the wrong state (the recovery procedure itself
+  ;; corrupted the time axis). Cursor-only writes now pin :system-time to
+  ;; the current head, so a stall/resume cycle with a pending backlog must
+  ;; leave the head untouched and apply the backlog at its REAL op ts.
+  (let [op1 (str (UUID/randomUUID))
+        op2 (str (UUID/randomUUID))
+        op3 (str (UUID/randomUUID))
+        t1 "2026-05-28T14:00:00Z"
+        t2 "2026-05-28T14:01:00Z"
+        t3 "2026-05-28T14:02:00Z"]
+    ;; Apply op1 so the node head sits at t1.
+    (insert-operation! plaid.fixtures/db op1 t1)
+    (insert-audit-rows! plaid.fixtures/db op1 t1 1)
+    (with-redefs [history/history-config (constantly (cfg 500))]
+      (tailer/poll-once! plaid.fixtures/db *history-node*)
+      (let [head-before (history/head-system-time *history-node*)]
+        (is (= (Instant/parse t1) head-before)
+            "precondition: head is op1's ts after the apply")
+        ;; Stall, accumulate a backlog (op2, op3 commit while stalled),
+        ;; then recover — the exact dev-incident sequence.
+        (history/set-stalled! *history-node* {:op-id op1 :seq 0 :reason "test stall"})
+        (insert-operation! plaid.fixtures/db op2 t2)
+        (insert-audit-rows! plaid.fixtures/db op2 t2 1)
+        (insert-operation! plaid.fixtures/db op3 t3)
+        (insert-audit-rows! plaid.fixtures/db op3 t3 1)
+        (history/set-running! *history-node*)
+        (is (= head-before (history/head-system-time *history-node*))
+            "the stall/resume cursor writes did NOT advance the system-time head")
+        ;; Drain the backlog and verify the time axis survived: a snapshot
+        ;; read between t2 and t3 must see op2's doc but not op3's.
+        (tailer/poll-once! plaid.fixtures/db *history-node*)
+        (is (= op3 (:last-op-id (history/cursor-read *history-node*)))
+            "backlog fully applied")
+        (let [count-at (fn [iso]
+                         (count (xt/q *history-node*
+                                      '(from :history/spans [{:xt/id id}])
+                                      {:snapshot-time (history/->date iso)})))]
+          ;; op1's single span doc at t1, op2's second at t2, op3's third at t3.
+          (is (= 1 (count-at "2026-05-28T14:00:30Z"))
+              "snapshot after t1, before t2: only op1's doc")
+          (is (= 2 (count-at "2026-05-28T14:01:30Z"))
+              "snapshot between t2 and t3 sees op2's doc — the backlog applied at its real op ts, not a wall-clock ramp")
+          (is (= 3 (count-at "2026-05-28T14:02:30Z"))
+              "snapshot after t3 sees everything"))))))
+
 (deftest resume-with-skip-advances-past-bad-row-and-applies-subsequent-rows
   ;; The full happy-path recovery: a good op, then a bad op, then a good op.
   ;; After the loop stalls on op2, the operator's `:skip-current-row?` path

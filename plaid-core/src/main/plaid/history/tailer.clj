@@ -235,23 +235,46 @@
 ;; Monotonic-system-time guard
 ;; ============================================================
 
-(defn- latest-system-from
-  "Return the most recent `:xt/system-from` across `:history/meta` rows
-  (the cursor doc is the only meta entry today). Nil on a fresh node.
+(defonce ^:private head-cache
+  ;; {:owner <node> :head Instant} — the node's system-time head as
+  ;; witnessed from the last apply's returned TxKey. Maintained by
+  ;; cache-head! after every execute-tx so the steady-state guard never
+  ;; pays an xt/status call (~20ms — measured; two per op blew the
+  ;; full-coverage drain budget when the guard read status directly).
+  (atom nil))
 
-  We probe `:history/meta` rather than every entity table because the
-  cursor is written on every apply-op! AND on every operator-driven
-  cursor advance (`set-stalled!`, `set-running!`, `resume! :skip…?`)
-  — it's the canonical high-water-mark on the history's system-time
-  axis."
+(defn- cached-head
+  "The node's current system-time head (nil on a fresh node). Served
+  from the in-process cache when it belongs to `node`; on a miss (loop
+  start, new node, standalone poll-once!) falls back to xt/status —
+  first waiting for the indexer to catch up to the durable log, because
+  the completed-tx head is only authoritative then.
+
+  This REPLACED a query for the cursor doc's `:xt/system-from`: that
+  read INDEXED state, which lags the durable log at node startup, while
+  XTDB's validator compares a submitted `:system-time` against the LOG
+  head. The guard then derived a regressed watermark, submitted an
+  older-than-log-head tx, got rejected, and structurally stalled the
+  tailer on its first post-restart apply (the 2026-06-06 dev stall —
+  4 days of as-of 503s). The single-writer design makes the cache
+  sound: only this process writes the node, every write path either
+  updates the cache (applies) or writes at the head without moving it
+  (cursor-only writes via cursor-write-tx-opts)."
   ^Instant [node]
-  (let [rows (history/plan-retrying
-              3
-              (fn []
-                (xt/q node
-                      '(-> (from :history/meta [{:xt/id id :xt/system-from sf}])
-                           (where (= id :cursor))))))]
-    (some-> rows first :sf history/->instant)))
+  (let [{:keys [owner head]} @head-cache]
+    (if (identical? owner node)
+      head
+      (do (history/await-index-caught-up! node {:timeout-ms (* 10 60 1000)})
+          (let [head (history/head-system-time node)]
+            (reset! head-cache {:owner node :head head})
+            head)))))
+
+(defn- cache-head!
+  "Record the system-time of an apply's returned TxKey as the node's
+  new head."
+  [node tx-key]
+  (when-let [st (:system-time tx-key)]
+    (reset! head-cache {:owner node :head (history/->instant st)})))
 
 (defn- guard-monotonic
   "Return a `:system-time` Date that is guaranteed non-decreasing
@@ -294,7 +317,7 @@
 
   Returns the new cursor doc (post-apply read) for status reporting."
   [node op-record audit-rows]
-  (let [latest (latest-system-from node)
+  (let [latest (cached-head node)
         original (try
                    (history/->date (:op/ts op-record))
                    (catch Exception e
@@ -306,10 +329,11 @@
                                       :op-id (:op/id op-record)
                                       :seq (:seq (first audit-rows))}
                                      e))))
-        adjusted (guard-monotonic original latest)]
-    (if (= adjusted original)
-      (replayer/apply-op! node op-record audit-rows)
-      (replayer/apply-op! node op-record audit-rows adjusted))
+        adjusted (guard-monotonic original latest)
+        tx-key (if (= adjusted original)
+                 (replayer/apply-op! node op-record audit-rows)
+                 (replayer/apply-op! node op-record audit-rows adjusted))]
+    (cache-head! node tx-key)
     ;; Re-read the cursor immediately to confirm the write landed —
     ;; XTDB v2 returns {:tx-id n} for dropped writes too, so the
     ;; submit-tx return value can't be trusted.
@@ -470,7 +494,21 @@
          final-cursor (atom cursor)]
      (doseq [op-rows grouped]
        (let [op-record (op-record-from-row (first op-rows))
-             cur (apply-op-with-guard! node op-record op-rows)]
+             cur (try
+                   (apply-op-with-guard! node op-record op-rows)
+                   (catch Throwable t
+                     ;; A stall record must NAME the offending op.
+                     ;; Replayer errors already carry :op-id/:seq;
+                     ;; XTDB/system errors don't — enrich them here,
+                     ;; where the op is in scope, so the operator isn't
+                     ;; left with '(at op-id=, seq=)'.
+                     (throw (if (:op-id (ex-data t))
+                              t
+                              (ex-info (or (ex-message t) (str t))
+                                       (assoc (ex-data t)
+                                              :op-id (:op/id op-record)
+                                              :seq (:seq (first op-rows)))
+                                       t)))))]
          (reset! final-cursor cur)
          (swap! applied inc)))
      ;; First-poll-on-quiet-OLTP case (M-pipeline-2): we have no
@@ -478,10 +516,13 @@
      ;; never wrote one either. Persist the seed cursor explicitly so
      ;; health reads + staleness checks see a cursor instead of nil
      ;; forever. We only do this when the apply loop didn't already
-     ;; write a cursor — otherwise we'd risk advancing system-time
-     ;; ahead of pending replay rows and tripping guard-monotonic.
+     ;; write a cursor. Like every cursor-only write, pin :system-time
+     ;; to the head so the bookkeeping write can't advance the node's
+     ;; system-time axis (here: ahead of ops that commit between this
+     ;; write and the next poll).
      (when (and (nil? existing-cursor) (zero? @applied))
-       (xt/execute-tx node [(history/cursor->tx-op cursor)])
+       (xt/execute-tx node [(history/cursor->tx-op cursor)]
+                      (history/cursor-write-tx-opts node))
        (reset! final-cursor (or (history/cursor-read node) cursor)))
      (update-status! ds node @final-cursor)
      {:applied-ops @applied
@@ -701,93 +742,40 @@
                (or (.getMessage e) "")) true
       :else (recur (.getCause e)))))
 
-(defn- run-loop!
-  "Body of the background loop. Returns a promise-channel `done` that
-  receives `::exited` exactly once when the loop exits (stall or stop).
+(defonce ^:private loop-generation
+  ;; Incremented by every run-loop! call. A loop that outlives a `:stop`
+  ;; abandonment (e.g. stuck in a multi-minute execute-tx for a giant op
+  ;; while a restart spawns a successor) compares its captured generation
+  ;; before persisting a stall — a superseded loop's apply failure is
+  ;; expected (the successor advanced the node past it) and writing
+  ;; :stalled would falsely halt the HEALTHY successor.
+  (atom 0))
 
-  `done` is a promise-channel so external waiters can distinguish
-  'loop still running' from 'loop has terminated' via `(async/poll!
-  done)` — a closed empty channel returns nil for both, but a
-  promise-chan with the sentinel buffered returns the sentinel forever
-  after the loop exits. `resume!` relies on this distinction to decide
-  whether to spawn a fresh loop."
-  [ds node cfg]
-  (let [stop (async/chan)
-        done (async/promise-chan)
-        nudge history/nudge-chan
-        heartbeat-ms (or (-> cfg :tailer :poll-interval-ms) 5000)
-        signal-done! (fn [] (async/put! done ::exited) (async/close! done))]
-    (reset-loop-instance-state!)
-    (reset! stop-chan stop)
-    (reset! done-chan done)
-    (async/go-loop []
-      (let [running? (try
-                       (let [cur (history/cursor-read node)]
-                         (not= :stalled (:tailer-status cur)))
-                       (catch Throwable t
-                         (log/error t "history tailer cursor read failed")
-                         false))
-            keep-going? (when running?
-                          (try
-                            ;; Drain any nudges queued while we were
-                            ;; sleeping so we don't double-process the
-                            ;; same wakeup on the next iteration.
-                            (drain-nudges! nudge)
-                            (apply-batches-until-empty! ds node stop)
-                            (catch Throwable t
-                              (cond
-                                ;; Transient SQLite lock contention on the
-                                ;; audit-log read. The cursor hasn't moved and
-                                ;; nothing partial landed (apply writes to XTDB,
-                                ;; not SQLite), so DON'T stall — return truthy to
-                                ;; fall through to the normal poll wait and retry
-                                ;; the same cursor next iteration.
-                                (transient-db-error? t)
-                                (do (log/warn t "history tailer hit transient DB contention; retrying next poll:"
-                                              (or (ex-message t) (str t)))
-                                    true)
+(defn- await-index-caught-up-stop-aware!
+  "Pre-pass barrier for the loop: wait until the node's indexer catches
+  up to its durable log, honoring `stop` between polls. Returns true
+  when caught up, false when stop was requested first.
 
-                                ;; Datasource closed under us during shutdown.
-                                ;; Exit the loop cleanly WITHOUT persisting a
-                                ;; stall — the read failed so the cursor never
-                                ;; moved; the next :start resumes from it. (A
-                                ;; persisted stall here would make every restart
-                                ;; come up dead until a manual resume!.)
-                                (shutdown-db-error? t)
-                                (do (log/info "history tailer: datasource closed (shutting down); exiting cleanly")
-                                    false)
-
-                                ;; Structural / data defect: stall so an operator
-                                ;; can intervene. The stall write uses a fresh
-                                ;; execute-tx so the cursor doc is updated even
-                                ;; though the apply tx (which would have included
-                                ;; its own cursor-advance) failed.
-                                :else
-                                (let [data (ex-data t)
-                                      reason (or (ex-message t) (str t))]
-                                  (log/error t "history tailer stalled:" reason)
-                                  (try
-                                    (history/set-stalled! node
-                                                          {:op-id (:op-id data)
-                                                           :seq (:seq data)
-                                                           :reason reason})
-                                    (catch Throwable t2
-                                      (log/error t2 "history tailer failed to record stall")))
-                                  false)))))]
-        (if (and running? keep-going?)
-          (let [[_ port] (async/alts! [stop nudge (async/timeout heartbeat-ms)])]
-            (if (= port stop)
-              (do (log/info "history tailer stop requested; exiting loop")
-                  (signal-done!))
-              (recur)))
-          (do (when-not running?
-                (log/info "history tailer not running (stalled or shutting down)"))
-              (signal-done!)))))
-    done))
-
-;; ============================================================
-;; Mount lifecycle
-;; ============================================================
+  Must precede the loop's first `cursor-read`: at node startup the
+  indexed state lags the durable log, so an early read returns a
+  REGRESSED cursor (observed in the 2026-06-06 dev stall) — stale
+  status, stale position. Logs progress every ~10s."
+  [node stop]
+  (let [started (System/currentTimeMillis)]
+    (loop [last-logged started]
+      (cond
+        (stop-requested? stop) false
+        (:caught-up? (history/index-lag node)) true
+        :else
+        (let [now (System/currentTimeMillis)
+              {:keys [submitted processed]} (history/index-lag node)
+              log? (>= (- now last-logged) 10000)]
+          (when log?
+            (log/info "history tailer waiting for node index to catch up to durable log:"
+                      {:processed processed :submitted submitted
+                       :waited-ms (- now started)}))
+          (async/<!! (async/timeout 250))
+          (recur (if log? now last-logged)))))))
 
 (defn- clear-stale-stall-on-start!
   "If the node comes up `:stalled`, clear the flag (RETRY semantics — we
@@ -809,6 +797,121 @@
                 (:stall-reason cur))
       (history/set-running! node))))
 
+(defn- run-loop!
+  "Body of the background loop. Returns a promise-channel `done` that
+  receives `::exited` exactly once when the loop exits (stall or stop).
+
+  `done` is a promise-channel so external waiters can distinguish
+  'loop still running' from 'loop has terminated' via `(async/poll!
+  done)` — a closed empty channel returns nil for both, but a
+  promise-chan with the sentinel buffered returns the sentinel forever
+  after the loop exits. `resume!` relies on this distinction to decide
+  whether to spawn a fresh loop.
+
+  Starts with a one-time pre-pass (inside the loop thread, so mount
+  `:start` isn't blocked by a long node-startup index replay): wait for
+  the indexer to catch up to the durable log, then auto-clear a stale
+  persisted stall."
+  [ds node cfg]
+  (let [stop (async/chan)
+        done (async/promise-chan)
+        nudge history/nudge-chan
+        gen (swap! loop-generation inc)
+        heartbeat-ms (or (-> cfg :tailer :poll-interval-ms) 5000)
+        signal-done! (fn [] (async/put! done ::exited) (async/close! done))]
+    (reset-loop-instance-state!)
+    (reset! stop-chan stop)
+    (reset! done-chan done)
+    (async/go
+      (let [pre-ok? (try
+                      (if (await-index-caught-up-stop-aware! node stop)
+                        (do (clear-stale-stall-on-start! node) true)
+                        (do (log/info "history tailer stop requested during index catch-up; exiting")
+                            false))
+                      (catch Throwable t
+                        (log/error t "history tailer startup pre-pass failed")
+                        false))]
+        (if-not pre-ok?
+          (signal-done!)
+          (loop []
+            (let [running? (try
+                             (let [cur (history/cursor-read node)]
+                               (not= :stalled (:tailer-status cur)))
+                             (catch Throwable t
+                               (log/error t "history tailer cursor read failed")
+                               false))
+                  keep-going? (when running?
+                                (try
+                                  ;; Drain any nudges queued while we were
+                                  ;; sleeping so we don't double-process the
+                                  ;; same wakeup on the next iteration.
+                                  (drain-nudges! nudge)
+                                  (apply-batches-until-empty! ds node stop)
+                                  (catch Throwable t
+                                    (cond
+                                      ;; Transient SQLite lock contention on the
+                                      ;; audit-log read. The cursor hasn't moved and
+                                      ;; nothing partial landed (apply writes to XTDB,
+                                      ;; not SQLite), so DON'T stall — return truthy to
+                                      ;; fall through to the normal poll wait and retry
+                                      ;; the same cursor next iteration.
+                                      (transient-db-error? t)
+                                      (do (log/warn t "history tailer hit transient DB contention; retrying next poll:"
+                                                    (or (ex-message t) (str t)))
+                                          true)
+
+                                      ;; Datasource closed under us during shutdown.
+                                      ;; Exit the loop cleanly WITHOUT persisting a
+                                      ;; stall — the read failed so the cursor never
+                                      ;; moved; the next :start resumes from it. (A
+                                      ;; persisted stall here would make every restart
+                                      ;; come up dead until a manual resume!.)
+                                      (shutdown-db-error? t)
+                                      (do (log/info "history tailer: datasource closed (shutting down); exiting cleanly")
+                                          false)
+
+                                      ;; Superseded: a newer loop replaced this one
+                                      ;; (`:stop` abandoned us mid-apply, then a
+                                      ;; restart). Our failure is the expected
+                                      ;; older-than-head rejection against the
+                                      ;; successor's writes — exit silently rather
+                                      ;; than stalling the healthy successor.
+                                      (not= gen @loop-generation)
+                                      (do (log/info "history tailer loop superseded by a newer loop; exiting without stall")
+                                          false)
+
+                                      ;; Structural / data defect: stall so an operator
+                                      ;; can intervene. The stall write uses a fresh
+                                      ;; execute-tx so the cursor doc is updated even
+                                      ;; though the apply tx (which would have included
+                                      ;; its own cursor-advance) failed.
+                                      :else
+                                      (let [data (ex-data t)
+                                            reason (or (ex-message t) (str t))]
+                                        (log/error t "history tailer stalled:" reason)
+                                        (try
+                                          (history/set-stalled! node
+                                                                {:op-id (:op-id data)
+                                                                 :seq (:seq data)
+                                                                 :reason reason})
+                                          (catch Throwable t2
+                                            (log/error t2 "history tailer failed to record stall")))
+                                        false)))))]
+              (if (and running? keep-going?)
+                (let [[_ port] (async/alts! [stop nudge (async/timeout heartbeat-ms)])]
+                  (if (= port stop)
+                    (do (log/info "history tailer stop requested; exiting loop")
+                        (signal-done!))
+                    (recur)))
+                (do (when-not running?
+                      (log/info "history tailer not running (stalled or shutting down)"))
+                    (signal-done!))))))))
+    done))
+
+;; ============================================================
+;; Mount lifecycle
+;; ============================================================
+
 (defstate tailer
   :start (let [cfg (history/history-config)]
            (if (and (:enabled? cfg) history/node)
@@ -816,7 +919,9 @@
                (log/info "Starting history tailer"
                          (select-keys (:tailer cfg)
                                       [:poll-interval-ms :batch-size]))
-               (clear-stale-stall-on-start! history/node)
+               ;; The index-catch-up barrier + stale-stall clearing run
+               ;; INSIDE the loop (run-loop!'s pre-pass) so a long node
+               ;; startup index replay doesn't block mount :start.
                (run-loop! datasource history/node cfg))
              (do
                (log/info "history tailer disabled (:plaid.history/config :enabled? = false); skipping")
@@ -827,12 +932,15 @@
             (async/close! stop))
           (when-let [done @done-chan]
             ;; Bounded wait — :stop must not hang the JVM on a stuck
-            ;; loop iteration. 5s is plenty for the current poll
-            ;; cycle to finish; the loop is just one batch query +
-            ;; submit-tx per iteration.
+            ;; loop iteration. 5s covers a normal poll cycle; a loop
+            ;; stuck in a multi-minute execute-tx (giant op) gets
+            ;; abandoned, which is safe: its stop chan is closed (it
+            ;; exits at the next batch boundary) and `loop-generation`
+            ;; prevents it from persisting a stall if a successor loop
+            ;; has already moved the node past it.
             (async/alt!!
               done :done
-              (async/timeout 5000) (log/warn "history tailer did not stop within 5s; abandoning")))
+              (async/timeout 5000) (log/warn "history tailer did not stop within 5s; abandoning (loop-generation guards a superseded loop's stall write)")))
           (reset! stop-chan nil)
           (reset! done-chan nil)
           (reset! last-status {:running? false :cursor nil :lag-rows 0})
@@ -855,8 +963,16 @@
 (defn- skip-row-by-advancing-cursor!
   "Write a synthetic cursor advance that bypasses the failed row.
   We seek the NEXT (o.ts, o.id, aw.seq) after the current cursor in
-  audit_writes and set the cursor doc to land on that row's seq — so
-  the next batch query strictly skips past it.
+  audit_writes and set the cursor doc to land on that row's seq.
+
+  EFFECTIVE GRANULARITY IS THE WHOLE REMAINING OP-GROUP, not one row:
+  `fetch-batch`'s keyset is `(o.ts, o.id) > cursor` — `last-seq` is not
+  in the predicate — so once the cursor lands mid-op, the rest of that
+  op's audit rows are never fetched again. That is the only coherent
+  semantics anyway (applies are atomic per op; a half-applied op is not
+  a meaningful replica state), but the operator must understand the
+  data hole they're accepting: every remaining row of the offending op
+  is dropped from history, not just the row that failed.
 
   Returns the new cursor doc, or nil if there's nothing past the
   current cursor to skip to."
@@ -868,8 +984,7 @@
         ;; Find the very next audit_writes row past the current
         ;; (op.ts, op.id, aw.seq) tuple. Two-clause lex compare on
         ;; (op.ts, op.id), then strict > on aw.seq within the same
-        ;; op as a tertiary key — we want to advance ONE row past
-        ;; the offending one, not skip a whole op-group.
+        ;; op as a tertiary key.
         next-row (psc/q1 ds
                          {:select [[:o.ts :op_ts] [:o.id :op_id_full] [:aw.seq :seq]]
                           :from [[:audit_writes :aw]]
@@ -896,11 +1011,13 @@
                         :stall-reason nil}]
         ;; Log BEFORE the write so the audit trail records the intent
         ;; even if the put-docs throws. `:skip-current-row? true` is a
-        ;; destructive operator action — the offending audit row is
-        ;; never replayed — so the trail matters for postmortems.
-        (log/warn "history tailer skipping audit row"
+        ;; destructive operator action — the offending op's remaining
+        ;; audit rows are never replayed — so the trail matters for
+        ;; postmortems.
+        (log/warn "history tailer skipping past audit row (the offending op's REMAINING rows are skipped too — applies are per-op)"
                   {:from-cursor cursor :to-cursor new-cursor})
-        (xt/execute-tx node [(history/cursor->tx-op new-cursor)])
+        (xt/execute-tx node [(history/cursor->tx-op new-cursor)]
+                       (history/cursor-write-tx-opts node))
         new-cursor))))
 
 (defn resume!
@@ -910,7 +1027,11 @@
     :skip-current-row? — when true, advance the cursor past the row
                          that caused the stall before restarting.
                          Without this, the loop will re-hit the same
-                         row and stall again.
+                         row and stall again. NOTE: this skips the
+                         REMAINDER of the offending op's audit rows
+                         too, not just one row — applies are atomic
+                         per op and the batch keyset advances per
+                         (ts, id). See skip-row-by-advancing-cursor!.
 
   3-arity (ds node opts) is for tests that haven't started the mount
   defstates; the 0/1-arity REPL forms read the mounted `datasource` +

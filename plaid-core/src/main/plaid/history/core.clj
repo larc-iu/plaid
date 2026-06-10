@@ -221,6 +221,99 @@
     :tailer-status tailer-status
     :stall-reason stall-reason}])
 
+(declare ->instant ->date)
+
+;; ------------------------------------------------------------------
+;; System-time discipline for cursor-only writes
+;;
+;; The node's system-time axis IS the history: a tx submitted without an
+;; explicit :system-time commits at wall-clock now, jumping the head past
+;; every not-yet-applied backlog op. The tailer's monotonic guard then
+;; force-advances the whole backlog onto a wall-clock millisecond ramp —
+;; as-of reads inside that window silently return the wrong state (200s
+;; and 404s instead of 425s). That corruption was produced by the
+;; RECOVERY procedure itself (set-stalled!/set-running!/resume!), so
+;; every cursor-only write below pins :system-time to the current head
+;; instead (XTDB accepts equal explicit system-time; only strictly-older
+;; is rejected).
+;;
+;; The head must be read from authoritative state: query-visible
+;; (indexed) state lags the durable log at node startup, and XTDB's
+;; validator compares a submitted :system-time against the LOG head — a
+;; watermark derived from the lagging index gets rejected as
+;; strictly-older (the startup self-stall bug). `index-lag` /
+;; `await-index-caught-up!` exist so every head consumer waits for
+;; processed == submitted first.
+
+(defn index-lag
+  "How far the node's indexer is behind its durable log, per `xt/status`.
+   Returns {:submitted N :processed N :caught-up? bool}. A fresh node with
+   no txs reports caught-up."
+  [node]
+  (let [st (xt/status node)
+        sub (some-> st :latest-submitted-msg-ids (clojure.core/get "xtdb") first long)
+        proc (some-> st :latest-processed-msg-ids (clojure.core/get "xtdb") first long)]
+    {:submitted sub
+     :processed proc
+     :caught-up? (or (nil? sub) (and (some? proc) (>= proc sub)))}))
+
+(defn head-system-time
+  "System-time of the node's latest completed (indexed) tx, as an Instant.
+   Nil on a node with no completed txs. Only authoritative as the node's
+   true head when the indexer is caught up to the durable log — call
+   `await-index-caught-up!` first."
+  ^Instant [node]
+  (some-> (xt/status node)
+          :latest-completed-txs
+          (clojure.core/get "xtdb")
+          first
+          :system-time
+          ->instant))
+
+(defn await-index-caught-up!
+  "Block until the node's indexer has processed every durable-log entry
+   (processed msg-id >= submitted msg-id). Returns true when caught up.
+   With :timeout-ms, throws :history/index-catch-up-timeout on expiry;
+   without, waits indefinitely. Logs progress every ~10s so a long
+   startup log replay is visible rather than a silent hang."
+  ([node] (await-index-caught-up! node {}))
+  ([node {:keys [timeout-ms poll-ms] :or {poll-ms 100}}]
+   (let [deadline (when timeout-ms (+ (System/currentTimeMillis) timeout-ms))
+         started (System/currentTimeMillis)]
+     (loop [last-logged started]
+       (let [{:keys [submitted processed caught-up?]} (index-lag node)]
+         (cond
+           caught-up? true
+
+           (and deadline (>= (System/currentTimeMillis) deadline))
+           (throw (ex-info (str "history node indexer did not catch up to its log within "
+                                timeout-ms "ms (processed=" processed
+                                ", submitted=" submitted ")")
+                           {:type :history/index-catch-up-timeout
+                            :submitted submitted
+                            :processed processed
+                            :timeout-ms timeout-ms}))
+
+           :else
+           (let [now (System/currentTimeMillis)
+                 log? (>= (- now last-logged) 10000)]
+             (when log?
+               (log/info "history node index catching up to durable log:"
+                         {:processed processed :submitted submitted
+                          :waited-ms (- now started)}))
+             (async/<!! (async/timeout poll-ms))
+             (recur (if log? now last-logged)))))))))
+
+(defn cursor-write-tx-opts
+  "Tx opts for a cursor-only (operator/bookkeeping) write: :system-time
+   pinned to the current head so the write never advances the node's
+   system-time axis past unapplied backlog ops. Waits (bounded) for the
+   indexer first so the head is authoritative; EPOCH on a node with no
+   txs yet (any later op ts only moves forward from there)."
+  [node]
+  (await-index-caught-up! node {:timeout-ms 60000})
+  {:system-time (->date (or (head-system-time node) Instant/EPOCH))})
+
 (defn set-stalled!
   "Halt the tailer by writing :tailer-status :stalled into the cursor doc.
    Called by the tailer when it hits a malformed audit row; operator
@@ -231,7 +324,7 @@
                         :tailer-status :stalled
                         :stall-reason (str reason
                                            " (at op-id=" op-id ", seq=" seq ")"))]
-    (xt/execute-tx node [(cursor->tx-op next-cur)])
+    (xt/execute-tx node [(cursor->tx-op next-cur)] (cursor-write-tx-opts node))
     next-cur))
 
 (defn set-running!
@@ -239,7 +332,7 @@
   [node]
   (let [cur (or (cursor-read node) {})
         next-cur (assoc cur :tailer-status :running :stall-reason nil)]
-    (xt/execute-tx node [(cursor->tx-op next-cur)])
+    (xt/execute-tx node [(cursor->tx-op next-cur)] (cursor-write-tx-opts node))
     next-cur))
 
 ;; ============================================================
