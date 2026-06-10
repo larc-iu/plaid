@@ -68,14 +68,19 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
             return;
           }
         } catch (checkError) {
-          console.warn('Could not check project initialization status:', checkError);
-          existingProject = null;
-          // Fall through — if we can't check, attempt setup and let it surface other errors.
+          // Substrate adoption and retry dedup both read existingProject —
+          // proceeding without it could duplicate role-tagged layers (which
+          // breaks findPrimaryLayers) or re-create vocabs. Fail the attempt.
+          throw new Error(`Could not load the project to set up: ${checkError.message}`);
         }
       }
 
       let currentProjectId = resumeProjectId || projectId;
       const resources = {};
+      // Non-fatal step failures (span layers, vocabularies). Setup only marks
+      // the project initialized when this stays empty — a partially set up
+      // project must not present as ready.
+      const failures = [];
 
       // Step 1: Create project if new project (skip if we already created one
       // in a prior attempt — see createdProjectId).
@@ -179,33 +184,36 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, "orthographies", orthographiesConfig);
       }
 
-      // Step 6: Create span layers for annotation fields
+      // Step 6: Create span layers for annotation fields. Resume-safe: a
+      // retry (or an adopted substrate) may already carry a same-name layer
+      // under the chosen parent — reuse it and just (re)stamp its scope
+      // config, which also heals a prior create-succeeded/setConfig-failed
+      // attempt.
       if (tokenLayerId && sentenceTokenLayerId) {
         updateProgress(50, 'Creating annotation field layers...');
         const createdSpanLayers = [];
+
+        const existingSpanLayersByParent = new Map();
+        for (const tl of existingProject?.textLayers || []) {
+          for (const tkl of tl.tokenLayers || []) {
+            existingSpanLayersByParent.set(tkl.id, tkl.spanLayers || []);
+          }
+        }
 
         // Create span layers for user-defined annotation fields
         if (setupData.fields?.fields?.length > 0) {
           for (const field of setupData.fields.fields) {
             try {
               // Choose parent layer based on field scope
-              let parentLayerId;
-              let parentType;
-
-              if (field.scope === 'Sentence') {
-                parentLayerId = sentenceTokenLayerId;
-                parentType = 'sentence token layer';
-              } else if (field.scope === 'Morpheme' && morphemeLayerId) {
-                parentLayerId = morphemeLayerId;
-                parentType = 'morpheme token layer';
-              } else {
-                // Default to token layer for 'Word' scope
-                parentLayerId = tokenLayerId;
-                parentType = 'primary token layer';
-              }
+              const parentLayerId =
+                field.scope === 'Sentence' ? sentenceTokenLayerId :
+                field.scope === 'Morpheme' ? morphemeLayerId :
+                tokenLayerId;
 
               updateProgress(50, `Creating span layer: ${field.name} (${field.scope})...`);
-              const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
+              const existing = (existingSpanLayersByParent.get(parentLayerId) || [])
+                .find(sl => sl.name === field.name);
+              const spanLayer = existing ?? await client.spanLayers.create(parentLayerId, field.name);
 
               // Set the scope in the span layer's config
               await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, "scope", field.scope);
@@ -213,6 +221,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
               createdSpanLayers.push(spanLayer);
             } catch (fieldError) {
               console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
+              failures.push(`Annotation field "${field.name}" could not be created: ${fieldError.message}`);
             }
           }
         }
@@ -236,15 +245,24 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, "ignoredTokens", ignoredTokensConfig);
       }
 
-      // Step 8: Handle vocabularies
+      // Step 8: Handle vocabularies. Resume-safe: a vocab already linked to
+      // the project (visible on the re-fetched existingProject of a retry) is
+      // not created or linked again, so a retry can't duplicate a custom
+      // vocabulary that succeeded on the first attempt.
       if (setupData.vocabulary?.vocabularies?.length > 0) {
         updateProgress(70, 'Configuring vocabularies...');
         const enabledVocabs = setupData.vocabulary.vocabularies.filter(vocab => vocab.enabled);
+        const linkedVocabs = existingProject?.vocabs || [];
         const vocabulariesProcessed = [];
 
         for (const vocab of enabledVocabs) {
           try {
             if (vocab.isCustom && vocab.id.startsWith('new-')) {
+              const alreadyLinked = linkedVocabs.find(v => v.name === vocab.name);
+              if (alreadyLinked) {
+                vocabulariesProcessed.push(alreadyLinked);
+                continue;
+              }
               // Create new vocabulary
               updateProgress(70, `Creating vocabulary: ${vocab.name}...`);
               const newVocab = await client.vocabLayers.create(vocab.name);
@@ -252,6 +270,10 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
               await client.projects.linkVocab(currentProjectId, newVocab.id);
               vocabulariesProcessed.push(newVocab);
             } else {
+              if (linkedVocabs.some(v => v.id === vocab.id)) {
+                vocabulariesProcessed.push(vocab);
+                continue;
+              }
               // Link existing vocabulary
               updateProgress(70, `Linking vocabulary: ${vocab.name}...`);
               await client.projects.linkVocab(currentProjectId, vocab.id);
@@ -259,7 +281,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
             }
           } catch (vocabError) {
             console.warn(`Failed to process vocabulary ${vocab.name}:`, vocabError);
-            // Continue with other vocabularies rather than failing completely
+            failures.push(`Vocabulary "${vocab.name}" could not be set up: ${vocabError.message}`);
           }
         }
         resources.vocabularies = vocabulariesProcessed;
@@ -289,7 +311,20 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       }));
       await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, "documentMetadata", metadataConfig);
 
-      // Step 10: Mark project as initialized
+      // Step 10: Mark project as initialized — but ONLY if every step
+      // succeeded. A partial project must not present as ready; the user
+      // retries (resume-safe — see createdProjectId and the reuse logic in
+      // steps 6/8) until everything is in place.
+      if (failures.length > 0) {
+        setErrors(failures);
+        notifyError(
+          `${failures.length} setup step${failures.length === 1 ? '' : 's'} failed. ` +
+          'The project has NOT been marked ready — fix the issue or use Retry Setup to finish.',
+          'Setup Incomplete'
+        );
+        return;
+      }
+
       updateProgress(90, 'Finalizing setup...');
       await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, "initialized", true);
 
