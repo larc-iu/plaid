@@ -16,16 +16,14 @@ const formatTime = (seconds) => {
 
 export const Timeline = ({
   mediaOps,
-  readOnly = false,
-  transcriptionAvailable = false
+  readOnly = false
 }) => {
   const { doc } = useDocumentCtx();
 
-  // New time selections (drag on the waveform) are only allowed when editing is
-  // permitted AND a transcription service exists for the project. Without one,
-  // the timeline stays view/playback-only — though existing alignments can still
-  // be opened/edited/resized (gated by `readOnly` alone).
-  const canCreateSelection = !readOnly && transcriptionAvailable;
+  // Drag-to-select (and the create/align popover it opens) is manual time
+  // alignment — it works with no ASR service registered, so it is gated by
+  // `readOnly` alone, exactly like editing/resizing existing alignments.
+  const canCreateSelection = !readOnly;
 
   // Destructure what we need from mediaOps
   const {
@@ -83,9 +81,9 @@ export const Timeline = ({
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-2">
               <span className="text-sm font-medium">Timeline</span>
-              {!readOnly && !transcriptionAvailable && (
+              {!readOnly && (
                 <span className="text-xs text-muted-foreground">
-                  No transcription service — add one to create time alignments
+                  Drag on the timeline to create a time alignment
                 </span>
               )}
             </div>

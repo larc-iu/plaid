@@ -25,10 +25,9 @@ export function DocumentMedia() {
   // Use media operations hook
   const mediaOps = useMediaOperations();
 
-  // Time-aligned transcription is only meaningful when at least one ASR
-  // (transcription) service is registered for the project. With none available
-  // we keep the timeline view/playback-only — see Timeline's selection gating.
-  const transcriptionAvailable = mediaOps.asrAlgorithmOptions.length > 0;
+  // Manual alignment (drag on the timeline) always works; automatic
+  // transcription additionally needs a registered ASR service.
+  const asrAvailable = mediaOps.asrAlgorithmOptions.length > 0;
 
   // If no media, show upload interface
   if (!doc.document.mediaUrl) {
@@ -53,7 +52,6 @@ export function DocumentMedia() {
         <Timeline
           mediaOps={mediaOps}
           readOnly={readOnly}
-          transcriptionAvailable={transcriptionAvailable}
         />
       </div>
 
@@ -72,10 +70,10 @@ export function DocumentMedia() {
               <Select
                 value={mediaOps.asrAlgorithm}
                 onValueChange={mediaOps.handleAlgorithmChange}
-                disabled={readOnly}
+                disabled={readOnly || !asrAvailable}
               >
                 <SelectTrigger className="w-[280px]">
-                  <SelectValue />
+                  <SelectValue placeholder={asrAvailable ? 'Choose a service' : 'No service registered'} />
                 </SelectTrigger>
                 <SelectContent>
                   {mediaOps.asrAlgorithmOptions.map((o) => (
