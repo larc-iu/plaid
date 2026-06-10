@@ -585,17 +585,17 @@ export class ConlluDocument {
         ? (batchResults[morphemeResultIndex]?.body?.ids || [])
         : [];
 
+      // Default lemma spans (a follow-up call — they reference the morpheme
+      // ids produced above). Let a failure propagate: _withSaving toasts and
+      // reloads, which surfaces the committed tokens minus their lemmas
+      // rather than silently swallowing the inconsistency.
       if (lemmaLayer?.id && morphemeIds.length) {
         const lemmaOps = morphemeIds.map((tokenId, i) => ({
           spanLayerId: lemmaLayer.id,
           tokens: [tokenId],
           value: cpSlice(body,wordRanges[i][0], wordRanges[i][1])
         }));
-        try {
-          await this._client.spans.bulkCreate(lemmaOps);
-        } catch (lemmaError) {
-          console.error('Failed to create lemma spans:', lemmaError);
-        }
+        await this._client.spans.bulkCreate(lemmaOps);
       }
 
       await this._reload();
@@ -927,14 +927,13 @@ export class ConlluDocument {
       const wordId = res[res.length - 2]?.body?.ids?.[0];
       const morphemeId = res[res.length - 1]?.body?.ids?.[0];
 
+      // Default lemma span (follow-up call — needs the morpheme id). Let a
+      // failure propagate so _withSaving toasts + reloads instead of leaving
+      // a silently lemma-less word.
       let lemmaSpanId = null;
       if (lemmaLayer?.id && morphemeId) {
-        try {
-          const lr = await this._client.spans.bulkCreate([{ spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: cpSlice(textContent,begin, end) }]);
-          lemmaSpanId = lr?.ids?.[0] || null;
-        } catch (lemmaError) {
-          console.error('Failed to create lemma span:', lemmaError);
-        }
+        const lr = await this._client.spans.bulkCreate([{ spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: cpSlice(textContent,begin, end) }]);
+        lemmaSpanId = lr?.ids?.[0] || null;
       }
 
       this._applyRawPatch((next, infoNext) => {
@@ -1130,32 +1129,16 @@ export class ConlluDocument {
         const existingById = lemmaSpans.find(span => span.id === candidateId);
         if (existingById) return existingById.id;
 
+        // Span `tokens` is a flat array of token ids.
         const tokenId = candidateId;
-        const existingByToken = lemmaSpans.find(span => {
-          const spanTokens = Array.isArray(span.tokens) ? span.tokens : [];
-          return spanTokens.some(tokenEntry => {
-            if (!tokenEntry) return false;
-            if (typeof tokenEntry === 'string') return tokenEntry === tokenId;
-            if (typeof tokenEntry === 'object') return tokenEntry.id === tokenId || tokenEntry.tokenId === tokenId || tokenEntry.token === tokenId;
-            return false;
-          });
-        });
+        const existingByToken = lemmaSpans.find(span =>
+          Array.isArray(span.tokens) && span.tokens.includes(tokenId)
+        );
         if (existingByToken) return existingByToken.id;
 
-        if (!lemmaLayer.id) {
-          this.setError('Lemma layer is missing an identifier. Cannot create lemma span.');
-          return null;
-        }
-
-        const textLayer = info.textLayer;
-        const rawText = textLayer?.text;
-        const textBody = typeof rawText === 'string' ? rawText : rawText?.body || '';
-        const tokenLayer = info.tokenLayer;
-        const token = tokenLayer?.tokens?.find(t => t.id === tokenId);
-        const hasOffsets = token && typeof token.begin === 'number' && typeof token.end === 'number' && typeof textBody === 'string';
-        const lemmaValue = hasOffsets
-          ? cpSlice(textBody, token.begin, token.end)
-          : token?.form || token?.text || '';
+        const textBody = info.textLayer?.text?.body || '';
+        const token = info.tokenLayer?.tokens?.find(t => t.id === tokenId);
+        const lemmaValue = token ? cpSlice(textBody, token.begin, token.end) : '';
 
         const apiResponse = await this._client.spans.create(lemmaLayer.id, [tokenId], lemmaValue);
         const createdSpanId = apiResponse.id || apiResponse;
@@ -1181,24 +1164,23 @@ export class ConlluDocument {
         return;
       }
 
-      // Delete any existing incoming relations to the target (one head per node).
+      // Replace atomically: delete any existing incoming relations to the
+      // target (one head per node) and create the new relation in ONE batch,
+      // so a mid-flight failure can't leave the node headless (deletes landed,
+      // create didn't) or double-headed (delete failed, create landed).
       const incomingRelations = (info.relationLayer.relations || []).filter(rel => rel.target === resolvedTargetId);
-      for (const existingRel of incomingRelations) {
-        try {
-          await this._client.relations.delete(existingRel.id);
-        } catch (error) {
-          console.warn('Failed to delete existing relation:', error);
-        }
-      }
-
       const finalDeprel = deprel || (resolvedSourceId === resolvedTargetId ? 'root' : 'dep');
-      const apiResponse = await this._client.relations.create(info.relationLayer.id, resolvedSourceId, resolvedTargetId, finalDeprel);
+      this._client.beginBatch();
+      incomingRelations.forEach(rel => this._client.relations.delete(rel.id));
+      this._client.relations.create(info.relationLayer.id, resolvedSourceId, resolvedTargetId, finalDeprel);
+      const batchResults = await this._client.submitBatch();
+      const newRelationId = batchResults[batchResults.length - 1]?.body?.id;
       this._applyRawPatch((next, infoNext) => {
         const relLayer = infoNext.relationLayer;
         if (!relLayer) return;
         if (!Array.isArray(relLayer.relations)) relLayer.relations = [];
         relLayer.relations = relLayer.relations.filter(rel => rel.target !== resolvedTargetId);
-        relLayer.relations.push({ id: apiResponse.id || apiResponse, source: resolvedSourceId, target: resolvedTargetId, value: finalDeprel });
+        relLayer.relations.push({ id: newRelationId, source: resolvedSourceId, target: resolvedTargetId, value: finalDeprel });
       });
     });
   }
