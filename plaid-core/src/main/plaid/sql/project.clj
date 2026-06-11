@@ -705,6 +705,19 @@
             table))
         layer-tables))
 
+(defn- editor-config-project-id
+  "Project id to attribute an editor-config op to: the layer's
+  denormalized project_id, the project itself when `layer-id` IS a
+  project, nil for vocab layers (global — linked to projects only via
+  project_vocabs) and for unknown ids (the op body then 400s)."
+  [db layer-id]
+  (when-let [table (find-layer-table db layer-id)]
+    (let [row (psc/fetch-by-id db table layer-id)]
+      (case table
+        :projects (:id row)
+        :vocab_layers nil
+        (:project_id row)))))
+
 (defn assoc-editor-config-pair
   "Set <editor-name>/<config-key> = <config-value> in the layer's :config
   JSON. `layer-id` may be any kind of layer (project / text / token /
@@ -712,7 +725,7 @@
   `acting-user-id` attributes the op (a maintainer-level action)."
   [db layer-id editor-name config-key config-value acting-user-id]
   (submit-operation! [tx db {:type :layer/assoc-editor-config-pair
-                             :project nil
+                             :project (editor-config-project-id db layer-id)
                              :document nil
                              :description (str "Set editor config " editor-name "/" config-key
                                                " on layer " layer-id)
@@ -736,7 +749,7 @@
   `acting-user-id` attributes the op (a maintainer-level action)."
   [db layer-id editor-name config-key acting-user-id]
   (submit-operation! [tx db {:type :layer/dissoc-editor-config-pair
-                             :project nil
+                             :project (editor-config-project-id db layer-id)
                              :document nil
                              :description (str "Unset editor config " editor-name "/" config-key
                                                " on layer " layer-id)

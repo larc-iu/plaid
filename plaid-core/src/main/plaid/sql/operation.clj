@@ -61,13 +61,21 @@
 
 (defn- ->v2-shape
   "Project the SQL op-record into the v2 audit/op key shape that
-  plaid.server.events/publish-audit-event! expects."
+  plaid.server.events/publish-audit-event! expects.
+
+  `:audit/documents` is the union of the op-attrs' single `:document`
+  and the docs the body actually version-bumped (`:documents`, recorded
+  by bump-document-version!/bump-document-versions! via the
+  `:affected-documents` atom in `psc/*op*`). Multi-document ops like
+  vocab/delete and project/remove-vocab carry `:document nil` but bump
+  N docs — without the union their events were doc-blind and
+  document-scoped listeners were never notified."
   [op-record]
   (let [pid (:project op-record)
         did (:document op-record)]
     {:audit/id (:id op-record)
      :audit/projects (if pid #{pid} #{})
-     :audit/documents (if did #{did} #{})
+     :audit/documents (into (if did #{did} #{}) (:documents op-record))
      :op/id (:id op-record)
      :op/type (:type op-record)
      :op/project pid
@@ -148,7 +156,10 @@
                         :where [:= :id doc-id]})
       (psc/record-audit-write! tx :documents doc-id
                                psc/doc-version-bump-change-type
-                               pre post))))
+                               pre post)
+      ;; Record the bump for the op's audit event (see ->v2-shape).
+      (when-let [a (:affected-documents psc/*op*)]
+        (swap! a conj doc-id)))))
 
 (defn bump-document-versions!
   "Bulk version-bump for a coll of document ids. Use from inside an
@@ -186,7 +197,12 @@
                           :where [:= :id doc-id]})
         (psc/record-audit-write! tx :documents doc-id
                                  psc/doc-version-bump-change-type
-                                 pre post)))))
+                                 pre post)
+        ;; Record the bump for the op's audit event (see ->v2-shape) —
+        ;; this is exactly the multi-document signal: ops like
+        ;; vocab/delete carry :document nil but bump N docs here.
+        (when-let [a (:affected-documents psc/*op*)]
+          (swap! a conj doc-id))))))
 
 (defn- sqlite-busy-in-chain?
   "True when `e` or anything in its cause/suppressed chain is a SQLite
@@ -256,6 +272,11 @@
           ;; the post-commit nudge/post-submit! and the return value can
           ;; still see it.
           op-record* (volatile! nil)
+          ;; Documents whose version the body bumps (via
+          ;; bump-document-version!/bump-document-versions!, which read
+          ;; this atom off psc/*op*). Unioned into the audit event's
+          ;; :audit/documents post-commit — see ->v2-shape.
+          affected-docs (atom #{})
           extra (psc/with-tx [tx db]
                   ;; ts stamped here — while holding the RESERVED write
                   ;; lock — so it is strictly monotonic with COMMIT order.
@@ -308,7 +329,8 @@
                     ;; submit-operation*, so the atom is just an in-memory
                     ;; counter — no real contention.
                     (binding [psc/*op* {:id op-id :ts ts :tx tx
-                                        :seq-counter (atom 0)}]
+                                        :seq-counter (atom 0)
+                                        :affected-documents affected-docs}]
                       (let [result (body-fn tx)]
                         ;; Bump documents.version so the optimistic-concurrency
                         ;; middleware (wrap-document-version) detects stale clients.
@@ -316,7 +338,7 @@
                                    (not (:skip-doc-version-bump? op-attrs)))
                           (bump-document-version! tx (:document op-attrs) ts))
                         result))))
-          op-record @op-record*]
+          op-record (assoc @op-record* :documents @affected-docs)]
       ;; Nudge the history tailer ASAP after the OLTP tx commits. Goes
       ;; BEFORE post-submit! so a slow event-bus publish or lock
       ;; refresh can't delay the history catching up. nudge! is a
