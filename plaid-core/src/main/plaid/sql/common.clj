@@ -222,10 +222,10 @@
   part on an exact-second instant and varies the digit count otherwise,
   so its output does NOT lexicographically sort in temporal order —
   `\"...:00Z\"` (no fraction) sorts AFTER `\"...:00.999Z\"` because 'Z'
-  (90) > '.' (46). The history tailer's keyset pagination and cursor
-  comparisons compare these strings as SQLite TEXT, so a non-monotonic
-  lex order would skip rows. Fixed-width fractional digits make lex
-  order == temporal order."
+  (90) > '.' (46). As-of reconstruction (plaid.history.read) and keyset
+  pagination compare these strings as SQLite TEXT, so a non-monotonic
+  lex order would mis-order or skip rows. Fixed-width fractional digits
+  make lex order == temporal order."
   (-> (java.time.format.DateTimeFormatterBuilder.)
       (.appendInstant 9)
       (.toFormatter)))
@@ -272,11 +272,10 @@
   high-water mark advances in the same order writes commit. This is the
   load-bearing fix for the history-desync bug: `ts` used to be stamped
   BEFORE the write lock, so two concurrent writers could stamp ts out of
-  commit order — a lower-ts op committing AFTER a higher-ts op was then
-  permanently skipped by the tailer's `WHERE (o.ts,o.id) > cursor`
-  keyset, and the history monotonic-system-time guard would also mis-time
-  it. Stamping under the lock + strict monotonicity makes commit order ==
-  ts order, so neither can happen.
+  commit order — and (ts, seq) order would no longer be commit order,
+  which as-of reconstruction (plaid.history.read) depends on for the
+  audit log to be a faithful serialization of what happened. Stamping
+  under the lock + strict monotonicity makes commit order == ts order.
 
   Strict monotonicity (`max(now, last+1ns)`) covers the case where two
   commits land within a single clock tick: the keyset's `op.id`

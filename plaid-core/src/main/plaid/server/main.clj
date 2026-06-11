@@ -25,7 +25,7 @@
   ;; Bounded: systemd's default TimeoutStopSec and k8s'
   ;; terminationGracePeriodSeconds are both 30s. We give mount/stop 25s
   ;; (leaves 5s for the OS to deliver SIGKILL) and abandon if it hangs
-  ;; — better than holding shutdown indefinitely on a stuck XTDB tx.
+  ;; — better than holding shutdown indefinitely on a stuck stop fn.
   (.addShutdownHook (Runtime/getRuntime)
                     (Thread.
                      ^Runnable

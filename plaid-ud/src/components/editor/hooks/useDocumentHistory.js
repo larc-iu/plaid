@@ -60,8 +60,8 @@ export const useDocumentHistory = (documentId) => {
       // Time travel to a past state failed (non-200). Fail loudly via a toast
       // so it's obvious even when the drawer is closed — but DON'T disturb the
       // drawer's entry list (a transient failure shouldn't wipe the history you
-      // were browsing). Surface the HTTP status — e.g. a 425/503 means that
-      // state isn't available in the OLAP replica yet.
+      // were browsing). Surface the HTTP status. (As-of reads come straight
+      // from the audit log — no replica, so no 425/"not caught up" class.)
       const status = err.status ? ` (HTTP ${err.status})` : '';
       const msg = `Couldn't load the document at that point in time${status}: ${err.message || 'Unknown error'}`;
       notifyError(msg, 'Time travel failed');

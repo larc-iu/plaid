@@ -116,7 +116,7 @@ Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are availab
 == Audit Log
 
 Every write to the database is recorded in an append-only **audit log** which provides an account of who performed every change.
-Audit history is retained indefinitely (see the retention policy in `OPERATIONS.md` §11 and `docs/sql-port-review-2026-05-27.md` §8); operators monitor disk and prune only after the planned downstream history replica is built and caught up.
+Audit history is retained indefinitely — it is both the forensic record and the source for document time travel (see below), so pruning it trades away history. Operators monitor disk via the `/health` endpoint's `audit` block.
 
 The log can be queried like so:
 
@@ -1066,6 +1066,16 @@ await client.query({
 
 Queries always read the current state of your data: there is no time-travel parameter (one passed as `asOf` is refused).
 For a document's history, see the <<Audit Log>>.
+
+=== Document Time Travel
+
+A document GET accepts an `as-of` query parameter carrying an ISO-8601 instant, e.g. `GET /api/v1/documents/{id}?as-of=2026-06-01T12:00:00Z&include-body=true`, and returns the document exactly as it stood at that moment — reconstructed from the audit log, so it is always available, requires no configuration, and is never stale. A few details worth knowing:
+
+* Time travel is read-only and only defined on the top-level document GET; document sub-routes (media, locks, metadata) and all other endpoints refuse `as-of` with a 400.
+* A timestamp landing in the middle of an atomic batch is treated as falling just before the batch began — you can never observe a half-applied batch.
+* A timestamp at or after the present simply returns the current state.
+* Documents that have since been deleted remain readable at timestamps when they existed, for users with current access to the project.
+* Access control always reflects *current* project membership, not membership as of the requested time.
 
 == Further Reading
 
