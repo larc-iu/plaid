@@ -27,6 +27,18 @@ export function cpSlice(s, begin, end) {
 }
 
 /**
+ * Prebuilt slicer for taking MANY code-point slices of the same string:
+ * spreads `s` into code points once, then each slice costs O(slice length).
+ * `cpSlice` spreads the whole string per call, which turns quadratic when a
+ * caller slices every token of a large text. Mirror of the server's
+ * `plaid.util.codepoint/cp-slicer`.
+ */
+export function cpSlicer(s) {
+  const chars = [...(s ?? '')];
+  return (begin, end) => chars.slice(begin, end).join('');
+}
+
+/**
  * Convert a UTF-16 index `u` into `s` to a code-point index — i.e. how many
  * code points precede `u`. Inverse of `cpToUtf16`. Useful for converting a
  * DOM/`indexOf`/`Intl.Segmenter` (UTF-16) position into a code-point offset.

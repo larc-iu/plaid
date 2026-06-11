@@ -323,6 +323,8 @@ export default PlaidClient;
 export function cpLength(s: string): number;
 /** Substring of `s` by code-point indices [begin, end) (end optional). */
 export function cpSlice(s: string, begin: number, end?: number): string;
+/** Prebuilt slicer for many code-point slices of one string (spreads once). */
+export function cpSlicer(s: string): (begin: number, end?: number) => string;
 /** UTF-16 index -> code-point index in `s`. */
 export function utf16ToCp(s: string, u: number): number;
 /** Code-point index -> UTF-16 index in `s` (clamps past the end). */

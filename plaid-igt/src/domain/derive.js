@@ -8,8 +8,17 @@
 // findSentenceForToken) are produced together so they stay in sync with
 // `sentences`.
 
-import { cpSlice } from '@larc-iu/plaid-client';
 import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
+
+// Local copy of plaid-client-js's cpSlicer (spread the body into code points
+// ONCE; each slice is then O(slice length) — cpSlice re-spreads the whole
+// string per call, which is quadratic across thousands of tokens). Inlined
+// rather than imported so a stale vite prebundle of the linked client package
+// can't break the editor (the export exists there too for other consumers).
+const cpSlicer = (s) => {
+  const chars = [...(s ?? '')];
+  return (begin, end) => chars.slice(begin, end).join('');
+};
 
 export function deriveDocumentData(raw, layerInfo, project) {
   const configuredMetadata = {};
@@ -50,6 +59,9 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   const morphemeTokenLayer = layerInfo.morphemeTokenLayer;
   const spanLayers = layerInfo.spanLayers;
   const body = primaryTextLayer?.text?.body ?? '';
+  // One prebuilt code-point slicer for the whole pass: cpSlice spreads the
+  // entire body per call, which is quadratic across thousands of tokens.
+  const sliceBody = cpSlicer(body);
 
   // Vocab links live on the project's vocab table (loaded separately by
   // IgtDocument.load as `_vocabularies` and patched by the vocab mutations),
@@ -63,7 +75,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
       text: t.text,
       begin: t.begin,
       end: t.end,
-      content: cpSlice(body,t.begin, t.end),
+      content: sliceBody(t.begin, t.end),
       metadata: t.metadata || {},
       annotations: {},
       orthographies: collectOrthographies(t, primaryTokenLayer),
@@ -71,6 +83,27 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
       morphemes: []
     }))
     .sort((a, b) => a.begin - b.begin);
+
+  // Per-layer tokenId -> span maps, built in ONE pass over each layer's spans
+  // (first span per token wins, matching the old `.find` order). Annotation
+  // collection is then O(layers) per item; the previous scan-all-spans-per-item
+  // approach was quadratic and took seconds on real (FLEx-imported) documents.
+  const buildSpanMaps = (layers) => (layers || []).map(sl => {
+    const map = new Map();
+    for (const s of sl.spans || []) {
+      if (!Array.isArray(s.tokens)) continue;
+      for (const tid of s.tokens) if (!map.has(tid)) map.set(tid, s);
+    }
+    return { name: sl.name, map };
+  });
+  const wordSpanMaps = buildSpanMaps(spanLayers.word);
+  const morphSpanMaps = buildSpanMaps(spanLayers.morpheme);
+  const sentSpanMaps = buildSpanMaps(spanLayers.sentence);
+  const annotationsFor = (id, layerMaps) => {
+    const out = {};
+    for (const { name, map } of layerMaps) out[name] = map.get(id) ?? null;
+    return out;
+  };
 
   // Morphemes grouped by parent word via same-extent (begin/end) match.
   const morphemesByWord = new Map();
@@ -86,9 +119,9 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         begin: m.begin,
         end: m.end,
         precedence: m.precedence ?? 1,
-        content: cpSlice(body,m.begin, m.end),
+        content: sliceBody(m.begin, m.end),
         metadata: m.metadata || {},
-        annotations: collectAnnotations(m, spanLayers.morpheme),
+        annotations: annotationsFor(m.id, morphSpanMaps),
         vocabItem: vocabLinksByToken[m.id] || null
       };
       if (!morphemesByWord.has(parent.id)) morphemesByWord.set(parent.id, []);
@@ -109,16 +142,25 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
     }))
     .sort((a, b) => a.begin - b.begin);
 
+  // Single sweep over the begin-sorted tokens (sentences are a begin-sorted
+  // partition), instead of filtering the whole token list per sentence.
+  let ti = 0;
   const enrichedSentences = sentenceTokens.map(sentence => {
-    const tokensInSentence = sortedTokens
-      .filter(t => t.begin >= sentence.begin && t.end <= sentence.end)
-      .map(t => ({
-        ...t,
-        annotations: collectAnnotations(t, spanLayers.word),
-        morphemes: morphemesByWord.get(t.id) || []
-      }));
-    const sentenceAnnotations = collectAnnotations(sentence, spanLayers.sentence);
-    const pieces = computePieces(sentence, tokensInSentence, body);
+    while (ti < sortedTokens.length && sortedTokens[ti].begin < sentence.begin) ti++;
+    const tokensInSentence = [];
+    while (ti < sortedTokens.length && sortedTokens[ti].begin < sentence.end) {
+      const t = sortedTokens[ti];
+      if (t.begin >= sentence.begin && t.end <= sentence.end) {
+        tokensInSentence.push({
+          ...t,
+          annotations: annotationsFor(t.id, wordSpanMaps),
+          morphemes: morphemesByWord.get(t.id) || []
+        });
+      }
+      ti++;
+    }
+    const sentenceAnnotations = annotationsFor(sentence.id, sentSpanMaps);
+    const pieces = computePieces(sentence, tokensInSentence, sliceBody);
     return {
       ...sentence,
       annotations: sentenceAnnotations,
@@ -167,19 +209,7 @@ function collectOrthographies(token, primaryTokenLayer) {
   return out;
 }
 
-function collectAnnotations(item, spanLayers) {
-  const out = {};
-  spanLayers.forEach(sl => { out[sl.name] = null; });
-  spanLayers.forEach(sl => {
-    const match = (sl.spans || []).find(s =>
-      Array.isArray(s.tokens) && s.tokens.some(tid => tid === item.id)
-    );
-    if (match) out[sl.name] = match;
-  });
-  return out;
-}
-
-function computePieces(sentence, tokens, body) {
+function computePieces(sentence, tokens, sliceBody) {
   const pieces = [];
   const sorted = [...tokens].sort((a, b) => a.begin - b.begin);
   let lastEnd = sentence.begin;
@@ -187,7 +217,7 @@ function computePieces(sentence, tokens, body) {
     if (t.begin > lastEnd) {
       pieces.push({
         type: 'gap',
-        content: cpSlice(body,lastEnd, t.begin),
+        content: sliceBody(lastEnd, t.begin),
         isToken: false,
         begin: lastEnd,
         end: t.begin
@@ -199,7 +229,7 @@ function computePieces(sentence, tokens, body) {
   if (lastEnd < sentence.end) {
     pieces.push({
       type: 'gap',
-      content: cpSlice(body,lastEnd, sentence.end),
+      content: sliceBody(lastEnd, sentence.end),
       isToken: false,
       begin: lastEnd,
       end: sentence.end
