@@ -127,6 +127,23 @@ export class IgtEditor {
     window.addEventListener('scroll', this._onScrollResize, true);
     window.addEventListener('resize', this._onScrollResize);
     this._render(true);
+    this._consumeFocusRequest();
+  }
+
+  // Search click-through: a sessionStorage key names a sentence to focus.
+  // Consumed once, after the first paint — scroll it into view and flash it.
+  _consumeFocusRequest() {
+    let req = null;
+    try { req = JSON.parse(sessionStorage.getItem('igt:focus-sentence') || 'null'); } catch { /* noop */ }
+    if (!req || req.docId !== this.doc.id) return;
+    sessionStorage.removeItem('igt:focus-sentence');
+    requestAnimationFrame(() => {
+      const el = this.container.querySelector(`.igt-sentence[data-sentence-id="${req.sentenceId}"]`);
+      if (!el) return;
+      el.scrollIntoView({ block: 'center' });
+      el.classList.add('igt-sentence--flash');
+      setTimeout(() => el.classList.remove('igt-sentence--flash'), 2400);
+    });
   }
 
   // Toggle .is-clipped-right on each sentence whose grid can still scroll right,
@@ -952,7 +969,7 @@ export class IgtEditor {
 
   _sentence(sentence, index, ctx) {
     return html`
-      <div class="igt-sentence" role="group" aria-label=${`Sentence ${index + 1}`}>
+      <div class="igt-sentence" data-sentence-id=${sentence.id} role="group" aria-label=${`Sentence ${index + 1}`}>
         <h3 class="igt-sr-only">Sentence ${index + 1}</h3>
         <span class="igt-sentence__num" aria-hidden="true">${index + 1}</span>
         ${this._copyControl(sentence, ctx)}

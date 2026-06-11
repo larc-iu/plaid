@@ -147,6 +147,13 @@
 .igt-sentence:nth-child(odd) { background: #ffffff; }
 .igt-sentence:nth-child(even) { background: #fbfcfe; }
 
+/* Search click-through: flash the focused sentence. */
+@keyframes igt-flash {
+  0% { box-shadow: inset 0 0 0 2px var(--igt-blue); background: #eff6ff; }
+  100% { box-shadow: inset 0 0 0 2px transparent; }
+}
+.igt-sentence--flash { animation: igt-flash 2.4s ease-out; }
+
 .igt-sentence__num {
   position: absolute;
   left: 8px;

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
@@ -22,6 +22,7 @@ const Panel = ({ active, children }) => (active ? children : null);
 const DocumentEditor = () => {
   const { projectId, documentId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const client = useStrictClient();
   const { logout } = useAuth();
 
@@ -29,7 +30,9 @@ const DocumentEditor = () => {
   // selecting a history entry reloads this doc at that snapshot.
   const [doc, setDoc] = useState(null);
   const [asOf, setAsOf] = useState(null);
-  const [activeTab, setActiveTab] = useState('metadata');
+  // Search click-through (and anything else navigating here) can request an
+  // initial tab via router state.
+  const [activeTab, setActiveTab] = useState(location.state?.tab ?? 'metadata');
   const [loadError, setLoadError] = useState('');
 
   const permissions = useDocumentPermissions(doc?.project);
@@ -112,7 +115,7 @@ const DocumentEditor = () => {
   // Land on Analyze when the document is already tokenized — the work surface
   // shouldn't be buried behind Metadata. Once, on the first live load only (not
   // on time-travel reloads or after the user has navigated tabs themselves).
-  const didAutoTabRef = useRef(false);
+  const didAutoTabRef = useRef(!!location.state?.tab); // explicit tab request wins over auto-tab
   useEffect(() => {
     if (!doc || asOf || didAutoTabRef.current) return;
     didAutoTabRef.current = true;

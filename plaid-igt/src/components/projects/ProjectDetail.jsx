@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { FileText, Search } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
+import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { readInitialized } from '@/domain/igtConfig';
 
-// Default project view: the document list. Mirrors plaid-ud — the project
-// landing IS the documents, and project administration (access + settings) is
-// tucked behind a maintainer-only "Project Settings" button (ProjectSettingsView
-// at /projects/:id/access + /settings), not surfaced as inline tabs.
+// Default project view: the document list (+ a query-engine-powered Search
+// tab). Mirrors plaid-ud — the project landing IS the documents, and project
+// administration (access + settings) is tucked behind a maintainer-only
+// "Project Settings" button (ProjectSettingsView at /projects/:id/access +
+// /settings), not surfaced as inline tabs.
 export const ProjectDetail = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -104,14 +108,25 @@ export const ProjectDetail = () => {
         <p className="mt-1 text-xs text-muted-foreground">{project.id}</p>
       </div>
 
-      <DocumentList
-        documents={documents}
-        project={project}
-        projectId={projectId}
-        client={client}
-        canManage={canManage}
-        onDocumentCreated={handleDocumentCreated}
-      />
+      <Tabs defaultValue="documents">
+        <TabsList className="tw mb-2">
+          <TabsTrigger value="documents"><FileText className="h-4 w-4" /> Documents</TabsTrigger>
+          <TabsTrigger value="search"><Search className="h-4 w-4" /> Search</TabsTrigger>
+        </TabsList>
+        <TabsContent value="documents">
+          <DocumentList
+            documents={documents}
+            project={project}
+            projectId={projectId}
+            client={client}
+            canManage={canManage}
+            onDocumentCreated={handleDocumentCreated}
+          />
+        </TabsContent>
+        <TabsContent value="search">
+          <ProjectSearch project={project} projectId={projectId} client={client} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
