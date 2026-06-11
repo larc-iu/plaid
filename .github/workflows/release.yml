@@ -98,10 +98,6 @@ jobs:
           restore-keys: ${{ runner.os }}-cljdeps-
 
       # --- Build the SPA(s) and bundle into the jar's resources --------------
-      # NOTE: plaid-igt is intentionally left out of the release for now (not
-      # actively maintained). The middleware keeps its /igt route — it just
-      # 404s until an igt bundle is shipped — so re-adding it is a build step
-      # plus a copy line below.
       - name: Build plaid-ud
         working-directory: plaid-ud
         run: |
@@ -109,10 +105,16 @@ jobs:
           # so there's no lockfile to clean-install from in a fresh checkout.
           npm install
           npm run build
-      - name: Bundle SPA + version.edn into plaid-core resources
+      - name: Build plaid-igt
+        working-directory: plaid-igt
         run: |
-          rm -rf plaid-core/resources/ud
+          npm install
+          npm run build
+      - name: Bundle SPAs + version.edn into plaid-core resources
+        run: |
+          rm -rf plaid-core/resources/ud plaid-core/resources/igt
           cp -r plaid-ud/dist plaid-core/resources/ud
+          cp -r plaid-igt/dist plaid-core/resources/igt
           printf '{:version "%s"}\n' "${{ steps.ver.outputs.version }}" > plaid-core/resources/version.edn
           cat plaid-core/resources/version.edn
 
@@ -277,7 +279,7 @@ jobs:
           - PyPI: \`pip install --pre larc-plaid-client==$(echo "$VER" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')\`
 
           ## Bundled apps
-          The jar serves the UD editor at \`/ud/\`.
+          The jar serves the UD editor at \`/ud/\` and the IGT editor at \`/igt/\`.
           EOF
           )"
 
