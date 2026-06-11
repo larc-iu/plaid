@@ -16,7 +16,7 @@ import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
-import { readOrthographies, readIgnoredTokens } from '@/domain/igtConfig';
+import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/igtConfig';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -103,10 +103,11 @@ export class IgtEditor {
     // Any click outside an opener/popover (those stopPropagation) closes it.
     this._onDocClick = () => this._closePopover();
     document.addEventListener('click', this._onDocClick);
-    // The popover is position:fixed (computed once at open); scrolling the page or
-    // the grid, or resizing, would detach it from its column — so close it instead.
-    // Capture phase catches the grid's own scroll. No-op when no popover is open.
-    this._onWinChange = () => this._closePopover();
+    // The popover is position:fixed; scrolling the page or the grid, or
+    // resizing, would detach it from its column — re-anchor it to its opener
+    // (rAF-throttled) instead of closing. Capture phase catches the grid's
+    // own scroll. No-op when no popover is open.
+    this._onWinChange = () => this._repositionPopover();
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
     // Right-edge "more content" fade: recompute when any grid scrolls (capture —
@@ -151,6 +152,7 @@ export class IgtEditor {
     window.removeEventListener('resize', this._onWinChange);
     window.removeEventListener('scroll', this._onScrollResize, true);
     window.removeEventListener('resize', this._onScrollResize);
+    if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
     clearTimeout(this._savedTimer);
     render(nothing, this.container);
   }
@@ -181,13 +183,31 @@ export class IgtEditor {
     const active = this.container.querySelector('.igt-vocab-pop .is-active');
     if (active?.scrollIntoView) active.scrollIntoView({ block: 'nearest' });
   }
-  // Position the popover (210px wide) below the opener as fixed coords, clamped
+  // Keep an open popover glued to its opener while the page/grid scrolls or
+  // the window resizes. Patches the fixed coords directly (no re-render per
+  // frame); closes only if the opener left the DOM (e.g. a reload re-derived
+  // the grid).
+  _repositionPopover() {
+    if (!this._popover || this._repositionRaf) return;
+    this._repositionRaf = requestAnimationFrame(() => {
+      this._repositionRaf = null;
+      if (!this._popover) return;
+      const opener = this.container.querySelector(`[data-vocab-opener="${this._popoverReturnId}"]`);
+      const pos = opener ? this._computePopoverPos(opener) : null;
+      if (!pos) { this._closePopover(); return; }
+      this._popoverPos = pos;
+      const el = this.container.querySelector('.igt-vocab-pop');
+      if (el) { el.style.left = `${pos.left}px`; el.style.top = `${pos.top}px`; }
+    });
+  }
+
+  // Position the popover (240px wide) below the opener as fixed coords, clamped
   // to the viewport — so edge columns don't overflow and the grid's overflow-x
   // scroll container can't clip it.
   _computePopoverPos(anchorEl) {
     const r = anchorEl?.getBoundingClientRect?.();
     if (!r) return null;
-    const W = 210, Hest = 280, pad = 8;
+    const W = 240, Hest = 280, pad = 8;
     let left = r.left + r.width / 2 - W / 2;
     left = Math.max(pad, Math.min(left, window.innerWidth - W - pad));
     let top = r.bottom + 4;
@@ -1032,20 +1052,58 @@ export class IgtEditor {
     `;
   }
 
+  // The secondary line for a popover item row: values of the vocab's
+  // inline-flagged custom fields (vocab config igt.fields {name: {inline}}),
+  // falling back to the item's first non-empty metadata value when no field
+  // is flagged — so glosses/definitions show out of the box and homophonous
+  // forms are distinguishable.
+  _vocabItemDetail(item, vocab) {
+    const meta = item.metadata || {};
+    const fields = readVocabFields(vocab?.config) || {};
+    const inlineNames = Object.keys(fields).filter((n) => fields[n]?.inline);
+    const names = inlineNames.length ? inlineNames : Object.keys(meta);
+    const vals = names
+      .map((n) => meta[n])
+      .filter((v) => v != null && String(v).trim() !== '')
+      .map(String);
+    return (inlineNames.length ? vals.join(' · ') : (vals[0] ?? ''));
+  }
+
   _vocabPopover(tokenId, formText, currentItem) {
     const vocabs = Object.values(this.doc.vocabularies || {});
     const createVocabId = vocabs[0]?.id;
     const search = (this._popoverSearch || '').toLowerCase();
     const ft = (formText || '').toLowerCase();
     let items = [];
-    vocabs.forEach((v) => (v.items || []).forEach((it) => items.push({ ...it, _vocabName: v.name })));
-    if (search) items = items.filter((it) => (it.form || '').toLowerCase().includes(search));
-    items.sort((a, b) => levenshtein(ft, (a.form || '').toLowerCase()) - levenshtein(ft, (b.form || '').toLowerCase()));
+    vocabs.forEach((v) => (v.items || []).forEach((it) =>
+      items.push({ ...it, _vocabName: v.name, _detail: this._vocabItemDetail(it, v) })));
+
+    // Rank against the active query: the typed search if any, else the
+    // word/morpheme's own form. Tiers (exact > prefix > substring on the form
+    // > match in the detail text > fuzzy), Levenshtein within a tier. While
+    // searching, fuzzy-only "matches" are dropped — typing narrows.
+    const q = search || ft;
+    const tierOf = (it) => {
+      const form = (it.form || '').toLowerCase();
+      if (!q) return 4;
+      if (form === q) return 0;
+      if (form.startsWith(q)) return 1;
+      if (form.includes(q)) return 2;
+      if ((it._detail || '').toLowerCase().includes(q)) return 3;
+      return 4;
+    };
+    if (search) items = items.filter((it) => tierOf(it) < 4);
+    items.sort((a, b) => {
+      const t = tierOf(a) - tierOf(b);
+      if (t !== 0) return t;
+      return levenshtein(q, (a.form || '').toLowerCase()) - levenshtein(q, (b.form || '').toLowerCase());
+    });
     if (currentItem) {
       const i = items.findIndex((it) => it.id === currentItem.id);
       if (i > 0) { const [x] = items.splice(i, 1); items.unshift(x); }
     }
     const limited = items.slice(0, 30);
+    const truncated = items.length - limited.length;
     const createAvailable = !!(createVocabId && formText);
     // Rows the keyboard can land on: every item plus the virtual "create" row.
     const total = limited.length + (createAvailable ? 1 : 0);
@@ -1085,12 +1143,18 @@ export class IgtEditor {
                 return html`<button type="button" class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${i === activeIdx ? 'is-active' : ''}"
                   @mousemove=${() => { if (this._popoverActiveIndex !== i) { this._popoverActiveIndex = i; this._render(true); } }}
                   @click=${(e) => { e.stopPropagation(); this._toggleVocab(tokenId, it, linked); }}>
-                  <span>${it.form}</span>
-                  ${vocabs.length > 1 ? html`<span class="igt-vocab-pop__vname">${it._vocabName}</span>` : nothing}
-                  ${linked ? html`<span class="igt-vocab-pop__x">unlink</span>` : nothing}
+                  <span class="igt-vocab-pop__main">
+                    <span class="igt-vocab-pop__form">${it.form}</span>
+                    ${vocabs.length > 1 ? html`<span class="igt-vocab-pop__vname">${it._vocabName}</span>` : nothing}
+                    ${linked ? html`<span class="igt-vocab-pop__x">unlink</span>` : nothing}
+                  </span>
+                  ${it._detail ? html`<span class="igt-vocab-pop__detail">${it._detail}</span>` : nothing}
                 </button>`;
               })
             : html`<div class="igt-vocab-pop__empty">No matches</div>`}
+          ${truncated > 0
+            ? html`<div class="igt-vocab-pop__more">+ ${truncated} more — type to narrow</div>`
+            : nothing}
         </div>
         ${createAvailable
           ? html`<button type="button" class="igt-vocab-pop__create ${activeIdx === limited.length ? 'is-active' : ''}"
