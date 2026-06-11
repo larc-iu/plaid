@@ -18,6 +18,7 @@ import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
 import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/igtConfig';
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
+import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -105,8 +106,13 @@ export class IgtEditor {
     this.guessSourceFactory = docFrequencyGuessSource;
     this._onChange = () => { this._syncStatus(); this._scheduleRender(); };
     this._unsub = doc.subscribe(this._onChange);
-    // Any click outside an opener/popover (those stopPropagation) closes it.
-    this._onDocClick = () => this._closePopover();
+    // Per-sentence "Copy as IGT": which sentence's format menu is open, and
+    // which sentence just copied (for the "Copied ✓" flash).
+    this._copyMenu = null;
+    this._copiedFlash = null;
+    this._copiedTimer = null;
+    // Any click outside an opener/popover/menu (those stopPropagation) closes it.
+    this._onDocClick = () => { this._closePopover(); this._closeCopyMenu(); };
     document.addEventListener('click', this._onDocClick);
     // The popover is position:fixed; scrolling the page or the grid, or
     // resizing, would detach it from its column — re-anchor it to its opener
@@ -159,6 +165,7 @@ export class IgtEditor {
     window.removeEventListener('resize', this._onScrollResize);
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
     clearTimeout(this._savedTimer);
+    clearTimeout(this._copiedTimer);
     render(nothing, this.container);
   }
 
@@ -870,11 +877,85 @@ export class IgtEditor {
     try { target.select(); } catch { /* noop */ }
   }
 
+  // ---- "Copy as IGT" -------------------------------------------------------
+  // Non-mutating, so it works in read-only/historical views too. The main
+  // button copies in the user's favorite format (persisted in localStorage);
+  // the caret opens a format menu, and picking a format copies AND becomes
+  // the new favorite.
+  _favoriteCopyFormat() {
+    const stored = localStorage.getItem(COPY_FORMAT_STORAGE_KEY);
+    return COPY_FORMATS.some((f) => f.id === stored) ? stored : 'plain';
+  }
+
+  _closeCopyMenu() {
+    if (this._copyMenu == null) return;
+    this._copyMenu = null;
+    this._render(true);
+  }
+
+  async _copySentence(sentence, ctx, format) {
+    const fields = { morphFields: ctx.morphFields, wordFields: ctx.wordFields, sentFields: ctx.sentFields };
+    const text = formatSentence(sentence, fields, format);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Clipboard API unavailable (insecure context): textarea fallback.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } finally { ta.remove(); }
+    }
+    this._copyMenu = null;
+    this._copiedFlash = sentence.id;
+    clearTimeout(this._copiedTimer);
+    this._copiedTimer = setTimeout(() => { this._copiedFlash = null; this._render(true); }, 1400);
+    this._render(true);
+  }
+
+  _copyControl(sentence, ctx) {
+    const fav = this._favoriteCopyFormat();
+    const favLabel = COPY_FORMATS.find((f) => f.id === fav)?.label ?? fav;
+    const open = this._copyMenu === sentence.id;
+    const copied = this._copiedFlash === sentence.id;
+    return html`
+      <div class="igt-copy" @click=${(e) => e.stopPropagation()}>
+        <button type="button" class="igt-copy__btn"
+          title=${`Copy as IGT — ${favLabel}`}
+          @click=${() => this._copySentence(sentence, ctx, fav)}>
+          ${copied ? 'Copied ✓' : 'Copy'}
+        </button>
+        <button type="button" class="igt-copy__caret" aria-label="Choose copy format"
+          aria-expanded=${open ? 'true' : 'false'}
+          @click=${() => { this._copyMenu = open ? null : sentence.id; this._render(true); }}>
+          ▾
+        </button>
+        ${open ? html`
+          <div class="igt-copy__menu" role="menu">
+            ${COPY_FORMATS.map((f) => html`
+              <button type="button" class="igt-copy__item ${f.id === fav ? 'is-fav' : ''}" role="menuitem"
+                @click=${() => {
+                  localStorage.setItem(COPY_FORMAT_STORAGE_KEY, f.id);
+                  this._copySentence(sentence, ctx, f.id);
+                }}>
+                <span>${f.label}</span>
+                ${f.id === fav ? html`<span class="igt-copy__fav">★</span>` : nothing}
+              </button>
+            `)}
+            <div class="igt-copy__hint">picking a format makes it the default</div>
+          </div>` : nothing}
+      </div>
+    `;
+  }
+
   _sentence(sentence, index, ctx) {
     return html`
       <div class="igt-sentence" role="group" aria-label=${`Sentence ${index + 1}`}>
         <h3 class="igt-sr-only">Sentence ${index + 1}</h3>
         <span class="igt-sentence__num" aria-hidden="true">${index + 1}</span>
+        ${this._copyControl(sentence, ctx)}
         <div class="igt-grid">
           <div class="igt-tokens">
             ${this._labels(ctx)}

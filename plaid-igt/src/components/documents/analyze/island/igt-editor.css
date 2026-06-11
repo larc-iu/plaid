@@ -182,6 +182,66 @@
 .igt-sentence:nth-child(even)::after { background: linear-gradient(to right, rgba(251, 252, 254, 0), #fbfcfe 78%); }
 .igt-sentence.is-clipped-right::after { opacity: 1; }
 
+/* ---- "Copy as IGT" (per sentence, hover-revealed top-right) ---- */
+.igt-copy {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 6;
+  display: flex;
+  align-items: stretch;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.igt-sentence:hover .igt-copy,
+.igt-copy:focus-within { opacity: 1; }
+.igt-copy__btn, .igt-copy__caret {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: #4b5563;
+  background: #fff;
+  border: 1px solid #d8dde4;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.igt-copy__btn { border-radius: 6px 0 0 6px; }
+.igt-copy__caret { border-radius: 0 6px 6px 0; border-left: none; padding: 2px 5px; }
+.igt-copy__btn:hover, .igt-copy__caret:hover { background: #eff4ff; color: #1d4ed8; border-color: #c7d7fe; }
+.igt-copy__btn:focus-visible, .igt-copy__caret:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+.igt-copy__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 190px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.igt-copy__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 4px 6px;
+  background: #f9fafb;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.igt-copy__item:hover { background: #eef2ff; }
+.igt-copy__item.is-fav { background: #eef2ff; }
+.igt-copy__fav { color: #b45309; font-size: 11px; }
+.igt-copy__hint { padding: 3px 6px 1px; font-size: 10px; color: #9aa3b2; text-align: center; }
+
 /* ---- the interlinear grid ----
    [row labels | word columns]. Word columns WRAP into bands (FLEx-style)
    instead of scrolling horizontally; every column is a self-contained
