@@ -69,6 +69,65 @@
     :else (throw (ex-info ":slow-query-threshold-ms must be numeric"
                           {:value v :code 500}))))
 
+;; ============================================================
+;; Single-instance lock
+;; ============================================================
+
+(defonce ^:private instance-lock (atom nil))
+
+(defn- acquire-instance-lock!
+  "Take an exclusive OS-level lock on `<db-path>.lock` so a second plaid
+  instance can't run against the same SQLite database. SQLite's own
+  cross-process locking keeps row data safe, but everything in-memory
+  diverges between two instances: document locks (423 enforcement
+  breaks), the SSE/service registries split, and — worst — two history
+  tailers would open the same XTDB local storage/log dirs, which XTDB
+  local storage does not support. Fail loudly at boot instead.
+
+  Returns {:channel :lock :file} on success; nil (no-op) for in-memory
+  databases (tests). Throws a readable operator error when the lock is
+  held. The lock file is deliberately never deleted — deleting after
+  release races a successor's acquire (the successor can lock the
+  doomed inode) — it just holds the PID of the current/most-recent
+  holder for diagnostics."
+  [db-path]
+  (when (and (string? db-path) (not= "" db-path))
+    (let [lock-file (java.io.File. (str db-path ".lock"))
+          _ (some-> (.getParentFile lock-file) (.mkdirs))
+          channel (.getChannel (java.io.RandomAccessFile. lock-file "rw"))
+          lock (try (.tryLock channel)
+                    (catch java.nio.channels.OverlappingFileLockException _ nil))]
+      (if (nil? lock)
+        (let [holder (try (clojure.string/trim (slurp lock-file))
+                          (catch Exception _ ""))]
+          (.close channel)
+          (throw (ex-info (str "Another plaid instance appears to be running against " db-path
+                               " — the instance lock " (.getPath lock-file) " is held"
+                               (when-not (clojure.string/blank? holder)
+                                 (str " (last holder PID " holder ")"))
+                               ". Stop the other instance first, or point this one at a"
+                               " different [database] path.")
+                          {:db-path db-path :lock-file (.getPath lock-file)})))
+        (do
+          ;; Best-effort PID stamp for the error message above.
+          (try
+            (.truncate channel 0)
+            (.write channel (java.nio.ByteBuffer/wrap
+                             (.getBytes (str (.pid (java.lang.ProcessHandle/current))) "UTF-8")))
+            (.force channel false)
+            (catch Exception _ nil))
+          {:channel channel :lock lock :file lock-file})))))
+
+(defn- release-instance-lock! []
+  (when-let [{:keys [^java.nio.channels.FileChannel channel
+                     ^java.nio.channels.FileLock lock]} @instance-lock]
+    (try
+      (.release lock)
+      (.close channel)
+      (catch Exception e
+        (log/warn e "Failed to release instance lock cleanly")))
+    (reset! instance-lock nil)))
+
 ;; Captures the slow-query-threshold root value at :start so :stop can
 ;; restore it. Without symmetric restoration, repeated mount/start +
 ;; mount/stop cycles (typical in tests + REPL workflows) would leave the
@@ -81,6 +140,12 @@
 (defstate datasource
   :start (let [cfg (::config config)
                db-path (:main-db-path cfg)
+               ;; Refuse to double-run against the same SQLite file —
+               ;; see acquire-instance-lock!. Guarded so a re-entrant
+               ;; :start (mount/start twice, no :stop) keeps the
+               ;; existing lock rather than tripping over itself.
+               _ (when (nil? @instance-lock)
+                   (reset! instance-lock (acquire-instance-lock! db-path)))
                ;; Pool/PRAGMA tuning under :plaid.sql.common/pool — see
                ;; `psc/default-pool-config` for keys + defaults. Absent
                ;; config falls through to the defaults; passing nil is
@@ -117,6 +182,7 @@
           (when datasource
             (checkpoint-wal! datasource)
             (.close datasource))
+          (release-instance-lock!)
           ;; Symmetric restore of the slow-query threshold root captured
           ;; on :start. Clear the atom afterwards so a subsequent :start
           ;; re-captures whatever the live root is at that moment.
