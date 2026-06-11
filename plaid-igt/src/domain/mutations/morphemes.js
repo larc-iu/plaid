@@ -132,12 +132,24 @@ export const morphemeMutations = {
   // Split a morpheme's form into two: existing gets `leftForm`, a new one
   // with `rightForm` is inserted at the next precedence; subsequent morphemes
   // shift +1.
+  async splitMorpheme(morphemeId, leftForm, rightForm) {
+    return this.splitMorphemeMulti(morphemeId, [leftForm, rightForm]);
+  },
+
+  // N-way generalization (paste-splitting): replace one morpheme with
+  // `segments` — the existing morpheme keeps segments[0] as its form (and its
+  // annotations/links), segments[1..] are inserted after it; subsequent
+  // morphemes shift by segments.length - 1.
   //
   // Batch order: setMetadata, then shift subsequents in descending precedence
-  // to free the target slot, then create at the freed slot. The create MUST
-  // run AFTER the shifts — if the new (begin, end, precedence) triple
+  // to free the target slots, then create at the freed slots. The creates
+  // MUST run AFTER the shifts — if a new (begin, end, precedence) triple
   // collides with an existing morpheme's it's a server-side 409.
-  async splitMorpheme(morphemeId, leftForm, rightForm) {
+  async splitMorphemeMulti(morphemeId, segments) {
+    if (!Array.isArray(segments) || segments.length < 2) {
+      this.setError('splitMorphemeMulti needs at least two segments');
+      return false;
+    }
     const info = this.layerInfo;
     const morphemeLayer = info.morphemeTokenLayer;
     const textId = info.primaryTextLayer?.text?.id;
@@ -152,28 +164,31 @@ export const morphemeMutations = {
     }
 
     return this._withSaving('Failed to split morpheme', async () => {
+      const firstForm = segments[0];
+      const restForms = segments.slice(1);
       const siblings = sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
       const currentPrecedence = target.precedence ?? siblings.findIndex(m => m.id === morphemeId) + 1;
-      const newPrecedence = currentPrecedence + 1;
       const subsequents = siblings.filter(m => (m.precedence ?? 0) > currentPrecedence);
       const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
 
       this._client.beginBatch();
-      this._client.tokens.setMetadata(morphemeId, { form: leftForm });
+      this._client.tokens.setMetadata(morphemeId, { form: firstForm });
       shifted.forEach(m => {
-        this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + 1);
+        this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + restForms.length);
       });
-      this._client.tokens.create(
-        morphemeLayer.id,
-        textId,
-        target.begin,
-        target.end,
-        newPrecedence,
-        rightForm ? { form: rightForm } : undefined
-      );
+      restForms.forEach((form, i) => {
+        this._client.tokens.create(
+          morphemeLayer.id,
+          textId,
+          target.begin,
+          target.end,
+          currentPrecedence + 1 + i,
+          form ? { form } : undefined
+        );
+      });
       const results = await this._client.submitBatch();
-      // setMetadata is 0; shifts are 1..N (N = shifted.length); create is N+1.
-      const newMorphemeId = results[shifted.length + 1]?.body?.id;
+      // setMetadata is 0; shifts are 1..S (S = shifted.length); creates follow.
+      const newIds = restForms.map((_, i) => results[shifted.length + 1 + i]?.body?.id);
 
       this._applyRawPatch((next, infoNext) => {
         const layer = infoNext.morphemeTokenLayer;
@@ -181,24 +196,26 @@ export const morphemeMutations = {
         const tokens = layer.tokens || [];
         const t = tokens.find(m => m.id === morphemeId);
         if (t) {
-          t.metadata = { ...(t.metadata || {}), form: leftForm };
+          t.metadata = { ...(t.metadata || {}), form: firstForm };
         }
         tokens.forEach(m => {
           if (m.begin === target.begin && m.end === target.end && (m.precedence ?? 0) > currentPrecedence) {
-            m.precedence = (m.precedence ?? 0) + 1;
+            m.precedence = (m.precedence ?? 0) + restForms.length;
           }
         });
-        if (newMorphemeId) {
-          if (!Array.isArray(layer.tokens)) layer.tokens = [];
+        if (!Array.isArray(layer.tokens)) layer.tokens = [];
+        restForms.forEach((form, i) => {
+          const id = newIds[i];
+          if (!id) return;
           layer.tokens.push({
-            id: newMorphemeId,
+            id,
             text: textId,
             begin: target.begin,
             end: target.end,
-            precedence: newPrecedence,
-            metadata: rightForm ? { form: rightForm } : {}
+            precedence: currentPrecedence + 1 + i,
+            metadata: form ? { form } : {}
           });
-        }
+        });
       });
     });
   },

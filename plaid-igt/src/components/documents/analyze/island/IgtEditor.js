@@ -584,6 +584,44 @@ export class IgtEditor {
     };
   }
 
+  // Paste-splitting: pasting text containing "-" into a morpheme form splits
+  // it into a morpheme chain at the hyphens (the bulk-entry idiom from the
+  // early single-input prototype — unambiguous here because the paste target
+  // is a single known morpheme). Hyphen-free pastes fall through to the
+  // browser default.
+  _onMorphPaste(morph, word) {
+    return async (e) => {
+      if (this.readOnly) return;
+      const text = e.clipboardData?.getData('text/plain') ?? '';
+      if (!text.includes('-')) return;
+      e.preventDefault();
+      const el = e.target;
+      const s = el.selectionStart ?? el.value.length;
+      const en = el.selectionEnd ?? s;
+      const combined = el.value.slice(0, s) + text + el.value.slice(en);
+      const segments = combined.split('-').map(x => x.trim()).filter(x => x !== '');
+      if (segments.length <= 1) {
+        // All hyphens were leading/trailing/doubled — just insert the cleaned text.
+        el.value = segments[0] ?? '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+      }
+      const orig = el.value;
+      el.value = segments[0];
+      el.dataset.suppressCommit = '1';
+      el.disabled = true;
+      this._pendingFocus = { wordId: word.id, precedence: (morph.precedence ?? 1) + segments.length - 1, cursor: 'end' };
+      const ok = await this._run(() => this.doc.splitMorphemeMulti(morph.id, segments));
+      el.disabled = false;
+      if (!ok) {
+        el.value = orig;
+        delete el.dataset.suppressCommit;
+        this._pendingFocus = null;
+        el.focus();
+      }
+    };
+  }
+
   _commitMorphForm(e, morphId) {
     if (this.readOnly) return;
     const el = e.target;
@@ -605,9 +643,15 @@ export class IgtEditor {
     const el = e.target;
     const form = el.value.trim();
     if (!form) { el.value = ''; return; }
+    // Hyphens split into a chain (same idiom as paste-splitting): committing
+    // "nac-en" appends two morphemes, not one with a literal hyphen.
+    const segments = form.split('-').map(x => x.trim()).filter(x => x !== '');
+    if (segments.length === 0) { el.value = ''; return; }
     el.disabled = true;
     this._pendingFocus = { placeholderWord: word.id };
-    const ok = await this._run(() => this.doc.createMorpheme(word.id, form));
+    const ok = await this._run(() => segments.length > 1
+      ? this.doc.createMorphemes(word.id, segments)
+      : this.doc.createMorpheme(word.id, segments[0]));
     el.disabled = false;
     if (ok) {
       el.value = ''; // clear only on success
@@ -726,7 +770,7 @@ export class IgtEditor {
         ${ctx.hasMorphemes ? html`
           <div class="igt-legend__row">
             <strong>Morphemes</strong>
-            <span>type <kbd>-</kbd> to split · <kbd>⌫</kbd> at start merges with previous · <kbd>Alt</kbd>+<kbd>-</kbd> literal hyphen · the <kbd>+</kbd> column adds one</span>
+            <span>type <kbd>-</kbd> to split (pasting <em>a-b-c</em> splits too) · <kbd>⌫</kbd> at start merges with previous · <kbd>Alt</kbd>+<kbd>-</kbd> literal hyphen · hover a word for the <kbd>+</kbd> add column</span>
           </div>` : nothing}
         <div class="igt-legend__row">
           <strong>Lexicon</strong>
@@ -861,6 +905,7 @@ export class IgtEditor {
               @focus=${this._onMorphFormFocus}
               @input=${this._onFieldInput}
               @keydown=${this._morphFormKeydown(morph, word, siblings)}
+              @paste=${this._onMorphPaste(morph, word)}
               @blur=${(e) => this._commitMorphForm(e, morph.id)}
             >`,
             { id: morph.id, vocabItem: morph.vocabItem, formText: value, kind: 'morpheme' },

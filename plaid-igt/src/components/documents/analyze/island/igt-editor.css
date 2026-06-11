@@ -332,10 +332,33 @@
   width: max-content;
   padding: 0 2px;
 }
-/* The "add morpheme" column is a slim rail by default; it expands to a normal
-   column when focused so the type-to-create input is usable. */
-.igt-morph-col--placeholder { min-width: 22px; padding: 0; }
-.igt-morph-col--placeholder:focus-within { min-width: 52px; padding: 0 2px; }
+/* The "add morpheme" column is fully COLLAPSED at rest (user call 2026-06-10:
+   the "+" everywhere was noise; keyboard users append by typing "-" at the
+   end of the last morpheme anyway). Hovering anywhere in the word column
+   reveals it as a faint slim rail; it brightens under the pointer and expands
+   to a usable input on focus. opacity+width (not display) keep the input
+   tabbable, so keyboard focus also expands it via :focus-within. */
+.igt-morph-col--placeholder {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.12s, min-width 0.12s;
+}
+.igt-token-col:hover .igt-morph-col--placeholder {
+  width: max-content;
+  min-width: 22px;
+  opacity: 0.45;
+}
+.igt-token-col:hover .igt-morph-col--placeholder:hover { opacity: 1; }
+.igt-morph-col--placeholder:focus-within {
+  width: max-content;
+  min-width: 52px;
+  padding: 0 2px;
+  opacity: 1;
+  overflow: visible;
+}
 
 .igt-morph-form {
   height: var(--igt-morph-h);

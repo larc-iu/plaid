@@ -155,6 +155,29 @@ describe('morpheme structural ops', () => {
     expect(ms.map((m) => m.precedence)).toEqual([1, 2, 3]);
   });
 
+  it('splitMorphemeMulti replaces one morpheme with an N-segment chain (paste-split)', async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 6 }],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 6, precedence: 1, metadata: { form: 'abcd' } },
+        { id: 'm-2', begin: 0, end: 6, precedence: 2, metadata: { form: 'ef' } },
+      ],
+      body: 'abcdef',
+    });
+    const doc = makeDoc({ raw });
+    await doc.splitMorphemeMulti('m-1', ['a', 'bc', 'd']);
+    const k = kinds(doc.client);
+    // setMetadata, shift (+2 for m-2), then BOTH creates after the shift.
+    expect(k.filter(x => x === 'tokens.create')).toHaveLength(2);
+    expect(k.indexOf('tokens.update')).toBeGreaterThan(k.indexOf('tokens.setMetadata'));
+    expect(k.indexOf('tokens.create')).toBeGreaterThan(k.indexOf('tokens.update'));
+    const ms = doc.sentences[0].tokens[0].morphemes;
+    expect(ms.map((m) => m.metadata.form)).toEqual(['a', 'bc', 'd', 'ef']);
+    expect(ms.map((m) => m.precedence)).toEqual([1, 2, 3, 4]);
+    // m-1 survives as the first segment (annotations/links stay attached to it).
+    expect(ms[0].id).toBe('m-1');
+  });
+
   it('mergeMorphemes concatenates forms into predecessor and renumbers', async () => {
     const raw = buildRawDoc({
       words: [{ id: 'w-1', begin: 0, end: 3 }],
