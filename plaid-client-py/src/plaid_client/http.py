@@ -256,13 +256,21 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     elif body is not None:
         request_body = transform_request(body)
 
-    # Strict mode: append document-version for non-GET requests
-    if client.strict_mode_document_id and method != 'GET':
+    # Strict mode: append document-version for non-GET requests.
+    # Inside a batch, stamp ONLY the first write: batches run atomically
+    # server-side, so a version check on the first op gives whole-batch OCC
+    # semantics, while stamping every op would 409 the second op against the
+    # version bump the first op itself caused (every queued op captures the
+    # same pre-batch version).
+    if (client.strict_mode_document_id and method != 'GET'
+            and not (client.is_batching and getattr(client, 'batch_version_stamped', False))):
         doc_id = client.strict_mode_document_id
         doc_version = client.document_versions.get(doc_id)
         if doc_version:
             separator = '&' if '?' in url else '?'
             url += f'{separator}document-version={quote(str(doc_version), safe="")}'
+            if client.is_batching:
+                client.batch_version_stamped = True
 
     # Batch mode
     if client.is_batching:

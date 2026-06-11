@@ -135,13 +135,20 @@ export async function makeRequest(client, method, path, options = {}) {
     requestBody = transformRequest(body);
   }
 
-  // Strict mode: append document-version for non-GET requests
-  if (client.strictModeDocumentId && method !== 'GET') {
+  // Strict mode: append document-version for non-GET requests.
+  // Inside a batch, stamp ONLY the first write: batches run atomically
+  // server-side, so a version check on the first op gives whole-batch OCC
+  // semantics, while stamping every op would 409 the second op against the
+  // version bump the first op itself caused (every queued op captures the
+  // same pre-batch version).
+  if (client.strictModeDocumentId && method !== 'GET'
+      && !(client.isBatching && client.batchVersionStamped)) {
     const docId = client.strictModeDocumentId;
     if (client.documentVersions[docId]) {
       const docVersion = client.documentVersions[docId];
       const separator = url.includes('?') ? '&' : '?';
       url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      if (client.isBatching) client.batchVersionStamped = true;
     }
   }
 

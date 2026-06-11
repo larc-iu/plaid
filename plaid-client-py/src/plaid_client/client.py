@@ -1886,6 +1886,9 @@ class PlaidClient:
         """Begin a batch of operations. Subsequent API calls will be queued."""
         self.is_batching = True
         self.batch_operations = []
+        # Strict mode stamps the expected document-version on the FIRST write
+        # of the batch only (see http.make_request) — reset the marker per batch.
+        self.batch_version_stamped = False
 
     def submit_batch(self) -> list[Any]:
         """Submit all queued batch operations as a single batch request.
