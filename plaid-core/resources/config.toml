@@ -124,22 +124,3 @@ expiration_ms = 60000
 heartbeat_interval_ms = 30000
 # Number of consecutive missed heartbeats before a client is dropped.
 heartbeat_max_misses = 2
-
-# -----------------------------------------------------------------------------
-# History (time-travel replica)
-# -----------------------------------------------------------------------------
-# Optional read-only XTDB replica fed from the audit log, enabling
-# "document X as of time T" reads via ?as-of=<ISO-8601> on document GET
-# endpoints. Disabled by default; opt in when you want time travel.
-[history]
-enabled = false
-# Where the replica stores its data and transaction log.
-storage_path = "data/history-storage"
-log_path = "data/history-log"
-# On an empty replica, replay the full audit history from the beginning.
-cold_replay_on_empty = true
-# Tailer poll loop tuning.
-tailer_poll_interval_ms = 5000
-tailer_batch_size = 500
-tailer_max_lag_warn_ms = 60000
-tailer_max_disk_warn_mb = 5000

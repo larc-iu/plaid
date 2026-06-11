@@ -33,8 +33,6 @@
     (is (true? (get-in cfg [:plaid.api :expose-openapi?])))
     (is (= 200 (get-in cfg [:plaid.media/config :max-file-size-mb])))
     (is (= "data/plaid.db" (get-in cfg [:plaid.server.sql/config :main-db-path])))
-    (is (false? (get-in cfg [:plaid.history/config :enabled?])))
-    (is (= 5000 (get-in cfg [:plaid.history/config :tailer :poll-interval-ms])))
     ;; internal-only plumbing present even though it's not in the TOML
     (is (contains? cfg :ring.middleware/defaults-config))
     (is (= [] (get-in cfg [:taoensso.timbre/logging-config :ns-whitelist])))))
@@ -92,11 +90,10 @@
 
 (deftest dev-overlay-restores-8085
   ;; The dev overlay (config.dev.toml, loaded by user/start) flips the port to
-  ;; 8085 and turns history on, leaving everything else at the bundled defaults.
+  ;; 8085, leaving everything else at the bundled defaults.
   (let [cfg (config/load-config! {:config-path "config.dev.toml" :explicit? true})]
     (is (= 8085 (get-in cfg [:org.httpkit.server/config :port])))
     (is (= :debug (get-in cfg [:taoensso.timbre/logging-config :min-level])))
-    (is (true? (get-in cfg [:plaid.history/config :enabled?])))
     ;; un-overridden default still present
     (is (= 200 (get-in cfg [:plaid.media/config :max-file-size-mb])))))
 

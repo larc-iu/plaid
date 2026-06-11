@@ -93,16 +93,7 @@
    [["locks" "expiration_ms"]             [:plaid.server.locks/config :expiration-ms]                        identity]
 
    [["events" "heartbeat_interval_ms"]    [:plaid.server.events/heartbeat :interval-ms]                      identity]
-   [["events" "heartbeat_max_misses"]     [:plaid.server.events/heartbeat :max-consecutive-misses]           identity]
-
-   [["history" "enabled"]                 [:plaid.history/config :enabled?]                                  identity]
-   [["history" "storage_path"]            [:plaid.history/config :storage-path]                              identity]
-   [["history" "log_path"]                [:plaid.history/config :log-path]                                  identity]
-   [["history" "cold_replay_on_empty"]    [:plaid.history/config :cold-replay-on-empty?]                     identity]
-   [["history" "tailer_poll_interval_ms"] [:plaid.history/config :tailer :poll-interval-ms]                  identity]
-   [["history" "tailer_batch_size"]       [:plaid.history/config :tailer :batch-size]                        identity]
-   [["history" "tailer_max_lag_warn_ms"]  [:plaid.history/config :tailer :max-lag-warn-ms]                   identity]
-   [["history" "tailer_max_disk_warn_mb"] [:plaid.history/config :tailer :max-disk-warn-mb]                  identity]])
+   [["events" "heartbeat_max_misses"]     [:plaid.server.events/heartbeat :max-consecutive-misses]           identity]])
 
 (defn- translate
   "Convert friendly TOML data (string-keyed nested map) into the internal

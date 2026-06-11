@@ -106,9 +106,8 @@
   instance can't run against the same SQLite database. SQLite's own
   cross-process locking keeps row data safe, but everything in-memory
   diverges between two instances: document locks (423 enforcement
-  breaks), the SSE/service registries split, and — worst — two history
-  tailers would open the same XTDB local storage/log dirs, which XTDB
-  local storage does not support. Fail loudly at boot instead.
+  breaks) and the SSE/service registries split. Fail loudly at boot
+  instead.
 
   Returns {:channel :lock :file} on success; nil (no-op) for in-memory
   databases (tests). Throws a readable operator error when the lock is

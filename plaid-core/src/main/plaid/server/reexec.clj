@@ -2,7 +2,7 @@
   "The JDK-module-flag re-exec, split out of plaid.server.main so it can
   be required (and tested) WITHOUT loading the full server graph:
   requiring plaid.server.main transitively registers every mount
-  defstate (http-server, datasource, tailer, ...) in the JVM-wide
+  defstate (http-server, datasource, ...) in the JVM-wide
   registry, which silently changes what a bare (mount/start) in any
   other test brings up — the full-mount lifecycle tests started
   exploding on the real http-server the first time a test ns required
@@ -36,10 +36,11 @@
       true)))
 
 (defn needs-native-access?
-  "Check whether the JVM's restricted-native-method gate is open. Without
-   `--enable-native-access=ALL-UNNAMED`, XTDB v2.2's Arrow / Netty calls
-   emit a `WARNING: A restricted method ... has been called` line per
-   invocation on JDK 21+ and will hard-fail on a future JDK.
+  "Check whether the JVM's restricted-native-method gate is open.
+   Originally needed for XTDB's Arrow/Netty (now removed), but KEPT:
+   sqlite-jdbc is JNI, and JDK 24+ (JEP 472) gates JNI behind the same
+   `--enable-native-access` flag — without it the driver will warn per
+   restricted call and hard-fail on a future JDK.
 
    The probe walks the runtime-arg list rather than calling a restricted
    method itself — Module#isNativeAccessEnabled is JDK-internal API we
@@ -94,8 +95,8 @@
 (defn re-exec-with-jdk-flags!
   "Re-launch this JVM with both `--add-opens=java.base/java.nio=ALL-UNNAMED`
    (required by SQLite's reflective access to `java.nio.Buffer`) and
-   `--enable-native-access=ALL-UNNAMED` (required by XTDB v2.2's Arrow /
-   Netty restricted-method calls). We re-add both unconditionally rather
+   `--enable-native-access=ALL-UNNAMED` (future-proofing for sqlite-jdbc's
+   JNI under JDK 24+'s JEP 472 gating). We re-add both unconditionally rather
    than only the missing one: the cost is two extra JVM args, and the
    child process is wholly defined by this command line so there's no
    way for one flag to be present while the other is missing."

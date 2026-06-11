@@ -3,17 +3,15 @@
   rows whose post_image folds the `span_tokens` junction state under
   `:tokens` (matching single-row span/create).
 
-  Because the history replayer treats an :insert as a full put (replace),
-  a bulk-created span that is never subsequently updated would land in
-  the history with NO tokens if the :insert audit row didn't carry them —
-  even though the OLTP `span_tokens` table has them. This test drives
-  the real REST bulk-create path, inspects the emitted audit rows, and
-  feeds them through the replayer to confirm the resulting history doc
-  carries `:tokens` (the unqualified junction key the history read API
-  depends on)."
+  A bulk-created span that is never subsequently updated would
+  reconstruct in as-of reads with NO tokens if the :insert audit row
+  didn't carry them — even though the OLTP `span_tokens` table has
+  them. This test drives the real REST bulk-create path, inspects the
+  emitted audit rows, and confirms an as-of reconstruction
+  (plaid.history.read) yields the spans with their `:tokens`."
   (:require [clojure.test :refer :all]
             [plaid.sql.common :as psc]
-            [plaid.history.replayer :as replayer]
+            [plaid.history.read :as hread]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request assert-created assert-ok with-admin with-clean-db]]
             [plaid.test-helpers :refer :all]))
@@ -79,13 +77,15 @@
           (is (= {:k "v"} (:metadata meta-post))
               "metadata folded into the :insert post_image"))))
 
-    (testing "replaying the :insert audit row yields an history doc with :tokens"
-      (let [by-id (insert-audit-rows-for-spans ids)
-            id    (second ids) ; multi-token span
-            row   (clojure.core/get by-id id)
-            [op-kw _table doc-out] (replayer/audit-row->tx-op row)]
-        (is (= :put-docs op-kw) ":insert replays as a full put-docs")
-        ;; Junction key passes through unqualified, coerced to UUIDs.
-        (is (= [t2 t3] (:tokens doc-out))
-            "replayed history doc carries the ordered :tokens vector")
-        (is (= id (:xt/id doc-out)))))))
+    (testing "as-of reconstruction yields the bulk-created spans with :tokens"
+      (let [latest-ts (:ts (psc/q1 db {:select [:ts] :from [:operations]
+                                       :order-by [[:ts :desc]] :limit 1}))
+            recon (hread/get-with-layer-data-at db doc latest-ts)
+            spans-out (->> (:document/text-layers recon)
+                           (mapcat :text-layer/token-layers)
+                           (mapcat :token-layer/span-layers)
+                           (mapcat :span-layer/spans))
+            by-id (into {} (map (juxt :span/id identity)) spans-out)]
+        (is (= [t2 t3] (:span/tokens (clojure.core/get by-id (second ids))))
+            "reconstructed multi-token span carries the ordered :tokens vector")
+        (is (= [t1] (:span/tokens (clojure.core/get by-id (first ids)))))))))

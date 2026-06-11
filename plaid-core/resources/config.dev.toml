@@ -8,7 +8,3 @@ port = 8085
 
 [logging]
 level = "debug"
-
-# History shadow replica on in dev (default-off in the bundled config).
-[history]
-enabled = true

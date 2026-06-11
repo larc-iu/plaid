@@ -29,8 +29,7 @@
 
   Regenerate `known-op-types` after adding an operation:
     grep -rhoE \":type :[a-z-]+/[a-z-]+\" src/main/plaid/sql/*.clj | sort -u"
-  (:require [clojure.core.async :as async]
-            [clojure.data.json :as json]
+  (:require [clojure.data.json :as json]
             [clojure.set :as set]
             [clojure.test :refer :all]
             [clojure.walk :as walk]
@@ -40,42 +39,27 @@
                                     admin-request api-call assert-created assert-ok
                                     assert-status assert-no-content
                                     with-admin with-test-users with-clean-db]]
-            [plaid.history.core :as history]
-            [plaid.history.replayer :as replayer]
-            [plaid.history.tailer :as tailer]
-            [plaid.sql.project :as sql-project]
-            [plaid.sql.user :as sql-user]
-            [plaid.sql.vocab-layer :as sql-vocab]
-            [plaid.test-helpers :refer :all]
-            [xtdb.api :as xt]
-            [xtdb.node :as xtn]))
+            [plaid.test-helpers :refer :all]))
 
 ;; ============================================================
 ;; Per-test history node + tailer (mirrors integration-test harness)
 ;; ============================================================
 
-(def ^:dynamic ^:private *history-node* nil)
+(defn- with-test-history-node
+  "Historical seam from the replica era (these tests once stood up a
+  per-test XTDB node + tailer loop). Audit-log reads need no setup —
+  the seam just invokes the body."
+  [f]
+  (f))
 
-(defn- with-test-history-node [f]
-  (async/poll! history/nudge-chan)
-  (with-open [node (xtn/start-node {})]
-    (binding [*history-node* node]
-      (with-redefs [history/enabled? (constantly true)
-                    history/node node]
-        (let [done (#'tailer/run-loop! plaid.fixtures/db node (history/history-config))]
-          (try
-            (f)
-            (finally
-              (when-let [stop @@#'tailer/stop-chan]
-                (async/close! stop))
-              (async/alt!! done :done (async/timeout 5000) :timeout))))))))
+(defn- drain!
+  "Historical seam: nothing to drain — as-of reads are served from the
+  same database the write committed to and are never stale."
+  []
+  true)
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
-
-(defn- drain! []
-  (or (tailer/await-drained! plaid.fixtures/db *history-node* 8000)
-      (throw (ex-info "tailer drain timed out" {}))))
 
 (defn- latest-op-ts []
   (-> (jdbc/execute-one!
@@ -104,9 +88,6 @@
              {:method :get
               :path (str "/api/v1/documents/" doc-id "?as-of=" ts
                          (when include-body? "&include-body=true"))})))
-
-(defn- tailer-running? []
-  (= :running (:tailer-status (history/cursor-read *history-node*))))
 
 (defn- created-id
   "Assert a create response is 201 and return its :id. Guards setup so a
@@ -281,9 +262,8 @@
             _ (assert-created (create-user! u-throw false))
             _ (assert-ok (update-user! u-throw))                    ; user/update
 
-            ;; ---- API tokens: mint + revoke (these are audited, so the history
-            ;;      replayer must mirror the api_tokens table or the tailer
-            ;;      stalls — see mirrored-tables / replayer/table->spec) ----
+            ;; ---- API tokens: mint + revoke (audited — keeps the
+            ;;      (table, change_type) breadth assertion honest) ----
             fc-tok-resp (api-call admin-request
                                   {:method :post
                                    :path (str "/api/v1/users/" u-throw "/tokens")
@@ -481,15 +461,12 @@
                 (str "operation types exercised but NOT in known-op-types — source grew a new "
                      "op type; confirm history replay handles it, then add it here: " unexpected))))
 
-        (testing "every emitted audit shape is one the replayer handles"
+        (testing "every emitted audit shape is a known (table, change_type) pair"
           (doseq [[table change] (distinct-audit-shapes)]
             (is (contains? mirrored-tables table)
-                (str "audit row targets un-mirrored table (would stall tailer): " table))
+                (str "audit row targets a table outside the known mirrored set — extend the reader/known sets deliberately: " table))
             (is (contains? handled-change-types change)
-                (str "audit row has un-handled change_type (would stall tailer): " change))))
-
-        (testing "tailer applied everything without stalling"
-          (is (tailer-running?) "tailer status is :running after replaying every op type"))
+                (str "audit row has an unknown change_type — extend the fold/known sets deliberately: " change))))
 
         (testing "OLTP == history deep-read for the fully-populated survivor doc"
           (let [oltp (-> (api-call admin-request
@@ -605,9 +582,7 @@
             (testing "ts-after shows the whole subtree gone (cascade replayed)"
               (let [body (-> (get-doc-as-of doc ts-after) :body)]
                 (is (empty? (tokens-from-body body)))
-                (is (empty? (spans-from-body body)))))
-            (testing "tailer did not stall on the cascade delete"
-              (is (tailer-running?)))))))))
+                (is (empty? (spans-from-body body)))))))))))
 
 ;; ============================================================
 ;; DEPTH: token split / merge with an attached span, per-ts
@@ -648,9 +623,7 @@
               "the span stays on the retained left half across the split"))
         (testing "post-merge: single token t1 back at (0,5), span intact"
           (is (= {t1 [0 5]} (toks-at ts-merge)))
-          (is (= [t1] (span-toks-at ts-merge))))
-        (testing "tailer healthy throughout"
-          (is (tailer-running?)))))))
+          (is (= [t1] (span-toks-at ts-merge))))))))
 
 ;; ============================================================
 ;; DEPTH: junction shrink to empty (span auto-deletes), per-ts
@@ -685,103 +658,11 @@
         (testing "ts-one: span covers only t1 after remove-token"
           (is (= [t1] (span-tokens-at ts-one))))
         (testing "ts-gone: span auto-deleted when its last token was removed"
-          (is (empty? (spans-from-body (-> (get-doc-as-of doc ts-gone) :body)))))
-        (testing "tailer healthy throughout"
-          (is (tailer-running?)))))))
-
-;; ============================================================
-;; GAP 1: non-document entity rows reconcile OLTP <-> history
-;; ============================================================
-;;
-;; Every parity test elsewhere reconciles a DOCUMENT deep-read. Projects
-;; (intrinsic cols + folded :readers/:writers/:maintainers + :config),
-;; users (:is-admin, :password-changes), and vocab-layers (folded
-;; :maintainers + :config) are replayed into history but their stored rows
-;; were never compared to OLTP — a wrong col-rename, dropped ACL fold, or
-;; mis-coerced :is-admin would sit silently wrong. This reads the raw
-;; history.* rows and compares to the OLTP getters.
-
-(defn- history-row [node sql params]
-  (first (xt/q node (into [sql] params))))
+          (is (empty? (spans-from-body (-> (get-doc-as-of doc ts-gone) :body)))))))))
 
 (defn- truthy-flag [v]
   ;; history may store SQLite is_admin as 0/1 (int) or true/false; normalize.
   (boolean (or (true? v) (= 1 v) (= 1N v))))
-
-(deftest ^:integration history-entity-row-parity-projects-users-vocab
-  (with-test-history-node
-    (fn []
-      (let [db plaid.fixtures/db
-            node *history-node*
-            ;; Distinct user per role: project roles are one-per-user, so
-            ;; granting the same user two roles just moves it (leaving a role
-            ;; empty). ua is is-admin TRUE so the is-admin truthy branch is
-            ;; exercised (not just the falsy default).
-            ur (str "ep-r-" (random-uuid) "@example.com")
-            uw (str "ep-w-" (random-uuid) "@example.com")
-            um (str "ep-m-" (random-uuid) "@example.com")
-            ua (str "ep-admin-" (random-uuid) "@example.com")
-            _ (assert-created (create-user! ur false))
-            _ (assert-created (create-user! uw false))
-            _ (assert-created (create-user! um false))
-            _ (assert-created (create-user! ua true))
-            proj (create-test-project admin-request "EntityParityProj")
-            _ (assert-status 204 (proj-role :post "readers" proj ur))
-            _ (assert-status 204 (proj-role :post "writers" proj uw))
-            _ (assert-status 204 (proj-role :post "maintainers" proj um))
-            _ (assert-no-content (set-layer-config "projects" proj "ed" "k" {:v 1}))
-            vS (-> (create-vocab-layer admin-request "EP-Vocab") :body :id)
-            _ (assert-status 204 (link-vocab-to-project admin-request proj vS))
-            _ (assert-status 204 (add-vocab-maintainer admin-request vS ur))
-            _ (assert-status 204 (add-vocab-maintainer admin-request vS uw))
-            _ (drain!)]
-        (testing "project: name + folded ACLs + config reconcile"
-          (let [oltp (sql-project/get db proj)
-                history (history-row node (str "SELECT _id AS id, project$name AS name, "
-                                               "readers, writers, maintainers, config "
-                                               "FROM history.projects WHERE _id = ?") [proj])]
-            (is (some? history) "project row present in history")
-            (is (= (:project/name oltp) (:name history)))
-            ;; non-empty guards: a silently-dropped grant/config would make a
-            ;; side empty and these assertions vacuous; pin them non-empty first.
-            (is (seq (:project/readers oltp)) "readers actually granted (not vacuously empty)")
-            (is (seq (:project/maintainers oltp)) "maintainers actually granted")
-            (is (seq (json/read-str (:config history))) "config actually set (not {} both sides)")
-            (is (= (set (:project/readers oltp)) (set (:readers history))) "readers fold")
-            (is (= (set (:project/writers oltp)) (set (:writers history))) "writers fold")
-            (is (= (set (:project/maintainers oltp)) (set (:maintainers history))) "maintainers fold")
-            (is (= (:config oltp) (json/read-str (:config history))) "project config round-trips")))
-        (testing "vocab-layer: name + folded maintainers reconcile"
-          (let [oltp (sql-vocab/get db vS)
-                history (history-row node (str "SELECT _id AS id, vocab$name AS name, "
-                                               "maintainers, config FROM history.vocab_layers WHERE _id = ?") [vS])]
-            (is (some? history) "vocab-layer row present in history")
-            (is (= (:vocab/name oltp) (:name history)))
-            (is (= (set (:vocab/maintainers oltp)) (set (:maintainers history))) "vocab maintainers fold")))
-        (testing "user: username + is-admin + password-changes reconcile (both polarities)"
-          ;; Aliases are underscore-free: xt/q kebab-cases result keys, so
-          ;; `AS is_admin` would surface as `:is-admin` (a casing trap that made
-          ;; the original test read nil and pass vacuously). `AS isadmin` keeps
-          ;; the key stable.
-          (let [sel (str "SELECT _id AS id, user$username AS username, "
-                         "user$is_admin AS isadmin, user$password_changes AS pwchanges "
-                         "FROM history.users WHERE _id = ?")]
-            (doseq [uid [ur ua]]
-              (let [oltp (sql-user/get db uid)
-                    history (history-row node sel [uid])]
-                (is (some? history) (str "user row present in history: " uid))
-                (is (= (:user/username oltp) (:username history)))
-                (is (= (boolean (:user/is-admin oltp)) (truthy-flag (:isadmin history)))
-                    (str "is-admin coerces equal for " uid))
-                ;; nil (OLTP getter omits a zero counter) and 0 (history stores the
-                ;; column) both mean "no password changes" — normalize.
-                (is (= (or (:user/password-changes oltp) 0) (or (:pwchanges history) 0))
-                    "password-changes reconciles")))
-            ;; Pin BOTH polarities so the comparison can't pass by the falsy
-            ;; default alone (a dropped is_admin column would read nil->false
-            ;; and silently match the non-admin user — exactly the original bug).
-            (is (false? (truthy-flag (:isadmin (history-row node sel [ur])))) "non-admin reads false")
-            (is (true? (truthy-flag (:isadmin (history-row node sel [ua])))) "admin reads true")))))))
 
 ;; ============================================================
 ;; GAP 2: atomic batch — committed replays whole; rolled-back is invisible
@@ -840,69 +721,6 @@
             (is (zero? (count (tokens-from-body (:body oltp-doc)))) "OLTP has no tokens"))
           (is (zero? (count (tokens-from-body (-> (get-doc-as-of doc ts-before) :body))))
               "history has no tokens at the pre-batch ts (and there is no later ts)"))))))
-
-;; ============================================================
-;; GAP 3: schema-drift canary — replayer renames must match live schema
-;; ============================================================
-;;
-;; `table->spec`'s :col-renames keys are OLTP column names. A migration
-;; that renames/drops such a column silently desyncs the replayer +
-;; read-path SELECTs (the 2026-05-28 "200 with nil fields" bug class).
-;; This reads the live SQLite schema and asserts every renamed source
-;; column still exists. (It is a tripwire for explicit renames; columns
-;; mapped only by the mechanical _id-strip rule auto-adapt and aren't
-;; checked here.)
-
-(deftest ^:integration replayer-spec-covers-live-schema
-  (let [db plaid.fixtures/db
-        spec @#'replayer/table->spec]
-    (doseq [[table {:keys [col-renames]}] spec]
-      (let [cols (->> (jdbc/execute! db [(str "PRAGMA table_info(" table ")")]
-                                     {:builder-fn rs/as-unqualified-maps})
-                      (map :name) set)]
-        (is (seq cols) (str "mirrored table missing from live schema: " table))
-        (doseq [src (keys col-renames)]
-          (is (contains? cols (name src))
-              (str "replayer table->spec[" table "] renames column '" (name src)
-                   "' that is not in the live schema — migration drift")))))))
-
-;; ============================================================
-;; GAP 3b: table-completeness canary — every audited table has a spec
-;; ============================================================
-;;
-;; GAP3 above checks COLUMNS of tables already listed; it says nothing
-;; about a table that is missing from `table->spec` entirely. Today a new
-;; entity table + its audit emit site would replay blind: the tailer hits
-;; an audit row whose `target_table` has no spec and stalls (or, if it
-;; were ever silently skipped, the parity tests pass vacuously because no
-;; fixture builds the new entity). Either way the omission must fail LOUD
-;; at the point a developer adds the table, not months later in prod.
-;;
-;; The three sets that must stay in lockstep:
-;;   - `replayer/table->spec` keys  — what the replayer can translate
-;;   - `mirrored-tables` (this ns)  — the breadth test's coverage set
-;;   - live `audit_writes.target_table` — what the OLTP write path emits
-;; This pins all three to each other so adding a table without wiring its
-;; spec (or vice versa) breaks here with a named diff.
-(deftest ^:integration replayer-spec-covers-all-mirrored-and-audited-tables
-  (let [spec-tables (set (keys @#'replayer/table->spec))]
-    (testing "table->spec and the breadth-test mirrored-tables set are identical"
-      (is (= mirrored-tables spec-tables)
-          (str "table->spec keys drifted from mirrored-tables. "
-               "only-in-spec=" (set/difference spec-tables mirrored-tables)
-               " only-in-mirrored=" (set/difference mirrored-tables spec-tables))))
-    (testing "every table the OLTP write path actually audits has a replayer spec"
-      ;; Driven off whatever audit rows the breadth test (run earlier in
-      ;; this ns) and any prior test left behind. A table that is emitted
-      ;; but unspecced would have stalled the tailer; this names it.
-      (let [audited (->> (jdbc/execute! plaid.fixtures/db
-                                        ["SELECT DISTINCT target_table FROM audit_writes"]
-                                        {:builder-fn rs/as-unqualified-maps})
-                         (map :target_table)
-                         set)]
-        (is (empty? (set/difference audited spec-tables))
-            (str "audit_writes targets table(s) with no replayer table->spec: "
-                 (set/difference audited spec-tables)))))))
 
 ;; ============================================================
 ;; GAP 4: parity with a MULTI-TOKEN span (+metadata), a re-pointed
@@ -1011,172 +829,6 @@
             "all operations.ts are distinct — same-ts-distinct-op can't happen"))
       (testing "operations.ts is already globally sorted (commit order == ts order)"
         (is (= tss (vec (sort tss))))))))
-
-;; ============================================================
-;; GAP 7 (round 3): HISTORICAL as_of for NON-document entities
-;; ============================================================
-;;
-;; `history-entity-row-parity-projects-users-vocab` reconciles project / user /
-;; vocab history rows against OLTP, but ONLY at the LATEST snapshot. Document
-;; reads have rich intermediate-ts coverage (the depth-* tests); non-doc
-;; entities had none. A replay bug that wrote the RIGHT end-state but the
-;; WRONG intermediate value (e.g. a rename mis-ordered against an ACL grant,
-;; or a bitemporal close-out that retroactively clobbers history) would be
-;; invisible to a latest-only check. This pins the history at several
-;; `{:snapshot-time ts_k}` instants and asserts each historical row matches
-;; what OLTP held at that exact step.
-;;
-;; OLTP has no time-travel, so "what OLTP held at ts_k" is the value we just
-;; wrote at step k — captured in-line as the mutation sequence runs.
-
-(defn- history-row-at
-  "Like `history-row`, but pins the history read to a historical snapshot via XTDB
-  v2's `:snapshot-time` axis. `ts` is an ISO string (an `operations.ts`); we
-  coerce it to the Date XTDB wants through the same `history/->date` the tailer
-  uses, so the snapshot lands exactly on the committed system-time of that op."
-  [node sql params ts]
-  (first (xt/q node (into [sql] params) {:snapshot-time (history/->date ts)})))
-
-(deftest ^:integration history-nondoc-entity-row-parity-at-intermediate-ts
-  (with-test-history-node
-    (fn []
-      (let [db plaid.fixtures/db
-            node *history-node*
-            ;; A reader we grant then revoke, so the folded ACL has a
-            ;; non-trivial mid-history presence-then-absence to catch.
-            ur (str "hist-r-" (random-uuid) "@example.com")
-            _ (assert-created (create-user! ur false))
-            proj (create-test-project admin-request "HistProj-v1")
-            _ (drain!)
-            ts-create (latest-op-ts)
-            ;; --- rename #1 ---
-            _ (assert-ok (update-project-name proj "HistProj-v2"))
-            _ (drain!)
-            ts-v2 (latest-op-ts)
-            ;; --- grant reader ---
-            _ (assert-status 204 (proj-role :post "readers" proj ur))
-            _ (drain!)
-            ts-granted (latest-op-ts)
-            ;; --- rename #2 ---
-            _ (assert-ok (update-project-name proj "HistProj-v3"))
-            _ (drain!)
-            ts-v3 (latest-op-ts)
-            ;; --- revoke reader ---
-            _ (assert-status 204 (proj-role :delete "readers" proj ur))
-            _ (drain!)
-            ts-revoked (latest-op-ts)
-            proj-sql (str "SELECT _id AS id, project$name AS name, readers "
-                          "FROM history.projects WHERE _id = ?")
-            name-at (fn [ts] (:name (history-row-at node proj-sql [proj] ts)))
-            readers-at (fn [ts] (set (:readers (history-row-at node proj-sql [proj] ts))))]
-        ;; Guard: the LATEST OLTP state is what we expect, so a degenerate
-        ;; replay can't make the historical asserts vacuous by coincidence.
-        (testing "OLTP end-state is the post-revoke shape (setup guard)"
-          (let [oltp (sql-project/get db proj)]
-            (is (= "HistProj-v3" (:project/name oltp)))
-            (is (not (contains? (set (:project/readers oltp)) ur))
-                "reader was actually revoked at the end")))
-        (testing "name reconstructs correctly at EACH historical ts"
-          (is (= "HistProj-v1" (name-at ts-create)) "name at creation ts")
-          (is (= "HistProj-v2" (name-at ts-v2)) "name after first rename")
-          (is (= "HistProj-v2" (name-at ts-granted)) "name unchanged across the ACL grant")
-          (is (= "HistProj-v3" (name-at ts-v3)) "name after second rename")
-          (is (= "HistProj-v3" (name-at ts-revoked)) "name unchanged across the ACL revoke"))
-        (testing "folded readers ACL reconstructs correctly at EACH historical ts"
-          (is (not (contains? (readers-at ts-v2) ur))
-              "reader absent BEFORE the grant (no retroactive leak backwards)")
-          (is (contains? (readers-at ts-granted) ur)
-              "reader PRESENT at the grant ts")
-          (is (contains? (readers-at ts-v3) ur)
-              "reader still present after the later rename (rename didn't drop the ACL)")
-          (is (not (contains? (readers-at ts-revoked) ur))
-              "reader absent again at the revoke ts"))
-        ;; ---- vocab-layer rename, same intermediate-ts technique ----
-        (let [vS (-> (create-vocab-layer admin-request "HistVocab-v1") :body :id)
-              _ (drain!)
-              vts1 (latest-op-ts)
-              _ (assert-ok (update-vocab-layer admin-request vS {:name "HistVocab-v2"}))
-              _ (drain!)
-              vts2 (latest-op-ts)
-              vocab-sql (str "SELECT _id AS id, vocab$name AS name "
-                             "FROM history.vocab_layers WHERE _id = ?")
-              vname-at (fn [ts] (:name (history-row-at node vocab-sql [vS] ts)))]
-          (testing "vocab-layer name reconstructs at each historical ts"
-            (is (= "HistVocab-v1" (vname-at vts1)) "vocab name at creation ts")
-            (is (= "HistVocab-v2" (vname-at vts2)) "vocab name after rename")
-            (is (= "HistVocab-v1" (vname-at vts1))
-                "re-reading the earlier ts still shows v1 (rename did not rewrite history)")))))))
-
-;; ============================================================
-;; GAP 8 (round 3): MIXED atomic batch — doc-scoped + non-doc ops in one tx
-;; ============================================================
-;;
-;; The batch tests cover an all-token (doc-scoped) batch. A real atomic batch
-;; can mix a project rename (non-doc), a token create (doc-scoped), and a
-;; document set-metadata (doc-scoped) in ONE transaction that commits (or rolls
-;; back) as a unit. This asserts the whole mixed batch replays, the document
-;; reconciles OLTP==history after it, AND that an as_of pinned JUST BEFORE the
-;; batch differs correctly from one JUST AFTER (project name old→new, token
-;; absent→present, doc metadata absent→present) — i.e. the batch's effects all
-;; land at the same system-time, atomically, in history too.
-
-(deftest ^:integration history-mixed-doc-and-nondoc-batch-time-travels
-  (with-test-history-node
-    (fn []
-      (let [db plaid.fixtures/db
-            node *history-node*
-            proj (create-test-project admin-request "MixedBatchProj-old")
-            tl (-> (create-text-layer admin-request proj "TL") :body :id)
-            tkl (-> (create-token-layer admin-request tl "TKL" "any") :body :id)
-            doc (create-test-document admin-request proj "MixedBatchDoc")
-            text-id (-> (create-text admin-request tl doc "hello world") :body :id)
-            _ (drain!)
-            ts-before (latest-op-ts)
-            ;; one atomic batch: project rename (non-doc) + token create
-            ;; (doc-scoped) + document set-metadata (doc-scoped)
-            batch [{:path (str "/api/v1/projects/" proj) :method "patch"
-                    :body {:name "MixedBatchProj-new"}}
-                   {:path "/api/v1/tokens" :method "post"
-                    :body {:token-layer-id tkl :text text-id :begin 0 :end 5}}
-                   {:path (str "/api/v1/documents/" doc "/metadata") :method "put"
-                    :body {"reviewed" "yes"}}]
-            res (api-call admin-request {:method :post :path "/api/v1/batch" :body batch})
-            _ (assert-ok res)
-            _ (drain!)
-            ts-after (latest-op-ts)
-            proj-sql (str "SELECT _id AS id, project$name AS name FROM history.projects WHERE _id = ?")
-            name-at (fn [ts] (:name (history-row-at node proj-sql [proj] ts)))]
-        ;; Guard: the batch actually changed all three things in OLTP.
-        (testing "OLTP reflects all three mixed-batch effects (setup guard)"
-          (is (= "MixedBatchProj-new" (:project/name (sql-project/get db proj))))
-          (let [doc-body (-> (api-call admin-request
-                                       {:method :get
-                                        :path (str "/api/v1/documents/" doc "?include-body=true")})
-                             :body)]
-            (is (= 1 (count (tokens-from-body doc-body))) "one token created by the batch")
-            (is (= {"reviewed" "yes"} (:metadata doc-body)) "doc metadata set by the batch")))
-        (testing "the whole batch reconciles OLTP==history at the post-batch ts"
-          (let [oltp (-> (api-call admin-request
-                                   {:method :get
-                                    :path (str "/api/v1/documents/" doc "?include-body=true")})
-                         :body normalize-for-compare)
-                history (-> (get-doc-as-of doc ts-after true) :body normalize-for-compare)]
-            (is (= oltp history)
-                "mixed doc+non-doc batch replays as a unit; doc deep-read matches")))
-        (testing "non-doc effect (project name) time-travels across the batch boundary"
-          (is (= "MixedBatchProj-old" (name-at ts-before)) "project name OLD just before the batch")
-          (is (= "MixedBatchProj-new" (name-at ts-after)) "project name NEW just after the batch"))
-        (testing "doc-scoped effects appear only AFTER the batch (atomic with the non-doc op)"
-          (is (zero? (count (tokens-from-body (-> (get-doc-as-of doc ts-before) :body))))
-              "no token at the pre-batch ts")
-          (is (= 1 (count (tokens-from-body (-> (get-doc-as-of doc ts-after) :body))))
-              "exactly one token at the post-batch ts")
-          (is (nil? (:metadata (-> (get-doc-as-of doc ts-before) :body)))
-              "doc metadata absent at the pre-batch ts")
-          (is (= {"reviewed" "yes"} (:metadata (-> (get-doc-as-of doc ts-after) :body)))
-              "doc metadata present at the post-batch ts"))
-        (testing "tailer stayed healthy across the mixed batch"
-          (is (tailer-running?)))))))
 
 ;; ============================================================
 ;; GAP 9 (round 3): stall -> resume! recovery, END-TO-END through a doc GET

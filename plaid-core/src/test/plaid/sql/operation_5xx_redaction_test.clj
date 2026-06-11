@@ -12,7 +12,6 @@
   by design."
   (:require [clojure.test :refer :all]
             [plaid.fixtures :refer [db with-db with-mount-states with-clean-db]]
-            [plaid.history.core :as history]
             [plaid.sql.operation :as op]))
 
 (use-fixtures :once with-db with-mount-states)
@@ -65,32 +64,33 @@
     (is (= msg (:error result))
         "4xx flows must preserve the original message")))
 
-(deftest post-commit-nudge-failure-does-not-invert-success-to-500
-  ;; BUG-10 regression: a throw out of `nudge!` (or `post-submit!`) must
-  ;; not turn a successful OLTP commit into a 5xx response. The OLTP
-  ;; write is already durable by the time we get here; the most we can
-  ;; do is log + continue.
-  (with-redefs [history/nudge! (fn []
-                                 (throw (ex-info "simulated nudge failure"
-                                                 {:type :test/nudge-broke})))]
+(deftest post-commit-failure-does-not-invert-success-to-500
+  ;; BUG-10 regression: a throw out of the post-commit hook
+  ;; (`post-submit!` — event publish + lock refresh) must not turn a
+  ;; successful OLTP commit into a 5xx response. The OLTP write is
+  ;; already durable by the time we get here; the most we can do is
+  ;; log + continue.
+  (with-redefs [op/post-submit! (fn [& _]
+                                  (throw (ex-info "simulated post-submit failure"
+                                                  {:type :test/post-submit-broke})))]
     (let [result (op/submit-operation*
                   db
                   {:type :test/regression
-                   :description "BUG-10 nudge-failure isolation"
+                   :description "BUG-10 post-submit-failure isolation"
                    :user nil}
                   (fn [_tx] :ok))]
       (is (true? (:success result))
           "the OLTP commit succeeded so the operation must report success despite the post-commit throw")
       (is (= :ok (:extra result))))))
 
-(deftest post-commit-nudge-failure-isolates-error-not-just-exception
+(deftest post-commit-failure-isolates-error-not-just-exception
   ;; The production catch is `(catch Throwable t …)`. The Exception-only
   ;; variant of the test above wouldn't notice if someone narrowed the
   ;; catch back to `(catch Exception …)` — `ExceptionInfo` is itself an
   ;; Exception. Pin the Throwable contract by throwing a java.lang.Error
   ;; (NOT an Exception subclass) and asserting the commit still wins.
-  (with-redefs [history/nudge! (fn []
-                                 (throw (Error. "boom — simulated JVM Error from nudge")))]
+  (with-redefs [op/post-submit! (fn [& _]
+                                  (throw (Error. "boom — simulated JVM Error from post-submit")))]
     (let [result (op/submit-operation*
                   db
                   {:type :test/regression
@@ -98,5 +98,5 @@
                    :user nil}
                   (fn [_tx] :ok))]
       (is (true? (:success result))
-          "Throwable (not just Exception) out of nudge! must not invert the successful commit")
+          "Throwable (not just Exception) out of post-submit! must not invert the successful commit")
       (is (= :ok (:extra result))))))

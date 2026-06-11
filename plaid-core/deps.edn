@@ -35,10 +35,6 @@
         com.zaxxer/HikariCP {:mvn/version "6.3.0"}
         migratus/migratus {:mvn/version "1.6.4"}
 
-        ;; history — XTDB v2 read-only time-travel replica fed from audit_writes
-        com.xtdb/xtdb-api {:mvn/version "2.2.0-beta1"}
-        com.xtdb/xtdb-core {:mvn/version "2.2.0-beta1"}
-
         ;; security
         buddy/buddy-core {:mvn/version "1.12.0-430"}
         buddy/buddy-hashers {:mvn/version "2.0.167"}

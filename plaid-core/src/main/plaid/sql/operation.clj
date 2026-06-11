@@ -12,7 +12,6 @@
   transactions provide atomicity, and SQLite's single-writer model
   serializes concurrent batches naturally."
   (:require [clojure.string]
-            [plaid.history.core :as history]
             [plaid.sql.common :as psc]
             [plaid.server.events :as events]
             [plaid.server.locks :as locks]
@@ -339,22 +338,9 @@
                           (bump-document-version! tx (:document op-attrs) ts))
                         result))))
           op-record (assoc @op-record* :documents @affected-docs)]
-      ;; Nudge the history tailer ASAP after the OLTP tx commits. Goes
-      ;; BEFORE post-submit! so a slow event-bus publish or lock
-      ;; refresh can't delay the history catching up. nudge! is a
-      ;; non-blocking put! on a dropping-buffer-1 channel — no
-      ;; back-pressure risk if the tailer is busy.
-      ;;
-      ;; The try/catch around nudge! and post-submit! is defensive: the
-      ;; OLTP commit is already durable, so nothing post-commit should
-      ;; be allowed to invert success into a 5xx. Today nudge! is
-      ;; effectively unfailable, but a future config read inside
-      ;; `enabled?` or a publish/lock-refresh inside post-submit! must
-      ;; not turn a committed write into a 500 response.
-      (try
-        (history/nudge!)
-        (catch Throwable t
-          (log/warn t "history nudge failed after successful commit:" (ex-message t))))
+      ;; The try/catch around post-submit! is defensive: the OLTP commit
+      ;; is already durable, so nothing post-commit may invert success
+      ;; into a 5xx response.
       (try
         (post-submit! op-record (:user op-attrs))
         (catch Throwable t

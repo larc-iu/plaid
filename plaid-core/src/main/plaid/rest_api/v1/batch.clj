@@ -4,7 +4,6 @@
             [clojure.data.json :as json]
             [muuntaja.core :as m]
             [next.jdbc :as jdbc]
-            [plaid.history.core :as history]
             [plaid.sql.operation :as op]
             [plaid.sql.relation :as relation]
             [plaid.sql.span :as span]
@@ -297,13 +296,10 @@
                             (recur (rest remaining) (conj responses response))))))))]
             ;; The outer tx is committed once with-transaction returns.
             ;; Publish the sub-ops' buffered audit events now — listeners
-            ;; that refetch on receipt see committed state — and nudge the
-            ;; history tailer once (the per-sub-op nudges fired pre-commit
-            ;; and found nothing, so without this the batch waits out the
-            ;; tailer heartbeat). Defensive try/catch: the commit is
-            ;; durable, nothing post-commit may invert success into a 5xx.
+            ;; that refetch on receipt see committed state. Defensive
+            ;; try/catch: the commit is durable, nothing post-commit may
+            ;; invert success into a 5xx.
             (try
-              (history/nudge!)
               (op/flush-deferred-events! @deferred-events)
               (catch Throwable t
                 (log/warn t "post-commit batch event flush failed:" (ex-message t))))
