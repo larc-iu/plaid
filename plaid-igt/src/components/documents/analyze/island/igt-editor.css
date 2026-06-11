@@ -453,6 +453,25 @@
   user-select: none;
   pointer-events: none;
 }
+/* Morpheme-type editor row in the vocab popover footer */
+.igt-vocab-pop__type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-top: 1px solid #eee;
+  font-size: 11px;
+  color: #777;
+}
+.igt-vocab-pop__type select {
+  flex: 1;
+  font-size: 11px;
+  padding: 1px 2px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: #fff;
+  color: #444;
+}
 .igt-morph-cell {
   height: var(--igt-morph-h);
   display: flex;

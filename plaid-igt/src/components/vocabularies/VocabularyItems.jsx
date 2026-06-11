@@ -21,6 +21,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
+import { FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 
 // Sortable column header (arrow on the active column, toggles direction).
 const SortHeader = ({ field, label, sort, onSort, style }) => {
@@ -307,14 +308,31 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
     return customFields.map(fieldName => (
       <div key={`${keyPrefix}-${fieldName}`} className="flex flex-col gap-1.5">
         <Label>{fieldName}</Label>
-        <Input
-          placeholder={`Enter ${fieldName}`}
-          value={values[fieldName] || ''}
-          onChange={(event) => onChange({
-            ...values,
-            [fieldName]: event.target.value
-          })}
-        />
+        {fieldName === 'morphType' ? (
+          // morphType is a controlled vocabulary (FLEx's exact inventory)
+          <select
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            value={values.morphType || ''}
+            onChange={(event) => onChange({
+              ...values,
+              morphType: event.target.value || undefined
+            })}
+          >
+            <option value="">—</option>
+            {FLEX_MORPH_TYPES.map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        ) : (
+          <Input
+            placeholder={`Enter ${fieldName}`}
+            value={values[fieldName] || ''}
+            onChange={(event) => onChange({
+              ...values,
+              [fieldName]: event.target.value
+            })}
+          />
+        )}
       </div>
     ));
   };
@@ -415,14 +433,32 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
                       {customFields.map(fieldName => (
                         <td key={fieldName} className="px-3 py-2">
                           {editingItem === record.id ? (
-                            <Input
-                              value={editFields[fieldName] || ''}
-                              onChange={(event) => setEditFields({
-                                ...editFields,
-                                [fieldName]: event.target.value
-                              })}
-                              className="h-8"
-                            />
+                            fieldName === 'morphType' ? (
+                              // morphType is a controlled vocabulary (FLEx's
+                              // exact morph-type inventory), not free text.
+                              <select
+                                className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                                value={editFields.morphType || ''}
+                                onChange={(event) => setEditFields({
+                                  ...editFields,
+                                  morphType: event.target.value || undefined
+                                })}
+                              >
+                                <option value="">—</option>
+                                {FLEX_MORPH_TYPES.map(t => (
+                                  <option key={t} value={t}>{t}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <Input
+                                value={editFields[fieldName] || ''}
+                                onChange={(event) => setEditFields({
+                                  ...editFields,
+                                  [fieldName]: event.target.value
+                                })}
+                                className="h-8"
+                              />
+                            )
                           ) : (
                             <span>{record.metadata?.[fieldName] || ''}</span>
                           )}

@@ -132,6 +132,55 @@ describe('orthography + morpheme form', () => {
     await doc.updateMorphemeForm('m-1', 'THE');
     expect(doc.sentences[0].tokens[0].morphemes[0].metadata.form).toBe('THE');
   });
+
+  it('updateMorphemeForm PATCHES metadata — other keys (morphType) survive', async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [{ id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'ab', morphType: 'stem' } }],
+      body: 'abc',
+    });
+    const doc = makeDoc({ raw });
+    await doc.updateMorphemeForm('m-1', 'cd');
+    expect(kinds(doc.client)).toContain('tokens.patchMetadata');
+    expect(kinds(doc.client)).not.toContain('tokens.setMetadata');
+    const m = doc.sentences[0].tokens[0].morphemes[0];
+    expect(m.metadata).toEqual({ form: 'cd', morphType: 'stem' });
+  });
+});
+
+describe('morpheme type', () => {
+  const typedDoc = () => makeDoc({
+    raw: buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [{ id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'ab', morphType: 'stem' } }],
+      body: 'abc',
+    }),
+  });
+
+  it('setMorphemeType patches metadata.morphType from the FLEx inventory', async () => {
+    const doc = typedDoc();
+    const ok = await doc.setMorphemeType('m-1', 'enclitic');
+    expect(ok).toBe(true);
+    const call = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
+    expect(call.args[1]).toEqual({ morphType: 'enclitic' });
+    expect(doc.sentences[0].tokens[0].morphemes[0].metadata).toEqual({ form: 'ab', morphType: 'enclitic' });
+  });
+
+  it('setMorphemeType(null) clears the type (patch null deletes the key)', async () => {
+    const doc = typedDoc();
+    await doc.setMorphemeType('m-1', null);
+    const call = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
+    expect(call.args[1]).toEqual({ morphType: null });
+    expect(doc.sentences[0].tokens[0].morphemes[0].metadata).toEqual({ form: 'ab' });
+  });
+
+  it('rejects a type outside the FLEx inventory without a server call', async () => {
+    const doc = typedDoc();
+    const ok = await doc.setMorphemeType('m-1', 'sufix');
+    expect(ok).toBe(false);
+    expect(doc.error).toMatch(/unknown morpheme type/i);
+    expect(doc.client.calls).toHaveLength(0);
+  });
 });
 
 describe('morpheme structural ops', () => {
@@ -155,9 +204,9 @@ describe('morpheme structural ops', () => {
     });
     const doc = makeDoc({ raw });
     await doc.splitMorpheme('m-1', 'a', 'b');
-    // ordering: setMetadata (m-1), update (shift m-2), create (new), submitBatch
+    // ordering: patchMetadata (m-1), update (shift m-2), create (new), submitBatch
     const k = kinds(doc.client);
-    const iMeta = k.indexOf('tokens.setMetadata');
+    const iMeta = k.indexOf('tokens.patchMetadata');
     const iShift = k.indexOf('tokens.update');
     const iCreate = k.indexOf('tokens.create');
     expect(iMeta).toBeGreaterThanOrEqual(0);
@@ -180,9 +229,9 @@ describe('morpheme structural ops', () => {
     const doc = makeDoc({ raw });
     await doc.splitMorphemeMulti('m-1', ['a', 'bc', 'd']);
     const k = kinds(doc.client);
-    // setMetadata, shift (+2 for m-2), then BOTH creates after the shift.
+    // patchMetadata, shift (+2 for m-2), then BOTH creates after the shift.
     expect(k.filter(x => x === 'tokens.create')).toHaveLength(2);
-    expect(k.indexOf('tokens.update')).toBeGreaterThan(k.indexOf('tokens.setMetadata'));
+    expect(k.indexOf('tokens.update')).toBeGreaterThan(k.indexOf('tokens.patchMetadata'));
     expect(k.indexOf('tokens.create')).toBeGreaterThan(k.indexOf('tokens.update'));
     const ms = doc.sentences[0].tokens[0].morphemes;
     expect(ms.map((m) => m.metadata.form)).toEqual(['a', 'bc', 'd', 'ef']);

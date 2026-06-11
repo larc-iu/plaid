@@ -13,6 +13,7 @@
 // failure paths the server is reporting.
 
 import { cpSlice } from '@larc-iu/plaid-client';
+import { isValidMorphType } from '../affixMarkers.js';
 
 const morphemesInWord = (morphemeTokens, word) =>
   (morphemeTokens || []).filter(m => m.begin === word.begin && m.end === word.end);
@@ -172,7 +173,9 @@ export const morphemeMutations = {
       const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
 
       this._client.beginBatch();
-      this._client.tokens.setMetadata(morphemeId, { form: firstForm });
+      // patch, not set: form edits must not clobber other metadata keys
+      // (morphType from the FLEx import, in particular)
+      this._client.tokens.patchMetadata(morphemeId, { form: firstForm });
       shifted.forEach(m => {
         this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + restForms.length);
       });
@@ -244,7 +247,7 @@ export const morphemeMutations = {
       const subsequents = siblings.slice(idx + 1);
 
       this._client.beginBatch();
-      this._client.tokens.setMetadata(previous.id, { form: mergedForm });
+      this._client.tokens.patchMetadata(previous.id, { form: mergedForm });
       this._client.tokens.delete(morphemeId);
       subsequents.forEach(m => {
         this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
@@ -307,7 +310,7 @@ export const morphemeMutations = {
     });
   },
 
-  // Update a morpheme's form (single setMetadata call).
+  // Update a morpheme's form (single metadata patch — other keys survive).
   async updateMorphemeForm(morphemeId, form) {
     const info = this.layerInfo;
     const target = (info.morphemeTokenLayer?.tokens || []).find(m => m.id === morphemeId);
@@ -317,11 +320,42 @@ export const morphemeMutations = {
     }
 
     return this._withSaving('Failed to update morpheme form', async () => {
-      await this._client.tokens.setMetadata(morphemeId, { form });
+      await this._client.tokens.patchMetadata(morphemeId, { form });
 
       this._applyRawPatch((next, infoNext) => {
         const m = (infoNext.morphemeTokenLayer?.tokens || []).find(x => x.id === morphemeId);
         if (m) m.metadata = { ...(m.metadata || {}), form };
+      });
+    });
+  },
+
+  // Set or clear (null) a morpheme's type — metadata.morphType, constrained
+  // to FLEx's exact inventory (FLEX_MORPH_TYPES). Pure metadata: geometry,
+  // precedence, and the stored form are untouched, so no token invariant can
+  // be violated; display-side affix joints react automatically.
+  async setMorphemeType(morphemeId, morphType) {
+    if (!isValidMorphType(morphType)) {
+      this.setError(`Unknown morpheme type "${morphType}"`);
+      return false;
+    }
+    const info = this.layerInfo;
+    const target = (info.morphemeTokenLayer?.tokens || []).find(m => m.id === morphemeId);
+    if (!target) {
+      this.setError(`Morpheme ${morphemeId} not found`);
+      return false;
+    }
+
+    return this._withSaving('Failed to set morpheme type', async () => {
+      // patch semantics: a null value deletes the key
+      await this._client.tokens.patchMetadata(morphemeId, { morphType: morphType ?? null });
+
+      this._applyRawPatch((next, infoNext) => {
+        const m = (infoNext.morphemeTokenLayer?.tokens || []).find(x => x.id === morphemeId);
+        if (!m) return;
+        const meta = { ...(m.metadata || {}) };
+        if (morphType == null) delete meta.morphType;
+        else meta.morphType = morphType;
+        m.metadata = meta;
       });
     });
   }

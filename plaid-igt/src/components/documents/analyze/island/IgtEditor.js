@@ -20,7 +20,7 @@ import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import { AUTO_LINK_SOURCE, precedentQueries, buildPrecedentTable, computeAutoLinkProposals } from '@/domain/autoLink';
-import { morphemeJoiner } from '@/domain/affixMarkers';
+import { morphemeJoiner, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -1214,7 +1214,7 @@ export class IgtEditor {
       <span class="igt-vocab">
         ${face}
         ${opener}
-        ${open ? this._vocabPopover(id, formText, vocabItem) : nothing}
+        ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
       </span>
     `;
   }
@@ -1236,7 +1236,7 @@ export class IgtEditor {
     return (inlineNames.length ? vals.join(' · ') : (vals[0] ?? ''));
   }
 
-  _vocabPopover(tokenId, formText, currentItem) {
+  _vocabPopover(tokenId, formText, currentItem, kind) {
     const vocabs = Object.values(this.doc.vocabularies || {});
     const createVocabId = vocabs[0]?.id;
     const search = (this._popoverSearch || '').toLowerCase();
@@ -1341,8 +1341,29 @@ export class IgtEditor {
               + Create "${formText}"
             </button>`
           : nothing}
+        ${kind === 'morpheme' ? this._morphTypeRow(tokenId) : nothing}
         <div class="igt-vocab-pop__hintbar"><kbd>↑</kbd><kbd>↓</kbd> navigate · <kbd>↵</kbd> select · <kbd>esc</kbd> close</div>
       </div>
+    `;
+  }
+
+  // Morpheme type editor (popover footer row): metadata.morphType from FLEx's
+  // exact inventory, or "—" for untyped. Pure metadata — geometry, precedence,
+  // and the form are untouched; the display-only affix joints ("-"/"=") react
+  // immediately.
+  _morphTypeRow(morphemeId) {
+    const morph = (this.doc.layerInfo.morphemeTokenLayer?.tokens || [])
+      .find((m) => m.id === morphemeId);
+    const current = morph?.metadata?.morphType ?? '';
+    return html`
+      <label class="igt-vocab-pop__type" @click=${(e) => e.stopPropagation()}>
+        <span>Type</span>
+        <select ?disabled=${this.readOnly} aria-label="Morpheme type"
+          @change=${(e) => { e.stopPropagation(); this.doc.setMorphemeType(morphemeId, e.target.value || null); }}>
+          <option value="" ?selected=${current === ''}>—</option>
+          ${FLEX_MORPH_TYPES.map((t) => html`<option value=${t} ?selected=${current === t}>${t}</option>`)}
+        </select>
+      </label>
     `;
   }
 }

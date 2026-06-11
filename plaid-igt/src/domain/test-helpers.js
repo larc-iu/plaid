@@ -126,6 +126,7 @@ export function makeFakeClient(opts = {}) {
       bulkCreate: op('tokens.bulkCreate', (body) => ({ ids: (body || []).map(() => nextId('tok')) })),
       bulkDelete: op('tokens.bulkDelete', () => ({})),
       setMetadata: op('tokens.setMetadata', () => ({})),
+      patchMetadata: op('tokens.patchMetadata', () => ({})),
       deleteMetadata: op('tokens.deleteMetadata', () => ({})),
     },
     spans: {

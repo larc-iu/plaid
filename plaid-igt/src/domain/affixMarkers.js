@@ -8,6 +8,22 @@
 // "suffix", "enclitic"); morphemes without one — every hand-entered morpheme —
 // get the "-" default.
 
+/**
+ * FLEx's exact morph-type inventory (MoMorphType names), the controlled
+ * vocabulary for metadata.morphType everywhere it's editable. Grouped:
+ * stems/roots, affixes, clitics, other.
+ */
+export const FLEX_MORPH_TYPES = [
+  'stem', 'bound stem', 'root', 'bound root',
+  'prefix', 'suffix', 'infix', 'circumfix', 'simulfix', 'suprafix',
+  'infixing interfix', 'prefixing interfix', 'suffixing interfix',
+  'clitic', 'enclitic', 'proclitic',
+  'particle', 'phrase', 'discontiguous phrase',
+];
+
+/** Is this a storable morph type? (null/undefined = "no type" is also valid) */
+export const isValidMorphType = (t) => t == null || FLEX_MORPH_TYPES.includes(t);
+
 export const isClitic = (morphType) =>
   typeof morphType === 'string' && morphType.toLowerCase().includes('clitic');
 

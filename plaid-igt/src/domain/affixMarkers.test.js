@@ -1,8 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { isClitic, morphemeJoiner, joinMorphemes } from './affixMarkers.js';
+import { FLEX_MORPH_TYPES, isValidMorphType, isClitic, morphemeJoiner, joinMorphemes } from './affixMarkers.js';
 import { formatPlain } from './igtExport.js';
 
 describe('affix markers', () => {
+  it('carries FLEx exact 19-type MoMorphType inventory', () => {
+    expect(FLEX_MORPH_TYPES).toHaveLength(19);
+    for (const t of ['stem', 'bound root', 'circumfix', 'suffixing interfix', 'enclitic', 'discontiguous phrase']) {
+      expect(FLEX_MORPH_TYPES).toContain(t);
+    }
+    expect(isValidMorphType('proclitic')).toBe(true);
+    expect(isValidMorphType(null)).toBe(true); // "no type" is valid
+    expect(isValidMorphType('sufix')).toBe(false);
+    expect(isValidMorphType('Stem')).toBe(false); // exact names, exact case
+  });
+
   it('classifies every FLEx clitic type', () => {
     for (const t of ['clitic', 'enclitic', 'proclitic']) expect(isClitic(t)).toBe(true);
     for (const t of ['stem', 'root', 'suffix', 'prefix', 'bound stem', null, undefined]) {
