@@ -53,7 +53,11 @@ const lexicon = [
   { guid: 'e1', forms: { [BASE_WS]: 'за' }, citationForm: null, morphType: 'stem', homograph: 0,
     senses: [{ guid: 's1', gloss: { en: '1sg' }, definition: null, pos: 'pers' }] },
   { guid: 'e2', forms: { [BASE_WS]: 'мах' }, citationForm: null, morphType: 'root', homograph: 0,
-    senses: [{ guid: 's2', gloss: { en: 'tale' }, pos: 'n' }, { guid: 's3', gloss: { en: 'story' }, pos: 'n' }] },
+    custom: { Plural: 'махар' },
+    senses: [
+      { guid: 's2', gloss: { en: 'tale' }, pos: 'n', custom: { 'Parsing Note': 'check' } },
+      { guid: 's3', gloss: { en: 'story' }, pos: 'n' },
+    ] },
 ];
 
 const role = (r) => ({ plaid: { role: r } });
@@ -125,6 +129,7 @@ function makeFakeClient({ existingDocs = [], existingItems = [] } = {}) {
     },
     vocabLayers: {
       get: () => Promise.resolve({ id: 'v1', items: existingItems }),
+      setConfig: (vocabId, ns, key, value) => record('vocabLayers.setConfig', { vocabId, ns, key, value }, {}),
     },
     vocabItems: {
       create: (vocabId, form, metadata) => record('vocabItems.create', { vocabId, form, metadata }, { id: id('item') }),
@@ -182,9 +187,28 @@ describe('importLexicon', () => {
     const map = await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
     const creates = client.calls.filter((c) => c.kind === 'vocabItems.create');
     expect(creates).toHaveLength(2); // s2 + s3; s1 already present
-    expect(creates[0].args.metadata).toMatchObject({ flexEntry: 'e2', flexSense: 's2', gloss: 'tale', pos: 'n', morphType: 'root' });
+    expect(creates[0].args.metadata).toMatchObject({
+      flexEntry: 'e2', flexSense: 's2', gloss: 'tale', pos: 'n', morphType: 'root',
+      Plural: 'махар', 'Parsing Note': 'check',
+    });
+    // gloss first: the popover's no-config fallback shows the first value
+    expect(Object.keys(creates[0].args.metadata)[0]).toBe('gloss');
     expect(map.get('s1')).toBe('old1');
     expect(map.get('s2')).toBeTruthy();
+  });
+
+  it('declares the vocab field schema (gloss/pos inline + custom fields)', async () => {
+    const client = makeFakeClient();
+    await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
+    const cfg = client.calls.find((c) => c.kind === 'vocabLayers.setConfig');
+    expect(cfg.args).toMatchObject({ vocabId: 'v1', ns: 'igt', key: 'fields' });
+    expect(cfg.args.value).toEqual({
+      gloss: { inline: true },
+      pos: { inline: true },
+      morphType: { inline: false },
+      Plural: { inline: false },
+      'Parsing Note': { inline: false },
+    });
   });
 });
 

@@ -68,6 +68,33 @@ function str(n, tag) {
   return el ? nfc(runText(el)) : null;
 }
 
+/**
+ * <Custom name="Plural"><Str>…</Str></Custom> values on an object →
+ * {name: string}, or null. Handles the value shapes FLEx uses for custom
+ * fields (Str / AStr / AUni / val attribute); reference-typed custom fields
+ * (objsur) are skipped.
+ */
+function customValues(n) {
+  let out = null;
+  for (const c of n.children) {
+    if (c.tag !== 'Custom' || !c.attrs.name) continue;
+    let value = null;
+    const strEl = child(c, 'Str');
+    if (strEl) value = nfc(runText(strEl));
+    else {
+      const aStr = c.children.find((x) => x.tag === 'AStr');
+      const aUni = c.children.find((x) => x.tag === 'AUni');
+      if (aStr) value = nfc(runText(aStr));
+      else if (aUni) value = nfc(aUni.text);
+      else if (c.attrs.val != null) value = c.attrs.val;
+    }
+    if (value != null && String(value).trim() !== '') {
+      (out ??= {})[c.attrs.name] = value;
+    }
+  }
+  return out;
+}
+
 // --- streaming pass ---------------------------------------------------------
 
 /**
@@ -211,6 +238,7 @@ export function parseFwdata(xml) {
       gloss: multiUni(s, 'Gloss'),
       definition: multiStr(s, 'Definition'),
       pos: msaPos(refGuid(s, 'MorphoSyntaxAnalysis')),
+      custom: customValues(s),
     };
   };
 
@@ -349,6 +377,7 @@ export function parseFwdata(xml) {
       citationForm: multiUni(e, 'CitationForm'),
       morphType: lf?.morphType ?? null,
       homograph: Number(valAttr(e, 'HomographNumber') ?? 0),
+      custom: customValues(e),
       senses,
     });
   }

@@ -11,7 +11,7 @@
 // half-imported ones are deleted and redone. Lexicon items are deduped by
 // their FLEx sense guid (metadata.flexSense).
 
-import { findBaselineTextLayer, findSentenceTokenLayer, findWordTokenLayer, findMorphemeTokenLayer, readScope } from '../../domain/igtConfig.js';
+import { IGT_NAMESPACE, findBaselineTextLayer, findSentenceTokenLayer, findWordTokenLayer, findMorphemeTokenLayer, readScope } from '../../domain/igtConfig.js';
 import { pickEn } from './fwdataParser.js';
 
 const LINK_CHUNK = 500; // vocab links have no bulk endpoint — chunked batches
@@ -119,26 +119,54 @@ export async function importLexicon({ client, vocabId, lexicon, baselineWs, onPr
   }
 
   const pending = [];
+  const customFieldNames = new Set();
   for (const entry of lexicon) {
     const form = entry.forms?.[baselineWs] ?? pickEn(entry.forms) ?? pickEn(entry.citationForm);
     if (!form) continue;
+    // FLEx custom-field values (entry-level + sense-level) become item
+    // metadata under the custom field's own name.
+    for (const k of Object.keys(entry.custom ?? {})) customFieldNames.add(k);
     for (const sense of entry.senses) {
+      for (const k of Object.keys(sense.custom ?? {})) customFieldNames.add(k);
       if (senseToItem.has(sense.guid)) continue;
       const metadata = {
-        flexEntry: entry.guid,
-        flexSense: sense.guid,
+        // gloss first: the editor popover's no-config fallback shows the
+        // first metadata value.
         ...(pickEn(sense.gloss) != null && { gloss: pickEn(sense.gloss) }),
         ...(sense.pos != null && { pos: sense.pos }),
         ...(entry.morphType != null && { morphType: entry.morphType }),
         ...(entry.homograph ? { homograph: entry.homograph } : {}),
+        ...(entry.custom ?? {}),
+        ...(sense.custom ?? {}),
+        flexEntry: entry.guid,
+        flexSense: sense.guid,
       };
       pending.push({ form, metadata, senseGuid: sense.guid });
     }
     // Entries with no senses still become one item (form-only).
     if (entry.senses.length === 0 && !senseToItem.has(entry.guid)) {
-      pending.push({ form, metadata: { flexEntry: entry.guid, flexSense: entry.guid, ...(entry.morphType != null && { morphType: entry.morphType }) }, senseGuid: entry.guid });
+      pending.push({
+        form,
+        metadata: {
+          ...(entry.morphType != null && { morphType: entry.morphType }),
+          ...(entry.custom ?? {}),
+          flexEntry: entry.guid,
+          flexSense: entry.guid,
+        },
+        senseGuid: entry.guid,
+      });
     }
   }
+
+  // Declare the vocab's field schema so gloss/POS render inline in the editor
+  // popover and as table columns (idempotent; cheap relative to the import).
+  const fieldsConfig = {
+    gloss: { inline: true },
+    pos: { inline: true },
+    morphType: { inline: false },
+    ...Object.fromEntries([...customFieldNames].map((n) => [n, { inline: false }])),
+  };
+  await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
 
   let done = 0;
   for (let i = 0; i < pending.length; i += LINK_CHUNK) {

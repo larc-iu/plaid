@@ -109,7 +109,16 @@ describe.skipIf(!existsSync(SENA))('parseFwdata — Sena 3 sample (newer format)
 
   it('surfaces custom field definitions', () => {
     expect(ir.customFields.length).toBeGreaterThan(0);
-    expect(ir.customFields[0]).toHaveProperty('name');
+    expect(ir.customFields.map((f) => f.name)).toEqual(
+      expect.arrayContaining(['Plural', 'Singular', 'Parsing Note']));
+  });
+
+  it('extracts custom field VALUES on entries and senses', () => {
+    const withPlural = ir.lexicon.filter((e) => e.custom?.Plural);
+    expect(withPlural.length).toBeGreaterThan(500); // 520 in the sample
+    expect(ir.lexicon.some((e) => e.custom?.Plural === 'pibubu')).toBe(true);
+    const senseNotes = ir.lexicon.flatMap((e) => e.senses).filter((s) => s.custom?.['Parsing Note']);
+    expect(senseNotes.length).toBeGreaterThan(50); // 60 in the sample
   });
 
   it('extracts coherent segments with words', () => {
