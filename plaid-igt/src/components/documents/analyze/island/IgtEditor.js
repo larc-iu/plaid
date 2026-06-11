@@ -17,6 +17,7 @@ import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
 import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/igtConfig';
+import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -98,6 +99,10 @@ export class IgtEditor {
     this._savedTimer = null;
     // Whether the keyboard/scope help legend is expanded.
     this._helpOpen = false;
+    // Pluggable gloss-guess source (see domain/glossGuess.js): assign a
+    // different (sentences, fields) => { id, guessFor } factory to swap the
+    // algorithm (e.g. a service-backed one).
+    this.guessSourceFactory = docFrequencyGuessSource;
     this._onChange = () => { this._syncStatus(); this._scheduleRender(); };
     this._unsub = doc.subscribe(this._onChange);
     // Any click outside an opener/popover (those stopPropagation) closes it.
@@ -236,53 +241,21 @@ export class IgtEditor {
       if (opener) { try { opener.focus(); } catch { /* noop */ } }
     }
   }
+  // (The old _suggestMorphemeGloss "copy a gloss on link" write is gone: the
+  // gloss-guess system shows the same suggestion as a placeholder in the cell
+  // itself, and only writes it — with provenance — when the user confirms.)
   async _toggleVocab(tokenId, item, isLinked, returnFocus = false) {
-    const kind = this._popover?.kind;
     this._closePopover(returnFocus);
     if (isLinked) {
       await this._run(() => this.doc.unlinkVocab(tokenId));
     } else {
-      const ok = await this._run(() => this.doc.linkVocab(tokenId, item.id));
-      if (ok && kind === 'morpheme') this._suggestMorphemeGloss(tokenId);
+      await this._run(() => this.doc.linkVocab(tokenId, item.id));
     }
   }
   async _createVocab(tokenId, vocabId, form, returnFocus = false) {
-    const kind = this._popover?.kind;
     this._closePopover(returnFocus);
     if (!form) return;
-    const ok = await this._run(() => this.doc.createAndLinkVocabItem(tokenId, vocabId, form));
-    if (ok && kind === 'morpheme') this._suggestMorphemeGloss(tokenId);
-  }
-
-  // Throughput aid: after a morpheme is linked, fill any EMPTY morpheme-scoped
-  // annotation cells on it from the most recent earlier morpheme with the same
-  // form that already has a value for that field. Only fills blanks — never
-  // overwrites the user's existing glosses — so it's a safe consistency nudge.
-  _suggestMorphemeGloss(morphId) {
-    const fields = (this.doc.layerInfo.spanLayers.morpheme || []).map((l) => l.name);
-    if (!fields.length) return;
-    // Flatten all morphemes in document order with their forms.
-    const all = [];
-    for (const s of this.doc.sentences) {
-      for (const t of s.tokens) for (const m of (t.morphemes || [])) all.push(m);
-    }
-    const target = all.find((m) => m.id === morphId);
-    if (!target) return;
-    const form = morphFormOf(target);
-    if (!form) return;
-    const targetIdx = all.indexOf(target);
-    for (const name of fields) {
-      const existing = target.annotations?.[name]?.value ?? '';
-      if (existing !== '') continue; // never clobber
-      // Search earlier same-form morphemes (most recent first) for a value.
-      let suggestion = '';
-      for (let i = targetIdx - 1; i >= 0; i--) {
-        if (morphFormOf(all[i]) !== form) continue;
-        const v = all[i].annotations?.[name]?.value ?? '';
-        if (v !== '') { suggestion = v; break; }
-      }
-      if (suggestion) this._run(() => this.doc.updateMorphemeSpan(morphId, name, suggestion));
-    }
+    await this._run(() => this.doc.createAndLinkVocabItem(tokenId, vocabId, form));
   }
 
   _scheduleRender() {
@@ -385,7 +358,21 @@ export class IgtEditor {
     e.target.classList.toggle('igt-field--empty', !filled);
   };
 
+  // Guess confirmation: Enter/Tab on an empty cell showing a guess adopts the
+  // guess into the input value (marked confirmed so the blur-commit attaches
+  // provenance) and then proceeds with normal navigation, whose focus change
+  // blurs and commits. Typing replaces the guess (it's just a placeholder);
+  // plain blur leaves the cell empty — guesses are never written implicitly.
+  _maybeConfirmGuess(el) {
+    if (el.value === '' && el.dataset.guessValue) {
+      el.value = el.dataset.guessValue;
+      el.dataset.guessConfirmed = '1';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
   _basicKeydown = (e) => {
+    if (e.key === 'Enter' || e.key === 'Tab') this._maybeConfirmGuess(e.target);
     if (e.key === 'Enter') {
       // Commit and advance to the next cell in the same tier (the "fill a row
       // across" glossing workflow). Shift+Enter goes back. Falls back to blur
@@ -482,19 +469,28 @@ export class IgtEditor {
   }
 
   // Commit an annotation/orthography cell on blur if its value changed. Routed
-  // through the op chain so it serializes with structural edits.
+  // through the op chain so it serializes with structural edits. A value
+  // adopted from a guess (see _maybeConfirmGuess) carries provenance metadata.
   _commitField(e, apply) {
     if (this.readOnly) return;
     const el = e.target;
     if (el.dataset.suppressCommit) { delete el.dataset.suppressCommit; return; }
     const next = el.value;
+    const prov = el.dataset.guessConfirmed === '1' && next === el.dataset.guessValue
+      ? confirmedGuessProvenance(el.dataset.guessSource || 'unknown')
+      : null;
+    delete el.dataset.guessConfirmed;
     if (next === (el.dataset.orig ?? '')) return;
-    this._run(() => apply(next));
+    this._run(() => apply(next, prov));
   }
 
-  _field({ key, value, apply, extraClass = '', sentence = false, ariaLabel }) {
+  _field({ key, value, apply, extraClass = '', sentence = false, ariaLabel, guess = null }) {
     const v = value ?? '';
     const filled = v !== '';
+    // A guess renders as a styled placeholder: the input VALUE stays empty, so
+    // nothing persists unless explicitly confirmed (Enter/Tab — see
+    // _maybeConfirmGuess) and stats/jump still see the cell as empty.
+    const g = !sentence && !filled && !this.readOnly && guess ? guess : null;
     // Sentence-scoped fields (e.g. free Translation) are full free-text values —
     // an auto-growing textarea that wraps, rather than a one-line scrolling input.
     if (sentence) {
@@ -512,11 +508,14 @@ export class IgtEditor {
       ></textarea>`;
     }
     return html`<input
-      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${extraClass}"
+      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g ? 'igt-field--guess' : ''} ${extraClass}"
       data-cell-key=${key}
+      data-guess-value=${g ? g.value : nothing}
+      data-guess-source=${g ? g.source : nothing}
       aria-label=${ariaLabel ?? nothing}
-      title=${filled ? v : (ariaLabel ?? nothing)}
-      size=${this._fieldSize(v)}
+      title=${g ? `Guess: ${g.value} — Enter confirms, typing replaces` : (filled ? v : (ariaLabel ?? nothing))}
+      placeholder=${g ? g.value : nothing}
+      size=${this._fieldSize(g ? g.value : v)}
       ?disabled=${this.readOnly}
       ${uncontrolledValue(v)}
       @focus=${this._onFieldFocus}
@@ -748,7 +747,13 @@ export class IgtEditor {
     const hasMorphemes = !!info.morphemeTokenLayer;
     const ignoredCfg = readIgnoredTokens(info.primaryTokenLayer.config);
 
-    const ctx = { orthographies, wordFields, morphFields, sentFields, hasMorphemes, ignoredCfg };
+    // Gloss guesses (pluggable — see domain/glossGuess.js; assign
+    // this.guessSourceFactory to swap the algorithm). Rebuilt per data render;
+    // null in read-only mode so historical views never show suggestions.
+    const guess = this.readOnly ? null
+      : this.guessSourceFactory(sentences, { wordFields, morphFields });
+
+    const ctx = { orthographies, wordFields, morphFields, sentFields, hasMorphemes, ignoredCfg, guess };
 
     return html`
       ${this._toolbar(sentences, ctx)}
@@ -824,6 +829,10 @@ export class IgtEditor {
             <strong>Morphemes</strong>
             <span>type <kbd>-</kbd> to split (pasting <em>a-b-c</em> splits too) · <kbd>⌫</kbd> at start merges with previous · <kbd>Alt</kbd>+<kbd>-</kbd> literal hyphen · hover a word for the <kbd>+</kbd> add column</span>
           </div>` : nothing}
+        <div class="igt-legend__row">
+          <strong>Guesses</strong>
+          <span>violet italic values are guesses from matching forms — <kbd>↵</kbd>/<kbd>Tab</kbd> confirms, typing replaces, leaving the cell discards</span>
+        </div>
         <div class="igt-legend__row">
           <strong>Lexicon</strong>
           <span>hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry; linking a morpheme copies a matching gloss from earlier in the text</span>
@@ -918,8 +927,9 @@ export class IgtEditor {
               ${this._field({
                 key: `wa:${token.id}:${name}`,
                 value: token.annotations?.[name]?.value ?? '',
-                apply: (v) => this.doc.updateTokenSpan(token.id, name, v),
+                apply: (v, prov) => this.doc.updateTokenSpan(token.id, name, v, prov),
                 ariaLabel: `${name} for ${token.content}`,
+                guess: ctx.guess?.guessFor('word', token.content, name) ?? null,
               })}
             </div>`)}
         ${ctx.hasMorphemes ? this._morphemes(token, ctx) : nothing}
@@ -968,9 +978,10 @@ export class IgtEditor {
             ${this._field({
               key: `ma:${morph.id}:${name}`,
               value: morph.annotations?.[name]?.value ?? '',
-              apply: (v) => this.doc.updateMorphemeSpan(morph.id, name, v),
+              apply: (v, prov) => this.doc.updateMorphemeSpan(morph.id, name, v, prov),
               extraClass: 'igt-morph-field',
               ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
+              guess: ctx.guess?.guessFor('morpheme', value, name) ?? null,
             })}
           </div>
         `)}

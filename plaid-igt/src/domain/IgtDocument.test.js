@@ -72,6 +72,19 @@ describe('span (annotation) mutations', () => {
     expect(doc.sentences[0].tokens[0].annotations.POS?.value).toBe('DET');
   });
 
+  it('span updaters pass provenance metadata through to create', async () => {
+    const doc = makeDoc();
+    const prov = { prov: 'inferred', provSource: 'gloss:doc-frequency', provConfirmed: true };
+    const ok = await doc.updateTokenSpan('w-1', 'POS', 'DET', prov);
+    expect(ok).toBe(true);
+    const create = doc.client.calls.find((c) => c.kind === 'spans.create');
+    expect(create.args[3]).toEqual(prov);
+    // Human edits (no metadata) keep the 4-arg slot empty.
+    await doc.updateTokenSpan('w-2', 'POS', 'NOUN');
+    const create2 = doc.client.calls.filter((c) => c.kind === 'spans.create')[1];
+    expect(create2.args[3]).toBeUndefined();
+  });
+
   it('updateTokenSpan updates an existing span instead of creating', async () => {
     const raw = buildRawDoc();
     raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [

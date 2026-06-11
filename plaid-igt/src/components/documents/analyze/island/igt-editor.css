@@ -317,6 +317,14 @@
 }
 .igt-field--empty { color: #9ca3af; font-style: italic; }
 .igt-field--filled { color: #111827; }
+/* Gloss guess (FLEx-style): the suggestion lives in the placeholder — violet
+   italic, clearly not-yet-real — and is only written on explicit confirm. */
+.igt-field--guess::placeholder {
+  color: var(--igt-violet);
+  font-style: italic;
+  opacity: 0.75;
+}
+.igt-field--guess { border-bottom-style: dashed; border-bottom-color: #c4b5fd; }
 .igt-field:disabled { opacity: 0.6; cursor: default; background: transparent; }
 
 /* ---- morpheme sub-grid ---- */

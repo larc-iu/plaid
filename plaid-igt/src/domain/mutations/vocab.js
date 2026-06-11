@@ -30,7 +30,9 @@ const findVocabForItem = (vocabularies, vocabItemId) => {
 export const vocabMutations = {
   // Link a vocab item to a token (word or morpheme). If a prior single-token
   // link exists for this token, delete it and create the new link atomically.
-  async linkVocab(tokenId, vocabItemId) {
+  // `metadata` (optional) carries provenance for machine-produced links (see
+  // domain/glossGuess.js PROV); human links from the popover pass none.
+  async linkVocab(tokenId, vocabItemId, metadata = null) {
     const { vocab: targetVocab, item: vocabItem } = findVocabForItem(this._vocabularies, vocabItemId);
     if (!targetVocab || !vocabItem) {
       this.setError(`Vocab item ${vocabItemId} not found`);
@@ -44,11 +46,11 @@ export const vocabMutations = {
       if (priorLink) {
         this._client.beginBatch();
         this._client.vocabLinks.delete(priorLink.id);
-        this._client.vocabLinks.create(vocabItemId, [tokenId]);
+        this._client.vocabLinks.create(vocabItemId, [tokenId], metadata || undefined);
         const results = await this._client.submitBatch();
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
-        const result = await this._client.vocabLinks.create(vocabItemId, [tokenId]);
+        const result = await this._client.vocabLinks.create(vocabItemId, [tokenId], metadata || undefined);
         newLinkId = result?.id || result;
       }
 
@@ -69,7 +71,8 @@ export const vocabMutations = {
           tv.vocabLinks.push({
             id: newLinkId,
             tokens: [tokenId],
-            vocabItem: itemSnapshot
+            vocabItem: itemSnapshot,
+            ...(metadata ? { metadata } : {})
           });
         }
       });
