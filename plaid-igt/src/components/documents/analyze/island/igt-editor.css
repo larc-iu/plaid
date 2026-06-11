@@ -504,6 +504,18 @@
   text-decoration-color: currentColor;
   background: transparent;
 }
+/* Inferred (auto-made, unconfirmed) links: the machine-suggestion violet, same
+   color language as gloss guesses. Confirming (popover) returns them to gray. */
+.igt-vocab__hint--inferred {
+  color: var(--igt-violet);
+  text-decoration-color: #c4b5fd;
+  font-style: italic;
+}
+.igt-vocab__hint--inferred:hover:not(:disabled),
+.igt-vocab__hint--inferred:focus-visible {
+  color: var(--igt-violet);
+  text-decoration-color: currentColor;
+}
 /* Unlinked: hidden at rest — a "+ link" under every unlinked form is too
    noisy (user call, 2026-06-10; a fuller vocab-linking rethink is a planned
    P1 task). Revealed on hover anywhere in the word/morpheme column or via
@@ -597,6 +609,8 @@
 .igt-vocab-pop__item:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: -1px; }
 .igt-vocab-pop__vname { font-size: 10px; color: #6b7280; }
 .igt-vocab-pop__x { font-size: 10px; color: #b91c1c; }
+.igt-vocab-pop__x:hover { text-decoration: underline; }
+.igt-vocab-pop__ok { font-size: 10px; font-weight: 600; color: #15803d; }
 .igt-vocab-pop__empty { padding: 6px; font-size: 12px; color: #6b7280; }
 .igt-vocab-pop__more { padding: 4px 6px; font-size: 10.5px; color: #9aa3b2; text-align: center; }
 .igt-vocab-pop__create {

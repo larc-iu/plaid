@@ -28,6 +28,62 @@ const findVocabForItem = (vocabularies, vocabItemId) => {
 };
 
 export const vocabMutations = {
+  // Bulk-create inferred vocab links (auto-linking). `proposals` is
+  // [{ tokenId, vocabItemId }]; every link is stamped with provenance
+  // ({ prov: 'inferred', provSource }, NO provConfirmed — a human confirms by
+  // touching the link). One atomic batch; tokens that already have a link are
+  // skipped defensively. Returns the number created (false on failure).
+  async bulkLinkVocab(proposals, provSource) {
+    const todo = (proposals || []).filter(p => {
+      const { link } = findPriorLink(this._vocabularies, p.tokenId);
+      if (link) return false;
+      const { item } = findVocabForItem(this._vocabularies, p.vocabItemId);
+      return !!item;
+    });
+    if (todo.length === 0) return 0;
+    const metadata = { prov: 'inferred', provSource };
+
+    const ok = await this._withSaving('Failed to auto-link', async () => {
+      this._client.beginBatch();
+      todo.forEach(p => this._client.vocabLinks.create(p.vocabItemId, [p.tokenId], metadata));
+      const results = await this._client.submitBatch();
+
+      this._applyRawPatch((next, info, vocabs) => {
+        todo.forEach((p, i) => {
+          const newLinkId = results[i]?.body?.id;
+          if (!newLinkId) return;
+          const { vocab, item } = findVocabForItem(vocabs, p.vocabItemId);
+          if (!vocab) return;
+          if (!Array.isArray(vocab.vocabLinks)) vocab.vocabLinks = [];
+          vocab.vocabLinks.push({
+            id: newLinkId,
+            tokens: [p.tokenId],
+            vocabItem: { id: item.id, form: item.form, metadata: item.metadata || {} },
+            metadata
+          });
+        });
+      });
+    });
+    return ok ? todo.length : false;
+  },
+
+  // Confirm-on-touch for an inferred link: flip provConfirmed so it renders
+  // (and queries) as human-approved. No-op for human or already-confirmed links.
+  async confirmVocabLink(tokenId) {
+    const { link, vocabId } = findPriorLink(this._vocabularies, tokenId);
+    if (!link || !vocabId) return false;
+    const meta = link.metadata || {};
+    if (meta.prov !== 'inferred' || meta.provConfirmed) return false;
+
+    return this._withSaving('Failed to confirm link', async () => {
+      await this._client.vocabLinks.patchMetadata(link.id, { provConfirmed: true });
+      this._applyRawPatch((next, info, vocabs) => {
+        const l = (vocabs[vocabId]?.vocabLinks || []).find(x => x.id === link.id);
+        if (l) l.metadata = { ...(l.metadata || {}), provConfirmed: true };
+      });
+    });
+  },
+
   // Link a vocab item to a token (word or morpheme). If a prior single-token
   // link exists for this token, delete it and create the new link atomically.
   // `metadata` (optional) carries provenance for machine-produced links (see

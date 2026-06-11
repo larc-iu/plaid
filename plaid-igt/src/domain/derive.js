@@ -235,13 +235,17 @@ function collectSingleTokenVocabLinks(vocabularies) {
     (vocab.vocabLinks || []).forEach(link => {
       if (!Array.isArray(link.tokens) || link.tokens.length !== 1 || !link.vocabItem) return;
       const tokenId = link.tokens[0];
+      const linkMeta = link.metadata || {};
       out[tokenId] = {
         id: link.vocabItem.id,
         form: link.vocabItem.form,
         metadata: link.vocabItem.metadata || {},
         vocabId: vocab.id,
         vocabName: vocab.name,
-        linkId: link.id
+        linkId: link.id,
+        // Machine-made and not yet human-confirmed (provenance convention) —
+        // the editor renders these distinctly.
+        inferred: linkMeta.prov === 'inferred' && !linkMeta.provConfirmed
       };
     });
   });

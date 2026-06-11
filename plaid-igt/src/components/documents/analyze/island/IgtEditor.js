@@ -19,6 +19,7 @@ import './igt-editor.css';
 import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/igtConfig';
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
+import { AUTO_LINK_SOURCE, precedentQueries, buildPrecedentTable, computeAutoLinkProposals } from '@/domain/autoLink';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -183,6 +184,7 @@ export class IgtEditor {
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
     clearTimeout(this._savedTimer);
     clearTimeout(this._copiedTimer);
+    clearTimeout(this._autoLinkTimer);
     render(nothing, this.container);
   }
 
@@ -265,6 +267,41 @@ export class IgtEditor {
       if (opener) { try { opener.focus(); } catch { /* noop */ } }
     }
   }
+  // ---- auto-linking (built-in precedent-or-unique rule) ----
+  // Applies immediately; links land as inferred (violet) until touched. The
+  // provider is pluggable — see domain/autoLink.js.
+  async _runAutoLink() {
+    if (this.readOnly || this._autoLinkBusy) return;
+    this._autoLinkBusy = true;
+    this._render(true);
+    try {
+      const vocabIds = Object.keys(this.doc.vocabularies || {});
+      const results = await Promise.all(
+        precedentQueries(vocabIds).map((q) => this.doc._client.query(q)));
+      const precedentTable = buildPrecedentTable(results);
+      const proposals = computeAutoLinkProposals({
+        sentences: this.doc.sentences,
+        vocabularies: this.doc.vocabularies,
+        precedentTable,
+      });
+      const n = proposals.length ? await this.doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE) : 0;
+      this._autoLinkResult = n === false ? null : n;
+    } catch (err) {
+      console.error('Auto-link failed:', err);
+      this.doc.setError('Auto-link failed — try again.');
+    } finally {
+      this._autoLinkBusy = false;
+      clearTimeout(this._autoLinkTimer);
+      this._autoLinkTimer = setTimeout(() => { this._autoLinkResult = undefined; this._render(true); }, 3000);
+      this._render(true);
+    }
+  }
+
+  _confirmLink(tokenId, returnFocus = false) {
+    this._closePopover(returnFocus);
+    this._run(() => this.doc.confirmVocabLink(tokenId));
+  }
+
   // (The old _suggestMorphemeGloss "copy a gloss on link" write is gone: the
   // gloss-guess system shows the same suggestion as a placeholder in the cell
   // itself, and only writes it — with provenance — when the user confirms.)
@@ -823,6 +860,17 @@ export class IgtEditor {
           ${stats && !this.readOnly && stats.done < stats.total
             ? html`<button type="button" class="igt-toolbar__btn" @click=${(e) => { e.stopPropagation(); this._jumpToNextEmptyGloss(); }}>Next empty gloss →</button>`
             : nothing}
+          ${!this.readOnly && Object.keys(this.doc.vocabularies || {}).length > 0
+            ? html`<button type="button" class="igt-toolbar__btn" ?disabled=${this._autoLinkBusy}
+                title="Link unlinked words and morphemes that follow project precedent or match exactly one lexicon entry. Auto-links show in violet until you confirm them."
+                @click=${(e) => { e.stopPropagation(); this._runAutoLink(); }}>
+                ${this._autoLinkBusy
+                  ? 'Auto-linking…'
+                  : (typeof this._autoLinkResult === 'number'
+                    ? (this._autoLinkResult > 0 ? `Linked ${this._autoLinkResult} ✓` : 'Nothing new to link')
+                    : 'Auto-link')}
+              </button>`
+            : nothing}
         </div>
         <div class="igt-toolbar__right">
           <span class="igt-status" role="status" aria-live="polite" data-state=${this._statusState || 'idle'}></span>
@@ -859,7 +907,7 @@ export class IgtEditor {
         </div>
         <div class="igt-legend__row">
           <strong>Lexicon</strong>
-          <span>hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry; linking a morpheme copies a matching gloss from earlier in the text</span>
+          <span>hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry · <em>Auto-link</em> links everything that follows project precedent or matches one entry — violet links are auto-made; open one and click it (or <em>confirm</em>) to approve</span>
         </div>
       </div>
     `;
@@ -1143,9 +1191,12 @@ export class IgtEditor {
     };
     let opener = nothing;
     if (vocabItem) {
-      opener = html`<button type="button" class="igt-vocab__opener igt-vocab__hint"
+      const inferred = !!vocabItem.inferred;
+      opener = html`<button type="button" class="igt-vocab__opener igt-vocab__hint ${inferred ? 'igt-vocab__hint--inferred' : ''}"
         data-vocab-opener=${id} ?disabled=${!canLink}
-        title=${`Linked to "${vocabItem.form}"${canLink ? ' — manage' : ''}`}
+        title=${inferred
+          ? `Auto-linked to "${vocabItem.form}" — open to confirm or change`
+          : `Linked to "${vocabItem.form}"${canLink ? ' — manage' : ''}`}
         @click=${openerClick}>${vocabItem.form}</button>`;
     } else if (canLink) {
       opener = html`<button type="button" class="igt-vocab__opener igt-vocab__link"
@@ -1220,11 +1271,16 @@ export class IgtEditor {
     const pos = this._popoverPos;
     const posStyle = pos ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;` : '';
 
+    // For an INFERRED link, selecting the linked row CONFIRMS it (the human
+    // gesture that flips provConfirmed); for a human link it unlinks (toggle),
+    // as before. The explicit "unlink" mini-action is always available.
+    const inferredCurrent = !!currentItem?.inferred;
     const selectActive = () => {
       if (activeIdx < limited.length) {
         const it = limited[activeIdx];
         const linked = currentItem && it.id === currentItem.id;
-        this._toggleVocab(tokenId, it, linked, true);
+        if (linked && inferredCurrent) this._confirmLink(tokenId, true);
+        else this._toggleVocab(tokenId, it, linked, true);
       } else if (createAvailable) {
         this._createVocab(tokenId, createVocabId, formText, true);
       }
@@ -1249,13 +1305,20 @@ export class IgtEditor {
           ${limited.length
             ? limited.map((it, i) => {
                 const linked = currentItem && it.id === currentItem.id;
+                const confirmable = linked && inferredCurrent;
                 return html`<button type="button" class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${i === activeIdx ? 'is-active' : ''}"
                   @mousemove=${() => { if (this._popoverActiveIndex !== i) { this._popoverActiveIndex = i; this._render(true); } }}
-                  @click=${(e) => { e.stopPropagation(); this._toggleVocab(tokenId, it, linked); }}>
+                  @click=${(e) => {
+                    e.stopPropagation();
+                    if (confirmable) this._confirmLink(tokenId);
+                    else this._toggleVocab(tokenId, it, linked);
+                  }}>
                   <span class="igt-vocab-pop__main">
                     <span class="igt-vocab-pop__form">${it.form}</span>
                     ${vocabs.length > 1 ? html`<span class="igt-vocab-pop__vname">${it._vocabName}</span>` : nothing}
-                    ${linked ? html`<span class="igt-vocab-pop__x">unlink</span>` : nothing}
+                    ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
+                    ${linked ? html`<span class="igt-vocab-pop__x" role="button" tabindex="-1"
+                      @click=${(e) => { e.stopPropagation(); this._toggleVocab(tokenId, it, true); }}>unlink</span>` : nothing}
                   </span>
                   ${it._detail ? html`<span class="igt-vocab-pop__detail">${it._detail}</span>` : nothing}
                 </button>`;
