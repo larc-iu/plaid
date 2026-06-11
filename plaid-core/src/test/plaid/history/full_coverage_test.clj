@@ -193,7 +193,7 @@
     "relation-layer/create" "relation-layer/delete" "relation-layer/shift"
     "relation-layer/update"
     "span/bulk-create" "span/bulk-delete" "span/create" "span/delete"
-    "span/delete-metadata" "span/patch-metadata" "span/remove-token"
+    "span/delete-metadata" "span/patch-metadata"
     "span/set-metadata"
     "span/update-attributes" "span/update-tokens"
     "span-layer/create" "span-layer/delete" "span-layer/shift" "span-layer/update"
@@ -219,16 +219,12 @@
 ;; Operation types defined in source but NOT reachable through any REST route
 ;; on the SQL port — they cannot be exercised, so they're excluded from the
 ;; coverage target. Keep this list TINY and justified; each entry is a latent
-;; dead-code smell worth revisiting.
-;;   span/remove-token: `plaid.sql.span/remove-token` (the only emitter) has no
-;;     caller. PUT /spans/:id/tokens routes to `set-tokens` (→ span/update-tokens),
-;;     and the token-delete cascade carries span-token removal under the
-;;     :token/delete op — a synthetic :update audit row on :spans when the span
-;;     is partially trimmed (trim-span-tokens!, added 2026-06-10; before that,
-;;     partial trims were FK-swept with NO audit row), or an audited span
-;;     :delete when fully orphaned. Vestigial from the v2 port.
+;; dead-code smell worth revisiting. (Currently empty: the last entry,
+;; span/remove-token, was deleted as dead code 2026-06-10 — span-token
+;; removal happens via PUT /spans/:id/tokens → span/update-tokens, or via
+;; the token-delete cascade's synthetic :update / orphan :delete rows.)
 (def ^:private rest-unreachable-op-types
-  #{"span/remove-token"})
+  #{})
 
 (def ^:private expected-op-types
   (set/difference known-op-types rest-unreachable-op-types))

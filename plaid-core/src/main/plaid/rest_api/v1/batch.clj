@@ -192,8 +192,12 @@
 
 (defn construct-request
   "Build a Ring request map from a batch operation spec. Note that :db is
-  swapped from the original DataSource to the active tx Connection so that
-  sub-handlers' submit-operation! calls savepoint inside this batch's tx."
+  swapped from the original DataSource to the active tx Connection: the
+  sub-handlers' submit-operation! calls detect the in-tx Connection and
+  run their bodies INLINE in the outer batch tx (with-tx*; there are no
+  savepoints). The load-bearing consequence: any sub-op failure throws
+  out of the loop and rolls back the ENTIRE batch, so a half-executed
+  sub-op body can never persist."
   [original-request operation tx]
   (let [{:keys [uri query-string]} (parse-path-and-query (:path operation))
         method (keyword (str/lower-case (:method operation)))
@@ -323,16 +327,6 @@
           (catch Exception e
             (log/error e "Unexpected batch error" batch-id)
             {:status 500 :body {:error "Internal error"}}))))))
-
-(defn batch-handler
-  "Legacy non-atomic batch handler - processes operations sequentially but without rollback.
-  Sub-requests share the original (non-tx) :db, so each sub-handler opens
-  and commits its own transaction independently."
-  [{:keys [rest-handler parameters db] :as request}]
-  (let [operations (preprocess-batch-operations (:body parameters) db)
-        responses (mapv #(process-batch-operation rest-handler request % db) operations)]
-    {:status 200
-     :body responses}))
 
 (def batch-routes
   ["/batch"

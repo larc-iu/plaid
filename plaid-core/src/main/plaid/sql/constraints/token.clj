@@ -138,8 +138,12 @@
 
 (defn straddling-descendant-tokens-in
   "Like straddling-descendant-tokens-at, but restricted to descendants
-  whose extent sits within [lo, hi). Used by the split cascade where the
-  parent may live on an :any layer with overlapping siblings."
+  whose extent sits within [lo, hi). Used by the split cascade so only
+  descendants inside the SPLIT token's extent are touched — siblings'
+  descendants elsewhere in the document must not be. (A historical
+  rationale here referenced parents on :any layers; parent layers have
+  required :non-overlapping/:partitioning since create-time validation
+  landed, but the extent restriction is still what scopes the cascade.)"
   [db dlids doc-id lo hi p]
   (if (empty? dlids)
     []

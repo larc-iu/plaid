@@ -649,17 +649,26 @@
 ;; ============================================================
 ;; Audit-capture dynamic var
 ;;
-;; submit-operations! binds *op* to a map holding the current operation id
+;; submit-operation! binds *op* to a map holding the current operation id
 ;; (and other context). Per-row write helpers (insert!, update!, delete!)
 ;; check it and emit audit_writes rows automatically. When *op* is unbound
-;; (administrative / startup writes), audit is skipped.
+;; the helpers FAIL FAST (see ensure-op-bound!) — every production write
+;; goes through submit-operation!, including bootstrap admin creation.
 ;; ============================================================
 
 (def ^:dynamic *op*
   "Current operation context inside submit-operation!. nil when no op is active.
   Keys: :id, :ts, :tx (the JDBC Connection that's part of the tx),
-  :seq-counter (atom holding the next audit-write ordinal within this op).
-  Set to ::skip to deliberately bypass auditing (bootstrap / startup writes only)."
+  :seq-counter (atom holding the next audit-write ordinal within this op),
+  :affected-documents (atom; docs whose version the body bumps — see
+  plaid.sql.operation).
+
+  The ::skip sentinel deliberately bypasses auditing. NOTHING uses it
+  today — every write, including bootstrap admin creation, goes through
+  submit-operation! and is audited. It exists only as a deliberate,
+  greppable escape hatch for a future write that genuinely must not be
+  audited; think hard before becoming its first caller (the audit log
+  is the history replica's replay source)."
   nil)
 
 (def ^:dynamic *expected-document-version*
@@ -684,12 +693,12 @@
   calling a write helper outside submit-operation! with a DataSource
   would commit the write in autoCommit mode before the audit attempt
   even fires (and then `record-audit-write!` would throw, but the row
-  is already on disk). Permits the ::skip sentinel so bootstrap
-  writes (admin-user creation, etc.) still go through.
+  is already on disk).
 
   Permitted *op* values:
     - a map (the normal op context, with :id, :ts, :seq-counter, …), or
-    - the ::skip sentinel (bootstrap writes only).
+    - the ::skip sentinel (an unused-but-deliberate audit bypass — see
+      the *op* docstring).
   Any other value (nil, a stray scalar) trips the guard."
   []
   (when (or (nil? *op*)
