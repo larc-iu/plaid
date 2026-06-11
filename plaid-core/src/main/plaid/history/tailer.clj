@@ -849,7 +849,20 @@
     (async/go
       (let [pre-ok? (try
                       (if (await-index-caught-up-stop-aware! node stop)
-                        (do (clear-stale-stall-on-start! node) true)
+                        (do
+                          ;; Non-fatal: if the stall-clear write fails, the
+                          ;; cursor stays :stalled and the loop body below
+                          ;; reports it (visible in /health, recoverable via
+                          ;; resume!) — strictly better than exiting here and
+                          ;; leaving NO tailer at all. (The 2026-06-11 dev
+                          ;; incident: set-running! was rejected on a
+                          ;; system-time precision bug and the whole loop
+                          ;; died.)
+                          (try
+                            (clear-stale-stall-on-start! node)
+                            (catch Throwable t
+                              (log/error t "history tailer could not clear stale stall on start; continuing (loop will report the stall)")))
+                          true)
                         (do (log/info "history tailer stop requested during index catch-up; exiting")
                             false))
                       (catch Throwable t

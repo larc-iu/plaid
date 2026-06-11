@@ -312,10 +312,21 @@
    pinned to the current head so the write never advances the node's
    system-time axis past unapplied backlog ops. Waits (bounded) for the
    indexer first so the head is authoritative; EPOCH on a node with no
-   txs yet (any later op ts only moves forward from there)."
+   txs yet (any later op ts only moves forward from there).
+
+   The head is passed as an EXACT Instant, never through ->date:
+   java.util.Date is millisecond-precision, and a head written at wall
+   clock carries microseconds (any tx committed without an explicit
+   :system-time — e.g. legacy cursor writes from before this fn
+   existed). Truncating such a head to the millisecond floor made the
+   'equal' write strictly OLDER than the head and XTDB rejected it —
+   observed live as a startup pre-pass failure ('specified system-time
+   older than current tx' with head ...792983Z vs submitted ...792Z).
+   XTDB accepts Instant for :system-time, and equal-at-µs is accepted
+   (REPL-verified)."
   [node]
   (await-index-caught-up! node {:timeout-ms 60000})
-  {:system-time (->date (or (head-system-time node) Instant/EPOCH))})
+  {:system-time (or (head-system-time node) Instant/EPOCH)})
 
 (defn set-stalled!
   "Halt the tailer by writing :tailer-status :stalled into the cursor doc.

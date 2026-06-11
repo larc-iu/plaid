@@ -468,6 +468,36 @@
           (is (= 3 (count-at "2026-05-28T14:02:30Z"))
               "snapshot after t3 sees everything"))))))
 
+(deftest stall-recovery-survives-microsecond-precision-head
+  ;; 2026-06-11 dev incident: any tx committed WITHOUT an explicit
+  ;; :system-time gets the node's wall clock at MICROSECOND precision
+  ;; (legacy cursor writes from before cursor-write-tx-opts existed did
+  ;; exactly that). cursor-write-tx-opts then passed the head through
+  ;; ->date — a millisecond FLOOR — so its 'equal' write was strictly
+  ;; older than the head and XTDB rejected it: the startup pre-pass
+  ;; died with 'specified system-time older than current tx' and the
+  ;; tailer never started. The head must round-trip as an exact
+  ;; Instant.
+  (let [node *history-node*
+        ;; Manufacture a µs-precision head the way the legacy code did.
+        ;; Retry a few times in the (astronomically unlikely) case the
+        ;; wall clock lands on an exact millisecond.
+        head (some (fn [i]
+                     (xt/execute-tx node [[:put-docs :history/meta
+                                           {:xt/id (keyword (str "precision-probe-" i))}]])
+                     (let [h (history/head-system-time node)]
+                       (when (pos? (mod (.getNano h) 1000000))
+                         h)))
+                   (range 5))]
+    (is (some? head) "precondition: head has sub-millisecond precision")
+    (history/set-stalled! node {:op-id nil :seq nil :reason "precision test"})
+    (is (= :stalled (:tailer-status (history/cursor-read node))))
+    (history/set-running! node)
+    (is (= :running (:tailer-status (history/cursor-read node)))
+        "stall/resume cycle succeeds against a µs-precision head")
+    (is (= head (history/head-system-time node))
+        "and the cursor-only writes did not move the head")))
+
 (deftest resume-with-skip-advances-past-bad-row-and-applies-subsequent-rows
   ;; The full happy-path recovery: a good op, then a bad op, then a good op.
   ;; After the loop stalls on op2, the operator's `:skip-current-row?` path
