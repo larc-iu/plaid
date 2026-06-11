@@ -7,6 +7,7 @@ import { ProjectDetail } from './components/projects/ProjectDetail';
 import { ProjectSettingsView } from './components/projects/ProjectSettingsView';
 import { ProjectSetup } from './components/projects/ProjectSetup';
 import { ImportFlexProject } from './components/projects/ImportFlexProject';
+import { NewProjectChooser } from './components/projects/NewProjectChooser';
 import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { DocumentDetail } from './components/documents/DocumentDetail';
 import { UserProfile } from './components/auth/UserProfile';
@@ -40,6 +41,14 @@ function App() {
           } />
           
           <Route path="/projects/new" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <NewProjectChooser />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/projects/new/blank" element={
             <ProtectedRoute>
               <AppLayout>
                 <ProjectSetup />

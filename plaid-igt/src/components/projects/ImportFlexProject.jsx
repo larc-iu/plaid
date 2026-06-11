@@ -181,6 +181,8 @@ export const ImportFlexProject = () => {
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link to="/projects" className="hover:text-foreground hover:underline">Projects</Link>
           <span>/</span>
+          <Link to="/projects/new" className="hover:text-foreground hover:underline">New Project</Link>
+          <span>/</span>
           <span>Import from FLEx</span>
         </nav>
 
