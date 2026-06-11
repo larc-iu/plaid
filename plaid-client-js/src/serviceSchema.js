@@ -38,6 +38,10 @@ export const TASKS = Object.freeze({
   TOKENIZE: 'tokenize',
   PARSE: 'parse',
   TRANSCRIBE: 'transcribe',
+  /** Create vocab links for unlinked tokens. Services should stamp link
+   * metadata with the provenance convention ({ prov: 'inferred', provSource:
+   * 'service:<id>' }) so UIs can distinguish machine links until confirmed. */
+  LINK_VOCAB: 'link-vocab',
 });
 
 /**

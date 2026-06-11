@@ -361,6 +361,7 @@ export const TASKS: {
   readonly TOKENIZE: 'tokenize';
   readonly PARSE: 'parse';
   readonly TRANSCRIBE: 'transcribe';
+  readonly LINK_VOCAB: 'link-vocab';
 };
 /** Whether a service serves a task (declared `extras.tasks`, legacy id-prefix fallback). */
 export function servesTask(service: DiscoveredService, task: string): boolean;
