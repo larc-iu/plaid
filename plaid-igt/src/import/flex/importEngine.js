@@ -261,9 +261,17 @@ export async function importDocument({ client, projectId, targets, config, doc, 
       for (const f of fieldsBy('morphGloss')) addSpan(f, morphIds[i], s.morpheme.gloss?.[f.ws]);
       for (const f of fieldsBy('morphPos')) addSpan(f, morphIds[i], s.morpheme.pos);
     });
-    for (let i = 0; i < spanSpecs.length; i += 1000) {
-      check();
-      await client.spans.bulkCreate(spanSpecs.slice(i, i + 1000));
+    // The bulk endpoint requires all spans in one call to share a layer.
+    const byLayer = new Map();
+    for (const s of spanSpecs) {
+      if (!byLayer.has(s.spanLayerId)) byLayer.set(s.spanLayerId, []);
+      byLayer.get(s.spanLayerId).push(s);
+    }
+    for (const specs of byLayer.values()) {
+      for (let i = 0; i < specs.length; i += 1000) {
+        check();
+        await client.spans.bulkCreate(specs.slice(i, i + 1000));
+      }
     }
 
     // Vocab links morpheme → lexicon item, stamped as confirmed provenance

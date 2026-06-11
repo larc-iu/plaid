@@ -13,11 +13,13 @@
 // Returns { projectId, resources, failures, alreadyInitialized }.
 
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
+// Relative (not @/) import keeps this module loadable from plain-node e2e
+// scripts, which drive the real setup against the live core.
 import {
   IGT_NAMESPACE, readInitialized,
   findBaselineTextLayer, findSentenceTokenLayer, findWordTokenLayer,
   findMorphemeTokenLayer, findAlignmentTokenLayer,
-} from '@/domain/igtConfig';
+} from '../../../domain/igtConfig.js';
 
 export async function executeProjectSetup({
   client, isNewProject, resumeProjectId, setupData, onProgress, onProjectCreated,
