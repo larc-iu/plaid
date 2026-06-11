@@ -20,6 +20,7 @@ import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import { AUTO_LINK_SOURCE, precedentQueries, buildPrecedentTable, computeAutoLinkProposals } from '@/domain/autoLink';
+import { morphemeJoiner } from '@/domain/affixMarkers';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -1087,18 +1088,24 @@ export class IgtEditor {
     const morphemes = token.morphemes || [];
     return html`
       <div class="igt-morphemes">
-        ${repeat(morphemes, (m) => m.id, (m) => this._morphCol(m, token, morphemes, ctx))}
+        ${repeat(morphemes, (m) => m.id, (m, i) => this._morphCol(m, token, morphemes, ctx, i))}
         ${this.readOnly ? nothing : this._placeholderMorphCol(token, ctx)}
       </div>
     `;
   }
 
-  _morphCol(morph, word, siblings, ctx) {
+  _morphCol(morph, word, siblings, ctx, index = 0) {
     const value = morphFormOf(morph);
     const filled = value !== '';
+    // Display-only affix joint ("=" for clitics, else "-"); never part of the
+    // stored form — see domain/affixMarkers.js.
+    const joiner = index > 0
+      ? morphemeJoiner(siblings[index - 1]?.metadata?.morphType, morph.metadata?.morphType)
+      : null;
     return html`
       <div class="igt-morph-col">
         <div class="igt-morph-form">
+          ${joiner ? html`<span class="igt-morph-joiner" aria-hidden="true">${joiner}</span>` : nothing}
           ${this._vocabFace(
             html`<input
               class="igt-field igt-morph-field ${filled ? 'igt-field--filled' : 'igt-field--empty'}"

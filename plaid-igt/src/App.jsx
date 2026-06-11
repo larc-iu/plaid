@@ -6,6 +6,7 @@ import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
 import { ProjectSettingsView } from './components/projects/ProjectSettingsView';
 import { ProjectSetup } from './components/projects/ProjectSetup';
+import { ImportFlexProject } from './components/projects/ImportFlexProject';
 import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { DocumentDetail } from './components/documents/DocumentDetail';
 import { UserProfile } from './components/auth/UserProfile';
@@ -45,7 +46,15 @@ function App() {
               </AppLayout>
             </ProtectedRoute>
           } />
-          
+
+          <Route path="/projects/import" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ImportFlexProject />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
           <Route path="/projects/:projectId/setup" element={
             <ProtectedRoute>
               <AppLayout>

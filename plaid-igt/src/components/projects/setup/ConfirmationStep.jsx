@@ -4,12 +4,7 @@ import { Check, X, RefreshCw, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
-import {
-  IGT_NAMESPACE, readInitialized,
-  findBaselineTextLayer, findSentenceTokenLayer, findWordTokenLayer,
-  findMorphemeTokenLayer, findAlignmentTokenLayer,
-} from '@/domain/igtConfig';
+import { executeProjectSetup } from './executeSetup';
 
 export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
   const navigate = useNavigate();
@@ -30,7 +25,8 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
     setCurrentOperation(operation);
   };
 
-  // Execute setup function
+  // Execute setup — the actual logic lives in executeSetup.js (shared with
+  // the FLEx import flow); this wrapper owns the wizard's UI state.
   const executeSetup = async () => {
     setIsExecuting(true);
     setErrors([]);
@@ -42,295 +38,41 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         throw new Error('Authentication required');
       }
 
-      // Determine the project id we're operating against. If a previous attempt
-      // in this wizard session already created the project (NEW flow that failed
-      // partway), resume against that id rather than creating a duplicate.
-      const resumeProjectId = isNewProject ? createdProjectId : projectId;
-
-      // Refuse to re-run setup on an already-initialized project.
-      // Re-running would create a second set of plaid-tagged layers and break
-      // findPrimaryLayers (which returns the first match). Token-layer overlap
-      // modes and parent-token-layer ids are immutable, so we cannot adopt the
-      // existing layers either — user must create a new project instead.
-      // This guard applies to existing-project flows AND to new-project retries
-      // (the just-created project won't be initialized, so it falls through).
-      // Fetched once here and reused for substrate adoption below (no 2nd GET).
-      let existingProject = null;
-      if (resumeProjectId) {
-        try {
-          existingProject = await client.projects.get(resumeProjectId);
-          if (readInitialized(existingProject?.config)) {
-            notifyError(
-              'This project is already initialized with Plaid Base. Re-running setup is not supported — create a new project instead.',
-              'Project Already Initialized'
-            );
-            setIsExecuting(false);
-            return;
-          }
-        } catch (checkError) {
-          // Substrate adoption and retry dedup both read existingProject —
-          // proceeding without it could duplicate role-tagged layers (which
-          // breaks findPrimaryLayers) or re-create vocabs. Fail the attempt.
-          throw new Error(`Could not load the project to set up: ${checkError.message}`);
-        }
-      }
-
-      let currentProjectId = resumeProjectId || projectId;
-      const resources = {};
-      // Non-fatal step failures (span layers, vocabularies). Setup only marks
-      // the project initialized when this stays empty — a partially set up
-      // project must not present as ready.
-      const failures = [];
-
-      // Step 1: Create project if new project (skip if we already created one
-      // in a prior attempt — see createdProjectId).
-      if (isNewProject && !createdProjectId && setupData.basicInfo?.projectName) {
-        updateProgress(10, 'Creating new project...');
-        const newProject = await client.projects.create(setupData.basicInfo.projectName);
-        currentProjectId = newProject.id;
-        resources.project = newProject;
+      // If a previous attempt in this wizard session already created the
+      // project (NEW flow that failed partway), resume against that id
+      // rather than creating a duplicate.
+      const result = await executeProjectSetup({
+        client,
+        isNewProject,
+        resumeProjectId: isNewProject ? createdProjectId : projectId,
+        setupData,
+        onProgress: updateProgress,
         // Persist immediately so a subsequent failure + retry won't recreate.
-        setCreatedProjectId(newProject.id);
-      }
+        onProjectCreated: setCreatedProjectId,
+      });
 
-      // Step 2: Find or create the substrate, ADOPTING a shared substrate that
-      // another Plaid app may already have set up. Substrate layers are matched
-      // by their shared role, so we reuse an existing baseline/sentence/word
-      // rather than duplicating them, and create only what IGT additionally
-      // needs (its morpheme + alignment layers). Reuses the project already
-      // fetched above (no second round-trip); a brand-new project has none.
-      const existingTextLayers = existingProject?.textLayers || [];
-      const adoptedBaseline = findBaselineTextLayer(existingTextLayers);
-
-      let textLayerId = adoptedBaseline?.id ?? null;
-      let needsBaselineTag = false;
-      if (textLayerId) {
-        updateProgress(20, 'Using shared text layer...');
-        // Adopted baseline already carries role=baseline — no re-stamp needed.
-      } else if (isNewProject) {
-        updateProgress(20, 'Creating text layer...');
-        const textLayer = await client.textLayers.create(currentProjectId, 'Main Text');
-        textLayerId = textLayer.id;
-        resources.textLayer = textLayer;
-        needsBaselineTag = true;
-      } else if (setupData.layerSelection?.textLayerType === 'new') {
-        updateProgress(20, 'Creating text layer...');
-        // Text layer name is internal (matched by role, never surfaced) — auto-named.
-        const textLayer = await client.textLayers.create(currentProjectId, 'Main Text');
-        textLayerId = textLayer.id;
-        resources.textLayer = textLayer;
-        needsBaselineTag = true;
-      } else if (setupData.layerSelection?.textLayerType === 'existing' && setupData.layerSelection?.selectedTextLayerId) {
-        textLayerId = setupData.layerSelection.selectedTextLayerId;
-        updateProgress(20, 'Using existing text layer...');
-        needsBaselineTag = true;
-      }
-      if (needsBaselineTag && textLayerId) {
-        await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-      }
-
-      // Token layers, matched-or-created by role: sentence → word → morpheme,
-      // plus a separate alignment root. Adopting a foreign substrate reuses its
-      // sentence/word and adds only IGT's morpheme + alignment layers (the
-      // morpheme layer becomes a sibling of e.g. UD's syntactic-word layer).
-      let sentenceTokenLayerId = null;
-      let tokenLayerId = null;
-      let morphemeLayerId = null;
-      let alignmentTokenLayerId = null;
-
-      if (textLayerId) {
-        const existingTokenLayers = adoptedBaseline?.tokenLayers || [];
-
-        // Find a substrate token layer by role, or create + tag a new one.
-        // Adopting a foreign layer skips creation (and its setConfig) entirely.
-        const ensureTokenLayer = async (found, role, resourceKey, name, overlapMode, parentId, pct, msg) => {
-          if (found) return found.id;
-          updateProgress(pct, msg);
-          const layer = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
-          resources[resourceKey] = layer;
-          await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, ROLE_KEY, role);
-          return layer.id;
-        };
-
-        sentenceTokenLayerId = await ensureTokenLayer(
-          findSentenceTokenLayer(existingTokenLayers), ROLES.SENTENCE, 'sentenceTokenLayer',
-          'Sentences', 'partitioning', undefined, 28, 'Creating sentence layer...');
-
-        // Word/morpheme token layers are internal (matched by role, never
-        // surfaced to the user) — always auto-named, never prompted for.
-        tokenLayerId = await ensureTokenLayer(
-          findWordTokenLayer(existingTokenLayers), ROLES.WORD, 'tokenLayer',
-          'Main Tokens', 'non-overlapping', sentenceTokenLayerId, 32, 'Creating token layer...');
-
-        morphemeLayerId = await ensureTokenLayer(
-          findMorphemeTokenLayer(existingTokenLayers), ROLES.MORPHEME, 'morphemeLayer',
-          'Main Morphemes', 'any', tokenLayerId, 35, 'Creating morpheme layer...');
-
-        alignmentTokenLayerId = await ensureTokenLayer(
-          findAlignmentTokenLayer(existingTokenLayers), ROLES.TIME_ALIGNMENT, 'alignmentTokenLayer',
-          'Time Alignment', 'non-overlapping', undefined, 38, 'Creating alignment token layer...');
-      }
-
-      // Step 5: Configure orthographies on token layer
-      if (tokenLayerId && setupData.orthographies?.orthographies) {
-        updateProgress(40, 'Configuring orthographies...');
-        const orthographiesConfig = setupData.orthographies.orthographies
-          .filter(orth => !orth.isBaseline) // Skip baseline orthography
-          .map(orth => ({
-            name: orth.name
-          }));
-
-        // Always save the config to indicate user choice, even if empty
-        await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, "orthographies", orthographiesConfig);
-      }
-
-      // Step 6: Create span layers for annotation fields. Resume-safe: a
-      // retry (or an adopted substrate) may already carry a same-name layer
-      // under the chosen parent — reuse it and just (re)stamp its scope
-      // config, which also heals a prior create-succeeded/setConfig-failed
-      // attempt.
-      if (tokenLayerId && sentenceTokenLayerId) {
-        updateProgress(50, 'Creating annotation field layers...');
-        const createdSpanLayers = [];
-
-        const existingSpanLayersByParent = new Map();
-        for (const tl of existingProject?.textLayers || []) {
-          for (const tkl of tl.tokenLayers || []) {
-            existingSpanLayersByParent.set(tkl.id, tkl.spanLayers || []);
-          }
-        }
-
-        // Create span layers for user-defined annotation fields
-        if (setupData.fields?.fields?.length > 0) {
-          for (const field of setupData.fields.fields) {
-            try {
-              // Choose parent layer based on field scope
-              const parentLayerId =
-                field.scope === 'Sentence' ? sentenceTokenLayerId :
-                field.scope === 'Morpheme' ? morphemeLayerId :
-                tokenLayerId;
-
-              updateProgress(50, `Creating span layer: ${field.name} (${field.scope})...`);
-              const existing = (existingSpanLayersByParent.get(parentLayerId) || [])
-                .find(sl => sl.name === field.name);
-              const spanLayer = existing ?? await client.spanLayers.create(parentLayerId, field.name);
-
-              // Set the scope in the span layer's config
-              await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, "scope", field.scope);
-
-              createdSpanLayers.push(spanLayer);
-            } catch (fieldError) {
-              console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
-              failures.push(`Annotation field "${field.name}" could not be created: ${fieldError.message}`);
-            }
-          }
-        }
-
-        resources.spanLayers = createdSpanLayers;
-      }
-
-      // Step 7: Configure ignored tokens on token layer
-      if (tokenLayerId && setupData.fields?.ignoredTokens) {
-        updateProgress(60, 'Configuring ignored tokens...');
-        const ignoredTokensConfig = {
-          type: setupData.fields.ignoredTokens.mode === 'unicode-punctuation' ? 'unicodePunctuation' : 'blacklist'
-        };
-
-        if (ignoredTokensConfig.type === 'unicodePunctuation') {
-          ignoredTokensConfig.whitelist = setupData.fields.ignoredTokens.unicodePunctuationExceptions || [];
-        } else {
-          ignoredTokensConfig.blacklist = setupData.fields.ignoredTokens.explicitIgnoredTokens || [];
-        }
-
-        await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, "ignoredTokens", ignoredTokensConfig);
-      }
-
-      // Step 8: Handle vocabularies. Resume-safe: a vocab already linked to
-      // the project (visible on the re-fetched existingProject of a retry) is
-      // not created or linked again, so a retry can't duplicate a custom
-      // vocabulary that succeeded on the first attempt.
-      if (setupData.vocabulary?.vocabularies?.length > 0) {
-        updateProgress(70, 'Configuring vocabularies...');
-        const enabledVocabs = setupData.vocabulary.vocabularies.filter(vocab => vocab.enabled);
-        const linkedVocabs = existingProject?.vocabs || [];
-        const vocabulariesProcessed = [];
-
-        for (const vocab of enabledVocabs) {
-          try {
-            if (vocab.isCustom && vocab.id.startsWith('new-')) {
-              const alreadyLinked = linkedVocabs.find(v => v.name === vocab.name);
-              if (alreadyLinked) {
-                vocabulariesProcessed.push(alreadyLinked);
-                continue;
-              }
-              // Create new vocabulary
-              updateProgress(70, `Creating vocabulary: ${vocab.name}...`);
-              const newVocab = await client.vocabLayers.create(vocab.name);
-              // Link to project using the actual ID from the created vocabulary
-              await client.projects.linkVocab(currentProjectId, newVocab.id);
-              vocabulariesProcessed.push(newVocab);
-            } else {
-              if (linkedVocabs.some(v => v.id === vocab.id)) {
-                vocabulariesProcessed.push(vocab);
-                continue;
-              }
-              // Link existing vocabulary
-              updateProgress(70, `Linking vocabulary: ${vocab.name}...`);
-              await client.projects.linkVocab(currentProjectId, vocab.id);
-              vocabulariesProcessed.push(vocab);
-            }
-          } catch (vocabError) {
-            console.warn(`Failed to process vocabulary ${vocab.name}:`, vocabError);
-            failures.push(`Vocabulary "${vocab.name}" could not be set up: ${vocabError.message}`);
-          }
-        }
-        resources.vocabularies = vocabulariesProcessed;
-      }
-
-      // Step 9: Configure document metadata
-      updateProgress(80, 'Configuring document metadata...');
-
-      // Use configured fields if available, otherwise use predefined defaults
-      let enabledFields = setupData.documentMetadata?.enabledFields?.filter(field => field.enabled) || [];
-
-      // If no document metadata was configured, use the default enabled fields
-      if (!setupData.documentMetadata?.enabledFields) {
-        const defaultFields = [
-          { name: 'Date', enabled: true, isCustom: false },
-          { name: 'Speakers', enabled: true, isCustom: false },
-          { name: 'Location', enabled: true, isCustom: false },
-          { name: 'Genre', enabled: false, isCustom: false },
-          { name: 'Recording Quality', enabled: false, isCustom: false },
-          { name: 'Transcriber', enabled: false, isCustom: false }
-        ];
-        enabledFields = defaultFields.filter(field => field.enabled);
-      }
-
-      const metadataConfig = enabledFields.map(field => ({
-        name: field.name
-      }));
-      await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, "documentMetadata", metadataConfig);
-
-      // Step 10: Mark project as initialized — but ONLY if every step
-      // succeeded. A partial project must not present as ready; the user
-      // retries (resume-safe — see createdProjectId and the reuse logic in
-      // steps 6/8) until everything is in place.
-      if (failures.length > 0) {
-        setErrors(failures);
+      if (result.alreadyInitialized) {
         notifyError(
-          `${failures.length} setup step${failures.length === 1 ? '' : 's'} failed. ` +
+          'This project is already initialized with Plaid Base. Re-running setup is not supported — create a new project instead.',
+          'Project Already Initialized'
+        );
+        return;
+      }
+
+      // A partial project must not present as ready; the user retries
+      // (resume-safe) until everything is in place.
+      if (result.failures.length > 0) {
+        setErrors(result.failures);
+        notifyError(
+          `${result.failures.length} setup step${result.failures.length === 1 ? '' : 's'} failed. ` +
           'The project has NOT been marked ready — fix the issue or use Retry Setup to finish.',
           'Setup Incomplete'
         );
         return;
       }
 
-      updateProgress(90, 'Finalizing setup...');
-      await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, "initialized", true);
-
-      // Complete
       updateProgress(100, 'Setup complete!');
-      setCreatedResources(resources);
+      setCreatedResources(result.resources);
       setIsComplete(true);
 
       notifySuccess(
@@ -338,8 +80,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
         'Setup Complete'
       );
 
-      // Redirect
-      navigate(`/projects/${currentProjectId}`);
+      navigate(`/projects/${result.projectId}`);
 
     } catch (error) {
       console.error('Setup failed:', error);

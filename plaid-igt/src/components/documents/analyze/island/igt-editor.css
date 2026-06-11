@@ -443,6 +443,16 @@
   background: #f4f1fb;
   border-radius: 3px;
 }
+/* Display-only affix joint between adjacent morphemes ("-", or "=" for
+   clitics, from metadata.morphType) — not part of the editable form. */
+.igt-morph-joiner {
+  flex: none;
+  margin-right: 1px;
+  color: #a89fc0;
+  font-size: 11px;
+  user-select: none;
+  pointer-events: none;
+}
 .igt-morph-cell {
   height: var(--igt-morph-h);
   display: flex;

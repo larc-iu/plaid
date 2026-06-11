@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Plus, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, ArrowUp, ArrowDown, FileUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
@@ -143,9 +143,14 @@ export const ProjectList = () => {
     <div className="tw mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
-        <Button onClick={() => navigate('/projects/new')}>
-          <Plus className="h-4 w-4" /> New Project
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/projects/import')}>
+            <FileUp className="h-4 w-4" /> Import from FLEx
+          </Button>
+          <Button onClick={() => navigate('/projects/new')}>
+            <Plus className="h-4 w-4" /> New Project
+          </Button>
+        </div>
       </div>
 
       {error && (

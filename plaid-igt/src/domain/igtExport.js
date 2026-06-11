@@ -7,9 +7,13 @@
 //   expex — LaTeX \ex\begingl \gla/\glb/\glft … (safe expex subset)
 //
 // Line 1 is always the morpheme-segmented word forms ("tod-os"); the gloss
-// line(s) join each word's morpheme values with "-". Words with no morphemes
-// fall back to their surface form. LaTeX formats need equal token counts per
-// line, so empty glosses become {}.
+// line(s) join each word's morpheme values the same way. The joint between
+// two morphemes is "=" when either is a clitic (metadata.morphType), else "-"
+// — see domain/affixMarkers.js; markers are display-only, never stored.
+// Words with no morphemes fall back to their surface form. LaTeX formats
+// need equal token counts per line, so empty glosses become {}.
+
+import { morphemeJoiner } from './affixMarkers.js';
 
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
@@ -31,12 +35,16 @@ const morphFormOf = (m) => {
 // one value per word field.
 function wordCells(token, { morphFields, wordFields }) {
   const morphemes = token.morphemes || [];
+  const joinChain = (texts) => texts
+    .map((t, i) => (i === 0 ? t
+      : morphemeJoiner(morphemes[i - 1]?.metadata?.morphType, morphemes[i]?.metadata?.morphType) + t))
+    .join('');
   const segmented = morphemes.length
-    ? morphemes.map((m) => morphFormOf(m)).join('-')
+    ? joinChain(morphemes.map((m) => morphFormOf(m)))
     : (token.content ?? '');
   const morphLines = morphFields.map((f) =>
     morphemes.length
-      ? morphemes.map((m) => m.annotations?.[f]?.value ?? '').join('-')
+      ? joinChain(morphemes.map((m) => m.annotations?.[f]?.value ?? ''))
       : '');
   const wordLines = wordFields.map((f) => token.annotations?.[f]?.value ?? '');
   return { segmented, morphLines, wordLines };
