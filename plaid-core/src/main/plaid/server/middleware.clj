@@ -7,7 +7,6 @@
             [plaid.server.config :refer [config]]
             [plaid.server.sql :refer [datasource]]
             [plaid.sql.common :as psc]
-            [plaid.history.core :as history]
             [plaid.rest-api.v1.core :refer [rest-handler]]
             [clojure.data.json :as json]
             [clojure.edn :as edn]
@@ -17,7 +16,6 @@
   (:import (java.io File)
            (java.nio.file Files)
            (java.nio.file.attribute PosixFilePermission)
-           (java.time Instant)
            (java.util EnumSet)))
 
 ;; Secret key handling
@@ -99,104 +97,28 @@
   "Binary MB (1024*1024). Reported as `store_size_mb` in /health."
   (* 1024 1024))
 
-;; lag-rows + max-unreplicated-op-ts live in plaid.history.core (single
-;; copy shared with the tailer's status snapshot — a schema change must
-;; not make /health and the tailer disagree).
-(def ^:private lag-rows history/lag-rows)
-(def ^:private max-unreplicated-op-ts history/max-unreplicated-op-ts)
-
-(defn- cursor-id->str
-  "UUIDs in the cursor come back from XTDB already as UUID instances; render
-   them to the canonical string form for JSON. Strings pass through."
-  [x]
-  (cond
-    (nil? x) nil
-    (string? x) x
-    :else (str x)))
-
-(defn- safe-parse-instant
-  "Parse an ISO-8601 string to a java.time.Instant; nil/parse failure → nil.
-   Used by the /health lag/age fields — a malformed cursor ts shouldn't
-   500 /health."
-  [s]
-  (when (string? s)
-    (try (Instant/parse s) (catch Exception _ nil))))
-
-(defn- history-block
-  "Build the /health :history block. Returns nil when history is disabled
-   (caller omits the key entirely).
-
-   Defensive: any read against the history node can fail (node startup
-   race, malformed cursor doc, JDBC blip on the OLTP count query). We
-   degrade to {:enabled true :ready false :error \"...\"} rather than
-   tanking the entire /health response."
+(defn- audit-block
+  "Build the /health :audit block — disk visibility for the audit log,
+   which effectively IS the database (98% of file size in practice) and
+   is also the as-of read source. Cheap: one pragma pair + one count(*)
+   (an index-only scan). Degrades to {:error ...} rather than tanking
+   /health."
   [ds]
-  (when (history/enabled?)
-    (try
-      (let [node history/node
-            ;; Node defstate may legitimately be nil during a startup race —
-            ;; the history node hasn't reached :start yet even though enabled?
-            ;; is already true. Surface as ready=false, not as an error.
-            cursor (when node (history/cursor-read node))
-            cursor-ts (:last-op-ts cursor)
-            cursor-op-id (:last-op-id cursor)
-            lag-rows-n (lag-rows ds cursor-ts cursor-op-id)
-            ready? (zero? lag-rows-n)
-            cursor-ts-inst (safe-parse-instant cursor-ts)
-            cursor-age-ms (when cursor-ts-inst
-                            (- (System/currentTimeMillis) (.toEpochMilli cursor-ts-inst)))
-            ;; `lag_ms` is the OLTP-history op-ts gap: how far behind the
-            ;; tailer is in wall-clock terms. Zero when caught up
-            ;; (nothing past the cursor), regardless of how long ago
-            ;; the cursor was written. `cursor_age_ms` measures the
-            ;; opposite — staleness from the operator's perspective
-            ;; (now - cursor-ts) — useful for "is the tailer alive?"
-            ;; but balloons during idle even when fully caught up.
-            ;;
-            ;; ALWAYS numeric (never null) so numeric alerting rules don't
-            ;; break: the `(or … 0)` covers two behind-but-ungappable
-            ;; cases — (a) the max-ts query races the tailer advancing the
-            ;; cursor (we're now caught up → 0 is correct), and (b) cold
-            ;; start with no cursor yet (no cursor → no op-ts gap). In both,
-            ;; `lag_rows` is the authoritative "behind" signal. Note too
-            ;; that lag_ms is a TIME gap, so it can legitimately read 0
-            ;; while lag_rows > 0 when the pending ops share a timestamp —
-            ;; use lag_rows for "how much work remains".
-            lag-ms (if ready?
-                     0
-                     (or (when-let [max-ts (safe-parse-instant
-                                            (max-unreplicated-op-ts ds cursor-ts cursor-op-id))]
-                           (when cursor-ts-inst
-                             (max 0 (- (.toEpochMilli max-ts)
-                                       (.toEpochMilli cursor-ts-inst)))))
-                         0))
-            tailer-status (or (some-> (:tailer-status cursor) name)
-                              "running")
-            store-bytes (try (history/disk-bytes) (catch Exception _ 0))
-            store-mb (long (Math/round (double (/ store-bytes bytes-per-mb))))]
-        (cond-> {:enabled true
-                 :ready ready?
-                 :cursor_ts cursor-ts
-                 :cursor_op_id (cursor-id->str cursor-op-id)
-                 :cursor_age_ms cursor-age-ms
-                 :lag_ms lag-ms
-                 :lag_rows lag-rows-n
-                 :tailer_status tailer-status
-                 :store_size_mb store-mb}
-          (:stall-reason cursor) (assoc :stall_reason (:stall-reason cursor))))
-      (catch Throwable t
-        (log/warn t "history /health probe failed")
-        {:enabled true
-         :ready false
-         :error (or (.getMessage t) (.. t getClass getSimpleName))}))))
+  (try
+    (let [size-bytes (:bytes (psc/q1 ds ["SELECT page_count*page_size AS bytes
+                                          FROM pragma_page_count(), pragma_page_size()"]))
+          audit-rows (:n (psc/q1 ds ["SELECT count(*) AS n FROM audit_writes"]))]
+      {:db_size_mb (long (Math/round (double (/ size-bytes bytes-per-mb))))
+       :audit_rows audit-rows})
+    (catch Throwable t
+      (log/warn t "audit /health probe failed")
+      {:error (or (.getMessage t) (.. t getClass getSimpleName))})))
 
 (defn- health-body [ds]
   (let [base {:ok true
               :version health-version
               :uptime-ms (- (System/currentTimeMillis) start-time-ms)}]
-    (if-let [history (history-block ds)]
-      (assoc base :history history)
-      base)))
+    (assoc base :audit (audit-block ds))))
 
 (defn- health-response
   ([] (health-response datasource))

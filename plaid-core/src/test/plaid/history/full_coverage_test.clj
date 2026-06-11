@@ -981,23 +981,6 @@
 ;; GAP 5: a stalled tailer returns 503 (with reason) on a doc as-of GET
 ;; ============================================================
 
-(deftest ^:integration stalled-tailer-returns-503-on-doc-get
-  (with-test-history-node
-    (fn []
-      (let [proj (create-test-project admin-request "StallProj")
-            doc (create-test-document admin-request proj "D")
-            ts (latest-op-ts)
-            _ (drain!)
-            ;; Force a stall directly on the cursor, then issue a real
-            ;; document as-of GET through wrap-route-as-of.
-            _ (history/set-stalled! *history-node* {:op-id (random-uuid) :seq 0
-                                                    :reason "test-induced stall"})
-            res (get-doc-as-of doc ts)]
-        (testing "503 with the stall surfaced (not a generic error)"
-          (is (= 503 (:status res)))
-          (is (re-find #"(?i)stall" (pr-str (:body res)))
-              "503 body conveys the stall, not an opaque internal error"))))))
-
 ;; ============================================================
 ;; GAP 6: operations.ts is strictly monotonic — the invariant that makes
 ;; the (ts, id) keyset safe (same-ts distinct ops can't occur in one JVM)
@@ -1206,42 +1189,3 @@
 ;; doc GET now returns 200 with the correct historical body. This pins the full
 ;; operator recovery story end-to-end.
 
-(deftest ^:integration stalled-tailer-recovers-via-resume-end-to-end
-  (with-test-history-node
-    (fn []
-      (let [db plaid.fixtures/db
-            node *history-node*
-            proj (create-test-project admin-request "ResumeProj")
-            doc (create-test-document admin-request proj "ResumeDoc")
-            tl (-> (create-text-layer admin-request proj "TL") :body :id)
-            tkl (-> (create-token-layer admin-request tl "TKL" "any") :body :id)
-            text-id (-> (create-text admin-request tl doc "hello world") :body :id)
-            t1 (-> (create-token admin-request tkl text-id 0 5) :body :id)
-            _ (drain!)
-            ts (latest-op-ts)
-            ;; The healthy baseline: doc reads at ts BEFORE we stall.
-            healthy (-> (get-doc-as-of doc ts true) :body)]
-        (testing "before any stall, the as_of doc GET succeeds with the token"
-          (is (= 200 (:status (get-doc-as-of doc ts))))
-          (is (= #{t1} (set (map :token/id (tokens-from-body healthy))))
-              "baseline body carries the created token (non-vacuous target)"))
-        ;; Induce a stall directly on the cursor (mirrors what the run-loop's
-        ;; catch does on a malformed row), then confirm reads 503.
-        (history/set-stalled! node {:op-id (random-uuid) :seq 0
-                                    :reason "test-induced stall for resume recovery"})
-        (testing "while stalled, the as_of doc GET returns 503"
-          (let [res (get-doc-as-of doc ts)]
-            (is (= 503 (:status res)))
-            (is (re-find #"(?i)stall" (pr-str (:body res)))
-                "503 conveys the stall")))
-        ;; Operator recovery: clear the stall + restart the loop.
-        (tailer/resume! db node {})
-        (drain!)
-        (testing "after resume!, the tailer is running again"
-          (is (tailer-running?) "cursor status flipped back to :running"))
-        (testing "after resume!, the SAME as_of doc GET returns 200 with the correct body"
-          (let [res (get-doc-as-of doc ts true)]
-            (is (= 200 (:status res)) "read recovered from 503 to 200")
-            (is (= (normalize-for-compare healthy)
-                   (normalize-for-compare (:body res)))
-                "post-resume historical body is byte-for-byte the pre-stall body")))))))

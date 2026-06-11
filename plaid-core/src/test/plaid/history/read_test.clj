@@ -13,6 +13,7 @@
             [next.jdbc :as jdbc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call
+                                    with-test-users user1-request
                                     assert-created assert-ok assert-no-content
                                     assert-status with-clean-db]]
             [plaid.history.read :as hread]
@@ -20,7 +21,7 @@
             [plaid.sql.document :as doc]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
 
 (defn- latest-op-ts []
@@ -131,6 +132,65 @@
     (testing "reconstruction after the delete is nil"
       (is (nil? (hread/get-at db doc-id t-dead)))
       (is (false? (hread/exists-at? db doc-id t-dead))))))
+
+(deftest rest-as-of-get-end-to-end
+  ;; Through the full REST stack: ?as-of= on the top-level document GET
+  ;; serves the audit-log reconstruction. Notably this runs with ZERO
+  ;; history configuration — the old replica stack 503'd ("history
+  ;; disabled") in exactly this test environment.
+  (let [proj (create-test-project admin-request "HReadRestProj")
+        doc-id (create-test-document admin-request proj "HReadRestDoc")
+        tl (-> (create-text-layer admin-request proj "HRR-TL") :body :id)
+        text-id (-> (create-text admin-request tl doc-id "first body") :body :id)
+        t1 (latest-op-ts)
+        _ (assert-ok (api-call admin-request {:method :patch
+                                              :path (str "/api/v1/texts/" text-id)
+                                              :body {:body "second body"}}))
+        get-doc (fn [qs] (api-call admin-request
+                                   {:method :get
+                                    :path (str "/api/v1/documents/" doc-id "?include-body=true" qs)}))
+        body-of (fn [resp] (-> resp :body :document/text-layers first :text-layer/text :text/body))]
+    (testing "live GET sees the current body"
+      (let [resp (get-doc "")]
+        (assert-ok resp)
+        (is (= "second body" (body-of resp)))))
+    (testing "as-of GET sees the historical body"
+      (let [resp (get-doc (str "&as-of=" t1))]
+        (assert-ok resp)
+        (is (= "first body" (body-of resp)))))
+    (testing "as-of GET on a deleted doc still resolves (project fallthrough + reconstruction)"
+      (assert-no-content (api-call admin-request
+                                   {:method :delete :path (str "/api/v1/documents/" doc-id)}))
+      (let [resp (get-doc (str "&as-of=" t1))]
+        (assert-ok resp)
+        (is (= "first body" (body-of resp))))
+      (is (= 404 (:status (get-doc "")))
+          "live GET 404s — the doc is gone from OLTP"))))
+
+(deftest deleted-doc-readable-by-non-admin-reader-via-fallthrough
+  ;; Auth resolves a deleted doc's project by reconstruction at T
+  ;; (get-project-id fallthrough), then ACLs against CURRENT membership.
+  ;; A project reader keeps at-time access to deleted docs; the live GET
+  ;; 403s for them (no project resolvable on the live path).
+  (let [proj (create-test-project admin-request "HReadAclProj")
+        doc-id (create-test-document admin-request proj "AclDoomed")
+        _ (assert-no-content (api-call admin-request
+                                       {:method :post
+                                        :path (str "/api/v1/projects/" proj "/readers/user1@example.com")}))
+        t-alive (latest-op-ts)
+        _ (assert-no-content (api-call admin-request
+                                       {:method :delete
+                                        :path (str "/api/v1/documents/" doc-id)}))]
+    (testing "reader's at-time GET of the deleted doc succeeds"
+      (let [resp (api-call user1-request
+                           {:method :get
+                            :path (str "/api/v1/documents/" doc-id "?as-of=" t-alive)})]
+        (assert-ok resp)
+        (is (= "AclDoomed" (-> resp :body :document/name)))))
+    (testing "reader's LIVE GET of the deleted doc 403s (no project resolvable without fallthrough)"
+      (is (= 403 (:status (api-call user1-request
+                                    {:method :get
+                                     :path (str "/api/v1/documents/" doc-id)})))))))
 
 (deftest retention-gate-refuses-pruned-range
   (let [proj (create-test-project admin-request "HReadPruneProj")

@@ -2,7 +2,6 @@
   (:require [plaid.sql.common :as psc]
             [plaid.sql.document :as doc]
             [plaid.sql.operation :as op]
-            [plaid.history.core :as history]
             [taoensso.timbre :as log]
             [clojure.string :as str]
             [clojure.data.json :as json])
@@ -185,10 +184,10 @@
           (str/split qs #"&"))))
 
 (defn wrap-reject-as-of
-  "Reject `?as-of=` with 400. Applied to every non-document route — the
-  history replica only mirrors document-scoped state, so a time-travel
-  query against `/projects`, `/users`, `/audit-log`, etc. has no
-  defined semantics.
+  "Reject `?as-of=` with 400. Applied to every non-document route —
+  as-of reconstruction is document-scoped, so a time-travel query
+  against `/projects`, `/users`, `/audit-log`, etc. has no defined
+  semantics.
 
   Document GETs replace this with `wrap-route-as-of` (see below)."
   [handler]
@@ -198,28 +197,12 @@
        :body {:error "as-of query parameter is not supported on this endpoint. Time travel is only available on document GETs."}}
       (handler request))))
 
-(defn- cursor-ts->iso
-  "Render a cursor's `:last-op-ts` as a canonical ISO-8601 string for the
-  425 body. Today the cursor stores `:last-op-ts` as an ISO string (the
-  tailer reads it straight from SQLite TEXT), so the common path is a
-  pass-through. But if a future code path ever stores a Date / Instant /
-  ZonedDateTime there, a bare `(str ...)` would emit a non-canonical,
-  non-ISO shape (e.g. `Fri May 28 ...` for a Date) into the wire body.
-  Coerce non-strings through `history/->instant` (which knows all those
-  shapes) then `.toString` so the body is always canonical ISO-8601.
-  Returns nil for nil."
-  [last-op-ts]
-  (cond
-    (nil? last-op-ts) nil
-    (string? last-op-ts) last-op-ts
-    :else (.toString (history/->instant last-op-ts))))
-
 (def ^:private bare-doc-get-path-regex
   ;; `?as-of=` is only meaningful on the top-level doc GET
   ;; (`/api/v1/documents/<uuid>`). Sub-routes (`/lock`, `/media`,
   ;; `/metadata/...`) read non-bitemporal state (filesystem media,
   ;; in-memory locks, or — for metadata — handlers wired only against
-  ;; the OLTP `:db`). Injecting `:as-of-node` for them would silently
+  ;; the OLTP `:db`). Injecting `:as-of-ts` for them would silently
   ;; serve CURRENT state instead of state at `ts`, so we reject 400
   ;; rather than mislead the caller. The trailing-`/?` tolerates the
   ;; one-trailing-slash case some proxies emit.
@@ -227,26 +210,28 @@
 
 (defn wrap-route-as-of
   "Document-route variant of as-of handling. When `?as-of=<ISO-8601>`
-  is present, parse it and route the handler call through the history
-  replica by injecting `:as-of-node` and `:as-of-ts` on the request.
-  Downstream handlers dispatch on `:as-of-node` and call
-  `plaid.history.document/...-at` instead of `plaid.sql.document/...`.
+  is present on the top-level document GET, parse it and inject
+  `:as-of-ts` on the request; downstream handlers then serve the read
+  from the audit log (`plaid.history.read`) instead of current OLTP
+  state.
 
-  Resolves the history node via the `plaid.history.core/node` defstate so we
-  match the other middleware that read from mount (e.g. db).
+  Always available: the audit log lives in the same database the write
+  committed to, so there is no replica to enable, lag behind, or stall
+  — the old 425/staleness and 503-disabled contracts are gone.
 
   `?as-of=` on a doc SUB-route (lock/media/metadata) is rejected with
-  400 — those handlers don't honor `:as-of-node` and would silently
-  serve current state, which is worse than failing loud.
+  400 — those handlers read non-bitemporal state (filesystem media,
+  in-memory locks, OLTP-wired metadata) and would silently serve
+  current state, which is worse than failing loud.
 
   Error mapping:
-   * malformed ISO-8601                       → 400
-   * as-of on non-top-level doc route         → 400
-   * history disabled (node is nil)              → 503 `history disabled`
-   * handler throws `:history/not-caught-up`     → 425 + cursor in body
-   * handler throws `:history/stalled`           → 503 + stall reason
-   * any other exception                      → 503 `history read failed`
-     (logged with a correlation id; no message leaked to the client)"
+   * malformed ISO-8601                     → 400
+   * as-of on non-top-level doc route       → 400
+   * non-GET/HEAD                           → 400
+   * `:history/pruned` (T below the
+     audit_retention marker)                → 400 + the marker ts
+   * any other exception                    → 500 with a correlation id
+     (logged; no message leaked to the client)"
   [handler]
   (fn [request]
     (if-let [raw (raw-as-of-param request)]
@@ -258,9 +243,6 @@
            :body {:error (str "Invalid as-of value (expected ISO-8601 instant, e.g. "
                               "2026-05-28T09:00:00Z): " raw)}}
 
-          ;; Reject as-of on doc sub-routes — lock/media handlers ignore
-          ;; `:as-of-node` and would silently serve current state. Better
-          ;; to 400 the caller than to confuse them with stale numbers.
           (not (re-matches bare-doc-get-path-regex (or (:uri request) "")))
           {:status 400
            :body {:error "as-of query parameter is not supported on this endpoint. Time travel is only available on the top-level document GET."}}
@@ -276,64 +258,26 @@
           {:status 400
            :body {:error "as-of query parameter is only allowed with GET or HEAD requests."}}
 
-          ;; `history/enabled?` reads config, not mount state — answers the
-          ;; "should this even work?" question without tripping on mount
-          ;; not-started in tests (where `history/node` is a DerefableState
-          ;; placeholder, not nil). We then separately tolerate `node` =
-          ;; nil for the startup race window where enabled? is true but
-          ;; the defstate hasn't reached :start yet, mirroring how
-          ;; `plaid.server.middleware/history-block` treats it.
-          (not (history/enabled?))
-          {:status 503
-           :body {:error "history disabled"}}
-
-          (nil? history/node)
-          {:status 503
-           :body {:error "history not ready"}}
-
           :else
-          ;; Single Throwable catch so unknown-typed ex-infos can't escape
-          ;; this middleware (sibling catch clauses do NOT chain — an
-          ;; (throw e) inside the ExceptionInfo branch would propagate
-          ;; PAST the Throwable sibling, leaking internals via the ring
-          ;; default 500 handler). Type-route inside the catch body.
+          ;; Single Throwable catch so unknown exceptions can't escape
+          ;; this middleware and leak internals via the ring default
+          ;; 500 handler. Type-route inside the catch body.
           (try
-            (handler (assoc request
-                            :as-of-node history/node
-                            :as-of-ts parsed))
+            (handler (assoc request :as-of-ts parsed))
             (catch Throwable t
               (let [d (when (instance? clojure.lang.ExceptionInfo t)
                         (ex-data t))]
-                (case (:type d)
-                  :history/not-caught-up
-                  {:status 425
-                   :body {:error "history not caught up"
-                          :history-cursor (cursor-ts->iso (some-> d :history-cursor :last-op-ts))
+                (if (= :history/pruned (:type d))
+                  {:status 400
+                   :body {:error "as-of timestamp predates pruned audit history"
+                          :pruned-below-ts (:pruned-below-ts d)
                           :requested-ts (:requested-ts d)}}
-                  :history/stalled
-                  {:status 503
-                   :body {:error "history tailer stalled"
-                          :stall-reason (:stall-reason d)}}
-                  ;; A hung XTDB read was bounded by the handler's
-                  ;; per-read timeout (see `with-history-timeout` in
-                  ;; rest_api.v1.document). Surface it as 503 — same
-                  ;; "history can't serve right now, retry later" family as
-                  ;; :history/stalled — rather than a generic correlation-id
-                  ;; 503, so operators can distinguish a timeout from an
-                  ;; arbitrary error.
-                  :history/read-timeout
-                  {:status 503
-                   :body {:error "history read timed out"
-                          :timeout-ms (:timeout-ms d)}}
-                  ;; Anything else (unknown typed ex-info or any other
-                  ;; Throwable) → 503 with a correlation id, no message /
-                  ;; stack leaked to the caller.
-                  (let [cid (format "history-%08x"
+                  (let [cid (format "as-of-%08x"
                                     (bit-and 0xFFFFFFFF
                                              (hash [(.getName (class t)) (.getMessage t)])))]
-                    (log/error t (str "history at-time read failed [" cid "] uri=" (:uri request)))
-                    {:status 503
-                     :body {:error "history read failed"
+                    (log/error t (str "as-of read failed [" cid "] uri=" (:uri request)))
+                    {:status 500
+                     :body {:error "as-of read failed"
                             :correlation-id cid}})))))))
       (handler request))))
 

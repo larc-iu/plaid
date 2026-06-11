@@ -303,15 +303,14 @@
     (throw (ex-info "Bad key" {:key key})))
   (fn [{db :db :as request}]
     (let [user-id (->user-id request)
-          ;; Forward :as-of-node / :as-of-ts so doc-scoped `get-project-id`
-          ;; resolvers can fall through to the history replica when the doc
-          ;; has been deleted from OLTP but existed at `ts`. ACL membership
-          ;; is still resolved from CURRENT OLTP (`prj/get db id` below) —
-          ;; historical-ACL is explicitly out of scope; only the doc→project
-          ;; lookup is allowed to time-travel.
+          ;; Forward :as-of-ts so doc-scoped `get-project-id` resolvers
+          ;; can fall through to audit-log reconstruction when the doc has
+          ;; been deleted from OLTP but existed at `ts`. ACL membership is
+          ;; still resolved from CURRENT OLTP (`prj/get db id` below) —
+          ;; historical-ACL is explicitly out of scope; only the
+          ;; doc→project lookup is allowed to time-travel.
           id (get-project-id {:parameters (:parameters request)
                               :db db
-                              :as-of-node (:as-of-node request)
                               :as-of-ts (:as-of-ts request)})
           admin? (user/admin? (:user/record request))
           project (prj/get db id)]
