@@ -775,6 +775,16 @@
         ;; hidden __ord_N projections); reject them to avoid alias collisions.
         (when-let [reserved (seq (filter #(str/starts-with? (name %) "?__") (:find ast)))]
           (err! :validate (str "Variable names beginning with ?__ are reserved: " (vec reserved))))
+        ;; Find vars become SQL column aliases — the ONLY user-derived
+        ;; identifier the compiler ever emits. Constrain the charset so a
+        ;; hostile or typo'd name is a structured 400 HERE, instead of
+        ;; relying on HoneySQL's suspicious-entity-check deep in the
+        ;; compiler (an opaque 500 — and the only line of defense should
+        ;; format options ever change).
+        (when-let [bad (seq (remove #(re-matches #"\?[A-Za-z][A-Za-z0-9_-]*" (name %))
+                                    (:find ast)))]
+          (err! :validate (str ":find variable names must start with a letter and use only "
+                               "letters, digits, '_' or '-': " (vec bad))))
         (when-not (apply distinct? (:find ast))
           (err! :validate (str ":find has duplicate variables: "
                                (pr-str (->> (:find ast) frequencies (keep (fn [[v n]] (when (> n 1) v))) vec))))))))

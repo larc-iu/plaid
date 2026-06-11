@@ -43,6 +43,25 @@
     (is (= :span (kinds (symbol "?h"))))
     (is (= :span (kinds (symbol "?d"))))))
 
+(deftest find-var-charset
+  ;; Find vars become SQL column aliases — the compiler's only
+  ;; user-derived identifier. A hostile name used to surface as an
+  ;; opaque 500 from HoneySQL's suspicious-entity-check; now it's a
+  ;; structured 400 at validation.
+  (testing "hostile / odd names are 400s"
+    (is (= 400 (code-of #(ast/parse+validate
+                          {"find" ["?x\");DROP TABLE spans;--"]
+                           "where" [["span" "?x\");DROP TABLE spans;--" {}]]}))))
+    (is (= 400 (code-of #(ast/parse+validate
+                          {"find" ["?a b"] "where" [["span" "?a b" {}]]})))
+        "HoneySQL-'safe' specials are rejected too")
+    (is (= 400 (code-of #(ast/parse+validate
+                          {"find" ["?1x"] "where" [["span" "?1x" {}]]})))
+        "must start with a letter"))
+  (testing "ordinary names pass"
+    (is (map? (ast/parse+validate
+               {"find" ["?my-span_2"] "where" [["span" "?my-span_2" {}]]})))))
+
 (deftest validation-errors
   (testing "all author errors are :code 400"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}]] "as-of" "2020"})))
