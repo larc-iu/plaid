@@ -360,10 +360,33 @@
 ;; Seed cursor on cold start
 ;; ============================================================
 
+(defn- check-pruned-audit-log!
+  "Refuse a COLD rebuild (no cursor, replay-from-epoch) when the audit
+  log has been pruned. The audit log is the replica's only replay
+  source: replaying a pruned log silently produces PARTIAL documents —
+  the replayer's patch-docs creates-on-absent, and junction folds
+  carried by pruned :update rows are simply lost. No prune code exists
+  yet; the contract (see the audit_retention migration) is that any
+  future prune records its high-water mark, and this check turns a
+  would-be silently-partial rebuild into a stall with instructions."
+  [ds]
+  (when-let [row (psc/q1 ds {:select [:*] :from [:audit_retention]})]
+    (throw (ex-info (str "Refusing cold history rebuild: the audit log was pruned below "
+                         (:pruned_below_ts row) " (pruned at " (:pruned_at row) "). "
+                         "Replaying a pruned log would silently produce partial documents. "
+                         "Restore data/history-* from a backup taken after that prune, or "
+                         "set :cold-replay-on-empty? false to track only new ops "
+                         "(explicitly accepting the gap).")
+                    {:type :tailer/pruned-audit-log
+                     :pruned-below-ts (:pruned_below_ts row)
+                     :pruned-at (:pruned_at row)}))))
+
 (defn- seed-cursor
   "Return the cursor we should start from when none has been written
   yet. Honors `:cold-replay-on-empty?`:
-    - true (default): start at epoch, replay everything.
+    - true (default): start at epoch, replay everything — refused
+      (stall) when the audit log has been pruned, see
+      `check-pruned-audit-log!`.
     - false: advance the cursor to just past the latest existing
              `operations.ts` without applying anything, so the tailer
              only tracks ops committed from this moment forward.
@@ -379,7 +402,8 @@
   anything strictly newer than the snapshot moment is picked up."
   [ds cfg]
   (if (:cold-replay-on-empty? cfg)
-    {:last-op-ts epoch-iso :last-op-id nil :last-seq -1}
+    (do (check-pruned-audit-log! ds)
+        {:last-op-ts epoch-iso :last-op-id nil :last-seq -1})
     (let [latest (psc/q1 ds {:select [[[:max :ts] :max_ts]]
                              :from [:operations]})
           max-ts (:max_ts latest)]

@@ -30,6 +30,9 @@
                                  stall record names the offending row).
     :tailer/cursor-not-advanced — XTDB silently dropped the apply tx.
     :tailer/op-too-large        — one op's audit rows exceed the batch cap.
+    :tailer/pruned-audit-log    — cold rebuild refused: the audit log was
+                                  pruned (see audit_retention), so replay
+                                  would produce partial documents.
     :tailer/not-enabled         — resume! called with history disabled.
   The `:replayer/*` and `:tailer/*` types are caught by the tailer loop
   (→ stall), never surfaced to REST callers directly."

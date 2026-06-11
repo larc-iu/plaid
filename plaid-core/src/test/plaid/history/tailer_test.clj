@@ -392,6 +392,31 @@
         (is (= (:last-seq pre-cursor) (:last-seq post-cursor))
             "cursor seq unchanged")))))
 
+(deftest cold-rebuild-refused-when-audit-log-pruned
+  ;; Forward-compat guard: a future prune + cold rebuild would silently
+  ;; produce partial documents (patch-docs creates-on-absent; junction
+  ;; folds carried by pruned :update rows are lost). Any prune must
+  ;; record its high-water mark in audit_retention, and a cold start
+  ;; (no cursor, replay-from-epoch) must refuse with a typed error so
+  ;; the run-loop stalls with instructions instead.
+  (jdbc/execute! plaid.fixtures/db
+                 ["INSERT INTO audit_retention (id, pruned_below_ts, pruned_at)
+                   VALUES (1, ?, ?)"
+                  (canon-ts "2026-05-01T00:00:00Z") (canon-ts "2026-05-28T15:00:00Z")])
+  (let [op-id (str (UUID/randomUUID))
+        ts "2026-05-28T15:01:00Z"]
+    (insert-operation! plaid.fixtures/db op-id ts)
+    (insert-audit-rows! plaid.fixtures/db op-id ts 1)
+    (with-redefs [history/history-config (constantly (cfg 500))]
+      (let [thrown (try (tailer/poll-once! plaid.fixtures/db *history-node*)
+                        nil
+                        (catch clojure.lang.ExceptionInfo e e))]
+        (is (some? thrown) "cold poll against a pruned log throws")
+        (is (= :tailer/pruned-audit-log (:type (ex-data thrown)))
+            "typed error drives the run-loop's stall write")
+        (is (re-find #"pruned below" (ex-message thrown))
+            "message carries the prune high-water mark")))))
+
 (deftest stall-recovery-does-not-rewrite-backlog-system-time
   ;; H3 regression (2026-06-10): set-stalled!/set-running! used to write
   ;; the cursor doc WITHOUT :system-time, committing at wall-clock now and

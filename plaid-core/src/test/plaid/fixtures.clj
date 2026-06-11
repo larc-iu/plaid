@@ -93,6 +93,9 @@
    ;; truncated between tests, so a stale "complete" marker must not leak and make
    ;; a later test's ensure-converted! silently skip. No FK refs → order-free.
    "data_migrations"
+   ;; audit_retention: the prune high-water marker. A test that sets it
+   ;; (cold-rebuild refusal coverage) must not leak it into later tests.
+   "audit_retention"
    ;; api_tokens: after operations (operations.token_id → api_tokens) and
    ;; before the users wipe below (api_tokens.user_id → users).
    "api_tokens"
