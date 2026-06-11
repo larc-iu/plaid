@@ -19,7 +19,7 @@ import './igt-editor.css';
 import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/igtConfig';
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
-import { morphemeJoiner, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
+import { morphemeJoiner, isStemType, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -101,6 +101,9 @@ export class IgtEditor {
     this._savedTimer = null;
     // Whether the keyboard/scope help legend is expanded.
     this._helpOpen = false;
+    // Sentence pagination: big documents (hundreds of sentences) make the full
+    // grid multi-second to build, so only one page of sentences is in the DOM.
+    this._page = 0;
     // Pluggable gloss-guess source (see domain/glossGuess.js): assign a
     // different (sentences, fields) => { id, guessFor } factory to swap the
     // algorithm (e.g. a service-backed one).
@@ -132,15 +135,28 @@ export class IgtEditor {
   }
 
   // Search click-through: a sessionStorage key names a sentence to focus.
-  // Consumed once, after the first paint — scroll it into view and flash it.
+  // Page to it (it may be outside the initially rendered page), scroll it into
+  // view, and flash it. The key is removed only AFTER the element is actually
+  // focused — removing it on read would let React StrictMode's dev-mode
+  // throwaway double-mount consume it before the real mount runs.
   _consumeFocusRequest() {
     let req = null;
     try { req = JSON.parse(sessionStorage.getItem('igt:focus-sentence') || 'null'); } catch { /* noop */ }
     if (!req || req.docId !== this.doc.id) return;
-    sessionStorage.removeItem('igt:focus-sentence');
+    const idx = (this.doc.sentences || []).findIndex((s) => s.id === req.sentenceId);
+    if (idx < 0) {
+      sessionStorage.removeItem('igt:focus-sentence'); // stale target — drop it
+      return;
+    }
+    const page = Math.floor(idx / IgtEditor.PAGE_SIZE);
+    if (page !== this._page) {
+      this._page = page;
+      this._render(true);
+    }
     requestAnimationFrame(() => {
       const el = this.container.querySelector(`.igt-sentence[data-sentence-id="${req.sentenceId}"]`);
-      if (!el) return;
+      if (!el) return; // throwaway mount already torn down — leave the key for the real one
+      sessionStorage.removeItem('igt:focus-sentence');
       el.scrollIntoView({ block: 'center' });
       el.classList.add('igt-sentence--flash');
       setTimeout(() => el.classList.remove('igt-sentence--flash'), 2400);
@@ -161,8 +177,8 @@ export class IgtEditor {
   setReadOnly(ro) {
     if (ro === this.readOnly) return;
     // Flush a focused field's pending blur-commit BEFORE flipping the flag — the
-    // commit handlers (_commitField/_commitMorphForm/_commitPlaceholder) early-
-    // return when readOnly, so blurring after setting it would silently drop the
+    // commit handlers (_commitField/_commitMorphForm) early-return when
+    // readOnly, so blurring after setting it would silently drop the
     // in-progress edit at the read-only/time-travel transition.
     if (this.container.contains(document.activeElement)) document.activeElement.blur();
     this.readOnly = ro;
@@ -348,6 +364,10 @@ export class IgtEditor {
       .querySelectorAll('[data-suppress-commit]')
       .forEach((el) => { delete el.dataset.suppressCommit; });
     this.container.classList.toggle('igt-island--readonly', !!this.readOnly);
+    // Vocab-linked projects show a hint line under every word/morpheme form;
+    // the CSS reserves taller form rows for it (see --igt-form-h).
+    this.container.classList.toggle('igt-island--vocab',
+      Object.keys(this.doc.vocabularies || {}).length > 0);
     render(this._template(), this.container);
     this._restorePendingFocus();
     this._updateScrollCues();
@@ -368,9 +388,7 @@ export class IgtEditor {
       return;
     }
     let el = null;
-    if (pf.placeholderWord) {
-      el = this.container.querySelector(`.igt-morph-field--placeholder[data-word="${pf.placeholderWord}"]`);
-    } else if (pf.wordId != null && pf.precedence != null) {
+    if (pf.wordId != null && pf.precedence != null) {
       el = this.container.querySelector(`.igt-morph-field[data-word="${pf.wordId}"][data-prec="${pf.precedence}"]`);
     }
     if (!el) return;
@@ -430,10 +448,10 @@ export class IgtEditor {
     }
   };
 
-  // All focusable editable cells in DOM order (the "+" placeholder and disabled
-  // inputs are excluded — they aren't navigation targets).
+  // All focusable editable cells in DOM order (disabled inputs are excluded —
+  // they aren't navigation targets).
   _navFields() {
-    return [...this.container.querySelectorAll('.igt-field:not(.igt-morph-field--placeholder)')]
+    return [...this.container.querySelectorAll('.igt-field')]
       .filter((el) => !el.disabled);
   }
 
@@ -722,36 +740,6 @@ export class IgtEditor {
     this._run(() => this.doc.updateMorphemeForm(morphId, next));
   }
 
-  // Placeholder morpheme column: create a new morpheme on commit.
-  _placeholderKeydown() {
-    return (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
-      else if (e.key === 'Escape') { e.preventDefault(); e.target.value = ''; e.target.blur(); }
-    };
-  }
-  async _commitPlaceholder(e, word) {
-    if (this.readOnly) return;
-    const el = e.target;
-    const form = el.value.trim();
-    if (!form) { el.value = ''; return; }
-    // Hyphens split into a chain (same idiom as paste-splitting): committing
-    // "nac-en" appends two morphemes, not one with a literal hyphen.
-    const segments = form.split('-').map(x => x.trim()).filter(x => x !== '');
-    if (segments.length === 0) { el.value = ''; return; }
-    el.disabled = true;
-    this._pendingFocus = { placeholderWord: word.id };
-    const ok = await this._run(() => segments.length > 1
-      ? this.doc.createMorphemes(word.id, segments)
-      : this.doc.createMorpheme(word.id, segments[0]));
-    el.disabled = false;
-    if (ok) {
-      el.value = ''; // clear only on success
-    } else {
-      this._pendingFocus = null; // keep the typed form so the user can retry
-      el.focus();
-    }
-  }
-
   // ---- templates ----
   _template() {
     const doc = this.doc;
@@ -795,11 +783,48 @@ export class IgtEditor {
 
     const ctx = { orthographies, wordFields, morphFields, sentFields, hasMorphemes, ignoredCfg, guess };
 
+    // One page of sentences in the DOM (see PAGE_SIZE). Sentence numbering
+    // stays GLOBAL; cross-page movement is handled by the pager, the search
+    // click-through (_consumeFocusRequest pages first), and next-empty-gloss.
+    const pageCount = Math.max(1, Math.ceil(sentences.length / IgtEditor.PAGE_SIZE));
+    this._page = Math.min(Math.max(0, this._page), pageCount - 1);
+    const pageStart = this._page * IgtEditor.PAGE_SIZE;
+    const pageSentences = sentences.slice(pageStart, pageStart + IgtEditor.PAGE_SIZE);
+
     return html`
-      ${this._toolbar(sentences, ctx)}
+      ${this._toolbar(sentences, ctx, pageCount)}
       ${this._helpOpen ? this._legend(ctx) : nothing}
       ${doc.error ? html`<div class="igt-island__error" role="alert">${doc.error}</div>` : nothing}
-      ${repeat(sentences, (s) => s.id, (s, i) => this._sentence(s, i, ctx))}
+      ${repeat(pageSentences, (s) => s.id, (s, i) => this._sentence(s, pageStart + i, ctx))}
+      ${pageCount > 1 ? this._pager(sentences.length, pageCount, 'bottom') : nothing}
+    `;
+  }
+
+  static PAGE_SIZE = 25;
+
+  _setPage(page, scrollToTop = false) {
+    if (page === this._page) return;
+    this._page = page;
+    this._render(true);
+    if (scrollToTop) {
+      try { this.container.scrollIntoView({ block: 'start' }); } catch { /* noop */ }
+    }
+  }
+
+  _pager(total, pageCount, where) {
+    const start = this._page * IgtEditor.PAGE_SIZE;
+    const end = Math.min(total, start + IgtEditor.PAGE_SIZE);
+    const btn = (label, target, title, disabled) => html`
+      <button type="button" class="igt-pager__btn" ?disabled=${disabled} title=${title}
+        @click=${(e) => { e.stopPropagation(); this._setPage(target, where === 'bottom'); }}>${label}</button>`;
+    return html`
+      <div class="igt-pager">
+        ${btn('«', 0, 'First page', this._page === 0)}
+        ${btn('‹', this._page - 1, 'Previous page', this._page === 0)}
+        <span class="igt-pager__label">${start + 1}–${end} of ${total}</span>
+        ${btn('›', this._page + 1, 'Next page', this._page >= pageCount - 1)}
+        ${btn('»', pageCount - 1, 'Last page', this._page >= pageCount - 1)}
+      </div>
     `;
   }
 
@@ -823,13 +848,15 @@ export class IgtEditor {
   // Flip to true to restore — markup, CSS, and _glossStats are all kept.
   static SHOW_GLOSS_PROGRESS = false;
 
-  _toolbar(sentences, ctx) {
+  _toolbar(sentences, ctx, pageCount = 1) {
     const stats = this._glossStats(sentences, ctx);
     const nSent = sentences.length;
     return html`
       <div class="igt-toolbar">
         <div class="igt-toolbar__left">
-          <span class="igt-toolbar__count">${nSent} sentence${nSent === 1 ? '' : 's'}</span>
+          ${pageCount > 1
+            ? this._pager(nSent, pageCount, 'top')
+            : html`<span class="igt-toolbar__count">${nSent} sentence${nSent === 1 ? '' : 's'}</span>`}
           ${IgtEditor.SHOW_GLOSS_PROGRESS && stats ? html`
             <span class="igt-progress" title=${`${stats.done} of ${stats.total} morphemes have a gloss`}>
               <span class="igt-progress__bar"><span class="igt-progress__fill" style=${`width:${stats.pct}%`}></span></span>
@@ -874,7 +901,7 @@ export class IgtEditor {
         ${ctx.hasMorphemes ? html`
           <div class="igt-legend__row">
             <strong>Morphemes</strong>
-            <span>type <kbd>-</kbd> to split (pasting <em>a-b-c</em> splits too) · <kbd>⌫</kbd> at start merges with previous · <kbd>Alt</kbd>+<kbd>-</kbd> literal hyphen · hover a word for the <kbd>+</kbd> add column</span>
+            <span>type <kbd>-</kbd> to split (pasting <em>a-b-c</em> splits too) · <kbd>⌫</kbd> at start merges with previous · <kbd>Alt</kbd>+<kbd>-</kbd> literal hyphen</span>
           </div>` : nothing}
         <div class="igt-legend__row">
           <strong>Guesses</strong>
@@ -902,19 +929,49 @@ export class IgtEditor {
 
   // Focus + scroll to the first empty morpheme-gloss cell after the current one
   // (wrapping), so a linguist can chase down un-glossed morphemes quickly.
+  // Pagination-aware: when this page has no empty cell (left), find the next
+  // sentence with one in the DATA (wrapping around the document), page to it,
+  // and focus there after the re-render.
   _jumpToNextEmptyGloss() {
-    const empties = [...this.container.querySelectorAll('.igt-field[data-cell-key^="ma:"].igt-field--empty')]
-      .filter((el) => !el.disabled);
-    if (!empties.length) return;
+    const focusEl = (el) => {
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+      el.focus();
+      try { el.select(); } catch { /* noop */ }
+    };
+    const pageEmpties = () =>
+      [...this.container.querySelectorAll('.igt-field[data-cell-key^="ma:"].igt-field--empty')]
+        .filter((el) => !el.disabled);
+
+    const empties = pageEmpties();
     const active = document.activeElement;
-    let target = empties[0];
-    if (active && active.dataset?.cellKey?.startsWith('ma:')) {
+    if (empties.length) {
+      if (!(active && active.dataset?.cellKey?.startsWith('ma:'))) return focusEl(empties[0]);
       const after = empties.find((el) => el.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_PRECEDING);
-      if (after) target = after;
+      if (after) return focusEl(after);
+      // All of this page's empties are behind the cursor — fall through to the
+      // cross-page search (which may wrap back to this page's first empty).
     }
-    target.scrollIntoView({ block: 'center', inline: 'center' });
-    target.focus();
-    try { target.select(); } catch { /* noop */ }
+
+    const fields = (this.doc.layerInfo.spanLayers?.morpheme || []).map((l) => l.name);
+    const sentences = this.doc.sentences || [];
+    if (!fields.length || !sentences.length) return;
+    const hasEmptyCell = (s) => (s.tokens || []).some((t) =>
+      (t.morphemes || []).some((m) => fields.some((n) => (m.annotations?.[n]?.value ?? '') === '')));
+    const start = (this._page + 1) * IgtEditor.PAGE_SIZE; // first sentence beyond this page
+    let found = -1;
+    for (let i = 0; i < sentences.length; i++) {
+      const idx = (start + i) % sentences.length;
+      if (hasEmptyCell(sentences[idx])) { found = idx; break; }
+    }
+    if (found < 0) return;
+    const sentenceId = sentences[found].id;
+    this._setPage(Math.floor(found / IgtEditor.PAGE_SIZE));
+    requestAnimationFrame(() => {
+      const scoped = this.container.querySelector(
+        `.igt-sentence[data-sentence-id="${sentenceId}"] .igt-field[data-cell-key^="ma:"].igt-field--empty`);
+      focusEl(scoped || pageEmpties()[0]);
+    });
   }
 
   // ---- "Copy as IGT" -------------------------------------------------------
@@ -1013,7 +1070,7 @@ export class IgtEditor {
         <div class="igt-row-label igt-row-label--spacer"></div>
         ${ctx.orthographies.map((n) => html`<div class="igt-row-label igt-row-label--orth" title=${`${n} (orthography)`}>${n}</div>`)}
         ${ctx.wordFields.map((n) => html`<div class="igt-row-label igt-row-label--word" title=${`${n} (word)`}>${n}</div>`)}
-        ${ctx.hasMorphemes ? html`<div class="igt-row-label igt-row-label--morph">Morphemes</div>` : nothing}
+        ${ctx.hasMorphemes ? html`<div class="igt-row-label igt-row-label--morph igt-row-label--morphform">Morphemes</div>` : nothing}
         ${ctx.hasMorphemes ? ctx.morphFields.map((n) => html`<div class="igt-row-label igt-row-label--morph" title=${`${n} (morpheme)`}>${n}</div>`) : nothing}
       </div>
     `;
@@ -1060,26 +1117,32 @@ export class IgtEditor {
 
   _morphemes(token, ctx) {
     const morphemes = token.morphemes || [];
+    // The affix joint ("-", or "=" for clitics) belongs to the BOUNDARY, not to
+    // either morpheme — it renders between the columns, straddling the gap.
     return html`
       <div class="igt-morphemes">
-        ${repeat(morphemes, (m) => m.id, (m, i) => this._morphCol(m, token, morphemes, ctx, i))}
-        ${this.readOnly ? nothing : this._placeholderMorphCol(token, ctx)}
+        ${repeat(morphemes, (m) => m.id, (m, i) => {
+          const joiner = i > 0
+            ? morphemeJoiner(morphemes[i - 1]?.metadata?.morphType, m.metadata?.morphType)
+            : null;
+          return html`
+            ${joiner ? html`<span class="igt-morph-joiner" aria-hidden="true">${joiner}</span>` : nothing}
+            ${this._morphCol(m, token, morphemes, ctx)}
+          `;
+        })}
       </div>
     `;
   }
 
-  _morphCol(morph, word, siblings, ctx, index = 0) {
+  _morphCol(morph, word, siblings, ctx) {
     const value = morphFormOf(morph);
     const filled = value !== '';
-    // Display-only affix joint ("=" for clitics, else "-"); never part of the
-    // stored form — see domain/affixMarkers.js.
-    const joiner = index > 0
-      ? morphemeJoiner(siblings[index - 1]?.metadata?.morphType, morph.metadata?.morphType)
-      : null;
+    // Chips linked to a stem/root lexicon entry keep the lavender accent —
+    // a coverage cue for lexical identification; everything else stays quiet.
+    const stem = isStemType(morph.vocabItem?.metadata?.morphType);
     return html`
       <div class="igt-morph-col">
-        <div class="igt-morph-form">
-          ${joiner ? html`<span class="igt-morph-joiner" aria-hidden="true">${joiner}</span>` : nothing}
+        <div class="igt-morph-form ${stem ? 'igt-morph-form--stem' : ''}">
           ${this._vocabFace(
             html`<input
               class="igt-field igt-morph-field ${filled ? 'igt-field--filled' : 'igt-field--empty'}"
@@ -1112,25 +1175,6 @@ export class IgtEditor {
             })}
           </div>
         `)}
-      </div>
-    `;
-  }
-
-  _placeholderMorphCol(word, ctx) {
-    return html`
-      <div class="igt-morph-col igt-morph-col--placeholder">
-        <div class="igt-morph-form">
-          <input
-            class="igt-field igt-morph-field igt-morph-field--placeholder igt-field--empty"
-            data-word=${word.id}
-            placeholder="+"
-            title="Add a morpheme (type a form, then Enter)"
-            aria-label="Add a morpheme"
-            @keydown=${this._placeholderKeydown()}
-            @blur=${(e) => this._commitPlaceholder(e, word)}
-          >
-        </div>
-        ${ctx.morphFields.map(() => html`<div class="igt-morph-cell"></div>`)}
       </div>
     `;
   }

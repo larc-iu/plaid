@@ -6,13 +6,29 @@
 .igt-island {
   --igt-blue: #2563eb;
   --igt-violet: #6d28d9;
+  /* Desaturated violet for large/recurring surfaces (row labels) — the full
+     --igt-violet next to the near-black labels read as shouting. The vivid
+     violet stays for small semantic cues (guesses, inferred links, chips). */
+  --igt-violet-soft: #7a6aa6;
   --igt-green: #15803d;
   --igt-row-h: 30px;
   --igt-morph-h: 26px;
+  /* Word/morpheme FORM rows are taller than plain annotation rows when the
+     project has vocabularies (.igt-island--vocab): every form then carries a
+     second line — the vocab-link hint/affordance — and the row must own that
+     space, or the stack paint-overflows into the rows above and below (and
+     could tip the grid into a useless vertical scrollbar). */
+  --igt-form-h: var(--igt-row-h);
+  --igt-morph-form-h: var(--igt-morph-h);
   --igt-label-w: 124px;
   width: 100%;
   font-size: 14px;
   color: #111827;
+}
+
+.igt-island--vocab {
+  --igt-form-h: 42px;
+  --igt-morph-form-h: 44px;
 }
 
 .igt-island__error {
@@ -95,6 +111,40 @@
 .igt-help-btn[aria-expanded="true"] { background: var(--igt-blue); color: #fff; border-color: var(--igt-blue); }
 .igt-help-btn:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 2px; }
 
+/* ---- sentence pager (top = in the toolbar; bottom = its own centered bar) ---- */
+.igt-pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.igt-pager__btn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: #4b5563;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+.igt-pager__btn:hover:not(:disabled) { background: #e0eaff; color: #1d4ed8; border-color: #c7d7fe; }
+.igt-pager__btn:disabled { opacity: 0.4; cursor: default; }
+.igt-pager__btn:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+.igt-pager__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4b5563;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+/* The bottom pager (a direct child of the island, after the sentence cards). */
+.igt-island > .igt-pager {
+  justify-content: center;
+  padding: 4px 0 12px;
+}
+
 /* ---- help / scope legend ---- */
 .igt-legend {
   margin-bottom: 12px;
@@ -157,15 +207,12 @@
 .igt-sentence__num {
   position: absolute;
   left: 8px;
-  top: 12px;
+  top: 14px;
   min-width: 18px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: #eef2ff;
   text-align: center;
   font-size: 11px;
   font-weight: 700;
-  color: #4b5563;
+  color: #6b7280;
 }
 
 /* Right-edge fade shown only when the grid can scroll further right, so a
@@ -261,6 +308,11 @@
   display: flex;
   align-items: flex-start;
   overflow-x: auto;
+  /* Never scroll vertically: content stacks/wraps, so vertical overflow can
+     only be a few px of paint slop — without this, `overflow-x: auto` computes
+     overflow-y to auto too and classic (non-overlay) scrollbars render a
+     useless vertical scrollbar inside every sentence card. */
+  overflow-y: hidden;
   scrollbar-width: thin;
 }
 
@@ -300,13 +352,17 @@
 .igt-row-label--morph {
   height: var(--igt-morph-h);
   font-weight: 600;
-  color: var(--igt-violet);
-  border-left-color: var(--igt-violet);
+  color: var(--igt-violet-soft);
+  border-left-color: var(--igt-violet-soft);
 }
+/* The "Morphemes" label fronts the morpheme FORM row, which is taller than
+   the annotation rows when vocab hints are in play. */
+.igt-row-label--morphform { height: var(--igt-morph-form-h); }
 /* Header spacer cell — extend the word-header band across the label column so
-   the gray header no longer "notches" around the labels. */
+   the gray header no longer "notches" around the labels. Tracks the word-form
+   row height. */
 .igt-row-label--spacer {
-  height: var(--igt-row-h);
+  height: var(--igt-form-h);
   background: #eef1f5;
   border-left-color: transparent;
   border-top-left-radius: 6px;
@@ -332,7 +388,7 @@
 .igt-labels + .igt-token-col { border-left: none; }
 
 .igt-token-form {
-  height: var(--igt-row-h);
+  height: var(--igt-form-h);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -399,6 +455,9 @@
   display: flex;
   flex-wrap: nowrap;
   align-items: flex-start;
+  /* Center the chain under its word when the word-level rows are wider —
+     left-packed chains read as misaligned. */
+  justify-content: center;
 }
 .igt-morph-col {
   display: flex;
@@ -407,49 +466,37 @@
   width: max-content;
   padding: 0 2px;
 }
-/* The "add morpheme" column is fully COLLAPSED at rest (user call 2026-06-10:
-   the "+" everywhere was noise; keyboard users append by typing "-" at the
-   end of the last morpheme anyway). Hovering anywhere in the word column
-   reveals it as a faint slim rail; it brightens under the pointer and expands
-   to a usable input on focus. opacity+width (not display) keep the input
-   tabbable, so keyboard focus also expands it via :focus-within. */
-.igt-morph-col--placeholder {
-  width: 0;
-  min-width: 0;
-  padding: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition: opacity 0.12s, min-width 0.12s;
-}
-.igt-token-col:hover .igt-morph-col--placeholder {
-  width: max-content;
-  min-width: 22px;
-  opacity: 0.45;
-}
-.igt-token-col:hover .igt-morph-col--placeholder:hover { opacity: 1; }
-.igt-morph-col--placeholder:focus-within {
-  width: max-content;
-  min-width: 52px;
-  padding: 0 2px;
-  opacity: 1;
-  overflow: visible;
-}
 
 .igt-morph-form {
-  height: var(--igt-morph-h);
+  height: var(--igt-morph-form-h);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f4f1fb;
+  background: #f5f5f7;
   border-radius: 3px;
 }
+/* Linked to a stem/root lexicon entry: the lavender accent the plain chips
+   used to have — reads as "lexically identified". */
+.igt-morph-form--stem { background: #f4f1fb; }
 /* Display-only affix joint between adjacent morphemes ("-", or "=" for
-   clitics, from metadata.morphType) — not part of the editable form. */
+   clitics, from metadata.morphType) — not part of the editable form, and not
+   owned by either morpheme: it's a zero-width flex item BETWEEN the two
+   columns, so the glyph centers on (and straddles) the gap between the chips
+   it connects. z-index lifts it above the next chip's background, which would
+   otherwise paint over the glyph's right half. The fixed height centers the
+   glyph on the morpheme-form text line (the input sits at the top of the
+   chip's vocab stack, line center ≈ 14px). */
 .igt-morph-joiner {
   flex: none;
-  margin-right: 1px;
-  color: #a89fc0;
-  font-size: 11px;
+  width: 0;
+  height: 28px;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8d7fb5;
+  font-size: 13px;
   user-select: none;
   pointer-events: none;
 }
@@ -478,19 +525,9 @@
   align-items: center;
   justify-content: center;
 }
-.igt-morph-field { min-width: 4ch; }
-
-/* slim "+" add-morpheme affordance */
-.igt-morph-field--placeholder {
-  min-width: 18px;
-  color: #6b7280;
-  background: transparent;
-  border-bottom-color: transparent;
-  cursor: pointer;
-}
-.igt-morph-col--placeholder:hover .igt-morph-field--placeholder { color: var(--igt-violet); background: #f4f1fb; }
-.igt-morph-field--placeholder:focus { cursor: text; color: #111827; }
-.igt-morph-field--placeholder::placeholder { color: #b6bdc9; opacity: 1; }
+/* Tighter than the default field so the chips hug their content and adjacent
+   morphemes (with their boundary joiner) read as one word. */
+.igt-morph-field { min-width: 2.5ch; padding: 3px 3px; }
 
 /* ---- vocab link affordance ---- */
 .igt-vocab {
@@ -505,8 +542,8 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  padding: 2px 7px;
-  min-height: 20px;
+  padding: 1px 6px;
+  min-height: 16px;
   border-radius: 8px;
 }
 .igt-vocab__opener:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }

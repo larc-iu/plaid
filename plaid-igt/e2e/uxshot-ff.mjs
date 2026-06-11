@@ -1,0 +1,22 @@
+import { firefox } from '@playwright/test';
+import { readToken } from './fixtures.js';
+const BASE = 'http://localhost:5174';
+const [projectId, documentId, outPng] = process.argv.slice(2);
+const { token, userId } = readToken();
+const browser = await firefox.launch();
+const context = await browser.newContext({ viewport: { width: 1990, height: 1170 } });
+await context.addInitScript(({ token, userId }) => {
+  localStorage.setItem('token', token);
+  localStorage.setItem('userId', userId);
+  localStorage.setItem('username', userId);
+  localStorage.setItem('isAdmin', 'true');
+}, { token, userId });
+const page = await context.newPage();
+await page.goto(`${BASE}/#/projects/${projectId}/documents/${documentId}`, { waitUntil: 'networkidle' });
+const t = page.getByRole('tab', { name: 'Analyze' });
+if (await t.count()) await t.first().click();
+await page.locator('.igt-island').first().waitFor({ state: 'visible', timeout: 8000 });
+await page.waitForTimeout(800);
+await page.screenshot({ path: outPng });
+await browser.close();
+console.log('wrote', outPng);
