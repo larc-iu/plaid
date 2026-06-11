@@ -802,7 +802,17 @@
                     ;; this branch active, the second insert fails
                     ;; loudly via the UNIQUE(op_id, seq) constraint
                     ;; in audit_writes.
-                    0)]
+                    0)
+            ;; Per-row document attribution, from the row's OWN image —
+            ;; not the op's :document, which is nil for multi-document
+            ;; cascade ops (project/delete, vocab/delete) and was even
+            ;; once plain wrong (pre-guard cross-document bulk-delete).
+            ;; This column is what as-of reconstruction scopes by, so a
+            ;; missing stamp = a row invisible to time travel.
+            document-id (or (:document_id post-image)
+                            (:document_id pre-image)
+                            (when (= (name target-table) "documents")
+                              target-id))]
         (jdbc/execute-one!
          tx
          (format-sql
@@ -815,6 +825,7 @@
                      :change_type (name change-type)
                      :pre_image (some-> pre-image write-json)
                      :post_image (some-> post-image write-json)
+                     :document_id document-id
                      :ts (:ts op)}]}))))))
 
 ;; ============================================================
