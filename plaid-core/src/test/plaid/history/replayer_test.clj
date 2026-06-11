@@ -240,6 +240,30 @@
     (is (= meta (json/read-str (:metadata doc)))
         "round-trips back to the original map")))
 
+(deftest metadata-keys-with-slashes-survive-replay
+  ;; clojure.data.json's keyword round-trip strips the 'namespace' from
+  ;; a key containing '/' ("dc/title" → :dc/title → "title" on
+  ;; re-serialization), silently colliding with a genuine "title" key —
+  ;; and OLTP permits '/' in metadata keys (valid-metadata-key? rejects
+  ;; only blank/control/over-long). parse-image therefore keywordizes
+  ;; only the TOP-LEVEL (column/junction names, all '/'-free) and
+  ;; leaves user-keyed subtrees as strings.
+  (let [tok-id (uuid)
+        meta {"dc/title" "Doc Title"
+              "title" "plain"
+              "nested" {"a/b" 1}}
+        post {:id (str tok-id)
+              :text_id (str (uuid))
+              :token_layer_id (str (uuid))
+              :document_id (str (uuid))
+              :begin 0
+              :end_ 5
+              :metadata meta}
+        [_ _ doc] (replayer/audit-row->tx-op
+                   (audit-row "tokens" tok-id post :change-type :update))]
+    (is (= meta (json/read-str (:metadata doc)))
+        "slashed and nested metadata keys survive replay verbatim — no namespace stripping, no collision")))
+
 (deftest project-acl-junctions-preserved
   ;; project_users state is folded into the parent projects row under
   ;; unqualified :readers / :writers / :maintainers, and project_vocabs

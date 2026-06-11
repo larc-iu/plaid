@@ -146,11 +146,22 @@
 
 (defn parse-image
   "Parse an audit `pre_image`/`post_image` JSON string into a Clojure
-  map. Returns nil for nil/empty input. Throws on malformed JSON."
+  map. Returns nil for nil/empty input. Throws on malformed JSON.
+
+  Only the TOP-LEVEL keys are keywordized (column names + junction
+  keys, all '/'-free); nested values keep STRING keys. Keywordizing
+  every depth (the old `:key-fn keyword`) was lossy for the `:metadata`
+  fold, whose keys are user-supplied: OLTP permits '/' in metadata
+  keys, and clojure.data.json's keyword round-trip strips the
+  'namespace' on re-serialization (\"dc/title\" → :dc/title → \"title\"
+  in coerce-junction's write-str), silently colliding with a genuine
+  \"title\" key in history reads. The read path (history.document/
+  decode-metadata) expects string keys anyway."
   [image-json]
   (when (and image-json (not= "" image-json))
     (try
-      (json/read-str image-json :key-fn keyword)
+      (-> (json/read-str image-json)
+          (update-keys keyword))
       (catch Exception e
         (throw (ex-info "Failed to parse audit image JSON"
                         {:type :replayer/malformed-row
