@@ -249,9 +249,13 @@
   Used in `delete` to emit per-project audit rows showing the grant
   going away."
   [tx vocab-id]
+  ;; ORDER BY project_id so the per-project audit rows in `delete` are
+  ;; emitted in a deterministic order — (op_id, seq) assignment depends
+  ;; on it (task #13).
   (->> (psc/q tx {:select [:project_id]
                   :from [:project_vocabs]
-                  :where [:= :vocab_layer_id vocab-id]})
+                  :where [:= :vocab_layer_id vocab-id]
+                  :order-by [:project_id]})
        (mapv :project_id)))
 
 (defn audit-vocab-maintainers-change!
@@ -352,11 +356,18 @@
                              ;; Per-project pre-image of vocab grants (one snapshot per
                              ;; project) so the synthetic :projects audits show the right
                              ;; "before" state.
+                             ;; ORDER BY vocab_layer_id: the folded :vocabs
+                             ;; vectors must be deterministically ordered —
+                             ;; and ordered the SAME way as project.clj's
+                             ;; fetch-project-vocab-grants — or scan-order
+                             ;; variance registers as spurious history
+                             ;; "changes" (task #13).
                              pre-grants-by-proj
                              (into {}
                                    (map (fn [pid] [pid (->> (psc/q tx {:select [:vocab_layer_id]
                                                                        :from [:project_vocabs]
-                                                                       :where [:= :project_id pid]})
+                                                                       :where [:= :project_id pid]
+                                                                       :order-by [:vocab_layer_id]})
                                                             (mapv :vocab_layer_id))]))
                                    grant-project-ids)
                              ;; Emit the vocab_layer's :delete audit with

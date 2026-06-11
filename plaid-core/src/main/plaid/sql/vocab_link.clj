@@ -267,7 +267,12 @@
              :document doc-id
              :description "Delete vocab mapping"
              :user user-id}]
-     (when (nil? pre)
+     ;; Re-fetch INSIDE the tx (every sibling delete fn does) — checking
+     ;; only the pre-tx read meant a concurrent delete between the outer
+     ;; read and this tx made delete-by-id! a silent no-op while we still
+     ;; returned :success, committed an operations row, and bumped the
+     ;; doc version for nothing.
+     (when (nil? (psc/fetch-by-id tx :vocab_links eid))
        (throw (ex-info (psc/err-msg-not-found "Vocab link" eid)
                        {:code 404 :id eid})))
      (psc/delete-by-id! tx :vocab_links eid)

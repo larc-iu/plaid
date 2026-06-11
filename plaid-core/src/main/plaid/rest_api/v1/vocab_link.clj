@@ -59,7 +59,11 @@
   ["/vocab-links"
    [""
     {:post {:summary "Create a new vocab link (link between tokens and vocab item)."
-            :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-vocab-item-body]
+            ;; Linking annotates the DOCUMENT, not the vocabulary — the
+            ;; vocab itself is untouched. So the gate is project-WRITER
+            ;; (below) + vocab-READER (the vocab must be visible to the
+            ;; user); vocab-writer was over-restrictive (decided 2026-06-10).
+            :middleware [[pra/wrap-vocab-reader-required get-vocab-id-from-vocab-item-body]
                          [pra/wrap-writer-required get-project-id-from-tokens]
                          [prm/wrap-document-version get-document-id-from-tokens]
                          metadata/wrap-inline-metadata-shape-guard]
