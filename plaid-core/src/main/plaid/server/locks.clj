@@ -1,8 +1,8 @@
 (ns plaid.server.locks
   "Document locking system for ensuring atomicity of batch operations"
-  (:require [clojure.tools.logging :as log]
-            [mount.core :refer [defstate]]
-            [plaid.server.config :refer [config]])
+  (:require [mount.core :refer [defstate]]
+            [plaid.server.config :refer [config]]
+            [taoensso.timbre :as log])
   (:import [java.time Instant]))
 
 ;; Task #119: read at call time, not load time. The previous

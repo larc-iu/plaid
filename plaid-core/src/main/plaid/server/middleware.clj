@@ -224,16 +224,23 @@
         (handler req)))))
 
 (defn wrap-static-resources
-  "Serves static files from a filesystem directory"
+  "Serves static files from a filesystem directory — ONLY when the
+  operator explicitly configured [server] static_resources_path. This
+  endpoint is unauthenticated by design (it fronts SPAs/assets), so the
+  old cwd-relative \"resources\" default silently published whatever
+  sat in ./resources — in a source checkout that's the config templates
+  and the full schema migrations. The bundled-SPA classpath serving
+  (/ud, /igt — see bundled-spa-roots) is separate and unaffected."
   [handler]
-  (let [resources-path (or (-> config :plaid.server.middleware/static-resources-path)
-                           "resources")]
-    (log/info (format "Serving static files from `%s/`" resources-path))
+  (let [resources-path (-> config :plaid.server.middleware/static-resources-path)]
+    (if resources-path
+      (log/info (format "Serving static files from `%s/`" resources-path))
+      (log/debug "No static_resources_path configured; filesystem static serving disabled"))
     (fn [{:keys [uri request-method] :as request}]
-      (if (and (= :get request-method)
+      (if (and resources-path
+               (= :get request-method)
                (not (str/starts-with? uri "/api/"))
-               (not (str/starts-with? uri "/_"))
-               resources-path)
+               (not (str/starts-with? uri "/_")))
         (let [file-path (subs uri 1)
               ;; If URI ends with /, try to serve index.html from that directory
               actual-path (if (or (= file-path "")

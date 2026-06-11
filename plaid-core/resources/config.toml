@@ -26,9 +26,11 @@ port = 8080
 # [media] max_file_size_mb.
 max_json_body_mb = 10
 
-# Filesystem/classpath location static assets are served from. Advanced;
-# most deployments never change this. Uncomment to override.
-# static_resources_path = "resources"
+# Serve static files from this filesystem directory (UNAUTHENTICATED —
+# anything under it becomes public). Disabled unless set; the bundled
+# /ud and /igt apps are served from the jar regardless. Advanced; most
+# deployments never set this.
+# static_resources_path = "/srv/plaid-static"
 
 # -----------------------------------------------------------------------------
 # Logging

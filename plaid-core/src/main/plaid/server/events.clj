@@ -382,7 +382,10 @@
       (do (log/warn "Event bus is not initialized") false)
 
       (not (satisfies? clojure.core.async.impl.protocols/WritePort event-bus))
-      (do #_(log/warn "Event bus is not writable") false)
+      ;; An unstarted/misbound event-bus drops events — say so (the
+      ;; publish-message! twin already does; silence here made partial
+      ;; mount starts invisible).
+      (do (log/warn "Event bus is not writable; dropping audit event") false)
 
       :else
       (let [event {:event/type      :audit-log

@@ -29,17 +29,43 @@
     (read-line)))
 
 (defn make-admin-user [datasource]
-  (log/warn "No users detected! Prompting you for credentials...")
-  (print "Enter email: ") (flush)
-  (let [email (read-line)
-        _ (do (print "Enter password: ") (flush))
-        password (read-line-secret)
-        ;; nil actor: this is the bootstrap admin — no user exists yet.
-        {:keys [success]} (pxu/create datasource email true password nil)]
-    (if success
-      (log/info (str "Admin user created with email " email "."))
-      (do (log/error "Error creating first user!")
-          (System/exit 1)))))
+  ;; Non-interactive path first: under systemd/containers stdin is
+  ;; /dev/null, so the prompt below would read nils and die. Operators
+  ;; provision the first admin via env vars instead.
+  (let [env-email (System/getenv "PLAID_ADMIN_EMAIL")
+        env-password (System/getenv "PLAID_ADMIN_PASSWORD")]
+    (cond
+      (and (seq env-email) (seq env-password))
+      ;; nil actor: this is the bootstrap admin — no user exists yet.
+      (let [{:keys [success error]} (pxu/create datasource env-email true env-password nil)]
+        (if success
+          (log/info (str "Admin user created from PLAID_ADMIN_EMAIL (" env-email ")."))
+          (do (log/error "Error creating first admin from env vars:" error)
+              (System/exit 1))))
+
+      ;; Headless with no env vars: fail with instructions instead of
+      ;; prompting into /dev/null (nil email → confusing create failure).
+      (nil? (System/console))
+      (do (log/error (str "No users exist and no interactive console is attached. Either set "
+                          "PLAID_ADMIN_EMAIL and PLAID_ADMIN_PASSWORD to create the first admin "
+                          "non-interactively, or set SKIP_ACCOUNT_CREATION_PROMPT=1 to start "
+                          "without one (you can create users over the API later only with an "
+                          "existing admin, so prefer the env vars)."))
+          (System/exit 1))
+
+      :else
+      (do
+        (log/warn "No users detected! Prompting you for credentials...")
+        (print "Enter email: ") (flush)
+        (let [email (read-line)
+              _ (do (print "Enter password: ") (flush))
+              password (read-line-secret)
+              ;; nil actor: this is the bootstrap admin — no user exists yet.
+              {:keys [success]} (pxu/create datasource email true password nil)]
+          (if success
+            (log/info (str "Admin user created with email " email "."))
+            (do (log/error "Error creating first user!")
+                (System/exit 1))))))))
 
 (defn- checkpoint-wal!
   "Run `PRAGMA wal_checkpoint(TRUNCATE)` so the WAL is flushed into the
