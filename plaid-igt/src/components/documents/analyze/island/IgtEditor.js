@@ -390,39 +390,71 @@ export class IgtEditor {
       .filter((el) => !el.disabled);
   }
 
+  // The "tier" of a cell — its kind + field name from data-cell-key
+  // (`wa:<id>:Gloss` -> "wa:Gloss"; `mf:<id>` -> "mf:"). Cells on the same
+  // tier are the same logical row even when band wrapping puts them at
+  // different screen rows.
+  _tierOf(el) {
+    const key = el.dataset?.cellKey ?? '';
+    const parts = key.split(':');
+    return `${parts[0]}:${parts.slice(2).join(':')}`;
+  }
+
   // Geometry-based cell navigation: 'next'/'prev' move along the same row (tier),
   // 'down'/'up' move between rows in the same column band. Works across the
-  // word/morpheme sub-grid without a coordinate model. Focusing the target blurs
-  // the current input, which commits it. Returns true if it moved.
+  // word/morpheme sub-grid without a coordinate model. Since word columns WRAP
+  // into bands, a same-screen-row pass alone dead-ends at a band edge — a
+  // second pass continues onto the same TIER in the next/previous band
+  // (matching data-cell-key kind+field), and 'down'/'up' fall through to the
+  // nearest row across the band boundary. Focusing the target blurs the
+  // current input, which commits it. Returns true if it moved.
   _navMove(current, dir) {
     const cr = current.getBoundingClientRect();
     const cx = cr.left + cr.width / 2;
     const cy = cr.top + cr.height / 2;
     const rowTol = 12; // same-row band
     const colTol = 64; // same-column band
-    let best = null;
-    let bestScore = Infinity;
-    for (const el of this._navFields()) {
-      if (el === current) continue;
-      const r = el.getBoundingClientRect();
-      const ex = r.left + r.width / 2;
-      const ey = r.top + r.height / 2;
-      let score = Infinity;
-      if (dir === 'next') {
-        if (Math.abs(ey - cy) > rowTol || ex <= cx + 1) continue;
-        score = ex - cx;
-      } else if (dir === 'prev') {
-        if (Math.abs(ey - cy) > rowTol || ex >= cx - 1) continue;
-        score = cx - ex;
-      } else if (dir === 'down') {
-        if (ey <= cy + 1 || Math.abs(ex - cx) > colTol) continue;
-        score = (ey - cy) + Math.abs(ex - cx) * 3;
-      } else if (dir === 'up') {
-        if (ey >= cy - 1 || Math.abs(ex - cx) > colTol) continue;
-        score = (cy - ey) + Math.abs(ex - cx) * 3;
+    const fields = this._navFields();
+    const tier = this._tierOf(current);
+
+    const pick = (score) => {
+      let best = null;
+      let bestScore = Infinity;
+      for (const el of fields) {
+        if (el === current) continue;
+        const r = el.getBoundingClientRect();
+        const s = score(el, r.left + r.width / 2, r.top + r.height / 2);
+        if (s != null && s < bestScore) { bestScore = s; best = el; }
       }
-      if (score < bestScore) { bestScore = score; best = el; }
+      return best;
+    };
+
+    // Pass 1: strictly within the current screen row / column band.
+    let best = pick((el, ex, ey) => {
+      if (dir === 'next') return (Math.abs(ey - cy) <= rowTol && ex > cx + 1) ? ex - cx : null;
+      if (dir === 'prev') return (Math.abs(ey - cy) <= rowTol && ex < cx - 1) ? cx - ex : null;
+      if (dir === 'down') return (ey > cy + 1 && Math.abs(ex - cx) <= colTol) ? (ey - cy) + Math.abs(ex - cx) * 3 : null;
+      return (ey < cy - 1 && Math.abs(ex - cx) <= colTol) ? (cy - ey) + Math.abs(ex - cx) * 3 : null;
+    });
+
+    // Pass 2: cross the band boundary.
+    if (!best && (dir === 'next' || dir === 'prev')) {
+      // Same tier in a following/preceding band: nearest row in that
+      // direction, then the leftmost (next) / rightmost (prev) cell in it.
+      best = pick((el, ex, ey) => {
+        if (this._tierOf(el) !== tier) return null;
+        if (dir === 'next') return ey > cy + rowTol ? (ey - cy) * 10000 + ex : null;
+        return ey < cy - rowTol ? (cy - ey) * 10000 + (10000 - ex) : null;
+      });
     }
+    if (!best && (dir === 'down' || dir === 'up')) {
+      // Nearest row beyond the band, then nearest horizontally.
+      best = pick((el, ex, ey) => {
+        if (dir === 'down') return ey > cy + 1 ? (ey - cy) * 100 + Math.abs(ex - cx) : null;
+        return ey < cy - 1 ? (cy - ey) * 100 + Math.abs(ex - cx) : null;
+      });
+    }
+
     if (!best) return false;
     best.focus();
     try { best.select(); } catch { /* not selectable */ }
