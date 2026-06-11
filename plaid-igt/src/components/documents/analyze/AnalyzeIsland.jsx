@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { IgtEditor } from './island/IgtEditor.js';
+import { AutoLinkDialog } from './AutoLinkDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 
 // Thin React shell around the vanilla IgtEditor island. Consumes the single
@@ -14,6 +15,15 @@ export const AnalyzeIsland = () => {
   const { doc, readOnly } = useDocumentCtx();
   const hostRef = useRef(null);
   const editorRef = useRef(null);
+  // The island's Auto-link toolbar button requests this React-side modal
+  // (service discovery + param forms are React machinery) via a window event.
+  const [autoLinkOpen, setAutoLinkOpen] = useState(false);
+
+  useEffect(() => {
+    const onOpen = () => setAutoLinkOpen(true);
+    window.addEventListener('igt:auto-link-open', onOpen);
+    return () => window.removeEventListener('igt:auto-link-open', onOpen);
+  }, []);
 
   useEffect(() => {
     if (!doc || !hostRef.current) return undefined;
@@ -43,6 +53,9 @@ export const AnalyzeIsland = () => {
         className="igt-island"
         style={{ display: doc ? 'block' : 'none' }}
       />
+      {doc && (
+        <AutoLinkDialog open={autoLinkOpen} onOpenChange={setAutoLinkOpen} doc={doc} />
+      )}
     </div>
   );
 };

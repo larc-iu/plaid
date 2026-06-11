@@ -80,6 +80,17 @@ describe.skipIf(!existsSync(LEZGI))('parseFwdata — Lezgi sample', () => {
     expect(za.senses[0].gloss.en).toBe('1sg-ERG');
   });
 
+  it('maps FLEx human approval onto word analyses', () => {
+    const words = ir.texts.flatMap((t) =>
+      t.paragraphs.flatMap((p) => p.segments.flatMap((s) => s.analyses)))
+      .filter((a) => a.kind === 'word');
+    const approved = words.filter((w) => w.approved).length;
+    // 6,862 analyses are human-approved, 1,473 parser-only, plus bare
+    // wordforms (never approved) — both kinds must be present.
+    expect(approved).toBeGreaterThan(5000);
+    expect(words.length - approved).toBeGreaterThan(1000);
+  });
+
   it('tracks ws usage for field planning', () => {
     expect(ir.wsUsage.wordGloss).toContain('en');
     expect(ir.wsUsage.morphGloss).toContain('en');
@@ -119,6 +130,22 @@ describe.skipIf(!existsSync(SENA))('parseFwdata — Sena 3 sample (newer format)
     expect(ir.lexicon.some((e) => e.custom?.Plural === 'pibubu')).toBe(true);
     const senseNotes = ir.lexicon.flatMap((e) => e.senses).filter((s) => s.custom?.['Parsing Note']);
     expect(senseNotes.length).toBeGreaterThan(50); // 60 in the sample
+  });
+
+  it('extracts citation forms (most Sena entries cite differently from the lexeme)', () => {
+    const cited = ir.lexicon.filter((e) => e.citationForm);
+    expect(cited.length).toBeGreaterThan(800); // 887 in the sample
+    const bubu = ir.lexicon.find((e) => Object.values(e.citationForm ?? {}).includes('cibubu'));
+    expect(bubu).toBeDefined();
+    expect(Object.values(bubu.forms)).toContain('bubu bubu');
+  });
+
+  it('extracts example sentences with translations, skipping empty shells', () => {
+    const examples = ir.lexicon.flatMap((e) => e.senses).flatMap((s) => s.examples ?? []);
+    expect(examples.length).toBeGreaterThan(150); // 210 non-empty of 1,297 shells
+    const withTr = examples.filter((ex) => ex.translations.length > 0);
+    expect(withTr.length).toBeGreaterThan(100);
+    for (const ex of examples) expect(Object.values(ex.text)[0]).toBeTruthy();
   });
 
   it('extracts coherent segments with words', () => {

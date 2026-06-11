@@ -19,10 +19,11 @@ const KEEP_CLASSES = new Set([
   'LangProject',
   'Text', 'StText', 'StTxtPara', 'Segment', 'Note',
   'WfiWordform', 'WfiAnalysis', 'WfiGloss', 'WfiMorphBundle', 'PunctuationForm',
-  'LexEntry', 'LexSense',
+  'LexEntry', 'LexSense', 'LexExampleSentence', 'CmTranslation',
   'MoStemAllomorph', 'MoAffixAllomorph',
   'MoStemMsa', 'MoInflAffMsa', 'MoDerivAffMsa', 'MoUnclassifiedAffixMsa',
   'PartOfSpeech', 'MoMorphType', 'CmPossibility',
+  'CmAgent', 'CmAgentEvaluation',
 ]);
 
 const nfc = (s) => (s == null ? s : s.normalize('NFC'));
@@ -212,6 +213,19 @@ export function parseFwdata(xml) {
       refGuid(msa, 'PartOfSpeech') ?? refGuid(msa, 'ToPartOfSpeech') ?? refGuid(msa, 'FromPartOfSpeech'),
     );
   };
+  // Human approval: a WfiAnalysis is human-approved when its Evaluations
+  // include the "Approves" evaluation of an agent with Human=true (FLEx keeps
+  // parser opinions — M3Parser/HCParser — as separate non-human agents).
+  const humanApproves = new Set();
+  for (const agent of cls('CmAgent')) {
+    const humanVal = child(agent, 'Human')?.attrs.val;
+    if (String(humanVal).toLowerCase() !== 'true') continue;
+    const ev = refGuid(agent, 'Approves');
+    if (ev) humanApproves.add(ev);
+  }
+  const isHumanApproved = (analysis) =>
+    refGuids(analysis, 'Evaluations').some((g) => humanApproves.has(g));
+
   // Allomorphs: MoStemAllomorph + MoAffixAllomorph, owner is the LexEntry
   const allomorphs = new Map();
   for (const a of [...cls('MoStemAllomorph'), ...cls('MoAffixAllomorph')]) {
@@ -230,15 +244,27 @@ export function parseFwdata(xml) {
   const track = (set, m) => { for (const ws of Object.keys(m ?? {})) set.add(ws); };
 
   // Senses (entries may own subsenses recursively)
+  const exampleOf = (guid) => {
+    const ex = get(guid, 'LexExampleSentence');
+    if (!ex) return null;
+    const text = multiStr(ex, 'Example');
+    if (!text) return null; // FLEx keeps empty example shells around
+    const translations = refGuids(ex, 'Translations')
+      .map((g) => multiStr(get(g, 'CmTranslation'), 'Translation'))
+      .filter(Boolean);
+    return { text, translations };
+  };
   const senseOf = (guid) => {
     const s = get(guid, 'LexSense');
     if (!s) return null;
+    const examples = refGuids(s, 'Examples').map(exampleOf).filter(Boolean);
     return {
       guid,
       gloss: multiUni(s, 'Gloss'),
       definition: multiStr(s, 'Definition'),
       pos: msaPos(refGuid(s, 'MorphoSyntaxAnalysis')),
       custom: customValues(s),
+      examples,
     };
   };
 
@@ -293,6 +319,9 @@ export function parseFwdata(xml) {
       forms,
       gloss,
       pos: analysis ? posAbbrev(refGuid(analysis, 'Category')) : null,
+      // human-approved analysis vs a morphological-parser guess the user
+      // never confirmed in FLEx — drives provConfirmed on imported links
+      approved: analysis ? isHumanApproved(analysis) : false,
       morphemes: analysis
         ? refGuids(analysis, 'MorphBundles').map(bundleOf).filter(Boolean)
         : null,

@@ -9,7 +9,7 @@
 // against the same project; the engine skips documents already marked done
 // and redoes half-imported ones.
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Upload, FileUp, Check, X, RefreshCw, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -35,9 +35,11 @@ export const ImportFlexProject = () => {
   const fileInputRef = useRef(null);
 
   const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
-  const [parsed, setParsed] = useState(null); // {backupName, ir, build, config}
+  const [parsed, setParsed] = useState(null); // {backupName, ir, build, analysisWssAvailable}
   const [projectName, setProjectName] = useState('');
   const [orthoNames, setOrthoNames] = useState({}); // ws → display name
+  const [selectedTexts, setSelectedTexts] = useState(new Set()); // doc guids
+  const [selectedWss, setSelectedWss] = useState(new Set()); // analysis ws tags
   const [progress, setProgress] = useState(null); // {label, pct} | null
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
@@ -58,13 +60,23 @@ export const ImportFlexProject = () => {
       const { name, xml } = readFwbackup(bytes);
       const ir = parseFwdata(xml);
       const build = buildDocuments(ir);
-      const config = deriveImportConfig(ir, build);
       if (build.documents.length === 0) {
         throw new Error('No interlinear texts found in this backup');
       }
-      setParsed({ backupName: name, ir, build, config });
+      // Analysis writing systems that actually carry data, project order first
+      const used = new Set([
+        ...ir.wsUsage.wordGloss, ...ir.wsUsage.morphGloss,
+        ...ir.wsUsage.freeTranslation, ...ir.wsUsage.literalTranslation, ...ir.wsUsage.note,
+      ]);
+      const analysisWssAvailable = [
+        ...ir.writingSystems.analysis.filter((ws) => used.has(ws)),
+        ...[...used].filter((ws) => !ir.writingSystems.analysis.includes(ws)),
+      ];
+      setParsed({ backupName: name, ir, build, analysisWssAvailable });
       setProjectName(name);
-      setOrthoNames(Object.fromEntries(config.orthographies.map((o) => [o.ws, o.name])));
+      setOrthoNames(Object.fromEntries(build.orthographyWss.map((ws) => [ws, ws])));
+      setSelectedTexts(new Set(build.documents.map((d) => d.guid)));
+      setSelectedWss(new Set(analysisWssAvailable));
       setStage('review');
     } catch (e) {
       console.error('FLEx parse failed:', e);
@@ -73,6 +85,16 @@ export const ImportFlexProject = () => {
     }
   };
 
+  // The selection knobs (texts, analysis languages) feed straight into the
+  // derived config so the review cards always show what will be created.
+  const filteredBuild = useMemo(() => parsed && ({
+    ...parsed.build,
+    documents: parsed.build.documents.filter((d) => selectedTexts.has(d.guid)),
+  }), [parsed, selectedTexts]);
+  const liveConfig = useMemo(() => parsed && deriveImportConfig(
+    parsed.ir, filteredBuild, { analysisWss: [...selectedWss] },
+  ), [parsed, filteredBuild, selectedWss]);
+
   const startImport = async () => {
     setStage('running');
     setRunError(null);
@@ -80,8 +102,8 @@ export const ImportFlexProject = () => {
     const vocabName = `${projectName} Lexicon`;
     try {
       const config = {
-        ...parsed.config,
-        orthographies: parsed.config.orthographies.map((o) => ({
+        ...liveConfig,
+        orthographies: liveConfig.orthographies.map((o) => ({
           ws: o.ws,
           name: (orthoNames[o.ws] || o.ws).trim() || o.ws,
         })),
@@ -136,11 +158,11 @@ export const ImportFlexProject = () => {
       if (!vocabIdRef.current) throw new Error('Lexicon vocabulary missing after setup');
 
       // 2. Lexicon + documents via the import engine.
-      const totalDocs = parsed.build.documents.length;
+      const totalDocs = filteredBuild.documents.length;
       const res = await runImport({
         client,
         projectId: projectIdRef.current,
-        build: parsed.build,
+        build: filteredBuild,
         lexicon: parsed.ir.lexicon,
         config,
         vocabId: vocabIdRef.current,
@@ -174,6 +196,9 @@ export const ImportFlexProject = () => {
   const warningSamples = parsed
     ? parsed.build.documents.flatMap((d) => d.warnings.map((w) => `${d.name}: ${w}`)).slice(0, 8)
     : [];
+  // Selections lock once setup has run: a resume must re-target the same
+  // project shape, and the engine skips/redoes per document by name.
+  const locked = stage !== 'review' || setupDoneRef.current;
 
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">
@@ -258,7 +283,69 @@ export const ImportFlexProject = () => {
               />
             </div>
 
-            {parsed.config.orthographies.length > 0 && (
+            <div className="rounded-lg border bg-card p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="font-medium">
+                  Texts <span className="font-normal text-muted-foreground">({selectedTexts.size} of {parsed.build.documents.length} selected)</span>
+                </p>
+                {!locked && (
+                  <span className="flex gap-3 text-sm">
+                    <button type="button" className="text-muted-foreground hover:text-foreground hover:underline"
+                      onClick={() => setSelectedTexts(new Set(parsed.build.documents.map((d) => d.guid)))}>all</button>
+                    <button type="button" className="text-muted-foreground hover:text-foreground hover:underline"
+                      onClick={() => setSelectedTexts(new Set())}>none</button>
+                  </span>
+                )}
+              </div>
+              <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+                {parsed.build.documents.map((d) => (
+                  <label key={d.guid} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/50">
+                    <input
+                      type="checkbox"
+                      checked={selectedTexts.has(d.guid)}
+                      disabled={locked}
+                      onChange={(e) => setSelectedTexts((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(d.guid); else next.delete(d.guid);
+                        return next;
+                      })}
+                    />
+                    <span className="flex-1 truncate">{d.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {d.sentences.length} sentences · {d.words.length.toLocaleString()} words
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {parsed.analysisWssAvailable.length > 1 && (
+              <div className="rounded-lg border bg-card p-4">
+                <p className="mb-1 font-medium">Analysis languages</p>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Glosses and translations exist in these languages — each selected one gets its own annotation fields.
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  {parsed.analysisWssAvailable.map((ws) => (
+                    <label key={ws} className="flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedWss.has(ws)}
+                        disabled={locked}
+                        onChange={(e) => setSelectedWss((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(ws); else next.delete(ws);
+                          return next;
+                        })}
+                      />
+                      <code className="text-xs">{ws}</code>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {liveConfig.orthographies.length > 0 && (
               <div className="rounded-lg border bg-card p-4">
                 <p className="mb-1 font-medium">Orthographies</p>
                 <p className="mb-3 text-sm text-muted-foreground">
@@ -266,13 +353,13 @@ export const ImportFlexProject = () => {
                   Other writing systems on words become orthographies — rename them if you like.
                 </p>
                 <div className="flex flex-col gap-2">
-                  {parsed.config.orthographies.map((o) => (
+                  {liveConfig.orthographies.map((o) => (
                     <div key={o.ws} className="flex items-center gap-3">
                       <code className="w-56 shrink-0 truncate text-xs text-muted-foreground">{o.ws}</code>
                       <Input
                         value={orthoNames[o.ws] ?? o.ws}
                         onChange={(e) => setOrthoNames((prev) => ({ ...prev, [o.ws]: e.target.value }))}
-                        disabled={stage !== 'review' || setupDoneRef.current}
+                        disabled={locked}
                       />
                     </div>
                   ))}
@@ -283,7 +370,7 @@ export const ImportFlexProject = () => {
             <div className="rounded-lg border bg-card p-4">
               <p className="mb-2 font-medium">Annotation fields</p>
               <div className="flex flex-wrap gap-2">
-                {parsed.config.fields.map((f) => (
+                {liveConfig.fields.map((f) => (
                   <Badge key={`${f.scope}:${f.name}`} className={SCOPE_BADGE[f.scope]}>
                     {f.name} · {f.scope}
                   </Badge>
@@ -315,8 +402,10 @@ export const ImportFlexProject = () => {
                 <Button variant="outline" onClick={() => { setParsed(null); setStage('pick'); }} disabled={setupDoneRef.current}>
                   Choose another file
                 </Button>
-                <Button onClick={startImport} disabled={!projectName.trim()}>
-                  {projectIdRef.current ? <><RefreshCw className="h-4 w-4" /> Resume Import</> : <><FileUp className="h-4 w-4" /> Import</>}
+                <Button onClick={startImport} disabled={!projectName.trim() || selectedTexts.size === 0}>
+                  {projectIdRef.current
+                    ? <><RefreshCw className="h-4 w-4" /> Resume Import</>
+                    : <><FileUp className="h-4 w-4" /> Import {selectedTexts.size} text{selectedTexts.size === 1 ? '' : 's'}</>}
                 </Button>
               </div>
             )}

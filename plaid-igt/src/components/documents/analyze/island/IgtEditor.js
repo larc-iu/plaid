@@ -19,7 +19,6 @@ import './igt-editor.css';
 import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/igtConfig';
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
-import { AUTO_LINK_SOURCE, precedentQueries, buildPrecedentTable, computeAutoLinkProposals } from '@/domain/autoLink';
 import { morphemeJoiner, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
@@ -185,7 +184,6 @@ export class IgtEditor {
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
     clearTimeout(this._savedTimer);
     clearTimeout(this._copiedTimer);
-    clearTimeout(this._autoLinkTimer);
     render(nothing, this.container);
   }
 
@@ -268,34 +266,14 @@ export class IgtEditor {
       if (opener) { try { opener.focus(); } catch { /* noop */ } }
     }
   }
-  // ---- auto-linking (built-in precedent-or-unique rule) ----
-  // Applies immediately; links land as inferred (violet) until touched. The
-  // provider is pluggable — see domain/autoLink.js.
-  async _runAutoLink() {
-    if (this.readOnly || this._autoLinkBusy) return;
-    this._autoLinkBusy = true;
-    this._render(true);
-    try {
-      const vocabIds = Object.keys(this.doc.vocabularies || {});
-      const results = await Promise.all(
-        precedentQueries(vocabIds).map((q) => this.doc._client.query(q)));
-      const precedentTable = buildPrecedentTable(results);
-      const proposals = computeAutoLinkProposals({
-        sentences: this.doc.sentences,
-        vocabularies: this.doc.vocabularies,
-        precedentTable,
-      });
-      const n = proposals.length ? await this.doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE) : 0;
-      this._autoLinkResult = n === false ? null : n;
-    } catch (err) {
-      console.error('Auto-link failed:', err);
-      this.doc.setError('Auto-link failed — try again.');
-    } finally {
-      this._autoLinkBusy = false;
-      clearTimeout(this._autoLinkTimer);
-      this._autoLinkTimer = setTimeout(() => { this._autoLinkResult = undefined; this._render(true); }, 3000);
-      this._render(true);
-    }
+  // ---- auto-linking ----
+  // The toolbar button opens the React AutoLinkDialog (rendered by the
+  // AnalyzeIsland shell), which offers the built-in precedent-or-unique rule
+  // plus any registered service advertising the link-vocab task — the same
+  // service-selection idiom as the Media/Tokenize tabs. The island only
+  // dispatches the open request; results land via the shared doc's reload.
+  _openAutoLink() {
+    window.dispatchEvent(new CustomEvent('igt:auto-link-open'));
   }
 
   _confirmLink(tokenId, returnFocus = false) {
@@ -862,14 +840,10 @@ export class IgtEditor {
             ? html`<button type="button" class="igt-toolbar__btn" @click=${(e) => { e.stopPropagation(); this._jumpToNextEmptyGloss(); }}>Next empty gloss →</button>`
             : nothing}
           ${!this.readOnly && Object.keys(this.doc.vocabularies || {}).length > 0
-            ? html`<button type="button" class="igt-toolbar__btn" ?disabled=${this._autoLinkBusy}
-                title="Link unlinked words and morphemes that follow project precedent or match exactly one lexicon entry. Auto-links show in violet until you confirm them."
-                @click=${(e) => { e.stopPropagation(); this._runAutoLink(); }}>
-                ${this._autoLinkBusy
-                  ? 'Auto-linking…'
-                  : (typeof this._autoLinkResult === 'number'
-                    ? (this._autoLinkResult > 0 ? `Linked ${this._autoLinkResult} ✓` : 'Nothing new to link')
-                    : 'Auto-link')}
+            ? html`<button type="button" class="igt-toolbar__btn"
+                title="Link unlinked words and morphemes automatically — choose the built-in rule or a linking service. Auto-links show in violet until you confirm them."
+                @click=${(e) => { e.stopPropagation(); this._openAutoLink(); }}>
+                Auto-link…
               </button>`
             : nothing}
         </div>

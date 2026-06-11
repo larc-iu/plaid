@@ -153,8 +153,11 @@ try {
   const rawLinks = (doc.raw?.textLayers ?? []).flatMap((tl) => tl.tokenLayers ?? [])
     .flatMap((tkl) => tkl.vocabs ?? []).flatMap((v) => v.vocabLinks ?? []);
   check(rawLinks.length > 0, 'document has vocab links', String(rawLinks.length));
-  check(rawLinks.every((l) => l.metadata?.provConfirmed === true && l.metadata?.provSource === 'flex-import'),
-    'all links stamped flex-import + confirmed');
+  check(rawLinks.every((l) => l.metadata?.prov === 'inferred' && l.metadata?.provSource === 'flex-import'),
+    'all links stamped flex-import');
+  const confirmedLinks = rawLinks.filter((l) => l.metadata?.provConfirmed === true).length;
+  check(confirmedLinks > 0, 'human-approved analyses imported as confirmed links');
+  console.log(`  (links: ${confirmedLinks} confirmed / ${rawLinks.length - confirmedLinks} parser-guess unconfirmed)`);
 
   console.log(`\ntotal ${((Date.now() - t0) / 1000).toFixed(1)}s; ${failures.length} failure(s)`);
 } finally {

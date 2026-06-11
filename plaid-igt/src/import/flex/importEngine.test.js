@@ -32,17 +32,20 @@ const build = {
       source: { en: 'Rosa' },
       description: null,
       genres: ['Folktale'],
-      body: 'За мах.\n',
+      body: 'За мах мах.\n',
       sentences: [{
-        begin: 0, end: 8,
+        begin: 0, end: 12,
         freeTranslation: { en: 'I, a tale.' }, literalTranslation: null,
         notes: [{ en: 'a note' }],
       }],
       words: [
-        { begin: 0, end: 2, forms: { [BASE_WS]: 'за', [TRANS_WS]: 'za' }, gloss: { en: 'I-ERG' }, pos: 'pro',
+        { begin: 0, end: 2, forms: { [BASE_WS]: 'за', [TRANS_WS]: 'za' }, gloss: { en: 'I-ERG' }, pos: 'pro', approved: true,
           morphemes: [{ forms: { [BASE_WS]: 'за' }, gloss: { en: '1sg' }, pos: 'pers', morphType: 'stem', senseGuid: 's1', entryGuid: 'e1' }] },
         // bare word: no analysis — should still get one default morpheme
-        { begin: 3, end: 6, forms: { [BASE_WS]: 'мах' }, gloss: null, pos: null, morphemes: null },
+        { begin: 3, end: 6, forms: { [BASE_WS]: 'мах' }, gloss: null, pos: null, approved: false, morphemes: null },
+        // parser-guessed analysis the FLEx user never approved
+        { begin: 7, end: 10, forms: { [BASE_WS]: 'мах' }, gloss: null, pos: null, approved: false,
+          morphemes: [{ forms: { [BASE_WS]: 'мах' }, gloss: null, pos: null, morphType: 'root', senseGuid: 's2', entryGuid: 'e2' }] },
       ],
       warnings: [],
     },
@@ -52,10 +55,12 @@ const build = {
 const lexicon = [
   { guid: 'e1', forms: { [BASE_WS]: 'за' }, citationForm: null, morphType: 'stem', homograph: 0,
     senses: [{ guid: 's1', gloss: { en: '1sg' }, definition: null, pos: 'pers' }] },
-  { guid: 'e2', forms: { [BASE_WS]: 'мах' }, citationForm: null, morphType: 'root', homograph: 0,
+  { guid: 'e2', forms: { [BASE_WS]: 'мах' }, citationForm: { [BASE_WS]: 'махъ' }, morphType: 'root', homograph: 0,
     custom: { Plural: 'махар' },
     senses: [
-      { guid: 's2', gloss: { en: 'tale' }, pos: 'n', custom: { 'Parsing Note': 'check' } },
+      { guid: 's2', gloss: { en: 'tale' }, definition: { en: 'a traditional tale' }, pos: 'n',
+        custom: { 'Parsing Note': 'check' },
+        examples: [{ text: { [BASE_WS]: 'мах ава' }, translations: [{ en: 'there is a tale' }] }] },
       { guid: 's3', gloss: { en: 'story' }, pos: 'n' },
     ] },
 ];
@@ -159,6 +164,14 @@ describe('deriveImportConfig', () => {
     expect(config.documentMetadata.map((m) => m.name)).toEqual(
       expect.arrayContaining(['Title (en)', 'Source', 'Genre']));
   });
+
+  it('restricts fields to the selected analysis writing systems', () => {
+    const config = deriveImportConfig(ir, build, { analysisWss: ['en'] });
+    const names = config.fields.map((f) => `${f.scope}:${f.name}`);
+    expect(names).toContain('Morpheme:Gloss');
+    expect(names).not.toContain('Morpheme:Gloss (ru)');
+    expect(names).toContain('Word:POS'); // POS fields are not ws-bound
+  });
 });
 
 describe('resolveTargets', () => {
@@ -197,6 +210,29 @@ describe('importLexicon', () => {
     expect(map.get('s2')).toBeTruthy();
   });
 
+  it('uses the citation form as the item form, keeping the lexeme form as metadata', async () => {
+    const client = makeFakeClient();
+    await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
+    const creates = client.calls.filter((c) => c.kind === 'vocabItems.create');
+    const za = creates.find((c) => c.args.metadata.flexSense === 's1');
+    const max = creates.find((c) => c.args.metadata.flexSense === 's2');
+    expect(za.args.form).toBe('за'); // no citation form → lexeme form
+    expect(za.args.metadata.lexemeForm).toBeUndefined();
+    expect(max.args.form).toBe('махъ'); // citation form wins
+    expect(max.args.metadata.lexemeForm).toBe('мах');
+  });
+
+  it('imports definitions and example sentences as item metadata', async () => {
+    const client = makeFakeClient();
+    await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
+    const max = client.calls.filter((c) => c.kind === 'vocabItems.create')
+      .find((c) => c.args.metadata.flexSense === 's2');
+    expect(max.args.metadata.definition).toBe('a traditional tale');
+    expect(max.args.metadata.examples).toEqual([
+      { text: 'мах ава', translation: 'there is a tale' },
+    ]);
+  });
+
   it('declares the vocab field schema (gloss/pos inline + custom fields)', async () => {
     const client = makeFakeClient();
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
@@ -205,7 +241,9 @@ describe('importLexicon', () => {
     expect(cfg.args.value).toEqual({
       gloss: { inline: true },
       pos: { inline: true },
+      definition: { inline: false },
       morphType: { inline: false },
+      lexemeForm: { inline: false },
       Plural: { inline: false },
       'Parsing Note': { inline: false },
     });
@@ -227,7 +265,7 @@ describe('runImport', () => {
     expect(bulks).toHaveLength(3); // sentences, words, morphemes
     const [sentences, words, morphemes] = bulks.map((b) => b.args);
 
-    expect(sentences).toEqual([{ tokenLayerId: 'sent1', text: expect.any(String), begin: 0, end: 8 }]);
+    expect(sentences).toEqual([{ tokenLayerId: 'sent1', text: expect.any(String), begin: 0, end: 12 }]);
 
     // word orthography metadata under orthog:<name>
     expect(words[0].metadata).toEqual({ [`orthog:${TRANS_WS}`]: 'za' });
@@ -235,13 +273,14 @@ describe('runImport', () => {
 
     // morphemes: full word extent, 1-based precedence, form + morphType;
     // the bare word gets a default morpheme with no metadata
-    expect(morphemes).toHaveLength(2);
+    expect(morphemes).toHaveLength(3);
     expect(morphemes[0]).toMatchObject({
       tokenLayerId: 'morph1', begin: 0, end: 2, precedence: 1,
       metadata: { form: 'за', morphType: 'stem' },
     });
     expect(morphemes[1]).toMatchObject({ begin: 3, end: 6, precedence: 1 });
     expect(morphemes[1].metadata).toBeUndefined();
+    expect(morphemes[2]).toMatchObject({ begin: 7, end: 10, metadata: { form: 'мах', morphType: 'root' } });
 
     // spans: word gloss + word pos + morpheme gloss + morpheme pos +
     // sentence translation + note (no ru morph gloss — value absent).
@@ -259,10 +298,12 @@ describe('runImport', () => {
     expect(byLayer['sl-note'][0].value).toBe('a note');
     expect(byLayer['sl-mg-ru']).toBeUndefined();
 
-    // vocab link on the analyzed morpheme only, stamped confirmed
+    // vocab links on analyzed morphemes; FLEx human approval drives
+    // provConfirmed (parser-only guesses import as unconfirmed-inferred)
     const links = client.calls.filter((c) => c.kind === 'vocabLinks.create');
-    expect(links).toHaveLength(1);
+    expect(links).toHaveLength(2);
     expect(links[0].args.metadata).toEqual({ prov: 'inferred', provSource: 'flex-import', provConfirmed: true });
+    expect(links[1].args.metadata).toEqual({ prov: 'inferred', provSource: 'flex-import' });
 
     // document done-marker written last, with FLEx metadata preserved
     const last = client.calls[client.calls.length - 1];

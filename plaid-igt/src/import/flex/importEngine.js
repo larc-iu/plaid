@@ -24,12 +24,17 @@ const fieldName = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} (
  * Derive the wizard pre-fill from a parse: orthographies, annotation fields
  * (one per analysis ws that actually occurs), document metadata fields, and
  * the field→(scope, ws) mapping the engine later imports values through.
+ *
+ * opts.analysisWss — restrict annotation fields to these analysis writing
+ * systems (default: every ws that occurs in the data).
  */
-export function deriveImportConfig(ir, build) {
+export function deriveImportConfig(ir, build, opts = {}) {
   const primaryAnalysisWs = ir.writingSystems.analysis[0] ?? 'en';
+  const wsAllowed = opts.analysisWss ? new Set(opts.analysisWss) : null;
   const fields = [];
   const addField = (kind, scope, base, wss) => {
     for (const ws of wss) {
+      if (wsAllowed && !wsAllowed.has(ws)) continue;
       fields.push({ kind, scope, ws, name: fieldName(base, ws, primaryAnalysisWs) });
     }
   };
@@ -120,50 +125,62 @@ export async function importLexicon({ client, vocabId, lexicon, baselineWs, onPr
 
   const pending = [];
   const customFieldNames = new Set();
+  const pickWs = (m) => (m == null ? null : m[baselineWs] ?? pickEn(m));
   for (const entry of lexicon) {
-    const form = entry.forms?.[baselineWs] ?? pickEn(entry.forms) ?? pickEn(entry.citationForm);
+    // The item form is the entry's CITATION form (the dictionary headword)
+    // when one exists, else the lexeme form; when they differ, the lexeme
+    // form is kept as metadata.
+    const lexemeForm = pickWs(entry.forms);
+    const form = pickWs(entry.citationForm) ?? lexemeForm;
     if (!form) continue;
     // FLEx custom-field values (entry-level + sense-level) become item
     // metadata under the custom field's own name.
     for (const k of Object.keys(entry.custom ?? {})) customFieldNames.add(k);
+    const entryMeta = (sense) => ({
+      ...(entry.morphType != null && { morphType: entry.morphType }),
+      ...(entry.homograph ? { homograph: entry.homograph } : {}),
+      ...(lexemeForm != null && lexemeForm !== form && { lexemeForm }),
+      ...(entry.custom ?? {}),
+      ...(sense?.custom ?? {}),
+      flexEntry: entry.guid,
+      flexSense: sense?.guid ?? entry.guid,
+    });
     for (const sense of entry.senses) {
       for (const k of Object.keys(sense.custom ?? {})) customFieldNames.add(k);
       if (senseToItem.has(sense.guid)) continue;
+      const examples = (sense.examples ?? [])
+        .map((ex) => ({
+          text: pickWs(ex.text),
+          ...(pickEn(ex.translations?.[0]) != null && { translation: pickEn(ex.translations[0]) }),
+        }))
+        .filter((ex) => ex.text);
       const metadata = {
         // gloss first: the editor popover's no-config fallback shows the
         // first metadata value.
         ...(pickEn(sense.gloss) != null && { gloss: pickEn(sense.gloss) }),
+        ...(pickEn(sense.definition) != null && { definition: pickEn(sense.definition) }),
         ...(sense.pos != null && { pos: sense.pos }),
-        ...(entry.morphType != null && { morphType: entry.morphType }),
-        ...(entry.homograph ? { homograph: entry.homograph } : {}),
-        ...(entry.custom ?? {}),
-        ...(sense.custom ?? {}),
-        flexEntry: entry.guid,
-        flexSense: sense.guid,
+        ...(examples.length ? { examples } : {}),
+        ...entryMeta(sense),
       };
       pending.push({ form, metadata, senseGuid: sense.guid });
     }
     // Entries with no senses still become one item (form-only).
     if (entry.senses.length === 0 && !senseToItem.has(entry.guid)) {
-      pending.push({
-        form,
-        metadata: {
-          ...(entry.morphType != null && { morphType: entry.morphType }),
-          ...(entry.custom ?? {}),
-          flexEntry: entry.guid,
-          flexSense: entry.guid,
-        },
-        senseGuid: entry.guid,
-      });
+      pending.push({ form, metadata: entryMeta(null), senseGuid: entry.guid });
     }
   }
 
   // Declare the vocab's field schema so gloss/POS render inline in the editor
   // popover and as table columns (idempotent; cheap relative to the import).
+  // `examples` is deliberately NOT declared: it's structured data, not a
+  // string column.
   const fieldsConfig = {
     gloss: { inline: true },
     pos: { inline: true },
+    definition: { inline: false },
     morphType: { inline: false },
+    lexemeForm: { inline: false },
     ...Object.fromEntries([...customFieldNames].map((n) => [n, { inline: false }])),
   };
   await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
@@ -302,20 +319,27 @@ export async function importDocument({ client, projectId, targets, config, doc, 
       }
     }
 
-    // Vocab links morpheme → lexicon item, stamped as confirmed provenance
-    // (these were human decisions in FLEx).
+    // Vocab links morpheme → lexicon item. FLEx's human-approved analyses
+    // import as confirmed; analyses only its morphological parser guessed
+    // (never confirmed by the user) keep the unconfirmed-inferred shape, so
+    // they render in the needs-review style and confirm-on-touch applies.
     progress('Linking lexicon');
     const linkSpecs = [];
     morphSpecs.forEach((s, i) => {
       const itemId = s.morpheme?.senseGuid && senseToItem.get(s.morpheme.senseGuid);
-      if (itemId && morphIds[i]) linkSpecs.push({ itemId, tokenId: morphIds[i] });
+      if (itemId && morphIds[i]) {
+        linkSpecs.push({ itemId, tokenId: morphIds[i], approved: doc.words[s.wordIndex]?.approved === true });
+      }
     });
-    const linkMeta = { prov: 'inferred', provSource: 'flex-import', provConfirmed: true };
     for (let i = 0; i < linkSpecs.length; i += LINK_CHUNK) {
       check();
       client.beginBatch();
       for (const l of linkSpecs.slice(i, i + LINK_CHUNK)) {
-        client.vocabLinks.create(l.itemId, [l.tokenId], linkMeta);
+        client.vocabLinks.create(l.itemId, [l.tokenId], {
+          prov: 'inferred',
+          provSource: 'flex-import',
+          ...(l.approved && { provConfirmed: true }),
+        });
       }
       await client.submitBatch();
     }
