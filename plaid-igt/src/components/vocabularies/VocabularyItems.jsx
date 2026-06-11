@@ -1,8 +1,16 @@
-import { useState, useEffect } from 'react';
-import { Plus, Trash2, Pencil, Check, X, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Plus, Trash2, Pencil, Check, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Download, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -12,7 +20,27 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
+
+// Sortable column header (arrow on the active column, toggles direction).
+const SortHeader = ({ field, label, sort, onSort, style }) => {
+  const active = sort.key === field;
+  const Arrow = sort.dir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <th className="px-3 py-2 text-left font-medium" style={style}>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 hover:text-foreground"
+        onClick={() => onSort(field)}
+      >
+        {label}
+        {active && <Arrow className="h-3 w-3" />}
+      </button>
+    </th>
+  );
+};
+
+const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
 export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields }) => {
   const [items, setItems] = useState([]);
@@ -28,6 +56,14 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
   const closeDeleteModal = () => setDeleteModalOpened(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
+  // Search / sort / usage counts / bulk add.
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState({ key: 'form', dir: 'asc' });
+  const [usageCounts, setUsageCounts] = useState(null); // {itemId: n} | null while loading/unavailable
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   const fetchItems = async () => {
     try {
       setLoading(true);
@@ -42,11 +78,30 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
       const vocabularyData = await client.vocabLayers.get(vocabularyId, true);
       setItems(vocabularyData.items || []);
       setError('');
+      fetchUsageCounts(); // not awaited — counts fill in when ready
     } catch (err) {
       setError('Failed to load vocabulary items');
       console.error('Error fetching vocabulary items:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // One grouped aggregate query: tokens linked per item, across every project
+  // the user can read. null leaves the column as "—".
+  const fetchUsageCounts = async () => {
+    try {
+      const res = await client.query({
+        where: [['vocab', '?v', { layer: vocabularyId }], ['vocab-link', '?t', '?v']],
+        return: { group: ['?v'], aggregates: [['count']] },
+      });
+      const counts = {};
+      for (const [itemId, n] of res?.results || []) counts[itemId] = n;
+      setUsageCounts(counts);
+    } catch (err) {
+      console.error('Usage-count query failed:', err);
+      setUsageCounts(null);
+      notifyWarning('Usage counts could not be loaded.', 'Usage counts unavailable');
     }
   };
 
@@ -57,6 +112,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
       setLoading(false);
       setItems([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabularyId]);
 
   const handleCreateItem = async () => {
@@ -155,6 +211,98 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
     }
   };
 
+  // ---- bulk add (paste one item per line; TSV columns = Form + custom fields,
+  // i.e. directly pasteable from a spreadsheet) ----
+  const parsedBulk = useMemo(() => {
+    const lines = bulkText.split('\n').map((l) => l.replace(/\r$/, '')).filter((l) => l.trim() !== '');
+    const existing = new Set(items.map((i) => i.form.toLowerCase()));
+    const rows = [];
+    const seen = new Set();
+    let skipped = 0;
+    for (const line of lines) {
+      const cells = line.split('\t').map((c) => c.trim());
+      const form = cells[0];
+      if (!form) continue;
+      const k = form.toLowerCase();
+      if (existing.has(k) || seen.has(k)) { skipped++; continue; }
+      seen.add(k);
+      const metadata = {};
+      customFields.forEach((f, i) => {
+        if (cells[i + 1]) metadata[f] = cells[i + 1];
+      });
+      rows.push({ form, metadata: Object.keys(metadata).length ? metadata : undefined });
+    }
+    return { rows, skipped };
+  }, [bulkText, items, customFields]);
+
+  const handleBulkAdd = async () => {
+    const { rows, skipped } = parsedBulk;
+    if (!rows.length) return;
+    setBulkBusy(true);
+    try {
+      client.beginBatch();
+      rows.forEach((r) => client.vocabItems.create(vocabularyId, r.form, r.metadata));
+      await client.submitBatch();
+      setBulkOpen(false);
+      setBulkText('');
+      await fetchItems();
+      notifySuccess(
+        `Added ${rows.length} item${rows.length === 1 ? '' : 's'}${skipped ? ` (${skipped} duplicate${skipped === 1 ? '' : 's'} skipped)` : ''}`,
+        'Bulk Add Complete'
+      );
+    } catch (err) {
+      console.error('Bulk add failed:', err);
+      notifyError('Bulk add failed — no items were created.', 'Error');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  // ---- CSV export (Form + custom fields + Uses) ----
+  const handleExportCsv = () => {
+    const header = ['Form', ...customFields, ...(usageCounts ? ['Uses'] : [])];
+    const lines = [header.map(csvCell).join(',')];
+    for (const it of sortedItems) {
+      const row = [it.form, ...customFields.map((f) => it.metadata?.[f] ?? '')];
+      if (usageCounts) row.push(usageCounts[it.id] ?? 0);
+      lines.push(row.map(csvCell).join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${vocabulary?.name || 'vocabulary'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ---- search + sort ----
+  const onSort = (key) =>
+    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+
+  const sortedItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = items;
+    if (q) {
+      list = items.filter((it) =>
+        it.form.toLowerCase().includes(q) ||
+        customFields.some((f) => String(it.metadata?.[f] ?? '').toLowerCase().includes(q)));
+    }
+    const val = (it) => {
+      if (sort.key === 'form') return it.form.toLowerCase();
+      if (sort.key === '_uses') return usageCounts?.[it.id] ?? 0;
+      return String(it.metadata?.[sort.key] ?? '').toLowerCase();
+    };
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const av = val(a);
+      const bv = val(b);
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return 0;
+    });
+  }, [items, search, sort, customFields, usageCounts]);
+
   const renderCustomFieldInputs = (values, onChange, keyPrefix) => {
     return customFields.map(fieldName => (
       <div key={`${keyPrefix}-${fieldName}`} className="flex flex-col gap-1.5">
@@ -199,32 +347,59 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
       {/* Items table */}
       <div className="rounded-lg border bg-card p-4">
         <div className="flex flex-col gap-4">
-          <p className="text-sm font-medium">Vocabulary Items ({items.length})</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium">
+              Vocabulary Items ({search ? `${sortedItems.length} of ${items.length}` : items.length})
+            </p>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search items…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-8 w-56 pl-7"
+                />
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
+                <Upload className="h-3.5 w-3.5" /> Bulk Add
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={!items.length}>
+                <Download className="h-3.5 w-3.5" /> Export CSV
+              </Button>
+            </div>
+          </div>
 
           {items.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No vocabulary items yet. Add your first item below.
+            </p>
+          ) : sortedItems.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No items match "{search}".
             </p>
           ) : (
             <div className="overflow-hidden rounded-md border">
               <table className="w-full text-sm">
                 <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium" style={{ width: '30%' }}>Form</th>
+                    <SortHeader field="form" label="Form" sort={sort} onSort={onSort} style={{ width: '26%' }} />
                     {customFields.map(fieldName => (
-                      <th
+                      <SortHeader
                         key={fieldName}
-                        className="px-3 py-2 text-left font-medium"
-                        style={{ width: `${Math.max(15, 60 / (customFields.length + 2))}%` }}
-                      >
-                        {fieldName}
-                      </th>
+                        field={fieldName}
+                        label={fieldName}
+                        sort={sort}
+                        onSort={onSort}
+                        style={{ width: `${Math.max(14, 52 / (customFields.length + 2))}%` }}
+                      />
                     ))}
-                    <th className="px-3 py-2 text-left font-medium" style={{ width: '20%' }}>Actions</th>
+                    <SortHeader field="_uses" label="Uses" sort={sort} onSort={onSort} style={{ width: '10%' }} />
+                    <th className="px-3 py-2 text-left font-medium" style={{ width: '16%' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map(record => (
+                  {sortedItems.map(record => (
                     <tr key={record.id} className="group border-t hover:bg-muted/50">
                       <td className="px-3 py-2">
                         {editingItem === record.id ? (
@@ -253,6 +428,9 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
                           )}
                         </td>
                       ))}
+                      <td className="px-3 py-2 text-muted-foreground" title="Linked words/morphemes across projects you can read">
+                        {usageCounts ? (usageCounts[record.id] ?? 0) : '—'}
+                      </td>
                       <td className="px-3 py-2">
                         {editingItem === record.id ? (
                           <div className="flex items-center gap-1">
@@ -344,6 +522,39 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
         </div>
       </div>
 
+      {/* Bulk add dialog */}
+      <Dialog open={bulkOpen} onOpenChange={(o) => { if (!o && !bulkBusy) setBulkOpen(false); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bulk Add Items</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">
+              One item per line. Columns are tab-separated (paste straight from a
+              spreadsheet): <strong>Form</strong>{customFields.length ? <> then {customFields.join(', ')}</> : null}.
+              Duplicates of existing forms are skipped.
+            </p>
+            <Textarea
+              rows={10}
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              placeholder={customFields.length ? `form\t${customFields.join('\t')}` : 'one form per line'}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              {parsedBulk.rows.length} item{parsedBulk.rows.length === 1 ? '' : 's'} to add
+              {parsedBulk.skipped ? ` · ${parsedBulk.skipped} duplicate${parsedBulk.skipped === 1 ? '' : 's'} skipped` : ''}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={bulkBusy}>Cancel</Button>
+            <Button onClick={handleBulkAdd} disabled={!parsedBulk.rows.length || bulkBusy}>
+              {bulkBusy ? 'Adding…' : `Add ${parsedBulk.rows.length} item${parsedBulk.rows.length === 1 ? '' : 's'}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation Modal */}
       <AlertDialog open={deleteModalOpened} onOpenChange={(o) => { if (!o) closeDeleteModal(); }}>
         <AlertDialogContent className="max-w-md">
@@ -360,7 +571,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
                   You are about to permanently delete the vocabulary item <strong>"{itemToDelete?.form}"</strong>.
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  This action cannot be undone and will remove all links to this item.
+                  {usageCounts && (usageCounts[itemToDelete?.id] ?? 0) > 0
+                    ? <>It is linked to <strong>{usageCounts[itemToDelete.id]} word{usageCounts[itemToDelete.id] === 1 ? '' : 's'}/morpheme{usageCounts[itemToDelete.id] === 1 ? '' : 's'}</strong> — those links will be removed. </>
+                    : null}
+                  This action cannot be undone.
                 </p>
               </div>
             </div>
