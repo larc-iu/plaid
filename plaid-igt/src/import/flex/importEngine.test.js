@@ -220,9 +220,13 @@ describe('runImport', () => {
     expect(morphemes[1].metadata).toBeUndefined();
 
     // spans: word gloss + word pos + morpheme gloss + morpheme pos +
-    // sentence translation + note (no ru morph gloss — value absent)
-    const spanCreate = client.calls.find((c) => c.kind === 'spans.bulkCreate');
-    const byLayer = Object.groupBy(spanCreate.args, (s) => s.spanLayerId);
+    // sentence translation + note (no ru morph gloss — value absent).
+    // One bulkCreate per layer — the endpoint rejects mixed-layer batches.
+    const spanCalls = client.calls.filter((c) => c.kind === 'spans.bulkCreate');
+    for (const c of spanCalls) {
+      expect(new Set(c.args.map((s) => s.spanLayerId)).size).toBe(1);
+    }
+    const byLayer = Object.groupBy(spanCalls.flatMap((c) => c.args), (s) => s.spanLayerId);
     expect(byLayer['sl-wg'][0].value).toBe('I-ERG');
     expect(byLayer['sl-wp'][0].value).toBe('pro');
     expect(byLayer['sl-mg'][0].value).toBe('1sg');
