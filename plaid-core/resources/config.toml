@@ -68,6 +68,11 @@ max_file_size_mb = 200
 [database]
 # Path to the SQLite database file. Created (with its parent directory) on
 # first launch if absent.
+#
+# BACKUPS: the database runs in WAL mode, so a plain file copy of the .db
+# misses un-checkpointed writes in the -wal sidecar. Use the SQLite backup
+# API instead — safe with the server running:
+#   sqlite3 data/plaid.db ".backup /path/to/backup-$(date +%F).db"
 path = "data/plaid.db"
 
 # Minimum / maximum allowed length for user-supplied names (projects, layers,
