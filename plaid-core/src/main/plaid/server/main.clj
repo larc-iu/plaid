@@ -1,5 +1,6 @@
 (ns plaid.server.main
   (:require [clojure.java.io :as io]
+            [clojure.string]
             [mount.core :as mount]
             [plaid.server.http-server]
             [taoensso.timbre :as log])
@@ -56,6 +57,35 @@
     (when (and cp (.endsWith cp ".jar"))
       cp)))
 
+(def ^:private reexec-jdk-flags
+  ["--add-opens=java.base/java.nio=ALL-UNNAMED"
+   "--enable-native-access=ALL-UNNAMED"])
+
+(defn- inherited-jvm-args
+  "JVM arguments of the CURRENT process (-Xmx, -D system properties, GC
+   flags, ...), to be passed through to the re-exec'd child. Without
+   this, `java -Xmx8g -jar plaid.jar` silently re-exec'd at the default
+   heap — the child's command line was built from scratch and every
+   operator JVM arg was dropped. Only the EXACT canonical flags we
+   re-add ourselves are filtered (a prefix filter would eat an
+   operator's unrelated --add-opens)."
+  []
+  (->> (some-> (java.lang.management.ManagementFactory/getRuntimeMXBean)
+               (.getInputArguments))
+       (remove (set reexec-jdk-flags))
+       (vec)))
+
+(defn- build-reexec-cmd
+  "Child command line: java binary, the parent's own JVM args, the two
+   JDK module flags, then the jar + program args. Pure — split out so
+   the arg-preservation contract is testable without forking a JVM."
+  [java-bin jvm-args jar-path args]
+  (-> [java-bin]
+      (into jvm-args)
+      (into reexec-jdk-flags)
+      (into ["-jar" jar-path])
+      (into args)))
+
 (defn- re-exec-with-jdk-flags!
   "Re-launch this JVM with both `--add-opens=java.base/java.nio=ALL-UNNAMED`
    (required by SQLite's reflective access to `java.nio.Buffer`) and
@@ -66,13 +96,12 @@
    way for one flag to be present while the other is missing."
   [args]
   (if-let [jar-path (find-jar-path)]
-    (let [cmd (into [(resolve-java-binary)
-                     "--add-opens=java.base/java.nio=ALL-UNNAMED"
-                     "--enable-native-access=ALL-UNNAMED"
-                     "-jar" jar-path]
-                    args)
+    (let [cmd (build-reexec-cmd (resolve-java-binary) (inherited-jvm-args) jar-path args)
           pb  (ProcessBuilder. ^java.util.List cmd)
           env (.environment pb)]
+      (binding [*out* *err*]
+        (println "Re-executing with JDK module flags (operator JVM args preserved):")
+        (println " " (clojure.string/join " " cmd)))
       (.put env "PLAID_NO_REEXEC" "1")
       (.inheritIO pb)
       (System/exit (.waitFor (.start pb))))
