@@ -126,6 +126,11 @@
               (not (every? some? token-rows)))
       (throw (ex-info "Vocab link must reference at least one token"
                       {:code 400})))
+    ;; Mirror span/check-tokens!: the PK is (vocab_link_id, order_idx),
+    ;; so duplicates are representable but never meaningful — reject.
+    (when-not (apply distinct? token-ids)
+      (throw (ex-info "Token list contains duplicate IDs."
+                      {:ids token-ids :code 400})))
     (let [doc-ids (set (map :document_id token-rows))]
       (when (> (count doc-ids) 1)
         (throw (ex-info "Tokens inside vocab link must all belong to the same document"

@@ -87,12 +87,18 @@
     (testing "Every attempt produces at least one 200 (the winner)"
       (is any-200? (str "No 200 in any attempt: " results)))
     (when expect-strict-occ?
-      (testing "STRICT OCC: at least one attempt shows the loser observing
-                the winner's bump (a 409). Flip `expect-strict-occ?` to
-                true once `wrap-document-version` is fixed to detect this
-                race."
-        (is any-409?
-            (str "Expected at least one 409 in " attempts " attempts; got " results))))
+      (testing "STRICT OCC: EVERY attempt resolves to exactly {200, 409}.
+                Under BEGIN IMMEDIATE the loser's tx cannot start until
+                the winner commits, so its in-tx version check necessarily
+                sees the bump — there is no timing window in which both
+                may commit. The previous any-409?-across-8-attempts
+                assertion would have passed a partial regression that let
+                both writers through 7 times out of 8."
+        (doseq [[i pair] (map-indexed vector results)]
+          (is (= #{200 409} (set pair))
+              (str "Attempt " i " did not resolve to {200, 409}: " pair))))
+      ;; Kept for the failure-message ergonomics of the aggregate view.
+      (is any-409? (str "Expected 409s under strict OCC; got " results)))
     (when-not expect-strict-occ?
       (testing "Current racy OCC: both writes commonly succeed. This
                 test pins the behavior so a future fix flips the

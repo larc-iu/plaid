@@ -212,6 +212,14 @@
             res (create-span admin-request fake-sl [token1-id] "test")]
         (assert-bad-request res)))
 
+    (testing "Duplicate token IDs rejected"
+      ;; The schema PK is (span_id, order_idx), so duplicates are
+      ;; representable — but never meaningful, and they interact badly
+      ;; with merge's junction-dedup. Rejected on create and set-tokens.
+      (assert-bad-request (create-span admin-request sl [token1-id token1-id] "dup"))
+      (let [sid (-> (create-span admin-request sl [token1-id] "ok") :body :id)]
+        (assert-bad-request (update-span-tokens admin-request sid [token2-id token2-id]))))
+
     (testing "Non-existent token IDs"
       (let [fake-token (java.util.UUID/randomUUID)
             res (create-span admin-request sl [fake-token] "test")]

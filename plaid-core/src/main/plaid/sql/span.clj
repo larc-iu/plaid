@@ -123,6 +123,14 @@
     (empty? token-ids)
     (throw (ex-info "Token list is empty or malformed" {:code 400}))
 
+    ;; The schema PK is (span_id, order_idx), not (span_id, token_id),
+    ;; so duplicates are representable — but they're never meaningful,
+    ;; they inflate ETL images, and reparent-junction!'s dedup semantics
+    ;; on merge are order-dependent over duplicate rows. Reject.
+    (not (apply distinct? token-ids))
+    (throw (ex-info "Token list contains duplicate IDs."
+                    {:ids token-ids :code 400}))
+
     (not (every? some? token-rows))
     (throw (ex-info "Not all token IDs are valid." {:ids token-ids :code 400})))
   (let [layer-row (psc/fetch-by-id tx :span_layers span-layer-id)]

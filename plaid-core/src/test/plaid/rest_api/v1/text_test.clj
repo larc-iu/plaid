@@ -63,6 +63,39 @@
             res2 (create-text admin-request tl dup-doc "second")]
         (assert-status 409 res2)))))
 
+(deftest text-edit-op-validation
+  ;; Client-supplied edit directives reach apply-text-edit unvalidated
+  ;; (the PATCH body schema is any?). A malformed op used to corrupt the
+  ;; fold's accumulator and surface as a raw 500 NPE (tx rolled back, no
+  ;; corruption — but unusable error UX); out-of-bounds indices threw
+  ;; StringIndexOutOfBounds, also a 500. Both are structured 400s now.
+  (let [proj (create-test-project admin-request "TextOpValidationProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        text-id (-> (create-text admin-request tl doc "hello") :body :id)]
+    (testing "malformed op shapes are 400s"
+      (assert-bad-request (update-text admin-request text-id
+                                       [{:type "delete" :index 0 :value 1.5}]))
+      (assert-bad-request (update-text admin-request text-id
+                                       [{:type "insert" :index 0 :value 7}]))
+      (assert-bad-request (update-text admin-request text-id
+                                       [{:type "explode" :index 0 :value "x"}])))
+    (testing "out-of-bounds ops are 400s"
+      (assert-bad-request (update-text admin-request text-id
+                                       [{:type "delete" :index 3 :value 10}]))
+      (assert-bad-request (update-text admin-request text-id
+                                       [{:type "insert" :index -1 :value "x"}]))
+      (assert-bad-request (update-text admin-request text-id
+                                       [{:type "insert" :index 99 :value "x"}])))
+    (testing "the text is untouched after rejected ops"
+      (let [r (get-text admin-request text-id)]
+        (assert-ok r)
+        (is (= "hello" (-> r :body :text/body)))))
+    (testing "valid directive lists still work"
+      (assert-ok (update-text admin-request text-id
+                              [{:type "insert" :index 5 :value " world"}]))
+      (is (= "hello world" (-> (get-text admin-request text-id) :body :text/body))))))
+
 (deftest text-update-with-tokens
   (let [proj (create-test-project admin-request "TextUpdateProj")
         doc (create-test-document admin-request proj "Doc")

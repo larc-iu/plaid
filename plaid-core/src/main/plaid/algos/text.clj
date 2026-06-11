@@ -1,6 +1,5 @@
 (ns plaid.algos.text
-  (:require [taoensso.timbre :as log]
-            [editscript.core :as e]
+  (:require [editscript.core :as e]
             [plaid.util.codepoint :as cp]))
 
 (comment
@@ -80,23 +79,6 @@
 
           :else
           (throw (ex-info "Unknown op!" {:op head :code 500})))))))
-
-(defn valid-delete? [{:keys [type index value] :as op}]
-  (and (map? op)
-       (= :delete type)
-       (int? index)
-       (int? value)))
-
-(defn valid-insert? [{:keys [type index value] :as op}]
-  (and (map? op)
-       (= :insert type)
-       (int? index)
-       (string? value)))
-
-(defn valid-ops? [ops]
-  (every? #(or (valid-delete? %)
-               (valid-insert? %))
-          ops))
 
 (defn delete-op [index value]
   {:type  :delete
@@ -220,11 +202,29 @@
   (let [type (or (and (keyword? type) type)
                  (and (string? type) (keyword type))
                  type)]
-    (if (not (or (and (or (= type :insert)) (int? index) (string? value))
-                 (and (= type :delete) (int? index) (int? value))))
-      (do
-        (log/error "Malformed op:" op)
-        tokens)
+    ;; Client-supplied edit directives reach here unvalidated (the PATCH
+    ;; body schema is `any?`), so reject malformed/out-of-bounds ops with
+    ;; a structured 400. The old behavior returned `tokens` (a vector)
+    ;; instead of the accumulator shape, which nil'd the fold's :text and
+    ;; surfaced as a raw 500 NPE; out-of-bounds indices threw
+    ;; StringIndexOutOfBounds from cp-subs, also a 500. Both throw inside
+    ;; the operation tx body, so submit-operation* projects them cleanly.
+    (when-not (or (and (= type :insert) (int? index) (string? value))
+                  (and (= type :delete) (int? index) (int? value)))
+      (throw (ex-info (str "Malformed text edit operation: " (pr-str op)
+                           " — expected {type: \"insert\", index: int, value: string}"
+                           " or {type: \"delete\", index: int, value: int}")
+                      {:code 400 :op op})))
+    (let [len (cp/cp-count (:text/body text))]
+      (when-not (case type
+                  :insert (<= 0 index len)
+                  :delete (and (<= 0 index)
+                               (<= 0 value)
+                               (<= (+ index value) len)))
+        (throw (ex-info (str "Text edit operation out of bounds: " (pr-str op)
+                             " (text length is " len " code points)")
+                        {:code 400 :op op :text-length len}))))
+    (do
       (case type
         ;; three cases:
         ;; - token opens and closes before index (no changes)
