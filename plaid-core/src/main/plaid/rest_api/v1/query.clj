@@ -9,7 +9,7 @@
   Author errors (`:code` 400) are returned verbatim; anything else (a compiler
   invariant failure, a SQL/DB error) is logged server-side and returned as a
   generic 500 so internal SQL/exception text never leaks to the caller."
-  (:require [clojure.tools.logging :as log]
+  (:require [taoensso.timbre :as log]
             [plaid.sql.query.exec :as qe]))
 
 (def query-routes
