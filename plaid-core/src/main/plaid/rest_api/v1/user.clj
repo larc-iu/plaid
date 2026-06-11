@@ -25,8 +25,8 @@
      :post {:summary "Create a new user"
             :middleware [pra/wrap-admin-required]
             :parameters {:body {:username string? :password string? :is-admin boolean?}}
-            :handler (fn [{{{:keys [username password is-admin]} :body} :parameters db :db}]
-                       (let [result (user/create db username is-admin password)]
+            :handler (fn [{{{:keys [username password is-admin]} :body} :parameters db :db user-id :user/id}]
+                       (let [result (user/create db username is-admin password user-id)]
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
@@ -63,7 +63,8 @@
                                                                             id
                                                                             {:password password
                                                                              :user/username username
-                                                                             :user/is-admin is-admin})]
+                                                                             :user/is-admin is-admin}
+                                                                            current-user-id)]
                                (if success
                                  {:status 200
                                   :body (user/get db id)}
@@ -74,7 +75,8 @@
                              (let [{:keys [success code error]} (user/merge db
                                                                             id
                                                                             {:password password
-                                                                             :user/username username})]
+                                                                             :user/username username}
+                                                                            current-user-id)]
                                (if success
                                  {:status 200
                                   :body (user/get db id)}
@@ -92,8 +94,8 @@
                              "<body>deactivated-at</body> timestamp. Reversible via the activate endpoint, "
                              "which restores login only (not memberships or tokens).")
                :middleware [pra/wrap-admin-required]
-               :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
-                          (let [{:keys [success code error]} (user/deactivate db id)]
+               :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id}]
+                          (let [{:keys [success code error]} (user/deactivate db id user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
@@ -104,8 +106,8 @@
                            "deactivated.")
              :openapi {:x-client-method "activate"}
              :middleware [pra/wrap-admin-required]
-             :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
-                        (let [{:keys [success code error]} (user/reactivate db id)]
+             :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id}]
+                        (let [{:keys [success code error]} (user/reactivate db id user-id)]
                           (if success
                             {:status 200 :body (user/get db id)}
                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]]])

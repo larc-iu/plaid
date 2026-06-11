@@ -87,7 +87,7 @@
             username-ordered entries array"
     ;; with-admin/with-test-users give us admin@, user1@, user2@; add 4 more.
     (doseq [u ["zz-aaa@example.com" "zz-bbb@example.com" "zz-ccc@example.com" "zz-ddd@example.com"]]
-      (user/create db u false "password"))
+      (user/create db u false "password" nil))
     (let [r (api-call admin-request {:method :get :path "/api/v1/users"})
           _ (assert-ok r)
           body (:body r)
@@ -145,7 +145,7 @@
     ;; maintainer of one project. admin creates the project (so admin is
     ;; its maintainer too), we grant sole-maint, then drop admin so
     ;; sole-maint is genuinely the ONLY maintainer.
-    (let [_ (user/create db "sole-maint@example.com" false "password")
+    (let [_ (user/create db "sole-maint@example.com" false "password" nil)
           proj (create-test-project admin-request "SoleMaintProj")
           _ (assert-no-content (add-maintainer* admin-request proj
                                                 "sole-maint@example.com"))

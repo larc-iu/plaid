@@ -11,7 +11,7 @@
 (use-fixtures :each with-clean-db)
 
 (defn- mk-user! [id]
-  (user/create db id false "pw")
+  (user/create db id false "pw" nil)
   id)
 
 (deftest create-and-read

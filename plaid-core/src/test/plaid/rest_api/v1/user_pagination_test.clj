@@ -43,7 +43,7 @@
   ;; with-admin gives us admin@example.com; add 5 more so we have > 3 users.
   (doseq [u ["zz-aaa@example.com" "zz-bbb@example.com" "zz-ccc@example.com"
              "zz-ddd@example.com" "zz-eee@example.com"]]
-    (user/create db u false "password"))
+    (user/create db u false "password" nil))
 
   (testing "Response is always the {:entries :next-cursor} envelope"
     (let [r (list-users)

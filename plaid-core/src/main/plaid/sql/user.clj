@@ -151,13 +151,15 @@
 
 (defn create
   "Create a new user. `id` doubles as the username (matches v2 behavior).
+  `acting-user-id` attributes the op in the audit log — nil ONLY for the
+  bootstrap admin created at first startup, where no actor exists yet.
   Returns {:success true :extra id} or {:success false ...}."
-  [db id is-admin password]
+  [db id is-admin password acting-user-id]
   (submit-operation! [tx db {:type :user/create
                              :project nil
                              :document nil
                              :description (str "Create user " id)
-                             :user nil}]
+                             :user acting-user-id}]
                      (insert-user-row! tx id is-admin password)))
 
 (defn- count-other-admins
@@ -172,13 +174,14 @@
 
 (defn merge
   "Update mutable fields on a user. `m` may include :user/username,
-  :user/is-admin, and/or :password (raw, which gets hashed)."
-  [db eid m]
+  :user/is-admin, and/or :password (raw, which gets hashed).
+  `acting-user-id` attributes the op (the admin or the user themselves)."
+  [db eid m acting-user-id]
   (submit-operation! [tx db {:type :user/update
                              :project nil
                              :document nil
                              :description (str "Update user " eid)
-                             :user nil}]
+                             :user acting-user-id}]
                      (when-let [n (:user/username m)]
                        (psc/valid-name? n))
                      (let [intern (get-internal tx eid)]
@@ -302,12 +305,12 @@
     - revokes all the user's API tokens (audited).
   The username stays reserved. Reversible via `reactivate` (which does
   NOT restore memberships or tokens)."
-  [db eid]
+  [db eid acting-user-id]
   (submit-operation! [tx db {:type :user/deactivate
                              :project nil
                              :document nil
                              :description (str "Deactivate user " eid)
-                             :user nil}]
+                             :user acting-user-id}]
                      (let [existing (psc/fetch-by-id tx :users eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
@@ -349,12 +352,12 @@
   tokens — those were genuinely removed (audited) at deactivation and
   must be re-granted deliberately. `password_changes` keeps its bumped
   value (it's a monotonic counter; old tokens stay dead)."
-  [db eid]
+  [db eid acting-user-id]
   (submit-operation! [tx db {:type :user/reactivate
                              :project nil
                              :document nil
                              :description (str "Reactivate user " eid)
-                             :user nil}]
+                             :user acting-user-id}]
                      (let [existing (psc/fetch-by-id tx :users eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))

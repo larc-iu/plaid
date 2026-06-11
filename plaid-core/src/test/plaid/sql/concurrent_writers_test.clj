@@ -38,7 +38,7 @@
       (migratus/migrate {:store :database
                          :migration-dir "migrations"
                          :db {:datasource ds}})
-      (let [{:keys [extra]} (user/create ds "concurrent-test-admin@example.com" true "password")
+      (let [{:keys [extra]} (user/create ds "concurrent-test-admin@example.com" true "password" nil)
             admin-id extra
             exec (Executors/newFixedThreadPool n)
             results (->> (range n)
@@ -89,7 +89,7 @@
       (migratus/migrate {:store :database
                          :migration-dir "migrations"
                          :db {:datasource ds}})
-      (let [{:keys [extra]} (user/create ds "same-row-admin@example.com" true "password")
+      (let [{:keys [extra]} (user/create ds "same-row-admin@example.com" true "password" nil)
             admin-id extra
             ;; One project we'll hammer from N threads.
             {:keys [extra]} (project/create ds {:project/name "ContendedProj"} admin-id)

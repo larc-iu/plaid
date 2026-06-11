@@ -68,7 +68,7 @@
         ;; --- Boot #1: mount, migrate, write data --------------------
         (let [ds1 (start-mount! db-path)
               _ (migrate! ds1)
-              {:keys [extra]} (user/create ds1 "restart-test-admin@example.com" true "password")
+              {:keys [extra]} (user/create ds1 "restart-test-admin@example.com" true "password" nil)
               user-id extra
               {:keys [success extra]} (project/create
                                        ds1

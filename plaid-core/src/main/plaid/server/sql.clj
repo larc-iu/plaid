@@ -34,7 +34,8 @@
   (let [email (read-line)
         _ (do (print "Enter password: ") (flush))
         password (read-line-secret)
-        {:keys [success]} (pxu/create datasource email true password)]
+        ;; nil actor: this is the bootstrap admin — no user exists yet.
+        {:keys [success]} (pxu/create datasource email true password nil)]
     (if success
       (log/info (str "Admin user created with email " email "."))
       (do (log/error "Error creating first user!")

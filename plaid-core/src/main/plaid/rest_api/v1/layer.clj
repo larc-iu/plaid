@@ -8,8 +8,8 @@
                              "or sentence boundary marking.")
             :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]
                          :body any?}
-            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path config-value :body} :parameters db :db}]
-                          (let [{:keys [success code error]} (prj/assoc-editor-config-pair db id namespace config-key config-value)]
+            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path config-value :body} :parameters db :db user-id :user/id}]
+                          (let [{:keys [success code error]} (prj/assoc-editor-config-pair db id namespace config-key config-value user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500)
@@ -17,8 +17,8 @@
 
    :delete {:summary    "Remove a configuration value for a layer."
             :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]}
-            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path} :parameters db :db}]
-                          (let [{:keys [success code error]} (prj/dissoc-editor-config-pair db id namespace config-key)]
+            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path} :parameters db :db user-id :user/id}]
+                          (let [{:keys [success code error]} (prj/dissoc-editor-config-pair db id namespace config-key user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500)

@@ -34,7 +34,7 @@
         a  (id (h/create-span admin-request pos [t0] "NOUN" {"score" 7 "caseKey" "X"}))
         b  (id (h/create-span admin-request pos [t1] "VERB" {"score" 3}))
         c  (id (h/create-span admin-request pos [t2] "NOUN"))]
-    (prj/assoc-editor-config-pair db pos "plaid" "color" "red")
+    (prj/assoc-editor-config-pair db pos "plaid" "color" "red" nil)
     {:pos pos :tokl tokl :t0 t0 :t1 t1 :t2 t2 :t3 t3 :a a :b b :c c}))
 
 (deftest core-attr-predicate

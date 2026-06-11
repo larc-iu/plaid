@@ -708,14 +708,15 @@
 (defn assoc-editor-config-pair
   "Set <editor-name>/<config-key> = <config-value> in the layer's :config
   JSON. `layer-id` may be any kind of layer (project / text / token /
-  span / relation / vocab) — we look it up across all layer tables."
-  [db layer-id editor-name config-key config-value]
+  span / relation / vocab) — we look it up across all layer tables.
+  `acting-user-id` attributes the op (a maintainer-level action)."
+  [db layer-id editor-name config-key config-value acting-user-id]
   (submit-operation! [tx db {:type :layer/assoc-editor-config-pair
                              :project nil
                              :document nil
                              :description (str "Set editor config " editor-name "/" config-key
                                                " on layer " layer-id)
-                             :user nil}]
+                             :user acting-user-id}]
                      (let [table (find-layer-table tx layer-id)]
                        (when-not table
                          (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400})))
@@ -731,14 +732,15 @@
                                             {:config (psc/serialize-config new-config)})))))
 
 (defn dissoc-editor-config-pair
-  "Remove <editor-name>/<config-key> from the layer's :config JSON."
-  [db layer-id editor-name config-key]
+  "Remove <editor-name>/<config-key> from the layer's :config JSON.
+  `acting-user-id` attributes the op (a maintainer-level action)."
+  [db layer-id editor-name config-key acting-user-id]
   (submit-operation! [tx db {:type :layer/dissoc-editor-config-pair
                              :project nil
                              :document nil
                              :description (str "Unset editor config " editor-name "/" config-key
                                                " on layer " layer-id)
-                             :user nil}]
+                             :user acting-user-id}]
                      (let [table (find-layer-table tx layer-id)]
                        (when-not table
                          (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400})))

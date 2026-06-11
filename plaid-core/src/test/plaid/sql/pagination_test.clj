@@ -110,7 +110,7 @@
   return the sorted set of [username id] key vectors we expect to walk."
   [n]
   (let [ids (mapv #(format "pg-user-%02d@example.com" %) (range n))]
-    (doseq [u ids] (user/create db u false "pw"))
+    (doseq [u ids] (user/create db u false "pw" nil))
     ;; username == id in user/create, so the keyset is [username id].
     (sort (mapv (fn [u] [u u]) ids))))
 

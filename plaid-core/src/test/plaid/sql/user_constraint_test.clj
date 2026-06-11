@@ -23,9 +23,9 @@
   (testing "creating a user with an id (== username) that already exists
             surfaces as {:success false :code 409}"
     (let [uid "dup-username-test@example.com"
-          r1 (user/create db uid false "irrelevant-password")]
+          r1 (user/create db uid false "irrelevant-password" nil)]
       (is (:success r1) (str "first create succeeded: " r1))
-      (let [r2 (user/create db uid false "irrelevant-password")]
+      (let [r2 (user/create db uid false "irrelevant-password" nil)]
         (is (false? (:success r2))
             (str "second create with same username fails: " r2))
         (is (= 409 (:code r2))
@@ -47,18 +47,18 @@
     ;; different username via direct SQL to set the stage, then INSERT
     ;; via public `create` to collide on PK.
     (let [uid "pk-collision-victim@example.com"
-          r1 (user/create db uid false "irrelevant-password")]
+          r1 (user/create db uid false "irrelevant-password" nil)]
       (is (:success r1) (str "first create succeeded: " r1))
       ;; Rename the row so a fresh create reuses the id but the
       ;; username slot is free. This isolates the PK-on-id collision
       ;; from the UNIQUE-on-username one.
-      (let [rename-res (user/merge db uid {:user/username "pk-collision-renamed@example.com"})]
+      (let [rename-res (user/merge db uid {:user/username "pk-collision-renamed@example.com"} nil)]
         (is (:success rename-res) (str "rename succeeded: " rename-res)))
       ;; Now create with the original id again. id is still taken
       ;; (PK collision on users.id), but the username slot is free, so
       ;; the FAILURE mode is exclusively the PK violation — the path
       ;; we want to assert does NOT mask as 409.
-      (let [r2 (user/create db uid false "irrelevant-password")]
+      (let [r2 (user/create db uid false "irrelevant-password" nil)]
         (is (false? (:success r2))
             (str "second create with same id (PK collision) fails: " r2))
         (is (not= 409 (:code r2))

@@ -107,7 +107,7 @@
         text (id (h/create-text admin-request txtl doc "aa"))
         t0 (id (h/create-token admin-request tokl text 0 2))
         s  (id (h/create-span admin-request pos [t0] "NOUN"))]
-    (prj/assoc-editor-config-pair db pos "plaid" "role" "lex")
+    (prj/assoc-editor-config-pair db pos "plaid" "role" "lex" nil)
     (testing "a layer var filtered by its config role matches the right layer"
       (is (= [[(str s)]]
              (tuples (qe/run db "admin@example.com"

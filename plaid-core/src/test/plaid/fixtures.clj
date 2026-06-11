@@ -196,7 +196,7 @@
 (defn- ensure-user! [db email admin? password]
   (try
     (when-not (pxu/get-internal db email)
-      (pxu/create db email admin? password))
+      (pxu/create db email admin? password nil))
     (catch clojure.lang.ExceptionInfo _)))
 
 (defn with-admin [f]

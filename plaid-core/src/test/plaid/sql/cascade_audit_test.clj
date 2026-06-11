@@ -81,7 +81,7 @@
   we don't need a token for them). The user `eid` doubles as username,
   matching the v2 contract."
   [eid]
-  (let [r (user/create db eid false "irrelevant-password")]
+  (let [r (user/create db eid false "irrelevant-password" nil)]
     (is (:success r) (str "ensure-user create returned " r))
     eid))
 
@@ -111,16 +111,16 @@
           resp (api-call admin-request
                          {:method :delete :path (str "/api/v1/users/" victim)})
           _    (is (= 204 (:status resp)) "user deactivation succeeds (204)")
-          ;; Find the user/deactivate op. The op-record's `:user` is nil
-          ;; (no actor is attached to `plaid.sql.user/deactivate`), so we
-          ;; key off the op_type + description (which carries the
-          ;; victim's id) rather than user_id.
+          ;; Find the user/deactivate op via op_type + description (which
+          ;; carries the victim's id — user_id carries the ACTOR).
           op   (psc/q1 db {:select [:*] :from [:operations]
                            :where [:and
                                    [:= :op_type "user/deactivate"]
                                    [:= :description (str "Deactivate user " victim)]]
                            :order-by [[:ts :desc]] :limit 1})
-          _    (is (some? op) "user/delete op recorded")
+          _    (is (some? op) "user/deactivate op recorded")
+          _    (is (= "admin@example.com" (str (:user_id op)))
+                   "op is attributed to the acting admin, not nil")
           writes (psc/q db {:select [:*] :from [:audit_writes]
                             :where [:= :op_id (:id op)]
                             :order-by [:seq]})]
