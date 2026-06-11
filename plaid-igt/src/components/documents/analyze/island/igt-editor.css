@@ -406,18 +406,29 @@
   border-radius: 8px;
 }
 .igt-vocab__opener:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
-/* Linked: show the lexicon form as a small blue chip (distinct from a gloss). */
+/* Linked: the lexicon item's form, quiet at rest (user call 2026-06-10 — the
+   blue chip read as a second gloss row). Small, muted, no background; the
+   dotted underline is the "this is a link" cue, brightening on hover/focus.
+   Same slot and geometry as the unlinked "+ link" affordance. */
 .igt-vocab__hint {
-  font-size: 11px;
-  font-weight: 500;
-  color: #1d4ed8;
-  background: #e7eefe;
+  font-size: 10px;
+  font-weight: 400;
+  color: #8a93a3;
+  background: transparent;
+  text-decoration: underline dotted;
+  text-decoration-color: #c9cfd8;
+  text-underline-offset: 2px;
   max-width: 16ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.igt-vocab__hint:hover:not(:disabled) { background: #d6e4fd; }
+.igt-vocab__hint:hover:not(:disabled),
+.igt-vocab__hint:focus-visible {
+  color: #1d4ed8;
+  text-decoration-color: currentColor;
+  background: transparent;
+}
 /* Unlinked: hidden at rest — a "+ link" under every unlinked form is too
    noisy (user call, 2026-06-10; a fuller vocab-linking rethink is a planned
    P1 task). Revealed on hover anywhere in the word/morpheme column or via
