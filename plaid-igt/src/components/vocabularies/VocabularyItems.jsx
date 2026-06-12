@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Pencil, Check, X, AlertTriangle, ArrowUp, ArrowDown, Upload, Download, Search } from 'lucide-react';
+import {
+  Plus, Trash2, AlertTriangle, ArrowUp, ArrowDown, Upload, Download, Search,
+  ChevronLeft, ChevronRight,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -22,16 +25,20 @@ import {
 } from '@/components/ui/alert-dialog';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
+import { humanizeFieldName } from '@/domain/vocabFields';
+import { buildHomonymIndex } from '@/domain/vocabHomonyms';
+
+const PAGE_SIZE = 100;
 
 // Sortable column header (arrow on the active column, toggles direction).
-const SortHeader = ({ field, label, sort, onSort, style }) => {
+const SortHeader = ({ field, label, sort, onSort, style, align = 'left' }) => {
   const active = sort.key === field;
   const Arrow = sort.dir === 'asc' ? ArrowUp : ArrowDown;
   return (
-    <th className="px-3 py-2 text-left font-medium" style={style}>
+    <th className={`px-3 py-2 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`} style={style}>
       <button
         type="button"
-        className="inline-flex items-center gap-1 hover:text-foreground"
+        className={`inline-flex items-center gap-1 hover:text-foreground ${align === 'right' ? 'justify-end' : ''}`}
         onClick={() => onSort(field)}
       >
         {label}
@@ -43,27 +50,56 @@ const SortHeader = ({ field, label, sort, onSort, style }) => {
 
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
-export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields }) => {
+// Drop blank/nullish values so we never persist empty-string metadata keys.
+const cleanMeta = (obj) => {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v != null && String(v).trim() !== '') out[k] = v;
+  }
+  return out;
+};
+
+// A form with its homonym subscript (form₂) when the form is shared by 2+ items.
+const FormLabel = ({ form, index, className = '' }) => (
+  <span className={className}>
+    {form}
+    {index != null && <sub className="ml-0.5 text-[0.7em] text-muted-foreground">{index}</sub>}
+  </span>
+);
+
+export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [newItemForm, setNewItemForm] = useState('');
-  const [newItemFields, setNewItemFields] = useState({});
-  const [editingItem, setEditingItem] = useState(null);
+
+  // New-item modal.
+  const [newOpen, setNewOpen] = useState(false);
+  const [newForm, setNewForm] = useState('');
+  const [newFields, setNewFields] = useState({});
+
+  // Edit-item modal.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editItem, setEditItem] = useState(null);
   const [editForm, setEditForm] = useState('');
   const [editFields, setEditFields] = useState({});
+
+  // Delete confirmation.
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
-  const openDeleteModal = () => setDeleteModalOpened(true);
-  const closeDeleteModal = () => setDeleteModalOpened(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Search / sort / usage counts / bulk add.
+  // Search / sort / pagination / usage counts / bulk add.
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ key: 'form', dir: 'asc' });
+  const [page, setPage] = useState(0);
   const [usageCounts, setUsageCounts] = useState(null); // {itemId: n} | null while loading/unavailable
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Inline-flagged fields become table columns; every field is editable in the modals.
+  const columnFields = useMemo(() => fields.filter((f) => f.inline), [fields]);
+  const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
+  const homonyms = useMemo(() => buildHomonymIndex(items), [items]);
 
   const fetchItems = async () => {
     try {
@@ -116,23 +152,19 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabularyId]);
 
+  // ---- create ----
   const handleCreateItem = async () => {
-    if (!newItemForm.trim()) {
+    if (!newForm.trim()) {
       notifyError('Item form cannot be empty', 'Invalid Form');
       return;
     }
-
     try {
-      const metadata = Object.keys(newItemFields).length > 0 ? newItemFields : undefined;
-      await client.vocabItems.create(vocabularyId, newItemForm.trim(), metadata);
-
-      // Reset form
-      setNewItemForm('');
-      setNewItemFields({});
-
-      // Refresh items
+      const metadata = cleanMeta(newFields);
+      await client.vocabItems.create(vocabularyId, newForm.trim(), Object.keys(metadata).length ? metadata : undefined);
+      setNewOpen(false);
+      setNewForm('');
+      setNewFields({});
       await fetchItems();
-
       notifySuccess('Vocabulary item created successfully', 'Success');
     } catch (err) {
       console.error('Error creating vocabulary item:', err);
@@ -140,10 +172,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
     }
   };
 
-  const handleStartEdit = (item) => {
-    setEditingItem(item.id);
+  // ---- edit ----
+  const openEdit = (item) => {
+    setEditItem(item);
     setEditForm(item.form);
     setEditFields(item.metadata || {});
+    setEditOpen(true);
   };
 
   const handleSaveEdit = async () => {
@@ -151,30 +185,20 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
       notifyError('Item form cannot be empty', 'Invalid Form');
       return;
     }
-
     try {
-      const item = items.find(i => i.id === editingItem);
-
-      // Update form if changed
-      if (editForm !== item.form) {
-        await client.vocabItems.update(editingItem, editForm.trim());
+      const item = editItem;
+      if (editForm.trim() !== item.form) {
+        await client.vocabItems.update(item.id, editForm.trim());
       }
-
-      // Update metadata
-      if (Object.keys(editFields).length > 0) {
-        await client.vocabItems.setMetadata(editingItem, editFields);
+      const metadata = cleanMeta(editFields);
+      if (Object.keys(metadata).length > 0) {
+        await client.vocabItems.setMetadata(item.id, metadata);
       } else if (item.metadata && Object.keys(item.metadata).length > 0) {
-        await client.vocabItems.deleteMetadata(editingItem);
+        await client.vocabItems.deleteMetadata(item.id);
       }
-
-      // Reset edit state
-      setEditingItem(null);
-      setEditForm('');
-      setEditFields({});
-
-      // Refresh items
+      setEditOpen(false);
+      setEditItem(null);
       await fetchItems();
-
       notifySuccess('Vocabulary item updated successfully', 'Success');
     } catch (err) {
       console.error('Error updating vocabulary item:', err);
@@ -182,29 +206,20 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
     }
   };
 
-  const handleCancelEdit = () => {
-    setEditingItem(null);
-    setEditForm('');
-    setEditFields({});
-  };
-
-  const handleDeleteClick = (item) => {
-    setItemToDelete(item);
-    openDeleteModal();
+  // ---- delete (from the edit modal) ----
+  const requestDelete = () => {
+    setItemToDelete(editItem);
+    setEditOpen(false);
+    setDeleteModalOpened(true);
   };
 
   const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
-
     try {
       await client.vocabItems.delete(itemToDelete.id);
-
-      closeDeleteModal();
+      setDeleteModalOpened(false);
       setItemToDelete(null);
-
-      // Refresh items
       await fetchItems();
-
       notifySuccess('Vocabulary item deleted successfully', 'Success');
     } catch (err) {
       console.error('Error deleting vocabulary item:', err);
@@ -212,8 +227,8 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
     }
   };
 
-  // ---- bulk add (paste one item per line; TSV columns = Form + custom fields,
-  // i.e. directly pasteable from a spreadsheet) ----
+  // ---- bulk add (paste one item per line; TSV columns = Form + fields, i.e.
+  // directly pasteable from a spreadsheet) ----
   const parsedBulk = useMemo(() => {
     const lines = bulkText.split('\n').map((l) => l.replace(/\r$/, '')).filter((l) => l.trim() !== '');
     const existing = new Set(items.map((i) => i.form.toLowerCase()));
@@ -228,13 +243,13 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
       if (existing.has(k) || seen.has(k)) { skipped++; continue; }
       seen.add(k);
       const metadata = {};
-      customFields.forEach((f, i) => {
+      fieldNames.forEach((f, i) => {
         if (cells[i + 1]) metadata[f] = cells[i + 1];
       });
       rows.push({ form, metadata: Object.keys(metadata).length ? metadata : undefined });
     }
     return { rows, skipped };
-  }, [bulkText, items, customFields]);
+  }, [bulkText, items, fieldNames]);
 
   const handleBulkAdd = async () => {
     const { rows, skipped } = parsedBulk;
@@ -259,12 +274,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
     }
   };
 
-  // ---- CSV export (Form + custom fields + Uses) ----
+  // ---- CSV export (Form + every field + Uses) ----
   const handleExportCsv = () => {
-    const header = ['Form', ...customFields, ...(usageCounts ? ['Uses'] : [])];
+    const header = ['Form', ...fieldNames.map(humanizeFieldName), ...(usageCounts ? ['Uses'] : [])];
     const lines = [header.map(csvCell).join(',')];
     for (const it of sortedItems) {
-      const row = [it.form, ...customFields.map((f) => it.metadata?.[f] ?? '')];
+      const row = [it.form, ...fieldNames.map((f) => it.metadata?.[f] ?? '')];
       if (usageCounts) row.push(usageCounts[it.id] ?? 0);
       lines.push(row.map(csvCell).join(','));
     }
@@ -287,7 +302,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
     if (q) {
       list = items.filter((it) =>
         it.form.toLowerCase().includes(q) ||
-        customFields.some((f) => String(it.metadata?.[f] ?? '').toLowerCase().includes(q)));
+        fieldNames.some((f) => String(it.metadata?.[f] ?? '').toLowerCase().includes(q)));
     }
     const val = (it) => {
       if (sort.key === 'form') return it.form.toLowerCase();
@@ -302,40 +317,42 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
       if (av > bv) return dir;
       return 0;
     });
-  }, [items, search, sort, customFields, usageCounts]);
+  }, [items, search, sort, fieldNames, usageCounts]);
 
-  const renderCustomFieldInputs = (values, onChange, keyPrefix) => {
-    return customFields.map(fieldName => (
-      <div key={`${keyPrefix}-${fieldName}`} className="flex flex-col gap-1.5">
-        <Label>{fieldName}</Label>
-        {fieldName === 'morphType' ? (
-          // morphType is a controlled vocabulary (FLEx's exact inventory)
+  // Reset to the first page whenever the result set is re-scoped.
+  useEffect(() => { setPage(0); }, [search, sort]);
+
+  const pageCount = Math.max(1, Math.ceil(sortedItems.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageItems = sortedItems.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const rangeStart = sortedItems.length === 0 ? 0 : currentPage * PAGE_SIZE + 1;
+  const rangeEnd = Math.min((currentPage + 1) * PAGE_SIZE, sortedItems.length);
+
+  // Field inputs shared by the new + edit modals (morphType is a controlled vocab).
+  const renderFieldInputs = (values, onChange) =>
+    fields.map((field) => (
+      <div key={field.name} className="flex flex-col gap-1.5">
+        <Label>{humanizeFieldName(field.name)}</Label>
+        {field.name === 'morphType' ? (
           <select
             className="h-9 rounded-md border border-input bg-background px-2 text-sm"
             value={values.morphType || ''}
-            onChange={(event) => onChange({
-              ...values,
-              morphType: event.target.value || undefined
-            })}
+            onChange={(event) => onChange({ ...values, morphType: event.target.value || undefined })}
           >
             <option value="">—</option>
-            {FLEX_MORPH_TYPES.map(t => (
+            {FLEX_MORPH_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
         ) : (
           <Input
-            placeholder={`Enter ${fieldName}`}
-            value={values[fieldName] || ''}
-            onChange={(event) => onChange({
-              ...values,
-              [fieldName]: event.target.value
-            })}
+            placeholder={`Enter ${humanizeFieldName(field.name).toLowerCase()}`}
+            value={values[field.name] || ''}
+            onChange={(event) => onChange({ ...values, [field.name]: event.target.value })}
           />
         )}
       </div>
     ));
-  };
 
   if (loading) {
     return (
@@ -362,7 +379,6 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
 
   return (
     <div className="tw flex flex-col gap-6">
-      {/* Items table */}
       <div className="rounded-lg border bg-card p-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -385,178 +401,175 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
               <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={!items.length}>
                 <Download className="h-3.5 w-3.5" /> Export CSV
               </Button>
+              <Button size="sm" onClick={() => { setNewForm(''); setNewFields({}); setNewOpen(true); }}>
+                <Plus className="h-3.5 w-3.5" /> New Item
+              </Button>
             </div>
           </div>
 
           {items.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              No vocabulary items yet. Add your first item below.
+              No vocabulary items yet. Click “New Item” to add your first one.
             </p>
           ) : sortedItems.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No items match "{search}".
             </p>
           ) : (
-            <div className="overflow-hidden rounded-md border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <SortHeader field="form" label="Form" sort={sort} onSort={onSort} style={{ width: '26%' }} />
-                    {customFields.map(fieldName => (
-                      <SortHeader
-                        key={fieldName}
-                        field={fieldName}
-                        label={fieldName}
-                        sort={sort}
-                        onSort={onSort}
-                        style={{ width: `${Math.max(14, 52 / (customFields.length + 2))}%` }}
-                      />
-                    ))}
-                    <SortHeader field="_uses" label="Uses" sort={sort} onSort={onSort} style={{ width: '10%' }} />
-                    <th className="px-3 py-2 text-left font-medium" style={{ width: '16%' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedItems.map(record => (
-                    <tr key={record.id} className="group border-t hover:bg-muted/50">
-                      <td className="px-3 py-2">
-                        {editingItem === record.id ? (
-                          <Input
-                            value={editForm}
-                            onChange={(event) => setEditForm(event.target.value)}
-                            className="h-8"
-                          />
-                        ) : (
-                          <span>{record.form}</span>
-                        )}
-                      </td>
-                      {customFields.map(fieldName => (
-                        <td key={fieldName} className="px-3 py-2">
-                          {editingItem === record.id ? (
-                            fieldName === 'morphType' ? (
-                              // morphType is a controlled vocabulary (FLEx's
-                              // exact morph-type inventory), not free text.
-                              <select
-                                className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
-                                value={editFields.morphType || ''}
-                                onChange={(event) => setEditFields({
-                                  ...editFields,
-                                  morphType: event.target.value || undefined
-                                })}
-                              >
-                                <option value="">—</option>
-                                {FLEX_MORPH_TYPES.map(t => (
-                                  <option key={t} value={t}>{t}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <Input
-                                value={editFields[fieldName] || ''}
-                                onChange={(event) => setEditFields({
-                                  ...editFields,
-                                  [fieldName]: event.target.value
-                                })}
-                                className="h-8"
-                              />
-                            )
-                          ) : (
-                            <span>{record.metadata?.[fieldName] || ''}</span>
-                          )}
-                        </td>
-                      ))}
-                      <td className="px-3 py-2 text-muted-foreground" title="Linked words/morphemes across projects you can read">
-                        {usageCounts ? (usageCounts[record.id] ?? 0) : '—'}
-                      </td>
-                      <td className="px-3 py-2">
-                        {editingItem === record.id ? (
-                          <div className="flex items-center gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 text-green-600 hover:text-green-600"
-                              onClick={handleSaveEdit}
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={handleCancelEdit}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => handleStartEdit(record)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteClick(record)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Add new item form */}
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-4">
-          <p className="text-sm font-medium">Add New Vocabulary Item</p>
-
-          <div className="flex flex-col gap-1.5">
-            <Label>Form</Label>
-            <Input
-              placeholder="Enter item form"
-              value={newItemForm}
-              onChange={(event) => setNewItemForm(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  handleCreateItem();
-                }
-              }}
-            />
-          </div>
-
-          {customFields.length > 0 && (
             <>
-              <div className="border-t" />
-              <p className="text-sm font-medium">Custom Fields</p>
-              <div className="flex flex-col gap-2">
-                {renderCustomFieldInputs(newItemFields, setNewItemFields, 'new')}
+              <div className="overflow-hidden rounded-md border">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/40">
+                    <tr>
+                      <SortHeader field="form" label="Form" sort={sort} onSort={onSort} style={{ width: '30%' }} />
+                      {columnFields.map((field) => (
+                        <SortHeader
+                          key={field.name}
+                          field={field.name}
+                          label={humanizeFieldName(field.name)}
+                          sort={sort}
+                          onSort={onSort}
+                          style={{ width: `${Math.max(14, 60 / (columnFields.length + 1))}%` }}
+                        />
+                      ))}
+                      <SortHeader field="_uses" label="Uses" sort={sort} onSort={onSort} align="right" style={{ width: '10%' }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageItems.map((record) => (
+                      <tr
+                        key={record.id}
+                        onClick={() => openEdit(record)}
+                        className="cursor-pointer border-t hover:bg-accent/40"
+                      >
+                        <td className="px-3 py-2">
+                          <FormLabel form={record.form} index={homonyms.get(record.id)} className="font-medium" />
+                        </td>
+                        {columnFields.map((field) => (
+                          <td key={field.name} className="px-3 py-2 text-muted-foreground">
+                            {record.metadata?.[field.name] || ''}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground" title="Linked words/morphemes across projects you can read">
+                          {usageCounts ? (usageCounts[record.id] ?? 0) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+
+              {pageCount > 1 && (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Showing {rangeStart}–{rangeEnd} of {sortedItems.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage === 0}
+                      onClick={() => setPage(currentPage - 1)}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" /> Prev
+                    </Button>
+                    <span className="text-xs text-muted-foreground">Page {currentPage + 1} of {pageCount}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage >= pageCount - 1}
+                      onClick={() => setPage(currentPage + 1)}
+                    >
+                      Next <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
-
-          <div className="flex justify-end">
-            <Button
-              onClick={handleCreateItem}
-              disabled={!newItemForm.trim()}
-            >
-              <Plus className="h-4 w-4" /> Add Item
-            </Button>
-          </div>
         </div>
       </div>
+
+      {/* New item modal */}
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>New Vocabulary Item</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Form <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="Enter item form"
+                value={newForm}
+                autoFocus
+                onChange={(event) => setNewForm(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    handleCreateItem();
+                  }
+                }}
+              />
+            </div>
+            {renderFieldInputs(newFields, setNewFields)}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateItem} disabled={!newForm.trim()}>
+              <Plus className="h-4 w-4" /> Add Item
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit item modal */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Edit{' '}
+              {editItem && (
+                <FormLabel form={editItem.form} index={homonyms.get(editItem.id)} />
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          {editItem && (
+            <>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label>Form <span className="text-destructive">*</span></Label>
+                  <Input
+                    value={editForm}
+                    onChange={(event) => setEditForm(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        handleSaveEdit();
+                      }
+                    }}
+                  />
+                </div>
+                {renderFieldInputs(editFields, setEditFields)}
+                <p className="text-xs text-muted-foreground">ID: {editItem.id}</p>
+              </div>
+              <DialogFooter className="sm:justify-between">
+                <Button
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  onClick={requestDelete}
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                  <Button onClick={handleSaveEdit} disabled={!editForm.trim()}>Save</Button>
+                </div>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk add dialog */}
       <Dialog open={bulkOpen} onOpenChange={(o) => { if (!o && !bulkBusy) setBulkOpen(false); }}>
@@ -567,14 +580,14 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
           <div className="flex flex-col gap-2">
             <p className="text-sm text-muted-foreground">
               One item per line. Columns are tab-separated (paste straight from a
-              spreadsheet): <strong>Form</strong>{customFields.length ? <> then {customFields.join(', ')}</> : null}.
+              spreadsheet): <strong>Form</strong>{fieldNames.length ? <> then {fieldNames.map(humanizeFieldName).join(', ')}</> : null}.
               Duplicates of existing forms are skipped.
             </p>
             <Textarea
               rows={10}
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder={customFields.length ? `form\t${customFields.join('\t')}` : 'one form per line'}
+              placeholder={fieldNames.length ? `form\t${fieldNames.join('\t')}` : 'one form per line'}
               className="font-mono text-xs"
             />
             <p className="text-xs text-muted-foreground">
@@ -591,8 +604,8 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Modal */}
-      <AlertDialog open={deleteModalOpened} onOpenChange={(o) => { if (!o) closeDeleteModal(); }}>
+      {/* Delete confirmation */}
+      <AlertDialog open={deleteModalOpened} onOpenChange={(o) => { if (!o) setDeleteModalOpened(false); }}>
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Vocabulary Item</AlertDialogTitle>
@@ -617,7 +630,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, customFields
           </div>
 
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={closeDeleteModal}>
+            <AlertDialogCancel onClick={() => setDeleteModalOpened(false)}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction

@@ -9,6 +9,12 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { readVocabFields, IGT_NAMESPACE } from '@/domain/igtConfig';
 import {
+  normalizeVocabFields,
+  seedDefaultFields,
+  fieldsToConfig,
+  humanizeFieldName,
+} from '@/domain/vocabFields';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -32,8 +38,8 @@ export const VocabularyDetail = () => {
   const [activeTab, setActiveTab] = useState(isNewVocabulary ? 'settings' : 'items');
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
-  const [customFields, setCustomFields] = useState([]);
-  const [fieldConfigs, setFieldConfigs] = useState({});
+  // Normalized field inventory: [{name, inline, immutable}], morphType always present.
+  const [fields, setFields] = useState([]);
   const [newFieldName, setNewFieldName] = useState('');
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const openDeleteModal = () => setDeleteModalOpened(true);
@@ -48,7 +54,8 @@ export const VocabularyDetail = () => {
         maintainers: [user?.id].filter(Boolean)
       });
       setEditedName('');
-      setCustomFields([]);
+      // Seed a new vocab with the full core inventory.
+      setFields(normalizeVocabFields(seedDefaultFields()));
       setIsEditing(true);
       setLoading(false);
       return;
@@ -68,26 +75,9 @@ export const VocabularyDetail = () => {
       setVocabulary(vocabularyData);
       setEditedName(vocabularyData.name);
 
-      // Extract custom fields from config
-      const fields = [];
-      const configs = {};
-      const vocabFields = readVocabFields(vocabularyData.config);
-      if (vocabFields) {
-        Object.entries(vocabFields).forEach(([fieldName, fieldConfig]) => {
-          if (fieldName.toLowerCase() !== 'form') {
-            fields.push(fieldName);
-            // Handle both old boolean format and new object format
-            if (typeof fieldConfig === 'object' && fieldConfig !== null) {
-              configs[fieldName] = fieldConfig;
-            } else {
-              // Legacy boolean format - convert to object
-              configs[fieldName] = { inline: false };
-            }
-          }
-        });
-      }
-      setCustomFields(fields);
-      setFieldConfigs(configs);
+      // Normalize the field inventory (guarantees immutable morphType, tolerates
+      // the legacy boolean format).
+      setFields(normalizeVocabFields(readVocabFields(vocabularyData.config)));
 
       // Fetch users if user can manage this vocabulary
       if (canManageVocabulary(vocabularyData)) {
@@ -129,28 +119,7 @@ export const VocabularyDetail = () => {
 
       const vocabularyData = await client.vocabLayers.get(vocabularyId);
       setVocabulary(vocabularyData);
-
-      // Extract custom fields from config
-      const fields = [];
-      const configs = {};
-      const vocabFields = readVocabFields(vocabularyData.config);
-      if (vocabFields) {
-        Object.entries(vocabFields).forEach(([fieldName, fieldConfig]) => {
-          if (fieldName.toLowerCase() !== 'form') {
-            fields.push(fieldName);
-            // Handle both old boolean format and new object format
-            if (typeof fieldConfig === 'object' && fieldConfig !== null) {
-              configs[fieldName] = fieldConfig;
-            } else {
-              // Legacy boolean format - convert to object
-              configs[fieldName] = { inline: false };
-            }
-          }
-        });
-      }
-      setCustomFields(fields);
-      setFieldConfigs(configs);
-
+      setFields(normalizeVocabFields(readVocabFields(vocabularyData.config)));
     } catch (err) {
       console.error('Error updating vocabulary:', err);
       notifyError('Failed to update vocabulary data', 'Error');
@@ -173,14 +142,8 @@ export const VocabularyDetail = () => {
       if (isNewVocabulary) {
         savedVocabulary = await client.vocabLayers.create(editedName.trim());
 
-        // Save custom fields configuration if any
-        if (customFields.length > 0) {
-          const fieldsConfig = {};
-          customFields.forEach(field => {
-            fieldsConfig[field] = fieldConfigs[field] || { inline: false };
-          });
-          await client.vocabLayers.setConfig(savedVocabulary.id, IGT_NAMESPACE, 'fields', fieldsConfig);
-        }
+        // Persist the field inventory (always non-empty — morphType is core).
+        await client.vocabLayers.setConfig(savedVocabulary.id, IGT_NAMESPACE, 'fields', fieldsToConfig(fields));
 
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
         notifySuccess('Vocabulary created successfully', 'Success');
@@ -215,52 +178,32 @@ export const VocabularyDetail = () => {
     }
 
     // Check for duplicate names (case insensitive)
-    if (customFields.some(field => field.toLowerCase() === trimmedName.toLowerCase())) {
+    if (fields.some(f => f.name.toLowerCase() === trimmedName.toLowerCase())) {
       notifyError('A field with this name already exists', 'Duplicate Field Name');
       return;
     }
 
-    const updatedFields = [...customFields, trimmedName];
-    await saveCustomFields(updatedFields);
+    await saveFields([...fields, { name: trimmedName, inline: false, immutable: false }]);
     setNewFieldName('');
   };
 
   const handleRemoveField = async (fieldName) => {
-    const updatedFields = customFields.filter(field => field !== fieldName);
-    const updatedConfigs = { ...fieldConfigs };
-    delete updatedConfigs[fieldName];
-    await saveCustomFields(updatedFields, updatedConfigs);
+    const field = fields.find(f => f.name === fieldName);
+    if (field?.immutable) return; // belt-and-suspenders; the UI hides the button
+    await saveFields(fields.filter(f => f.name !== fieldName));
   };
 
   const handleToggleInline = async (fieldName) => {
-    const updatedConfigs = {
-      ...fieldConfigs,
-      [fieldName]: {
-        ...fieldConfigs[fieldName],
-        inline: !fieldConfigs[fieldName]?.inline
-      }
-    };
-    await saveCustomFields(customFields, updatedConfigs);
+    await saveFields(fields.map(f => (f.name === fieldName ? { ...f, inline: !f.inline } : f)));
   };
 
-  const saveCustomFields = async (fields, configs = fieldConfigs) => {
+  const saveFields = async (updatedFields) => {
     try {
-      setCustomFields(fields);
-      setFieldConfigs(configs);
+      setFields(updatedFields);
 
       // Save to server if not a new vocabulary
       if (!isNewVocabulary) {
-        const fieldsConfig = {};
-        fields.forEach(field => {
-          fieldsConfig[field] = configs[field] || { inline: false };
-        });
-
-        if (Object.keys(fieldsConfig).length > 0) {
-          await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'fields', fieldsConfig);
-        } else {
-          await client.vocabLayers.deleteConfig(vocabularyId, IGT_NAMESPACE, 'fields');
-        }
-
+        await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'fields', fieldsToConfig(updatedFields));
         notifySuccess('Custom fields updated successfully', 'Success');
       }
     } catch (err) {
@@ -288,29 +231,36 @@ export const VocabularyDetail = () => {
 
   const renderCustomFieldsEditor = () => (
     <>
-      {customFields.length > 0 && (
+      {fields.length > 0 && (
         <div className="flex flex-col gap-1">
-          {customFields.map(field => (
-            <div key={field} className="flex items-center justify-between">
+          {fields.map(field => (
+            <div key={field.name} className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-sm">{field}</span>
+                <span className="text-sm">{humanizeFieldName(field.name)}</span>
+                {field.immutable && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Required
+                  </span>
+                )}
                 <div className="flex items-center gap-2">
-                  <Label htmlFor={`inline-${field}`} className="text-xs text-muted-foreground">Show inline</Label>
+                  <Label htmlFor={`inline-${field.name}`} className="text-xs text-muted-foreground">Show inline</Label>
                   <Switch
-                    id={`inline-${field}`}
-                    checked={fieldConfigs[field]?.inline || false}
-                    onCheckedChange={() => handleToggleInline(field)}
+                    id={`inline-${field.name}`}
+                    checked={field.inline}
+                    onCheckedChange={() => handleToggleInline(field.name)}
                   />
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-destructive hover:text-destructive"
-                onClick={() => handleRemoveField(field)}
-              >
-                <X className="h-3.5 w-3.5" /> Remove
-              </Button>
+              {!field.immutable && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => handleRemoveField(field.name)}
+                >
+                  <X className="h-3.5 w-3.5" /> Remove
+                </Button>
+              )}
             </div>
           ))}
         </div>
@@ -420,7 +370,7 @@ export const VocabularyDetail = () => {
                 vocabularyId={vocabularyId}
                 vocabulary={vocabulary}
                 client={client}
-                customFields={customFields}
+                fields={fields}
               />
             </TabsContent>
 
@@ -468,6 +418,7 @@ export const VocabularyDetail = () => {
                       <h3 className="text-base font-semibold">Custom Fields</h3>
                       <p className="text-sm text-muted-foreground">
                         Add custom fields to vocabulary items. Field names cannot be "form" or duplicate existing fields (case-insensitive).
+                        Fields set to <strong>Show inline</strong> appear as a column in the items table and in the interlinear view.
                       </p>
 
                       {renderCustomFieldsEditor()}

@@ -20,6 +20,7 @@ import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import { morphemeJoiner, isStemType, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
+import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -1217,12 +1218,13 @@ export class IgtEditor {
     let opener = nothing;
     if (vocabItem) {
       const inferred = !!vocabItem.inferred;
+      const sub = this._homonymSub(vocabItem);
       opener = html`<button type="button" class="igt-vocab__opener igt-vocab__hint ${inferred ? 'igt-vocab__hint--inferred' : ''}"
         data-vocab-opener=${id} ?disabled=${!canLink}
         title=${inferred
           ? `Auto-linked to "${vocabItem.form}" — open to confirm or change`
           : `Linked to "${vocabItem.form}"${canLink ? ' — manage' : ''}`}
-        @click=${openerClick}>${vocabItem.form}</button>`;
+        @click=${openerClick}>${vocabItem.form}${sub != null ? html`<sub class="igt-vocab__sub">${sub}</sub>` : nothing}</button>`;
     } else if (canLink) {
       opener = html`<button type="button" class="igt-vocab__opener igt-vocab__link"
         data-vocab-opener=${id} title="Link to a lexicon entry"
@@ -1235,6 +1237,28 @@ export class IgtEditor {
         ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
       </span>
     `;
+  }
+
+  // Homonym subscripts (form₂) for vocab items that share a form within a
+  // vocab — FLEx-style sense numbering by creation order. Cached per
+  // doc.dataVersion so we regroup only when the data actually changes.
+  _homonymIndexFor(vocabId) {
+    const dv = this.doc?.dataVersion;
+    if (this._homonymCacheKey !== dv) {
+      this._homonymCacheKey = dv;
+      this._homonymCache = new Map();
+    }
+    if (!this._homonymCache.has(vocabId)) {
+      const items = (this.doc?.vocabularies || {})[vocabId]?.items || [];
+      this._homonymCache.set(vocabId, buildHomonymIndex(items));
+    }
+    return this._homonymCache.get(vocabId);
+  }
+
+  _homonymSub(vocabItem) {
+    if (!vocabItem?.vocabId) return null;
+    const idx = this._homonymIndexFor(vocabItem.vocabId).get(vocabItem.id);
+    return idx != null ? idx : null;
   }
 
   // The secondary line for a popover item row: values of the vocab's
@@ -1260,8 +1284,11 @@ export class IgtEditor {
     const search = (this._popoverSearch || '').toLowerCase();
     const ft = (formText || '').toLowerCase();
     let items = [];
-    vocabs.forEach((v) => (v.items || []).forEach((it) =>
-      items.push({ ...it, _vocabName: v.name, _detail: this._vocabItemDetail(it, v) })));
+    vocabs.forEach((v) => {
+      const idx = this._homonymIndexFor(v.id);
+      (v.items || []).forEach((it) =>
+        items.push({ ...it, _vocabName: v.name, _detail: this._vocabItemDetail(it, v), _sub: idx.get(it.id) }));
+    });
 
     // Rank against the active query: the typed search if any, else the
     // word/morpheme's own form. Tiers (exact > prefix > substring on the form
@@ -1339,7 +1366,7 @@ export class IgtEditor {
                     else this._toggleVocab(tokenId, it, linked);
                   }}>
                   <span class="igt-vocab-pop__main">
-                    <span class="igt-vocab-pop__form">${it.form}</span>
+                    <span class="igt-vocab-pop__form">${it.form}${it._sub != null ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>` : nothing}</span>
                     ${vocabs.length > 1 ? html`<span class="igt-vocab-pop__vname">${it._vocabName}</span>` : nothing}
                     ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
                     ${linked ? html`<span class="igt-vocab-pop__x" role="button" tabindex="-1"

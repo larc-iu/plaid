@@ -606,6 +606,11 @@
 .igt-vocab__opener:disabled { cursor: default; }
 .igt-island--readonly .igt-vocab__opener { cursor: default; }
 
+/* Homonym sense number (form₂) — FLEx-style disambiguation for vocab items that
+   share a form. Shown on the linked chip and in the lexicon popover list. */
+.igt-vocab__sub { opacity: 0.75; text-decoration: none; }
+.igt-vocab-pop__sub { color: #6b7280; }
+
 /* ---- vocab link popover ---- */
 .igt-vocab-pop {
   position: absolute;
