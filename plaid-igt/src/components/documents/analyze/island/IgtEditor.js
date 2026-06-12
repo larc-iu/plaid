@@ -17,7 +17,7 @@ import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
-import { readOrthographies, readIgnoredTokens, readVocabFields, isTokenIgnored } from '@/domain/igtConfig';
+import { readOrthographies, readIgnoredTokens, readVocabFields, isTokenIgnored, resolveAutoAnalysis } from '@/domain/igtConfig';
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import { morphemeJoiner, isStemType, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
@@ -933,11 +933,19 @@ export class IgtEditor {
             </span>
           ` : nothing}
           ${!this.readOnly && Object.keys(this.doc.vocabularies || {}).length > 0
-            ? html`<button type="button" class="igt-toolbar__btn"
-                title="Link unlinked words and morphemes automatically — choose the built-in rule or a linking service. Auto-links show in violet until you confirm them."
-                @click=${(e) => { e.stopPropagation(); this._openAutoLink(); }}>
-                Auto-link…
-              </button>`
+            ? (() => {
+                // When the automatic pass already runs the built-in rule, the
+                // dialog is purely the run-a-service entry — say so.
+                const auto = resolveAutoAnalysis(this.doc.project?.config);
+                const title = auto.enabled && auto.autoLink
+                  ? 'Run a vocabulary-linking service on demand. The built-in rule already runs automatically as you edit (see project Services settings).'
+                  : 'Link unlinked words and morphemes automatically — choose the built-in rule or a linking service. Auto-links show in violet until you confirm them.';
+                return html`<button type="button" class="igt-toolbar__btn"
+                  title=${title}
+                  @click=${(e) => { e.stopPropagation(); this._openAutoLink(); }}>
+                  Auto-link…
+                </button>`;
+              })()
             : nothing}
         </div>
         <div class="igt-toolbar__right">

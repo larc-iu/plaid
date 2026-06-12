@@ -21,6 +21,7 @@ import {
   BUILTIN_LINK_PRECEDENT, encodeServiceSelection, encodeBuiltinSelection,
   readSpotDefault, resolveInitialSelection,
 } from '@/domain/serviceDefaults';
+import { resolveAutoAnalysis } from '@/domain/igtConfig';
 
 const BUILTIN = encodeBuiltinSelection(BUILTIN_LINK_PRECEDENT);
 const STORAGE_KEY = 'plaid_igt_link_vocab_service';
@@ -32,6 +33,13 @@ const PARAMS_PREFIX = 'plaid_igt_link_vocab_params_';
 // tabs (discovery, summary, declared parameter form, progress; initial choice
 // resolves localStorage -> project default -> built-in). Opened by the
 // island's toolbar button via the igt:auto-link-open window event.
+//
+// When the project's automatic analysis pass already runs the built-in rule
+// (config.igt.autoAnalysis enabled + autoLink), the built-in option is
+// REDUNDANT and dropped from the method list — the dialog is then purely the
+// "run a linking service on demand" entry, with a pointer at Services
+// settings for the automatic behavior. Disabling the pass (or its link
+// phase) brings the built-in option back so manual linking is never stranded.
 export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
   const project = doc?.project;
   const {
@@ -52,20 +60,23 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
     .filter((s) => s.online !== false);
   const serviceOptions = onlineServices
     .map((s) => ({ value: encodeServiceSelection(s.serviceId), label: s.serviceName, service: s }));
+  // Built-in is offered only when the automatic pass ISN'T already running it.
+  const autoCfg = resolveAutoAnalysis(project?.config);
+  const autoLinkOn = autoCfg.enabled && autoCfg.autoLink;
   const options = [
-    { value: BUILTIN, label: 'Built-in — follow precedent & unique matches' },
+    ...(autoLinkOn ? [] : [{ value: BUILTIN, label: 'Built-in — follow precedent & unique matches' }]),
     ...serviceOptions,
   ];
   // Resolve until the user explicitly picks: cached -> project default ->
   // built-in. Also covers a cached service that has vanished.
   const resolved = resolveInitialSelection({
     services: onlineServices,
-    builtins: [BUILTIN_LINK_PRECEDENT],
+    builtins: autoLinkOn ? [] : [BUILTIN_LINK_PRECEDENT],
     cached: localStorage.getItem(STORAGE_KEY),
     projectDefault: readSpotDefault(project, TASKS.LINK_VOCAB),
-  }) || BUILTIN;
+  }) || (autoLinkOn ? null : BUILTIN);
   const chosen = algorithm ?? resolved;
-  const effective = options.some((o) => o.value === chosen) ? chosen : BUILTIN;
+  const effective = options.some((o) => o.value === chosen) ? chosen : (options[0]?.value ?? null);
   const selectedService = serviceOptions.find((o) => o.value === effective)?.service ?? null;
   const linkDefault = readSpotDefault(project, TASKS.LINK_VOCAB);
   const { schema: paramSchema, values: paramValues, setParam: setParamValue, coerced: coerceParams, errors: paramErrors } =
@@ -80,7 +91,7 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
   const running = busy || isProcessing;
 
   const run = async () => {
-    if (running || !doc) return;
+    if (running || !doc || !effective) return;
     setBusy(true);
     try {
       if (effective === BUILTIN) {
@@ -148,21 +159,38 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5">
-              <Label>Method</Label>
-              {selectedService && <ServiceSummary service={selectedService} />}
-              {isDiscovering && <span className="text-xs text-muted-foreground">discovering services…</span>}
+          {autoLinkOn && (
+            <p className="text-sm text-muted-foreground">
+              Automatic linking is on for this project — the built-in rule
+              already runs as you edit (configure under project settings →
+              Services). Use this dialog to run a linking <em>service</em> on
+              demand.
+            </p>
+          )}
+
+          {options.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <Label>{autoLinkOn ? 'Service' : 'Method'}</Label>
+                {selectedService && <ServiceSummary service={selectedService} />}
+                {isDiscovering && <span className="text-xs text-muted-foreground">discovering services…</span>}
+              </div>
+              <Select value={effective} onValueChange={choose} disabled={running}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {options.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={effective} onValueChange={choose} disabled={running}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {options.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {isDiscovering
+                ? 'Discovering services…'
+                : 'No linking service is currently online. Start one and reopen this dialog.'}
+            </p>
+          )}
 
           {effective === BUILTIN ? (
             <p className="text-sm text-muted-foreground">
@@ -198,7 +226,7 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={running}>Cancel</Button>
-          <Button onClick={run} disabled={running || Object.keys(paramErrors || {}).length > 0}>
+          <Button onClick={run} disabled={running || !effective || Object.keys(paramErrors || {}).length > 0}>
             {running ? 'Linking…' : 'Run'}
           </Button>
         </DialogFooter>
