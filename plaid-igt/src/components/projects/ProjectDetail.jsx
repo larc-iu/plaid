@@ -1,20 +1,26 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { FileText, Search, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
+import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { readInitialized } from '@/domain/igtConfig';
 
-// Default project view: the document list (+ a query-engine-powered Search
-// tab). Mirrors plaid-ud — the project landing IS the documents, and project
-// administration (access + settings) is tucked behind a maintainer-only
-// "Project Settings" button (ProjectSettingsView at /projects/:id/access +
-// /settings), not surfaced as inline tabs.
+// The settings sections live behind these path suffixes; keeping them in the
+// URL means deep links and the back button still land on the right section.
+const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'settings'];
+
+// Default project view: the document list, a query-engine-powered Search tab,
+// and (for maintainers) a Settings tab. Settings is a real panel in this tab
+// group — selecting it stays on the page and renders project administration as
+// a left-side vertical tab group (ProjectSettingsPanel), route-backed by the
+// /access, /tokens, /services, /settings suffixes.
 export const ProjectDetail = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, client, logout } = useAuth();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -50,6 +56,21 @@ export const ProjectDetail = () => {
   }, [projectId]);
 
   const canManage = !!user && !!project && (user.isAdmin || project.maintainers?.includes(user.id));
+
+  // Which top-level tab is active. Documents/Search are local UI state; the
+  // Settings tab is reflected in the path so its sections are deep-linkable.
+  const pathSection = SETTINGS_SECTIONS.find((s) => location.pathname.endsWith(`/${s}`)) || null;
+  const onSettings = pathSection !== null;
+  const [contentTab, setContentTab] = useState('documents');
+  const activeTab = onSettings && canManage ? 'settings' : contentTab;
+
+  // A non-maintainer who lands on a settings URL has nothing to manage; bounce
+  // them back to the document view rather than show an empty Settings panel.
+  useEffect(() => {
+    if (onSettings && project && !canManage) {
+      navigate(`/projects/${projectId}`, { replace: true });
+    }
+  }, [onSettings, project, canManage, projectId, navigate]);
 
   // A project not yet set up for IGT: maintainers go to the setup/adopt wizard;
   // non-maintainers can't create layers, so they get an informational notice
@@ -105,15 +126,20 @@ export const ProjectDetail = () => {
           <span className="text-foreground">{project.name}</span>
         </nav>
         <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
-        <p className="mt-1 text-xs text-muted-foreground">{project.id}</p>
       </div>
 
-      {/* The Settings "tab" is really navigation: project administration lives
-          in its own route-backed shell (ProjectSettingsView at /access etc.),
-          so selecting it leaves this page rather than rendering a panel. */}
       <Tabs
-        defaultValue="documents"
-        onValueChange={(v) => { if (v === 'settings') navigate(`/projects/${projectId}/access`); }}
+        value={activeTab}
+        onValueChange={(v) => {
+          if (v === 'settings') {
+            // Enter Settings via its default section; the path drives the panel.
+            navigate(`/projects/${projectId}/access`);
+          } else {
+            // Leaving Settings means dropping the section suffix from the URL.
+            if (onSettings) navigate(`/projects/${projectId}`);
+            setContentTab(v);
+          }
+        }}
       >
         <TabsList className="tw mb-2">
           <TabsTrigger value="documents"><FileText className="h-4 w-4" /> Documents</TabsTrigger>
@@ -135,6 +161,19 @@ export const ProjectDetail = () => {
         <TabsContent value="search">
           <ProjectSearch project={project} projectId={projectId} client={client} />
         </TabsContent>
+        {canManage && (
+          <TabsContent value="settings">
+            <ProjectSettingsPanel
+              project={project}
+              projectId={projectId}
+              client={client}
+              user={user}
+              section={pathSection || 'access'}
+              onSectionChange={(s) => navigate(`/projects/${projectId}/${s}`)}
+              onProjectUpdate={() => fetchData()}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
