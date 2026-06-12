@@ -40,6 +40,7 @@ export const ImportFlexProject = () => {
   const [orthoNames, setOrthoNames] = useState({}); // ws → display name
   const [selectedTexts, setSelectedTexts] = useState(new Set()); // doc guids
   const [selectedWss, setSelectedWss] = useState(new Set()); // analysis ws tags
+  const [tokenizePunct, setTokenizePunct] = useState(false); // import punctuation as (non-glossed) tokens
   const [progress, setProgress] = useState(null); // {label, pct} | null
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
@@ -103,6 +104,7 @@ export const ImportFlexProject = () => {
     try {
       const config = {
         ...liveConfig,
+        tokenizePunctuation: tokenizePunct,
         orthographies: liveConfig.orthographies.map((o) => ({
           ws: o.ws,
           name: (orthoNames[o.ws] || o.ws).trim() || o.ws,
@@ -377,6 +379,29 @@ export const ImportFlexProject = () => {
                 ))}
               </div>
             </div>
+
+            {parsed.build.stats.puncts > 0 && (
+              <div className="rounded-lg border bg-card p-4">
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={tokenizePunct}
+                    disabled={locked}
+                    onChange={(e) => setTokenizePunct(e.target.checked)}
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium">Tokenize punctuation</span>
+                    <span className="mt-0.5 block text-muted-foreground">
+                      Turn the {parsed.build.stats.puncts.toLocaleString()} punctuation mark{parsed.build.stats.puncts === 1 ? '' : 's'} FLEx
+                      tracks into word tokens, excluded from glossing. Leave off to keep them in the baseline
+                      text only — punctuation shows in the interlinear either way; this just controls whether
+                      it becomes a token.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )}
 
             {runError && stage === 'review' && (
               <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4 text-sm">

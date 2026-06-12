@@ -255,6 +255,18 @@ export async function importDocument({ client, projectId, targets, config, doc, 
       }),
     )).ids;
 
+    // Punctuation tokens (opt-in). Plain word-layer tokens with no
+    // orthographies, morphemes, glosses, or vocab links — they match the
+    // project's ignored-tokens config, so the editor renders them as
+    // non-annotatable and reconcile heals no morpheme onto them. Created from
+    // FLEx's own word/punct classification. Ids are not needed downstream.
+    if (config.tokenizePunctuation && (doc.puncts?.length ?? 0) > 0) {
+      check();
+      await client.tokens.bulkCreate(
+        doc.puncts.map((p) => ({ tokenLayerId: targets.wordLayerId, text: textId, begin: p.begin, end: p.end })),
+      );
+    }
+
     // Morpheme tokens: full word extent, 1-based precedence, metadata.form +
     // morphType. Words FLEx never analyzed get one bare default morpheme
     // (the IGT invariant reconcileOnOpen would otherwise heal one by one).
