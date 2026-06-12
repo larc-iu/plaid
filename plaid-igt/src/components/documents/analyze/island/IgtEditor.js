@@ -786,8 +786,8 @@ export class IgtEditor {
     const ctx = { orthographies, wordFields, morphFields, sentFields, hasMorphemes, ignoredCfg, guess };
 
     // One page of sentences in the DOM (see PAGE_SIZE). Sentence numbering
-    // stays GLOBAL; cross-page movement is handled by the pager, the search
-    // click-through (_consumeFocusRequest pages first), and next-empty-gloss.
+    // stays GLOBAL; cross-page movement is handled by the pager and the search
+    // click-through (_consumeFocusRequest pages first).
     const pageCount = Math.max(1, Math.ceil(sentences.length / IgtEditor.PAGE_SIZE));
     this._page = Math.min(Math.max(0, this._page), pageCount - 1);
     const pageStart = this._page * IgtEditor.PAGE_SIZE;
@@ -865,9 +865,6 @@ export class IgtEditor {
               <span class="igt-progress__text">${stats.done}/${stats.total} glossed</span>
             </span>
           ` : nothing}
-          ${stats && !this.readOnly && stats.done < stats.total
-            ? html`<button type="button" class="igt-toolbar__btn" @click=${(e) => { e.stopPropagation(); this._jumpToNextEmptyGloss(); }}>Next empty gloss →</button>`
-            : nothing}
           ${!this.readOnly && Object.keys(this.doc.vocabularies || {}).length > 0
             ? html`<button type="button" class="igt-toolbar__btn"
                 title="Link unlinked words and morphemes automatically — choose the built-in rule or a linking service. Auto-links show in violet until you confirm them."
@@ -927,53 +924,6 @@ export class IgtEditor {
   // shell listens for, rather than calling a router directly.
   _navigateTab(tab) {
     window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab } }));
-  }
-
-  // Focus + scroll to the first empty morpheme-gloss cell after the current one
-  // (wrapping), so a linguist can chase down un-glossed morphemes quickly.
-  // Pagination-aware: when this page has no empty cell (left), find the next
-  // sentence with one in the DATA (wrapping around the document), page to it,
-  // and focus there after the re-render.
-  _jumpToNextEmptyGloss() {
-    const focusEl = (el) => {
-      if (!el) return;
-      el.scrollIntoView({ block: 'center', inline: 'center' });
-      el.focus();
-      try { el.select(); } catch { /* noop */ }
-    };
-    const pageEmpties = () =>
-      [...this.container.querySelectorAll('.igt-field[data-cell-key^="ma:"].igt-field--empty')]
-        .filter((el) => !el.disabled);
-
-    const empties = pageEmpties();
-    const active = document.activeElement;
-    if (empties.length) {
-      if (!(active && active.dataset?.cellKey?.startsWith('ma:'))) return focusEl(empties[0]);
-      const after = empties.find((el) => el.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_PRECEDING);
-      if (after) return focusEl(after);
-      // All of this page's empties are behind the cursor — fall through to the
-      // cross-page search (which may wrap back to this page's first empty).
-    }
-
-    const fields = (this.doc.layerInfo.spanLayers?.morpheme || []).map((l) => l.name);
-    const sentences = this.doc.sentences || [];
-    if (!fields.length || !sentences.length) return;
-    const hasEmptyCell = (s) => (s.tokens || []).some((t) =>
-      (t.morphemes || []).some((m) => fields.some((n) => (m.annotations?.[n]?.value ?? '') === '')));
-    const start = (this._page + 1) * IgtEditor.PAGE_SIZE; // first sentence beyond this page
-    let found = -1;
-    for (let i = 0; i < sentences.length; i++) {
-      const idx = (start + i) % sentences.length;
-      if (hasEmptyCell(sentences[idx])) { found = idx; break; }
-    }
-    if (found < 0) return;
-    const sentenceId = sentences[found].id;
-    this._setPage(Math.floor(found / IgtEditor.PAGE_SIZE));
-    requestAnimationFrame(() => {
-      const scoped = this.container.querySelector(
-        `.igt-sentence[data-sentence-id="${sentenceId}"] .igt-field[data-cell-key^="ma:"].igt-field--empty`);
-      focusEl(scoped || pageEmpties()[0]);
-    });
   }
 
   // ---- "Copy as IGT" -------------------------------------------------------
