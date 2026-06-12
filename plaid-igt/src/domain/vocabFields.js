@@ -8,25 +8,27 @@
 // the vocabulary management table AND in the interlinear view (the popover
 // detail line). Non-inline fields are still editable in the per-item modal.
 //
-// `morphType` is immutable — it can never be removed, because it's relied on for
-// rendering (affix joiners + the stem accent; see affixMarkers.js). New vocabs
-// are seeded with the full core inventory; existing vocabs are only guaranteed
-// `morphType` so we don't conjure surprise empty columns.
+// Some fields are immutable — they can never be removed, because the app relies
+// on them: `morphType` for rendering (affix joiners + the stem accent; see
+// affixMarkers.js), `gloss` for the vocab list's Gloss column. New vocabs are
+// seeded with the full core inventory; immutable fields are also guaranteed on
+// existing vocabs (injected if missing).
 
 /**
  * The core field inventory, in display order. `immutable` fields cannot be
- * removed. `inline` is the default for a freshly-seeded vocab.
+ * removed and are pinned to the front (in this order). `inline` is the default
+ * for a freshly-seeded vocab.
  */
 export const CORE_VOCAB_FIELDS = [
   { name: 'morphType', inline: false, immutable: true },
-  { name: 'gloss', inline: true },
+  { name: 'gloss', inline: true, immutable: true },
   { name: 'pos', inline: true },
   { name: 'definition', inline: false },
 ];
 
 const CORE_BY_NAME = new Map(CORE_VOCAB_FIELDS.map((f) => [f.name, f]));
 
-/** The one field that must always be present. */
+/** Fields that must always be present, pinned first in this (core) order. */
 const IMMUTABLE_NAMES = new Set(
   CORE_VOCAB_FIELDS.filter((f) => f.immutable).map((f) => f.name),
 );
@@ -89,8 +91,15 @@ export const normalizeVocabFields = (vocabFields) => {
     if (!seen.has(name)) add(name, { inline: CORE_BY_NAME.get(name)?.inline ?? false });
   }
 
-  // Immutable fields (morphType) always come first; the rest keep their order.
-  return [...out.filter((f) => f.immutable), ...out.filter((f) => !f.immutable)];
+  // Immutable fields (morphType, then gloss) are pinned first in core order;
+  // the rest keep their config order.
+  const coreIdx = (name) => {
+    const i = CORE_VOCAB_FIELDS.findIndex((f) => f.name === name);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const pinned = out.filter((f) => f.immutable).sort((a, b) => coreIdx(a.name) - coreIdx(b.name));
+  const rest = out.filter((f) => !f.immutable);
+  return [...pinned, ...rest];
 };
 
 /**
