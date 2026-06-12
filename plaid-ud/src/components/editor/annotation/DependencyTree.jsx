@@ -1,7 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
+import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
 import './DependencyTree.css';
+
+// Machine-made, not yet human-verified (provenance convention) — the deprel
+// label renders distinctly until a human edits it (which verifies it).
+const isInferredRelation = (relation) => provState(relation?.metadata) === PROV_STATES.MACHINE;
 
 export const DependencyTree = ({
   tokens,
@@ -534,7 +539,7 @@ export const DependencyTree = ({
             x={labelX}
             y={labelY}
             fill={color}
-            className={`tree-deprel-text ${isFocused ? 'tree-deprel-text--focused' : ''}`}
+            className={`tree-deprel-text ${isFocused ? 'tree-deprel-text--focused' : ''}${isInferredRelation(relation) ? ' tree-deprel-text--inferred' : ''}`}
             tabIndex="-1"
             onMouseEnter={() => setHoveredRelation(relation.id)}
             onMouseLeave={() => setHoveredRelation(null)}

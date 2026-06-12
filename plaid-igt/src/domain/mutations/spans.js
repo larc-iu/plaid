@@ -5,6 +5,8 @@
 // (setError + return false) so a misconfigured-field edit reports failure
 // rather than silently "succeeding" via the saving wrapper.
 
+import { verifyOnEdit } from '@larc-iu/plaid-client';
+
 const findSpanLayer = (doc, scope, fieldName) => {
   const spanLayers = doc.layerInfo.spanLayers?.[scope] || [];
   return spanLayers.find(sl => sl.name === fieldName) || null;
@@ -13,15 +15,20 @@ const findSpanLayer = (doc, scope, fieldName) => {
 // Upsert a single-token span on a resolved layer: update if one already covers
 // the target token, otherwise create. Applies the optimistic patch in both
 // branches. `metadata` (optional) carries provenance for machine-produced
-// values (see domain/glossGuess.js PROV) — merged over any existing metadata
-// on the update path; human edits pass none.
+// values (see the shared provenance helpers) — merged over any existing
+// metadata on the update path; human edits pass none. A HUMAN edit of a
+// machine-made, unverified span verifies it (write-contract rule 3): the
+// update also merges { provConfirmed: true }, keeping provSource for history.
 const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadata) => {
   const existingSpan = (targetLayer.spans || []).find(span =>
     Array.isArray(span.tokens) && span.tokens.includes(targetTokenId)
   );
 
   if (existingSpan) {
-    const mergedMetadata = metadata ? { ...(existingSpan.metadata || {}), ...metadata } : null;
+    // No caller fragment = a human edit; verifying a machine span is the
+    // fragment such an edit carries.
+    const fragment = metadata || verifyOnEdit(existingSpan.metadata);
+    const mergedMetadata = fragment ? { ...(existingSpan.metadata || {}), ...fragment } : null;
     if (mergedMetadata) {
       doc._client.beginBatch();
       doc._client.spans.update(existingSpan.id, value);

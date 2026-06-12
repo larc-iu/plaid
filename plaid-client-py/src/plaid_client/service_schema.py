@@ -16,10 +16,20 @@ argument back under the same key you declared.
 
 
 class TASKS:
-    """Controlled task vocabulary — the fixed integration-point goals."""
+    """Controlled task vocabulary — the fixed integration-point goals.
+
+    Whatever the task, a service should stamp everything it creates with the
+    provenance convention (``stamp_inferred(service_source(id))`` — see
+    :mod:`plaid_client.provenance`) so UIs can distinguish machine output until
+    a human verifies it, and should honor the write contract: never destroy
+    human-made or verified material without an explicit ``overwrite``
+    parameter. See the manual, "Provenance".
+    """
     TOKENIZE = 'tokenize'
     PARSE = 'parse'
     TRANSCRIBE = 'transcribe'
+    # Propose/create vocab links for unlinked tokens.
+    LINK_VOCAB = 'link-vocab'
 
 
 def _normalize_options(options):

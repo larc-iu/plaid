@@ -3,7 +3,13 @@ import threading
 import stanza
 import requests
 import traceback
-from plaid_client import PlaidClient, TASKS, Param, build_extras
+from plaid_client import (PlaidClient, TASKS, Param, build_extras,
+                          stamp_inferred, is_protected, service_source)
+
+# Provenance fragment merged into everything this service creates (tokens,
+# spans, relations): marks it machine-made + unverified until a human edits
+# or confirms it. See the manual, "Provenance".
+PROV_FRAGMENT = stamp_inferred(service_source('stanza-parser'))
 
 
 # Stanza ships UD models for many languages; offer a common subset. (value, label)
@@ -21,8 +27,14 @@ annotation spans (Form, Lemma, UPOS, XPOS, Features) and dependency relations.
 
 - **Language** selects which Stanza models to use. The first parse in a given
   language downloads its models (one-time) and is slower.
+- **Overwrite human-edited annotations**: re-running replaces the document's
+  existing tokens and annotations. Machine-made, unverified annotations are
+  always fair game; if any HUMAN-made or human-verified annotations exist,
+  the parse refuses unless this is enabled.
 
-> Re-running replaces the document's existing tokens and annotations.
+Everything this service creates carries provenance metadata
+(`prov`/`provSource`), so editors render it distinctly until a human verifies
+it by editing or confirming.
 """
 
 # Standardized self-description carried in `extras` for discovery. The parameter
@@ -33,6 +45,9 @@ PARSER_EXTRAS = build_extras(
     parameters=[
         Param.enum('language', 'Language', STANZA_LANGUAGES, default='en',
                    description='Language models Stanza uses for parsing.'),
+        Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
+                      description='Replace annotations a human created or verified. '
+                                  'When off, the parse refuses if any exist.'),
     ],
 )
 
@@ -134,19 +149,52 @@ def make_bulk_token(token_layer_id, text, begin, end, metadata=None):
 
 
 def make_span_token(span_layer_id, tokens, value, metadata=None):
+    # Every span this service creates is machine-made: provenance is stamped
+    # unconditionally, with any caller metadata merged over it.
     base = {
         "span_layer_id": span_layer_id,
         "tokens": tokens,
         "value": value,
+        "metadata": {**PROV_FRAGMENT, **(metadata or {})},
     }
-    if metadata is not None:
-        base["metadata"] = metadata
     return base
 
 
-def parse_document(pipeline, client, document_id, text_content):
+def count_protected_annotations(text_layer):
+    """Count human-made or human-verified annotations under a text layer.
+
+    The sentence-token cascade delete destroys EVERYTHING under the text layer
+    — every token layer's spans, relations, and vocab links, including other
+    apps' layers — so the write-contract guard walks the whole tree, not just
+    UD's layers. Tokens themselves are deliberately NOT counted: hand-tokenize-
+    then-parse is the normal flow, and the contract protects annotation
+    content, not substrate segmentation.
+    """
+    protected = 0
+    for token_layer in text_layer.get("token_layers", []) or []:
+        for span_layer in token_layer.get("span_layers", []) or []:
+            for span in span_layer.get("spans", []) or []:
+                if is_protected(span.get("metadata")):
+                    protected += 1
+            for relation_layer in span_layer.get("relation_layers", []) or []:
+                for relation in relation_layer.get("relations", []) or []:
+                    if is_protected(relation.get("metadata")):
+                        protected += 1
+        for vocab in token_layer.get("vocabs", []) or []:
+            for link in vocab.get("vocab_links", []) or []:
+                if is_protected(link.get("metadata")):
+                    protected += 1
+    return protected
+
+
+def parse_document(pipeline, client, document_id, text_content, overwrite=False):
     """Parse a document with Stanza and create the three-layer token hierarchy
-    (sentences > words > morphemes) plus annotations in Plaid."""
+    (sentences > words > morphemes) plus annotations in Plaid.
+
+    Provenance write contract: everything created here is stamped machine-made
+    (PROV_FRAGMENT). Re-running freely replaces machine-made UNVERIFIED
+    material, but if any human-made or human-verified annotations exist under
+    the text layer, the parse refuses unless `overwrite` is set."""
     def log(msg):
         # Force-flush so the next-line-after-hang shows whatever the last
         # successful step was, even if Python's stdout is block-buffered.
@@ -185,6 +233,19 @@ def parse_document(pipeline, client, document_id, text_content):
         upos_layer = span_layer_by_ud_config(span_layers, "upos", "UPOS")
         xpos_layer = span_layer_by_ud_config(span_layers, "xpos", "XPOS")
         features_layer = span_layer_by_ud_config(span_layers, "features", "Features")
+
+        # Provenance guard (write contract): never destroy human-made or
+        # human-verified annotations without an explicit opt-in.
+        protected = count_protected_annotations(text_layer)
+        if protected and not overwrite:
+            raise RuntimeError(
+                f"{protected} human-made or human-verified annotation(s) exist on this "
+                f"document; re-run with 'Overwrite human-edited annotations' enabled to "
+                f"replace them. (Annotations from parses made before provenance stamping "
+                f"existed also count as human-made — one overwrite re-parse re-stamps them.)"
+            )
+        if protected:
+            log(f"Overwrite enabled: replacing {protected} protected annotation(s)")
 
         # Reset: delete pre-existing tokens, leaning on server-side cascade
         # for the normal case. Deleting sentences cascades to their words +
@@ -225,8 +286,9 @@ def parse_document(pipeline, client, document_id, text_content):
             op = make_bulk_token(sentence_layer["id"], text_id, begin, end)
             # Preserve the Stanza-recovered sentence text on the sentence token so
             # the exporter can round-trip it (e.g. when surface forms differ from
-            # the body slice — contractions, normalized punctuation).
-            op["metadata"] = {"text": stanza_doc.sentences[i].text}
+            # the body slice — contractions, normalized punctuation). Provenance
+            # rides alongside the round-trip data.
+            op["metadata"] = {"text": stanza_doc.sentences[i].text, **PROV_FRAGMENT}
             sentence_ops.append(op)
 
         # 2/3. Word and morpheme tokens. Each surface token is a word; each
@@ -246,25 +308,28 @@ def parse_document(pipeline, client, document_id, text_content):
                     # Persist the MWT surface form on the word token's
                     # metadata so the exporter can round-trip it. (1:1 words
                     # leave metadata clean; the body substring is canonical.)
-                    word_meta = {}
+                    word_meta = dict(PROV_FRAGMENT)
                     if td.get("text") and td["text"] != body[wb:we]:
                         word_meta["form"] = td["text"]
                     if td.get("misc"):
                         word_meta["misc"] = td["misc"]
                     word_ops.append(make_bulk_token(
-                        word_layer["id"], text_id, wb, we, metadata=word_meta or None
+                        word_layer["id"], text_id, wb, we, metadata=word_meta
                     ))
                     members = sentence_data[i + 1:i + 1 + count]
                     for prec, member in enumerate(members):
-                        op = make_bulk_token(morpheme_layer["id"], text_id, wb, we)
+                        op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
+                                             metadata=dict(PROV_FRAGMENT))
                         op["precedence"] = prec
                         morpheme_ops.append(op)
                         morpheme_meta.append({"sent_idx": sent_idx, "row": member, "word_substring": body[wb:we]})
                     i += 1 + count
                 else:
                     wb, we = td["start_char"], td["end_char"]
-                    word_ops.append(make_bulk_token(word_layer["id"], text_id, wb, we))
-                    op = make_bulk_token(morpheme_layer["id"], text_id, wb, we)
+                    word_ops.append(make_bulk_token(word_layer["id"], text_id, wb, we,
+                                                    metadata=dict(PROV_FRAGMENT)))
+                    op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
+                                         metadata=dict(PROV_FRAGMENT))
                     op["precedence"] = 0
                     morpheme_ops.append(op)
                     morpheme_meta.append({"sent_idx": sent_idx, "row": td, "word_substring": body[wb:we]})
@@ -421,6 +486,7 @@ def parse_document(pipeline, client, document_id, text_content):
                             "source": target,
                             "target": target,
                             "value": deprel,
+                            "metadata": dict(PROV_FRAGMENT),
                         })
                     elif head and head > 0 and head - 1 < len(sentence_lemma_ids):
                         source = sentence_lemma_ids[head - 1]
@@ -430,6 +496,7 @@ def parse_document(pipeline, client, document_id, text_content):
                                 "source": source,
                                 "target": target,
                                 "value": deprel,
+                                "metadata": dict(PROV_FRAGMENT),
                             })
             if relation_ops:
                 log(f"  Creating {len(relation_ops)} dependency relations…")
@@ -478,8 +545,9 @@ def make_handler(client, pipeline_provider, parse_lock):
         """
         print(f"Received service request: {request_data}")
         document_id = request_data.get('document_id')
-        # User-controlled argument (declared in PARSER_EXTRAS' parameter schema).
+        # User-controlled arguments (declared in PARSER_EXTRAS' parameter schema).
         language = request_data.get('language', 'en')
+        overwrite = bool(request_data.get('overwrite', False))
         try:
             # Get document content
             document = client.documents.get(document_id, include_body=True)
@@ -502,7 +570,8 @@ def make_handler(client, pipeline_provider, parse_lock):
             # since Stanza model loading is not thread-safe.
             with parse_lock:
                 pipeline = pipeline_provider.get(language)
-                success = parse_document(pipeline, client, document_id, text_content)
+                success = parse_document(pipeline, client, document_id, text_content,
+                                         overwrite=overwrite)
 
             if success:
                 response_helper.progress(100, "Document parsing completed successfully")

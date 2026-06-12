@@ -383,3 +383,36 @@ export function getServiceSummary(service: DiscoveredService): string;
 export function buildDefaultValues(schema: ServiceParam[]): Record<string, any>;
 /** Coerce/validate raw form values against the schema. */
 export function coerceParamValues(schema: ServiceParam[], raw: Record<string, any>): { values: Record<string, any>; errors: Record<string, string> };
+
+// --- Provenance ---------------------------------------------------------------
+// Cross-app convention for machine-provided vs human-labeled information,
+// expressed as flat metadata keys on annotation entities. Absent keys = human;
+// { prov: 'inferred', provSource } = machine-made, unverified;
+// + { provConfirmed: true } = machine-made, human-verified. Machine writers may
+// replace unverified machine material but must never touch human/verified
+// material without an explicit overwrite opt-in; any human edit verifies.
+// See the manual, "Provenance".
+type ProvState = 'human' | 'machine' | 'verified';
+export const PROV: {
+  readonly key: 'prov';
+  readonly sourceKey: 'provSource';
+  readonly confirmedKey: 'provConfirmed';
+  readonly INFERRED: 'inferred';
+};
+export const PROV_STATES: {
+  readonly HUMAN: 'human';
+  readonly MACHINE: 'machine';
+  readonly VERIFIED: 'verified';
+};
+/** The metadata fragment a machine writer merges into everything it creates. */
+export function stampInferred(source: string): { prov: 'inferred'; provSource: string };
+/** stampInferred + provConfirmed — for machine material born verified (e.g. imports with upstream approval). */
+export function confirmedInferred(source: string): { prov: 'inferred'; provSource: string; provConfirmed: true };
+/** Classify an entity's metadata into one of the three provenance states. */
+export function provState(metadata: object | null | undefined): ProvState;
+/** Whether a machine writer must leave this entity alone (human or verified). */
+export function isProtected(metadata: object | null | undefined): boolean;
+/** The fragment a HUMAN edit should merge in: { provConfirmed: true } iff machine-unverified, else null. */
+export function verifyOnEdit(metadata: object | null | undefined): { provConfirmed: true } | null;
+/** Canonical provSource for a service: 'service:<serviceId>'. */
+export function serviceSource(serviceId: string): string;

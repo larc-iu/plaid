@@ -568,34 +568,27 @@ You might use a config to store legal tags for a given layer:
 { id: "...", name: "POS Tags", config: { tags: ["NOUN", "VERB", /* ... */] } }
 ----
 
-As for metadata, one use could be to store information about whether a human or an AI system produced the annotation, and in the latter case, store additional information about the system's predictions:
+As for metadata, the canonical use is recording whether a human or a machine produced an annotation — Plaid standardizes this as the <<Provenance>> convention. App-private extras (e.g. a model's prediction probabilities) ride alongside the standard keys:
 
 [,js]
 ----
-// Human-made POS tag
+// Human-made POS tag: NO provenance keys (absence = human)
 {
   id: "...",
   tokens: [/*...*/],
   value: "NOUN",
-  metadata: {
-    userId: "human-user-id"
-  }
+  metadata: {}
 }
-// System-made POS tag
+// Machine-made POS tag, not yet human-verified
 {
   id: "...",
   tokens: [/*...*/],
   value: "NOUN",
   metadata: {
-    userId: "system-user-id",
-    systemName: "stanza==1.10.1",
-    tagProb: 0.8412,
-    tagProbs: {
-      NOUN: 0.8412,
-      PROPN: 0.0966,
-      ADJ: 0.00141,
-      /* ... */
-    }
+    prov: "inferred",
+    provSource: "service:stanza-parser",
+    // app-private extras are fine alongside the standard keys:
+    tagProb: 0.8412
   }
 }
 ----
@@ -962,6 +955,43 @@ An app's own private configuration, such as its vocabularies, its colors, and th
 Keeping these two kinds of configuration apart is what allows several apps to coexist on one project.
 
 We also advise app developers to consider the _absence_ of a role tag to be a meaningful signal: if a layer is not tagged with a role, then as a matter of convention, no other app should read or modify it.
+
+== Provenance
+
+Annotation projects routinely mix human labor with machine output—a parser fills in a first pass, an auto-linker proposes vocabulary links, an importer carries another tool's analysis—and it matters enormously which is which: machine output is cheap and replaceable, while human judgment is expensive and must never be silently destroyed.
+Plaid standardizes this distinction as the **provenance** convention: flat metadata keys on annotation entities (spans, relations, vocab links, and optionally tokens) that put every entity in one of three states.
+
+[cols="1,2,3"]
+|===
+| State | Metadata | Meaning
+
+| **human** | _no provenance keys_ | A person made it. The absence of the `prov` key is the discriminator.
+| **machine** | `prov: "inferred"`, `provSource: "<producer>"` | An algorithm or service made it, and no human has vouched for it yet.
+| **verified** | the above, plus `provConfirmed: true` | Machine-made, and a human confirmed or edited it. `provSource` stays, so machine origin remains traceable.
+|===
+
+`provSource` names the producer: `service:<serviceId>` for services, `rule:<name>` for built-in rule algorithms, or an app-specific id such as `gloss:doc-frequency` or `flex-import`.
+The presence of the `prov` key—not its particular value—is what marks an entity as machine-made; `inferred` is simply the only value defined today.
+The keys are deliberately flat scalars, which the query system's metadata filters match well, so questions like "show me every unverified machine annotation in this document" are ordinary queries.
+
+The convention is made operational by a **write contract** that every machine writer (service, built-in algorithm, importer) is expected to follow:
+
+1. A machine writer may freely create new material and freely **replace machine-made, unverified material**—its own or another machine's. Unverified machine output is by definition replaceable.
+2. A machine writer must **never modify or delete human-made or verified material** unless explicitly told to, via a per-run, user-facing opt-in. For services, the idiom is a declared boolean `overwrite` parameter, so the option renders in the standard argument form and is off by default.
+3. **Any human edit of a machine annotation verifies it**: alongside the new value, the editing app also merges `provConfirmed: true`. Explicit confirm gestures (clicking to accept a proposed link, for example) do the same.
+
+Rule 3 is what lets editors render unverified machine output distinctly (Plaid's apps use violet italics) and have the marking dissolve naturally as a human works through the material—each touched annotation graduates to verified, while everything still violet remains fair game for the next machine pass.
+
+For service authors, both clients ship helpers: `stampInferred(source)` / `stamp_inferred(source)` builds the fragment to merge into everything you create (every bulk create accepts per-item `metadata`), `serviceSource(serviceId)` / `service_source(service_id)` builds the canonical producer id, and `isProtected(metadata)` / `is_protected(metadata)` implements the rule-2 check against material you are about to destroy.
+Born-verified material—an import carrying upstream human approval, or a guess written only upon explicit user confirmation—uses `confirmedInferred` / `confirmed_inferred` instead.
+
+[NOTE]
+====
+Tokens MAY carry provenance (the bundled parser and tokenizer services stamp the tokens they create), but interactive substrate-filling—a person clicking "tokenize" to run a deterministic segmenter over untouched text—need not bother: it creates nothing destructive and nothing annotation-bearing.
+The write contract protects annotation _content_; substrate segmentation is guarded by the structural rules in <<Token Layer Constraints>>.
+
+One migration wrinkle: machine output written _before_ a producer adopted this convention carries no provenance keys and therefore reads as human-made. The first guarded re-run over such a document will refuse; one run with `overwrite` enabled replaces and re-stamps it.
+====
 
 == Reconciliation Across Apps
 

@@ -11,6 +11,9 @@ import requests
 import tempfile
 import re
 from typing import List, Dict, Any, Optional, Tuple
+
+from plaid_client.provenance import stamp_inferred, is_protected
+
 from .asr_model import Alignment
 
 
@@ -34,10 +37,17 @@ class AlignmentProcessor:
 
     def process_alignments(self, client, document_id: str, alignments: List[Alignment],
                           text_layer_id: str, alignment_token_layer_id: str,
-                          sentence_token_layer_id: Optional[str], response_helper) -> int:
+                          sentence_token_layer_id: Optional[str], response_helper,
+                          prov_source: Optional[str] = None, overwrite: bool = False) -> int:
         """
         Process ASR alignments and update the Plaid document.
-        
+
+        Alignment tokens are insertion-only and time-collision-aware: existing
+        ones are never modified or deleted. The sentence partition, however,
+        is fully reset on each pass, which cascade-deletes sentence-level
+        annotations — per the provenance write contract, the run refuses when
+        any of those are human-made or human-verified unless ``overwrite``.
+
         Args:
             client: PlaidClient instance
             document_id: ID of document to update
@@ -46,7 +56,12 @@ class AlignmentProcessor:
             alignment_token_layer_id: ID of token layer for alignment tokens
             sentence_token_layer_id: Optional ID of sentence token layer
             response_helper: Helper for progress updates
-            
+            prov_source: Optional provenance producer id (e.g.
+                ``service_source('<service-id>')``). When set, created tokens
+                are stamped machine-made per the provenance convention.
+            overwrite: Allow the sentence-partition reset to destroy
+                human-made or human-verified sentence-level annotations.
+
         Returns:
             Number of new alignment tokens created
         """
@@ -121,7 +136,7 @@ class AlignmentProcessor:
         try:
             # Get document with full token information
             response_helper.progress(75, "Analyzing existing tokens and text...")
-            document = client.documents.get(document_id, True)
+            document = client.documents.get(document_id, include_body=True)
             
             # Find text layer and existing tokens
             text_layer = None
@@ -241,6 +256,9 @@ class AlignmentProcessor:
                         "timeEnd": mod['time_end']
                     }
                     token_metadata.update(mod['metadata'])  # Add any model-specific metadata
+                    if prov_source:
+                        # Provenance: machine-made until a human verifies it.
+                        token_metadata.update(stamp_inferred(prov_source))
                     
                     new_alignment_tokens.append({
                         "token_layer_id": alignment_token_layer_id,
@@ -301,7 +319,8 @@ class AlignmentProcessor:
                     response_helper.progress(92, "Updating sentence partitioning...")
                     self._update_sentence_partitioning(
                         client, document, text_id, sentence_token_layer_id,
-                        existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications
+                        existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
+                        overwrite=overwrite
                     )
                 
                 # Submit all changes atomically
@@ -311,7 +330,7 @@ class AlignmentProcessor:
                 # Validate temporal ordering invariant - need to get updated tokens from database
                 response_helper.progress(98, "Validating temporal ordering...")
                 # Re-fetch the document to get updated token positions for validation
-                updated_document = client.documents.get(document_id, True)
+                updated_document = client.documents.get(document_id, include_body=True)
                 all_updated_tokens = []
                 for tl in updated_document["text_layers"]:
                     for token_layer in tl.get("token_layers", []):
@@ -441,7 +460,8 @@ class AlignmentProcessor:
     
     def _update_sentence_partitioning(self, client, document: Dict, text_id: str, sentence_token_layer_id: str,
                                      existing_alignment_tokens: List[Dict], new_alignment_tokens: List[Dict],
-                                     original_text: str, updated_text: str, text_modifications: List[Dict]):
+                                     original_text: str, updated_text: str, text_modifications: List[Dict],
+                                     overwrite: bool = False):
         """
         Update sentence partitioning after ASR text insertion.
 
@@ -483,6 +503,30 @@ class AlignmentProcessor:
 
         existing_sentence_tokens = sentence_token_layer.get("tokens", [])
         text_length = len(updated_text)
+
+        # Provenance write contract: the full reset below cascade-deletes every
+        # sentence-level annotation. Machine-made UNVERIFIED ones are
+        # replaceable; human-made or human-verified ones are not — fail closed
+        # (raising aborts the batch BEFORE submit) unless explicitly overwriting.
+        if existing_sentence_tokens and not overwrite:
+            deleted_ids = {s.get("id") for s in existing_sentence_tokens}
+            protected = 0
+            for sl in sentence_token_layer.get('span_layers', []) or []:
+                for span in sl.get('spans', []) or []:
+                    if any(tid in deleted_ids for tid in (span.get('tokens') or [])) \
+                            and is_protected(span.get('metadata')):
+                        protected += 1
+            for vocab in sentence_token_layer.get('vocabs', []) or []:
+                for vl in vocab.get('vocab_links', []) or []:
+                    if any(tid in deleted_ids for tid in (vl.get('tokens') or [])) \
+                            and is_protected(vl.get('metadata')):
+                        protected += 1
+            if protected:
+                raise ValueError(
+                    f"Transcribing would reset the sentence partition and delete {protected} "
+                    f"human-made or human-verified sentence-level annotation(s); re-run with "
+                    f"overwrite enabled to replace them."
+                )
 
         if text_length <= 0:
             # Empty text — partition must be empty too. Clear if anything exists.

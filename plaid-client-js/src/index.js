@@ -1657,3 +1657,17 @@ export {
   buildDefaultValues,
   coerceParamValues,
 } from './serviceSchema.js';
+// Provenance: the cross-app convention for machine-provided vs human-labeled
+// information (flat prov/provSource/provConfirmed metadata; absence = human),
+// plus the machine-writer contract. See ./provenance.js and the manual,
+// "Provenance".
+export {
+  PROV,
+  PROV_STATES,
+  stampInferred,
+  confirmedInferred,
+  provState,
+  isProtected,
+  verifyOnEdit,
+  serviceSource,
+} from './provenance.js';

@@ -1,4 +1,4 @@
-import { cpLength, cpSlice, utf16ToCp } from '@larc-iu/plaid-client';
+import { cpLength, cpSlice, utf16ToCp, verifyOnEdit } from '@larc-iu/plaid-client';
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import { interSententialRelationIds, wordsNeedingSyntacticWord } from '../utils/udReconcile.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
@@ -1038,6 +1038,9 @@ export class ConlluDocument {
           typeof span.value === 'string' && span.value.split('=')[0] === key
         );
         if (existingFeat) {
+          // Human edit of a machine feature verifies it (see the existing-span
+          // branch below for the full rationale).
+          const verifyFeat = verifyOnEdit(existingFeat.metadata);
           // Optimistic overwrite: update the tag locally before the round trip.
           this._applyRawPatch((next, infoNext) => {
             const layerDoc = infoNext.tokenLayer?.spanLayers?.find(layer =>
@@ -1046,9 +1049,21 @@ export class ConlluDocument {
             const spanIndex = layerDoc?.spans?.findIndex(span => span.id === existingFeat.id);
             if (layerDoc?.spans && spanIndex != null && spanIndex !== -1) {
               layerDoc.spans[spanIndex].value = value;
+              if (verifyFeat) {
+                layerDoc.spans[spanIndex].metadata = {
+                  ...(layerDoc.spans[spanIndex].metadata || {}), ...verifyFeat,
+                };
+              }
             }
           });
-          await this._client.spans.update(existingFeat.id, value);
+          if (verifyFeat) {
+            this._client.beginBatch();
+            this._client.spans.update(existingFeat.id, value);
+            this._client.spans.patchMetadata(existingFeat.id, verifyFeat);
+            await this._client.submitBatch();
+          } else {
+            await this._client.spans.update(existingFeat.id, value);
+          }
           return;
         }
         // Create is post-server (a span create needs the server id; the temp-id
@@ -1072,7 +1087,13 @@ export class ConlluDocument {
         Array.isArray(span.tokens) && span.tokens.includes(tokenId)
       );
       if (existingSpan) {
-        // Optimistic: update the value locally before the round trip.
+        // A human edit of a machine-made, unverified span VERIFIES it
+        // (provenance write contract): merge provConfirmed alongside the
+        // value. Both land in ONE optimistic patch (single _dataVersion bump,
+        // so the machine styling clears with the value, no double repaint)
+        // and one atomic batch (single document-version bump, OCC-safe).
+        const verify = verifyOnEdit(existingSpan.metadata);
+        // Optimistic: update the value (+ metadata) locally before the round trip.
         this._applyRawPatch((next, infoNext) => {
           const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find(layer =>
             layer.spans?.some(span => span.id === existingSpan.id)
@@ -1081,10 +1102,22 @@ export class ConlluDocument {
             const spanIndex = targetLayerDoc.spans.findIndex(span => span.id === existingSpan.id);
             if (spanIndex !== -1) {
               targetLayerDoc.spans[spanIndex].value = value;
+              if (verify) {
+                targetLayerDoc.spans[spanIndex].metadata = {
+                  ...(targetLayerDoc.spans[spanIndex].metadata || {}), ...verify,
+                };
+              }
             }
           }
         });
-        await this._client.spans.update(existingSpan.id, value);
+        if (verify) {
+          this._client.beginBatch();
+          this._client.spans.update(existingSpan.id, value);
+          this._client.spans.patchMetadata(existingSpan.id, verify);
+          await this._client.submitBatch();
+        } else {
+          await this._client.spans.update(existingSpan.id, value);
+        }
       } else {
         // Create is post-server (EditableCell already shows the typed value
         // optimistically via its local state, so there's no visible delay).
@@ -1204,6 +1237,12 @@ export class ConlluDocument {
 
   async updateRelation(relationId, deprel) {
     return this._withSaving('Failed to update relation', async () => {
+      // Human edit of a machine relation verifies it (provenance write
+      // contract) — same shape as updateAnnotation: one optimistic patch,
+      // one atomic batch.
+      const existing = (this.layerInfo.relationLayer?.relations || [])
+        .find(r => r.id === relationId);
+      const verify = verifyOnEdit(existing?.metadata);
       // Optimistic: reflect the new value immediately, BEFORE the round trip,
       // so the label doesn't flash the previous value while the save is in
       // flight. On failure, _withSaving reloads from the server and reverts.
@@ -1211,9 +1250,23 @@ export class ConlluDocument {
         const relLayer = infoNext.relationLayer;
         if (!relLayer || !Array.isArray(relLayer.relations)) return;
         const idx = relLayer.relations.findIndex(r => r.id === relationId);
-        if (idx !== -1) relLayer.relations[idx].value = deprel;
+        if (idx !== -1) {
+          relLayer.relations[idx].value = deprel;
+          if (verify) {
+            relLayer.relations[idx].metadata = {
+              ...(relLayer.relations[idx].metadata || {}), ...verify,
+            };
+          }
+        }
       });
-      await this._client.relations.update(relationId, deprel);
+      if (verify) {
+        this._client.beginBatch();
+        this._client.relations.update(relationId, deprel);
+        this._client.relations.patchMetadata(relationId, verify);
+        await this._client.submitBatch();
+      } else {
+        await this._client.relations.update(relationId, deprel);
+      }
     });
   }
 

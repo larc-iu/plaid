@@ -6,6 +6,8 @@
 // `_vocabularies`). A token id here may be a word OR morpheme token; the
 // link/create operation is identical either way.
 
+import { stampInferred, provState, PROV, PROV_STATES } from '@larc-iu/plaid-client';
+
 // Locate the existing single-token vocab link for `tokenId` across all
 // vocabularies. By convention there is at most one.
 const findPriorLink = (vocabularies, tokenId) => {
@@ -41,7 +43,7 @@ export const vocabMutations = {
       return !!item;
     });
     if (todo.length === 0) return 0;
-    const metadata = { prov: 'inferred', provSource };
+    const metadata = stampInferred(provSource);
 
     const ok = await this._withSaving('Failed to auto-link', async () => {
       this._client.beginBatch();
@@ -72,14 +74,13 @@ export const vocabMutations = {
   async confirmVocabLink(tokenId) {
     const { link, vocabId } = findPriorLink(this._vocabularies, tokenId);
     if (!link || !vocabId) return false;
-    const meta = link.metadata || {};
-    if (meta.prov !== 'inferred' || meta.provConfirmed) return false;
+    if (provState(link.metadata) !== PROV_STATES.MACHINE) return false;
 
     return this._withSaving('Failed to confirm link', async () => {
-      await this._client.vocabLinks.patchMetadata(link.id, { provConfirmed: true });
+      await this._client.vocabLinks.patchMetadata(link.id, { [PROV.confirmedKey]: true });
       this._applyRawPatch((next, info, vocabs) => {
         const l = (vocabs[vocabId]?.vocabLinks || []).find(x => x.id === link.id);
-        if (l) l.metadata = { ...(l.metadata || {}), provConfirmed: true };
+        if (l) l.metadata = { ...(l.metadata || {}), [PROV.confirmedKey]: true };
       });
     });
   },

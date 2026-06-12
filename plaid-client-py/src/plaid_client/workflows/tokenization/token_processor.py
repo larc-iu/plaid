@@ -8,6 +8,9 @@ batch operations.
 
 import logging
 from typing import List, Dict, Any, Optional
+
+from plaid_client.provenance import stamp_inferred, is_protected
+
 from .tokenizer_model import TokenSpan
 
 logger = logging.getLogger(__name__)
@@ -30,10 +33,11 @@ class TokenProcessor:
         pass
     
     def process_tokens(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
-                      primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper) -> Dict[str, int]:
+                      primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
+                      prov_source: Optional[str] = None, overwrite: bool = False) -> Dict[str, int]:
         """
         Process tokenization results and update the Plaid document.
-        
+
         Args:
             client: PlaidClient instance
             document_id: ID of document to update
@@ -42,14 +46,21 @@ class TokenProcessor:
             primary_token_layer_id: ID of primary token layer for words
             sentence_layer_id: Optional ID of sentence token layer
             response_helper: Helper for progress updates
-            
+            prov_source: Optional provenance producer id (e.g.
+                ``service_source('<service-id>')``). When set, created tokens
+                are stamped machine-made per the provenance convention.
+            overwrite: Provenance write contract — resetting the sentence
+                partition cascade-deletes sentence-level annotations. When any
+                of those are human-made or human-verified, the run refuses
+                unless this is True (machine-unverified ones are fair game).
+
         Returns:
             Dictionary with counts of tokens created/deleted
         """
         try:
             # Get document with layers
             response_helper.progress(10, "Fetching document...")
-            full_document = client.documents.get(document_id, True)
+            full_document = client.documents.get(document_id, include_body=True)
             
             # Find the text layer and content
             text_layer = full_document["text_layers"][0]
@@ -115,6 +126,18 @@ class TokenProcessor:
                 if not self._is_complete_partition(sentences_to_create, text_length):
                     response_helper.error(
                         f"Sentence tokenization did not produce a valid partition of [0, {text_length})"
+                    )
+                    return {"tokensCreated": 0, "tokensDeleted": 0, "sentencesCreated": 0}
+
+                # Provenance write contract: the sentence reset cascade-deletes
+                # every sentence-level annotation. Machine-made UNVERIFIED ones
+                # are replaceable; human-made or human-verified ones are not —
+                # refuse unless the caller explicitly opted into overwriting.
+                _, protected = self._sentence_annotation_loss(sentence_layer, sentence_ids_to_delete)
+                if protected and not overwrite:
+                    response_helper.error(
+                        f"Re-tokenizing would delete {protected} human-made or human-verified "
+                        f"sentence-level annotation(s); re-run with overwrite enabled to replace them."
                     )
                     return {"tokensCreated": 0, "tokensDeleted": 0, "sentencesCreated": 0}
             elif sentence_layer and len(existing_sentences) != 1:
@@ -224,31 +247,40 @@ class TokenProcessor:
                     for token_id in tokens_to_delete:
                         client.tokens.delete(token_id)
 
+                # Provenance: stamp everything this (machine) run creates.
+                prov_fragment = stamp_inferred(prov_source) if prov_source else None
+
                 # Create new sentence tokens (establishes the new partition)
                 if sentences_to_create:
                     sent_operations = []
                     for sent in sentences_to_create:
-                        sent_operations.append({
+                        op = {
                             "token_layer_id": sentence_layer_id,
                             "text": text_id,
                             "begin": sent['begin'],
                             "end": sent['end']
-                        })
+                        }
+                        if prov_fragment:
+                            op["metadata"] = dict(prov_fragment)
+                        sent_operations.append(op)
 
                     client.tokens.bulk_create(sent_operations)
                     sentences_created = len(sent_operations)
-                
+
                 # Create word tokens
                 if words_to_create:
                     token_operations = []
                     for token in words_to_create:
-                        token_operations.append({
+                        op = {
                             "token_layer_id": primary_token_layer_id,
                             "text": text_id,
                             "begin": token['begin'],
                             "end": token['end']
-                        })
-                    
+                        }
+                        if prov_fragment:
+                            op["metadata"] = dict(prov_fragment)
+                        token_operations.append(op)
+
                     client.tokens.bulk_create(token_operations)
                     response_helper.progress(90, f"Created {len(token_operations)} tokens...")
                 
@@ -268,44 +300,61 @@ class TokenProcessor:
         """Check if we should tokenize sentences based on existing sentence count"""
         return len(existing_sentences) == 1
 
-    def _warn_about_sentence_annotation_loss(self, sentence_layer: Optional[Dict],
-                                              sentence_ids_to_delete: List[str]) -> None:
-        """Log a warning if the sentences we're about to bulk_delete have any
-        spans or vocab-links attached.
+    def _sentence_annotation_loss(self, sentence_layer: Optional[Dict],
+                                  sentence_ids_to_delete: List[str]) -> tuple:
+        """Count the sentence-level annotations the upcoming bulk_delete would
+        cascade away: returns ``(total, protected)`` where ``protected`` are
+        the human-made or human-verified ones (provenance convention).
 
         bulk_delete on a partitioning layer cascade-deletes all spans (and
         relations) and vocab-links rooted on the deleted tokens. The gate
-        upstream ensures this is bounded to a single existing sentence, but
-        the user has no signal that annotations are being lost. Just log;
-        don't change behavior.
+        upstream ensures this is bounded to a single existing sentence; the
+        caller refuses on protected > 0 unless overwriting, and warns about
+        any loss it proceeds with.
         """
         if not sentence_layer or not sentence_ids_to_delete:
-            return
+            return (0, 0)
 
         deleted_ids = set(sentence_ids_to_delete)
-        annotation_count = 0
+        total = 0
+        protected = 0
+
+        def tally(entity):
+            nonlocal total, protected
+            total += 1
+            if is_protected(entity.get('metadata')):
+                protected += 1
 
         # Spans attached to the existing sentence(s) via any sentence-scope span layer
         for sl in sentence_layer.get('span_layers', []) or []:
             for span in sl.get('spans', []) or []:
                 span_tokens = span.get('tokens') or []
                 if any(tid in deleted_ids for tid in span_tokens):
-                    annotation_count += 1
+                    tally(span)
 
         # Vocab links attached to the existing sentence(s)
         for vocab in sentence_layer.get('vocabs', []) or []:
             for vl in vocab.get('vocab_links', []) or []:
                 link_tokens = vl.get('tokens') or []
                 if any(tid in deleted_ids for tid in link_tokens):
-                    annotation_count += 1
+                    tally(vl)
 
-        if annotation_count > 0:
+        return (total, protected)
+
+    def _warn_about_sentence_annotation_loss(self, sentence_layer: Optional[Dict],
+                                              sentence_ids_to_delete: List[str]) -> None:
+        """Log a warning if the sentences we're about to bulk_delete have any
+        spans or vocab-links attached. (The protected-material refusal happens
+        earlier, before the batch opens; by the time this runs the loss is
+        either machine-unverified or explicitly overwritten.)"""
+        total, _ = self._sentence_annotation_loss(sentence_layer, sentence_ids_to_delete)
+        if total > 0:
             logger.warning(
                 "Re-tokenizing will delete %d sentence-level annotation(s) "
                 "(spans/vocab-links) attached to the existing sentence(s). "
                 "This is a cascade effect of resetting the :partitioning "
                 "sentence layer via bulk_delete + bulk_create.",
-                annotation_count,
+                total,
             )
     
     def _split_cross_sentence_tokens(self, tokens: List[Dict], sentences: List[Dict]) -> List[Dict]:

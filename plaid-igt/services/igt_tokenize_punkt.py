@@ -8,7 +8,7 @@ This demonstrates how easy it is to create new tokenization services.
 import argparse
 import nltk
 from typing import List, Dict, Any, Tuple
-from plaid_client import BaseService, TASKS, Param
+from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.workflows.tokenization import TokenizerModel, TokenSpan, TokenProcessor, helpers
 
 
@@ -27,6 +27,12 @@ splits each sentence into **words** with the Treebank word tokenizer.
 - Sentence segmentation is language-specific — pick the closest **Language**.
 - Word tokenization uses the same Treebank rules across languages; best for
   whitespace-delimited, Latin-script text.
+- **Overwrite human-edited annotations**: re-segmenting sentences deletes
+  sentence-level annotations. Machine-made, unverified ones are always fair
+  game; if any are human-made or human-verified, the run refuses unless this
+  is enabled.
+
+Tokens this service creates carry provenance metadata (`prov`/`provSource`).
 """
 
 
@@ -82,6 +88,9 @@ class NLTKTokenizerService(BaseService):
             parameters=[
                 Param.enum('language', 'Language', PUNKT_LANGUAGES, default='english',
                            description='Pretrained Punkt model used for sentence segmentation.'),
+                Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
+                              description='Allow re-segmentation to delete sentence-level annotations '
+                                          'a human created or verified.'),
             ],
         )
         self.tokenizer_model = NLTKPunktTokenizer()
@@ -111,8 +120,9 @@ class NLTKTokenizerService(BaseService):
         text_layer_id = request_data.get('text_layer_id')
         primary_token_layer_id = request_data.get('primary_token_layer_id')
         sentence_layer_id = request_data.get('sentence_layer_id')
-        # User-controlled argument (declared in the service's parameter schema).
+        # User-controlled arguments (declared in the service's parameter schema).
         language = request_data.get('language', 'english')
+        overwrite = bool(request_data.get('overwrite', False))
         
         # Validate required parameters
         if not document_id:
@@ -130,7 +140,7 @@ class NLTKTokenizerService(BaseService):
         try:
             # Get document text
             response_helper.progress(5, "Fetching document...")
-            full_document = self.client.documents.get(document_id, True)
+            full_document = self.client.documents.get(document_id, include_body=True)
 
             # Find the specified text layer
             text_layer = None
@@ -164,10 +174,14 @@ class NLTKTokenizerService(BaseService):
             
             response_helper.progress(30, f"Generated {len(sentences)} sentences and {len(words)} words...")
             
-            # Process tokens using the token processor
+            # Process tokens using the token processor. Created tokens are
+            # stamped machine-made (provenance convention); the processor
+            # refuses to destroy protected annotations unless `overwrite`.
             results = self.token_processor.process_tokens(
                 self.client, document_id, sentences, words,
-                primary_token_layer_id, sentence_layer_id, response_helper
+                primary_token_layer_id, sentence_layer_id, response_helper,
+                prov_source=service_source(self.service_id),
+                overwrite=overwrite,
             )
             
             response_helper.progress(100, "Tokenization completed successfully")

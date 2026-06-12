@@ -133,10 +133,13 @@ export function makeFakeClient(opts = {}) {
       create: op('spans.create', () => ({ id: nextId('span') })),
       update: op('spans.update', () => ({})),
       delete: op('spans.delete', () => ({})),
+      setMetadata: op('spans.setMetadata', () => ({})),
+      patchMetadata: op('spans.patchMetadata', () => ({})),
     },
     vocabLinks: {
       create: op('vocabLinks.create', () => ({ id: nextId('link') })),
       delete: op('vocabLinks.delete', () => ({})),
+      patchMetadata: op('vocabLinks.patchMetadata', () => ({})),
     },
     vocabItems: {
       create: op('vocabItems.create', () => ({ id: nextId('vitem') })),

@@ -10,7 +10,7 @@ import shutil
 import whisper
 from typing import List, Dict, Any
 from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
-from plaid_client import BaseService, TASKS, Param
+from plaid_client import BaseService, TASKS, Param, service_source
 
 
 WHISPER_MODEL_SIZES = [
@@ -29,6 +29,12 @@ transcribes it, and writes time-aligned segments.
   memory. The operator's launch `--model` sets the default and the first model
   loaded; choosing a different size per request loads/caches it on demand.
 - **Language**: leave blank to auto-detect, or force an ISO code (e.g. `en`).
+- **Overwrite human-edited annotations**: each pass resets the sentence
+  partition, which deletes sentence-level annotations. Machine-made,
+  unverified ones are always fair game; if any are human-made or
+  human-verified, the run refuses unless this is enabled.
+
+Tokens this service creates carry provenance metadata (`prov`/`provSource`).
 """
 
 
@@ -137,6 +143,9 @@ class WhisperASRService(BaseService):
                 Param.string('language', 'Language (optional)', default='',
                              placeholder='auto-detect (e.g. en, es, de)',
                              description='ISO code to force a language; blank = auto-detect.'),
+                Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
+                              description='Allow the sentence-partition reset to delete sentence-level '
+                                          'annotations a human created or verified.'),
             ],
         )
         self.asr_model = None
@@ -182,6 +191,7 @@ class WhisperASRService(BaseService):
         # User-controlled arguments (declared in the service's parameter schema).
         model_size = request_data.get('model_size') or None
         language = request_data.get('language') or None
+        overwrite = bool(request_data.get('overwrite', False))
         
         # Validate required parameters
         if not document_id:
@@ -201,7 +211,7 @@ class WhisperASRService(BaseService):
         try:
             # Get document to fetch media URL
             response_helper.progress(5, "Fetching document...")
-            full_document = self.client.documents.get(document_id, True)
+            full_document = self.client.documents.get(document_id, include_body=True)
             
             # Get media URL from document
             media_url = full_document.get("media_url")
@@ -229,10 +239,14 @@ class WhisperASRService(BaseService):
             
             response_helper.progress(70, f"Generated {len(alignments)} segment alignments...")
             
-            # Process alignments using the alignment processor
+            # Process alignments using the alignment processor. Created tokens
+            # are stamped machine-made (provenance convention); the processor
+            # refuses to destroy protected annotations unless `overwrite`.
             tokens_created = self.alignment_processor.process_alignments(
                 self.client, document_id, alignments, text_layer_id,
-                alignment_token_layer_id, sentence_token_layer_id, response_helper
+                alignment_token_layer_id, sentence_token_layer_id, response_helper,
+                prov_source=service_source(self.service_id),
+                overwrite=overwrite,
             )
             
             response_helper.progress(100, "ASR processing completed successfully")

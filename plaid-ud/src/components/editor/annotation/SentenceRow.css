@@ -123,6 +123,18 @@
   font-style: normal;
 }
 
+/* Machine-made, not yet human-verified (provenance convention). Editing the
+   cell verifies it, which clears this styling. The dotted underline survives
+   per-value cell colors (e.g. UPOS color coding), so machine state stays
+   visible even on colored cells; uncolored cells also go violet. */
+.editable-field--inferred {
+  color: #6d28d9;
+  font-style: italic;
+  text-decoration: underline dotted;
+  text-decoration-color: #c4b5fd;
+  text-underline-offset: 2px;
+}
+
 /* Features */
 .features-container {
   padding: 2px;
@@ -163,6 +175,12 @@
   flex: 1;
   font-family: sans-serif;
   text-align: center;
+}
+
+/* Machine-made, unverified feature (provenance convention). */
+.feature-text--inferred {
+  color: #6d28d9;
+  font-style: italic;
 }
 
 .feature-delete-btn {

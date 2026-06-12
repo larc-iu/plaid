@@ -11,6 +11,7 @@
 // half-imported ones are deleted and redone. Lexicon items are deduped by
 // their FLEx sense guid (metadata.flexSense).
 
+import { stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
 import { IGT_NAMESPACE, findBaselineTextLayer, findSentenceTokenLayer, findWordTokenLayer, findMorphemeTokenLayer, readScope } from '../../domain/igtConfig.js';
 import { pickEn } from './fwdataParser.js';
 
@@ -335,11 +336,8 @@ export async function importDocument({ client, projectId, targets, config, doc, 
       check();
       client.beginBatch();
       for (const l of linkSpecs.slice(i, i + LINK_CHUNK)) {
-        client.vocabLinks.create(l.itemId, [l.tokenId], {
-          prov: 'inferred',
-          provSource: 'flex-import',
-          ...(l.approved && { provConfirmed: true }),
-        });
+        client.vocabLinks.create(l.itemId, [l.tokenId],
+          l.approved ? confirmedInferred('flex-import') : stampInferred('flex-import'));
       }
       await client.submitBatch();
     }

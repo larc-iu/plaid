@@ -8,6 +8,7 @@
 // findSentenceForToken) are produced together so they stay in sync with
 // `sentences`.
 
+import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
 
 // Local copy of plaid-client-js's cpSlicer (spread the body into code points
@@ -275,7 +276,7 @@ function collectSingleTokenVocabLinks(vocabularies) {
         linkId: link.id,
         // Machine-made and not yet human-confirmed (provenance convention) —
         // the editor renders these distinctly.
-        inferred: linkMeta.prov === 'inferred' && !linkMeta.provConfirmed
+        inferred: provState(linkMeta) === PROV_STATES.MACHINE
       };
     });
   });

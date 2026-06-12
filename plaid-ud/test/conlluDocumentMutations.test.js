@@ -67,6 +67,73 @@ test('updateRelation reverts via reload when the server rejects', async () => {
   assert.equal(doc.isSaving, false);
 });
 
+// --- Provenance: a human edit of a machine-made annotation verifies it -------
+// (write contract rule 3: the edit also stamps provConfirmed, in one atomic
+// batch with the value update, and the optimistic patch carries both).
+
+const provClient = () => {
+  const calls = [];
+  return {
+    calls,
+    beginBatch() {},
+    async submitBatch() { calls.push(['submitBatch']); return []; },
+    spans: {
+      update: (id, value) => { calls.push(['spans.update', id, value]); },
+      patchMetadata: (id, body) => { calls.push(['spans.patchMetadata', id, body]); },
+    },
+    relations: {
+      update: (id, value) => { calls.push(['relations.update', id, value]); },
+      patchMetadata: (id, body) => { calls.push(['relations.patchMetadata', id, body]); },
+    },
+  };
+};
+
+test('editing a machine-made annotation verifies it (batched update + patchMetadata)', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client });
+
+  const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  span.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
+
+  assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
+  assert.deepEqual(client.calls.map((c) => c[0]),
+    ['spans.update', 'spans.patchMetadata', 'submitBatch']);
+  assert.deepEqual(client.calls[1][2], { provConfirmed: true });
+
+  // The optimistic patch carries value AND verified metadata together.
+  const after = doc.layerInfo.uposLayer.spans.find((s) => s.id === span.id);
+  assert.equal(after.value, 'PROPN');
+  assert.equal(after.metadata.provConfirmed, true);
+  assert.equal(after.metadata.provSource, 'service:stanza-parser'); // origin kept
+});
+
+test('editing a human annotation stays a plain update (no metadata write)', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client });
+
+  const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
+  assert.deepEqual(client.calls.map((c) => c[0]), ['spans.update']);
+});
+
+test('editing a machine-made relation verifies it too', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client });
+
+  const rel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det');
+  rel.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
+
+  assert.equal(await doc.updateRelation(rel.id, 'nsubj'), true);
+  assert.deepEqual(client.calls.map((c) => c[0]),
+    ['relations.update', 'relations.patchMetadata', 'submitBatch']);
+  const after = doc.layerInfo.relationLayer.relations.find((r) => r.id === rel.id);
+  assert.equal(after.value, 'nsubj');
+  assert.equal(after.metadata.provConfirmed, true);
+});
+
 test('deleteWord mirrors the server cascade locally before the round trip', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const server = deferred();

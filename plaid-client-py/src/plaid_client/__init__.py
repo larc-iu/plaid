@@ -8,6 +8,17 @@ from plaid_client.service_schema import (
     default_values,
     coerce,
 )
+from plaid_client.provenance import (
+    PROV_KEY,
+    PROV_SOURCE_KEY,
+    PROV_CONFIRMED_KEY,
+    stamp_inferred,
+    confirmed_inferred,
+    prov_state,
+    is_protected,
+    verify_on_edit,
+    service_source,
+)
 
 __all__ = [
     "PlaidClient",
@@ -18,4 +29,13 @@ __all__ = [
     "build_extras",
     "default_values",
     "coerce",
+    "PROV_KEY",
+    "PROV_SOURCE_KEY",
+    "PROV_CONFIRMED_KEY",
+    "stamp_inferred",
+    "confirmed_inferred",
+    "prov_state",
+    "is_protected",
+    "verify_on_edit",
+    "service_source",
 ]

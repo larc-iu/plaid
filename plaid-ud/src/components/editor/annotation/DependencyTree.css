@@ -123,6 +123,14 @@
   outline-offset: 2px;
 }
 
+/* Machine-made, not yet human-verified (provenance convention). Keeps the
+   deprel color (fill is set inline) but italicizes so machine state stays
+   visible; editing the label verifies it and clears this. */
+.tree-deprel-text--inferred {
+  font-style: italic;
+  opacity: 0.85;
+}
+
 .tree-drag-arc {
   fill: none;
   stroke: #000;

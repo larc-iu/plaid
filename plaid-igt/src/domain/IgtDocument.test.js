@@ -98,6 +98,45 @@ describe('span (annotation) mutations', () => {
     expect(doc.sentences[0].tokens[0].annotations.POS.value).toBe('NOUN');
   });
 
+  it('a human edit of a machine-made span verifies it (provConfirmed merged)', async () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-1'], value: 'DET',
+        metadata: { prov: 'inferred', provSource: 'service:stanza-parser' } },
+    ];
+    const doc = makeDoc({ raw });
+    const ok = await doc.updateTokenSpan('w-1', 'POS', 'NOUN'); // no metadata = human
+    expect(ok).toBe(true);
+    const setMeta = doc.client.calls.find((c) => c.kind === 'spans.setMetadata');
+    expect(setMeta).toBeTruthy();
+    expect(setMeta.args[1]).toEqual({
+      prov: 'inferred', provSource: 'service:stanza-parser', provConfirmed: true,
+    });
+    // The optimistic patch carries the verified metadata too.
+    expect(doc.sentences[0].tokens[0].annotations.POS.metadata.provConfirmed).toBe(true);
+  });
+
+  it('a human edit of a human span stays a plain update (no metadata write)', async () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-1'], value: 'DET' },
+    ];
+    const doc = makeDoc({ raw });
+    await doc.updateTokenSpan('w-1', 'POS', 'NOUN');
+    expect(kinds(doc.client)).not.toContain('spans.setMetadata');
+  });
+
+  it('a human edit of an already-verified span stays a plain update', async () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-1'], value: 'DET',
+        metadata: { prov: 'inferred', provSource: 'x', provConfirmed: true } },
+    ];
+    const doc = makeDoc({ raw });
+    await doc.updateTokenSpan('w-1', 'POS', 'NOUN');
+    expect(kinds(doc.client)).not.toContain('spans.setMetadata');
+  });
+
   it('updateMorphemeSpan upserts on the morpheme', async () => {
     const doc = makeDoc();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'the');

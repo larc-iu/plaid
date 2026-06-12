@@ -33,14 +33,20 @@
  * snake_case key round-trips unchanged to a JS UI and back.
  */
 
-/** The controlled task vocabulary — the fixed integration-point goals. */
+/**
+ * The controlled task vocabulary — the fixed integration-point goals.
+ *
+ * Whatever the task, a service should stamp everything it creates with the
+ * provenance convention (see ./provenance.js: stampInferred(serviceSource(id)))
+ * so UIs can distinguish machine output until a human verifies it, and should
+ * honor the write contract: never destroy human-made or verified material
+ * without an explicit `overwrite` parameter. See the manual, "Provenance".
+ */
 export const TASKS = Object.freeze({
   TOKENIZE: 'tokenize',
   PARSE: 'parse',
   TRANSCRIBE: 'transcribe',
-  /** Create vocab links for unlinked tokens. Services should stamp link
-   * metadata with the provenance convention ({ prov: 'inferred', provSource:
-   * 'service:<id>' }) so UIs can distinguish machine links until confirmed. */
+  /** Create vocab links for unlinked tokens. */
   LINK_VOCAB: 'link-vocab',
 });
 

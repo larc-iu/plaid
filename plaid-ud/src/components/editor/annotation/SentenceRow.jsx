@@ -1,10 +1,16 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Autocomplete } from '@mantine/core';
 import { IconChevronRight } from '@tabler/icons-react';
+import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { resolveColor } from '../../../utils/udVocab.js';
 import './SentenceRow.css';
+
+// Machine-made, not yet human-verified (provenance convention) — such cells
+// render distinctly (italic + dotted violet underline) until a human edits
+// them, which verifies them.
+const isInferredSpan = (span) => !!span && provState(span.metadata) === PROV_STATES.MACHINE;
 
 // Shared throttle for tab navigation across all EditableCell instances
 let lastGlobalTabPress = 0;
@@ -19,7 +25,7 @@ const ALL_FIELDS_VISIBLE = { lemma: true, xpos: true, upos: true, feats: true };
 const NO_OPTIONS = [];
 
 // Editable cell component for annotation fields
-const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm, tabIndex, columnWidth, onUpdate, onNavigate, isReadOnly, suggestions, cellColor }) => {
+const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm, tabIndex, columnWidth, onUpdate, onNavigate, isReadOnly, suggestions, cellColor, isInferred }) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   // `pristine` = focused but not yet typed: the vocab dropdown shows the full
@@ -124,7 +130,8 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
 
   const displayValue = localValue || (field === 'lemma' && !value && !isReadOnly ? tokenForm : '');
   const hasContent = displayValue && displayValue.trim() !== '';
-  const fieldClass = `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}`;
+  const fieldClass = `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}`
+    + (isInferred && hasContent ? ' editable-field--inferred' : '');
 
   // Read-only (viewer access or time travel): render the value as static text,
   // not an editable input, so cells can't be focused or typed into at all.
@@ -256,7 +263,7 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
 // Left/Right move the selection, Backspace/Delete remove it, typing or Escape
 // clears it. Left/Right at an empty input with no selection fall through to
 // grid column navigation, like every other cell.
-const FeaturesCell = React.memo(({ features, spanIds, tokenId, tokenIndex, tabIndex, columnWidth, onAnnotationUpdate, onFeatureDelete, onNavigate, featureInventory, isReadOnly }) => {
+const FeaturesCell = React.memo(({ features, featureInferred, spanIds, tokenId, tokenIndex, tabIndex, columnWidth, onAnnotationUpdate, onFeatureDelete, onNavigate, featureInventory, isReadOnly }) => {
   const [text, setText] = useState('');
   const [selectedPill, setSelectedPill] = useState(null); // index into features, or null
   const [isEditing, setIsEditing] = useState(false);
@@ -375,7 +382,7 @@ const FeaturesCell = React.memo(({ features, spanIds, tokenId, tokenIndex, tabIn
           onMouseLeave={() => setHoveredFeatureIndex(null)}
           onClick={isReadOnly ? undefined : () => { setSelectedPill(index); inputRef.current?.focus(); }}
         >
-          <span className="feature-text">{feature}</span>
+          <span className={`feature-text${featureInferred?.[index] ? ' feature-text--inferred' : ''}`}>{feature}</span>
           {!isReadOnly && (
             <button
               onClick={(e) => { e.stopPropagation(); removePill(index); }}
@@ -469,6 +476,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
             onUpdate={onAnnotationUpdate}
             onNavigate={onNavigate}
             isReadOnly={isReadOnly}
+            isInferred={isInferredSpan(data.lemma)}
           />
         </div>
       ) : (
@@ -490,6 +498,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
             onNavigate={onNavigate}
             isReadOnly={isReadOnly}
             suggestions={vocab?.xpos}
+            isInferred={isInferredSpan(data.xpos)}
           />
         </div>
       ) : (
@@ -512,6 +521,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
             isReadOnly={isReadOnly}
             suggestions={vocab?.upos}
             cellColor={data.upos?.value ? resolveColor(data.upos.value, uposColors) : undefined}
+            isInferred={isInferredSpan(data.upos)}
           />
         </div>
       ) : (
@@ -528,6 +538,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
         >
           <FeaturesCell
             features={data.feats.map(feat => feat.value)}
+            featureInferred={data.feats.map(isInferredSpan)}
             spanIds={{
               features: data.spanIds.features
             }}
