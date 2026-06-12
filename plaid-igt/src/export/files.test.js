@@ -14,8 +14,11 @@ describe('sanitizeFilename', () => {
     expect(sanitizeFilename('///')).toBe('untitled');
     expect(sanitizeFilename(null)).toBe('untitled');
   });
-  it('caps length', () => {
+  it('caps length by code points, never stranding a surrogate half', () => {
     expect(sanitizeFilename('x'.repeat(300)).length).toBe(120);
+    const astral = sanitizeFilename('𝕒'.repeat(130));
+    expect([...astral].length).toBe(120);
+    expect(astral.isWellFormed()).toBe(true);
   });
 });
 
@@ -26,6 +29,10 @@ describe('dedupeFilenames', () => {
   });
   it('appends for extensionless names', () => {
     expect(dedupeFilenames(['x', 'x'])).toEqual(['x', 'x (2)']);
+  });
+  it('never collides a generated suffix with a literal name', () => {
+    expect(dedupeFilenames(['a.txt', 'a.txt', 'a (2).txt']))
+      .toEqual(['a.txt', 'a (2).txt', 'a (2) (2).txt']);
   });
 });
 

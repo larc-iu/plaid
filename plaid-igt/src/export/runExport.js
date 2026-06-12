@@ -29,11 +29,13 @@ function serializeDoc(igtDoc, preset, layers) {
 
 /**
  * scope: { type: 'project' } | { type: 'documents', ids: [id] } | { type: 'document', id }
+ * asOf: ISO timestamp for historical (time-travel) export — only valid with
+ * document scope, since the documents-list endpoint rejects `as-of`.
  * onProgress({ done, total, name }) fires before each document fetch.
  * Returns { filename, blob, warnings: [string] }.
  */
 export async function runExport({
-  client, project, preset, scope,
+  client, project, preset, scope, asOf = null,
   onProgress = () => {}, shouldStop = () => false,
 }) {
   const checkStop = () => { if (shouldStop()) throw new ExportCancelled(); };
@@ -52,14 +54,15 @@ export async function runExport({
   // produce a zip (predictable shape regardless of document count).
   const wantZip = scope.type !== 'document';
 
-  // Vocabularies are fetched only for the TSVs. Vocab links — including the
-  // vocabItem each carries (flextext citation forms) — ride embedded in every
-  // document GET and are folded in by the IgtDocument constructor.
+  // Vocabularies are fetched only for the TSVs, and snapshotted BEFORE the
+  // document loop: the IgtDocument constructor mutates the vocabularies map
+  // it's given (folding in raw-embedded links), so sharing this one with the
+  // documents would grow it synthetic empty entries for failed vocabs.
   const wantVocabTsvs = !!preset.includeVocabularies && wantZip;
-  let vocabularies = {};
+  let vocabsForTsv = [];
   if (wantVocabTsvs) {
-    const loaded = await loadProjectVocabularies(client, project);
-    vocabularies = loaded.vocabularies;
+    const loaded = await loadProjectVocabularies(client, project, asOf);
+    vocabsForTsv = Object.values(loaded.vocabularies);
     if (loaded.failedCount) {
       warnings.push(`${loaded.failedCount} vocabular${loaded.failedCount === 1 ? 'y' : 'ies'} failed to load`);
     }
@@ -73,8 +76,11 @@ export async function runExport({
     onProgress({ done: i, total: docIds.length, name: null });
     let igtDoc;
     try {
-      const raw = await client.documents.get(docIds[i], true);
-      igtDoc = new IgtDocument({ raw, project, vocabularies, client, projectId: project.id });
+      const raw = await client.documents.get(docIds[i], true, asOf || undefined);
+      // Vocab links — including the vocabItem each carries (flextext citation
+      // forms) — ride embedded in the document GET; the constructor folds them
+      // into the (fresh, per-document) vocabularies map.
+      igtDoc = new IgtDocument({ raw, project, vocabularies: {}, client, projectId: project.id });
     } catch (err) {
       warnings.push(`Document ${docIds[i]} failed to load: ${err?.message ?? err}`);
       continue;
@@ -110,9 +116,8 @@ export async function runExport({
   const entries = dedupeFilenames(docFiles.map((f) => f.name))
     .map((name, i) => ({ path: `documents/${name}`, data: docFiles[i].data }));
   if (wantVocabTsvs) {
-    const vocabs = Object.values(vocabularies);
-    const names = dedupeFilenames(vocabs.map((v) => `${sanitizeFilename(v.name || v.id)}.tsv`));
-    vocabs.forEach((vocab, i) => {
+    const names = dedupeFilenames(vocabsForTsv.map((v) => `${sanitizeFilename(v.name || v.id)}.tsv`));
+    vocabsForTsv.forEach((vocab, i) => {
       const fieldNames = Object.keys(readVocabFields(vocab.config) || {})
         .filter((n) => n.toLowerCase() !== 'form');
       entries.push({

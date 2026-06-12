@@ -6,20 +6,9 @@
 //
 // Pure functions — no DOM, no client.
 
-import { morphemeJoiner } from '../domain/affixMarkers.js';
+import { morphFormOf, joinMorphemeTexts } from '../domain/igtExport.js';
 
 const cpLen = (s) => [...(s ?? '')].length;
-
-const morphFormOf = (m) => {
-  const meta = m?.metadata;
-  if (meta && Object.prototype.hasOwnProperty.call(meta, 'form')) return meta.form ?? '';
-  return m?.content ?? '';
-};
-
-const joinChain = (morphemes, texts) => texts
-  .map((t, i) => (i === 0 ? t
-    : morphemeJoiner(morphemes[i - 1]?.metadata?.morphType, morphemes[i]?.metadata?.morphType) + t))
-  .join('');
 
 /**
  * selection: { orthographies: [name], wordFields: [name], morphFields: [name],
@@ -29,8 +18,9 @@ const joinChain = (morphemes, texts) => texts
  * Returns the ordered tier lines for one sentence:
  *   [{ kind: 'cells', label, cells: [string] } | { kind: 'free', label, text }]
  * Line 1 is the (optionally morpheme-segmented) word forms; then one cells
- * line per selected orthography / word field / morpheme field; then one free
- * line per selected sentence field with a non-empty value.
+ * line per selected orthography, morpheme field, and word field (in that
+ * order, matching the Copy-as-IGT tier convention); then one free line per
+ * selected sentence field with a non-empty value.
  */
 export function sentenceTierLines(sentence, selection) {
   const tokens = sentence?.tokens || [];
@@ -39,7 +29,7 @@ export function sentenceTierLines(sentence, selection) {
   const forms = tokens.map((t) => {
     const morphemes = t.morphemes || [];
     return segment && morphemes.length
-      ? joinChain(morphemes, morphemes.map(morphFormOf))
+      ? joinMorphemeTexts(morphemes, morphemes.map(morphFormOf))
       : (t.content ?? '');
   });
   const lines = [{ kind: 'cells', label: null, cells: forms }];
@@ -56,7 +46,7 @@ export function sentenceTierLines(sentence, selection) {
       cells: tokens.map((t) => {
         const morphemes = t.morphemes || [];
         return morphemes.length
-          ? joinChain(morphemes, morphemes.map((m) => m.annotations?.[name]?.value ?? ''))
+          ? joinMorphemeTexts(morphemes, morphemes.map((m) => m.annotations?.[name]?.value ?? ''))
           : '';
       }),
     });

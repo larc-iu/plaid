@@ -3,8 +3,10 @@ import { Switch } from '@/components/ui/switch';
 
 // Step 3: what to export. Scope is a run-time choice, never part of the
 // preset; includeVocabularies IS preset state (it shapes the archive).
+// historicalOnly locks the scope to the current document: time-travel export
+// fetches the document as-of, but the documents-list endpoint has no as-of.
 export const ScopeStep = ({
-  scope, onScopeChange, documents, defaultDocument,
+  scope, onScopeChange, documents, defaultDocument, historicalOnly = false,
   selectedDocIds, onSelectedDocIdsChange,
   includeVocabularies, onIncludeVocabulariesChange, hasVocabularies,
 }) => {
@@ -26,8 +28,23 @@ export const ScopeStep = ({
     onSelectedDocIdsChange(next);
   };
 
-  const zipExpected = scope !== 'document'
-    && (scope === 'project' ? (documents?.length ?? 0) > 1 : selectedDocIds.size > 1);
+  // Anything but document scope produces a zip (see runExport.js), so the
+  // vocabularies toggle matters whenever the scope is project/documents.
+  const zipExpected = scope !== 'document';
+
+  if (historicalOnly) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Label>Scope</Label>
+        {radio('document', `This document — ${defaultDocument?.name}`)}
+        <p className="text-xs text-muted-foreground">
+          You are viewing a historical state, so the export covers this
+          document as of that moment. Project-wide export is available outside
+          of history view.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">

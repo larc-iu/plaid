@@ -33,16 +33,11 @@
 //   citationForms: bool   — emit <item type="cf"> from morpheme.vocabItem.form
 
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
+import { morphFormOf } from '../domain/igtExport.js';
 
 const xmlEscape = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-
-const morphFormOf = (m) => {
-  const meta = m?.metadata;
-  if (meta && Object.prototype.hasOwnProperty.call(meta, 'form')) return meta.form ?? '';
-  return m?.content ?? '';
-};
 
 // ---- lang resolution -------------------------------------------------------
 

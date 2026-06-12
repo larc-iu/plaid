@@ -22,9 +22,11 @@ const STEP_TITLES = { preset: 'Preset', options: 'Options', scope: 'Scope' };
 // session-only presets and can still export).
 //
 // defaultScope (optional): { type: 'document', id, name } when launched from a
-// document page — preselects "this document".
+// document page — preselects "this document". asOf (optional) locks the wizard
+// to that document and exports its historical state.
 export const ExportDialog = ({
-  open, onOpenChange, client, project, documents = null, defaultScope = null, canSavePresets = false,
+  open, onOpenChange, client, project, documents = null, defaultScope = null,
+  canSavePresets = false, asOf = null,
 }) => {
   const [step, setStep] = useState('preset');
   const [presets, setPresets] = useState([]);
@@ -36,6 +38,10 @@ export const ExportDialog = ({
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
   const stopRef = useRef(false);
+  // Presets edited this session, surviving close/reopen. The `project` prop is
+  // not refreshed after writeExportPresets succeeds, so re-reading the config
+  // on every open would make a just-saved (or session-only) preset vanish.
+  const sessionRef = useRef({ projectId: null, presets: null, dirty: false });
 
   const layers = useMemo(() => discoverExportLayers(project), [project]);
   const preset = presets.find((p) => p.id === selectedId) ?? null;
@@ -43,17 +49,26 @@ export const ExportDialog = ({
   // (Re)initialize each time the dialog opens.
   useEffect(() => {
     if (!open) return;
-    const fromConfig = readExportPresets(project).map((p) => JSON.parse(JSON.stringify(p)));
-    setPresets(fromConfig);
-    setSelectedId(fromConfig[0]?.id ?? null);
+    const session = sessionRef.current;
+    const cached = session.projectId === project?.id ? session.presets : null;
+    const initial = cached ?? readExportPresets(project).map((p) => JSON.parse(JSON.stringify(p)));
+    setPresets(initial);
+    setSelectedId(initial[0]?.id ?? null);
     setStep('preset');
     setScope(defaultScope ? 'document' : 'project');
     setSelectedDocIds(new Set());
-    setDirty(false);
+    setDirty(cached ? session.dirty : false);
+    setDocList(documents ?? null); // resync; null triggers the fetch below
     setProgress(null);
     stopRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Mirror preset edits into the session cache.
+  useEffect(() => {
+    if (!open || !project?.id) return;
+    sessionRef.current = { projectId: project.id, presets, dirty };
+  }, [open, project?.id, presets, dirty]);
 
   // The scope step needs the document list; fetch it if the caller didn't
   // have one handy (document page).
@@ -99,7 +114,7 @@ export const ExportDialog = ({
     setProgress({ done: 0, total: 0, name: null });
     try {
       const result = await runExport({
-        client, project, preset, scope: scopeArg,
+        client, project, preset, scope: scopeArg, asOf,
         onProgress: setProgress,
         shouldStop: () => stopRef.current,
       });
@@ -199,6 +214,7 @@ export const ExportDialog = ({
                 onScopeChange={setScope}
                 documents={docList}
                 defaultDocument={defaultScope}
+                historicalOnly={!!asOf}
                 selectedDocIds={selectedDocIds}
                 onSelectedDocIdsChange={setSelectedDocIds}
                 includeVocabularies={preset.includeVocabularies}

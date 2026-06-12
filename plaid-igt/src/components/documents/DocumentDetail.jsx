@@ -234,6 +234,7 @@ const DocumentEditor = () => {
               project={doc.project}
               defaultScope={{ type: 'document', id: doc.id, name: doc.document.name }}
               canSavePresets={permissions.canManage && !isViewingHistorical}
+              asOf={asOf}
             />
 
             {isViewingHistorical && (

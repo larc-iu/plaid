@@ -15,7 +15,7 @@
 // Words with no morphemes fall back to their surface form. LaTeX formats
 // need equal token counts per line, so empty glosses become {}.
 
-import { morphemeJoiner } from './affixMarkers.js';
+import { joinMorphemes } from './affixMarkers.js';
 
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
@@ -29,26 +29,30 @@ export const COPY_FORMAT_STORAGE_KEY = 'plaid_igt_copy_format';
 
 const cpLen = (s) => [...(s ?? '')].length;
 
-const morphFormOf = (m) => {
+/** A morpheme's display form: the user-editable metadata.form when the key
+ * exists (it may legitimately be ''), else the raw baseline content. Shared
+ * with the document/flextext exporters in src/export/. */
+export const morphFormOf = (m) => {
   const meta = m?.metadata;
   if (meta && Object.prototype.hasOwnProperty.call(meta, 'form')) return meta.form ?? '';
   return m?.content ?? '';
 };
 
+/** Join per-morpheme strings with -/= joints from the morphemes' morphTypes
+ * (texts and morphemes are parallel arrays). Shared with src/export/. */
+export const joinMorphemeTexts = (morphemes, texts) =>
+  joinMorphemes(texts.map((t, i) => ({ text: t, morphType: morphemes[i]?.metadata?.morphType })));
+
 // Per-word cells: segmented form + one joined-gloss string per morph field +
 // one value per word field.
 function wordCells(token, { morphFields, wordFields }) {
   const morphemes = token.morphemes || [];
-  const joinChain = (texts) => texts
-    .map((t, i) => (i === 0 ? t
-      : morphemeJoiner(morphemes[i - 1]?.metadata?.morphType, morphemes[i]?.metadata?.morphType) + t))
-    .join('');
   const segmented = morphemes.length
-    ? joinChain(morphemes.map((m) => morphFormOf(m)))
+    ? joinMorphemeTexts(morphemes, morphemes.map((m) => morphFormOf(m)))
     : (token.content ?? '');
   const morphLines = morphFields.map((f) =>
     morphemes.length
-      ? joinChain(morphemes.map((m) => m.annotations?.[f]?.value ?? ''))
+      ? joinMorphemeTexts(morphemes, morphemes.map((m) => m.annotations?.[f]?.value ?? ''))
       : '');
   const wordLines = wordFields.map((f) => token.annotations?.[f]?.value ?? '');
   return { segmented, morphLines, wordLines };

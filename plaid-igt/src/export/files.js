@@ -9,23 +9,28 @@ export function sanitizeFilename(name) {
     .replace(/[/\\:*?"<>|\x00-\x1f]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 120)
-    .trim();
-  return cleaned === '' ? 'untitled' : cleaned;
+    .replace(/^\.+|\.+$/g, '');
+  // Cap by code points so the cut can't strand half a surrogate pair.
+  const capped = [...cleaned].slice(0, 120).join('').trim();
+  return capped === '' ? 'untitled' : capped;
 }
 
-/** Dedupe by inserting " (2)", " (3)", … before the extension. */
+/**
+ * Dedupe by inserting " (2)", " (3)", … before the extension. Suffixed names
+ * are checked against everything produced so far — a generated "a (2).txt"
+ * must not collide with a literal "a (2).txt" later in the list (zip entries
+ * are keyed by path, so a collision silently drops a file).
+ */
 export function dedupeFilenames(names) {
-  const counts = new Map();
+  const used = new Set();
   return names.map((name) => {
-    const n = (counts.get(name) ?? 0) + 1;
-    counts.set(name, n);
-    if (n === 1) return name;
     const dot = name.lastIndexOf('.');
-    return dot > 0
-      ? `${name.slice(0, dot)} (${n})${name.slice(dot)}`
-      : `${name} (${n})`;
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : '';
+    let candidate = name;
+    for (let n = 2; used.has(candidate); n++) candidate = `${stem} (${n})${ext}`;
+    used.add(candidate);
+    return candidate;
   });
 }
 

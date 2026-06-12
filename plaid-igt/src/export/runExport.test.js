@@ -52,7 +52,7 @@ const VOCAB = {
   vocabLinks: [],
 };
 
-function stubClient({ docs, failIds = [] }) {
+function stubClient({ docs, failIds = [], vocabFails = false }) {
   const calls = [];
   return {
     calls,
@@ -63,8 +63,8 @@ function stubClient({ docs, failIds = [] }) {
       },
     },
     documents: {
-      get: async (id) => {
-        calls.push(['documents.get', id]);
+      get: async (id, full, asOf) => {
+        calls.push(asOf ? ['documents.get', id, asOf] : ['documents.get', id]);
         if (failIds.includes(id)) throw new Error('boom');
         return JSON.parse(JSON.stringify(docs.find((d) => d.id === id)));
       },
@@ -72,6 +72,7 @@ function stubClient({ docs, failIds = [] }) {
     vocabLayers: {
       get: async (id) => {
         calls.push(['vocabLayers.get', id]);
+        if (vocabFails) throw new Error('vocab boom');
         return JSON.parse(JSON.stringify(VOCAB));
       },
     },
@@ -173,5 +174,27 @@ describe('runExport', () => {
     ]);
     expect(new TextDecoder().decode(entries['vocabularies/Lexicon.tsv']))
       .toBe('Form\tgloss\nperro\tdog\n');
+  });
+
+  it('warns about failed vocabularies without emitting empty TSVs for them', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi'), rawDoc('d2', 'B', 'yo')];
+    const client = stubClient({ docs, vocabFails: true });
+    const preset = { ...plainPreset(), includeVocabularies: true };
+    const result = await runExport({
+      client, project: PROJECT, preset, scope: { type: 'project' },
+    });
+    expect(result.warnings).toEqual(['1 vocabulary failed to load']);
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries).some((p) => p.startsWith('vocabularies/'))).toBe(false);
+  });
+
+  it('threads asOf into document fetches for historical export', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const client = stubClient({ docs });
+    await runExport({
+      client, project: PROJECT, preset: plainPreset(),
+      scope: { type: 'document', id: 'd1' }, asOf: '2026-01-01T00:00:00Z',
+    });
+    expect(client.calls).toEqual([['documents.get', 'd1', '2026-01-01T00:00:00Z']]);
   });
 });
