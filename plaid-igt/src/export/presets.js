@@ -8,6 +8,7 @@ import { IGT_NAMESPACE } from '../domain/igtConfig.js';
 export const EXPORT_FORMATS = [
   { id: 'plaintext', label: 'Plain text', ext: 'txt' },
   { id: 'flextext', label: 'FLEx interlinear (.flextext)', ext: 'flextext' },
+  { id: 'plaid-igt-json', label: 'Plaid IGT JSON (lossless .zip archive)', ext: 'json' },
 ];
 
 export const formatExt = (format) =>
@@ -51,6 +52,11 @@ export function defaultFieldMap(layers) {
 /** A fresh preset with everything selected and heuristic defaults. */
 export function newPreset(format, layers, name = 'New preset') {
   const base = { id: crypto.randomUUID(), name, format, includeVocabularies: false };
+  if (format === 'plaid-igt-json') {
+    // Lossless archive: vocabularies are always included (runExport forces
+    // this regardless of the flag); the only option is media embedding.
+    return { ...base, includeVocabularies: true, options: { includeMedia: true } };
+  }
   if (format === 'flextext') {
     return {
       ...base,

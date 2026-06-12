@@ -43,12 +43,17 @@ export function downloadBlob(filename, blob) {
   URL.revokeObjectURL(url);
 }
 
-/** files: [{ path, data: string | Uint8Array }] → zip Blob (async fflate). */
+/**
+ * files: [{ path, data: string | Uint8Array, opts? }] → zip Blob (async
+ * fflate). Per-entry `opts` override the default compression — media entries
+ * pass { level: 0 } since audio/video is already compressed.
+ */
 export function assembleZip(files) {
   const encoder = new TextEncoder();
   const entries = {};
   for (const f of files) {
-    entries[f.path] = typeof f.data === 'string' ? encoder.encode(f.data) : f.data;
+    const bytes = typeof f.data === 'string' ? encoder.encode(f.data) : f.data;
+    entries[f.path] = f.opts ? [bytes, f.opts] : bytes;
   }
   return new Promise((resolve, reject) => {
     zip(entries, { level: 6 }, (err, data) => {

@@ -13,8 +13,9 @@ export const makeSentence = ({
 
 // "perros corren." with a Translit orthography, POS word field, Gloss morph
 // field, Translation/Note sentence fields, an enclitic, a linked vocab item,
-// and a trailing punctuation gap.
-export function makeFixtureDoc() {
+// and a trailing punctuation gap. Options: `alignmentTokens` (time-alignment
+// layer tokens) and `mediaUrl` for the timing/media tests.
+export function makeFixtureDoc({ alignmentTokens = [], mediaUrl = null } = {}) {
   const tokens = [
     {
       id: 'w1', begin: 0, end: 6, content: 'perros',
@@ -57,11 +58,16 @@ export function makeFixtureDoc() {
     ],
   });
   return {
-    document: { id: 'd1', name: 'Test & Doc', metadata: { Source: 'Field notes', Genre: 'narrative' } },
+    document: { id: 'd1', name: 'Test & Doc', mediaUrl, metadata: { Source: 'Field notes', Genre: 'narrative' } },
     body: 'perros corren.',
     sortedSentences: [sentence],
+    alignmentTokens,
   };
 }
+
+/** A time-alignment token: char extent + {timeBegin, timeEnd} (seconds). */
+export const makeAlignmentToken = (id, begin, end, timeBegin, timeEnd) =>
+  ({ id, begin, end, metadata: { timeBegin, timeEnd } });
 
 export const FULL_SELECTION = {
   orthographies: ['Translit'],

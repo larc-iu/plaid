@@ -5,10 +5,13 @@ import { Switch } from '@/components/ui/switch';
 // preset; includeVocabularies IS preset state (it shapes the archive).
 // historicalOnly locks the scope to the current document: time-travel export
 // fetches the document as-of, but the documents-list endpoint has no as-of.
+// vocabulariesForced (native format) replaces the toggle with a note — the
+// archive always includes vocabularies and zips at every scope.
 export const ScopeStep = ({
   scope, onScopeChange, documents, defaultDocument, historicalOnly = false,
   selectedDocIds, onSelectedDocIdsChange,
   includeVocabularies, onIncludeVocabulariesChange, hasVocabularies,
+  vocabulariesForced = false,
 }) => {
   const radio = (value, label, extra = null) => (
     <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -42,6 +45,12 @@ export const ScopeStep = ({
           document as of that moment. Project-wide export is available outside
           of history view.
         </p>
+        {vocabulariesForced && (
+          <p className="text-xs text-muted-foreground">
+            This format always produces a .zip archive including all
+            vocabularies and the project configuration.
+          </p>
+        )}
       </div>
     );
   }
@@ -73,12 +82,17 @@ export const ScopeStep = ({
         </div>
       )}
 
-      {zipExpected && hasVocabularies && (
+      {vocabulariesForced ? (
+        <p className="border-t pt-3 text-xs text-muted-foreground">
+          This format always produces a .zip archive including all vocabularies
+          and the project configuration, whatever the scope.
+        </p>
+      ) : (zipExpected && hasVocabularies && (
         <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
           <span>Include vocabularies as TSV files</span>
           <Switch checked={!!includeVocabularies} onCheckedChange={onIncludeVocabulariesChange} />
         </label>
-      )}
+      ))}
     </div>
   );
 };

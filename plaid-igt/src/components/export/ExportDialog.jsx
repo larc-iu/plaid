@@ -12,6 +12,7 @@ import { downloadBlob } from '@/export/files';
 import { PresetStep } from './PresetStep.jsx';
 import { PlainTextOptions } from './PlainTextOptions.jsx';
 import { FlextextOptions } from './FlextextOptions.jsx';
+import { NativeOptions } from './NativeOptions.jsx';
 import { ScopeStep } from './ScopeStep.jsx';
 
 const STEPS = ['preset', 'options', 'scope'];
@@ -200,6 +201,11 @@ export const ExportDialog = ({
                   layers={layers}
                   onChange={(options) => updatePreset({ options })}
                 />
+              ) : preset.format === 'plaid-igt-json' ? (
+                <NativeOptions
+                  options={preset.options || {}}
+                  onChange={(options) => updatePreset({ options })}
+                />
               ) : (
                 <PlainTextOptions
                   options={preset.options || {}}
@@ -220,6 +226,7 @@ export const ExportDialog = ({
                 includeVocabularies={preset.includeVocabularies}
                 onIncludeVocabulariesChange={(v) => updatePreset({ includeVocabularies: v })}
                 hasVocabularies={(project?.vocabs?.length ?? 0) > 0}
+                vocabulariesForced={preset.format === 'plaid-igt-json'}
               />
             )}
           </>

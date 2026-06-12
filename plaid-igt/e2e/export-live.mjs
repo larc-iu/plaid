@@ -144,6 +144,44 @@ try {
   check(single.filename.endsWith('.flextext'), 'single-doc export is a bare .flextext', single.filename);
   parseXml(await single.blob.text(), single.filename);
 
+  // ---- native Plaid IGT JSON, project scope ----
+  const nativePreset = newPreset('plaid-igt-json', layers, 'e2e native');
+  const native = await runExport({
+    client, project, preset: nativePreset, scope: { type: 'project' },
+    onProgress: ({ done, total, name }) => name && console.log(`  native ${done + 1}/${total} ${name}`),
+  });
+  check(native.warnings.length === 0, 'native export has no warnings', native.warnings.join('; '));
+  const nativeEntries = unzipSync(new Uint8Array(await native.blob.arrayBuffer()));
+  const nativeJson = {};
+  let parseFailed = null;
+  for (const [path, bytes] of Object.entries(nativeEntries)) {
+    if (!path.endsWith('.json')) continue;
+    try { nativeJson[path] = JSON.parse(decode(bytes)); } catch (e) { parseFailed = `${path}: ${e.message}`; }
+  }
+  check(!parseFailed, 'every native .json entry parses', parseFailed ?? '');
+
+  const manifest = nativeJson['project.json'];
+  check(manifest?.format === 'plaid-igt' && manifest?.formatVersion === 1, 'manifest format/version', JSON.stringify({ format: manifest?.format, formatVersion: manifest?.formatVersion }));
+  check(manifest.documents.length === 3, 'manifest lists 3 documents', String(manifest.documents.length));
+  check(manifest.documents.every((d) => nativeJson[d.file]), 'manifest files all exist in the zip');
+  check(manifest.schema.orthographies.some((o) => o.name === 'Translit'), 'schema lists Translit', JSON.stringify(manifest.schema.orthographies));
+  check(manifest.schema.fields.morpheme.some((f) => f.name === 'Gloss'), 'schema lists morpheme Gloss');
+
+  const vocabJson = nativeJson[manifest.vocabularies[0]?.file];
+  check(vocabJson?.items?.length === (vocab.items?.length ?? 0), `native vocab has ${vocab.items?.length} items`, String(vocabJson?.items?.length));
+  const idsAscending = vocabJson.items.every((it, i) => i === 0 || vocabJson.items[i - 1].id < it.id);
+  check(idsAscending, 'native vocab items sorted by id (creation order)');
+
+  const docJson = nativeJson[manifest.documents[0].file];
+  const someWord = docJson.sentences.flatMap((s) => s.words).find((w) => w.morphemes.length);
+  check(!!someWord, 'native doc has words with morphemes');
+  check(someWord.morphemes.every((m, i) => m.precedence === i + 1), 'morpheme precedence is 1-based in order', JSON.stringify(someWord.morphemes.map((m) => m.precedence)));
+  const itemIds = new Set(vocabJson.items.map((it) => it.id));
+  const linkedMorph = docJson.sentences.flatMap((s) => s.words).flatMap((w) => w.morphemes).find((m) => m.vocab);
+  check(!!linkedMorph && itemIds.has(linkedMorph.vocab.itemId), 'a morpheme vocab link resolves to a vocab item', JSON.stringify(linkedMorph?.vocab));
+  check(typeof docJson.baseline.body === 'string' && docJson.baseline.body.length > 0, 'native doc carries the baseline body');
+  check(docJson.metadata && typeof docJson.metadata === 'object', 'native doc carries raw metadata');
+
   console.log(`\ntotal ${((Date.now() - t0) / 1000).toFixed(1)}s; ${failures.length} failure(s)`);
 } finally {
   if (!KEEP) {

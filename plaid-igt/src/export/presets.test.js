@@ -56,6 +56,15 @@ describe('newPreset', () => {
   });
 });
 
+describe('newPreset — plaid-igt-json', () => {
+  it('builds the native preset: media on, vocabularies marked included', () => {
+    const p = newPreset('plaid-igt-json', LAYERS, 'Archive');
+    expect(p.format).toBe('plaid-igt-json');
+    expect(p.includeVocabularies).toBe(true);
+    expect(p.options).toEqual({ includeMedia: true });
+  });
+});
+
 describe('preset persistence', () => {
   it('reads presets from project config and tolerates absence', () => {
     const presets = [{ id: 'x', name: 'A', format: 'plaintext', options: {} }];
@@ -76,6 +85,7 @@ describe('formatExt', () => {
   it('maps formats to extensions with a txt fallback', () => {
     expect(formatExt('flextext')).toBe('flextext');
     expect(formatExt('plaintext')).toBe('txt');
+    expect(formatExt('plaid-igt-json')).toBe('json');
     expect(formatExt('mystery')).toBe('txt');
   });
 });

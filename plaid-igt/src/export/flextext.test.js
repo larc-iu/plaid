@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildFlextextDocument } from './flextext.js';
-import { makeFixtureDoc, makeSentence, FLEXTEXT_OPTIONS } from './testFixtures.js';
+import { buildFlextextDocument, phraseTimingFor } from './flextext.js';
+import {
+  makeFixtureDoc, makeSentence, makeAlignmentToken, FLEXTEXT_OPTIONS,
+} from './testFixtures.js';
 
 const parse = (xml) => {
   const dom = new DOMParser().parseFromString(xml, 'text/xml');
@@ -129,5 +131,89 @@ describe('buildFlextextDocument', () => {
     doc.sortedSentences[0].pieces = undefined;
     const dom = parse(buildFlextextDocument([doc], {}));
     expect(dom.querySelector('word > item[type="txt"]').getAttribute('lang')).toBe('und');
+  });
+});
+
+describe('phraseTimingFor', () => {
+  const sentence = { begin: 0, end: 14 };
+
+  it('uses a unique exact-extent token, rounding seconds to ms', () => {
+    const timing = phraseTimingFor(sentence, [makeAlignmentToken('a', 0, 14, 1.2345, 3.5)]);
+    expect(timing).toEqual({ beginMs: 1235, endMs: 3500 });
+  });
+
+  it('falls back to a unique containing token', () => {
+    const timing = phraseTimingFor(sentence, [makeAlignmentToken('a', 0, 30, 0, 9.9)]);
+    expect(timing).toEqual({ beginMs: 0, endMs: 9900 });
+  });
+
+  it('prefers an exact match over a containing one', () => {
+    const timing = phraseTimingFor(sentence, [
+      makeAlignmentToken('big', 0, 30, 0, 60),
+      makeAlignmentToken('exact', 0, 14, 1, 2),
+    ]);
+    expect(timing).toEqual({ beginMs: 1000, endMs: 2000 });
+  });
+
+  it('skips on ambiguity and on partial overlap', () => {
+    expect(phraseTimingFor(sentence, [
+      makeAlignmentToken('a', 0, 30, 0, 5),
+      makeAlignmentToken('b', 0, 20, 0, 5),
+    ])).toBeNull();
+    expect(phraseTimingFor(sentence, [makeAlignmentToken('a', 5, 14, 0, 5)])).toBeNull();
+    expect(phraseTimingFor(sentence, [])).toBeNull();
+  });
+});
+
+describe('flextext time alignment', () => {
+  const timed = (opts = {}) => makeFixtureDoc({
+    alignmentTokens: [makeAlignmentToken('a1', 0, 14, 1.25, 3.5)],
+    mediaUrl: '/media/d1/recording.wav',
+    ...opts,
+  });
+
+  it('emits phrase offsets in ms, media-file, and the media-files element', () => {
+    const dom = parse(buildFlextextDocument([timed()], FLEXTEXT_OPTIONS));
+    const phrase = dom.querySelector('phrase');
+    expect(phrase.getAttribute('begin-time-offset')).toBe('1250');
+    expect(phrase.getAttribute('end-time-offset')).toBe('3500');
+    expect(phrase.getAttribute('media-file')).toBe('d1');
+    const media = dom.querySelector('interlinear-text > media-files > media');
+    expect(media.getAttribute('guid')).toBe('d1');
+    expect(media.getAttribute('location')).toBe('recording.wav');
+  });
+
+  it('strips query strings from the media location and escapes specials', () => {
+    const doc = timed({ mediaUrl: '/media/d1/a&b.wav?token=xyz' });
+    const xml = buildFlextextDocument([doc], FLEXTEXT_OPTIONS);
+    const dom = parse(xml);
+    expect(dom.querySelector('media').getAttribute('location')).toBe('a&b.wav');
+    expect(xml).toContain('location="a&amp;b.wav"');
+  });
+
+  it('emits offsets without media-file when the document has no media', () => {
+    const doc = makeFixtureDoc({ alignmentTokens: [makeAlignmentToken('a1', 0, 14, 1, 2)] });
+    const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
+    const phrase = dom.querySelector('phrase');
+    expect(phrase.getAttribute('begin-time-offset')).toBe('1000');
+    expect(phrase.hasAttribute('media-file')).toBe(false);
+    expect(dom.querySelector('media-files')).toBeNull();
+  });
+
+  it('ignores alignment tokens with invalid times', () => {
+    const doc = makeFixtureDoc({
+      alignmentTokens: [{ id: 'a1', begin: 0, end: 14, metadata: { timeBegin: 1 } }],
+      mediaUrl: '/media/d1/x.wav',
+    });
+    const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
+    expect(dom.querySelector('phrase').hasAttribute('begin-time-offset')).toBe(false);
+    expect(dom.querySelector('media-files')).toBeNull();
+  });
+
+  it('is byte-identical to the untimed output when no alignment exists', () => {
+    expect(buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS))
+      .toBe(buildFlextextDocument([makeFixtureDoc({ alignmentTokens: undefined })], FLEXTEXT_OPTIONS));
+    const dom = parse(buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS));
+    expect(dom.querySelector('phrase').hasAttribute('begin-time-offset')).toBe(false);
   });
 });

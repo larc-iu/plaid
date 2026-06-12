@@ -9,7 +9,7 @@ import { newPreset } from './presets.js';
 const role = (r) => ({ plaid: { role: r } });
 
 // One sentence covering the whole body, one word token per space-separated run.
-function rawDoc(id, name, body) {
+function rawDoc(id, name, body, mediaUrl = null) {
   const words = [];
   let begin = 0;
   for (const w of body.split(' ')) {
@@ -17,7 +17,7 @@ function rawDoc(id, name, body) {
     begin += [...w].length + 1;
   }
   return {
-    id, name,
+    id, name, mediaUrl,
     textLayers: [{
       config: role('baseline'),
       text: { body },
@@ -196,5 +196,89 @@ describe('runExport', () => {
       scope: { type: 'document', id: 'd1' }, asOf: '2026-01-01T00:00:00Z',
     });
     expect(client.calls).toEqual([['documents.get', 'd1', '2026-01-01T00:00:00Z']]);
+  });
+});
+
+describe('runExport — native plaid-igt-json', () => {
+  const nativePreset = (options = {}) => ({
+    ...newPreset('plaid-igt-json', discoverExportLayers(PROJECT), 'n'),
+    options: { includeMedia: true, ...options },
+  });
+
+  it('always zips — even at document scope — with manifest, doc, and vocab JSON', async () => {
+    const docs = [rawDoc('d1', 'Solo', 'hi yo')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client, project: PROJECT, preset: { ...nativePreset(), includeVocabularies: false },
+      scope: { type: 'document', id: 'd1' },
+    });
+    expect(result.filename).toBe('Solo-export.zip');
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries).sort()).toEqual([
+      'documents/Solo.json', 'project.json', 'vocabularies/Lexicon.json',
+    ]);
+    const parsed = Object.fromEntries(Object.entries(entries)
+      .map(([path, bytes]) => [path, JSON.parse(new TextDecoder().decode(bytes))]));
+    expect(parsed['project.json'].formatVersion).toBe(1);
+    expect(parsed['project.json'].documents).toEqual([
+      { id: 'd1', name: 'Solo', file: 'documents/Solo.json', mediaFile: null },
+    ]);
+    expect(parsed['project.json'].vocabularies).toEqual([
+      { id: 'v1', name: 'Lexicon', file: 'vocabularies/Lexicon.json' },
+    ]);
+    expect(parsed['documents/Solo.json'].baseline.body).toBe('hi yo');
+    expect(parsed['documents/Solo.json'].sentences[0].words).toHaveLength(2);
+    expect(parsed['vocabularies/Lexicon.json'].items).toEqual([
+      { id: 'i1', form: 'perro', metadata: { gloss: 'dog' } },
+    ]);
+    // Vocabularies fetched despite includeVocabularies: false; no TSVs anywhere.
+    expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toHaveLength(1);
+    expect(Object.keys(entries).some((p) => p.endsWith('.tsv'))).toBe(false);
+  });
+
+  it('embeds media via the injected fetcher and records archive paths', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav?x=1')];
+    const client = stubClient({ docs });
+    const fetched = [];
+    const result = await runExport({
+      client, project: PROJECT, preset: nativePreset(),
+      scope: { type: 'project' },
+      fetchMedia: async (_c, id, asOf) => { fetched.push([id, asOf]); return new Uint8Array([9, 9]); },
+    });
+    expect(fetched).toEqual([['d1', null]]);
+    const entries = await unzipBlob(result.blob);
+    expect([...entries['media/A.wav']]).toEqual([9, 9]);
+    const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
+    expect(doc.mediaFile).toBe('media/A.wav');
+    const manifest = JSON.parse(new TextDecoder().decode(entries['project.json']));
+    expect(manifest.documents[0].mediaFile).toBe('media/A.wav');
+  });
+
+  it('skips media when includeMedia is off', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client, project: PROJECT, preset: nativePreset({ includeMedia: false }),
+      scope: { type: 'project' },
+      fetchMedia: async () => { throw new Error('should not be called'); },
+    });
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries).some((p) => p.startsWith('media/'))).toBe(false);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('degrades a failed media fetch to a warning, doc still exported', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client, project: PROJECT, preset: nativePreset(),
+      scope: { type: 'project' },
+      fetchMedia: async () => { throw new Error('boom'); },
+    });
+    expect(result.warnings).toEqual(['"A": media could not be fetched: boom']);
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries)).toContain('documents/A.json');
+    const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
+    expect(doc.mediaFile).toBeNull();
   });
 });

@@ -5,7 +5,7 @@
 //     <interlinear-text>                          (1..n per document)
 //       <item type="title|source|comment">
 //       <paragraphs><paragraph><phrases>
-//         <phrase>
+//         <phrase media-file? begin-time-offset? end-time-offset?>
 //           <item type="segnum">
 //           <words>
 //             <word><item type="txt">…<morphemes><morph type="…"><item …/></morph></morphemes></word>
@@ -15,6 +15,7 @@
 //         </phrase>
 //       </phrases></paragraph></paragraphs>
 //       <languages><language lang vernacular?/>
+//       <media-files><media guid location/>          (when timed + media)
 //     </interlinear-text>
 //   </document>
 //
@@ -103,8 +104,37 @@ function punctWordXml(indent, content, options) {
   ];
 }
 
-function phraseXml(indent, sentence, segnum, options) {
-  const lines = [`${indent}<phrase>`];
+// ---- time alignment --------------------------------------------------------
+// flextext can express alignment only at phrase granularity (begin/end-time-
+// offset attributes, FLEx's ELAN interop). We emit timings only where they are
+// truthful: a sentence gets offsets when exactly one alignment token matches
+// its extent (preferring an exact match, falling back to a unique containing
+// token). Anything else — partial overlaps, ambiguity — is skipped; we never
+// invent alignment. Times are stored in seconds (metadata.timeBegin/timeEnd);
+// FLEx/ELAN expect integer milliseconds.
+
+const hasValidTimes = (t) => {
+  const { timeBegin, timeEnd } = t?.metadata ?? {};
+  return Number.isFinite(timeBegin) && Number.isFinite(timeEnd) && timeEnd >= timeBegin;
+};
+
+/** {beginMs, endMs} for a sentence, or null when no unique truthful match. */
+export function phraseTimingFor(sentence, validTokens) {
+  const exact = validTokens.filter((t) => t.begin === sentence.begin && t.end === sentence.end);
+  const candidates = exact.length
+    ? exact
+    : validTokens.filter((t) => t.begin <= sentence.begin && t.end >= sentence.end);
+  if (candidates.length !== 1) return null;
+  const { timeBegin, timeEnd } = candidates[0].metadata;
+  return { beginMs: Math.round(timeBegin * 1000), endMs: Math.round(timeEnd * 1000) };
+}
+
+function phraseXml(indent, sentence, segnum, options, timing = null, mediaGuid = null) {
+  const attrs = timing
+    ? `${mediaGuid ? ` media-file="${xmlEscape(mediaGuid)}"` : ''}`
+      + ` begin-time-offset="${timing.beginMs}" end-time-offset="${timing.endMs}"`
+    : '';
+  const lines = [`${indent}<phrase${attrs}>`];
   lines.push(...item(`${indent}  `, 'segnum', analysisLang(options), String(segnum)));
   lines.push(`${indent}  <words>`);
   const pieces = sentence.pieces
@@ -154,6 +184,14 @@ function languagesXml(indent, options) {
   return lines;
 }
 
+// Last path segment of a media URL, query stripped — the most useful
+// <media location> value (the user can drop the file next to the .flextext).
+const mediaBasename = (mediaUrl) => {
+  const path = String(mediaUrl).split(/[?#]/)[0];
+  const segments = path.split('/').filter((s) => s !== '');
+  return segments.at(-1) ?? path;
+};
+
 export function interlinearTextXml(igtDoc, options, indent = '  ') {
   const docData = igtDoc.document || {};
   const lines = [`${indent}<interlinear-text>`];
@@ -164,18 +202,28 @@ export function interlinearTextXml(igtDoc, options, indent = '  ') {
     if (/source/i.test(key)) lines.push(...item(`${indent}  `, 'source', analysisLang(options), value));
     else lines.push(...item(`${indent}  `, 'comment', analysisLang(options), `${key}: ${value}`));
   }
+  const validAlignment = (igtDoc.alignmentTokens || []).filter(hasValidTimes);
+  const mediaGuid = docData.mediaUrl ? docData.id : null;
+  let anyTimed = false;
   lines.push(`${indent}  <paragraphs>`);
   let segnum = 0;
   for (const run of paragraphRuns(igtDoc)) {
     lines.push(`${indent}    <paragraph>`, `${indent}      <phrases>`);
     for (const sentence of run) {
       segnum += 1;
-      lines.push(...phraseXml(`${indent}        `, sentence, segnum, options));
+      const timing = validAlignment.length ? phraseTimingFor(sentence, validAlignment) : null;
+      if (timing) anyTimed = true;
+      lines.push(...phraseXml(`${indent}        `, sentence, segnum, options, timing, mediaGuid));
     }
     lines.push(`${indent}      </phrases>`, `${indent}    </paragraph>`);
   }
   lines.push(`${indent}  </paragraphs>`);
   lines.push(...languagesXml(`${indent}  `, options));
+  if (mediaGuid && anyTimed) {
+    lines.push(`${indent}  <media-files>`);
+    lines.push(`${indent}    <media guid="${xmlEscape(mediaGuid)}" location="${xmlEscape(mediaBasename(docData.mediaUrl))}"/>`);
+    lines.push(`${indent}  </media-files>`);
+  }
   lines.push(`${indent}</interlinear-text>`);
   return lines.join('\n');
 }
