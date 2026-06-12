@@ -78,7 +78,7 @@ const MarkedText = ({ text, marks }) => {
   return <>{out}</>;
 };
 
-export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) => {
+export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canManage = true }) => {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +88,9 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
   const [selectedId, setSelectedId] = useState(null);
   const [editForm, setEditForm] = useState('');
   const [editFields, setEditFields] = useState({});
+  // Confirm before discarding unsaved edits on a selection switch.
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [pendingTarget, setPendingTarget] = useState(null); // {type:'item', item} | {type:'new'}
 
   // Left-list search, pagination, usage counts, bulk add, delete confirm.
   const [search, setSearch] = useState('');
@@ -261,6 +264,21 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
     ? (editForm.trim() !== '' || Object.keys(cleanMeta(editFields)).length > 0)
     : !!selectedItem && (editForm.trim() !== selectedItem.form || !metaEqual(editFields, selectedItem.metadata || {}));
 
+  // Switching away with unsaved edits would silently discard them — confirm first.
+  const applyTarget = (target) => {
+    if (target?.type === 'new') startNew();
+    else if (target?.type === 'item') selectItem(target.item);
+  };
+  const attemptSelect = (item) => {
+    if (item.id === selectedId) return; // already open
+    if (dirty) { setPendingTarget({ type: 'item', item }); setDiscardOpen(true); }
+    else selectItem(item);
+  };
+  const attemptNew = () => {
+    if (dirty) { setPendingTarget({ type: 'new' }); setDiscardOpen(true); }
+    else startNew();
+  };
+
   const handleSave = async () => {
     if (!editForm.trim()) {
       notifyError('Item form cannot be empty', 'Invalid Form');
@@ -411,14 +429,15 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
     : 'grid-cols-[minmax(0,1fr)_auto]';
 
   // Field inputs for the detail editor (morphType is a controlled vocab).
-  const renderFieldInputs = (values, onChange) =>
+  const renderFieldInputs = (values, onChange, disabled = false) =>
     fields.map((field) => (
       <div key={field.name} className="flex flex-col gap-1.5">
         <Label>{humanizeFieldName(field.name)}</Label>
         {field.name === 'morphType' ? (
           <select
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
             value={values.morphType || ''}
+            disabled={disabled}
             onChange={(event) => onChange({ ...values, morphType: event.target.value || undefined })}
           >
             <option value="">—</option>
@@ -430,6 +449,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
           <Input
             placeholder={`Enter ${humanizeFieldName(field.name).toLowerCase()}`}
             value={values[field.name] || ''}
+            disabled={disabled}
             onChange={(event) => onChange({ ...values, [field.name]: event.target.value })}
           />
         )}
@@ -471,9 +491,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
                 ({search ? `${filteredItems.length} of ${items.length}` : items.length})
               </span>
             </span>
-            <Button size="sm" className="h-7" onClick={startNew}>
-              <Plus className="h-3.5 w-3.5" /> New
-            </Button>
+            {canManage && (
+              <Button size="sm" className="h-7" onClick={attemptNew}>
+                <Plus className="h-3.5 w-3.5" /> New
+              </Button>
+            )}
           </div>
           <div className="relative">
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -507,7 +529,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
                 <li key={item.id}>
                   <button
                     type="button"
-                    onClick={() => selectItem(item)}
+                    onClick={() => attemptSelect(item)}
                     className={cn(
                       'grid w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/40',
                       listCols,
@@ -553,9 +575,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
         )}
 
         <div className="flex items-center gap-2 border-t p-2">
-          <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={() => setBulkOpen(true)}>
-            <Upload className="h-3.5 w-3.5" /> Bulk Add
-          </Button>
+          {canManage && (
+            <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={() => setBulkOpen(true)}>
+              <Upload className="h-3.5 w-3.5" /> Bulk Add
+            </Button>
+          )}
           <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={handleExportCsv} disabled={!items.length}>
             <Download className="h-3.5 w-3.5" /> Export
           </Button>
@@ -592,13 +616,15 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
                     value={editForm}
                     autoFocus={isNew}
                     placeholder="Enter item form"
+                    disabled={!canManage}
                     onChange={(e) => setEditForm(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (dirty) handleSave(); } }}
                   />
                 </div>
-                {renderFieldInputs(editFields, setEditFields)}
+                {renderFieldInputs(editFields, setEditFields, !canManage)}
               </div>
 
+              {canManage && (
               <div className="mt-4 flex items-center justify-between">
                 <div>
                   {!isNew && (
@@ -619,6 +645,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
                   </Button>
                 </div>
               </div>
+              )}
             </div>
 
             {/* concordance */}
@@ -777,6 +804,27 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
               onClick={handleConfirmDelete}
             >
               <Trash2 className="h-4 w-4" /> Delete Item
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Discard-unsaved-changes confirmation */}
+      <AlertDialog open={discardOpen} onOpenChange={(o) => { if (!o) { setDiscardOpen(false); setPendingTarget(null); } }}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <p className="text-sm text-muted-foreground">
+            You have unsaved edits to <strong>"{editForm || selectedItem?.form}"</strong>. Switching away will discard them.
+          </p>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setDiscardOpen(false); setPendingTarget(null); }}>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { applyTarget(pendingTarget); setDiscardOpen(false); setPendingTarget(null); }}
+            >
+              Discard changes
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

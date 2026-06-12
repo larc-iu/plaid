@@ -406,6 +406,7 @@ export const VocabularyDetail = () => {
                 vocabulary={vocabulary}
                 client={client}
                 fields={fields}
+                canManage={canManageVocabulary()}
               />
             </TabsContent>
 
