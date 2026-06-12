@@ -17,14 +17,20 @@ import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
 import {
   AUTO_LINK_SOURCE, precedentQueries, buildPrecedentTable, computeAutoLinkProposals,
 } from '@/domain/autoLink';
+import {
+  BUILTIN_LINK_PRECEDENT, encodeServiceSelection, encodeBuiltinSelection,
+  readSpotDefault, resolveInitialSelection,
+} from '@/domain/serviceDefaults';
 
-const BUILTIN = 'builtin';
-const STORAGE_KEY = 'plaid_igt_autolink_algorithm';
+const BUILTIN = encodeBuiltinSelection(BUILTIN_LINK_PRECEDENT);
+const STORAGE_KEY = 'plaid_igt_link_vocab_service';
+const PARAMS_PREFIX = 'plaid_igt_link_vocab_params_';
 
 // Auto-link modal: pick an algorithm — the built-in precedent-or-unique rule
 // or any registered service advertising the link-vocab task — and run it over
 // the current document. Same service-selection idiom as the Media/Tokenize
-// tabs (discovery, summary, declared parameter form, progress). Opened by the
+// tabs (discovery, summary, declared parameter form, progress; initial choice
+// resolves localStorage -> project default -> built-in). Opened by the
 // island's toolbar button via the igt:auto-link-open window event.
 export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
   const project = doc?.project;
@@ -32,7 +38,7 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
     availableServices, isDiscovering, discoverServices,
     isProcessing, requestService, progressPercent, progressMessage,
   } = useServiceRequest();
-  const [algorithm, setAlgorithm] = useState(() => localStorage.getItem(STORAGE_KEY) || BUILTIN);
+  const [algorithm, setAlgorithm] = useState(null);
   const [busy, setBusy] = useState(false);
 
   // (Re)discover services each time the dialog opens.
@@ -40,17 +46,31 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
     if (open && project?.id) discoverServices(project.id);
   }, [open, project?.id, discoverServices]);
 
-  const serviceOptions = filterServicesByTask(availableServices, TASKS.LINK_VOCAB)
-    .map((s) => ({ value: `service:${s.serviceId}`, label: s.serviceName, service: s }));
+  // Only ONLINE services can take work (discovery also returns
+  // previously-seen offline services).
+  const onlineServices = filterServicesByTask(availableServices, TASKS.LINK_VOCAB)
+    .filter((s) => s.online !== false);
+  const serviceOptions = onlineServices
+    .map((s) => ({ value: encodeServiceSelection(s.serviceId), label: s.serviceName, service: s }));
   const options = [
     { value: BUILTIN, label: 'Built-in — follow precedent & unique matches' },
     ...serviceOptions,
   ];
-  // Cached selection may name a service that has vanished — fall back.
-  const effective = options.some((o) => o.value === algorithm) ? algorithm : BUILTIN;
+  // Resolve until the user explicitly picks: cached -> project default ->
+  // built-in. Also covers a cached service that has vanished.
+  const resolved = resolveInitialSelection({
+    services: onlineServices,
+    builtins: [BUILTIN_LINK_PRECEDENT],
+    cached: localStorage.getItem(STORAGE_KEY),
+    projectDefault: readSpotDefault(project, TASKS.LINK_VOCAB),
+  }) || BUILTIN;
+  const chosen = algorithm ?? resolved;
+  const effective = options.some((o) => o.value === chosen) ? chosen : BUILTIN;
   const selectedService = serviceOptions.find((o) => o.value === effective)?.service ?? null;
+  const linkDefault = readSpotDefault(project, TASKS.LINK_VOCAB);
   const { schema: paramSchema, values: paramValues, setParam: setParamValue, coerced: coerceParams, errors: paramErrors } =
-    useServiceParams(selectedService, 'plaid_autolink_params_');
+    useServiceParams(selectedService, PARAMS_PREFIX,
+      linkDefault?.service?.serviceId === selectedService?.serviceId ? linkDefault?.params : null);
 
   const choose = (v) => {
     setAlgorithm(v);

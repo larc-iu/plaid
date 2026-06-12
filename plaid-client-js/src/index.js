@@ -11,6 +11,7 @@ import { listAll, listPage, iterPages } from './pagination.js';
 import { createSSEConnection } from './sse.js';
 import {
   discoverServices,
+  discardService,
   serve,
   requestService,
 } from './services.js';
@@ -1408,13 +1409,24 @@ class PlaidClient {
         }),
 
       /**
-       * Discover the services currently connected to a project (synchronous GET).
+       * Discover the services seen on a project (synchronous GET). Currently
+       * connected services carry `online: true`; previously-seen offline ones
+       * carry `online: false` plus a `lastSeenAt` stamp.
        * @param {string} projectId - The UUID of the project to query
-       * @param {number} [timeout] - Ignored; kept for back-compat
        * @returns {Promise<Array>} Array of discovered service information
        */
-      discoverServices: (projectId, timeout) =>
-        discoverServices(this, projectId, timeout),
+      discoverServices: (projectId) =>
+        discoverServices(this, projectId),
+
+      /**
+       * Forget a previously-seen (offline) service. Maintainer-only; 409 if
+       * the service is currently connected.
+       * @param {string} projectId - The UUID of the project
+       * @param {string} serviceId - The ID of the service to forget
+       * @returns {Promise<void>}
+       */
+      discardService: (projectId, serviceId) =>
+        discardService(this, projectId, serviceId),
 
       /**
        * Register as a service and handle incoming work requests.

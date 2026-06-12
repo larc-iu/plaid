@@ -6,13 +6,15 @@ import { ProjectCustomization } from './ProjectCustomization.jsx';
 import { ProjectManagement } from './ProjectManagement.jsx';
 import { ProjectAccessTokens } from './ProjectAccessTokens.jsx';
 import { ProjectGeneral } from './ProjectGeneral.jsx';
+import { ProjectServicesSettings } from './ProjectServicesSettings.jsx';
 
 // Single settings view with tabs: user/permission management, UD customization
-// (vocab/colors), API access tokens, and general project settings (tokenizer
-// locale + delete). Each tab is route-backed (`/management`, `/customization`,
-// `/tokens`, `/general`) so deep links keep working; the active tab is derived
-// from the path. Only the active panel mounts, so each child fetches lazily. The
-// UD layer-structure setup form (ProjectConfiguration) is a separate standalone
+// (vocab/colors), services (registry + defaults), API access tokens, and
+// general project settings (tokenizer locale + delete). Each tab is
+// route-backed (`/management`, `/customization`, `/services`, `/tokens`,
+// `/general`) so deep links keep working; the active tab is derived from the
+// path. Only the active panel mounts, so each child fetches lazily. The UD
+// layer-structure setup form (ProjectConfiguration) is a separate standalone
 // page at `/configuration`, used by the editor's "missing layers" auto-redirect.
 export const ProjectSettings = () => {
   const { projectId } = useParams();
@@ -21,9 +23,10 @@ export const ProjectSettings = () => {
   const { getClient } = useAuth();
   const [projectName, setProjectName] = useState('');
   const active = location.pathname.endsWith('/customization') ? 'customization'
-    : location.pathname.endsWith('/tokens') ? 'tokens'
-      : location.pathname.endsWith('/general') ? 'general'
-        : 'management';
+    : location.pathname.endsWith('/services') ? 'services'
+      : location.pathname.endsWith('/tokens') ? 'tokens'
+        : location.pathname.endsWith('/general') ? 'general'
+          : 'management';
 
   // Just the name, for the breadcrumb (the active tab's child fetches the rest).
   useEffect(() => {
@@ -48,6 +51,7 @@ export const ProjectSettings = () => {
         <Tabs.List mb="lg">
           <Tabs.Tab value="management">Users &amp; Permissions</Tabs.Tab>
           <Tabs.Tab value="customization">UD Customization</Tabs.Tab>
+          <Tabs.Tab value="services">Services</Tabs.Tab>
           <Tabs.Tab value="tokens">Access Tokens</Tabs.Tab>
           <Tabs.Tab value="general">General</Tabs.Tab>
         </Tabs.List>
@@ -56,6 +60,9 @@ export const ProjectSettings = () => {
         </Tabs.Panel>
         <Tabs.Panel value="customization">
           <ProjectCustomization embedded />
+        </Tabs.Panel>
+        <Tabs.Panel value="services">
+          <ProjectServicesSettings />
         </Tabs.Panel>
         <Tabs.Panel value="tokens">
           <ProjectAccessTokens embedded />

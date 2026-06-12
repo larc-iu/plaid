@@ -8,15 +8,21 @@ import {
 } from '@larc-iu/plaid-client';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { notifyError } from '../../../utils/feedback.jsx';
+import {
+  encodeServiceSelection, decodeSelection, readSpotDefault, resolveInitialSelection,
+} from '../../../utils/serviceDefaults.js';
 
 const SERVICE_KEY = 'plaid_ud_parse_service';
 const PARAMS_PREFIX = 'plaid_ud_parse_params_';
 
 // Drives the "parse" integration point: discover parse-capable services, let the
-// user pick one and fill in its declared arguments, then run it. Service choice
-// + argument values are persisted in localStorage; both are merged into the
-// request payload. The fixed goal here is UD parsing (TASKS.PARSE).
-export const useNlpService = (projectId, documentId) => {
+// user pick one and fill in its declared arguments, then run it. The initial
+// choice resolves: valid localStorage -> project default
+// (config.ud.serviceDefaults.parse, set on the Services settings tab) -> first
+// online service. Argument values layer schema defaults under the project
+// default's params under the user's cached values. The fixed goal here is UD
+// parsing (TASKS.PARSE).
+export const useNlpService = (projectId, documentId, project) => {
   const [availableServices, setAvailableServices] = useState([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -26,11 +32,13 @@ export const useNlpService = (projectId, documentId) => {
 
   const { getClient } = useAuth();
 
-  // Parse-capable services (declared `tasks`; no legacy id-prefix for parse).
+  // Parse-capable services that are actually runnable: discovery now also
+  // returns previously-seen OFFLINE services, which can't take work.
   const parseServices = useMemo(
-    () => filterServicesByTask(availableServices, TASKS.PARSE),
+    () => filterServicesByTask(availableServices, TASKS.PARSE).filter((s) => s.online !== false),
     [availableServices],
   );
+  const projectDefault = useMemo(() => readSpotDefault(project, TASKS.PARSE), [project]);
   const selectedService = useMemo(
     () => parseServices.find((s) => s.serviceId === selectedServiceId) || null,
     [parseServices, selectedServiceId],
@@ -60,8 +68,9 @@ export const useNlpService = (projectId, documentId) => {
     }
   }, [projectId, getClient, isDiscovering]);
 
-  // Pick a selected service when the list changes: keep the current one if still
-  // present, else the cached choice, else the first.
+  // Pick a selected service when the list changes: keep the current one if
+  // still present, else resolve cached choice -> project default -> first
+  // online (resolveInitialSelection).
   useEffect(() => {
     if (parseServices.length === 0) {
       setSelectedServiceIdState(null);
@@ -69,26 +78,33 @@ export const useNlpService = (projectId, documentId) => {
     }
     setSelectedServiceIdState((prev) => {
       if (prev && parseServices.some((s) => s.serviceId === prev)) return prev;
-      const cached = localStorage.getItem(SERVICE_KEY);
-      if (cached && parseServices.some((s) => s.serviceId === cached)) return cached;
-      return parseServices[0].serviceId;
+      const selection = resolveInitialSelection({
+        services: parseServices,
+        cached: localStorage.getItem(SERVICE_KEY),
+        projectDefault,
+      });
+      return decodeSelection(selection)?.id || null;
     });
-  }, [parseServices]);
+  }, [parseServices, projectDefault]);
 
   const setSelectedService = useCallback((serviceId) => {
     setSelectedServiceIdState(serviceId);
-    if (serviceId) localStorage.setItem(SERVICE_KEY, serviceId);
+    if (serviceId) localStorage.setItem(SERVICE_KEY, encodeServiceSelection(serviceId));
     else localStorage.removeItem(SERVICE_KEY);
   }, []);
 
   // Seed argument values when the selected service (hence schema) changes:
-  // schema defaults overlaid with any cached values for keys still present.
+  // schema defaults, overlaid with the project default's params (when this IS
+  // the project's default service), overlaid with any cached values — for
+  // keys still present in the schema.
   useEffect(() => {
     if (!selectedServiceId) {
       setParamValues({});
       return;
     }
     const defaults = buildDefaultValues(paramSchema);
+    const projectParams = (projectDefault?.service?.serviceId === selectedServiceId
+      && projectDefault?.params) || {};
     let cached = {};
     try {
       const raw = localStorage.getItem(`${PARAMS_PREFIX}${selectedServiceId}`);
@@ -98,10 +114,11 @@ export const useNlpService = (projectId, documentId) => {
     }
     const merged = { ...defaults };
     for (const k of Object.keys(defaults)) {
+      if (projectParams[k] !== undefined) merged[k] = projectParams[k];
       if (cached[k] !== undefined) merged[k] = cached[k];
     }
     setParamValues(merged);
-  }, [selectedServiceId, paramSchema]);
+  }, [selectedServiceId, paramSchema, projectDefault]);
 
   const setParam = useCallback((key, value) => {
     setParamValues((prev) => {

@@ -11,16 +11,32 @@
 import { transformRequest, transformResponse } from './transforms.js';
 
 /**
- * Discover the services currently connected to a project — a synchronous GET.
- * `timeout` is accepted for back-compat and ignored.
+ * Discover the services seen on a project — a synchronous GET. Returns every
+ * service ever registered on the project: currently connected ones carry
+ * `online: true`; previously-seen offline ones carry `online: false` plus a
+ * `lastSeenAt` stamp. Callers that need a service they can actually submit
+ * work to should filter on `online`.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
- * @param {number} [timeout] - Ignored
- * @returns {Promise<Array>} [{serviceId, serviceName, description, extras}]
+ * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt}]
  */
-export function discoverServices(client, projectId, timeout) {
+export function discoverServices(client, projectId) {
   return client._request('GET', `/api/v1/projects/${projectId}/services`);
+}
+
+/**
+ * Forget a previously-seen (offline) service: removes its row from the
+ * project's persistent registry. Maintainer-only; 409 if the service is
+ * currently connected (it would just re-register).
+ *
+ * @param {Object} client - PlaidClient instance
+ * @param {string} projectId - Project UUID
+ * @param {string} serviceId - Service ID to forget
+ * @returns {Promise<void>}
+ */
+export function discardService(client, projectId, serviceId) {
+  return client._request('DELETE', `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}`);
 }
 
 /**

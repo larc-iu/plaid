@@ -21,7 +21,7 @@ export const useServiceRequest = () => {
     setIsDiscovering(true);
 
     try {
-      const services = await client.messages.discoverServices(projectId, 1000);
+      const services = await client.messages.discoverServices(projectId);
       console.log(`[ServiceDiscovery] Found ${services.length} services:`, services);
       setAvailableServices(services);
       return services;
@@ -126,7 +126,8 @@ export const useServiceRequest = () => {
     requestService,
     clearProcessStatus,
     
-    // Computed flags
-    hasServices: availableServices.length > 0
+    // Computed flags. Discovery also returns previously-seen OFFLINE services
+    // (for the Services settings tab); only online ones can take work.
+    hasServices: availableServices.some((s) => s.online !== false)
   };
 };

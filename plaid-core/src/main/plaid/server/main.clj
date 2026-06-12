@@ -1,6 +1,10 @@
 (ns plaid.server.main
   (:require [mount.core :as mount]
             [plaid.server.http-server]
+            ;; First-run extraction of the bundled Python services. Required
+            ;; ONLY here (never from http-server or tests) so test JVMs don't
+            ;; register the defstate.
+            [plaid.server.services-extract]
             [plaid.server.reexec :as reexec])
   (:gen-class))
 

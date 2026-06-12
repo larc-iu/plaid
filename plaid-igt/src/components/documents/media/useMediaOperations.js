@@ -5,9 +5,15 @@ import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
 import { useServiceParams } from '../../documents/hooks/useServiceParams.js';
+import {
+  encodeServiceSelection, readSpotDefault, resolveInitialSelection,
+} from '../../../domain/serviceDefaults.js';
 
 // Matches the old Mantine useHotkeys default: ignore key events from form fields.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
+
+const SERVICE_KEY = 'plaid_igt_transcribe_service';
+const PARAMS_PREFIX = 'plaid_igt_transcribe_params_';
 
 // Media tab operations, backed by the shared IgtDocument. This hook OWNS all
 // transient media UI state (playback position, selection, popover, ASR options)
@@ -59,8 +65,10 @@ export const useMediaOperations = () => {
   const selectedService = selectedServiceId
     ? availableServices.find((s) => s.serviceId === selectedServiceId) || null
     : null;
+  const transcribeDefault = readSpotDefault(project, TASKS.TRANSCRIBE);
   const { schema: paramSchema, values: paramValues, setParam: setParamValue, coerced: coerceParams, errors: paramErrors } =
-    useServiceParams(selectedService, 'plaid_asr_params_');
+    useServiceParams(selectedService, PARAMS_PREFIX,
+      transcribeDefault?.service?.serviceId === selectedServiceId ? transcribeDefault?.params : null);
 
   // Get authenticated media URL with proper base path handling
   const getAuthenticatedMediaUrl = (serverUrl) => {
@@ -270,9 +278,9 @@ export const useMediaOperations = () => {
     setAsrAlgorithm(value);
     // Cache the selection
     if (value) {
-      localStorage.setItem('plaid_asr_algorithm', value);
+      localStorage.setItem(SERVICE_KEY, value);
     } else {
-      localStorage.removeItem('plaid_asr_algorithm');
+      localStorage.removeItem(SERVICE_KEY);
     }
   }, []);
 
@@ -351,37 +359,36 @@ export const useMediaOperations = () => {
     }
   }, [project.id, discoverServices]);
 
-  // Populate ASR options when available services change. Services are matched by
-  // their declared `tasks` (legacy `asr:` id-prefix as a fallback).
+  // Populate ASR options when available services change. Services are matched
+  // by their declared `tasks`; only ONLINE ones are offered (discovery also
+  // returns previously-seen offline services).
   useEffect(() => {
-    const options = filterServicesByTask(availableServices, TASKS.TRANSCRIBE).map(service => ({
-      value: `service:${service.serviceId}`,
-      label: service.serviceName,
-    }));
+    const options = filterServicesByTask(availableServices, TASKS.TRANSCRIBE)
+      .filter((s) => s.online !== false)
+      .map(service => ({
+        value: encodeServiceSelection(service.serviceId),
+        label: service.serviceName,
+      }));
     setAsrAlgorithmOptions(options);
   }, [availableServices]);
 
-  // Restore cached selection when options are available
+  // Resolve the initial selection when options are available: cached choice ->
+  // project default (config.igt.serviceDefaults.transcribe) -> first online.
   useEffect(() => {
     if (asrAlgorithmOptions.length === 0) {
       return;
     }
-
-    const cached = localStorage.getItem('plaid_asr_algorithm');
-
-    if (cached) {
-      const isAvailable = asrAlgorithmOptions.some(opt => opt.value === cached);
-
-      if (isAvailable) {
-        // Cached selection is available, restore it
-        setAsrAlgorithm(cached);
-      } else {
-        // Cached selection no longer available, clear it
-        setAsrAlgorithm('');
-        localStorage.removeItem('plaid_asr_algorithm');
-      }
-    }
-  }, [asrAlgorithmOptions]);
+    const onlineServices = filterServicesByTask(availableServices, TASKS.TRANSCRIBE)
+      .filter((s) => s.online !== false);
+    setAsrAlgorithm((cur) => {
+      if (cur && asrAlgorithmOptions.some((opt) => opt.value === cur)) return cur;
+      return resolveInitialSelection({
+        services: onlineServices,
+        cached: localStorage.getItem(SERVICE_KEY),
+        projectDefault: readSpotDefault(project, TASKS.TRANSCRIBE),
+      }) || '';
+    });
+  }, [asrAlgorithmOptions, availableServices, project]);
 
   // Check if using ASR service
   const isUsingAsrService = asrAlgorithm && asrAlgorithm.startsWith('service:');

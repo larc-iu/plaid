@@ -54,6 +54,10 @@ interface DiscoveredService {
   serviceName: string;
   description: string;
   extras: ServiceExtras;
+  /** true while the service holds an open request channel; false for previously-seen offline services. */
+  online: boolean;
+  /** ISO-8601 stamp of when the service was last seen alive, or null/undefined if never persisted. */
+  lastSeenAt?: string | null;
 }
 
 interface ServiceRegistration {
@@ -197,8 +201,10 @@ interface DocumentsBundle {
 interface MessagesBundle {
   sendMessage(projectId: string, data: any): Promise<any>;
   listen(projectId: string, onEvent: (eventType: string, data: any) => void | boolean, path?: string): SSEConnection;
-  /** Discover the services currently connected to a project. `timeout` is ignored (kept for back-compat). */
-  discoverServices(projectId: string, timeout?: number): Promise<DiscoveredService[]>;
+  /** Discover the services seen on a project: online ones plus previously-seen offline ones (check `online`). */
+  discoverServices(projectId: string): Promise<DiscoveredService[]>;
+  /** Forget a previously-seen (offline) service. Maintainer-only; 409 if currently connected. */
+  discardService(projectId: string, serviceId: string): Promise<void>;
   serve(projectId: string, serviceInfo: ServiceInfo, onServiceRequest: (data: any, responseHelper: ResponseHelper) => void, extras?: any): ServiceRegistration;
   /** Submit work to a service; streams progress to `onProgress`, resolves with the result. */
   requestService(projectId: string, serviceId: string, data: any, timeout?: number, onProgress?: (progress: any) => void): Promise<any>;

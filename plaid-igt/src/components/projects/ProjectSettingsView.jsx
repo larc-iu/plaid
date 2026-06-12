@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Users, KeyRound, Settings } from 'lucide-react';
+import { Users, KeyRound, Plug, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AccessManagement } from './AccessManagement';
 import { ProjectAccessTokens } from './ProjectAccessTokens';
+import { ServicesSettings } from './settings/ServicesSettings';
 import { ProjectSettings } from './ProjectSettings';
 
 // Project administration, reached from the document view's "Project Settings"
 // button (maintainer-only). Route-backed tabs — Access Management, Access Tokens,
-// and Settings — at /projects/:id/access, /tokens, /settings, so deep links keep
-// working and the active tab follows the path. Mirrors plaid-ud's settings shell.
+// Services, and Settings — at /projects/:id/access, /tokens, /services,
+// /settings, so deep links keep working and the active tab follows the path.
+// Mirrors plaid-ud's settings shell.
 export const ProjectSettingsView = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -21,8 +23,9 @@ export const ProjectSettingsView = () => {
   const [error, setError] = useState('');
 
   const activeTab = location.pathname.endsWith('/tokens') ? 'tokens'
-    : location.pathname.endsWith('/settings') ? 'settings'
-      : 'access';
+    : location.pathname.endsWith('/services') ? 'services'
+      : location.pathname.endsWith('/settings') ? 'settings'
+        : 'access';
 
   // Project only — AccessManagement resolves its own members + searches the
   // directory, so the full user roster isn't fetched here.
@@ -97,6 +100,7 @@ export const ProjectSettingsView = () => {
         <TabsList className="tw">
           <TabsTrigger value="access"><Users className="h-4 w-4" /> Access Management</TabsTrigger>
           <TabsTrigger value="tokens"><KeyRound className="h-4 w-4" /> Access Tokens</TabsTrigger>
+          <TabsTrigger value="services"><Plug className="h-4 w-4" /> Services</TabsTrigger>
           <TabsTrigger value="settings"><Settings className="h-4 w-4" /> Settings</TabsTrigger>
         </TabsList>
 
@@ -111,6 +115,9 @@ export const ProjectSettingsView = () => {
         </TabsContent>
         <TabsContent value="tokens">
           <ProjectAccessTokens />
+        </TabsContent>
+        <TabsContent value="services">
+          <ServicesSettings projectId={projectId} client={client} />
         </TabsContent>
         <TabsContent value="settings">
           <ProjectSettings project={project} projectId={projectId} client={client} />

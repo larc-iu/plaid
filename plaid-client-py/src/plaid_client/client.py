@@ -1090,20 +1090,33 @@ class MessagesResource(_Resource):
         return self._request('POST', f'/api/v1/projects/{project_id}/message',
                              body={'body': data})
 
-    def discover_services(self, project_id: str, timeout: float = 3.0) -> list:
-        """Discover available services in a project.
+    def discover_services(self, project_id: str) -> list:
+        """Discover the services seen on a project.
 
-        Reads the server-side service registry synchronously — no broadcast
-        handshake, no waiting.
+        Reads the server-side service registry synchronously. Returns every
+        service ever registered on the project: currently connected ones carry
+        ``online: True``; previously-seen offline ones carry ``online: False``
+        plus a ``last_seen_at`` stamp.
 
         Args:
             project_id: The UUID of the project to query
-            timeout: Unused; kept for signature back-compat
 
         Returns:
             List of discovered service information
         """
-        return svc.discover_services(self._client, project_id, timeout)
+        return svc.discover_services(self._client, project_id)
+
+    def discard_service(self, project_id: str, service_id: str) -> Any:
+        """Forget a previously-seen (offline) service.
+
+        Removes the service's row from the project's persistent registry.
+        Maintainer-only; 409 if the service is currently connected.
+
+        Args:
+            project_id: The UUID of the project
+            service_id: The ID of the service to forget
+        """
+        return svc.discard_service(self._client, project_id, service_id)
 
     def serve(self, project_id: str, service_info: dict, on_service_request,
               extras: dict | None = None) -> svc.ServiceRegistration:

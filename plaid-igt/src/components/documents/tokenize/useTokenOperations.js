@@ -4,7 +4,15 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { useServiceParams } from '../hooks/useServiceParams.js';
+import {
+  BUILTIN_TOKENIZE_RULE_BASED, encodeServiceSelection, encodeBuiltinSelection,
+  decodeSelection, readSpotDefault, resolveInitialSelection,
+} from '../../../domain/serviceDefaults.js';
 import { notifySuccess, notifyError, notifyInfo, toast } from '@/utils/feedback';
+
+const SERVICE_KEY = 'plaid_igt_tokenize_service';
+const PARAMS_PREFIX = 'plaid_igt_tokenize_params_';
+const BUILTIN_VALUE = encodeBuiltinSelection(BUILTIN_TOKENIZE_RULE_BASED);
 
 // Tokenize tab operations, backed by the shared IgtDocument. Structural edits
 // (split/merge/delete/create token + sentence split/merge) delegate straight to
@@ -27,9 +35,9 @@ export const useTokenOperations = () => {
     progressMessage,
   } = useServiceRequest();
 
-  const [algorithm, setAlgorithmState] = useState('rule-based-punctuation');
+  const [algorithm, setAlgorithmState] = useState(BUILTIN_VALUE);
   const [algorithmOptions, setAlgorithmOptions] = useState([
-    { value: 'rule-based-punctuation', label: 'Rule-based Punctuation' },
+    { value: BUILTIN_VALUE, label: 'Rule-based Punctuation' },
   ]);
   const [isTokenizing, setIsTokenizing] = useState(false);
   const [tokenizationProgress, setTokenizationProgress] = useState(0);
@@ -41,45 +49,55 @@ export const useTokenOperations = () => {
     if (project?.id) discoverServices(project.id);
   }, [project?.id, discoverServices]);
 
-  // Populate options when services change; restore cached selection once.
-  // Services are matched by their declared `tasks` (legacy `tok:` id-prefix as a
-  // fallback), not hard-coded prefixes.
+  // Populate options when services change; resolve the initial selection once.
+  // Services are matched by their declared `tasks`; only ONLINE ones are
+  // offered (discovery also returns previously-seen offline services).
   useEffect(() => {
-    const options = [{ value: 'rule-based-punctuation', label: 'Rule-based Punctuation' }];
-    filterServicesByTask(availableServices, TASKS.TOKENIZE).forEach((service) => {
-      options.push({ value: `service:${service.serviceId}`, label: service.serviceName });
+    const onlineServices = filterServicesByTask(availableServices, TASKS.TOKENIZE)
+      .filter((s) => s.online !== false);
+    const options = [{ value: BUILTIN_VALUE, label: 'Rule-based Punctuation' }];
+    onlineServices.forEach((service) => {
+      options.push({ value: encodeServiceSelection(service.serviceId), label: service.serviceName });
     });
     setAlgorithmOptions(options);
     const has = (val) => options.some((opt) => opt.value === val);
 
-    // One-time: restore a cached selection once services have been discovered.
+    // One-time: resolve cached choice -> project default -> built-in once
+    // services have been discovered.
     if (options.length > 1 && !hasRestoredCache) {
-      const cached = localStorage.getItem('plaid_tokenization_algorithm');
-      if (cached && has(cached)) setAlgorithmState(cached);
-      else if (cached) localStorage.removeItem('plaid_tokenization_algorithm');
+      const selection = resolveInitialSelection({
+        services: onlineServices,
+        builtins: [BUILTIN_TOKENIZE_RULE_BASED],
+        cached: localStorage.getItem(SERVICE_KEY),
+        projectDefault: readSpotDefault(project, TASKS.TOKENIZE),
+      });
+      if (selection) setAlgorithmState(selection);
       setHasRestoredCache(true);
       return;
     }
     // Every (re)discovery: if the selected service has vanished, fall back to the
     // built-in (mirrors the media tab; a no-op when the selection is still valid).
     setAlgorithmState((cur) =>
-      cur.startsWith('service:') && !has(cur) ? 'rule-based-punctuation' : cur);
-  }, [availableServices, hasRestoredCache]);
+      cur.startsWith('service:') && !has(cur) ? BUILTIN_VALUE : cur);
+  }, [availableServices, hasRestoredCache, project]);
 
   const setAlgorithm = (value) => {
     setAlgorithmState(value);
-    if (value) localStorage.setItem('plaid_tokenization_algorithm', value);
-    else localStorage.removeItem('plaid_tokenization_algorithm');
+    if (value) localStorage.setItem(SERVICE_KEY, value);
+    else localStorage.removeItem(SERVICE_KEY);
   };
 
   // The selected NLP service (null for the built-in rule-based option) and its
   // user-controllable arguments.
-  const selectedServiceId = algorithm.startsWith('service:') ? algorithm.slice(8) : null;
+  const selectedServiceId = decodeSelection(algorithm)?.kind === 'service'
+    ? decodeSelection(algorithm).id : null;
   const selectedService = selectedServiceId
     ? availableServices.find((s) => s.serviceId === selectedServiceId) || null
     : null;
+  const tokenizeDefault = readSpotDefault(project, TASKS.TOKENIZE);
   const { schema: paramSchema, values: paramValues, setParam: setParamValue, coerced: coerceParams, errors: paramErrors } =
-    useServiceParams(selectedService, 'plaid_tokenization_params_');
+    useServiceParams(selectedService, PARAMS_PREFIX,
+      tokenizeDefault?.service?.serviceId === selectedServiceId ? tokenizeDefault?.params : null);
 
   const updateProgress = (percent, operation) => {
     setTokenizationProgress(percent);

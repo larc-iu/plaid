@@ -47,9 +47,9 @@ projects, which must be reconfigured.
 
 ## Auto-parsing (Stanza)
 
-`parser_service.py` registers a Stanza-based NLP service that fills in the whole
+`services/ud_parse_stanza.py` registers a Stanza-based NLP service that fills in the whole
 hierarchy (sentences, words, morphemes, annotations, dependencies) for a document:
 
 ```bash
-python parser_service.py PROJECT_ID [PLAID_URL]
+python services/ud_parse_stanza.py PROJECT_ID [PLAID_URL]
 ```

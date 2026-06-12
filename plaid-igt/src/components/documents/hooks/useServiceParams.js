@@ -3,13 +3,17 @@ import { getParamSchema, buildDefaultValues, coerceParamValues } from '@larc-iu/
 
 // Per-integration-point hook for a selected service's user-controllable
 // arguments. Seeds form values from the service's declared parameter schema
-// (defaults overlaid with any cached values), persists edits per service in
+// (defaults, overlaid with the project's default params for this service if
+// any, overlaid with any cached values), persists edits per service in
 // localStorage, exposes live validation `errors`, and a `coerced()` to merge
 // into the request payload.
 //
 //   selectedService: the chosen DiscoveredService (or null for built-in/none)
 //   storagePrefix:   localStorage key prefix; the serviceId is appended
-export function useServiceParams(selectedService, storagePrefix) {
+//   defaultParams:   project-level default values (config.<ns>.serviceDefaults
+//                    [task].params) — only applied when they belong to THIS
+//                    service; the caller passes null otherwise
+export function useServiceParams(selectedService, storagePrefix, defaultParams = null) {
   const serviceId = selectedService?.serviceId || null;
   const schema = useMemo(() => getParamSchema(selectedService), [selectedService]);
   const [values, setValues] = useState({});
@@ -18,16 +22,18 @@ export function useServiceParams(selectedService, storagePrefix) {
   const valuesRef = useRef(values);
   valuesRef.current = values;
 
-  // (Re)initialize when the selected service changes: schema defaults overlaid
-  // with cached values for keys still in the schema. Keyed on serviceId only —
-  // a service's schema is stable within a session, so we don't re-seed on every
-  // re-discovery (which replaces the service object identity but not its schema).
+  // (Re)initialize when the selected service changes: schema defaults,
+  // overlaid with project default params, overlaid with cached values — for
+  // keys still in the schema. Keyed on serviceId only — a service's schema is
+  // stable within a session, so we don't re-seed on every re-discovery (which
+  // replaces the service object identity but not its schema).
   useEffect(() => {
     if (!serviceId) {
       setValues({});
       return;
     }
     const defaults = buildDefaultValues(schema);
+    const projectParams = defaultParams || {};
     let cached = {};
     try {
       const raw = localStorage.getItem(`${storagePrefix}${serviceId}`);
@@ -37,6 +43,7 @@ export function useServiceParams(selectedService, storagePrefix) {
     }
     const merged = { ...defaults };
     for (const k of Object.keys(defaults)) {
+      if (projectParams[k] !== undefined) merged[k] = projectParams[k];
       if (cached[k] !== undefined) merged[k] = cached[k];
     }
     setValues(merged);

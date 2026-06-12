@@ -75,6 +75,13 @@ export function createSSEConnection(client, projectId, onEvent, path) {
       });
 
       if (!response.ok) {
+        if (response.status === 409 && streamPath.includes('/services/')) {
+          // Service channel rejected: another live instance holds this
+          // service-id. The serve() reconnect timer will retry — once the
+          // other instance is gone (or its dead channel is reaped) the retry
+          // takes over.
+          console.warn('Service registration rejected (409): another instance of this service is already connected; will retry');
+        }
         throw new Error(`HTTP ${response.status} ${response.statusText}`);
       }
 

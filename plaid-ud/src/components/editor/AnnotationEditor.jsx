@@ -234,7 +234,7 @@ export const AnnotationEditor = () => {
     paramValues,
     paramErrors,
     setParam,
-  } = useNlpService(projectId, documentId);
+  } = useNlpService(projectId, documentId, project);
 
   // History drawer handlers
   const handleOpenHistory = () => {

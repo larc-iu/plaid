@@ -118,6 +118,23 @@ jobs:
           printf '{:version "%s"}\n' "${{ steps.ver.outputs.version }}" > plaid-core/resources/version.edn
           cat plaid-core/resources/version.edn
 
+      - name: Bundle official services into plaid-core resources
+        run: |
+          # Each app's services/*.py rides the jar and is extracted to a
+          # services/ folder next to data/ on boot (plaid.server.services-extract).
+          # manifest.edn maps filename -> sha256; the extractor enumerates from it
+          # (a jar "directory" can't be listed portably) and uses the hashes for
+          # overwrite-if-unmodified semantics across upgrades.
+          rm -rf plaid-core/resources/services
+          mkdir -p plaid-core/resources/services
+          cp plaid-ud/services/*.py plaid-igt/services/*.py plaid-core/resources/services/
+          ( cd plaid-core/resources/services
+            printf '{'
+            for f in *.py; do printf '"%s" "%s" ' "$f" "$(sha256sum "$f" | cut -d' ' -f1)"; done
+            printf '}\n'
+          ) > plaid-core/resources/services/manifest.edn
+          cat plaid-core/resources/services/manifest.edn
+
       - name: Build uberjar
         working-directory: plaid-core
         run: |
@@ -147,6 +164,11 @@ jobs:
           # Kill the parent AND the re-exec'd child (matched by jar path).
           pkill -f "plaid-${{ steps.ver.outputs.version }}.jar" 2>/dev/null || true
           if [ -z "$OK" ]; then echo "jar failed to boot / report version"; exit 1; fi
+          # First boot must also have extracted the bundled services next to data/.
+          for f in ud_parse_stanza.py igt_tokenize_punkt.py igt_transcribe_whisper.py; do
+            if [ ! -f "services/$f" ]; then echo "services/$f was not extracted"; exit 1; fi
+          done
+          echo "bundled services extracted on first run"
 
       # --- Build the npm tarball (NOT publish) -------------------------------
       - name: Pack npm client

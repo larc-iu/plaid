@@ -2,6 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [taoensso.timbre :as log]
             [plaid.server.events :as events]
+            [plaid.sql.service-registry :as service-registry]
             [clojure.core.async :as async]
             [clojure.data.json :as json]
             [org.httpkit.server :as http-kit]))
@@ -139,35 +140,66 @@
   "SSE stream a service opens to RECEIVE work requests (server -> service).
   Holding this channel open IS the service's registration; its discovery
   metadata (service-name / description / extras) rides the query string, and
-  closing the channel deregisters it."
+  closing the channel deregisters it. 409 if another LIVE channel already
+  holds this service-id on the project (a dead-but-unclosed channel is taken
+  over, so reconnect-after-blip never self-409s). Registration also upserts
+  the persistent seen_services row so discovery can show the service offline
+  later."
   [{{{:keys [id service-id]} :path
      {:keys [service-name description extras]} :query} :parameters
-    user-id :user/id :as req}]
+    user-id :user/id db :db :as req}]
   (let [info {:service-name service-name
               :description description
               :extras (when extras
                         (try (json/read-str extras :key-fn keyword)
                              (catch Exception _ nil)))}]
-    (http-kit/as-channel
-     req
-     {:on-open
-      (fn [channel]
-        (http-kit/send! channel {:status 200 :headers sse-response-headers} false)
-        (http-kit/send! channel (sse-event "connected" {:status "connected" :service-id service-id}) false)
-        (events/register-service-channel! id service-id channel info user-id)
-        (log/debug "Service channel opened for" service-id "on project" id)
-        (start-keepalive! channel))
-      :on-close
-      (fn [channel _]
-        (events/unregister-service-channel! id service-id channel)
-        ;; Fail any in-flight requests that were routed to this now-gone service.
-        (doseq [[request-id {:keys [requester]}] (events/requests-for-service id service-id)]
-          (when requester
-            (try (http-kit/send! requester (sse-event "error" {:error "Service disconnected"}) false)
+    ;; Conflict pre-check must happen BEFORE as-channel — SSE headers go out
+    ;; in :on-open, after which a plain 409 response is no longer possible.
+    (if (events/channel-alive? (events/get-service-channel id service-id))
+      {:status 409 :body {:error (str "Service '" service-id "' is already connected to this project")}}
+      (http-kit/as-channel
+       req
+       {:on-open
+        (fn [channel]
+          (http-kit/send! channel {:status 200 :headers sse-response-headers} false)
+          (if (= :conflict (events/try-register-service-channel! id service-id channel info user-id))
+            ;; Lost the pre-check/open race to another registration.
+            (do (http-kit/send! channel
+                                (sse-event "error" {:error (str "Service '" service-id "' is already connected to this project")})
+                                false)
+                (http-kit/close channel))
+            (do
+              (http-kit/send! channel (sse-event "connected" {:status "connected" :service-id service-id}) false)
+              ;; Persist to the seen-services registry. Best-effort: a busy DB
+              ;; must never kill a service channel. Store the RAW extras JSON
+              ;; so the snapshot parses to exactly the live wire shape.
+              (try
+                (service-registry/record-seen! db id service-id
+                                               {:service-name service-name
+                                                :description description
+                                                :extras-json extras})
+                (catch Exception e
+                  (log/warn e "Failed to record seen-service row for" service-id "on project" id)))
+              (log/debug "Service channel opened for" service-id "on project" id)
+              (start-keepalive! channel))))
+        :on-close
+        (fn [channel _]
+          (events/unregister-service-channel! id service-id channel)
+          ;; Only run the "service is gone" cleanup when it actually is gone —
+          ;; a superseded/losing channel closing must not stamp last-seen or
+          ;; fail in-flight requests that a live takeover is still serving.
+          (when-not (events/get-service-channel id service-id)
+            ;; Best-effort "last seen alive" stamp.
+            (try (service-registry/touch-last-seen! db id service-id)
                  (catch Exception _))
-            (try (http-kit/close requester) (catch Exception _)))
-          (events/resolve-request! request-id))
-        (log/debug "Service channel closed for" service-id "on project" id))})))
+            ;; Fail any in-flight requests that were routed to this now-gone service.
+            (doseq [[request-id {:keys [requester]}] (events/requests-for-service id service-id)]
+              (when requester
+                (try (http-kit/send! requester (sse-event "error" {:error "Service disconnected"}) false)
+                     (catch Exception _))
+                (try (http-kit/close requester) (catch Exception _)))
+              (events/resolve-request! request-id)))
+          (log/debug "Service channel closed for" service-id "on project" id))}))))
 
 (defn submit-request-handler
   "Client POSTs work for a service; the response is an SSE stream of that
@@ -262,15 +294,49 @@
                          {:status 500
                           :body {:error "Failed to publish message"}}))}}]
 
-   ;; Service discovery: the services currently connected to a project (presence
-   ;; = an open request channel; see below). Synchronous read, not the old
-   ;; broadcast-and-wait handshake. Not persisted, not audit-logged.
+   ;; Service discovery: every service ever seen on the project (persistent
+   ;; seen_services rows, upserted on registration) merged with the live
+   ;; channel registry. Live entries win on metadata and carry :online true;
+   ;; the rest are offline with a :last-seen-at stamp. Synchronous read.
    ["/services"
-    {:get {:summary "List the services currently connected to a project."
+    {:get {:summary (str "List the services seen on a project: currently connected ones "
+                         "(online true) plus previously-seen offline ones with a last-seen time.")
            :middleware [[pra/wrap-reader-required get-project-id]]
-           :handler (fn [{{{:keys [id]} :path} :parameters}]
-                      {:status 200
-                       :body (events/list-live-services id)})}}]
+           :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
+                      (let [live (events/list-live-services id)
+                            live-ids (set (map :service-id live))
+                            seen (try (service-registry/list-seen db id)
+                                      (catch Exception e
+                                        (log/warn e "Failed to read seen-services for project" id)
+                                        []))
+                            ;; last-seen-at for a live service is "now" in
+                            ;; spirit; report the stored row's stamp if any so
+                            ;; clients have one field to render.
+                            seen-by-id (into {} (map (juxt :service-id identity)) seen)
+                            merged (concat
+                                    (map (fn [{:keys [service-id] :as entry}]
+                                           (assoc entry
+                                                  :online true
+                                                  :last-seen-at (get-in seen-by-id [service-id :last-seen-at])))
+                                         live)
+                                    (->> seen
+                                         (remove #(live-ids (:service-id %)))
+                                         (map #(assoc % :online false))))]
+                        {:status 200
+                         :body (vec (sort-by :service-id merged))}))}}]
+
+   ;; Registry hygiene: forget a previously-seen (offline) service.
+   ["/services/:service-id"
+    {:parameters {:path [:map [:id :uuid] [:service-id :string]]}
+     :delete {:summary "Forget a previously-seen service. 409 if it is currently connected."
+              :middleware [[pra/wrap-maintainer-required get-project-id]]
+              :openapi {:x-client-method "discard-service"}
+              :handler (fn [{{{:keys [id service-id]} :path} :parameters db :db}]
+                         (if (events/channel-alive? (events/get-service-channel id service-id))
+                           {:status 409 :body {:error (str "Service '" service-id "' is currently connected; it would just re-register")}}
+                           (if (pos? (service-registry/delete-seen! db id service-id))
+                             {:status 204}
+                             {:status 404 :body {:error (str "No seen service '" service-id "' on this project")}})))}}]
 
    ;; Server-mediated RPC: the service's inbound request stream (GET) and the
    ;; client's work-submission stream (POST). Addressed, not broadcast. Opening

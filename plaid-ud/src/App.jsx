@@ -41,10 +41,11 @@ function App() {
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
             
             {/* Project settings (tabbed: users & permissions, UD customization,
-                access tokens, general). All paths render the same view; the
-                active tab follows the path. */}
+                services, access tokens, general). All paths render the same
+                view; the active tab follows the path. */}
             <Route path="projects/:projectId/management" element={<ProjectSettings />} />
             <Route path="projects/:projectId/customization" element={<ProjectSettings />} />
+            <Route path="projects/:projectId/services" element={<ProjectSettings />} />
             <Route path="projects/:projectId/tokens" element={<ProjectSettings />} />
             <Route path="projects/:projectId/general" element={<ProjectSettings />} />
 

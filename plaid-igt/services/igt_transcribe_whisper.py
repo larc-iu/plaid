@@ -9,9 +9,8 @@ import tempfile
 import shutil
 import whisper
 from typing import List, Dict, Any
-from client.asr import ASRModel, Alignment, AlignmentProcessor
-from client.base_service import BaseService
-from plaid_client import TASKS, Param
+from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
+from plaid_client import BaseService, TASKS, Param
 
 
 WHISPER_MODEL_SIZES = [

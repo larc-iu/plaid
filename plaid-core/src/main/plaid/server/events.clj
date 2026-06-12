@@ -199,6 +199,45 @@
     (log/debug "Service connected:" service-id "on project" project-id)
     nil))
 
+(defn channel-alive?
+  "Best-effort liveness probe for a service's held channel: open AND able to
+  accept a write (an SSE comment, invisible to the service). The write probe
+  catches channels whose peer vanished without a FIN — `send!` returns false
+  once http-kit knows the connection is dead — which is what lets a service
+  reconnect after a network blip take over its own half-dead registration
+  instead of 409ing against it. Limitation: a half-open TCP connection can
+  pass this probe until the OS notices; worst case re-registration is blocked
+  until the 25s keepalive write fails and closes the stale channel."
+  [channel]
+  (boolean
+   (and channel
+        (try
+          (and (http-kit/open? channel)
+               (http-kit/send! channel ": probe\n\n" false))
+          (catch Exception _ false)))))
+
+(def ^:private service-registration-lock
+  "Serializes registration check-then-install so two simultaneous
+  registrations of the same service-id can't both pass the conflict check.
+  Registration is rare (service startup / reconnect), so a coarse monitor is
+  fine; the liveness probe is impure and can't live inside a swap! fn."
+  (Object.))
+
+(defn try-register-service-channel!
+  "Register a service unless another LIVE channel already holds its
+  service-id on this project. Returns :registered (also when taking over a
+  dead-but-not-yet-closed channel) or :conflict. See `channel-alive?` for the
+  takeover semantics."
+  [project-id service-id channel info user-id]
+  (locking service-registration-lock
+    (let [existing (get-in @service-channels [project-id service-id :channel])]
+      (if (and existing
+               (not= existing channel)
+               (channel-alive? existing))
+        :conflict
+        (do (register-service-channel! project-id service-id channel info user-id)
+            :registered)))))
+
 (defn unregister-service-channel!
   "Deregister a connected service (its channel closed), but only if it still
   maps to `channel` — so a reconnect that already replaced the entry isn't

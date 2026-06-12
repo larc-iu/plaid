@@ -258,15 +258,19 @@ const registration = client.messages.serve(
 
 === Discovering and requesting
 
-A client first asks which services are currently available, then sends a request to one by its `service_id`.
-`discover_services`/`discoverServices` returns the services connected right now:
+A client first asks which services are available, then sends a request to one by its `service_id`.
+`discover_services`/`discoverServices` returns every service the project has ever seen: the ones connected right now carry `online: true`, and previously-seen services that are currently down carry `online: false` plus a `last_seen_at` stamp.
+Only an online service can take work—filter on `online` before offering a "run" action:
 
 [,python]
 ----
 services = client.messages.discover_services(project_id)
 # [{"service_id": "my-parser", "service_name": "My Parser",
-#   "description": "Parses a document with my model", "extras": {}}]
+#   "description": "Parses a document with my model", "extras": {},
+#   "online": True, "last_seen_at": "2026-06-12T02:43:17Z"}]
 ----
+
+A project maintainer can prune the registry with `discard_service`/`discardService`, which forgets a previously-seen offline service (it reappears if it ever reconnects); discarding a currently-connected service is rejected with a 409.
 
 `request_service`/`requestService` sends work to a named service and waits for its result.
 The data you pass is delivered verbatim to the service's handler, and the value the service passes to `complete` is what you get back.
@@ -322,7 +326,7 @@ client.messages.serve(project_id, service_info, handle_request, extras)
 
 The standard `extras` keys are:
 
-`tasks`:: A list of the slots this service fills, drawn from a small fixed vocabulary: `tokenize`, `parse`, `transcribe`. A client offering a "tokenize" action lists exactly the services whose `tasks` include `tokenize`.
+`tasks`:: A list of the slots this service fills, drawn from a small fixed vocabulary: `tokenize`, `parse`, `transcribe`, `link-vocab`. A client offering a "tokenize" action lists exactly the services whose `tasks` include `tokenize`.
 `summary`:: A longer, human-readable description (Markdown), shown on demand—use it for what the one-line `description` is too short to say.
 `parameters`:: An ordered list of the arguments a user may set per request. Each entry is a small descriptor; the client renders a form from it and sends the chosen values as part of the request data.
 
@@ -335,11 +339,15 @@ A parameter's `key` is a *value*—the literal field name the argument is sent u
 
 Helpers in both clients save you from re-implementing this shape. On the **service-authoring** side (Python), `Param.*` build the parameter descriptors and `build_extras` assembles the whole object (a `BaseService` subclass does this for you). On the **selecting/UI** side (JavaScript), `filterServicesByTask` picks the services for a slot and `getServiceSummary`/`getParamSchema` read a service's summary and parameter schema. The value logic—turning a schema into initial form values and validated request values—exists in both: `buildDefaultValues`/`coerceParamValues` in JavaScript, `default_values`/`coerce` in Python.
 
-=== Ephemerality
+=== Presence and persistence
 
-Services are tracked **only while connected**. There is no queue and no persistence: a service that isn't running at the moment of a request won't appear in discovery, and a request to a service that is absent (or that disconnects mid-request) fails immediately rather than waiting for the service to come back.
+A service can take work **only while connected**. There is no request queue: a request to a service that is absent (or that disconnects mid-request) fails immediately rather than waiting for the service to come back.
 This keeps the model simple and is a good fit for the typical setup, where a service is a long-running helper process that is either up or down.
 If you need a request to survive a service being briefly unavailable, you would build that durability yourself on top of Plaid (for instance, by recording pending work in your own layer and retrying).
+
+What *does* persist is the discovery record: each registration upserts a per-project "seen services" row (name, description, extras, last-seen time), which is why discovery can list offline services. This lets an application show a stable picker—including a default service a maintainer chose—even when the service happens to be down, instead of the option silently vanishing.
+
+Each `service_id` admits **one live connection per project**: a second registration while another instance holds the id is rejected with a 409. A service reconnecting after a network blip is not penalized—if the previously-held connection is dead but not yet reaped, the newcomer simply takes it over.
 
 NOTE: Like real-time messaging, service activity is **not** recorded in the audit log—only the document changes a service makes through ordinary writes are. The writes a service performs are attributed to whatever token it authenticates with, so giving a service its own named API token makes its edits clearly identifiable in the audit history.
 

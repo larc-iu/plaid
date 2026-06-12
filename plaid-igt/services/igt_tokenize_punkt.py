@@ -8,9 +8,8 @@ This demonstrates how easy it is to create new tokenization services.
 import argparse
 import nltk
 from typing import List, Dict, Any, Tuple
-from client.base_service import BaseService
-from client.tokenization import TokenizerModel, TokenSpan, TokenProcessor, helpers
-from plaid_client import TASKS, Param
+from plaid_client import BaseService, TASKS, Param
+from plaid_client.workflows.tokenization import TokenizerModel, TokenSpan, TokenProcessor, helpers
 
 
 # Punkt ships pretrained sentence models for these languages. (value, label)

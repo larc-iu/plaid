@@ -20,11 +20,24 @@ from plaid_client.transforms import transform_request, transform_response
 logger = logging.getLogger(__name__)
 
 
-def discover_services(client, project_id, timeout=None):
-    """Discover the services currently connected to a project — a synchronous
-    GET. ``timeout`` is accepted for back-compat and ignored.
+def discover_services(client, project_id):
+    """Discover the services seen on a project — a synchronous GET.
+
+    Returns every service ever registered on the project: currently connected
+    ones carry ``online: True``; previously-seen offline ones carry
+    ``online: False`` plus a ``last_seen_at`` stamp. Callers that need a
+    service they can actually submit work to should filter on ``online``.
     """
     return client.messages._request('GET', f'/api/v1/projects/{project_id}/services')
+
+
+def discard_service(client, project_id, service_id):
+    """Forget a previously-seen (offline) service: removes its row from the
+    project's persistent registry. Maintainer-only; 409 if the service is
+    currently connected (it would just re-register)."""
+    return client.messages._request(
+        'DELETE',
+        f'/api/v1/projects/{project_id}/services/{urllib.parse.quote(service_id, safe="")}')
 
 
 def _report_event(client, project_id, request_id, body):
@@ -78,8 +91,16 @@ class ServiceRegistration:
                     try:
                         self._connection = self._open_channel()
                         logger.info('Service channel reconnected for %s', self._service_id)
-                    except Exception:
-                        logger.warning('Service channel reconnect failed; will retry')
+                    except Exception as e:
+                        resp = getattr(e, 'response', None)
+                        if resp is not None and getattr(resp, 'status_code', None) == 409:
+                            # Another live instance holds this service-id; once
+                            # it stops (or its dead channel is reaped) a retry
+                            # will take over.
+                            logger.warning('Service registration rejected (409): another instance '
+                                           'of %s is already connected; will retry', self._service_id)
+                        else:
+                            logger.warning('Service channel reconnect failed; will retry')
 
         self._supervisor_thread = threading.Thread(target=loop, daemon=True)
         self._supervisor_thread.start()

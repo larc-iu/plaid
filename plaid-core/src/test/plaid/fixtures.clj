@@ -117,6 +117,8 @@
    "text_layers"
    "documents"
    "project_users"
+   ;; seen_services: persistent service-discovery rows (FK → projects).
+   "seen_services"
    "projects"])
 
 (defn reset-db!
