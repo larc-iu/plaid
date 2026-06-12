@@ -5,6 +5,7 @@ import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { resolveColor } from '../../../utils/udVocab.js';
+import { readFieldProbs, groupSuggestions, probLabel, provCellTitle } from '../../../utils/provenanceUi.js';
 import './SentenceRow.css';
 
 // Machine-made, not yet human-verified (provenance convention) — such cells
@@ -25,7 +26,7 @@ const ALL_FIELDS_VISIBLE = { lemma: true, xpos: true, upos: true, feats: true };
 const NO_OPTIONS = [];
 
 // Editable cell component for annotation fields
-const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm, tabIndex, columnWidth, onUpdate, onNavigate, isReadOnly, suggestions, cellColor, isInferred }) => {
+const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm, tabIndex, columnWidth, onUpdate, onNavigate, isReadOnly, suggestions, cellColor, isInferred, provMeta }) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isEditing, setIsEditing] = useState(false);
   // `pristine` = focused but not yet typed: the vocab dropdown shows the full
@@ -133,6 +134,11 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
   const fieldClass = `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}`
     + (isInferred && hasContent ? ' editable-field--inferred' : '');
 
+  // Machine-origin record for the tooltip + the producer's distribution (when
+  // one was recorded in provDetail) for ranking the dropdown.
+  const cellTitle = provCellTitle(`Edit ${field}`, provMeta);
+  const fieldProbs = readFieldProbs(provMeta, field);
+
   // Read-only (viewer access or time travel): render the value as static text,
   // not an editable input, so cells can't be focused or typed into at all.
   if (isReadOnly) {
@@ -144,7 +150,7 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
           cursor: 'default',
           ...(hasContent && cellColor ? { color: cellColor } : {})
         }}
-        title={field}
+        title={provCellTitle(field, provMeta)}
       >
         {hasContent ? displayValue : ' '}
       </div>
@@ -156,17 +162,33 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
   // `pristine` filter). Off-list values are still accepted (soft). It reuses the
   // `.editable-field` styling so it matches the grid, and has no native picker
   // arrow (which is what shifted the datalist's centered text off-center).
+  // When the producing parser recorded a distribution, its top-k floats above
+  // the rest as a "Parser suggestions" group, with the probability rendered as
+  // a dimmed suffix (renderOption only — the committed value stays the bare tag).
   if (suggestions && suggestions.length && !isReadOnly) {
+    // Group-aware pristine filter: the data may be flat or grouped.
+    const filterItems = (items, q) => items.filter((o) => o.label.toLowerCase().includes(q));
     const optionsFilter = ({ options, search }) => {
       if (pristine) return options;
       const q = search.toLowerCase().trim();
-      return options.filter((o) => o.label.toLowerCase().includes(q));
+      return options
+        .map((o) => ('group' in o ? { ...o, items: filterItems(o.items, q) } : o))
+        .filter((o) => ('group' in o ? o.items.length > 0 : o.label.toLowerCase().includes(q)));
     };
     return (
       <Autocomplete
         ref={inputRef}
         id={`${tokenId}-${field}`}
-        data={isEditing ? suggestions : NO_OPTIONS}
+        data={isEditing ? groupSuggestions(suggestions, fieldProbs) : NO_OPTIONS}
+        renderOption={fieldProbs ? ({ option }) => {
+          const pct = probLabel(fieldProbs, option.value);
+          return (
+            <span>
+              {option.value}
+              {pct && <span style={{ opacity: 0.55, marginLeft: 6, fontSize: '0.85em' }}>{pct}</span>}
+            </span>
+          );
+        } : undefined}
         value={displayValue}
         onChange={(val) => { setLocalValue(val); setPristine(false); }}
         onFocus={() => { setIsEditing(true); setPristine(true); setTimeout(() => inputRef.current?.select(), 0); }}
@@ -211,7 +233,7 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
         variant="unstyled"
         size="xs"
         tabIndex={tabIndex}
-        title={`Edit ${field}`}
+        title={cellTitle}
         classNames={{ input: fieldClass }}
         styles={{
           // Match the plain inputs: take the full column width and be allowed to
@@ -246,7 +268,7 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
         width: columnWidth ? `${columnWidth}px` : 'auto',
         ...(hasContent && cellColor ? { color: cellColor } : {})
       }}
-      title={`Edit ${field}`}
+      title={cellTitle}
       tabIndex={tabIndex}
     />
   );
@@ -477,6 +499,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
             onNavigate={onNavigate}
             isReadOnly={isReadOnly}
             isInferred={isInferredSpan(data.lemma)}
+            provMeta={data.lemma?.metadata}
           />
         </div>
       ) : (
@@ -499,6 +522,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
             isReadOnly={isReadOnly}
             suggestions={vocab?.xpos}
             isInferred={isInferredSpan(data.xpos)}
+            provMeta={data.xpos?.metadata}
           />
         </div>
       ) : (
@@ -522,6 +546,7 @@ const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnot
             suggestions={vocab?.upos}
             cellColor={data.upos?.value ? resolveColor(data.upos.value, uposColors) : undefined}
             isInferred={isInferredSpan(data.upos)}
+            provMeta={data.upos?.metadata}
           />
         </div>
       ) : (

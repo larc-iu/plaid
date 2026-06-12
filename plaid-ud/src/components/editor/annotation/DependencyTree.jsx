@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
+import { provCellTitle } from '../../../utils/provenanceUi.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
 import './DependencyTree.css';
 
@@ -568,6 +569,10 @@ export const DependencyTree = ({
             }}
           >
             {relation.value || 'dep'}
+            {/* Hover record for machine-made relations (SVG-native tooltip). */}
+            {provState(relation.metadata) !== PROV_STATES.HUMAN && (
+              <title>{provCellTitle('deprel', relation.metadata)}</title>
+            )}
           </text>
         )}
       </>

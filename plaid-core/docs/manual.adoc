@@ -986,6 +986,7 @@ Prediction extras describe the machine's *original* prediction.
 They are kept even after a human edits the entity—the history is valuable for audit and retraining—which means a consumer must not present `provProb` as confidence in the *current* value once the entity is verified: any human edit verifies (rule 3 below), so `provConfirmed` is exactly the flag to check before displaying it.
 
 Of the bundled services, the Whisper transcriber records its per-segment scores this way (`provDetail.avgLogprob` / `provDetail.noSpeechProb` / `provDetail.model`—and no `provProb`, since a log-probability is not a calibrated probability), and the Stanza parser records `provDetail.model` and `provDetail.language` (its pipeline exposes no per-prediction probabilities; a parser that has them would add `provProb` plus a top-k distribution in the detail map).
+On the read side, the UD editor consumes distributions a parser records under `provDetail.uposProbs` / `provDetail.xposProbs` / `provDetail.deprelProbs` (each a flat `{label: probability}` map): the top-k floats above the rest of the vocabulary in the corresponding cell's dropdown as a "Parser suggestions" group, and machine-made cells describe their origin (producer, model, `provProb`) in their hover tooltip.
 
 The convention is made operational by a **write contract** that every machine writer (service, built-in algorithm, importer) is expected to follow:
 

@@ -1,10 +1,14 @@
 import { useState, useRef } from 'react';
 import { Autocomplete } from '@mantine/core';
+import { readFieldProbs, groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
 
 // Inline editor for a dependency-relation label, rendered inside the tree's
 // SVG <foreignObject>. Mirrors the grid's vocab cells: a Mantine Autocomplete
 // seeded with the configured DEPREL vocabulary — clicking shows the full list,
 // the first keystroke filters, and off-list values are still accepted (soft).
+// When the producing parser recorded a deprel distribution
+// (metadata.provDetail.deprelProbs), its top-k floats above the rest as a
+// "Parser suggestions" group with dimmed probability suffixes.
 //
 // Keyboard contract (preserved from the old contentEditable editor):
 //   Enter / blur     → commit + close
@@ -24,15 +28,30 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
     fn();
   };
 
+  const deprelProbs = readFieldProbs(relation.metadata, 'deprel');
+
+  // Group-aware pristine filter: the data may be flat or grouped.
+  const filterItems = (items, q) => items.filter((o) => o.label.toLowerCase().includes(q));
   const optionsFilter = ({ options, search }) => {
     if (pristine) return options;
     const q = search.toLowerCase().trim();
-    return options.filter((o) => o.label.toLowerCase().includes(q));
+    return options
+      .map((o) => ('group' in o ? { ...o, items: filterItems(o.items, q) } : o))
+      .filter((o) => ('group' in o ? o.items.length > 0 : o.label.toLowerCase().includes(q)));
   };
 
   return (
     <Autocomplete
-      data={suggestions || []}
+      data={groupSuggestions(suggestions || [], deprelProbs)}
+      renderOption={deprelProbs ? ({ option }) => {
+        const pct = probLabel(deprelProbs, option.value);
+        return (
+          <span>
+            {option.value}
+            {pct && <span style={{ opacity: 0.55, marginLeft: 6, fontSize: '0.85em' }}>{pct}</span>}
+          </span>
+        );
+      } : undefined}
       value={value}
       onChange={(v) => { setValue(v); setPristine(false); }}
       onFocus={(e) => { setPristine(true); setTimeout(() => e.target.select?.(), 0); }}
