@@ -249,7 +249,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       const el = paneWrapRef.current;
       if (!el) return;
       const top = el.getBoundingClientRect().top + window.scrollY;
-      setPaneMaxH(`calc(100vh - ${Math.max(0, Math.round(top))}px - 1rem)`);
+      // Subtract the page wrapper's bottom padding (py-8 = 2rem) too, so a left
+      // pane that's the tallest element doesn't push the document a few px past
+      // the viewport (a tiny page scroll). Ceil for sub-pixel safety.
+      setPaneMaxH(`calc(100vh - ${Math.max(0, Math.ceil(top))}px - 2rem)`);
     };
     measure();
     window.addEventListener('resize', measure);
