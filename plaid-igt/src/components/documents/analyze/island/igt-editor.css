@@ -717,11 +717,6 @@
 }
 .igt-vocab-pop__vtab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .igt-vocab-pop__vtab-ext { flex: none; font-size: 9px; }
-.igt-vocab-pop__hintbar { margin-top: 5px; font-size: 10px; color: #9aa3b2; text-align: center; }
-.igt-vocab-pop__hintbar kbd {
-  font: inherit; font-size: 9px; background: #f3f4f6; border: 1px solid #e5e7eb;
-  border-radius: 3px; padding: 0 3px; color: #4b5563;
-}
 
 /* ---- sentence-scoped annotations (below grid) ----
    Same row-label treatment as the grid labels (scope accent border, same

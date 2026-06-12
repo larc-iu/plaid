@@ -1421,7 +1421,6 @@ export class IgtEditor {
               })}
             </div>`
           : nothing}
-        <div class="igt-vocab-pop__hintbar"><kbd>↑</kbd><kbd>↓</kbd> navigate · <kbd>↵</kbd> select · <kbd>esc</kbd> close</div>
       </div>
     `;
   }
