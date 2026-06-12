@@ -4,11 +4,12 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { useServiceParams } from '../hooks/useServiceParams.js';
+import { countAnnotationLossForWord } from '../../../domain/annotationLoss.js';
 import {
   BUILTIN_TOKENIZE_RULE_BASED, encodeServiceSelection, encodeBuiltinSelection,
   decodeSelection, readSpotDefault, resolveInitialSelection,
 } from '../../../domain/serviceDefaults.js';
-import { notifySuccess, notifyError, notifyInfo, toast } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
 const SERVICE_KEY = 'plaid_igt_tokenize_service';
 const PARAMS_PREFIX = 'plaid_igt_tokenize_params_';
@@ -107,32 +108,32 @@ export const useTokenOperations = () => {
   // --- Structural ops (delegate to the domain model) ---
   const splitToken = (tokenId, splitOffset) => doc.splitToken(tokenId, splitOffset);
 
-  // Token deletion is a high-frequency act mid-tokenization, so it stays
-  // instant — but it's recoverable: a snapshot of everything the cascade
-  // destroys (morphemes, annotations, vocab links) backs an Undo toast.
+  // Token deletion: "delete or don't" — deletion is FINAL. (The old Undo
+  // toast restored only IGT's own layers, silently losing other apps'
+  // annotations on the same word while reporting success.) Unannotated
+  // tokens delete instantly (the high-frequency mid-tokenization case); a
+  // token carrying annotations — IGT's own or another app's, e.g. UD
+  // material invisible here — opens a count-based confirm instead
+  // (pendingDelete drives the dialog in DocumentTokenize).
+  const [pendingDelete, setPendingDelete] = useState(null); // {tokenId, content, annotations, links}
   const deleteToken = async (tokenId) => {
-    const snapshot = doc.snapshotWordToken(tokenId);
-    const ok = await doc.deleteToken(tokenId);
-    if (ok && snapshot) {
-      const content = cpSlice(doc.body || '', snapshot.word.begin, snapshot.word.end);
-      const annotated = snapshot.spans.length > 0 || snapshot.vocabLinks.length > 0;
-      toast(`Deleted "${content}"`, {
-        description: annotated
-          ? 'Its annotations and vocabulary links were deleted with it.'
-          : undefined,
-        duration: 8000,
-        action: {
-          label: 'Undo',
-          onClick: () => {
-            doc.restoreWordToken(snapshot).then((restored) => {
-              if (restored) notifySuccess(`Restored "${content}"`, 'Token Restored');
-            });
-          },
-        },
-      });
-    }
-    return ok;
+    const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    const loss = countAnnotationLossForWord(doc.layerInfo, doc.vocabularies, word);
+    if (loss.annotations + loss.links === 0) return doc.deleteToken(tokenId);
+    setPendingDelete({
+      tokenId,
+      content: word ? cpSlice(doc.body || '', word.begin, word.end) : 'this token',
+      ...loss,
+    });
+    return false; // nothing deleted yet — the dialog decides
   };
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return false;
+    const { tokenId } = pendingDelete;
+    setPendingDelete(null);
+    return doc.deleteToken(tokenId);
+  };
+  const cancelPendingDelete = () => setPendingDelete(null);
   const mergeTokens = (tokenIds) => doc.mergeTokens(tokenIds);
   const mergeSentence = (sentenceId) => doc.mergeSentence(sentenceId);
   const splitSentence = (charPos) => doc.splitSentence(charPos);
@@ -255,6 +256,9 @@ export const useTokenOperations = () => {
     // structural ops
     splitToken,
     deleteToken,
+    pendingDelete,
+    confirmPendingDelete,
+    cancelPendingDelete,
     mergeTokens,
     mergeSentence,
     splitSentence,

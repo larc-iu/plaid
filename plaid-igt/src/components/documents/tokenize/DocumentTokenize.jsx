@@ -297,6 +297,27 @@ export function DocumentTokenize() {
           Words, morphemes, and their annotations are kept.
         </p>
       </ConfirmDeleteDialog>
+
+      {/* Single-token delete confirm: only opens when the token carries
+          annotations (deleteToken deletes unannotated tokens instantly). */}
+      <ConfirmDeleteDialog
+        open={!!ops.pendingDelete}
+        onOpenChange={(o) => { if (!o) ops.cancelPendingDelete(); }}
+        title="Delete Token"
+        confirmLabel="Delete"
+        onConfirm={() => ops.confirmPendingDelete()}
+      >
+        <p className="font-medium text-destructive">Warning</p>
+        <p className="mt-1 text-muted-foreground">
+          Deleting <strong>“{ops.pendingDelete?.content}”</strong> also deletes{' '}
+          <strong>
+            {ops.pendingDelete?.annotations || 0} annotation{ops.pendingDelete?.annotations === 1 ? '' : 's'}
+            {ops.pendingDelete?.links ? ` and ${ops.pendingDelete.links} vocabulary link${ops.pendingDelete.links === 1 ? '' : 's'}` : ''}
+          </strong>{' '}
+          on it — including any from other apps on this project (e.g. UD annotations)
+          that are not visible here. This cannot be undone.
+        </p>
+      </ConfirmDeleteDialog>
     </TooltipProvider>
   );
 }
