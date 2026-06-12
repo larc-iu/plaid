@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { FileText, Search } from 'lucide-react';
+import { FileText, Search, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
@@ -108,10 +108,19 @@ export const ProjectDetail = () => {
         <p className="mt-1 text-xs text-muted-foreground">{project.id}</p>
       </div>
 
-      <Tabs defaultValue="documents">
+      {/* The Settings "tab" is really navigation: project administration lives
+          in its own route-backed shell (ProjectSettingsView at /access etc.),
+          so selecting it leaves this page rather than rendering a panel. */}
+      <Tabs
+        defaultValue="documents"
+        onValueChange={(v) => { if (v === 'settings') navigate(`/projects/${projectId}/access`); }}
+      >
         <TabsList className="tw mb-2">
           <TabsTrigger value="documents"><FileText className="h-4 w-4" /> Documents</TabsTrigger>
           <TabsTrigger value="search"><Search className="h-4 w-4" /> Search</TabsTrigger>
+          {canManage && (
+            <TabsTrigger value="settings"><Settings className="h-4 w-4" /> Settings</TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="documents">
           <DocumentList

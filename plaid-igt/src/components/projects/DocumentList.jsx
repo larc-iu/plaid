@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, ArrowUp, ArrowDown, Settings, Download } from 'lucide-react';
+import { Plus, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +33,6 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
 };
 
 export const DocumentList = ({ documents, project, projectId, client, canManage, onDocumentCreated }) => {
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [documentName, setDocumentName] = useState('');
@@ -143,16 +141,11 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">Documents</h2>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setExportOpen(true)} disabled={!documents.length}>
-            <Download className="h-4 w-4" /> Export
-          </Button>
-          {canManage && (
-            <Button variant="outline" onClick={() => navigate(`/projects/${projectId}/access`)}>
-              <Settings className="h-4 w-4" /> Project Settings
-            </Button>
-          )}
           <Button onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4" /> Create Document
+          </Button>
+          <Button variant="outline" onClick={() => setExportOpen(true)} disabled={!documents.length}>
+            <Download className="h-4 w-4" /> Export
           </Button>
         </div>
       </div>
