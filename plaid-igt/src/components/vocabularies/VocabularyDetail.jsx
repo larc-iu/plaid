@@ -342,8 +342,7 @@ export const VocabularyDetail = () => {
 
         {!isNewVocabulary && (
           <div>
-            <h1 className="mb-1 text-2xl font-bold">{vocabulary?.name}</h1>
-            <p className="mb-4 text-xs text-muted-foreground">{vocabulary?.id}</p>
+            <h1 className="mb-4 text-2xl font-bold">{vocabulary?.name}</h1>
           </div>
         )}
 

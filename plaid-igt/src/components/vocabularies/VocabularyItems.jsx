@@ -580,8 +580,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
                 </h3>
                 {!isNew && selectedItem && (
                   <div className="text-right text-xs text-muted-foreground">
-                    <div>{(usageCounts?.[selectedItem.id] ?? 0).toLocaleString()} use{(usageCounts?.[selectedItem.id] ?? 0) === 1 ? '' : 's'}</div>
-                    <div className="font-mono">{selectedItem.id}</div>
+                    {(usageCounts?.[selectedItem.id] ?? 0).toLocaleString()} use{(usageCounts?.[selectedItem.id] ?? 0) === 1 ? '' : 's'}
                   </div>
                 )}
               </div>

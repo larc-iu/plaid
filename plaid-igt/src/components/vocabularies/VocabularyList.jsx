@@ -174,7 +174,6 @@ export const VocabularyList = () => {
                   <td className="px-4 py-3">
                     <div className="min-w-0">
                       <div className="truncate font-medium">{vocabulary.name}</div>
-                      <div className="truncate text-xs text-muted-foreground">ID: {vocabulary.id}</div>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
