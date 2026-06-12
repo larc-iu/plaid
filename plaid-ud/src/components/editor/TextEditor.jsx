@@ -3,8 +3,9 @@ import { useParams } from 'react-router-dom';
 import {
   SimpleGrid, Stack, Title, Textarea, Button, Group, Text, Alert, Paper, Center, Loader,
 } from '@mantine/core';
+import { cpSlice } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { missingUdLayerLabels, hasForeignSubstrateParticipants } from '../../utils/udLayerUtils.js';
+import { missingUdLayerLabels, hasForeignSubstrateParticipants, foreignAnnotationLossForWord } from '../../utils/udLayerUtils.js';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { confirmDelete } from '../../utils/feedback.jsx';
@@ -130,7 +131,34 @@ export const TextEditor = () => {
   };
 
   const handleWordUpdate = (wordId, begin, end) => doc?.updateWord(wordId, begin, end);
-  const handleWordDelete = (wordId) => doc?.deleteWord(wordId);
+
+  // Deleting a word cascades into layers nested under the shared word layer —
+  // including other apps' (e.g. IGT's morphemes with their glosses and vocab
+  // links), none of which are visible here. Confirm ONLY when such foreign
+  // material would actually die; UD-only projects and unannotated words keep
+  // the instant delete. (Sentence merges and word resizes don't need this:
+  // merge reparents spans to the surviving token, and resize trims nested
+  // tokens in place — neither silently destroys another app's annotations.)
+  const handleWordDelete = (wordId) => {
+    if (!doc) return;
+    const info = doc.layerInfo;
+    const word = info.wordTokenLayer?.tokens?.find((t) => t.id === wordId);
+    const { spans, links } = foreignAnnotationLossForWord(info, word);
+    if (spans + links === 0) return doc.deleteWord(wordId);
+    const surface = word ? cpSlice(textContent, word.begin, word.end) : 'this token';
+    const losses = [
+      spans > 0 && `${spans} annotation${spans === 1 ? '' : 's'}`,
+      links > 0 && `${links} vocabulary link${links === 1 ? '' : 's'}`,
+    ].filter(Boolean).join(' and ');
+    confirmDelete({
+      title: 'Delete token',
+      message: `Deleting “${surface}” will also delete ${losses} from another app on this ` +
+        'project (e.g. interlinear glossing) that are not visible in this editor. ' +
+        'This cannot be undone — are you sure?',
+      confirmLabel: 'Delete',
+      onConfirm: () => doc.deleteWord(wordId),
+    });
+  };
   const handleSentenceBoundaryToggle = (charPos) => doc?.toggleSentenceBoundary(charPos);
   const handleSetWordMorphemes = (word, forms) => doc?.setWordMorphemes(word, forms);
 

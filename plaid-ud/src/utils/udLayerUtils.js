@@ -31,6 +31,64 @@ export const hasForeignSubstrateParticipants = (layerInfo) => {
 export const containsToken = (parent, child) =>
   parent.begin <= child.begin && child.end <= parent.end && child.begin < parent.end;
 
+// Annotations from OTHER apps that deleting `word` would silently destroy.
+// The server cascade takes the word token plus every token in layers nested
+// (transitively) under the word layer and contained in the word's extent —
+// including other apps' layers (e.g. IGT's morphemes) — and with them every
+// span and vocab link those tokens carry. UD's own syntactic-word material
+// also dies, but it's visible in this editor; this counts only the INVISIBLE
+// foreign losses so the UI can warn precisely (and stay silent otherwise).
+// Returns {spans, links}.
+export const foreignAnnotationLossForWord = (layerInfo, word) => {
+  const result = { spans: 0, links: 0 };
+  if (!layerInfo?.textLayer || !word) return result;
+  const tokenLayers = layerInfo.textLayer.tokenLayers || [];
+  const udSpanLayerIds = new Set([
+    layerInfo.formLayer?.id, layerInfo.lemmaLayer?.id, layerInfo.uposLayer?.id,
+    layerInfo.xposLayer?.id, layerInfo.featuresLayer?.id,
+  ].filter(Boolean));
+
+  // Token layers nested (transitively) under the word layer — these cascade.
+  const childrenOf = new Map();
+  tokenLayers.forEach(tl => {
+    if (tl.parentTokenLayer) {
+      if (!childrenOf.has(tl.parentTokenLayer)) childrenOf.set(tl.parentTokenLayer, []);
+      childrenOf.get(tl.parentTokenLayer).push(tl);
+    }
+  });
+  const cascading = [];
+  const queue = [layerInfo.wordTokenLayer?.id].filter(Boolean);
+  while (queue.length) {
+    const id = queue.shift();
+    for (const child of childrenOf.get(id) || []) {
+      cascading.push(child);
+      queue.push(child.id);
+    }
+  }
+
+  // Every token the cascade deletes.
+  const dying = new Set([word.id]);
+  for (const tl of cascading) {
+    (tl.tokens || []).forEach(t => { if (containsToken(word, t)) dying.add(t.id); });
+  }
+
+  // Foreign spans + vocab links riding on dying tokens.
+  for (const tl of [layerInfo.wordTokenLayer, ...cascading].filter(Boolean)) {
+    for (const sl of tl.spanLayers || []) {
+      if (udSpanLayerIds.has(sl.id)) continue;
+      (sl.spans || []).forEach(s => {
+        if (Array.isArray(s.tokens) && s.tokens.some(t => dying.has(t))) result.spans += 1;
+      });
+    }
+    for (const vocab of tl.vocabs || []) {
+      (vocab.vocabLinks || []).forEach(l => {
+        if (Array.isArray(l.tokens) && l.tokens.some(t => dying.has(t))) result.links += 1;
+      });
+    }
+  }
+  return result;
+};
+
 export const UD_RELATION_CONFIG_KEY = 'dependency';
 
 // The three token layers of the UD hierarchy, bound by their shared role:
