@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ServiceParamForm } from '../../documents/services/ServiceParamForm';
 import { ServiceSummary } from '../../documents/services/ServiceSummary';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { IGT_NAMESPACE } from '@/domain/igtConfig';
+import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import {
   BUILTIN_TOKENIZE_RULE_BASED, BUILTIN_LINK_PRECEDENT,
   encodeServiceSelection, encodeBuiltinSelection, decodeSelection,
@@ -71,6 +71,101 @@ function OptionRow({ spotKey, value, label, checked, onSelect, badge, children }
       {badge}
       {children}
     </div>
+  );
+}
+
+// A labeled checkbox in the automatic-analysis card.
+function CheckRow({ id, label, hint, checked, disabled, onChange, indent = false }) {
+  return (
+    <div className={`flex items-start gap-2 ${indent ? 'ml-6' : ''}`}>
+      <input
+        type="checkbox"
+        id={id}
+        className="mt-0.5 h-4 w-4 accent-primary"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <label htmlFor={id} className={`text-sm ${disabled ? 'text-muted-foreground' : 'cursor-pointer'}`}>
+        {label}
+        {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
+      </label>
+    </div>
+  );
+}
+
+// The automatic analysis pass (domain/autoPass.js): runs the BUILT-IN helpers
+// over open documents as editing happens. What belongs here is project-level
+// behavior policy — whether the pass runs at all, and which kinds of material
+// it may write. Per-use algorithm choice (including services) stays in the
+// Auto-link dialog and its defaults above; the automatic pass never calls a
+// service.
+function AutoAnalysisCard({ draft, onChange }) {
+  const set = (key) => (v) => onChange({ ...draft, [key]: v });
+  const copyOn = draft.enabled && draft.copyAnalyses;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Automatic analysis</CardTitle>
+        <CardDescription>
+          While a document is being edited, apply the built-in helpers automatically.
+          Everything they write is marked as unverified (violet) until a person confirms or edits it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2.5">
+        <CheckRow
+          id="auto-analysis-enabled"
+          label="Run automatic analysis while editing"
+          checked={draft.enabled}
+          onChange={set('enabled')}
+        />
+        <CheckRow
+          id="auto-analysis-link"
+          indent
+          label="Link words and morphemes to the lexicon"
+          hint="Follows the project's existing links (strict majority) or a unique matching entry; ambiguity is skipped."
+          checked={draft.autoLink}
+          disabled={!draft.enabled}
+          onChange={set('autoLink')}
+        />
+        <CheckRow
+          id="auto-analysis-copy"
+          indent
+          label="Copy previous analyses onto identical unanalyzed words"
+          hint="When a word form was fully analyzed before (uncontested majority project-wide), copy that analysis. Only words with no analysis at all are touched."
+          checked={draft.copyAnalyses}
+          disabled={!draft.enabled}
+          onChange={set('copyAnalyses')}
+        />
+        <div className="ml-6 space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">What a copy includes:</p>
+          <CheckRow
+            id="auto-analysis-copy-seg"
+            indent
+            label="Morpheme segmentation (forms and types)"
+            checked={draft.copySegmentation}
+            disabled={!copyOn}
+            onChange={set('copySegmentation')}
+          />
+          <CheckRow
+            id="auto-analysis-copy-links"
+            indent
+            label="Lexicon links"
+            checked={draft.copyLinks}
+            disabled={!copyOn}
+            onChange={set('copyLinks')}
+          />
+          <CheckRow
+            id="auto-analysis-copy-fields"
+            indent
+            label="Annotation values (glosses, POS, …)"
+            checked={draft.copyFields}
+            disabled={!copyOn}
+            onChange={set('copyFields')}
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -182,6 +277,7 @@ export const ServicesSettings = ({ projectId, client }) => {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({});
+  const [autoDraft, setAutoDraft] = useState(resolveAutoAnalysis(null));
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -196,6 +292,7 @@ export const ServicesSettings = ({ projectId, client }) => {
       setProject(p);
       setServices(svcs || []);
       setDraft(p?.config?.[IGT_NAMESPACE]?.serviceDefaults || {});
+      setAutoDraft(resolveAutoAnalysis(p?.config));
       setDirty(false);
     } catch (error) {
       notifyError(error.message || 'Failed to load services');
@@ -223,11 +320,17 @@ export const ServicesSettings = ({ projectId, client }) => {
     setDirty(true);
   };
 
+  const setAutoAnalysis = (next) => {
+    setAutoDraft(next);
+    setDirty(true);
+  };
+
   const save = async () => {
     if (!client) return;
     setSaving(true);
     try {
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'serviceDefaults', draft);
+      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'autoAnalysis', autoDraft);
       setDirty(false);
       notifySuccess('Service defaults saved');
     } catch (error) {
@@ -274,6 +377,8 @@ export const ServicesSettings = ({ projectId, client }) => {
           Refresh
         </Button>
       </div>
+
+      <AutoAnalysisCard draft={autoDraft} onChange={setAutoAnalysis} />
 
       {SPOTS.map((spot) => (
         <SpotCard

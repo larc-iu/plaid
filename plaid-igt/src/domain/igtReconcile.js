@@ -7,6 +7,8 @@
 // morphemes whose extent matches no current word (orphans left by a cascade).
 // The server doesn't know IGT's contract, so IGT validates on open and heals.
 
+import { isTokenIgnored, readIgnoredTokens } from './igtConfig.js';
+
 const extentKey = (t) => `${t.begin}:${t.end}`;
 
 /**
@@ -28,6 +30,17 @@ export const planMorphemeReconcile = (layerInfo) => {
   const words = layerInfo.primaryTokenLayer?.tokens || [];
   const morphemes = layerInfo.morphemeTokenLayer.tokens || [];
 
+  // Ignored tokens (e.g. punctuation, per the project's ignored-tokens config)
+  // carry no annotation and render without a morpheme grid, so a morpheme must
+  // never be healed onto them — that would be an invisible morpheme, and a
+  // write-on-open for every punctuation mark across a whole FLEx import. Match
+  // the editor's ignore test exactly (same shared helper + token surface text).
+  const ignoredCfg = readIgnoredTokens(layerInfo.primaryTokenLayer?.config);
+  const chars = ignoredCfg ? [...(layerInfo.primaryTextLayer?.text?.body ?? '')] : null;
+  const isIgnored = ignoredCfg
+    ? (w) => isTokenIgnored(chars.slice(w.begin, w.end).join(''), ignoredCfg)
+    : () => false;
+
   const morphemeExtents = new Set(morphemes.map(extentKey));
   const wordExtents = new Set(words.map(extentKey));
 
@@ -39,7 +52,7 @@ export const planMorphemeReconcile = (layerInfo) => {
   (layerInfo.spanLayers?.morpheme || []).forEach(sl =>
     (sl.spans || []).forEach(sp => (sp.tokens || []).forEach(t => annotated.add(t))));
 
-  const wordsNeedingMorpheme = words.filter(w => !morphemeExtents.has(extentKey(w)));
+  const wordsNeedingMorpheme = words.filter(w => !morphemeExtents.has(extentKey(w)) && !isIgnored(w));
   const orphans = morphemes.filter(m => !wordExtents.has(extentKey(m)));
   const orphanMorphemeIds = orphans.filter(m => !annotated.has(m.id)).map(m => m.id);
   const keptAnnotatedOrphans = orphans.length - orphanMorphemeIds.length;

@@ -13,6 +13,7 @@ import { morphemeMutations } from './mutations/morphemes.js';
 import { vocabMutations } from './mutations/vocab.js';
 import { documentMutations } from './mutations/document.js';
 import { alignmentMutations } from './mutations/alignment.js';
+import { analysisCopyMutations } from './mutations/analysisCopy.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
@@ -487,5 +488,6 @@ Object.assign(
   morphemeMutations,
   vocabMutations,
   documentMutations,
-  alignmentMutations
+  alignmentMutations,
+  analysisCopyMutations
 );

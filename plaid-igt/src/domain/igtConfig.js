@@ -40,6 +40,25 @@ export const readOrthographies = (config) => readIgt(config, 'orthographies') ??
 /** A word token layer's ignored-tokens config: {type, ...}, or null. */
 export const readIgnoredTokens = (config) => readIgt(config, 'ignoredTokens') ?? null;
 
+const PUNCT_RE = /[\p{P}\p{S}]/u;
+/**
+ * Is a token excluded from word-level annotation under an ignored-tokens config
+ * (`readIgnoredTokens` shape)? `content` is the token's surface text. Shared by
+ * the editor render and reconcile so "ignored" means the same in both: ignored
+ * tokens get no annotation cells and no healed morpheme.
+ */
+export const isTokenIgnored = (content, cfg) => {
+  if (!cfg) return false;
+  if (cfg.type === 'unicodePunctuation') {
+    if ([...(content || '')].every((c) => PUNCT_RE.test(c))) {
+      return !(cfg.whitelist || []).includes(content);
+    }
+    return false;
+  }
+  if (cfg.type === 'blacklist') return (cfg.blacklist || []).includes(content);
+  return false;
+};
+
 /** A project's enabled document-metadata fields: [{name}], or null. */
 export const readDocumentMetadata = (config) => readIgt(config, 'documentMetadata') ?? null;
 
@@ -48,3 +67,31 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
 
 /** A vocab layer's custom field schema: {field: {inline}}, or null. */
 export const readVocabFields = (config) => readIgt(config, 'fields') ?? null;
+
+// --- Automatic analysis (the auto-pass: see domain/autoPass.js) -------------
+
+/**
+ * Project defaults for the automatic analysis pass. Everything ON by default —
+ * machine output is stamped with provenance and rendered as unverified, so
+ * the safety story is the visual distinction + verify-on-edit, not opt-in.
+ *   enabled          — master switch for the whole automatic pass
+ *   autoLink         — link unlinked words/morphemes by precedent/unique match
+ *   copyAnalyses     — copy a prior full analysis onto identical unanalyzed words
+ *   copySegmentation — include the morpheme breakdown (forms + types) in copies
+ *   copyLinks        — include vocab links in copies
+ *   copyFields       — include annotation values (glosses etc.) in copies
+ */
+export const AUTO_ANALYSIS_DEFAULTS = Object.freeze({
+  enabled: true,
+  autoLink: true,
+  copyAnalyses: true,
+  copySegmentation: true,
+  copyLinks: true,
+  copyFields: true,
+});
+
+/** The project's autoAnalysis config merged over the defaults. */
+export const resolveAutoAnalysis = (config) => ({
+  ...AUTO_ANALYSIS_DEFAULTS,
+  ...(readIgt(config, 'autoAnalysis') || {}),
+});

@@ -12,8 +12,13 @@
 // invalid input. `throw` inside `_withSaving` is reserved for unexpected
 // failure paths the server is reporting.
 
-import { cpSlice } from '@larc-iu/plaid-client';
+import { cpSlice, verifyOnEdit } from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
+
+// A human edit of a machine-made, unverified morpheme verifies its
+// segmentation (provenance write-contract rule 3): merge { provConfirmed:
+// true } into the same metadata patch. Null-safe spread for human morphemes.
+const verified = (morpheme, patch) => ({ ...patch, ...(verifyOnEdit(morpheme?.metadata) || {}) });
 
 const morphemesInWord = (morphemeTokens, word) =>
   (morphemeTokens || []).filter(m => m.begin === word.begin && m.end === word.end);
@@ -175,7 +180,7 @@ export const morphemeMutations = {
       this._client.beginBatch();
       // patch, not set: form edits must not clobber other metadata keys
       // (morphType from the FLEx import, in particular)
-      this._client.tokens.patchMetadata(morphemeId, { form: firstForm });
+      this._client.tokens.patchMetadata(morphemeId, verified(target, { form: firstForm }));
       shifted.forEach(m => {
         this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + restForms.length);
       });
@@ -199,7 +204,7 @@ export const morphemeMutations = {
         const tokens = layer.tokens || [];
         const t = tokens.find(m => m.id === morphemeId);
         if (t) {
-          t.metadata = { ...(t.metadata || {}), form: firstForm };
+          t.metadata = { ...(t.metadata || {}), ...verified(target, { form: firstForm }) };
         }
         tokens.forEach(m => {
           if (m.begin === target.begin && m.end === target.end && (m.precedence ?? 0) > currentPrecedence) {
@@ -247,7 +252,7 @@ export const morphemeMutations = {
       const subsequents = siblings.slice(idx + 1);
 
       this._client.beginBatch();
-      this._client.tokens.patchMetadata(previous.id, { form: mergedForm });
+      this._client.tokens.patchMetadata(previous.id, verified(previous, { form: mergedForm }));
       this._client.tokens.delete(morphemeId);
       subsequents.forEach(m => {
         this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
@@ -258,7 +263,7 @@ export const morphemeMutations = {
         const layer = infoNext.morphemeTokenLayer;
         if (!layer || !Array.isArray(layer.tokens)) return;
         const prev = layer.tokens.find(m => m.id === previous.id);
-        if (prev) prev.metadata = { ...(prev.metadata || {}), form: mergedForm };
+        if (prev) prev.metadata = { ...(prev.metadata || {}), ...verified(previous, { form: mergedForm }) };
         layer.tokens = layer.tokens.filter(m => m.id !== morphemeId);
         layer.tokens.forEach(m => {
           if (m.begin === target.begin && m.end === target.end && (m.precedence ?? 0) > (target.precedence ?? 0)) {
@@ -320,11 +325,12 @@ export const morphemeMutations = {
     }
 
     return this._withSaving('Failed to update morpheme form', async () => {
-      await this._client.tokens.patchMetadata(morphemeId, { form });
+      const patch = verified(target, { form });
+      await this._client.tokens.patchMetadata(morphemeId, patch);
 
       this._applyRawPatch((next, infoNext) => {
         const m = (infoNext.morphemeTokenLayer?.tokens || []).find(x => x.id === morphemeId);
-        if (m) m.metadata = { ...(m.metadata || {}), form };
+        if (m) m.metadata = { ...(m.metadata || {}), ...patch };
       });
     });
   },
@@ -347,12 +353,13 @@ export const morphemeMutations = {
 
     return this._withSaving('Failed to set morpheme type', async () => {
       // patch semantics: a null value deletes the key
-      await this._client.tokens.patchMetadata(morphemeId, { morphType: morphType ?? null });
+      const confirm = verifyOnEdit(target.metadata) || {};
+      await this._client.tokens.patchMetadata(morphemeId, { morphType: morphType ?? null, ...confirm });
 
       this._applyRawPatch((next, infoNext) => {
         const m = (infoNext.morphemeTokenLayer?.tokens || []).find(x => x.id === morphemeId);
         if (!m) return;
-        const meta = { ...(m.metadata || {}) };
+        const meta = { ...(m.metadata || {}), ...confirm };
         if (morphType == null) delete meta.morphType;
         else meta.morphType = morphType;
         m.metadata = meta;

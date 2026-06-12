@@ -168,6 +168,13 @@
 .igt-legend__chip--word { background: #eff6ff; color: #1d4ed8; border-left-color: var(--igt-blue); }
 .igt-legend__chip--morph { background: #f4f1fb; color: var(--igt-violet); border-left-color: var(--igt-violet); }
 .igt-legend__chip--sent { background: #f0fdf4; color: var(--igt-green); border-left-color: var(--igt-green); }
+/* Provenance swatches in the legend, echoing the cell styles. */
+.igt-legend__prov--machine {
+  color: var(--igt-violet);
+  font-style: italic;
+  border-bottom: 1px dashed #c4b5fd;
+}
+.igt-legend__prov--verified { border-bottom: 1px solid #c4b5fd; }
 .igt-legend kbd {
   font: inherit; font-size: 10px; background: #fff; border: 1px solid #d1d5db;
   border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: #374151;
@@ -400,6 +407,36 @@
 }
 .igt-token-form--clickable { cursor: pointer; }
 
+/* ---- gap column ----
+   Baseline text not covered by any word token (punctuation, stray characters).
+   A slim, non-editable column: only the top (word-form) band is occupied, so
+   the gray header strip stays continuous across it, but there are no
+   annotation rows below — there's nothing to gloss. Muted text marks it as
+   non-editable. */
+.igt-gap-col {
+  display: flex;
+  flex-direction: column;
+  /* Stretch to the band's full height so the column rule (below) runs the
+     whole way down, reading as a real grid column rather than a stray glyph. */
+  align-self: stretch;
+  min-width: 0;
+  width: max-content;
+  border-left: 1px solid #f1f3f5;
+}
+.igt-labels + .igt-gap-col { border-left: none; }
+.igt-gap-form {
+  height: var(--igt-form-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  background: #eef1f5;
+  color: #9aa3b2;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
 .igt-cell {
   height: var(--igt-row-h);
   display: flex;
@@ -407,7 +444,6 @@
   justify-content: center;
   padding: 0 2px;
 }
-.igt-cell--ignored { background: repeating-linear-gradient(45deg, #fafafa, #fafafa 4px, #f0f0f0 4px, #f0f0f0 8px); }
 
 /* ---- editable field ----
    field-sizing lets supporting browsers grow the input to its content (no more
@@ -448,6 +484,26 @@
   opacity: 0.75;
 }
 .igt-field--guess { border-bottom-style: dashed; border-bottom-color: #c4b5fd; }
+
+/* ---- provenance states ----
+   The three-way distinction (human / machine-unverified / machine-verified)
+   on WRITTEN values — annotation cells and machine-created morpheme forms.
+   Unverified reuses the guess color language (violet italic, dashed) but on a
+   real value; verified keeps a quiet solid violet underline so "a machine
+   wrote this, a person vouched" stays visible without shouting. Human values
+   render plain. (These must follow .igt-field--filled: same specificity,
+   source order decides.) Editing a machine value verifies it; Ctrl+Enter
+   confirms a whole word at once. */
+.igt-field--machine {
+  color: var(--igt-violet);
+  font-style: italic;
+  border-bottom-style: dashed;
+  border-bottom-color: #c4b5fd;
+}
+.igt-field--verified {
+  border-bottom-style: solid;
+  border-bottom-color: #c4b5fd;
+}
 .igt-field:disabled { opacity: 0.6; cursor: default; background: transparent; }
 
 /* ---- morpheme sub-grid ---- */
@@ -581,6 +637,20 @@
 .igt-vocab__hint--inferred:focus-visible {
   color: var(--igt-violet);
   text-decoration-color: currentColor;
+}
+/* Auto-made links a person has confirmed: back to the quiet gray, but with a
+   solid violet underline + check so machine origin stays visible. */
+.igt-vocab__hint--verified {
+  text-decoration-style: solid;
+  text-decoration-color: #c4b5fd;
+}
+.igt-vocab__hint--verified::after {
+  content: '✓';
+  font-size: 9px;
+  color: var(--igt-violet);
+  margin-left: 2px;
+  text-decoration: none;
+  display: inline-block;
 }
 /* Unlinked: hidden at rest — a "+ link" under every unlinked form is too
    noisy (user call, 2026-06-10; a fuller vocab-linking rethink is a planned

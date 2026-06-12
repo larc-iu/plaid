@@ -16,7 +16,8 @@ import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
-import { readOrthographies, readIgnoredTokens, readVocabFields } from '@/domain/igtConfig';
+import { provState, PROV_STATES } from '@larc-iu/plaid-client';
+import { readOrthographies, readIgnoredTokens, readVocabFields, isTokenIgnored } from '@/domain/igtConfig';
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import { morphemeJoiner, isStemType, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
@@ -59,23 +60,30 @@ class UncontrolledValueDirective extends Directive {
 }
 const uncontrolledValue = directive(UncontrolledValueDirective);
 
-const PUNCT_RE = /[\p{P}\p{S}]/u;
-function isTokenIgnored(content, cfg) {
-  if (!cfg) return false;
-  if (cfg.type === 'unicodePunctuation') {
-    if ([...(content || '')].every((c) => PUNCT_RE.test(c))) {
-      return !(cfg.whitelist || []).includes(content);
-    }
-    return false;
-  }
-  if (cfg.type === 'blacklist') return (cfg.blacklist || []).includes(content);
-  return false;
-}
-
 const morphFormOf = (m) =>
   m.metadata && Object.prototype.hasOwnProperty.call(m.metadata, 'form')
     ? (m.metadata.form ?? '')
     : (m.content ?? '');
+
+// Display-relevant provenance state of a filled annotation span: 'machine'
+// (unverified, violet + dashed) or 'verified' (confirmed, quiet check); null
+// for human-made values and empty cells, which render plain.
+const spanProv = (span) => {
+  if (!span || (span.value ?? '') === '') return null;
+  const s = provState(span.metadata);
+  return s === PROV_STATES.HUMAN ? null : s;
+};
+
+// Same classification for an entity's raw metadata (morpheme tokens).
+const metaProv = (metadata) => {
+  const s = provState(metadata);
+  return s === PROV_STATES.HUMAN ? null : s;
+};
+
+const PROV_TITLE = {
+  machine: 'machine-suggested, unverified — edit to fix, Ctrl+Enter confirms the whole word',
+  verified: 'machine-suggested, confirmed',
+};
 
 export class IgtEditor {
   constructor(container, doc, { readOnly = false } = {}) {
@@ -431,7 +439,46 @@ export class IgtEditor {
     }
   }
 
+  // Ctrl/Cmd+Enter on any cell of a word column: confirm the WHOLE word's
+  // machine-unverified analysis (segmentation, links, values) in one gesture,
+  // then hop to the same-tier cell of the NEXT word — the review flow is
+  // "glance, Ctrl+Enter, glance, Ctrl+Enter" across a sentence. Deliberate —
+  // plain Enter must stay safe to navigate with. The hop skips the rest of
+  // the current word (it was just confirmed wholesale, cell-by-cell movement
+  // through it adds nothing) and advances even when nothing needed confirming,
+  // so the gesture rides smoothly across mixed machine/human words.
+  _maybeConfirmWord(e) {
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return false;
+    const wordId = e.target.dataset.confirmWord;
+    if (!wordId || this.readOnly) return false;
+    e.preventDefault();
+    this._run(() => this.doc.confirmWordAnalysis(wordId));
+    if (!this._advanceToNextWord(e.target, wordId)) e.target.blur();
+    return true;
+  }
+
+  // Focus the first cell after `el` (DOM order) that sits on the same tier but
+  // belongs to a different word column. Words missing the tier (and inert
+  // punctuation columns) are skipped naturally; sentence boundaries are
+  // crossed. False when there is no later word on this page.
+  _advanceToNextWord(el, wordId) {
+    const tier = this._tierOf(el);
+    const fields = this._navFields();
+    const start = fields.indexOf(el);
+    if (start === -1) return false;
+    for (let i = start + 1; i < fields.length; i++) {
+      const f = fields[i];
+      if (f.dataset.confirmWord && f.dataset.confirmWord !== wordId && this._tierOf(f) === tier) {
+        f.focus();
+        try { f.select(); } catch { /* not selectable */ }
+        return true;
+      }
+    }
+    return false;
+  }
+
   _basicKeydown = (e) => {
+    if (this._maybeConfirmWord(e)) return;
     if (e.key === 'Enter' || e.key === 'Tab') this._maybeConfirmGuess(e.target);
     if (e.key === 'Enter') {
       // Commit and advance to the next cell in the same tier (the "fill a row
@@ -439,6 +486,12 @@ export class IgtEditor {
       // (which commits) when there's no next cell.
       e.preventDefault();
       if (!this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.target.blur();
+    } else if (e.key === 'Tab') {
+      // Tab matches Enter: same-tier, not the browser's DOM order (which runs
+      // DOWN the column — almost never the glossing flow). When there's no
+      // further cell on the tier, fall through to the default so keyboard
+      // users can still tab out of the grid.
+      if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.target.value = e.target.dataset.orig ?? '';
@@ -544,7 +597,7 @@ export class IgtEditor {
     this._run(() => apply(next, prov));
   }
 
-  _field({ key, value, apply, extraClass = '', sentence = false, ariaLabel, guess = null }) {
+  _field({ key, value, apply, extraClass = '', sentence = false, ariaLabel, guess = null, prov = null, confirmWord = null }) {
     const v = value ?? '';
     const filled = v !== '';
     // A guess renders as a styled placeholder: the input VALUE stays empty, so
@@ -567,13 +620,15 @@ export class IgtEditor {
         @blur=${(e) => this._commitField(e, apply)}
       ></textarea>`;
     }
+    const p = filled ? prov : null;
     return html`<input
-      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g ? 'igt-field--guess' : ''} ${extraClass}"
+      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g ? 'igt-field--guess' : ''} ${p ? `igt-field--${p}` : ''} ${extraClass}"
       data-cell-key=${key}
       data-guess-value=${g ? g.value : nothing}
       data-guess-source=${g ? g.source : nothing}
+      data-confirm-word=${confirmWord ?? nothing}
       aria-label=${ariaLabel ?? nothing}
-      title=${g ? `Guess: ${g.value} — Enter confirms, typing replaces` : (filled ? v : (ariaLabel ?? nothing))}
+      title=${g ? `Guess: ${g.value} — Enter confirms, typing replaces` : (p ? `${v} — ${PROV_TITLE[p]}` : (filled ? v : (ariaLabel ?? nothing)))}
       placeholder=${g ? g.value : nothing}
       size=${this._fieldSize(g ? g.value : v)}
       ?disabled=${this.readOnly}
@@ -591,9 +646,14 @@ export class IgtEditor {
   };
 
   // Enter commits (the value is logically one translation); Shift+Enter inserts
-  // a newline; Escape reverts.
+  // a newline; Tab hops to the same field in the next sentence (fill all
+  // translations top to bottom), falling through to the default at the end;
+  // Escape reverts.
   _sentenceKeydown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); }
+    else if (e.key === 'Tab') {
+      if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
+    }
     else if (e.key === 'Escape') {
       e.preventDefault();
       e.target.value = e.target.dataset.orig ?? '';
@@ -611,9 +671,16 @@ export class IgtEditor {
   // ---- morpheme form field (adds split/merge/delete key handling) ----
   _morphFormKeydown(morph, word, siblings) {
     return async (e) => {
+      if (this._maybeConfirmWord(e)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         if (!this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.target.blur();
+        return;
+      }
+      if (e.key === 'Tab') {
+        // Same-tier like Enter (next/previous morpheme form); default tab-out
+        // when the tier is exhausted.
+        if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
         return;
       }
       if (e.key === 'ArrowDown') { if (this._navMove(e.target, 'down')) e.preventDefault(); return; }
@@ -895,7 +962,7 @@ export class IgtEditor {
         </div>
         <div class="igt-legend__row">
           <strong>Navigate</strong>
-          <span><kbd>Enter</kbd> next cell · <kbd>⇧</kbd><kbd>Enter</kbd> previous · <kbd>↑</kbd><kbd>↓</kbd> move rows · <kbd>Tab</kbd> next field · <kbd>Esc</kbd> cancel edit</span>
+          <span><kbd>Enter</kbd>/<kbd>Tab</kbd> next cell in the same row · <kbd>⇧</kbd>+ previous · <kbd>↑</kbd><kbd>↓</kbd> move rows · <kbd>Esc</kbd> cancel edit</span>
         </div>
         ${ctx.hasMorphemes ? html`
           <div class="igt-legend__row">
@@ -905,6 +972,12 @@ export class IgtEditor {
         <div class="igt-legend__row">
           <strong>Guesses</strong>
           <span>violet italic values are guesses from matching forms — <kbd>↵</kbd>/<kbd>Tab</kbd> confirms, typing replaces, leaving the cell discards</span>
+        </div>
+        <div class="igt-legend__row">
+          <strong>Provenance</strong>
+          <span><span class="igt-legend__prov igt-legend__prov--machine">violet dashed</span> = machine-made, unverified ·
+            <span class="igt-legend__prov igt-legend__prov--verified">underlined ✓</span> = machine-made, confirmed by a person ·
+            plain = made by a person · editing a value confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> confirms a whole word and jumps to the next</span>
         </div>
         <div class="igt-legend__row">
           <strong>Lexicon</strong>
@@ -1000,6 +1073,12 @@ export class IgtEditor {
   }
 
   _sentence(sentence, index, ctx) {
+    // Render word columns interleaved with the baseline text that no word token
+    // covers (punctuation, stray characters): each such run gets a slim,
+    // non-editable "gap" column so it stays visible in its true position.
+    // Whitespace-only gaps (ordinary inter-word spacing) are dropped.
+    const cols = sentence.pieces.filter(
+      (p) => p.isToken || (p.content || '').trim() !== '');
     return html`
       <div class="igt-sentence" data-sentence-id=${sentence.id} role="group" aria-label=${`Sentence ${index + 1}`}>
         <h3 class="igt-sr-only">Sentence ${index + 1}</h3>
@@ -1008,7 +1087,10 @@ export class IgtEditor {
         <div class="igt-grid">
           <div class="igt-tokens">
             ${this._labels(ctx)}
-            ${repeat(sentence.tokens, (t) => t.id, (t) => this._tokenCol(t, ctx))}
+            ${repeat(
+              cols,
+              (p) => (p.isToken ? p.id : `gap:${p.begin}-${p.end}`),
+              (p) => (p.isToken ? this._tokenCol(p, ctx) : this._gapCol(p)))}
           </div>
         </div>
         ${this._sentenceAnnos(sentence, index, ctx)}
@@ -1035,7 +1117,13 @@ export class IgtEditor {
   }
 
   _tokenCol(token, ctx) {
-    const ignored = isTokenIgnored(token.content, ctx.ignoredCfg);
+    // Ignored tokens (punctuation, per the project's ignored-tokens config) are
+    // real word tokens but carry no annotation — no orthographies, no gloss, no
+    // lexicon link, and no morpheme is healed onto them (see igtReconcile). They
+    // render like a gap: in the text, but plainly not glossed.
+    if (isTokenIgnored(token.content, ctx.ignoredCfg)) {
+      return this._inertCol(token.content, `${token.content} — excluded from annotation`);
+    }
     return html`
       <div class="igt-token-col">
         <div class="igt-token-form" title=${token.content}>
@@ -1051,20 +1139,41 @@ export class IgtEditor {
             })}
           </div>
         `)}
-        ${ctx.wordFields.map((name) => ignored
-          ? html`<div class="igt-cell igt-cell--ignored" title=${`${token.content} — excluded from word annotation`}></div>`
-          : html`<div class="igt-cell">
-              ${this._field({
-                key: `wa:${token.id}:${name}`,
-                value: token.annotations?.[name]?.value ?? '',
-                apply: (v, prov) => this.doc.updateTokenSpan(token.id, name, v, prov),
-                ariaLabel: `${name} for ${token.content}`,
-                guess: ctx.guess?.guessFor('word', token.content, name) ?? null,
-              })}
-            </div>`)}
+        ${ctx.wordFields.map((name) => html`<div class="igt-cell">
+            ${this._field({
+              key: `wa:${token.id}:${name}`,
+              value: token.annotations?.[name]?.value ?? '',
+              apply: (v, prov) => this.doc.updateTokenSpan(token.id, name, v, prov),
+              ariaLabel: `${name} for ${token.content}`,
+              guess: ctx.guess?.guessFor('word', token.content, name) ?? null,
+              prov: spanProv(token.annotations?.[name]),
+              confirmWord: token.id,
+            })}
+          </div>`)}
         ${ctx.hasMorphemes ? this._morphemes(token, ctx) : nothing}
       </div>
     `;
+  }
+
+  // A slim, non-editable column for baseline text that carries no annotation:
+  // both gaps (text no token covers) and ignored word tokens (e.g. punctuation)
+  // render this way — the text in the header, nothing editable below, a
+  // full-height column rule so it reads as a real grid column. Only the top
+  // (word-form) band is occupied, so the gray header strip stays continuous.
+  _inertCol(content, title) {
+    const text = (content || '').trim();
+    return html`
+      <div class="igt-gap-col">
+        <div class="igt-gap-form" title=${title}>${text}</div>
+      </div>
+    `;
+  }
+
+  // A run of baseline text that no word token covers — punctuation, stray
+  // characters, anything between or around tokens.
+  _gapCol(piece) {
+    const text = (piece.content || '').trim();
+    return this._inertCol(text, `${text} — not part of any word`);
   }
 
   _morphemes(token, ctx) {
@@ -1092,17 +1201,21 @@ export class IgtEditor {
     // Chips linked to a stem/root lexicon entry keep the lavender accent —
     // a coverage cue for lexical identification; everything else stays quiet.
     const stem = isStemType(morph.vocabItem?.metadata?.morphType);
+    // Machine-made segmentation (copied analyses) marks the morpheme TOKEN's
+    // metadata; the form cell carries the unverified/verified styling.
+    const prov = metaProv(morph.metadata);
     return html`
       <div class="igt-morph-col">
         <div class="igt-morph-form ${stem ? 'igt-morph-form--stem' : ''}">
           ${this._vocabFace(
             html`<input
-              class="igt-field igt-morph-field ${filled ? 'igt-field--filled' : 'igt-field--empty'}"
+              class="igt-field igt-morph-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${prov ? `igt-field--${prov}` : ''}"
               data-cell-key=${`mf:${morph.id}`}
               data-word=${word.id}
               data-prec=${morph.precedence ?? 1}
+              data-confirm-word=${word.id}
               aria-label=${`Morpheme form${value ? ` ${value}` : ''}`}
-              title=${filled ? value : nothing}
+              title=${prov ? `${value} — ${PROV_TITLE[prov]}` : (filled ? value : nothing)}
               size=${this._fieldSize(value)}
               ?disabled=${this.readOnly}
               ${uncontrolledValue(value)}
@@ -1124,6 +1237,8 @@ export class IgtEditor {
               extraClass: 'igt-morph-field',
               ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
               guess: ctx.guess?.guessFor('morpheme', value, name) ?? null,
+              prov: spanProv(morph.annotations?.[name]),
+              confirmWord: word.id,
             })}
           </div>
         `)}
@@ -1168,13 +1283,20 @@ export class IgtEditor {
     };
     let opener = nothing;
     if (vocabItem) {
-      const inferred = !!vocabItem.inferred;
+      // Three-way provenance: human links plain, machine-unverified violet
+      // ("inferred"), machine-verified quietly marked.
+      const state = vocabItem.prov ?? PROV_STATES.HUMAN;
+      const stateClass = state === PROV_STATES.MACHINE ? 'igt-vocab__hint--inferred'
+        : state === PROV_STATES.VERIFIED ? 'igt-vocab__hint--verified' : '';
+      const title = state === PROV_STATES.MACHINE
+        ? `Auto-linked to "${vocabItem.form}" — open to confirm or change`
+        : state === PROV_STATES.VERIFIED
+          ? `Linked to "${vocabItem.form}" — auto-linked, confirmed${canLink ? ' · manage' : ''}`
+          : `Linked to "${vocabItem.form}"${canLink ? ' — manage' : ''}`;
       const sub = this._homonymSub(vocabItem);
-      opener = html`<button type="button" class="igt-vocab__opener igt-vocab__hint ${inferred ? 'igt-vocab__hint--inferred' : ''}"
+      opener = html`<button type="button" class="igt-vocab__opener igt-vocab__hint ${stateClass}"
         data-vocab-opener=${id} ?disabled=${!canLink}
-        title=${inferred
-          ? `Auto-linked to "${vocabItem.form}" — open to confirm or change`
-          : `Linked to "${vocabItem.form}"${canLink ? ' — manage' : ''}`}
+        title=${title}
         @click=${openerClick}>${vocabItem.form}${sub != null ? html`<sub class="igt-vocab__sub">${sub}</sub>` : nothing}</button>`;
     } else if (canLink) {
       opener = html`<button type="button" class="igt-vocab__opener igt-vocab__link"

@@ -274,8 +274,10 @@ function collectSingleTokenVocabLinks(vocabularies) {
         vocabId: vocab.id,
         vocabName: vocab.name,
         linkId: link.id,
-        // Machine-made and not yet human-confirmed (provenance convention) —
-        // the editor renders these distinctly.
+        // Provenance state ('human' | 'machine' | 'verified') — the editor
+        // renders all three distinctly. `inferred` kept as the legacy boolean
+        // (machine-made and not yet human-confirmed).
+        prov: provState(linkMeta),
         inferred: provState(linkMeta) === PROV_STATES.MACHINE
       };
     });
