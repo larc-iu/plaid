@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
-import { planMorphemeReconcile } from './igtReconcile.js';
+import { planMorphemeReconcile, planSentenceSpanDedup } from './igtReconcile.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 
 const makeDoc = (raw, client) => new IgtDocument({
@@ -62,6 +62,52 @@ describe('planMorphemeReconcile', () => {
   it('is empty when there is no morpheme layer (foreign project not yet adopted)', () => {
     expect(planMorphemeReconcile({ primaryTokenLayer: { tokens: twoWords } }))
       .toEqual({ wordsNeedingMorpheme: [], orphanMorphemeIds: [], keptAnnotatedOrphans: 0 });
+  });
+});
+
+describe('planSentenceSpanDedup', () => {
+  const layerInfoWith = (spans) => ({
+    spanLayers: { sentence: [{ id: 'sl-trans', name: 'Translation', spans }] },
+  });
+
+  it('joins distinct duplicate values into the first span, deletes the rest', () => {
+    const plans = planSentenceSpanDedup(layerInfoWith([
+      { id: 's1', tokens: ['snt1'], value: 'left half' },
+      { id: 's2', tokens: ['snt1'], value: 'right half' },
+      { id: 's3', tokens: ['snt2'], value: 'unrelated' },
+    ]));
+    expect(plans).toEqual([{
+      layerId: 'sl-trans', layerName: 'Translation', tokenId: 'snt1',
+      keepSpanId: 's1', mergedValue: 'left half | right half',
+      needsUpdate: true, deleteSpanIds: ['s2'],
+    }]);
+  });
+
+  it('collapses identical duplicates without joining', () => {
+    const plans = planSentenceSpanDedup(layerInfoWith([
+      { id: 's1', tokens: ['snt1'], value: 'same' },
+      { id: 's2', tokens: ['snt1'], value: 'same' },
+    ]));
+    expect(plans[0].mergedValue).toBe('same');
+    expect(plans[0].needsUpdate).toBe(false);
+    expect(plans[0].deleteSpanIds).toEqual(['s2']);
+  });
+
+  it('skips empty values when joining', () => {
+    const plans = planSentenceSpanDedup(layerInfoWith([
+      { id: 's1', tokens: ['snt1'], value: '' },
+      { id: 's2', tokens: ['snt1'], value: 'only real value' },
+    ]));
+    expect(plans[0].mergedValue).toBe('only real value');
+    expect(plans[0].needsUpdate).toBe(true);
+  });
+
+  it('leaves singletons and multi-token spans alone', () => {
+    expect(planSentenceSpanDedup(layerInfoWith([
+      { id: 's1', tokens: ['snt1'], value: 'fine' },
+      { id: 's2', tokens: ['snt1', 'snt2'], value: 'exotic multi-token span' },
+    ]))).toEqual([]);
+    expect(planSentenceSpanDedup({})).toEqual([]);
   });
 });
 

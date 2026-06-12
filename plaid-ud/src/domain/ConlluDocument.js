@@ -974,32 +974,6 @@ export class ConlluDocument {
     });
   }
 
-  // Adjust a word's character extent (boundary editing). Keeps its
-  // morphemes in lockstep — they resize to the new extent in the same
-  // atomic batch so the word and its morphemes never disagree.
-  async updateWord(wordId, begin, end) {
-    return this._withSaving('Failed to update word', async () => {
-      const { wordTokenLayer, morphemeTokenLayer } = this.layerInfo;
-      const wordTokens = wordTokenLayer?.tokens || [];
-      const morphemeTokens = morphemeTokenLayer?.tokens || [];
-      const word = wordTokens.find(w => w.id === wordId);
-      const morphIds = word ? morphemeTokens.filter(m => containsToken(word, m)).map(m => m.id) : [];
-      this._client.beginBatch();
-      this._client.tokens.update(wordId, begin, end);
-      morphIds.forEach(mid => this._client.tokens.update(mid, begin, end));
-      // Optimistic: resize the word + its morphemes locally before the round trip.
-      this._applyRawPatch((next, info) => {
-        const w = info.wordTokenLayer?.tokens?.find(t => t.id === wordId);
-        if (w) { w.begin = begin; w.end = end; }
-        morphIds.forEach(mid => {
-          const m = info.morphemeTokenLayer?.tokens?.find(t => t.id === mid);
-          if (m) { m.begin = begin; m.end = end; }
-        });
-      });
-      await this._client.submitBatch();
-    });
-  }
-
   // ============================================================
   // Annotation operations (lemma / upos / xpos / form / features)
   // ============================================================

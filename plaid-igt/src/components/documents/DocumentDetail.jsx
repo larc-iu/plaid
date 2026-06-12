@@ -95,7 +95,9 @@ const DocumentEditor = () => {
     let cancelled = false;
     (async () => {
       try {
-        const { created = 0, deleted = 0, keptAnnotatedOrphans = 0, error } = await doc.reconcileOnOpen();
+        const {
+          created = 0, deleted = 0, keptAnnotatedOrphans = 0, dedupedSentenceSpans = 0, error,
+        } = await doc.reconcileOnOpen();
         if (cancelled) return;
         if (error) {
           notifyError(
@@ -104,12 +106,15 @@ const DocumentEditor = () => {
           );
           return;
         }
-        if (created + deleted + keptAnnotatedOrphans === 0) return;
+        if (created + deleted + keptAnnotatedOrphans + dedupedSentenceSpans === 0) return;
         const parts = [];
         if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
         if (deleted) parts.push(`removed ${deleted} empty orphaned morpheme${deleted === 1 ? '' : 's'}`);
         if (keptAnnotatedOrphans) {
           parts.push(`kept ${keptAnnotatedOrphans} annotated morpheme${keptAnnotatedOrphans === 1 ? '' : 's'} that no longer match a word (their glosses were preserved — reattach or delete them)`);
+        }
+        if (dedupedSentenceSpans) {
+          parts.push(`merged ${dedupedSentenceSpans} duplicate sentence annotation${dedupedSentenceSpans === 1 ? '' : 's'} left by a sentence merge in another app (the values were joined with ' | ' — review them)`);
         }
         notifyWarning(
           `Repaired this document after an edit in another app: ${parts.join('; ')}. Please review.`,

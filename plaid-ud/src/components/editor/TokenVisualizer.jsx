@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { Alert, Text } from '@mantine/core';
 import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
 import { containsToken } from '../../utils/udLayerUtils.js';
@@ -11,10 +11,13 @@ import classes from './TokenVisualizer.module.css';
 // morpheme editor. Sentences are shown by a green border on each sentence's
 // first word and toggled by clicking a word (split/merge server-side).
 //
-// Supports the original editor's affordances: select text to create a word,
-// hover tooltip (id / range / text), Edit Range, keyboard boundary nudge
-// (s/S grow/shrink begin, d/D grow/shrink end), delete, and a live preview that
-// relocates words when the document text is edited after tokenization.
+// Affordances: select text to create a word, hover tooltip (id / range /
+// text), morpheme editor, delete, and a live preview that relocates words when
+// the document text is edited after tokenization. There is deliberately NO
+// word-resize affordance: a resize keeps token identity while changing what
+// the token means, so annotations (incl. other apps' glosses on a shared
+// substrate) silently drift onto different text. Boundary fixes are
+// delete + re-create, which routes through the foreign-annotation warning.
 export const TokenVisualizer = ({
   text = '',
   originalText = '',
@@ -23,7 +26,6 @@ export const TokenVisualizer = ({
   morphemeTokens = [],
   morphemeForms = new Map(),
   onWordCreate,
-  onWordUpdate,
   onWordDelete,
   onSentenceToggle,
   onSetWordMorphemes,
@@ -36,9 +38,6 @@ export const TokenVisualizer = ({
     else notifyError(msg);
   };
   const [hoveredWord, setHoveredWord] = useState(null);
-  const [editingWord, setEditingWord] = useState(null);
-  const [editBegin, setEditBegin] = useState('');
-  const [editEnd, setEditEnd] = useState('');
   const [morphemeWord, setMorphemeWord] = useState(null);
   const [draftForms, setDraftForms] = useState([]);
   const closeTimeoutRef = useRef(null);
@@ -72,35 +71,6 @@ export const TokenVisualizer = ({
     return (f != null && f !== '') ? f : cpSlice(text, word.begin, word.end);
   };
 
-  // --- keyboard boundary nudge on the hovered word ---
-  // The handler is defined INSIDE the effect so add/remove see the same
-  // identity — previously it was recreated on each render and the listener
-  // leaked.
-  useEffect(() => {
-    const handleKeyDown = async (event) => {
-      if (!hoveredWord || editingWord || morphemeWord || isTextDirty) return;
-      let nb = hoveredWord.begin;
-      let ne = hoveredWord.end;
-      switch (event.key) {
-        case 's': nb -= 1; break;
-        case 'S': nb += 1; break;
-        case 'd': ne += 1; break;
-        case 'D': ne -= 1; break;
-        default: return;
-      }
-      if (nb < 0 || ne > cpLength(text) || nb >= ne) return;
-      event.preventDefault();
-      try {
-        await onWordUpdate?.(hoveredWord.id, nb, ne);
-        setHoveredWord({ ...hoveredWord, begin: nb, end: ne });
-      } catch (e) {
-        console.error('Word update failed:', e);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [hoveredWord, editingWord, morphemeWord, isTextDirty, text, onWordUpdate]);
-
   // --- hover tooltip timing ---
   // Open the tooltip only after the cursor lingers on a badge for a moment.
   // Pass-overs through multiple badges should NOT flash tooltips on each;
@@ -115,7 +85,7 @@ export const TokenVisualizer = ({
   // Once the mouse is INSIDE the tooltip, leaving its edge for a moment
   // (e.g. mousing past a button) shouldn't dismiss it instantly either.
   const TOOLTIP_LEAVE_DELAY_MS = 250;
-  // When a popup (morpheme editor / edit-range modal) closes, the cursor is
+  // When a popup (the morpheme editor) closes, the cursor is
   // usually still over the badge, so removing the popup fires a mouseenter on
   // the badge and the tooltip pops back up. Suppress hover-opens for a short
   // window after an explicit close so Save/Cancel actually dismisses the UI.
@@ -160,37 +130,6 @@ export const TokenVisualizer = ({
       closeTimeoutRef.current = null;
       setHoveredWord(null);
     }, TOOLTIP_LEAVE_DELAY_MS);
-  };
-
-  // --- boundary edit modal ---
-  const handleEditClick = (word) => {
-    setEditingWord(word);
-    setEditBegin(String(word.begin));
-    setEditEnd(String(word.end));
-    setHoveredWord(null);
-  };
-  const handleEditCancel = () => {
-    setEditingWord(null);
-    setHoveredWord(null);
-    cancelPendingTimer();
-    suppressHover();
-  };
-  const validateAndSave = async () => {
-    const nb = parseInt(editBegin, 10);
-    const ne = parseInt(editEnd, 10);
-    if (Number.isNaN(nb) || Number.isNaN(ne) || nb < 0 || ne > cpLength(text) || nb >= ne) {
-      reportError('Invalid range');
-      return;
-    }
-    try {
-      await onWordUpdate?.(editingWord.id, nb, ne);
-      setEditingWord(null);
-      setHoveredWord(null);
-      cancelPendingTimer();
-      suppressHover();
-    } catch (e) {
-      console.error('Word update failed:', e);
-    }
   };
 
   const handleDeleteClick = async (word) => {
@@ -377,7 +316,7 @@ export const TokenVisualizer = ({
       >
         {display}
 
-        {hoveredWord && hoveredWord.id === word.id && !editingWord && !morphemeWord && (
+        {hoveredWord && hoveredWord.id === word.id && !morphemeWord && (
           // Overlap the badge by a few px (negative top margin) so the mouse
           // can travel from badge to tooltip without crossing empty row-gap
           // — that gap occasionally hits a sibling badge mid-traverse and
@@ -414,37 +353,10 @@ export const TokenVisualizer = ({
             )}
 
             <div className={classes.tooltipActions}>
-              <button onClick={() => handleEditClick(word)} className={`${classes.tipBtn} ${classes.tipBtnEdit}`}>Edit Range</button>
               {onSetWordMorphemes && (
                 <button onClick={() => openMorphemeEditor(word)} className={`${classes.tipBtn} ${classes.tipBtnMorph}`}>Morphemes</button>
               )}
               <button onClick={() => handleDeleteClick(word)} className={`${classes.tipBtn} ${classes.tipBtnDelete}`}>Delete</button>
-            </div>
-          </div>
-        )}
-
-        {editingWord && editingWord.id === word.id && (
-          <div
-            className={`tv-overlay ${classes.popover}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ marginBottom: '0.75rem' }}>
-              <div className={classes.popoverTitle}>Edit Word Range</div>
-              <div className={classes.popoverSub}>Word: &quot;{cpSlice(text, editingWord.begin, editingWord.end)}&quot;</div>
-            </div>
-            <div className={classes.rangeGrid}>
-              <div>
-                <label className={classes.fieldLabel}>Begin</label>
-                <input type="number" value={editBegin} onChange={(e) => setEditBegin(e.target.value)} className={classes.numInput} min="0" max={cpLength(text)} />
-              </div>
-              <div>
-                <label className={classes.fieldLabel}>End</label>
-                <input type="number" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} className={classes.numInput} min="1" max={cpLength(text)} />
-              </div>
-            </div>
-            <div className={classes.popoverActions}>
-              <button onClick={validateAndSave} className={classes.saveBtn}>Save</button>
-              <button onClick={handleEditCancel} className={classes.cancelBtn}>Cancel</button>
             </div>
           </div>
         )}
@@ -542,7 +454,7 @@ export const TokenVisualizer = ({
         {renderText()}
       </div>
       <p className={classes.hint}>
-        Click a word to toggle a sentence boundary; hover for Edit Range / Morphemes / Delete; select text to create a word.
+        Click a word to toggle a sentence boundary; hover for Morphemes / Delete; select text to create a word.
         With a word hovered, <code>s</code>/<code>S</code> move its start, <code>d</code>/<code>D</code> move its end.
       </p>
     </div>

@@ -46,3 +46,51 @@ export const planMorphemeReconcile = (layerInfo) => {
 
   return { wordsNeedingMorpheme, orphanMorphemeIds, keptAnnotatedOrphans };
 };
+
+/**
+ * Heal plan for duplicate sentence-level spans. IGT's contract: at most ONE
+ * span per sentence-scope layer per sentence token. A sentence merge in
+ * another app (the server's tokens.merge reparents the dying token's spans to
+ * the survivor) leaves duplicates — which this editor neither shows nor can
+ * edit (the derive step renders the FIRST span per layer; the rest are
+ * invisible and immortal). Heal LOSSLESSLY: concatenate the distinct values
+ * into the first span (' | ') and delete the rest, so everything is visible
+ * for a human to revise. Reported loudly by the caller.
+ *
+ * Returns [{layerId, layerName, tokenId, keepSpanId, mergedValue, needsUpdate,
+ * deleteSpanIds}] — one entry per (layer, sentence token) with >1 span.
+ */
+export const planSentenceSpanDedup = (layerInfo) => {
+  const plans = [];
+  for (const sl of layerInfo?.spanLayers?.sentence || []) {
+    const byToken = new Map();
+    for (const sp of sl.spans || []) {
+      // IGT sentence spans are single-token by construction; leave anything
+      // exotic (multi-token spans) alone.
+      if (!Array.isArray(sp.tokens) || sp.tokens.length !== 1) continue;
+      const tid = sp.tokens[0];
+      if (!byToken.has(tid)) byToken.set(tid, []);
+      byToken.get(tid).push(sp);
+    }
+    byToken.forEach((spans, tokenId) => {
+      if (spans.length < 2) return;
+      const values = [];
+      for (const sp of spans) {
+        const v = sp.value == null ? '' : String(sp.value);
+        if (v !== '' && !values.includes(v)) values.push(v);
+      }
+      const mergedValue = values.join(' | ');
+      const firstValue = spans[0].value == null ? '' : String(spans[0].value);
+      plans.push({
+        layerId: sl.id,
+        layerName: sl.name,
+        tokenId,
+        keepSpanId: spans[0].id,
+        mergedValue,
+        needsUpdate: mergedValue !== firstValue,
+        deleteSpanIds: spans.slice(1).map(s => s.id),
+      });
+    });
+  }
+  return plans;
+};

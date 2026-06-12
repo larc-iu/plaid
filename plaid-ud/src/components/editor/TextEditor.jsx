@@ -130,15 +130,15 @@ export const TextEditor = () => {
     if (ok && !originalTokenizedText) setOriginalTokenizedText(textContent);
   };
 
-  const handleWordUpdate = (wordId, begin, end) => doc?.updateWord(wordId, begin, end);
-
   // Deleting a word cascades into layers nested under the shared word layer —
   // including other apps' (e.g. IGT's morphemes with their glosses and vocab
   // links), none of which are visible here. Confirm ONLY when such foreign
   // material would actually die; UD-only projects and unannotated words keep
-  // the instant delete. (Sentence merges and word resizes don't need this:
-  // merge reparents spans to the surviving token, and resize trims nested
-  // tokens in place — neither silently destroys another app's annotations.)
+  // the instant delete. (Sentence merges don't need this: the server reparents
+  // the dying token's spans to the survivor. Word RESIZING was removed
+  // outright — a resize keeps token identity while changing what it means, so
+  // annotations silently drift onto different text; boundary fixes are now
+  // delete + re-create, which routes through this warning.)
   const handleWordDelete = (wordId) => {
     if (!doc) return;
     const info = doc.layerInfo;
@@ -309,7 +309,6 @@ This is a second sentence for testing.`}
             morphemeTokens={morphemeTokens}
             morphemeForms={morphemeForms}
             onWordCreate={readOnly ? null : handleWordCreate}
-            onWordUpdate={readOnly ? null : handleWordUpdate}
             onWordDelete={readOnly ? null : handleWordDelete}
             onSentenceToggle={readOnly ? null : handleSentenceBoundaryToggle}
             onSetWordMorphemes={readOnly ? null : handleSetWordMorphemes}

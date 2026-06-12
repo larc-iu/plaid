@@ -1,5 +1,5 @@
 import { getIgtLayerInfo } from './layerInfo.js';
-import { planMorphemeReconcile } from './igtReconcile.js';
+import { planMorphemeReconcile, planSentenceSpanDedup } from './igtReconcile.js';
 import {
   deriveDocumentData,
   deriveSentences,
@@ -240,52 +240,90 @@ export class IgtDocument {
   }
 
   // Reconcile-on-open: repair IGT invariants another app may have broken while
-  // editing the shared substrate. Currently the morpheme layer: every word must
-  // have a full-width morpheme, and morphemes whose extent matches no word are
-  // orphans. Heal downward (the word tokenization is authoritative): delete
-  // orphan morphemes and create a default morpheme for each bare word. Loud +
-  // recoverable. Deliberately NOT via _withSaving (a heal failure must not
-  // reload-and-revert the freshly loaded document).
+  // editing the shared substrate. Two repairs:
+  //  - Morphemes: every word must have a full-width morpheme; morphemes whose
+  //    extent matches no word are orphans. Heal downward (the word
+  //    tokenization is authoritative): delete unannotated orphans, keep +
+  //    report annotated ones, create a default morpheme for each bare word.
+  //  - Duplicate sentence spans: a sentence merge elsewhere reparents the
+  //    dying sentence's spans onto the survivor, leaving >1 span per layer —
+  //    invisible here (the editor renders/edits only the first). Heal
+  //    losslessly: concatenate distinct values into the first span and delete
+  //    the rest, so a human can revise the joined value.
+  // Loud + recoverable. Deliberately NOT via _withSaving (a heal failure must
+  // not reload-and-revert the freshly loaded document).
   async reconcileOnOpen() {
+    const ZERO = { created: 0, deleted: 0, keptAnnotatedOrphans: 0, dedupedSentenceSpans: 0 };
     // Single-flight: a concurrent re-entry (StrictMode double-invoke, a rapid
     // re-open) must not double-create morphemes. Set before the first await.
-    if (this._reconciling) return { created: 0, deleted: 0, keptAnnotatedOrphans: 0 };
+    if (this._reconciling) return ZERO;
     const info = this.layerInfo;
     const { wordsNeedingMorpheme, orphanMorphemeIds, keptAnnotatedOrphans } = planMorphemeReconcile(info);
-    if (!wordsNeedingMorpheme.length && !orphanMorphemeIds.length) {
-      return { created: 0, deleted: 0, keptAnnotatedOrphans };
-    }
+    const dedupPlans = planSentenceSpanDedup(info);
+
     const morphemeLayer = info.morphemeTokenLayer;
     const textId = info.primaryTextLayer?.text?.id;
-    if (!morphemeLayer?.id || !textId) return { created: 0, deleted: 0, keptAnnotatedOrphans };
+    const morphemeWork = Boolean(morphemeLayer?.id && textId
+      && (wordsNeedingMorpheme.length || orphanMorphemeIds.length));
+    if (!morphemeWork && !dedupPlans.length) {
+      return { ...ZERO, keptAnnotatedOrphans };
+    }
 
     this._reconciling = true;
     try {
       this._client.beginBatch();
-      if (orphanMorphemeIds.length) this._client.tokens.bulkDelete(orphanMorphemeIds);
-      wordsNeedingMorpheme.forEach(w => {
-        this._client.tokens.create(morphemeLayer.id, textId, w.begin, w.end, 1);
+      if (morphemeWork && orphanMorphemeIds.length) this._client.tokens.bulkDelete(orphanMorphemeIds);
+      if (morphemeWork) {
+        wordsNeedingMorpheme.forEach(w => {
+          this._client.tokens.create(morphemeLayer.id, textId, w.begin, w.end, 1);
+        });
+      }
+      // Dedup ops LAST so the morpheme-create result slicing below stays simple.
+      dedupPlans.forEach(p => {
+        if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
+        p.deleteSpanIds.forEach(id => this._client.spans.delete(id));
       });
       const results = await this._client.submitBatch();
       // Op order: the optional bulkDelete first, then one create per bare word.
-      const createResults = orphanMorphemeIds.length ? results.slice(1) : results;
+      const createOffset = (morphemeWork && orphanMorphemeIds.length) ? 1 : 0;
+      const createCount = morphemeWork ? wordsNeedingMorpheme.length : 0;
+      const createResults = results.slice(createOffset, createOffset + createCount);
       const newIds = createResults.map(r => r?.body?.id ?? r?.id);
       const removed = new Set(orphanMorphemeIds);
 
       this._applyRawPatch((next, infoNext) => {
-        const layer = infoNext.morphemeTokenLayer;
-        if (!layer) return;
-        if (!Array.isArray(layer.tokens)) layer.tokens = [];
-        if (removed.size) layer.tokens = layer.tokens.filter(m => !removed.has(m.id));
-        wordsNeedingMorpheme.forEach((w, i) => {
-          const id = newIds[i];
-          if (id) layer.tokens.push({ id, text: textId, begin: w.begin, end: w.end, precedence: 1, metadata: {} });
-        });
+        if (morphemeWork) {
+          const layer = infoNext.morphemeTokenLayer;
+          if (layer) {
+            if (!Array.isArray(layer.tokens)) layer.tokens = [];
+            if (removed.size) layer.tokens = layer.tokens.filter(m => !removed.has(m.id));
+            wordsNeedingMorpheme.forEach((w, i) => {
+              const id = newIds[i];
+              if (id) layer.tokens.push({ id, text: textId, begin: w.begin, end: w.end, precedence: 1, metadata: {} });
+            });
+          }
+        }
+        if (dedupPlans.length) {
+          const byId = new Map((infoNext.spanLayers?.sentence || []).map(sl => [sl.id, sl]));
+          dedupPlans.forEach(p => {
+            const sl = byId.get(p.layerId);
+            if (!sl || !Array.isArray(sl.spans)) return;
+            const dead = new Set(p.deleteSpanIds);
+            sl.spans = sl.spans.filter(s => !dead.has(s.id));
+            const keep = sl.spans.find(s => s.id === p.keepSpanId);
+            if (keep && p.needsUpdate) keep.value = p.mergedValue;
+          });
+        }
       });
-      return { created: wordsNeedingMorpheme.length, deleted: orphanMorphemeIds.length, keptAnnotatedOrphans };
+      return {
+        created: morphemeWork ? wordsNeedingMorpheme.length : 0,
+        deleted: morphemeWork ? orphanMorphemeIds.length : 0,
+        keptAnnotatedOrphans,
+        dedupedSentenceSpans: dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0),
+      };
     } catch (err) {
       console.error('reconcileOnOpen failed:', err);
-      return { created: 0, deleted: 0, keptAnnotatedOrphans, error: err };
+      return { ...ZERO, keptAnnotatedOrphans, error: err };
     } finally {
       this._reconciling = false;
     }
