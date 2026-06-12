@@ -5,8 +5,10 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
-import { History, FileText, Type, Mic, Play, Table } from 'lucide-react';
+import { History, FileText, Type, Mic, Play, Table, Download } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { ExportDialog } from '@/components/export/ExportDialog.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
 import { HistoryDrawer } from './HistoryDrawer.jsx';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
@@ -50,6 +52,7 @@ const DocumentEditor = () => {
   // request an initial tab via router state or the ?tab= query param.
   const [activeTab, setActiveTab] = useState(location.state?.tab ?? tabParam ?? 'metadata');
   const [loadError, setLoadError] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
 
   const permissions = useDocumentPermissions(doc?.project);
   const history = useDocumentHistory(documentId, client);
@@ -216,8 +219,22 @@ const DocumentEditor = () => {
               <span className="text-foreground">{doc.document?.name || 'Document'}</span>
             </nav>
 
-            <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
+              <Button variant="outline" onClick={() => setExportOpen(true)}>
+                <Download className="h-4 w-4" /> Export
+              </Button>
+            </div>
             <p className="mb-2 mt-1 text-xs text-muted-foreground">{doc.document.id}</p>
+
+            <ExportDialog
+              open={exportOpen}
+              onOpenChange={setExportOpen}
+              client={client}
+              project={doc.project}
+              defaultScope={{ type: 'document', id: doc.id, name: doc.document.name }}
+              canSavePresets={permissions.canManage && !isViewingHistorical}
+            />
 
             {isViewingHistorical && (
               <div className="mb-4 rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">

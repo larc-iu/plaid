@@ -30,11 +30,11 @@ import { FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
+import { serializeVocabTsv } from '@/export/vocabTsv';
+import { downloadBlob, sanitizeFilename } from '@/export/files';
 
 const NEW_ID = '__new__';
 const PAGE_SIZE = 100;
-
-const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
 // Drop blank/nullish values so we never persist empty-string metadata keys.
 const cleanMeta = (obj) => {
@@ -398,22 +398,18 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     }
   };
 
-  // ---- CSV export (Form + every field + Uses) ----
-  const handleExportCsv = () => {
-    const header = ['Form', ...fieldNames.map(humanizeFieldName), ...(usageCounts ? ['Uses'] : [])];
-    const lines = [header.map(csvCell).join(',')];
-    for (const it of filteredItems) {
-      const row = [it.form, ...fieldNames.map((f) => it.metadata?.[f] ?? '')];
-      if (usageCounts) row.push(usageCounts[it.id] ?? 0);
-      lines.push(row.map(csvCell).join(','));
-    }
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${vocabulary?.name || 'vocabulary'}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // ---- TSV export (Form + every field + Uses) ----
+  const handleExportTsv = () => {
+    const tsv = serializeVocabTsv({
+      items: filteredItems,
+      fieldNames,
+      fieldLabels: fieldNames.map(humanizeFieldName),
+      usageCounts,
+    });
+    downloadBlob(
+      `${sanitizeFilename(vocabulary?.name || 'vocabulary')}.tsv`,
+      new Blob([tsv], { type: 'text/tab-separated-values;charset=utf-8' })
+    );
   };
 
   // ---- left list (search + sort by form) ----
@@ -604,7 +600,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
               <Upload className="h-3.5 w-3.5" /> Bulk Add
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={handleExportCsv} disabled={!items.length}>
+          <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={handleExportTsv} disabled={!items.length}>
             <Download className="h-3.5 w-3.5" /> Export
           </Button>
         </div>

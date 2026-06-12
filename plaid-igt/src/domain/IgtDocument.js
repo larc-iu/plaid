@@ -383,8 +383,9 @@ export class IgtDocument {
 // Per-vocab fetch failures don't reject — the rest of the table still loads —
 // but they're COUNTED so callers can surface "your vocab data is incomplete"
 // instead of silently rendering a partial table. Returns
-// { vocabularies, failedCount }.
-async function loadProjectVocabularies(client, project, asOf) {
+// { vocabularies, failedCount }. Exported for callers that construct
+// IgtDocuments from pre-fetched parts (e.g. export/runExport.js).
+export async function loadProjectVocabularies(client, project, asOf) {
   const vocabIds = (project?.vocabs || []).map(v => v.id);
   if (vocabIds.length === 0) return { vocabularies: {}, failedCount: 0 };
   const results = await Promise.all(vocabIds.map(async id => {

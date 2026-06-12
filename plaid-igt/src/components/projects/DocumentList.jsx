@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ArrowUp, ArrowDown, Settings } from 'lucide-react';
+import { Plus, ArrowUp, ArrowDown, Settings, Download } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { ExportDialog } from '@/components/export/ExportDialog.jsx';
 
 // Sortable column header button (renders an arrow for the active column).
 const SortHeader = ({ field, label, sort, onSort, className }) => {
@@ -35,6 +36,7 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
 export const DocumentList = ({ documents, project, projectId, client, canManage, onDocumentCreated }) => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [documentName, setDocumentName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   // documentId -> word count. Docs with a word layer but no tokens are absent
@@ -141,6 +143,9 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">Documents</h2>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setExportOpen(true)} disabled={!documents.length}>
+            <Download className="h-4 w-4" /> Export
+          </Button>
           {canManage && (
             <Button variant="outline" onClick={() => navigate(`/projects/${projectId}/access`)}>
               <Settings className="h-4 w-4" /> Project Settings
@@ -209,6 +214,15 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
           </div>
         </TooltipProvider>
       )}
+
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        client={client}
+        project={project}
+        documents={documents}
+        canSavePresets={canManage}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">

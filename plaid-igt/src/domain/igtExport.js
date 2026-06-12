@@ -2,9 +2,11 @@
 // publication-ready interlinear text. Pure functions — unit-tested, no DOM.
 //
 // Formats:
-//   plain — column-aligned text (one line per tier + quoted free translation)
-//   gb4e  — LaTeX \begin{exe}\ex\gll … (two aligned lines + \glt)
-//   expex — LaTeX \ex\begingl \gla/\glb/\glft … (safe expex subset)
+//   plain   — column-aligned text (one line per tier + quoted free translation)
+//   tsv     — one row per tier, tab-separated (pastes cleanly into spreadsheets)
+//   gb4e    — LaTeX \begin{exe}\ex\gll … (two aligned lines + \glt)
+//   expex   — LaTeX \ex\begingl \gla/\glb/\glft … (safe expex subset)
+//   leipzig — HTML for leipzig.js (<div data-gloss> + one <p> per line)
 //
 // Line 1 is always the morpheme-segmented word forms ("tod-os"); the gloss
 // line(s) join each word's morpheme values the same way. The joint between
@@ -17,8 +19,10 @@ import { morphemeJoiner } from './affixMarkers.js';
 
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
+  { id: 'tsv', label: 'Tab-separated (spreadsheet)' },
   { id: 'gb4e', label: 'LaTeX — gb4e' },
   { id: 'expex', label: 'LaTeX — ExPex' },
+  { id: 'leipzig', label: 'HTML — leipzig.js' },
 ];
 
 export const COPY_FORMAT_STORAGE_KEY = 'plaid_igt_copy_format';
@@ -80,6 +84,15 @@ export function formatPlain(sentence, fields) {
   return out.join('\n');
 }
 
+// ---- tsv ------------------------------------------------------------------
+const tsvCell = (s) => String(s ?? '').replace(/[\t\r\n]+/g, ' ');
+
+export function formatTsv(sentence, fields) {
+  const out = tiers(sentence, fields).map((l) => l.cells.map(tsvCell).join('\t'));
+  for (const t of translations(sentence, fields)) out.push(tsvCell(t.value));
+  return out.join('\n');
+}
+
 // ---- LaTeX ----------------------------------------------------------------
 const LATEX_SPECIALS = {
   '\\': '\\textbackslash{}', '&': '\\&', '%': '\\%', '$': '\\$', '#': '\\#',
@@ -120,8 +133,26 @@ export function formatExpex(sentence, fields) {
   ].join('\n');
 }
 
+// ---- HTML (leipzig.js) ------------------------------------------------------
+const htmlEscape = (s) => String(s ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// leipzig.js: <div data-gloss> with one <p> per aligned line + a final <p>
+// for the free translation. Words split on whitespace, so multiword cells
+// are kept intact with non-breaking spaces.
+export function formatLeipzig(sentence, fields) {
+  const nbsp = (s) => htmlEscape(s === '' ? '\u00a0' : s).replace(/ /g, '\u00a0');
+  const lines = tiers(sentence, fields)
+    .map((l) => `  <p>${l.cells.map(nbsp).join(' ')}</p>`);
+  const tr = translations(sentence, fields)[0]?.value;
+  if (tr) lines.push(`  <p>‘${htmlEscape(tr)}’</p>`);
+  return ['<div data-gloss>', ...lines, '</div>'].join('\n');
+}
+
 export function formatSentence(sentence, fields, format) {
+  if (format === 'tsv') return formatTsv(sentence, fields);
   if (format === 'gb4e') return formatGb4e(sentence, fields);
   if (format === 'expex') return formatExpex(sentence, fields);
+  if (format === 'leipzig') return formatLeipzig(sentence, fields);
   return formatPlain(sentence, fields);
 }

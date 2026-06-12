@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatPlain, formatGb4e, formatExpex } from './igtExport.js';
+import { formatPlain, formatTsv, formatGb4e, formatExpex, formatLeipzig } from './igtExport.js';
 
 const FIELDS = { morphFields: ['Gloss'], wordFields: ['POS'], sentFields: ['Translation'] };
 
@@ -50,6 +50,54 @@ describe('formatPlain', () => {
     // "𝕒𝕒" is 2 code points wide -> second column starts after width 2 + 2 spaces.
     expect(lines[0]).toBe('𝕒𝕒  b');
     expect(lines[1]).toBe('x   yy');
+  });
+});
+
+describe('formatTsv', () => {
+  it('emits one tab-separated row per tier plus translation rows', () => {
+    const out = formatTsv(SENT, FIELDS);
+    expect(out.split('\n')).toEqual([
+      'perro-s\tcorr-en\t.',
+      'dog-PL\trun-3PL\t',
+      'NOUN\tVERB\t',
+      'The dogs run.',
+    ]);
+  });
+
+  it('collapses tabs/newlines inside cells', () => {
+    const s = {
+      annotations: {},
+      tokens: [{ content: 'a\tb', annotations: {}, morphemes: [] }],
+    };
+    const out = formatTsv(s, { morphFields: [], wordFields: [], sentFields: [] });
+    expect(out).toBe('a b');
+  });
+});
+
+describe('formatLeipzig', () => {
+  it('emits a data-gloss div with one <p> per tier and the translation', () => {
+    const out = formatLeipzig(SENT, FIELDS);
+    expect(out.split('\n')).toEqual([
+      '<div data-gloss>',
+      '  <p>perro-s corr-en .</p>',
+      '  <p>dog-PL run-3PL \u00a0</p>',
+      '  <p>NOUN VERB \u00a0</p>',
+      '  <p>‘The dogs run.’</p>',
+      '</div>',
+    ]);
+  });
+
+  it('escapes HTML and holds multiword cells together with NBSP', () => {
+    const s = {
+      annotations: {},
+      tokens: [{
+        content: 'x',
+        annotations: { POS: span('a <b> & c') },
+        morphemes: [],
+      }],
+    };
+    const out = formatLeipzig(s, { morphFields: [], wordFields: ['POS'], sentFields: [] });
+    expect(out).toContain('<p>a\u00a0&lt;b&gt;\u00a0&amp;\u00a0c</p>');
   });
 });
 
