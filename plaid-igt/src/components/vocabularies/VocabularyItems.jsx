@@ -334,9 +334,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   };
 
   // ---- bulk add (paste one item per line; TSV = Form + fields) ----
+  // Homonyms are allowed (the same form can be a separate sense), so we DON'T
+  // skip collisions with existing items — only an identical repeated row in the
+  // paste itself (a likely accidental double-paste).
   const parsedBulk = useMemo(() => {
     const lines = bulkText.split('\n').map((l) => l.replace(/\r$/, '')).filter((l) => l.trim() !== '');
-    const existing = new Set(items.map((i) => i.form.toLowerCase()));
     const rows = [];
     const seen = new Set();
     let skipped = 0;
@@ -344,15 +346,15 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       const cells = line.split('\t').map((c) => c.trim());
       const form = cells[0];
       if (!form) continue;
-      const k = form.toLowerCase();
-      if (existing.has(k) || seen.has(k)) { skipped++; continue; }
+      const k = cells.join('\t').toLowerCase(); // whole-row key (cells can't contain tabs)
+      if (seen.has(k)) { skipped++; continue; }
       seen.add(k);
       const metadata = {};
       fieldNames.forEach((f, i) => { if (cells[i + 1]) metadata[f] = cells[i + 1]; });
       rows.push({ form, metadata: Object.keys(metadata).length ? metadata : undefined });
     }
     return { rows, skipped };
-  }, [bulkText, items, fieldNames]);
+  }, [bulkText, fieldNames]);
 
   const handleBulkAdd = async () => {
     const { rows, skipped } = parsedBulk;
@@ -751,7 +753,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
             <p className="text-sm text-muted-foreground">
               One item per line. Columns are tab-separated (paste straight from a
               spreadsheet): <strong>Form</strong>{fieldNames.length ? <> then {fieldNames.map(humanizeFieldName).join(', ')}</> : null}.
-              Duplicates of existing forms are skipped.
+              The same form may repeat as a separate sense (a homonym); only identical rows are skipped.
             </p>
             <Textarea
               rows={10}
