@@ -89,7 +89,8 @@ export const normalizeVocabFields = (vocabFields) => {
     if (!seen.has(name)) add(name, { inline: CORE_BY_NAME.get(name)?.inline ?? false });
   }
 
-  return out;
+  // Immutable fields (morphType) always come first; the rest keep their order.
+  return [...out.filter((f) => f.immutable), ...out.filter((f) => !f.immutable)];
 };
 
 /**

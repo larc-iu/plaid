@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { BookText, Users, Settings, Trash2, Plus, X, AlertTriangle } from 'lucide-react';
+import { BookText, Users, Settings, Trash2, Plus, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -197,6 +197,18 @@ export const VocabularyDetail = () => {
     await saveFields(fields.map(f => (f.name === fieldName ? { ...f, inline: !f.inline } : f)));
   };
 
+  // Reorder a field by swapping with its neighbor. Immutable fields (morphType)
+  // stay pinned first — we never swap into or out of an immutable slot.
+  const handleMoveField = async (fieldName, dir) => {
+    const idx = fields.findIndex(f => f.name === fieldName);
+    const target = idx + dir;
+    if (idx < 0 || target < 0 || target >= fields.length) return;
+    if (fields[idx].immutable || fields[target].immutable) return;
+    const next = [...fields];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    await saveFields(next);
+  };
+
   const saveFields = async (updatedFields) => {
     try {
       setFields(updatedFields);
@@ -232,37 +244,61 @@ export const VocabularyDetail = () => {
   const renderCustomFieldsEditor = () => (
     <>
       {fields.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {fields.map(field => (
-            <div key={field.name} className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-sm">{humanizeFieldName(field.name)}</span>
-                {field.immutable && (
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                    Required
-                  </span>
-                )}
-                <div className="flex items-center gap-2">
-                  <Label htmlFor={`inline-${field.name}`} className="text-xs text-muted-foreground">Show inline</Label>
-                  <Switch
-                    id={`inline-${field.name}`}
-                    checked={field.inline}
-                    onCheckedChange={() => handleToggleInline(field.name)}
-                  />
+        <div className="flex flex-col gap-0.5">
+          {fields.map((field, idx) => {
+            const canMoveUp = idx > 0 && !field.immutable && !fields[idx - 1].immutable;
+            const canMoveDown = idx < fields.length - 1 && !field.immutable;
+            return (
+              <div key={field.name} className="group flex items-center justify-between rounded-md px-1 py-1 hover:bg-muted/40">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm">{humanizeFieldName(field.name)}</span>
+                  {field.immutable && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Required
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor={`inline-${field.name}`} className="text-xs text-muted-foreground">Show inline</Label>
+                    <Switch
+                      id={`inline-${field.name}`}
+                      checked={field.inline}
+                      onCheckedChange={() => handleToggleInline(field.name)}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-0.5 text-muted-foreground">
+                  <button
+                    type="button"
+                    aria-label="Move up"
+                    disabled={!canMoveUp}
+                    onClick={() => handleMoveField(field.name, -1)}
+                    className="rounded p-1 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground"
+                  >
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move down"
+                    disabled={!canMoveDown}
+                    onClick={() => handleMoveField(field.name, 1)}
+                    className="rounded p-1 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground"
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                  {!field.immutable && (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${humanizeFieldName(field.name)}`}
+                      onClick={() => handleRemoveField(field.name)}
+                      className="rounded p-1 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
-              {!field.immutable && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => handleRemoveField(field.name)}
-                >
-                  <X className="h-3.5 w-3.5" /> Remove
-                </Button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
