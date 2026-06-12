@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Trash2, AlertTriangle, Upload, Download, Search, FileText,
@@ -96,6 +96,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const listRef = useRef(null);
+  // Size the sticky left pane to fit from its own top to the viewport bottom, so
+  // its footer is always visible without scrolling — measured (not a guessed
+  // chrome constant) so it's immune to breadcrumb wrapping / zoom / etc.
+  const paneWrapRef = useRef(null);
+  const [paneMaxH, setPaneMaxH] = useState(null);
   const [usageCounts, setUsageCounts] = useState(null); // {itemId: n} | null
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
@@ -236,6 +241,20 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     obs.observe(el);
     return () => obs.disconnect();
   }, [concHasMore, concLoaded]);
+
+  // Measure the pane's top (the two-pane row is normal-flow, so this is the
+  // sticky pane's natural top) and cap the pane to reach the viewport bottom.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = paneWrapRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setPaneMaxH(`calc(100vh - ${Math.max(0, Math.round(top))}px - 1rem)`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
 
   const selectItem = (item) => {
     setSelectedId(item.id);
@@ -482,9 +501,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   }
 
   return (
-    <div className="tw flex items-start gap-4">
+    <div ref={paneWrapRef} className="tw flex items-start gap-4">
       {/* ---- left pane: item list ---- */}
-      <div className="sticky top-4 flex max-h-[calc(100vh-14rem)] w-96 shrink-0 flex-col rounded-lg border bg-card">
+      <div
+        className="sticky top-4 flex max-h-[calc(100vh-14rem)] w-96 shrink-0 flex-col rounded-lg border bg-card"
+        style={paneMaxH ? { maxHeight: paneMaxH } : undefined}
+      >
         <div className="flex flex-col gap-2 border-b p-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">
