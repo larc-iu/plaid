@@ -1328,6 +1328,10 @@ export class IgtEditor {
     const truncated = items.length - limited.length;
     // A single "+ Create" row, into the active vocab, when there's a form.
     const canCreate = !!(formText && activeVocab);
+    // If the form already exists in the active vocab, the new item would be a
+    // homonym — preview the subscript it would get (existing count + 1).
+    const newFormDupes = canCreate ? (activeVocab.items || []).filter((it) => it.form === formText).length : 0;
+    const newFormSub = newFormDupes >= 1 ? newFormDupes + 1 : null;
     // Rows the keyboard can land on: every item plus the create row.
     const total = limited.length + (canCreate ? 1 : 0);
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
@@ -1399,7 +1403,7 @@ export class IgtEditor {
           ? html`<button type="button" class="igt-vocab-pop__create ${activeIdx === limited.length ? 'is-active' : ''}"
               @mousemove=${() => { const idx = limited.length; if (this._popoverActiveIndex !== idx) { this._popoverActiveIndex = idx; this._render(true); } }}
               @click=${(e) => { e.stopPropagation(); this._createVocab(tokenId, activeVocab.id, formText); }}>
-              + Create "${formText}"
+              + Create "${formText}${newFormSub != null ? html`<sub class="igt-vocab-pop__sub">${newFormSub}</sub>` : nothing}"
             </button>`
           : nothing}
         ${kind === 'morpheme' ? this._morphTypeRow(tokenId) : nothing}
