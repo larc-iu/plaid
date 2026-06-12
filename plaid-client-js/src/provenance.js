@@ -27,6 +27,22 @@
  * Producer naming: 'service:<serviceId>' for services (use serviceSource),
  * 'rule:<name>' for built-in rule algorithms, app-specific ids like
  * 'gloss:doc-frequency' or 'flex-import' otherwise.
+ *
+ * PREDICTION EXTRAS. A producer may also record how confident it was and
+ * what else it considered, in two reserved slots split along the
+ * queryability line:
+ *   - provProb: ONE flat number in [0, 1] — the producer's probability for
+ *     the value it chose. Flat scalars are what the query engine filters
+ *     and orders on, so "review the least-confident machine output first"
+ *     is an ordinary query. Omit it unless you can honestly produce a
+ *     probability (a raw logprob is NOT one — put it in provDetail).
+ *   - provDetail: ONE open map for everything else — top-k alternatives or
+ *     distributions, model name/version, raw scores. Deliberately nested
+ *     (not queryable); keep it small (top-k, not whole-vocabulary dumps).
+ * Both describe the machine's ORIGINAL prediction. They are kept after
+ * human edits (history is valuable), so a consumer must not present
+ * provProb as confidence in the CURRENT value once the entity is verified
+ * (provConfirmed is exactly the flag to check).
  */
 
 /** The flat metadata keys of the provenance convention. */
@@ -37,6 +53,10 @@ export const PROV = Object.freeze({
   sourceKey: 'provSource',
   /** true once a human confirmed (or edited) the inferred value. */
   confirmedKey: 'provConfirmed',
+  /** Producer's probability ([0,1]) for the chosen value. Flat = queryable. */
+  probKey: 'provProb',
+  /** Open map of producer extras (alternatives, model version, raw scores). */
+  detailKey: 'provDetail',
   /** The (currently only) value of `prov`. Presence, not value, decides. */
   INFERRED: 'inferred',
 });
@@ -51,19 +71,27 @@ export const PROV_STATES = Object.freeze({
 /**
  * The metadata fragment a machine writer merges into everything it creates.
  * @param {string} source - producer id, e.g. serviceSource(serviceId)
+ * @param {Object} [extras] - optional prediction extras:
+ * @param {number} [extras.prob] - probability in [0,1] for the chosen value
+ *   (omit unless it honestly is one — raw scores go in detail)
+ * @param {Object} [extras.detail] - open map of producer extras (top-k
+ *   alternatives, model version, raw scores; keep it small)
  */
-export const stampInferred = (source) => ({
+export const stampInferred = (source, { prob, detail } = {}) => ({
   [PROV.key]: PROV.INFERRED,
   [PROV.sourceKey]: source,
+  ...(prob !== undefined && prob !== null ? { [PROV.probKey]: prob } : {}),
+  ...(detail ? { [PROV.detailKey]: detail } : {}),
 });
 
 /**
  * The fragment for machine-made material that is born verified (e.g. an
  * import carrying upstream human approval, or a guess written only on
- * explicit user confirmation).
+ * explicit user confirmation). Takes the same optional prediction extras
+ * as stampInferred.
  */
-export const confirmedInferred = (source) => ({
-  ...stampInferred(source),
+export const confirmedInferred = (source, extras = {}) => ({
+  ...stampInferred(source, extras),
   [PROV.confirmedKey]: true,
 });
 

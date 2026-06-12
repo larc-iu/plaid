@@ -568,7 +568,7 @@ You might use a config to store legal tags for a given layer:
 { id: "...", name: "POS Tags", config: { tags: ["NOUN", "VERB", /* ... */] } }
 ----
 
-As for metadata, the canonical use is recording whether a human or a machine produced an annotation — Plaid standardizes this as the <<Provenance>> convention. App-private extras (e.g. a model's prediction probabilities) ride alongside the standard keys:
+As for metadata, the canonical use is recording whether a human or a machine produced an annotation — Plaid standardizes this as the <<Provenance>> convention, including where a model's confidence and prediction details go:
 
 [,js]
 ----
@@ -586,9 +586,12 @@ As for metadata, the canonical use is recording whether a human or a machine pro
   value: "NOUN",
   metadata: {
     prov: "inferred",
-    provSource: "service:stanza-parser",
-    // app-private extras are fine alongside the standard keys:
-    tagProb: 0.8412
+    provSource: "service:my-tagger",
+    provProb: 0.8412,                       // flat -> queryable/sortable
+    provDetail: {                           // open map for the rest
+      model: "my-tagger==2.1",
+      uposProbs: { NOUN: 0.8412, PROPN: 0.0966, ADJ: 0.0014 }
+    }
   }
 }
 ----
@@ -974,6 +977,16 @@ Plaid standardizes this distinction as the **provenance** convention: flat metad
 The presence of the `prov` key—not its particular value—is what marks an entity as machine-made; `inferred` is simply the only value defined today.
 The keys are deliberately flat scalars, which the query system's metadata filters match well, so questions like "show me every unverified machine annotation in this document" are ordinary queries.
 
+A producer may also record **prediction extras**—how confident it was, and what else it considered—in two further reserved slots, split along the queryability line:
+
+`provProb`:: One flat number in [0, 1]: the producer's probability for *the value it chose*. Because it is a flat scalar, it filters and orders in the query language, so "review the least-confident machine output first" is an ordinary query. Provide it only when you can honestly produce a probability—a raw log-probability or unnormalized score is not one, and belongs in `provDetail` instead.
+`provDetail`:: One open map for everything else: top-k alternatives or distributions, the model name and version, raw scores. It is deliberately nested (and therefore not query-matchable—anything worth filtering on goes in `provProb`), and deliberately unconstrained inside, with one piece of advice: record the top handful of alternatives, not whole-vocabulary distributions.
+
+Prediction extras describe the machine's *original* prediction.
+They are kept even after a human edits the entity—the history is valuable for audit and retraining—which means a consumer must not present `provProb` as confidence in the *current* value once the entity is verified: any human edit verifies (rule 3 below), so `provConfirmed` is exactly the flag to check before displaying it.
+
+Of the bundled services, the Whisper transcriber records its per-segment scores this way (`provDetail.avgLogprob` / `provDetail.noSpeechProb` / `provDetail.model`—and no `provProb`, since a log-probability is not a calibrated probability), and the Stanza parser records `provDetail.model` and `provDetail.language` (its pipeline exposes no per-prediction probabilities; a parser that has them would add `provProb` plus a top-k distribution in the detail map).
+
 The convention is made operational by a **write contract** that every machine writer (service, built-in algorithm, importer) is expected to follow:
 
 1. A machine writer may freely create new material and freely **replace machine-made, unverified material**—its own or another machine's. Unverified machine output is by definition replaceable.
@@ -982,7 +995,7 @@ The convention is made operational by a **write contract** that every machine wr
 
 Rule 3 is what lets editors render unverified machine output distinctly (Plaid's apps use violet italics) and have the marking dissolve naturally as a human works through the material—each touched annotation graduates to verified, while everything still violet remains fair game for the next machine pass.
 
-For service authors, both clients ship helpers: `stampInferred(source)` / `stamp_inferred(source)` builds the fragment to merge into everything you create (every bulk create accepts per-item `metadata`), `serviceSource(serviceId)` / `service_source(service_id)` builds the canonical producer id, and `isProtected(metadata)` / `is_protected(metadata)` implements the rule-2 check against material you are about to destroy.
+For service authors, both clients ship helpers: `stampInferred(source)` / `stamp_inferred(source)` builds the fragment to merge into everything you create (every bulk create accepts per-item `metadata`) and takes the prediction extras as options (`stampInferred(source, {prob, detail})` / `stamp_inferred(source, prob=, detail=)`), `serviceSource(serviceId)` / `service_source(service_id)` builds the canonical producer id, and `isProtected(metadata)` / `is_protected(metadata)` implements the rule-2 check against material you are about to destroy.
 Born-verified material—an import carrying upstream human approval, or a guess written only upon explicit user confirmation—uses `confirmedInferred` / `confirmed_inferred` instead.
 
 [NOTE]

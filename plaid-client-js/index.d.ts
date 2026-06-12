@@ -397,6 +397,8 @@ export const PROV: {
   readonly key: 'prov';
   readonly sourceKey: 'provSource';
   readonly confirmedKey: 'provConfirmed';
+  readonly probKey: 'provProb';
+  readonly detailKey: 'provDetail';
   readonly INFERRED: 'inferred';
 };
 export const PROV_STATES: {
@@ -404,10 +406,18 @@ export const PROV_STATES: {
   readonly MACHINE: 'machine';
   readonly VERIFIED: 'verified';
 };
+/** Optional prediction extras: prob = a probability in [0,1] for the chosen value
+ * (flat + queryable; omit unless it honestly is one); detail = an open map of
+ * producer extras (top-k alternatives, model version, raw scores; keep it small).
+ * Both describe the ORIGINAL prediction — check provConfirmed before presenting
+ * provProb as confidence in the current value. */
+interface ProvExtras { prob?: number; detail?: Record<string, any> }
 /** The metadata fragment a machine writer merges into everything it creates. */
-export function stampInferred(source: string): { prov: 'inferred'; provSource: string };
+export function stampInferred(source: string, extras?: ProvExtras):
+  { prov: 'inferred'; provSource: string; provProb?: number; provDetail?: Record<string, any> };
 /** stampInferred + provConfirmed — for machine material born verified (e.g. imports with upstream approval). */
-export function confirmedInferred(source: string): { prov: 'inferred'; provSource: string; provConfirmed: true };
+export function confirmedInferred(source: string, extras?: ProvExtras):
+  { prov: 'inferred'; provSource: string; provConfirmed: true; provProb?: number; provDetail?: Record<string, any> };
 /** Classify an entity's metadata into one of the three provenance states. */
 export function provState(metadata: object | null | undefined): ProvState;
 /** Whether a machine writer must leave this entity alone (human or verified). */

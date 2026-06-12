@@ -10,7 +10,7 @@ import shutil
 import whisper
 from typing import List, Dict, Any
 from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
-from plaid_client import BaseService, TASKS, Param, service_source
+from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY
 
 
 WHISPER_MODEL_SIZES = [
@@ -92,18 +92,22 @@ class WhisperASRModel(ASRModel):
             for segment in result["segments"]:
                 segment_text = segment["text"].strip()
                 if segment_text:
-                    metadata = {
-                        "confidence": segment.get("avg_logprob", None),
-                        "no_speech_prob": segment.get("no_speech_prob", None)
+                    # Model scores ride in the provenance convention's
+                    # provDetail slot (see the manual, "Provenance"): they're
+                    # producer-specific extras, and avg_logprob is a raw
+                    # score, NOT a calibrated probability — so no provProb.
+                    detail = {
+                        "model": f"whisper-{name}",
+                        "avgLogprob": segment.get("avg_logprob", None),
+                        "noSpeechProb": segment.get("no_speech_prob", None),
                     }
-                    # Remove None values from metadata
-                    metadata = {k: v for k, v in metadata.items() if v is not None}
+                    detail = {k: v for k, v in detail.items() if v is not None}
 
                     alignment = Alignment(
                         text=segment_text,
                         start=segment['start'],
                         end=segment['end'],
-                        metadata=metadata
+                        metadata={PROV_DETAIL_KEY: detail}
                     )
                     alignments.append(alignment)
             

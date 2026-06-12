@@ -6,10 +6,19 @@ import traceback
 from plaid_client import (PlaidClient, TASKS, Param, build_extras,
                           stamp_inferred, is_protected, service_source)
 
-# Provenance fragment merged into everything this service creates (tokens,
-# spans, relations): marks it machine-made + unverified until a human edits
-# or confirms it. See the manual, "Provenance".
-PROV_FRAGMENT = stamp_inferred(service_source('stanza-parser'))
+
+def prov_fragment(language):
+    """Provenance fragment merged into everything this service creates
+    (tokens, spans, relations): marks it machine-made + unverified until a
+    human edits or confirms it, and records the producing model + language in
+    provDetail. (Stanza's pipeline output carries no per-prediction
+    probabilities, so there is no provProb; a producer that has real
+    probabilities would add `prob=` here and put its top-k distribution in
+    the detail map.) See the manual, "Provenance"."""
+    return stamp_inferred(
+        service_source('stanza-parser'),
+        detail={'model': f'stanza=={stanza.__version__}', 'language': language},
+    )
 
 
 # Stanza ships UD models for many languages; offer a common subset. (value, label)
@@ -148,14 +157,15 @@ def make_bulk_token(token_layer_id, text, begin, end, metadata=None):
     return op
 
 
-def make_span_token(span_layer_id, tokens, value, metadata=None):
-    # Every span this service creates is machine-made: provenance is stamped
-    # unconditionally, with any caller metadata merged over it.
+def make_span_token(span_layer_id, tokens, value, prov, metadata=None):
+    # Every span this service creates is machine-made: the provenance
+    # fragment is stamped unconditionally, with any caller metadata merged
+    # over it.
     base = {
         "span_layer_id": span_layer_id,
         "tokens": tokens,
         "value": value,
-        "metadata": {**PROV_FRAGMENT, **(metadata or {})},
+        "metadata": {**prov, **(metadata or {})},
     }
     return base
 
@@ -187,14 +197,15 @@ def count_protected_annotations(text_layer):
     return protected
 
 
-def parse_document(pipeline, client, document_id, text_content, overwrite=False):
+def parse_document(pipeline, client, document_id, text_content, language='en', overwrite=False):
     """Parse a document with Stanza and create the three-layer token hierarchy
     (sentences > words > morphemes) plus annotations in Plaid.
 
     Provenance write contract: everything created here is stamped machine-made
-    (PROV_FRAGMENT). Re-running freely replaces machine-made UNVERIFIED
+    (prov_fragment). Re-running freely replaces machine-made UNVERIFIED
     material, but if any human-made or human-verified annotations exist under
     the text layer, the parse refuses unless `overwrite` is set."""
+    frag = prov_fragment(language)
     def log(msg):
         # Force-flush so the next-line-after-hang shows whatever the last
         # successful step was, even if Python's stdout is block-buffered.
@@ -288,7 +299,7 @@ def parse_document(pipeline, client, document_id, text_content, overwrite=False)
             # the exporter can round-trip it (e.g. when surface forms differ from
             # the body slice — contractions, normalized punctuation). Provenance
             # rides alongside the round-trip data.
-            op["metadata"] = {"text": stanza_doc.sentences[i].text, **PROV_FRAGMENT}
+            op["metadata"] = {"text": stanza_doc.sentences[i].text, **frag}
             sentence_ops.append(op)
 
         # 2/3. Word and morpheme tokens. Each surface token is a word; each
@@ -308,7 +319,7 @@ def parse_document(pipeline, client, document_id, text_content, overwrite=False)
                     # Persist the MWT surface form on the word token's
                     # metadata so the exporter can round-trip it. (1:1 words
                     # leave metadata clean; the body substring is canonical.)
-                    word_meta = dict(PROV_FRAGMENT)
+                    word_meta = dict(frag)
                     if td.get("text") and td["text"] != body[wb:we]:
                         word_meta["form"] = td["text"]
                     if td.get("misc"):
@@ -319,7 +330,7 @@ def parse_document(pipeline, client, document_id, text_content, overwrite=False)
                     members = sentence_data[i + 1:i + 1 + count]
                     for prec, member in enumerate(members):
                         op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
-                                             metadata=dict(PROV_FRAGMENT))
+                                             metadata=dict(frag))
                         op["precedence"] = prec
                         morpheme_ops.append(op)
                         morpheme_meta.append({"sent_idx": sent_idx, "row": member, "word_substring": body[wb:we]})
@@ -327,9 +338,9 @@ def parse_document(pipeline, client, document_id, text_content, overwrite=False)
                 else:
                     wb, we = td["start_char"], td["end_char"]
                     word_ops.append(make_bulk_token(word_layer["id"], text_id, wb, we,
-                                                    metadata=dict(PROV_FRAGMENT)))
+                                                    metadata=dict(frag)))
                     op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
-                                         metadata=dict(PROV_FRAGMENT))
+                                         metadata=dict(frag))
                     op["precedence"] = 0
                     morpheme_ops.append(op)
                     morpheme_meta.append({"sent_idx": sent_idx, "row": td, "word_substring": body[wb:we]})
@@ -395,22 +406,22 @@ def parse_document(pipeline, client, document_id, text_content, overwrite=False)
             # A Form span is only needed when the surface form differs from the
             # morpheme's substring (i.e. real MWT components).
             if form_layer and form and form != meta["word_substring"]:
-                form_spans.append(make_span_token(form_layer["id"], [mid], form))
+                form_spans.append(make_span_token(form_layer["id"], [mid], form, frag))
             lemma = row.get("lemma")
             if lemma_layer and lemma:
-                lemma_spans.append(make_span_token(lemma_layer["id"], [mid], lemma))
+                lemma_spans.append(make_span_token(lemma_layer["id"], [mid], lemma, frag))
                 lemma_targets.append((sent_idx, row_index))
             upos = row.get("upos")
             if upos_layer and upos:
-                upos_spans.append(make_span_token(upos_layer["id"], [mid], upos))
+                upos_spans.append(make_span_token(upos_layer["id"], [mid], upos, frag))
             xpos = row.get("xpos")
             if xpos_layer and xpos:
-                xpos_spans.append(make_span_token(xpos_layer["id"], [mid], xpos))
+                xpos_spans.append(make_span_token(xpos_layer["id"], [mid], xpos, frag))
             feats = row.get("feats")
             if features_layer and feats:
                 for value in feats.split("|"):
                     if value:
-                        feature_spans.append(make_span_token(features_layer["id"], [mid], value))
+                        feature_spans.append(make_span_token(features_layer["id"], [mid], value, frag))
 
         # Bundle all five span bulk_creates into ONE atomic batch so a partial
         # failure rolls the spans back together. Track the batch index of
@@ -486,7 +497,7 @@ def parse_document(pipeline, client, document_id, text_content, overwrite=False)
                             "source": target,
                             "target": target,
                             "value": deprel,
-                            "metadata": dict(PROV_FRAGMENT),
+                            "metadata": dict(frag),
                         })
                     elif head and head > 0 and head - 1 < len(sentence_lemma_ids):
                         source = sentence_lemma_ids[head - 1]
@@ -496,7 +507,7 @@ def parse_document(pipeline, client, document_id, text_content, overwrite=False)
                                 "source": source,
                                 "target": target,
                                 "value": deprel,
-                                "metadata": dict(PROV_FRAGMENT),
+                                "metadata": dict(frag),
                             })
             if relation_ops:
                 log(f"  Creating {len(relation_ops)} dependency relations…")
@@ -571,7 +582,7 @@ def make_handler(client, pipeline_provider, parse_lock):
             with parse_lock:
                 pipeline = pipeline_provider.get(language)
                 success = parse_document(pipeline, client, document_id, text_content,
-                                         overwrite=overwrite)
+                                         language=language, overwrite=overwrite)
 
             if success:
                 response_helper.progress(100, "Document parsing completed successfully")

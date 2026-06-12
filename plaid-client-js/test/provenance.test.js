@@ -15,6 +15,26 @@ test('confirmedInferred produces the born-verified fragment', () => {
     { prov: 'inferred', provSource: 'flex-import', provConfirmed: true });
 });
 
+test('prediction extras ride along only when given', () => {
+  assert.deepEqual(
+    stampInferred('service:p', { prob: 0.84, detail: { deprelProbs: { det: 0.84, nsubj: 0.1 } } }),
+    { prov: 'inferred', provSource: 'service:p', provProb: 0.84,
+      provDetail: { deprelProbs: { det: 0.84, nsubj: 0.1 } } });
+  assert.deepEqual(stampInferred('service:p', { prob: 0 }),
+    { prov: 'inferred', provSource: 'service:p', provProb: 0 });
+  assert.deepEqual(stampInferred('service:p', {}),
+    { prov: 'inferred', provSource: 'service:p' });
+  assert.deepEqual(
+    confirmedInferred('flex-import', { detail: { model: 'flex' } }),
+    { prov: 'inferred', provSource: 'flex-import', provConfirmed: true,
+      provDetail: { model: 'flex' } });
+});
+
+test('prediction extras do not change state classification', () => {
+  assert.equal(provState(stampInferred('x', { prob: 0.5 })), PROV_STATES.MACHINE);
+  assert.equal(isProtected(stampInferred('x', { prob: 0.5 })), false);
+});
+
 test('provState classifies the three states', () => {
   assert.equal(provState({ prov: 'inferred', provSource: 'x' }), PROV_STATES.MACHINE);
   assert.equal(provState({ prov: 'inferred', provSource: 'x', provConfirmed: true }), PROV_STATES.VERIFIED);
