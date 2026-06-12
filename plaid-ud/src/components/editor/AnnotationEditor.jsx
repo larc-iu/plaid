@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Group, Button, Badge, Loader, Text, Center, Alert, Stack, Select, ActionIcon, Popover } from '@mantine/core';
-import { IconHistory, IconBolt, IconFileOff, IconInfoCircle, IconAdjustments } from '@tabler/icons-react';
+import { Box, Group, Button, Loader, Text, Center, Alert, Stack, Select, ActionIcon, Popover } from '@mantine/core';
+import { IconHistory, IconBolt, IconInfoCircle, IconAdjustments } from '@tabler/icons-react';
 import { ServiceSummary } from './ServiceSummary.jsx';
 import { ServiceParamForm } from './ServiceParamForm.jsx';
 import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
@@ -301,36 +301,39 @@ export const AnnotationEditor = () => {
 
   const hasText = !viewingHistoricalState && Boolean(activeDocument?.textLayers?.[0]?.text);
 
-  // Single shared toolbar: History, NLP status, historical-state badge, and a
-  // single Auto-Parse / Return-to-Current action group.
+  // Single shared toolbar: History on the left; everything NLP lives in one
+  // right-hand cluster. There is no separate status badge — when services
+  // exist, the selector + Auto Parse button ARE the "ready" signal; the only
+  // states needing words are "still discovering" and "nothing online" (with a
+  // retry). The cluster only renders when parsing could actually happen
+  // (text present, editable, not time-traveling).
   const toolbar = (
     <Group justify="space-between" mt="md">
       <Group gap="sm">
         <Button variant="light" color="gray" leftSection={<IconHistory size={16} />} onClick={handleOpenHistory}>
           History
         </Button>
-
-        <Badge
-          size="lg"
-          variant="light"
-          color={isDiscovering ? 'yellow' : hasServices ? 'green' : 'gray'}
-          leftSection={
-            isDiscovering ? <Loader size={12} color="yellow" />
-              : hasServices ? <IconBolt size={14} />
-                : <IconFileOff size={14} />
-          }
-        >
-          {isDiscovering ? 'Checking NLP...' : hasServices ? 'NLP Ready' : 'NLP Offline'}
-        </Badge>
-
-        {!isDiscovering && !hasServices && (
-          <Button size="xs" onClick={discoverServices}>Retry</Button>
-        )}
       </Group>
 
       <Group gap="sm">
         {selectedHistoryEntry && (
           <Button onClick={handleCloseHistory}>Return to Current</Button>
+        )}
+
+        {hasText && canEdit && !selectedHistoryEntry && !hasServices && (
+          isDiscovering ? (
+            <Group gap={6}>
+              <Loader size={14} color="gray" />
+              <Text size="sm" c="dimmed">Checking for NLP services…</Text>
+            </Group>
+          ) : (
+            <Group gap="xs">
+              <Text size="sm" c="dimmed">No parsing service online</Text>
+              <Button size="xs" variant="light" color="gray" onClick={discoverServices}>
+                Retry
+              </Button>
+            </Group>
+          )
         )}
 
         {hasText && canEdit && hasServices && !selectedHistoryEntry && (
