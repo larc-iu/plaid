@@ -34,12 +34,24 @@ tokenization, POS tagging, lemmatization, and dependency parsing — and writes
 the result into the project's sentence / word / morpheme layers plus the UD
 annotation spans (Form, Lemma, UPOS, XPOS, Features) and dependency relations.
 
+Two modes, picked automatically:
+
+- **Untokenized document**: tokenize from scratch and build the whole
+  hierarchy. Re-running replaces the document's existing tokens and
+  annotations — across ALL apps sharing the project.
+- **Already-tokenized document** (e.g. a project shared with IGT): the
+  existing sentences and words are KEPT; Stanza parses them as given and
+  only UD's own annotation layers are replaced. Other apps' annotations
+  are untouched. (Trade-off: multiword tokens aren't split in this mode.)
+
+Options:
+
 - **Language** selects which Stanza models to use. The first parse in a given
   language downloads its models (one-time) and is slower.
-- **Overwrite human-edited annotations**: re-running replaces the document's
-  existing tokens and annotations. Machine-made, unverified annotations are
-  always fair game; if any HUMAN-made or human-verified annotations exist,
-  the parse refuses unless this is enabled.
+- **Overwrite human-edited annotations**: machine-made, unverified
+  annotations are always fair game; if any HUMAN-made or human-verified
+  annotations exist in what the parse would replace, it refuses unless this
+  is enabled.
 
 Everything this service creates carries provenance metadata
 (`prov`/`provSource`), so editors render it distinctly until a human verifies
@@ -72,12 +84,17 @@ class PipelineProvider:
         self.processors = processors
         self._cache = {}
 
-    def get(self, language):
-        pipe = self._cache.get(language)
+    def get(self, language, pretokenized=False):
+        # Pretokenized pipelines honor caller-supplied sentence/word splits
+        # (used by the substrate-preserving parse mode). Cached separately:
+        # tokenize_pretokenized is a pipeline-construction option.
+        key = (language, pretokenized)
+        pipe = self._cache.get(key)
         if pipe is None:
-            print(f"Loading Stanza pipeline for '{language}'…", flush=True)
-            pipe = stanza.Pipeline(language, processors=self.processors)
-            self._cache[language] = pipe
+            print(f"Loading Stanza pipeline for '{language}' (pretokenized={pretokenized})…", flush=True)
+            pipe = stanza.Pipeline(language, processors=self.processors,
+                                   tokenize_pretokenized=pretokenized)
+            self._cache[key] = pipe
         return pipe
 
 
@@ -170,42 +187,79 @@ def make_span_token(span_layer_id, tokens, value, prov, metadata=None):
     return base
 
 
-def count_protected_annotations(text_layer):
-    """Count human-made or human-verified annotations under a text layer.
+def count_protected_annotations(token_layers):
+    """Count human-made or human-verified annotations under the given token
+    layers (write-contract guard). Returns (total, breakdown) where breakdown
+    maps a human-readable label to a count, so the refusal can NAME what is
+    in the way — on shared projects the annotations often belong to another
+    app and are invisible in the UD editor.
 
-    The sentence-token cascade delete destroys EVERYTHING under the text layer
-    — every token layer's spans, relations, and vocab links, including other
-    apps' layers — so the write-contract guard walks the whole tree, not just
-    UD's layers. Tokens themselves are deliberately NOT counted: hand-tokenize-
-    then-parse is the normal flow, and the contract protects annotation
-    content, not substrate segmentation.
+    Tokens themselves are deliberately NOT counted: hand-tokenize-then-parse
+    is the normal flow, and the contract protects annotation content, not
+    substrate segmentation.
     """
-    protected = 0
-    for token_layer in text_layer.get("token_layers", []) or []:
+    breakdown = {}
+
+    def bump(label):
+        breakdown[label] = breakdown.get(label, 0) + 1
+
+    for token_layer in token_layers or []:
+        tl_name = token_layer.get("name", "?")
         for span_layer in token_layer.get("span_layers", []) or []:
+            label = f"{tl_name}/{span_layer.get('name', '?')}"
             for span in span_layer.get("spans", []) or []:
                 if is_protected(span.get("metadata")):
-                    protected += 1
+                    bump(label)
             for relation_layer in span_layer.get("relation_layers", []) or []:
+                rlabel = f"{label}/{relation_layer.get('name', '?')}"
                 for relation in relation_layer.get("relations", []) or []:
                     if is_protected(relation.get("metadata")):
-                        protected += 1
+                        bump(rlabel)
         for vocab in token_layer.get("vocabs", []) or []:
             for link in vocab.get("vocab_links", []) or []:
                 if is_protected(link.get("metadata")):
-                    protected += 1
-    return protected
+                    bump(f"{tl_name} vocab links")
+    return sum(breakdown.values()), breakdown
 
 
-def parse_document(pipeline, client, document_id, text_content, language='en', overwrite=False):
-    """Parse a document with Stanza and create the three-layer token hierarchy
-    (sentences > words > morphemes) plus annotations in Plaid.
+def format_protected_error(total, breakdown, scope):
+    top = sorted(breakdown.items(), key=lambda kv: -kv[1])
+    listed = ", ".join(f"{label}: {n}" for label, n in top[:6])
+    if len(top) > 6:
+        listed += ", …"
+    return (
+        f"{total} human-made or human-verified annotation(s) exist {scope} "
+        f"({listed}). Re-run with 'Overwrite human-edited annotations' enabled "
+        f"to replace them — only if losing them is really what you want. "
+        f"(Annotations from parses made before provenance stamping existed "
+        f"also count as human-made.)"
+    )
 
-    Provenance write contract: everything created here is stamped machine-made
-    (prov_fragment). Re-running freely replaces machine-made UNVERIFIED
-    material, but if any human-made or human-verified annotations exist under
-    the text layer, the parse refuses unless `overwrite` is set."""
+
+def parse_document(pipeline_provider, client, document_id, text_content, language='en', overwrite=False):
+    """Parse a document with Stanza and write UD annotations into Plaid.
+
+    Two modes, chosen by what already exists:
+
+    - FULL REPLACE (untokenized document): tokenize from scratch and create
+      the three-layer hierarchy (sentences > words > syntactic words) plus
+      the UD annotation spans and dependency relations. The sentence reset
+      cascade-deletes EVERYTHING under the text layer — other apps' layers
+      included — so the provenance guard walks the whole tree.
+    - SUBSTRATE-PRESERVING (sentence + word tokens already exist, e.g. a
+      project shared with another app): keep the existing tokenization, run
+      Stanza pretokenized over the existing words, and replace only what UD
+      owns — the syntactic-word tokens and their spans/relations. The guard
+      narrows to exactly those layers. Limitation: pretokenized Stanza does
+      not split multiword tokens, so each word gets exactly one syntactic
+      word (annotators can still split by hand afterwards).
+
+    Provenance write contract: everything created here is stamped machine-
+    made (prov_fragment). Re-running freely replaces machine-made UNVERIFIED
+    material; if any human-made or human-verified annotations exist in the
+    blast radius, the parse refuses unless `overwrite` is set."""
     frag = prov_fragment(language)
+
     def log(msg):
         # Force-flush so the next-line-after-hang shows whatever the last
         # successful step was, even if Python's stdout is block-buffered.
@@ -213,11 +267,8 @@ def parse_document(pipeline, client, document_id, text_content, language='en', o
 
     try:
         log(f"Starting parse for document {document_id}")
-        stanza_doc = pipeline(text_content)
-        sentences_data = stanza_doc.to_dict()
-        log(f"Parsed {len(sentences_data)} sentences")
 
-        # Resolve layers
+        # Resolve layers FIRST — the parse mode depends on what exists.
         log("Fetching document with layers…")
         full_document = client.documents.get(document_id, include_body=True)
         log("  …document fetched")
@@ -245,113 +296,178 @@ def parse_document(pipeline, client, document_id, text_content, language='en', o
         xpos_layer = span_layer_by_ud_config(span_layers, "xpos", "XPOS")
         features_layer = span_layer_by_ud_config(span_layers, "features", "Features")
 
-        # Provenance guard (write contract): never destroy human-made or
-        # human-verified annotations without an explicit opt-in.
-        protected = count_protected_annotations(text_layer)
-        if protected and not overwrite:
-            raise RuntimeError(
-                f"{protected} human-made or human-verified annotation(s) exist on this "
-                f"document; re-run with 'Overwrite human-edited annotations' enabled to "
-                f"replace them. (Annotations from parses made before provenance stamping "
-                f"existed also count as human-made — one overwrite re-parse re-stamps them.)"
-            )
-        if protected:
-            log(f"Overwrite enabled: replacing {protected} protected annotation(s)")
-
-        # Reset: delete pre-existing tokens, leaning on server-side cascade
-        # for the normal case. Deleting sentences cascades to their words +
-        # morphemes server-side in one shot. The lower elif branches only
-        # kick in for half-parsed states (sentences absent but lower layers
-        # left over from a botched mid-flight parse). Doing this top-down
-        # rather than bottom-up matters a lot for perf: an explicit
-        # bottom-up cycle for a 285-word doc ran ~30s server-side (each
-        # word delete runs constraint queries individually), while a
-        # single-sentence cascade collapses that into one server-side
-        # transaction.
-        existing_sentences = sentence_layer.get("tokens", [])
-        existing_words = word_layer.get("tokens", [])
-        existing_morphemes = morpheme_layer.get("tokens", [])
+        existing_sentences = sorted(sentence_layer.get("tokens") or [], key=lambda t: t["begin"])
+        existing_words = sorted(word_layer.get("tokens") or [], key=lambda t: (t["begin"], t["end"]))
+        existing_morphemes = morpheme_layer.get("tokens", []) or []
         log(f"Existing tokens: {len(existing_sentences)} sentences, "
-            f"{len(existing_words)} words, {len(existing_morphemes)} morphemes")
-        if existing_sentences:
-            log(f"  Deleting {len(existing_sentences)} sentences (cascades to words + morphemes)…")
-            client.tokens.bulk_delete([t["id"] for t in existing_sentences])
-        elif existing_words:
-            log(f"  Deleting {len(existing_words)} orphan words (no sentences to cascade from)…")
-            client.tokens.bulk_delete([t["id"] for t in existing_words])
-        elif existing_morphemes:
-            log(f"  Deleting {len(existing_morphemes)} orphan morphemes…")
-            client.tokens.bulk_delete([t["id"] for t in existing_morphemes])
+            f"{len(existing_words)} words, {len(existing_morphemes)} syntactic words")
 
-        # 1. Sentence tokens: a gap-free partition of [0, len(body)). Sentence i
-        #    runs from its first token to the start of sentence i+1, so inter-
-        #    sentence whitespace stays with the preceding sentence; sentence 0
-        #    starts at 0 and the last sentence ends at len(body).
-        n_sents = len(stanza_doc.sentences)
-        starts = [0 if i == 0 else sent.tokens[0].start_char
-                  for i, sent in enumerate(stanza_doc.sentences)]
-        sentence_ops = []
-        for i in range(n_sents):
-            begin = starts[i]
-            end = starts[i + 1] if i + 1 < n_sents else len(body)
-            op = make_bulk_token(sentence_layer["id"], text_id, begin, end)
-            # Preserve the Stanza-recovered sentence text on the sentence token so
-            # the exporter can round-trip it (e.g. when surface forms differ from
-            # the body slice — contractions, normalized punctuation). Provenance
-            # rides alongside the round-trip data.
-            op["metadata"] = {"text": stanza_doc.sentences[i].text, **frag}
-            sentence_ops.append(op)
+        preserve = bool(existing_sentences and existing_words)
 
-        # 2/3. Word and morpheme tokens. Each surface token is a word; each
-        #      integer-id syntactic word is a morpheme that inhabits the FULL
-        #      width of its word (multiword-token components share the extent).
-        word_ops = []
-        morpheme_ops = []
-        morpheme_meta = []  # parallel to morpheme_ops: {sent_idx, row, word_substring}
-        for sent_idx, sentence_data in enumerate(sentences_data):
-            i = 0
-            while i < len(sentence_data):
-                td = sentence_data[i]
-                if isinstance(td["id"], tuple):
-                    start_id, end_id = td["id"]
-                    count = end_id - start_id + 1
-                    wb, we = td["start_char"], td["end_char"]
-                    # Persist the MWT surface form on the word token's
-                    # metadata so the exporter can round-trip it. (1:1 words
-                    # leave metadata clean; the body substring is canonical.)
-                    word_meta = dict(frag)
-                    if td.get("text") and td["text"] != body[wb:we]:
-                        word_meta["form"] = td["text"]
-                    if td.get("misc"):
-                        word_meta["misc"] = td["misc"]
-                    word_ops.append(make_bulk_token(
-                        word_layer["id"], text_id, wb, we, metadata=word_meta
-                    ))
-                    members = sentence_data[i + 1:i + 1 + count]
-                    for prec, member in enumerate(members):
-                        op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
-                                             metadata=dict(frag))
-                        op["precedence"] = prec
-                        morpheme_ops.append(op)
-                        morpheme_meta.append({"sent_idx": sent_idx, "row": member, "word_substring": body[wb:we]})
-                    i += 1 + count
-                else:
-                    wb, we = td["start_char"], td["end_char"]
-                    word_ops.append(make_bulk_token(word_layer["id"], text_id, wb, we,
-                                                    metadata=dict(frag)))
-                    op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
-                                         metadata=dict(frag))
+        if preserve:
+            # ----- SUBSTRATE-PRESERVING mode --------------------------------
+            # Provenance guard scoped to what this mode destroys: the
+            # syntactic-word subtree (UD's own spans + relations + any links
+            # on its tokens). Other apps' layers are untouched siblings.
+            protected, breakdown = count_protected_annotations([morpheme_layer])
+            if protected and not overwrite:
+                raise RuntimeError(format_protected_error(
+                    protected, breakdown,
+                    "on the UD annotation layers this parse replaces"))
+            if protected:
+                log(f"Overwrite enabled: replacing {protected} protected annotation(s)")
+
+            # Group the existing words under their containing sentences (the
+            # sentence layer is partitioning, so containment is well-defined).
+            groups = []
+            for sent in existing_sentences:
+                ws = [w for w in existing_words
+                      if sent["begin"] <= w["begin"] and w["end"] <= sent["end"]]
+                if ws:
+                    groups.append(ws)
+            grouped_count = sum(len(g) for g in groups)
+            if grouped_count != len(existing_words):
+                log(f"  WARNING: {len(existing_words) - grouped_count} word token(s) "
+                    f"fall outside the sentence partition; they get no syntactic word")
+
+            log("Preserving existing tokenization; parsing pretokenized…")
+            pipeline = pipeline_provider.get(language, pretokenized=True)
+            stanza_doc = pipeline([[body[w["begin"]:w["end"]] for w in g] for g in groups])
+            sentences_data = stanza_doc.to_dict()
+
+            # Replace only UD's syntactic-word layer; the cascade takes only
+            # UD's spans/relations with it.
+            if existing_morphemes:
+                log(f"  Deleting {len(existing_morphemes)} syntactic-word tokens "
+                    f"(cascades UD spans/relations only)…")
+                client.tokens.bulk_delete([t["id"] for t in existing_morphemes])
+
+            sentence_ops, word_ops = [], []  # substrate preserved
+            morpheme_ops = []
+            morpheme_meta = []  # parallel to morpheme_ops: {sent_idx, row, word_substring}
+            for sent_idx, (g, sentence_data) in enumerate(zip(groups, sentences_data)):
+                rows = [td for td in sentence_data if not isinstance(td["id"], tuple)]
+                if len(rows) != len(g):
+                    # A misalignment would hang annotations on the wrong
+                    # words — fail loudly rather than guess.
+                    raise RuntimeError(
+                        f"Pretokenized parse returned {len(rows)} words for a "
+                        f"{len(g)}-word sentence (index {sent_idx}); aborting")
+                for w, row in zip(g, rows):
+                    op = make_bulk_token(morpheme_layer["id"], text_id,
+                                         w["begin"], w["end"], metadata=dict(frag))
                     op["precedence"] = 0
                     morpheme_ops.append(op)
-                    morpheme_meta.append({"sent_idx": sent_idx, "row": td, "word_substring": body[wb:we]})
-                    i += 1
+                    morpheme_meta.append({"sent_idx": sent_idx, "row": row,
+                                          "word_substring": body[w["begin"]:w["end"]]})
+        else:
+            # ----- FULL-REPLACE mode -----------------------------------------
+            # The sentence cascade destroys EVERYTHING under the text layer —
+            # other apps' layers included — so the guard walks the whole tree.
+            protected, breakdown = count_protected_annotations(token_layers)
+            if protected and not overwrite:
+                raise RuntimeError(format_protected_error(
+                    protected, breakdown,
+                    "on this document (they may belong to other apps sharing the project)"))
+            if protected:
+                log(f"Overwrite enabled: replacing {protected} protected annotation(s)")
 
-        # Combine sentences/words/morphemes into a single atomic batch (server
-        # runs them sequentially, so child layers see the parents from earlier
-        # ops in the same batch — those creates don't reference the *ids*
-        # produced earlier in the batch, only the pre-existing layer ids).
-        # Order is top-down (sentences → words → morphemes) — a child without
-        # its parent on the server is a 400.
+            log("Tokenizing + parsing from scratch…")
+            pipeline = pipeline_provider.get(language)
+            stanza_doc = pipeline(text_content)
+            sentences_data = stanza_doc.to_dict()
+            log(f"Parsed {len(sentences_data)} sentences")
+
+            # Reset: delete pre-existing tokens, leaning on server-side cascade
+            # for the normal case. Deleting sentences cascades to their words +
+            # morphemes server-side in one shot. The lower elif branches only
+            # kick in for half-parsed states (sentences absent but lower layers
+            # left over from a botched mid-flight parse). Doing this top-down
+            # rather than bottom-up matters a lot for perf: an explicit
+            # bottom-up cycle for a 285-word doc ran ~30s server-side (each
+            # word delete runs constraint queries individually), while a
+            # single-sentence cascade collapses that into one server-side
+            # transaction. (preserve=False means at most one branch fires.)
+            if existing_sentences:
+                log(f"  Deleting {len(existing_sentences)} sentences (cascades to words + morphemes)…")
+                client.tokens.bulk_delete([t["id"] for t in existing_sentences])
+            elif existing_words:
+                log(f"  Deleting {len(existing_words)} orphan words (no sentences to cascade from)…")
+                client.tokens.bulk_delete([t["id"] for t in existing_words])
+            elif existing_morphemes:
+                log(f"  Deleting {len(existing_morphemes)} orphan morphemes…")
+                client.tokens.bulk_delete([t["id"] for t in existing_morphemes])
+
+            # 1. Sentence tokens: a gap-free partition of [0, len(body)). Sentence i
+            #    runs from its first token to the start of sentence i+1, so inter-
+            #    sentence whitespace stays with the preceding sentence; sentence 0
+            #    starts at 0 and the last sentence ends at len(body).
+            n_sents = len(stanza_doc.sentences)
+            starts = [0 if i == 0 else sent.tokens[0].start_char
+                      for i, sent in enumerate(stanza_doc.sentences)]
+            sentence_ops = []
+            for i in range(n_sents):
+                begin = starts[i]
+                end = starts[i + 1] if i + 1 < n_sents else len(body)
+                op = make_bulk_token(sentence_layer["id"], text_id, begin, end)
+                # Preserve the Stanza-recovered sentence text on the sentence token so
+                # the exporter can round-trip it (e.g. when surface forms differ from
+                # the body slice — contractions, normalized punctuation). Provenance
+                # rides alongside the round-trip data.
+                op["metadata"] = {"text": stanza_doc.sentences[i].text, **frag}
+                sentence_ops.append(op)
+
+            # 2/3. Word and morpheme tokens. Each surface token is a word; each
+            #      integer-id syntactic word is a morpheme that inhabits the FULL
+            #      width of its word (multiword-token components share the extent).
+            word_ops = []
+            morpheme_ops = []
+            morpheme_meta = []  # parallel to morpheme_ops: {sent_idx, row, word_substring}
+            for sent_idx, sentence_data in enumerate(sentences_data):
+                i = 0
+                while i < len(sentence_data):
+                    td = sentence_data[i]
+                    if isinstance(td["id"], tuple):
+                        start_id, end_id = td["id"]
+                        count = end_id - start_id + 1
+                        wb, we = td["start_char"], td["end_char"]
+                        # Persist the MWT surface form on the word token's
+                        # metadata so the exporter can round-trip it. (1:1 words
+                        # leave metadata clean; the body substring is canonical.)
+                        word_meta = dict(frag)
+                        if td.get("text") and td["text"] != body[wb:we]:
+                            word_meta["form"] = td["text"]
+                        if td.get("misc"):
+                            word_meta["misc"] = td["misc"]
+                        word_ops.append(make_bulk_token(
+                            word_layer["id"], text_id, wb, we, metadata=word_meta
+                        ))
+                        members = sentence_data[i + 1:i + 1 + count]
+                        for prec, member in enumerate(members):
+                            op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
+                                                 metadata=dict(frag))
+                            op["precedence"] = prec
+                            morpheme_ops.append(op)
+                            morpheme_meta.append({"sent_idx": sent_idx, "row": member, "word_substring": body[wb:we]})
+                        i += 1 + count
+                    else:
+                        wb, we = td["start_char"], td["end_char"]
+                        word_ops.append(make_bulk_token(word_layer["id"], text_id, wb, we,
+                                                        metadata=dict(frag)))
+                        op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
+                                             metadata=dict(frag))
+                        op["precedence"] = 0
+                        morpheme_ops.append(op)
+                        morpheme_meta.append({"sent_idx": sent_idx, "row": td, "word_substring": body[wb:we]})
+                        i += 1
+
+        # Combine the creations into a single atomic batch (server runs them
+        # sequentially, so child layers see the parents from earlier ops in
+        # the same batch — those creates don't reference the *ids* produced
+        # earlier in the batch, only the pre-existing layer ids). Order is
+        # top-down (sentences → words → morphemes) — a child without its
+        # parent on the server is a 400. In substrate-preserving mode the
+        # sentence/word op lists are empty and only syntactic words land.
         log(f"Building token ops: {len(sentence_ops)} sentences, "
             f"{len(word_ops)} words, {len(morpheme_ops)} morphemes")
         client.begin_batch()
@@ -580,8 +696,7 @@ def make_handler(client, pipeline_provider, parse_lock):
             # Building the per-language pipeline also happens under the lock,
             # since Stanza model loading is not thread-safe.
             with parse_lock:
-                pipeline = pipeline_provider.get(language)
-                success = parse_document(pipeline, client, document_id, text_content,
+                success = parse_document(pipeline_provider, client, document_id, text_content,
                                          language=language, overwrite=overwrite)
 
             if success:
