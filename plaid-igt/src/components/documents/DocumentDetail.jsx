@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
@@ -25,14 +25,30 @@ const DocumentEditor = () => {
   const location = useLocation();
   const client = useStrictClient();
   const { logout } = useAuth();
+  const [searchParams] = useSearchParams();
+  // Deep-link params (so a fresh tab — where router state isn't available —
+  // still lands on the right tab + sentence): ?tab=analyze&focusSentence=<id>.
+  const tabParam = searchParams.get('tab');
+  const focusParam = searchParams.get('focusSentence');
+
+  // Seed the Analyze island's focus key from ?focusSentence= once; the island
+  // consumes + clears it (StrictMode-aware). Done in render so it's set before
+  // the island child mounts.
+  const focusSeededRef = useRef(false);
+  if (!focusSeededRef.current && focusParam) {
+    focusSeededRef.current = true;
+    try {
+      sessionStorage.setItem('igt:focus-sentence', JSON.stringify({ docId: documentId, sentenceId: focusParam }));
+    } catch { /* noop */ }
+  }
 
   // The single shared IgtDocument for the whole editor. `asOf` drives time-travel:
   // selecting a history entry reloads this doc at that snapshot.
   const [doc, setDoc] = useState(null);
   const [asOf, setAsOf] = useState(null);
-  // Search click-through (and anything else navigating here) can request an
-  // initial tab via router state.
-  const [activeTab, setActiveTab] = useState(location.state?.tab ?? 'metadata');
+  // Search/concordance click-through (and anything else navigating here) can
+  // request an initial tab via router state or the ?tab= query param.
+  const [activeTab, setActiveTab] = useState(location.state?.tab ?? tabParam ?? 'metadata');
   const [loadError, setLoadError] = useState('');
 
   const permissions = useDocumentPermissions(doc?.project);
@@ -115,7 +131,7 @@ const DocumentEditor = () => {
   // Land on Analyze when the document is already tokenized — the work surface
   // shouldn't be buried behind Metadata. Once, on the first live load only (not
   // on time-travel reloads or after the user has navigated tabs themselves).
-  const didAutoTabRef = useRef(!!location.state?.tab); // explicit tab request wins over auto-tab
+  const didAutoTabRef = useRef(!!(location.state?.tab || tabParam)); // explicit tab request wins over auto-tab
   useEffect(() => {
     if (!doc || asOf || didAutoTabRef.current) return;
     didAutoTabRef.current = true;

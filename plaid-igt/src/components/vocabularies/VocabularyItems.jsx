@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Trash2, AlertTriangle, ArrowUp, ArrowDown, Upload, Download, Search,
+  Plus, Trash2, AlertTriangle, Upload, Download, Search, FileText,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -23,30 +24,15 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
+import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
 
+const NEW_ID = '__new__';
 const PAGE_SIZE = 100;
-
-// Sortable column header (arrow on the active column, toggles direction).
-const SortHeader = ({ field, label, sort, onSort, style, align = 'left' }) => {
-  const active = sort.key === field;
-  const Arrow = sort.dir === 'asc' ? ArrowUp : ArrowDown;
-  return (
-    <th className={`px-3 py-2 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`} style={style}>
-      <button
-        type="button"
-        className={`inline-flex items-center gap-1 hover:text-foreground ${align === 'right' ? 'justify-end' : ''}`}
-        onClick={() => onSort(field)}
-      >
-        {label}
-        {active && <Arrow className="h-3 w-3" />}
-      </button>
-    </th>
-  );
-};
 
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
@@ -59,6 +45,14 @@ const cleanMeta = (obj) => {
   return out;
 };
 
+const metaEqual = (a, b) => {
+  const ca = cleanMeta(a);
+  const cb = cleanMeta(b);
+  const ka = Object.keys(ca);
+  if (ka.length !== Object.keys(cb).length) return false;
+  return ka.every((k) => String(ca[k]) === String(cb[k]));
+};
+
 // A form with its homonym subscript (form₂) when the form is shared by 2+ items.
 const FormLabel = ({ form, index, className = '' }) => (
   <span className={className}>
@@ -67,55 +61,79 @@ const FormLabel = ({ form, index, className = '' }) => (
   </span>
 );
 
+// Render sentence text with <mark>s over hit ranges (sentence-relative, sorted).
+const MarkedText = ({ text, marks }) => {
+  if (!marks?.length) return <>{text}</>;
+  const chars = [...text];
+  const out = [];
+  let pos = 0;
+  marks.forEach((m, i) => {
+    const b = Math.max(pos, Math.min(m.begin, chars.length));
+    const e = Math.max(b, Math.min(m.end, chars.length));
+    if (b > pos) out.push(chars.slice(pos, b).join(''));
+    out.push(<mark key={i} className="rounded bg-yellow-200 px-0.5">{chars.slice(b, e).join('')}</mark>);
+    pos = e;
+  });
+  if (pos < chars.length) out.push(chars.slice(pos).join(''));
+  return <>{out}</>;
+};
+
 export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) => {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // New-item modal.
-  const [newOpen, setNewOpen] = useState(false);
-  const [newForm, setNewForm] = useState('');
-  const [newFields, setNewFields] = useState({});
-
-  // Edit-item modal.
-  const [editOpen, setEditOpen] = useState(false);
-  const [editItem, setEditItem] = useState(null);
+  // Selection + inline edit draft (NEW_ID = unsaved new item).
+  const [selectedId, setSelectedId] = useState(null);
   const [editForm, setEditForm] = useState('');
   const [editFields, setEditFields] = useState({});
 
-  // Delete confirmation.
-  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState(null);
-
-  // Search / sort / pagination / usage counts / bulk add.
+  // Left-list search, pagination, usage counts, bulk add, delete confirm.
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState({ key: 'form', dir: 'asc' });
   const [page, setPage] = useState(0);
-  const [usageCounts, setUsageCounts] = useState(null); // {itemId: n} | null while loading/unavailable
+  const listRef = useRef(null);
+  const [usageCounts, setUsageCounts] = useState(null); // {itemId: n} | null
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Inline-flagged fields become table columns; every field is editable in the modals.
-  const columnFields = useMemo(() => fields.filter((f) => f.inline), [fields]);
+  // Concordance for the selected item: a cheap plan (queries) + lazily-loaded,
+  // batched document groups that infinite-scroll.
+  const CONC_BATCH = 8;
+  const [concPlan, setConcPlan] = useState(null);
+  const [concGroups, setConcGroups] = useState([]);
+  const [concLoaded, setConcLoaded] = useState(0); // # of docs loaded so far
+  const [concLoading, setConcLoading] = useState(false); // plan + first batch
+  const [concLoadingMore, setConcLoadingMore] = useState(false);
+  const [concError, setConcError] = useState('');
+  const concReq = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const sentinelRef = useRef(null);
+  const loadMoreRef = useRef(() => {});
+
   const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
+  const hasGloss = useMemo(() => fields.some((f) => f.name === 'gloss'), [fields]);
   const homonyms = useMemo(() => buildHomonymIndex(items), [items]);
+
+  const selectedItem = useMemo(
+    () => (selectedId && selectedId !== NEW_ID ? items.find((i) => i.id === selectedId) || null : null),
+    [items, selectedId],
+  );
+  const isNew = selectedId === NEW_ID;
 
   const fetchItems = async () => {
     try {
       setLoading(true);
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-
+      if (!client) throw new Error('Not authenticated');
       if (!vocabularyId || vocabularyId === 'undefined' || vocabularyId === 'new') {
         throw new Error('Invalid vocabulary ID');
       }
-
       const vocabularyData = await client.vocabLayers.get(vocabularyId, true);
       setItems(vocabularyData.items || []);
       setError('');
-      fetchUsageCounts(); // not awaited — counts fill in when ready
+      fetchUsageCounts(); // not awaited
     } catch (err) {
       setError('Failed to load vocabulary items');
       console.error('Error fetching vocabulary items:', err);
@@ -124,8 +142,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
     }
   };
 
-  // One grouped aggregate query: tokens linked per item, across every project
-  // the user can read. null leaves the column as "—".
+  // One grouped aggregate query: links per item across every readable project.
   const fetchUsageCounts = async () => {
     try {
       const res = await client.query({
@@ -152,73 +169,144 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabularyId]);
 
-  // ---- create ----
-  const handleCreateItem = async () => {
-    if (!newForm.trim()) {
-      notifyError('Item form cannot be empty', 'Invalid Form');
+  // Plan the concordance + load the first batch whenever a real item is selected.
+  useEffect(() => {
+    if (!selectedId || selectedId === NEW_ID) {
+      setConcPlan(null); setConcGroups([]); setConcLoaded(0); setConcError('');
       return;
     }
+    const my = ++concReq.current;
+    loadingMoreRef.current = false;
+    setConcPlan(null); setConcGroups([]); setConcLoaded(0); setConcError('');
+    setConcLoading(true);
+    planItemConcordance(client, vocabularyId, selectedId)
+      .then(async (plan) => {
+        if (concReq.current !== my) return;
+        setConcPlan(plan);
+        const first = plan.docs.slice(0, CONC_BATCH);
+        const groups = await loadConcordanceGroups(client, plan.hitIds, first);
+        if (concReq.current !== my) return;
+        setConcGroups(groups);
+        setConcLoaded(first.length);
+        setConcLoading(false);
+      })
+      .catch((err) => {
+        if (concReq.current !== my) return;
+        console.error('Concordance failed:', err);
+        setConcError('Could not load usage examples.');
+        setConcLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, vocabularyId]);
+
+  // Load the next batch of documents (called by the infinite-scroll sentinel or
+  // its Load-more button). A synchronous ref guards against double-firing.
+  const concHasMore = !!concPlan && concLoaded < concPlan.docs.length;
+  const loadMore = async () => {
+    if (!concPlan || loadingMoreRef.current || concLoaded >= concPlan.docs.length) return;
+    const my = concReq.current;
+    loadingMoreRef.current = true;
+    setConcLoadingMore(true);
     try {
-      const metadata = cleanMeta(newFields);
-      await client.vocabItems.create(vocabularyId, newForm.trim(), Object.keys(metadata).length ? metadata : undefined);
-      setNewOpen(false);
-      setNewForm('');
-      setNewFields({});
-      await fetchItems();
-      notifySuccess('Vocabulary item created successfully', 'Success');
+      const next = concPlan.docs.slice(concLoaded, concLoaded + CONC_BATCH);
+      const groups = await loadConcordanceGroups(client, concPlan.hitIds, next);
+      if (concReq.current !== my) return;
+      setConcGroups((prev) => [...prev, ...groups]);
+      setConcLoaded((prev) => prev + next.length);
     } catch (err) {
-      console.error('Error creating vocabulary item:', err);
-      notifyError('Failed to create vocabulary item', 'Error');
+      console.error('Load more concordance failed:', err);
+    } finally {
+      loadingMoreRef.current = false;
+      if (concReq.current === my) setConcLoadingMore(false);
+    }
+  };
+  loadMoreRef.current = loadMore;
+
+  // Auto-load more when the sentinel scrolls into view.
+  useEffect(() => {
+    if (!concHasMore) return undefined;
+    const el = sentinelRef.current;
+    if (!el) return undefined;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) loadMoreRef.current();
+    }, { rootMargin: '300px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [concHasMore, concLoaded]);
+
+  const selectItem = (item) => {
+    setSelectedId(item.id);
+    setEditForm(item.form);
+    setEditFields(item.metadata || {});
+  };
+
+  const startNew = () => {
+    setSelectedId(NEW_ID);
+    setEditForm('');
+    setEditFields({});
+  };
+
+  const cancelEdit = () => {
+    if (isNew) {
+      setSelectedId(null);
+      setEditForm('');
+      setEditFields({});
+    } else if (selectedItem) {
+      setEditForm(selectedItem.form);
+      setEditFields(selectedItem.metadata || {});
     }
   };
 
-  // ---- edit ----
-  const openEdit = (item) => {
-    setEditItem(item);
-    setEditForm(item.form);
-    setEditFields(item.metadata || {});
-    setEditOpen(true);
-  };
+  const dirty = isNew
+    ? (editForm.trim() !== '' || Object.keys(cleanMeta(editFields)).length > 0)
+    : !!selectedItem && (editForm.trim() !== selectedItem.form || !metaEqual(editFields, selectedItem.metadata || {}));
 
-  const handleSaveEdit = async () => {
+  const handleSave = async () => {
     if (!editForm.trim()) {
       notifyError('Item form cannot be empty', 'Invalid Form');
       return;
     }
     try {
-      const item = editItem;
-      if (editForm.trim() !== item.form) {
-        await client.vocabItems.update(item.id, editForm.trim());
-      }
       const metadata = cleanMeta(editFields);
-      if (Object.keys(metadata).length > 0) {
-        await client.vocabItems.setMetadata(item.id, metadata);
-      } else if (item.metadata && Object.keys(item.metadata).length > 0) {
-        await client.vocabItems.deleteMetadata(item.id);
+      if (isNew) {
+        const created = await client.vocabItems.create(
+          vocabularyId, editForm.trim(), Object.keys(metadata).length ? metadata : undefined);
+        await fetchItems();
+        if (created?.id) {
+          setSelectedId(created.id);
+          setEditForm(editForm.trim());
+        } else {
+          setSelectedId(null);
+        }
+        notifySuccess('Vocabulary item created successfully', 'Success');
+      } else {
+        const item = selectedItem;
+        if (editForm.trim() !== item.form) {
+          await client.vocabItems.update(item.id, editForm.trim());
+        }
+        if (Object.keys(metadata).length > 0) {
+          await client.vocabItems.setMetadata(item.id, metadata);
+        } else if (item.metadata && Object.keys(item.metadata).length > 0) {
+          await client.vocabItems.deleteMetadata(item.id);
+        }
+        await fetchItems();
+        setEditForm(editForm.trim());
+        notifySuccess('Vocabulary item updated successfully', 'Success');
       }
-      setEditOpen(false);
-      setEditItem(null);
-      await fetchItems();
-      notifySuccess('Vocabulary item updated successfully', 'Success');
     } catch (err) {
-      console.error('Error updating vocabulary item:', err);
-      notifyError('Failed to update vocabulary item', 'Error');
+      console.error('Error saving vocabulary item:', err);
+      notifyError('Failed to save vocabulary item', 'Error');
     }
   };
 
-  // ---- delete (from the edit modal) ----
-  const requestDelete = () => {
-    setItemToDelete(editItem);
-    setEditOpen(false);
-    setDeleteModalOpened(true);
-  };
-
   const handleConfirmDelete = async () => {
-    if (!itemToDelete) return;
+    if (!selectedItem) return;
     try {
-      await client.vocabItems.delete(itemToDelete.id);
-      setDeleteModalOpened(false);
-      setItemToDelete(null);
+      await client.vocabItems.delete(selectedItem.id);
+      setDeleteOpen(false);
+      setSelectedId(null);
+      setEditForm('');
+      setEditFields({});
       await fetchItems();
       notifySuccess('Vocabulary item deleted successfully', 'Success');
     } catch (err) {
@@ -227,8 +315,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
     }
   };
 
-  // ---- bulk add (paste one item per line; TSV columns = Form + fields, i.e.
-  // directly pasteable from a spreadsheet) ----
+  // ---- bulk add (paste one item per line; TSV = Form + fields) ----
   const parsedBulk = useMemo(() => {
     const lines = bulkText.split('\n').map((l) => l.replace(/\r$/, '')).filter((l) => l.trim() !== '');
     const existing = new Set(items.map((i) => i.form.toLowerCase()));
@@ -243,9 +330,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
       if (existing.has(k) || seen.has(k)) { skipped++; continue; }
       seen.add(k);
       const metadata = {};
-      fieldNames.forEach((f, i) => {
-        if (cells[i + 1]) metadata[f] = cells[i + 1];
-      });
+      fieldNames.forEach((f, i) => { if (cells[i + 1]) metadata[f] = cells[i + 1]; });
       rows.push({ form, metadata: Object.keys(metadata).length ? metadata : undefined });
     }
     return { rows, skipped };
@@ -278,7 +363,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
   const handleExportCsv = () => {
     const header = ['Form', ...fieldNames.map(humanizeFieldName), ...(usageCounts ? ['Uses'] : [])];
     const lines = [header.map(csvCell).join(',')];
-    for (const it of sortedItems) {
+    for (const it of filteredItems) {
       const row = [it.form, ...fieldNames.map((f) => it.metadata?.[f] ?? '')];
       if (usageCounts) row.push(usageCounts[it.id] ?? 0);
       lines.push(row.map(csvCell).join(','));
@@ -292,11 +377,8 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
     URL.revokeObjectURL(url);
   };
 
-  // ---- search + sort ----
-  const onSort = (key) =>
-    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
-
-  const sortedItems = useMemo(() => {
+  // ---- left list (search + sort by form) ----
+  const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = items;
     if (q) {
@@ -304,31 +386,31 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
         it.form.toLowerCase().includes(q) ||
         fieldNames.some((f) => String(it.metadata?.[f] ?? '').toLowerCase().includes(q)));
     }
-    const val = (it) => {
-      if (sort.key === 'form') return it.form.toLowerCase();
-      if (sort.key === '_uses') return usageCounts?.[it.id] ?? 0;
-      return String(it.metadata?.[sort.key] ?? '').toLowerCase();
-    };
-    const dir = sort.dir === 'asc' ? 1 : -1;
     return [...list].sort((a, b) => {
-      const av = val(a);
-      const bv = val(b);
-      if (av < bv) return -dir;
-      if (av > bv) return dir;
-      return 0;
+      const af = a.form.toLowerCase();
+      const bf = b.form.toLowerCase();
+      if (af < bf) return -1;
+      if (af > bf) return 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; // homonyms in creation order
     });
-  }, [items, search, sort, fieldNames, usageCounts]);
+  }, [items, search, fieldNames]);
 
-  // Reset to the first page whenever the result set is re-scoped.
-  useEffect(() => { setPage(0); }, [search, sort]);
-
-  const pageCount = Math.max(1, Math.ceil(sortedItems.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
-  const pageItems = sortedItems.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
-  const rangeStart = sortedItems.length === 0 ? 0 : currentPage * PAGE_SIZE + 1;
-  const rangeEnd = Math.min((currentPage + 1) * PAGE_SIZE, sortedItems.length);
+  const pageItems = filteredItems.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const rangeStart = filteredItems.length === 0 ? 0 : currentPage * PAGE_SIZE + 1;
+  const rangeEnd = Math.min((currentPage + 1) * PAGE_SIZE, filteredItems.length);
 
-  // Field inputs shared by the new + edit modals (morphType is a controlled vocab).
+  // Reset to page 1 when the result set is re-scoped; jump the list back to top
+  // when the page changes.
+  useEffect(() => { setPage(0); }, [search]);
+  useEffect(() => { if (listRef.current) listRef.current.scrollTop = 0; }, [currentPage]);
+
+  const listCols = hasGloss
+    ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]'
+    : 'grid-cols-[minmax(0,1fr)_auto]';
+
+  // Field inputs for the detail editor (morphType is a controlled vocab).
   const renderFieldInputs = (values, onChange) =>
     fields.map((field) => (
       <div key={field.name} className="flex flex-col gap-1.5">
@@ -378,198 +460,260 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
   }
 
   return (
-    <div className="tw flex flex-col gap-6">
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium">
-              Vocabulary Items ({search ? `${sortedItems.length} of ${items.length}` : items.length})
-            </p>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search items…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-8 w-56 pl-7"
-                />
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
-                <Upload className="h-3.5 w-3.5" /> Bulk Add
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleExportCsv} disabled={!items.length}>
-                <Download className="h-3.5 w-3.5" /> Export CSV
-              </Button>
-              <Button size="sm" onClick={() => { setNewForm(''); setNewFields({}); setNewOpen(true); }}>
-                <Plus className="h-3.5 w-3.5" /> New Item
-              </Button>
-            </div>
+    <div className="tw flex items-start gap-4">
+      {/* ---- left pane: item list ---- */}
+      <div className="sticky top-4 flex max-h-[calc(100vh-7rem)] w-96 shrink-0 flex-col rounded-lg border bg-card">
+        <div className="flex flex-col gap-2 border-b p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">
+              Items{' '}
+              <span className="text-muted-foreground">
+                ({search ? `${filteredItems.length} of ${items.length}` : items.length})
+              </span>
+            </span>
+            <Button size="sm" className="h-7" onClick={startNew}>
+              <Plus className="h-3.5 w-3.5" /> New
+            </Button>
           </div>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search items…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-8 pl-7"
+            />
+          </div>
+        </div>
 
+        {items.length > 0 && filteredItems.length > 0 && (
+          <div className={cn('grid items-center gap-2 border-b px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground', listCols)}>
+            <span>Form</span>
+            {hasGloss && <span>Gloss</span>}
+            <span className="text-right">Uses</span>
+          </div>
+        )}
+
+        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
           {items.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No vocabulary items yet. Click “New Item” to add your first one.
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+              No items yet. Click “New”.
             </p>
-          ) : sortedItems.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No items match "{search}".
-            </p>
+          ) : filteredItems.length === 0 ? (
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">No matches.</p>
           ) : (
-            <>
-              <div className="overflow-hidden rounded-md border">
-                <table className="w-full text-sm">
-                  <thead className="border-b bg-muted/40">
-                    <tr>
-                      <SortHeader field="form" label="Form" sort={sort} onSort={onSort} style={{ width: '30%' }} />
-                      {columnFields.map((field) => (
-                        <SortHeader
-                          key={field.name}
-                          field={field.name}
-                          label={humanizeFieldName(field.name)}
-                          sort={sort}
-                          onSort={onSort}
-                          style={{ width: `${Math.max(14, 60 / (columnFields.length + 1))}%` }}
-                        />
-                      ))}
-                      <SortHeader field="_uses" label="Uses" sort={sort} onSort={onSort} align="right" style={{ width: '10%' }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageItems.map((record) => (
-                      <tr
-                        key={record.id}
-                        onClick={() => openEdit(record)}
-                        className="cursor-pointer border-t hover:bg-accent/40"
-                      >
-                        <td className="px-3 py-2">
-                          <FormLabel form={record.form} index={homonyms.get(record.id)} className="font-medium" />
-                        </td>
-                        {columnFields.map((field) => (
-                          <td key={field.name} className="px-3 py-2 text-muted-foreground">
-                            {record.metadata?.[field.name] || ''}
-                          </td>
-                        ))}
-                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground" title="Linked words/morphemes across projects you can read">
-                          {usageCounts ? (usageCounts[record.id] ?? 0) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {pageCount > 1 && (
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Showing {rangeStart}–{rangeEnd} of {sortedItems.length}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={currentPage === 0}
-                      onClick={() => setPage(currentPage - 1)}
-                    >
-                      <ChevronLeft className="h-3.5 w-3.5" /> Prev
-                    </Button>
-                    <span className="text-xs text-muted-foreground">Page {currentPage + 1} of {pageCount}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={currentPage >= pageCount - 1}
-                      onClick={() => setPage(currentPage + 1)}
-                    >
-                      Next <ChevronRight className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
+            <ul className="divide-y">
+              {pageItems.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => selectItem(item)}
+                    className={cn(
+                      'grid w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/40',
+                      listCols,
+                      selectedId === item.id && 'bg-accent/60',
+                    )}
+                  >
+                    <FormLabel form={item.form} index={homonyms.get(item.id)} className="truncate font-medium" />
+                    {hasGloss && (
+                      <span className="truncate text-xs text-muted-foreground">{item.metadata?.gloss || ''}</span>
+                    )}
+                    <span className="text-right text-xs tabular-nums text-muted-foreground">
+                      {usageCounts ? (usageCounts[item.id] ?? 0) : ''}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
+        </div>
+
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between gap-1 border-t px-2 py-1.5 text-xs text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              disabled={currentPage === 0}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="tabular-nums">{rangeStart}–{rangeEnd} of {filteredItems.length}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              disabled={currentPage >= pageCount - 1}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 border-t p-2">
+          <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={() => setBulkOpen(true)}>
+            <Upload className="h-3.5 w-3.5" /> Bulk Add
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={handleExportCsv} disabled={!items.length}>
+            <Download className="h-3.5 w-3.5" /> Export
+          </Button>
         </div>
       </div>
 
-      {/* New item modal */}
-      <Dialog open={newOpen} onOpenChange={setNewOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New Vocabulary Item</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label>Form <span className="text-destructive">*</span></Label>
-              <Input
-                placeholder="Enter item form"
-                value={newForm}
-                autoFocus
-                onChange={(event) => setNewForm(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    handleCreateItem();
-                  }
-                }}
-              />
-            </div>
-            {renderFieldInputs(newFields, setNewFields)}
+      {/* ---- right pane: detail + concordance ---- */}
+      <div className="min-w-0 flex-1">
+        {!selectedId ? (
+          <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
+            <p className="text-sm text-muted-foreground">Select an item, or click “New” to add one.</p>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNewOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateItem} disabled={!newForm.trim()}>
-              <Plus className="h-4 w-4" /> Add Item
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {/* detail editor */}
+            <div className="rounded-lg border bg-card p-4">
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <h3 className="text-base font-semibold">
+                  {isNew
+                    ? 'New item'
+                    : <FormLabel form={selectedItem?.form ?? ''} index={homonyms.get(selectedItem?.id)} />}
+                </h3>
+                {!isNew && selectedItem && (
+                  <div className="text-right text-xs text-muted-foreground">
+                    <div>{(usageCounts?.[selectedItem.id] ?? 0).toLocaleString()} use{(usageCounts?.[selectedItem.id] ?? 0) === 1 ? '' : 's'}</div>
+                    <div className="font-mono">{selectedItem.id}</div>
+                  </div>
+                )}
+              </div>
 
-      {/* Edit item modal */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              Edit{' '}
-              {editItem && (
-                <FormLabel form={editItem.form} index={homonyms.get(editItem.id)} />
-              )}
-            </DialogTitle>
-          </DialogHeader>
-          {editItem && (
-            <>
-              <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label>Form <span className="text-destructive">*</span></Label>
                   <Input
                     value={editForm}
-                    onChange={(event) => setEditForm(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault();
-                        handleSaveEdit();
-                      }
-                    }}
+                    autoFocus={isNew}
+                    placeholder="Enter item form"
+                    onChange={(e) => setEditForm(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (dirty) handleSave(); } }}
                   />
                 </div>
                 {renderFieldInputs(editFields, setEditFields)}
-                <p className="text-xs text-muted-foreground">ID: {editItem.id}</p>
               </div>
-              <DialogFooter className="sm:justify-between">
-                <Button
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  onClick={requestDelete}
-                >
-                  <Trash2 className="h-4 w-4" /> Delete
-                </Button>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-                  <Button onClick={handleSaveEdit} disabled={!editForm.trim()}>Save</Button>
+
+              <div className="mt-4 flex items-center justify-between">
+                <div>
+                  {!isNew && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteOpen(true)}
+                    >
+                      <Trash2 className="h-4 w-4" /> Delete
+                    </Button>
+                  )}
                 </div>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={cancelEdit} disabled={!dirty}>Cancel</Button>
+                  <Button size="sm" onClick={handleSave} disabled={!dirty || !editForm.trim()}>
+                    {isNew ? 'Create' : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* concordance */}
+            {!isNew && (
+              <div className="rounded-lg border bg-card">
+                <div className="flex items-center justify-between border-b px-4 py-2">
+                  <span className="text-sm font-medium">Concordance</span>
+                  {concPlan && (
+                    <span className="text-xs text-muted-foreground">
+                      {concPlan.totalHits.toLocaleString()} use{concPlan.totalHits === 1 ? '' : 's'} in{' '}
+                      {concPlan.totalDocs} document{concPlan.totalDocs === 1 ? '' : 's'}
+                      {concPlan.truncated ? ' (capped)' : ''}
+                    </span>
+                  )}
+                </div>
+
+                {concLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+                    Loading usage examples…
+                  </div>
+                ) : concError ? (
+                  <p className="px-4 py-6 text-center text-sm text-muted-foreground">{concError}</p>
+                ) : !concPlan || concPlan.totalHits === 0 ? (
+                  <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    Not linked to any words or morphemes yet.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-3 p-3">
+                    {concGroups.map((g) => (
+                      <div key={g.docId} className="overflow-hidden rounded-md border">
+                        <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="text-sm font-medium">{g.docName}</span>
+                          <span className="text-xs text-muted-foreground">{g.docHits} use{g.docHits === 1 ? '' : 's'}</span>
+                        </div>
+                        <div className="divide-y">
+                          {g.rows.map((row) => {
+                            // Deep-link the target sentence via query params so a
+                            // new tab (middle/ctrl-click) lands on it too.
+                            const to = g.projectId
+                              ? `/projects/${g.projectId}/documents/${g.docId}?tab=analyze&focusSentence=${row.sentenceId}`
+                              : null;
+                            return (
+                              <a
+                                key={row.sentenceId}
+                                href={to ? `#${to}` : undefined}
+                                onClick={(e) => {
+                                  if (!to) { e.preventDefault(); return; }
+                                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // let the browser open a new tab
+                                  e.preventDefault();
+                                  navigate(to);
+                                }}
+                                className="block w-full cursor-pointer px-3 py-1.5 text-left no-underline hover:bg-muted/50"
+                                title={to ? 'Open in Analyze (middle-click for a new tab)' : undefined}
+                              >
+                                <p className="text-sm text-foreground">
+                                  <span className="mr-2 text-xs text-muted-foreground">#{row.sentenceIndex + 1}</span>
+                                  <MarkedText text={row.text} marks={row.marks} />
+                                </p>
+                                {row.notes.length > 0 && (
+                                  <p className="mt-0.5 text-xs text-violet-700">{[...new Set(row.notes)].join(' · ')}</p>
+                                )}
+                                {row.translation && (
+                                  <p className="mt-0.5 text-xs italic text-muted-foreground">‘{row.translation}’</p>
+                                )}
+                              </a>
+                            );
+                          })}
+                          {g.rows.length === 0 && (
+                            <p className="px-3 py-2 text-xs text-muted-foreground">
+                              Uses in this document could not be located (it may have changed) — open it to look.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {concHasMore && (
+                      <div ref={sentinelRef} className="flex justify-center py-2">
+                        <Button variant="outline" size="sm" onClick={() => loadMoreRef.current()} disabled={concLoadingMore}>
+                          {concLoadingMore
+                            ? 'Loading…'
+                            : `Load more (${(concPlan.totalDocs - concLoaded).toLocaleString()} document${concPlan.totalDocs - concLoaded === 1 ? '' : 's'} left)`}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Bulk add dialog */}
       <Dialog open={bulkOpen} onOpenChange={(o) => { if (!o && !bulkBusy) setBulkOpen(false); }}>
@@ -605,34 +749,30 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields }) =>
       </Dialog>
 
       {/* Delete confirmation */}
-      <AlertDialog open={deleteModalOpened} onOpenChange={(o) => { if (!o) setDeleteModalOpened(false); }}>
+      <AlertDialog open={deleteOpen} onOpenChange={(o) => { if (!o) setDeleteOpen(false); }}>
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Vocabulary Item</AlertDialogTitle>
           </AlertDialogHeader>
-
           <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
               <div className="text-sm">
                 <p className="font-medium text-destructive">Warning</p>
                 <p className="mt-1 text-muted-foreground">
-                  You are about to permanently delete the vocabulary item <strong>"{itemToDelete?.form}"</strong>.
+                  You are about to permanently delete the vocabulary item <strong>"{selectedItem?.form}"</strong>.
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  {usageCounts && (usageCounts[itemToDelete?.id] ?? 0) > 0
-                    ? <>It is linked to <strong>{usageCounts[itemToDelete.id]} word{usageCounts[itemToDelete.id] === 1 ? '' : 's'}/morpheme{usageCounts[itemToDelete.id] === 1 ? '' : 's'}</strong> — those links will be removed. </>
+                  {usageCounts && (usageCounts[selectedItem?.id] ?? 0) > 0
+                    ? <>It is linked to <strong>{usageCounts[selectedItem.id]} word{usageCounts[selectedItem.id] === 1 ? '' : 's'}/morpheme{usageCounts[selectedItem.id] === 1 ? '' : 's'}</strong> — those links will be removed. </>
                     : null}
                   This action cannot be undone.
                 </p>
               </div>
             </div>
           </div>
-
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteModalOpened(false)}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setDeleteOpen(false)}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleConfirmDelete}

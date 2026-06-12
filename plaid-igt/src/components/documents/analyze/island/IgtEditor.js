@@ -209,6 +209,7 @@ export class IgtEditor {
     this._popover = { tokenId, kind };
     this._popoverSearch = '';
     this._popoverActiveIndex = 0;
+    this._popoverVocabId = null; // re-default to the linked item's vocab each open
     this._popoverReturnId = tokenId;
     this._popoverPos = this._computePopoverPos(anchorEl);
     this._render(true);
@@ -1280,15 +1281,24 @@ export class IgtEditor {
 
   _vocabPopover(tokenId, formText, currentItem, kind) {
     const vocabs = Object.values(this.doc.vocabularies || {});
-    const createVocabId = vocabs[0]?.id;
+    // The popover is scoped to ONE vocabulary at a time, chosen by the thin
+    // selector at the bottom. Default to the linked item's vocab (so an existing
+    // link is visible), else the first. The list, create, and manage row all
+    // follow the active vocab.
+    const activeVocab = vocabs.find((v) => v.id === this._popoverVocabId)
+      || vocabs.find((v) => v.id === currentItem?.vocabId)
+      || vocabs[0]
+      || null;
+    this._popoverVocabId = activeVocab?.id ?? null;
+
     const search = (this._popoverSearch || '').toLowerCase();
     const ft = (formText || '').toLowerCase();
-    let items = [];
-    vocabs.forEach((v) => {
-      const idx = this._homonymIndexFor(v.id);
-      (v.items || []).forEach((it) =>
-        items.push({ ...it, _vocabName: v.name, _detail: this._vocabItemDetail(it, v), _sub: idx.get(it.id) }));
-    });
+    const homIdx = activeVocab ? this._homonymIndexFor(activeVocab.id) : null;
+    let items = (activeVocab?.items || []).map((it) => ({
+      ...it,
+      _detail: this._vocabItemDetail(it, activeVocab),
+      _sub: homIdx ? homIdx.get(it.id) : null,
+    }));
 
     // Rank against the active query: the typed search if any, else the
     // word/morpheme's own form. Tiers (exact > prefix > substring on the form
@@ -1316,9 +1326,10 @@ export class IgtEditor {
     }
     const limited = items.slice(0, 30);
     const truncated = items.length - limited.length;
-    const createAvailable = !!(createVocabId && formText);
-    // Rows the keyboard can land on: every item plus the virtual "create" row.
-    const total = limited.length + (createAvailable ? 1 : 0);
+    // A single "+ Create" row, into the active vocab, when there's a form.
+    const canCreate = !!(formText && activeVocab);
+    // Rows the keyboard can land on: every item plus the create row.
+    const total = limited.length + (canCreate ? 1 : 0);
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
     const pos = this._popoverPos;
     const posStyle = pos ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;` : '';
@@ -1333,8 +1344,8 @@ export class IgtEditor {
         const linked = currentItem && it.id === currentItem.id;
         if (linked && inferredCurrent) this._confirmLink(tokenId, true);
         else this._toggleVocab(tokenId, it, linked, true);
-      } else if (createAvailable) {
-        this._createVocab(tokenId, createVocabId, formText, true);
+      } else if (canCreate) {
+        this._createVocab(tokenId, activeVocab.id, formText, true);
       }
     };
     const onSearchKey = (e) => {
@@ -1343,6 +1354,11 @@ export class IgtEditor {
       else if (e.key === 'ArrowUp') { e.preventDefault(); this._movePopoverActive(-1, total); }
       else if (e.key === 'Enter') { e.preventDefault(); selectActive(); }
       else if (e.key === 'Tab') { e.preventDefault(); } // trap focus in the search box
+    };
+    const selectVocab = (id) => {
+      this._popoverVocabId = id;
+      this._popoverActiveIndex = 0;
+      this._render(true);
     };
 
     return html`
@@ -1367,7 +1383,6 @@ export class IgtEditor {
                   }}>
                   <span class="igt-vocab-pop__main">
                     <span class="igt-vocab-pop__form">${it.form}${it._sub != null ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>` : nothing}</span>
-                    ${vocabs.length > 1 ? html`<span class="igt-vocab-pop__vname">${it._vocabName}</span>` : nothing}
                     ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
                     ${linked ? html`<span class="igt-vocab-pop__x" role="button" tabindex="-1"
                       @click=${(e) => { e.stopPropagation(); this._toggleVocab(tokenId, it, true); }}>unlink</span>` : nothing}
@@ -1380,13 +1395,32 @@ export class IgtEditor {
             ? html`<div class="igt-vocab-pop__more">+ ${truncated} more — type to narrow</div>`
             : nothing}
         </div>
-        ${createAvailable
+        ${canCreate
           ? html`<button type="button" class="igt-vocab-pop__create ${activeIdx === limited.length ? 'is-active' : ''}"
-              @click=${(e) => { e.stopPropagation(); this._createVocab(tokenId, createVocabId, formText); }}>
+              @mousemove=${() => { const idx = limited.length; if (this._popoverActiveIndex !== idx) { this._popoverActiveIndex = idx; this._render(true); } }}
+              @click=${(e) => { e.stopPropagation(); this._createVocab(tokenId, activeVocab.id, formText); }}>
               + Create "${formText}"
             </button>`
           : nothing}
         ${kind === 'morpheme' ? this._morphTypeRow(tokenId) : nothing}
+        ${vocabs.length
+          ? html`<div class="igt-vocab-pop__vocabsel" role="tablist" aria-label="Choose lexicon">
+              ${vocabs.map((v) => {
+                const isActive = v.id === activeVocab?.id;
+                // An inactive chip scopes the popover to that lexicon; the active
+                // chip is a link to the full vocab view (new tab). So the first
+                // click selects, a second click on the now-active chip opens.
+                return isActive
+                  ? html`<a class="igt-vocab-pop__vocabtab is-active" role="tab" aria-selected="true"
+                      href=${`#/vocabularies/${v.id}`} target="_blank" rel="noopener"
+                      title=${`Open “${v.name}” in a new tab`}
+                      @click=${(e) => e.stopPropagation()}><span class="igt-vocab-pop__vtab-name">${v.name}</span><span class="igt-vocab-pop__vtab-ext">↗</span></a>`
+                  : html`<button type="button" class="igt-vocab-pop__vocabtab" role="tab" aria-selected="false"
+                      title=${`Switch to “${v.name}”`}
+                      @click=${(e) => { e.stopPropagation(); selectVocab(v.id); }}><span class="igt-vocab-pop__vtab-name">${v.name}</span></button>`;
+              })}
+            </div>`
+          : nothing}
         <div class="igt-vocab-pop__hintbar"><kbd>↑</kbd><kbd>↓</kbd> navigate · <kbd>↵</kbd> select · <kbd>esc</kbd> close</div>
       </div>
     `;

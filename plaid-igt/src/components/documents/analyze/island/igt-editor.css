@@ -697,6 +697,26 @@
 }
 .igt-vocab-pop__create.is-active { background: #dbeafe; border-style: solid; }
 .igt-vocab-pop__create:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+/* Thin lexicon selector at the bottom: each chip scopes the whole popover to
+   one vocab; the active chip is a link to the full vocab view (new tab). */
+.igt-vocab-pop__vocabsel {
+  display: flex; gap: 3px; margin-top: 5px; padding-top: 5px;
+  border-top: 1px solid #eef2f7; overflow-x: auto; scrollbar-width: none;
+}
+.igt-vocab-pop__vocabsel::-webkit-scrollbar { display: none; }
+.igt-vocab-pop__vocabtab {
+  display: inline-flex; align-items: center; gap: 3px;
+  flex: 0 1 auto; min-width: 0; max-width: 13ch;
+  padding: 1px 8px; font: inherit; font-size: 10px; line-height: 16px;
+  border: 1px solid #e5e7eb; border-radius: 999px;
+  background: #f9fafb; color: #6b7280; cursor: pointer; text-decoration: none;
+}
+.igt-vocab-pop__vocabtab:hover { background: #f3f4f6; }
+.igt-vocab-pop__vocabtab.is-active {
+  background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; font-weight: 500;
+}
+.igt-vocab-pop__vtab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.igt-vocab-pop__vtab-ext { flex: none; font-size: 9px; }
 .igt-vocab-pop__hintbar { margin-top: 5px; font-size: 10px; color: #9aa3b2; text-align: center; }
 .igt-vocab-pop__hintbar kbd {
   font: inherit; font-size: 9px; background: #f3f4f6; border: 1px solid #e5e7eb;

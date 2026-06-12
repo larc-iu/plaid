@@ -28,7 +28,7 @@ async function runAll(client, queries) {
 
 // Locate hit entity ids inside one derived document. Returns sentence-grouped
 // rows: { sentenceId, sentenceIndex, marks: [{begin,end}], notes: [string] }.
-function locateHits(doc, domain, hitIds) {
+export function locateHits(doc, domain, hitIds) {
   const bySentence = new Map();
   const sentences = doc.sentences || [];
   const row = (s, idx) => {
@@ -87,6 +87,33 @@ function locateHits(doc, domain, hitIds) {
   return [...bySentence.values()];
 }
 
+// Build sentence-context rows for one derived document: slice the sentence text
+// (code points), rebase the hit marks to be sentence-relative, and pull a
+// sentence-layer translation. Shared by project search + the vocab concordance.
+// Sentence fields come from the doc's OWN layerInfo, so this works for documents
+// from any project (the vocab concordance spans projects).
+export function buildContextRows(doc, domain, hitIds) {
+  const sentFields = (doc.layerInfo.spanLayers?.sentence || []).map((l) => l.name);
+  return locateHits(doc, domain, hitIds).map((r) => {
+    const s = r.sentence;
+    const base = s.begin;
+    const text = cpSlice(doc.body || '', s.begin, s.end);
+    const translation = sentFields
+      .map((f) => s.annotations?.[f]?.value ?? '')
+      .find((v) => v !== '') || '';
+    return {
+      sentenceId: r.sentenceId,
+      sentenceIndex: r.sentenceIndex,
+      text,
+      marks: r.marks
+        .map((m) => ({ begin: m.begin - base, end: m.end - base }))
+        .sort((a, b) => a.begin - b.begin),
+      notes: r.notes,
+      translation,
+    };
+  }).sort((a, b) => a.sentenceIndex - b.sentenceIndex);
+}
+
 export async function runHitsSearch(client, project, layerInfo, domain, queryText, matchType) {
   const spec = buildMatchSpec(queryText, matchType);
   const [idResults, docResults] = await Promise.all([
@@ -106,33 +133,17 @@ export async function runHitsSearch(client, project, layerInfo, domain, queryTex
   const docsByCount = [...docCounts.entries()].sort((a, b) => b[1] - a[1]);
   const toLoad = docsByCount.slice(0, MAX_DOCS);
 
-  const sentFields = (layerInfo.spanLayers?.sentence || []).map((l) => l.name);
   const docs = await Promise.all(toLoad.map(async ([docId]) => {
     const raw = await client.documents.get(docId, true);
     return new IgtDocument({ raw, project, vocabularies: {}, client, projectId: project.id });
   }));
 
-  const groups = docs.map((doc, i) => {
-    const rows = locateHits(doc, domain, hitIds).map((r) => {
-      const s = r.sentence;
-      const base = s.begin;
-      const text = cpSlice(doc.body || '', s.begin, s.end);
-      const translation = sentFields
-        .map((f) => s.annotations?.[f]?.value ?? '')
-        .find((v) => v !== '') || '';
-      return {
-        sentenceId: r.sentenceId,
-        sentenceIndex: r.sentenceIndex,
-        text,
-        marks: r.marks
-          .map((m) => ({ begin: m.begin - base, end: m.end - base }))
-          .sort((a, b) => a.begin - b.begin),
-        notes: r.notes,
-        translation,
-      };
-    }).sort((a, b) => a.sentenceIndex - b.sentenceIndex);
-    return { docId: toLoad[i][0], docName: doc.document?.name || '(untitled)', docHits: toLoad[i][1], rows };
-  });
+  const groups = docs.map((doc, i) => ({
+    docId: toLoad[i][0],
+    docName: doc.document?.name || '(untitled)',
+    docHits: toLoad[i][1],
+    rows: buildContextRows(doc, domain, hitIds),
+  }));
 
   const loadedHits = toLoad.reduce((a, [, n]) => a + n, 0);
   return {
