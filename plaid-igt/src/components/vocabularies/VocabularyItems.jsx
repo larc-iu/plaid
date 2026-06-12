@@ -484,7 +484,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   return (
     <div className="tw flex items-start gap-4">
       {/* ---- left pane: item list ---- */}
-      <div className="sticky top-4 flex max-h-[calc(100vh-7rem)] w-96 shrink-0 flex-col rounded-lg border bg-card">
+      <div className="sticky top-4 flex max-h-[calc(100vh-14rem)] w-96 shrink-0 flex-col rounded-lg border bg-card">
         <div className="flex flex-col gap-2 border-b p-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">
