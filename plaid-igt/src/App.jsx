@@ -4,9 +4,9 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
-import { ProjectSettingsView } from './components/projects/ProjectSettingsView';
 import { ProjectSetup } from './components/projects/ProjectSetup';
 import { ImportFlexProject } from './components/projects/ImportFlexProject';
+import { ImportNativeProject } from './components/projects/ImportNativeProject';
 import { NewProjectChooser } from './components/projects/NewProjectChooser';
 import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { DocumentDetail } from './components/documents/DocumentDetail';
@@ -64,6 +64,14 @@ function App() {
             </ProtectedRoute>
           } />
 
+          <Route path="/projects/import-archive" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ImportNativeProject />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
           <Route path="/projects/:projectId/setup" element={
             <ProtectedRoute>
               <AppLayout>
@@ -90,33 +98,33 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* Project administration (tabbed: access management + settings),
-              reached from the document view's "Project Settings" button. */}
+          {/* Project administration is the Settings tab of ProjectDetail; the
+              section suffixes keep each settings section deep-linkable. */}
           <Route path="/projects/:projectId/access" element={
             <ProtectedRoute>
               <AppLayout>
-                <ProjectSettingsView />
+                <ProjectDetail />
               </AppLayout>
             </ProtectedRoute>
           } />
           <Route path="/projects/:projectId/tokens" element={
             <ProtectedRoute>
               <AppLayout>
-                <ProjectSettingsView />
+                <ProjectDetail />
               </AppLayout>
             </ProtectedRoute>
           } />
           <Route path="/projects/:projectId/services" element={
             <ProtectedRoute>
               <AppLayout>
-                <ProjectSettingsView />
+                <ProjectDetail />
               </AppLayout>
             </ProtectedRoute>
           } />
           <Route path="/projects/:projectId/settings" element={
             <ProtectedRoute>
               <AppLayout>
-                <ProjectSettingsView />
+                <ProjectDetail />
               </AppLayout>
             </ProtectedRoute>
           } />

@@ -1,97 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { IgtDocument } from '../domain/IgtDocument.js';
+import { makeNativeRaw as buildRaw, makeNativeProject as buildProject } from './testFixtures.js';
 import {
   buildProjectFile, serializeVocabularyNative, serializeDocumentNative,
   NATIVE_FORMAT_VERSION,
 } from './nativeJson.js';
-
-const role = (r) => ({ plaid: { role: r } });
-
-// A raw document exercising every loss trap. Morphemes are full-width (same
-// extent as their word, ordered by precedence) per the IGT data model; the
-// segment text lives in metadata.form. Body: "perros corren. extra" with the
-// sentence covering [0,14) and 'extra' [15,20) outside it.
-function buildRaw() {
-  return {
-    id: 'doc1', name: 'Doc One', version: 7,
-    metadata: { Source: 'notes', flexImported: true, custom: { k: 1 } }, // trap (a)
-    textLayers: [{
-      id: 'tl1', config: role('baseline'),
-      text: { id: 'text1', body: 'perros corren. extra', metadata: { lang: 'es' } },
-      tokenLayers: [
-        {
-          id: 'wl', config: { ...role('word'), igt: { orthographies: [{ name: 'Translit' }] } },
-          tokens: [
-            { id: 'w1', begin: 0, end: 6, metadata: { 'orthog:Translit': 'pt', 'orthog:Other': 'u', custom: 'x' } },
-            { id: 'w2', begin: 7, end: 13, metadata: {} },
-            { id: 'w3', begin: 15, end: 20, metadata: { stray: true } }, // outside the sentence — trap (f)
-          ],
-          spanLayers: [
-            {
-              id: 'slPOS', name: 'POS', config: { igt: { scope: 'Word' } },
-              spans: [{ id: 'sp1', tokens: ['w1'], value: 'NOUN', metadata: { prov: 'inferred', provConfirmed: true } }],
-            },
-            {
-              id: 'slPhrase', name: 'Phrase', config: { igt: { scope: 'Word' } },
-              spans: [{ id: 'sp2', tokens: ['w1', 'w2'], value: 'NP' }], // one span, two tokens — trap (h)
-            },
-            {
-              id: 'slMystery', name: 'Mystery', config: {}, // no scope: invisible to the derived view
-              spans: [{ id: 'sp3', tokens: ['w1'], value: '?' }],
-            },
-          ],
-          vocabs: [{
-            id: 'vocab1', name: 'Lex',
-            vocabLinks: [
-              { id: 'l1', tokens: ['m1'], vocabItem: { id: 'item1', form: 'perro' }, metadata: { prov: 'inferred', provSource: 'flex-import' } },
-              { id: 'l2', tokens: ['m1'], vocabItem: { id: 'item2' } },        // second link on m1 — trap (b)
-              { id: 'l3', tokens: ['w1', 'w2'], vocabItem: { id: 'item3' }, metadata: { note: 'multi' } }, // trap (b)
-            ],
-          }],
-        },
-        {
-          id: 'sl', config: role('sentence'),
-          tokens: [{ id: 's1', begin: 0, end: 14, metadata: { speaker: 'A' } }],
-          spanLayers: [{
-            id: 'slTr', name: 'Translation', config: { igt: { scope: 'Sentence' } },
-            spans: [
-              { id: 'sp4', tokens: ['s1'], value: 'The dogs run.' },
-              { id: 'sp5', tokens: ['s1'], value: 'dup' }, // duplicate per layer+token — trap (g)
-            ],
-          }],
-        },
-        {
-          id: 'ml', config: role('morpheme'),
-          tokens: [
-            { id: 'm1', begin: 0, end: 6, precedence: 1, metadata: { form: 'perro', morphType: 'stem' } },
-            { id: 'm2', begin: 0, end: 6, precedence: 2, metadata: { form: '' } },  // '' is meaningful
-            { id: 'm3', begin: 7, end: 13, precedence: 1, metadata: {} },           // no form key at all
-            { id: 'mOrphan', begin: 15, end: 18, precedence: 1, metadata: { form: 'or' } }, // matches no word extent
-          ],
-          spanLayers: [{
-            id: 'slGloss', name: 'Gloss', config: { igt: { scope: 'Morpheme' } },
-            spans: [{ id: 'sp6', tokens: ['m1'], value: 'dog' }],
-          }],
-        },
-        {
-          id: 'al', config: role('time-alignment'),
-          tokens: [{ id: 'a1', begin: 0, end: 14, metadata: { timeBegin: 1.25, timeEnd: 3.5, note: 'x' } }],
-        },
-      ],
-    }],
-  };
-}
-
-const buildProject = () => ({
-  id: 'p1', name: 'Proj',
-  config: {
-    igt: {
-      documentMetadata: [{ name: 'Source' }],
-      autoAnalysis: { enabled: false },
-    },
-  },
-  textLayers: buildRaw().textLayers,
-});
 
 const makeDoc = (raw = buildRaw()) =>
   new IgtDocument({ raw, project: buildProject(), vocabularies: {} });
@@ -142,16 +55,26 @@ describe('serializeDocumentNative', () => {
     expect('morphType' in m3).toBe(false);
   });
 
-  it('inlines the first single-token vocab link with full metadata; rest go to extras', () => {
+  it('inlines the LAST single-token vocab link (what the editor shows); rest go to extras', () => {
     const m1 = out.sentences[0].words[0].morphemes[0];
-    expect(m1.vocab).toEqual({
-      linkId: 'l1', vocabId: 'vocab1', itemId: 'item1',
-      metadata: { prov: 'inferred', provSource: 'flex-import' },
-    });
+    expect(m1.vocab).toEqual({ linkId: 'l2', vocabId: 'vocab1', itemId: 'item2' });
     expect(out.extraVocabLinks).toEqual([
-      { id: 'l2', vocabId: 'vocab1', itemId: 'item2', tokens: ['m1'] },
+      { id: 'l1', vocabId: 'vocab1', itemId: 'item1', tokens: ['m1'], metadata: { prov: 'inferred', provSource: 'flex-import' } },
       { id: 'l3', vocabId: 'vocab1', itemId: 'item3', tokens: ['w1', 'w2'], metadata: { note: 'multi' } },
     ]);
+  });
+
+  it('archives links on tokens outside the tree instead of dropping them', () => {
+    const raw = buildRaw();
+    raw.textLayers[0].tokenLayers[0].vocabs[0].vocabLinks.push(
+      { id: 'lOrphan', tokens: ['w3'], vocabItem: { id: 'item1' }, metadata: { prov: 'inferred' } }, // orphan word
+      { id: 'lSent', tokens: ['s1'], vocabItem: { id: 'item1' } },                                   // sentence token
+    );
+    const o = serializeDocumentNative(makeDoc(raw));
+    const ids = o.extraVocabLinks.map((l) => l.id);
+    expect(ids).toContain('lOrphan');
+    expect(ids).toContain('lSent');
+    expect(o.extraVocabLinks.find((l) => l.id === 'lOrphan').metadata).toEqual({ prov: 'inferred' });
   });
 
   it('catches orphan tokens and surplus/unscoped spans in the completeness sweep', () => {
@@ -160,10 +83,32 @@ describe('serializeDocumentNative', () => {
       { layer: 'morpheme', id: 'mOrphan', begin: 15, end: 18, precedence: 1, metadata: { form: 'or' } },
     ]);
     expect(out.extraSpans).toEqual(expect.arrayContaining([
-      { id: 'sp3', layer: { name: 'Mystery', scope: null }, tokens: ['w1'], value: '?' },
-      { id: 'sp5', layer: { name: 'Translation', scope: 'Sentence' }, tokens: ['s1'], value: 'dup' },
+      { id: 'sp3', layer: { id: 'slMystery', name: 'Mystery', scope: null }, tokens: ['w1'], value: '?' },
+      { id: 'sp5', layer: { id: 'slTr', name: 'Translation', scope: 'Sentence' }, tokens: ['s1'], value: 'dup' },
     ]));
     expect(out.extraSpans).toHaveLength(2);
+  });
+
+  it('records a tree span whose membership reaches an orphan token in extraSpans too', () => {
+    const raw = buildRaw();
+    raw.textLayers[0].tokenLayers[0].spanLayers[0].spans.push(
+      { id: 'spMixed', tokens: ['w1', 'w3'], value: 'mixed' }); // w3 is outside the sentence
+    const o = serializeDocumentNative(makeDoc(raw));
+    // Reachable from w1's fields… but the full membership lives in extraSpans.
+    const mixed = o.extraSpans.find((s) => s.id === 'spMixed');
+    expect(mixed.tokens).toEqual(['w1', 'w3']);
+  });
+
+  it('sweeps span layers on the time-alignment layer', () => {
+    const raw = buildRaw();
+    raw.textLayers[0].tokenLayers[3].spanLayers = [{
+      id: 'slAl', name: 'AlignNote', config: {},
+      spans: [{ id: 'spAl', tokens: ['a1'], value: 'noisy' }],
+    }];
+    const o = serializeDocumentNative(makeDoc(raw));
+    expect(o.extraSpans.find((s) => s.id === 'spAl')).toEqual({
+      id: 'spAl', layer: { id: 'slAl', name: 'AlignNote', scope: null }, tokens: ['a1'], value: 'noisy',
+    });
   });
 
   it('lifts alignment times (seconds) and keeps residual metadata', () => {

@@ -184,12 +184,15 @@ function languagesXml(indent, options) {
   return lines;
 }
 
-// Last path segment of a media URL, query stripped — the most useful
-// <media location> value (the user can drop the file next to the .flextext).
-const mediaBasename = (mediaUrl) => {
-  const path = String(mediaUrl).split(/[?#]/)[0];
-  const segments = path.split('/').filter((s) => s !== '');
-  return segments.at(-1) ?? path;
+// The <media location> hint. The server's mediaUrl is the bare endpoint path
+// (/api/v1/documents/<id>/media — no filename), so when its last segment
+// carries no extension we fall back to the document name: a placeholder the
+// user can name their media file after when placing it next to the .flextext
+// (FLEx prompts to locate missing media on import either way).
+const mediaLocationOf = (docData) => {
+  const path = String(docData.mediaUrl).split(/[?#]/)[0];
+  const base = path.split('/').filter((s) => s !== '').at(-1) ?? '';
+  return base.includes('.') ? base : (docData.name || base || 'media');
 };
 
 export function interlinearTextXml(igtDoc, options, indent = '  ') {
@@ -221,7 +224,7 @@ export function interlinearTextXml(igtDoc, options, indent = '  ') {
   lines.push(...languagesXml(`${indent}  `, options));
   if (mediaGuid && anyTimed) {
     lines.push(`${indent}  <media-files>`);
-    lines.push(`${indent}    <media guid="${xmlEscape(mediaGuid)}" location="${xmlEscape(mediaBasename(docData.mediaUrl))}"/>`);
+    lines.push(`${indent}    <media guid="${xmlEscape(mediaGuid)}" location="${xmlEscape(mediaLocationOf(docData))}"/>`);
     lines.push(`${indent}  </media-files>`);
   }
   lines.push(`${indent}</interlinear-text>`);

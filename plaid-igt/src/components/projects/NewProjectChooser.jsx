@@ -3,7 +3,7 @@
 // here rather than new buttons there.
 
 import { Link, useNavigate } from 'react-router-dom';
-import { PenLine, FileUp, ChevronRight } from 'lucide-react';
+import { PenLine, FileUp, Archive, ChevronRight } from 'lucide-react';
 
 const OPTIONS = [
   {
@@ -17,6 +17,12 @@ const OPTIONS = [
     icon: FileUp,
     title: 'Import from FieldWorks',
     description: 'Create a project from a FLEx backup (.fwbackup) — texts, glosses, morpheme analyses, translations, and the full lexicon.',
+  },
+  {
+    to: '/projects/import-archive',
+    icon: Archive,
+    title: 'Import a Plaid IGT archive',
+    description: 'Recreate a project from a "Plaid IGT JSON" export (.zip) — texts, analyses, vocabularies, time alignment, media, and provenance.',
   },
 ];
 

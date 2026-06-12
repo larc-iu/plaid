@@ -55,7 +55,7 @@ const igtLayers = (project) => {
 export function buildProjectFile({ project, documents, vocabularies, asOf = null, exportedAt }) {
   const { textLayer, wordLayer, sentenceLayer, morphemeLayer, alignmentLayer } = igtLayers(project);
   const fields = discoverExportLayers(project);
-  const spanLayers = [wordLayer, sentenceLayer, morphemeLayer]
+  const spanLayers = [wordLayer, sentenceLayer, morphemeLayer, alignmentLayer]
     .flatMap((tl) => tl?.spanLayers || [])
     .map((sl) => ({ id: sl.id, name: sl.name, scope: readScope(sl.config) }));
   return {
@@ -123,10 +123,20 @@ const fieldEntries = (annotations, emittedSpanIds) => {
   return out;
 };
 
-// Walk the raw embedded vocab links once: the first single-token link per
-// token is inlined on its word/morpheme node (mirroring the derived view's
-// first-wins rule); every other link — multi-token, or a second link on an
-// already-linked token — goes to extraVocabLinks verbatim.
+// Walk the raw embedded vocab links once. A link is a candidate for inlining
+// on its word/morpheme node when it targets exactly one token and carries an
+// item; among several such links on one token, the LAST wins — matching what
+// the editor displays (derive.js collectSingleTokenVocabLinks overwrites).
+// Everything else — multi-token links, item-less links, displaced earlier
+// links — goes to extraVocabLinks verbatim. Candidates whose token never
+// appears in the sentence tree are flushed to extras at the end
+// (consumeRemaining), so links on orphan/sentence/alignment tokens are never
+// silently dropped.
+const extraLinkOf = (entry) => withMetadata(
+  { id: entry.id, vocabId: entry.vocabId, itemId: entry.itemId, tokens: entry.tokens },
+  entry.metadata,
+);
+
 const linkIndexFromRaw = (raw) => {
   const byToken = new Map();
   const extras = [];
@@ -142,28 +152,33 @@ const linkIndexFromRaw = (raw) => {
             tokens: link.tokens || [],
             metadata: link.metadata,
           };
-          if (entry.tokens.length === 1 && !byToken.has(entry.tokens[0])) {
+          if (entry.tokens.length === 1 && itemId != null) {
+            const displaced = byToken.get(entry.tokens[0]);
+            if (displaced) extras.push(extraLinkOf(displaced));
             byToken.set(entry.tokens[0], entry);
           } else {
-            extras.push(withMetadata(
-              { id: entry.id, vocabId: entry.vocabId, itemId: entry.itemId, tokens: entry.tokens },
-              entry.metadata,
-            ));
+            extras.push(extraLinkOf(entry));
           }
         });
       });
     });
   });
-  return { byToken, extras };
-};
-
-const vocabRef = (linkIndex, tokenId) => {
-  const link = linkIndex.byToken.get(tokenId);
-  if (!link) return null;
-  return withMetadata(
-    { linkId: link.id, vocabId: link.vocabId, itemId: link.itemId },
-    link.metadata,
-  );
+  return {
+    extras,
+    consume(tokenId) {
+      const link = byToken.get(tokenId);
+      if (!link) return null;
+      byToken.delete(tokenId);
+      return withMetadata(
+        { linkId: link.id, vocabId: link.vocabId, itemId: link.itemId },
+        link.metadata,
+      );
+    },
+    consumeRemaining() {
+      for (const entry of byToken.values()) extras.push(extraLinkOf(entry));
+      byToken.clear();
+    },
+  };
 };
 
 // Split a raw token-metadata map: configured `orthog:<name>` keys are lifted
@@ -198,7 +213,7 @@ function morphemeNode(m, linkIndex, ctx) {
   }
   const out = withMetadata(node, metadata);
   out.fields = fieldEntries(m.annotations, ctx.emittedSpanIds);
-  const vocab = vocabRef(linkIndex, m.id);
+  const vocab = linkIndex.consume(m.id);
   if (vocab) out.vocab = vocab;
   return out;
 }
@@ -211,21 +226,27 @@ function wordNode(token, orthographyNames, linkIndex, ctx) {
     rest,
   );
   node.fields = fieldEntries(token.annotations, ctx.emittedSpanIds);
-  const vocab = vocabRef(linkIndex, token.id);
+  const vocab = linkIndex.consume(token.id);
   if (vocab) node.vocab = vocab;
   node.morphemes = (token.morphemes || []).map((m) => morphemeNode(m, linkIndex, ctx));
   return node;
 }
 
 // Everything in the raw substrate that the sentence tree missed: tokens
-// outside every sentence extent (or morphemes matching no word) and spans
-// beyond the first per layer+token. Sweeps ALL span layers on the three token
-// layers — including ones with no/unknown scope, which the derived view
-// ignores entirely. layerInfo references the same live raw objects.
+// outside every sentence extent (or morphemes matching no word), spans beyond
+// the first per layer+token, AND spans the tree did emit whose token list
+// reaches outside the tree — field entries carry no token list, so a span
+// over [tree token, orphan token] needs its full record here for the
+// membership to survive (the spec makes the extraSpans record authoritative
+// when its id also appears as a field entry). Sweeps ALL span layers on all
+// four token layers — including unscoped layers and the alignment layer's,
+// which the derived view ignores entirely. layerInfo references the same
+// live raw objects.
 function completenessSweep(layerInfo, ctx) {
   const wordLayer = layerInfo.primaryTokenLayer;
   const sentenceLayer = layerInfo.sentenceTokenLayer;
   const morphemeLayer = layerInfo.morphemeTokenLayer;
+  const alignmentLayer = layerInfo.alignmentTokenLayer;
   const orphanTokens = [];
   const sweepTokens = (layer, label) => {
     for (const t of layer?.tokens || []) {
@@ -240,13 +261,15 @@ function completenessSweep(layerInfo, ctx) {
   sweepTokens(morphemeLayer, 'morpheme');
 
   const extraSpans = [];
-  for (const tl of [wordLayer, sentenceLayer, morphemeLayer]) {
+  for (const tl of [wordLayer, sentenceLayer, morphemeLayer, alignmentLayer]) {
     for (const sl of tl?.spanLayers || []) {
       const scope = readScope(sl.config);
       for (const s of sl.spans || []) {
-        if (ctx.emittedSpanIds.has(s.id)) continue;
+        const tokens = s.tokens || [];
+        const inTree = ctx.emittedSpanIds.has(s.id);
+        if (inTree && tokens.every((t) => ctx.emittedTokenIds.has(t))) continue;
         extraSpans.push(withMetadata(
-          { id: s.id, layer: { name: sl.name, scope }, tokens: s.tokens || [], value: s.value ?? null },
+          { id: s.id, layer: { id: sl.id, name: sl.name, scope }, tokens, value: s.value ?? null },
           s.metadata,
         ));
       }
@@ -289,6 +312,13 @@ export function serializeDocumentNative(igtDoc, { mediaFile = null } = {}) {
     node.words = (s.tokens || []).map((t) => wordNode(t, orthographyNames, linkIndex, ctx));
     return node;
   });
+
+  // Every alignment token is exported (the `alignment` array), so they count
+  // as reachable for the span sweep's membership check.
+  for (const t of igtDoc.alignmentTokens || []) ctx.emittedTokenIds.add(t.id);
+  // Inline-candidate links whose token never appeared in the tree (links on
+  // orphan/sentence/alignment tokens) must still be archived.
+  linkIndex.consumeRemaining();
 
   const { orphanTokens, extraSpans } = completenessSweep(layerInfo, ctx);
   const text = layerInfo.primaryTextLayer?.text;

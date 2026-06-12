@@ -6,9 +6,16 @@
 Plaid IGT JSON is a lossless archive of an IGT project, expressed in IGT terms —
 sentences > words > morphemes, annotation fields by scope, orthographies, lexicon
 items and links, time alignment, and provenance — rather than as a dump of the
-underlying substrate (layers/tokens/spans). It is designed for archival and for a
-future re-importer; the importer is not implemented yet, but every contract it
-needs is specified here and honored by the exporter.
+underlying substrate (layers/tokens/spans). It is designed for archival and for
+re-import (Projects → New Project → "Import a Plaid IGT archive").
+
+**What "lossless" covers.** The archive captures the IGT substrate: the baseline
+text layer, the role-tagged sentence/word/morpheme/time-alignment token layers,
+every span layer attached to them (scoped or not), the linked vocabularies, and
+the project's IGT configuration. It deliberately does NOT capture layers owned by
+other Plaid apps sharing the substrate (e.g. UD's syntactic-word layer or
+relation layers), additional text layers, non-IGT project configuration, users
+or permissions, or document history.
 
 ## Versioning policy
 
@@ -31,6 +38,9 @@ files reference vocabulary items by id, the schema in `project.json` is needed t
 interpret field and orthography names, and media needs a container. Filenames are
 sanitized display labels, deduplicated with ` (2)` suffixes — **ids are identity,
 names are labels**; the manifest in `project.json` maps ids to archive paths.
+Media file extensions come from the served content type (the server's `mediaUrl`
+is a bare endpoint path with no filename); extensions matter on re-import, where
+the upload's media type is validated from its filename.
 
 ## Global conventions
 
@@ -107,14 +117,21 @@ null), `metadata` (**the raw document metadata, wholesale** — including keys n
 - **Field entries** are `{id, value, metadata?}`. The span id makes provenance
   round-trippable, and identifies multi-token spans: entries sharing one span id
   across several tokens denote a **single** span over the union of those tokens — a
-  re-importer creates it once, with all token ids. Fields with no annotation are
+  re-importer creates it once, with all token ids. When an `extraSpans` record
+  carries the same id as field entries, the `extraSpans` record is
+  **authoritative** (it holds the span's complete token list — e.g. a span that
+  also reaches a token outside the tree); the field entries are then display
+  duplicates and must not produce a second span. Fields with no annotation are
   simply absent (no `null` placeholders).
 - **Orthography lifting**: for each configured orthography `N`, the token-metadata
   key `orthog:<N>` is moved to `orthographies[N]`. An orthography with no stored
   key is absent (unset ≠ `""`). Unconfigured `orthog:*` keys stay in `metadata`.
   Re-import: token metadata = `metadata` ∪ the reconstituted `orthog:<N>` keys.
 - **Vocab links**: a link is inlined as `vocab` iff it targets exactly that one
-  token and is the first such link for the token. `metadata` is the full raw link
+  token, carries an item, and is the LAST such link for the token — matching
+  what the editor displays when data holds several links on one token. All other
+  links (multi-token, item-less, displaced earlier links, and links whose token
+  is not in the tree) are in `extraVocabLinks`. `metadata` is the full raw link
   metadata (see Provenance).
 
 ### alignment
@@ -126,17 +143,22 @@ null), `metadata` (**the raw document metadata, wholesale** — including keys n
 Time-alignment spans: character extent over the baseline plus times in seconds.
 Alignment extents are independent of the sentence partition. Residual alignment
 token metadata (anything besides `timeBegin`/`timeEnd`) rides in `metadata`.
+`timeBegin`/`timeEnd` are `null` when the stored token lacks them.
 
 ### Completeness sections
 
 Everything in the project that the sentence tree cannot express, so the archive is
 lossless even for unusual data:
 
-- `extraVocabLinks` — `[{id, vocabId, itemId, tokens, metadata?}]`: multi-token
-  links, and any second link on an already-linked token.
-- `extraSpans` — `[{id, layer: {name, scope}, tokens, value, metadata?}]`: duplicate
-  spans (beyond the first per layer+token) and spans on layers with no/unknown
-  scope.
+- `extraVocabLinks` — `[{id, vocabId, itemId, tokens, metadata?}]`: every link
+  not inlined in the tree — multi-token links, displaced or item-less links,
+  and links on tokens outside the tree (orphan, sentence, alignment).
+- `extraSpans` — `[{id, layer: {id, name, scope}, tokens, value, metadata?}]`:
+  duplicate spans (beyond the first per layer+token), spans on layers with
+  no/unknown scope (including span layers on the time-alignment layer), and the
+  authoritative full records of tree spans whose membership reaches a non-tree
+  token. `layer.id` is the source layer id (correlation); re-importers resolve
+  the layer by scope+name.
 - `orphanTokens` — `[{layer, id, begin, end, precedence?, metadata}]`: tokens
   outside every sentence extent, or morphemes matching no word extent. Metadata is
   raw here (no orthography/form lifting).
@@ -147,19 +169,26 @@ The cross-app provenance convention rides verbatim in span and link `metadata`:
 `prov`, `provSource`, `provConfirmed` (plus `provProb`/`provDetail` where present).
 Absent provenance keys mean human-entered. The exporter never rewrites these.
 
-## Re-import contract (informative — importer not yet implemented)
+## Re-import contract
 
-Mirrors the FLEx importer's operation inventory (`src/import/flex/importEngine.js`):
+Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project →
+"Import a Plaid IGT archive"); mirrors the FLEx importer's operation inventory:
 
 1. Project setup from `schema` (orthographies, fields by scope, ignored tokens,
    document metadata; one vocabulary per `vocabularies/*.json`).
 2. Per vocabulary: create items **in array order**, mapping old item ids to new.
+   The importer stamps each created item's metadata with `nativeImportId` (the
+   archive item id) for resume dedupe and provenance.
 3. Per document: `documents.create(name, metadata)` → `texts.create(body)` →
    `tokens.bulkCreate` for sentences, words (metadata ∪ reconstituted `orthog:*`),
-   and morphemes (`form`/`morphType` folded back into metadata, `precedence` as
-   given) → `spans.bulkCreate` (dedupe field entries by span id; create multi-token
-   spans once) → `vocabLinks.create(itemId, tokens, metadata)` for inline and extra
-   links → recreate `extraSpans`/`orphanTokens` → upload media from `mediaFile`.
+   morphemes (`form`/`morphType` folded back into metadata, `precedence` as
+   given), orphan tokens, and alignment tokens (times folded back) →
+   `spans.bulkCreate` (dedupe field entries by span id; `extraSpans` records are
+   authoritative when their id collides with field entries) →
+   `vocabLinks.create(itemId, tokens, metadata)` for inline and extra links →
+   upload media from `mediaFile`. A document is marked done
+   (`metadata.nativeImported`) only after every write succeeded; resume skips
+   done documents and deletes + redoes half-imported ones.
 4. All offsets are code points; never re-derive them from UTF-16 indices.
 
 ## Non-goals

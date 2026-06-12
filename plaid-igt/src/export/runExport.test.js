@@ -236,14 +236,18 @@ describe('runExport — native plaid-igt-json', () => {
     expect(Object.keys(entries).some((p) => p.endsWith('.tsv'))).toBe(false);
   });
 
-  it('embeds media via the injected fetcher and records archive paths', async () => {
-    const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav?x=1')];
+  it('embeds media via the injected fetcher, named by the fetched content type', async () => {
+    // Server mediaUrls carry no filename — the extension must come from the fetch.
+    const docs = [rawDoc('d1', 'A', 'hi', '/api/v1/documents/d1/media')];
     const client = stubClient({ docs });
     const fetched = [];
     const result = await runExport({
       client, project: PROJECT, preset: nativePreset(),
       scope: { type: 'project' },
-      fetchMedia: async (_c, id, asOf) => { fetched.push([id, asOf]); return new Uint8Array([9, 9]); },
+      fetchMedia: async (_c, id, asOf) => {
+        fetched.push([id, asOf]);
+        return { bytes: new Uint8Array([9, 9]), ext: '.wav' };
+      },
     });
     expect(fetched).toEqual([['d1', null]]);
     const entries = await unzipBlob(result.blob);

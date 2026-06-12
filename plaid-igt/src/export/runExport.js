@@ -33,12 +33,34 @@ function serializeDoc(igtDoc, preset, layers) {
   return serializeDocumentPlain(igtDoc, intersectSelection(preset.options || {}, layers));
 }
 
+// The mediaUrl the server hands out is the bare endpoint path
+// (/api/v1/documents/<id>/media — no filename), so the archive filename's
+// extension comes from the response Content-Type. Extensions matter: media
+// re-upload on import is validated by filename extension server-side.
+const MEDIA_EXTS = {
+  'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/wave': '.wav',
+  'audio/vnd.wave': '.wav', // what the core serves for .wav uploads
+  'audio/mpeg': '.mp3', 'audio/mp4': '.m4a', 'audio/aac': '.aac',
+  'audio/ogg': '.ogg', 'audio/flac': '.flac', 'audio/x-flac': '.flac',
+  'audio/webm': '.weba',
+  'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
+  'video/x-msvideo': '.avi', 'video/mpeg': '.mpg',
+};
+const extOfContentType = (contentType) => {
+  const mime = String(contentType ?? '').split(';')[0].trim().toLowerCase();
+  if (MEDIA_EXTS[mime]) return MEDIA_EXTS[mime];
+  // Generic fallback: subtype minus x-/vnd. decorations, when it looks like
+  // a plausible extension token.
+  const subtype = (mime.split('/')[1] ?? '').replace(/^(x-|vnd\.)/, '');
+  return /^[a-z0-9-]{1,8}$/.test(subtype) ? `.${subtype}` : '';
+};
+
 /**
- * Fetch a document's media bytes. Same endpoint and auth as
+ * Fetch a document's media. Same endpoint and auth as
  * client.documents.getMedia, but issued directly with fetch: the client's
  * _request is bounded by its default 30s timeout, which large media files
  * can easily exceed. (If the media route or auth scheme ever changes, getMedia
- * in plaid-client-js is the reference.)
+ * in plaid-client-js is the reference.) Returns { bytes, ext }.
  */
 export async function fetchDocumentMedia(client, documentId, asOf) {
   const qs = asOf ? `?as-of=${encodeURIComponent(asOf)}` : '';
@@ -46,16 +68,11 @@ export async function fetchDocumentMedia(client, documentId, asOf) {
     headers: { Authorization: `Bearer ${client.token}` },
   });
   if (!res.ok) throw new Error(`media fetch failed (${res.status})`);
-  return new Uint8Array(await res.arrayBuffer());
+  return {
+    bytes: new Uint8Array(await res.arrayBuffer()),
+    ext: extOfContentType(res.headers.get('content-type')),
+  };
 }
-
-// "audio.wav?token=x" → ".wav" ('' when the URL has no extension).
-const mediaExtOf = (mediaUrl) => {
-  const path = String(mediaUrl).split(/[?#]/)[0];
-  const base = path.split('/').filter((s) => s !== '').at(-1) ?? '';
-  const dot = base.lastIndexOf('.');
-  return dot > 0 ? base.slice(dot) : '';
-};
 
 /**
  * scope: { type: 'project' } | { type: 'documents', ids: [id] } | { type: 'document', id }
@@ -129,15 +146,16 @@ export async function runExport({
     onProgress({ done: i, total: docIds.length, name });
 
     let mediaFile = null;
+    let mediaEntry = null;
     if (includeMedia && igtDoc.raw?.mediaUrl) {
       try {
-        const bytes = await fetchMedia(client, docIds[i], asOf);
-        let candidate = `${sanitizeFilename(name)}${mediaExtOf(igtDoc.raw.mediaUrl)}`;
+        const { bytes, ext: mediaExt } = await fetchMedia(client, docIds[i], asOf);
+        let candidate = `${sanitizeFilename(name)}${mediaExt}`;
         [candidate] = dedupeFilenames([...usedMediaNames, candidate]).slice(-1);
         usedMediaNames.add(candidate);
         mediaFile = `media/${candidate}`;
         // Already-compressed audio/video — store, don't deflate.
-        mediaEntries.push({ path: mediaFile, data: bytes, opts: { level: 0 } });
+        mediaEntry = { path: mediaFile, data: bytes, opts: { level: 0 } };
       } catch (err) {
         warnings.push(`"${name}": media could not be fetched: ${err?.message ?? err}`);
       }
@@ -153,6 +171,9 @@ export async function runExport({
         docName: name,
         mediaFile,
       });
+      // Staged only on a successful doc serialize — a skipped document must
+      // not leave an orphan media file in the archive.
+      if (mediaEntry) mediaEntries.push(mediaEntry);
     } catch (err) {
       warnings.push(`"${name}" failed to serialize: ${err?.message ?? err}`);
     }

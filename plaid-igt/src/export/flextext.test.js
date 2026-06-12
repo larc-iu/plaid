@@ -191,6 +191,12 @@ describe('flextext time alignment', () => {
     expect(xml).toContain('location="a&amp;b.wav"');
   });
 
+  it('falls back to the document name when the mediaUrl has no filename (server endpoint shape)', () => {
+    const doc = timed({ mediaUrl: '/api/v1/documents/d1/media' });
+    const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
+    expect(dom.querySelector('media').getAttribute('location')).toBe('Test & Doc');
+  });
+
   it('emits offsets without media-file when the document has no media', () => {
     const doc = makeFixtureDoc({ alignmentTokens: [makeAlignmentToken('a1', 0, 14, 1, 2)] });
     const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));

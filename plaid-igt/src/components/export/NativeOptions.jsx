@@ -6,9 +6,8 @@ export const NativeOptions = ({ options, onChange }) => (
     <p className="text-sm text-muted-foreground">
       Plaid IGT JSON is a lossless archive: it always includes the project
       configuration, all vocabularies, and full document data (ids, offsets,
-      metadata, provenance, time alignment), packaged as a .zip. See{' '}
-      <code className="text-xs">docs/native-format.md</code> for the format
-      specification.
+      metadata, provenance, time alignment), packaged as a .zip. Archives can
+      be re-imported as new projects.
     </p>
     <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
       <span>Embed media files (audio/video) in the archive</span>
