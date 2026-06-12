@@ -216,11 +216,11 @@ export const VocabularyDetail = () => {
       // Save to server if not a new vocabulary
       if (!isNewVocabulary) {
         await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'fields', fieldsToConfig(updatedFields));
-        notifySuccess('Custom fields updated successfully', 'Success');
+        notifySuccess('Fields updated successfully', 'Success');
       }
     } catch (err) {
       console.error('Error saving custom fields:', err);
-      notifyError('Failed to save custom fields', 'Error');
+      notifyError('Failed to save fields', 'Error');
     }
   };
 
@@ -451,10 +451,10 @@ export const VocabularyDetail = () => {
 
                   <div className="rounded-lg border bg-card p-4">
                     <div className="flex flex-col gap-4">
-                      <h3 className="text-base font-semibold">Custom Fields</h3>
+                      <h3 className="text-base font-semibold">Fields</h3>
                       <p className="text-sm text-muted-foreground">
-                        Add custom fields to vocabulary items. Field names cannot be "form" or duplicate existing fields (case-insensitive).
-                        Fields set to <strong>Show inline</strong> appear as a column in the items table and in the interlinear view.
+                        Fields on every vocabulary item. Field names cannot be "form" or duplicate existing fields (case-insensitive).
+                        Fields set to <strong>Show inline</strong> also appear in the interlinear view.
                       </p>
 
                       {renderCustomFieldsEditor()}
@@ -507,9 +507,9 @@ export const VocabularyDetail = () => {
 
             <div className="rounded-lg border bg-card p-4">
               <div className="flex flex-col gap-4">
-                <h3 className="text-base font-semibold">Custom Fields (Optional)</h3>
+                <h3 className="text-base font-semibold">Fields</h3>
                 <p className="text-sm text-muted-foreground">
-                  Add custom fields to vocabulary items. Field names cannot be "form" or duplicate existing fields (case-insensitive).
+                  Fields on every vocabulary item. Field names cannot be "form" or duplicate existing fields (case-insensitive).
                 </p>
 
                 {renderCustomFieldsEditor()}
