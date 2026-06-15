@@ -116,10 +116,25 @@ test('ordering and dominance', () => {
   assert.equal(dom[3].layer, 'REL');
 });
 
-test('is_projective wraps the non-projective block in a not; is_cyclic is impossible', () => {
+test('is_projective: not-wrapped crossing/root-cover encoding, no recursive related*', () => {
   const proj = compile('pattern { X [upos=VERB] } global { is_projective }');
   const not = proj.query.where.find(c => c[0] === 'not');
-  assert.ok(not && flat([not]).some(c => c[0] === 'related*'));
+  assert.ok(not, 'expected a not clause');
+  const inner = flat([not]);
+  assert.ok(inner.some(c => c[0] === 'precedes*'), 'uses precedence');
+  assert.ok(inner.some(c => c[0] === 'relation'), 'uses relations');
+  assert.ok(!inner.some(c => c[0] === 'related*'), 'avoids the recursive related*');
+});
+
+test('is_not_projective: positive top-level crossing/root-cover or, no negation', () => {
+  const { query } = compile('pattern { X [] } global { is_not_projective }');
+  assert.ok(!query.where.some(c => c[0] === 'not'), 'positive form has no outer not');
+  const or = query.where.find(c => c[0] === 'or');
+  assert.ok(or && or.length - 1 === 2, 'an or of crossing + root-cover groups');
+  assert.ok(!flat(query.where).some(c => c[0] === 'related*'));
+});
+
+test('is_cyclic constant-folds to impossible; is_tree is fine', () => {
   assert.equal(compile('global { is_cyclic }').impossible, true);
   assert.equal(compile('global { is_tree }').impossible, false);
 });

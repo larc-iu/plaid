@@ -496,10 +496,12 @@ class Compiler {
     if (TRUE.has(name)) { this.warnTreeInvariant(); return; }
     if (FALSE.has(name)) { this.warnTreeInvariant(); this.impossible = true; return; }
     if (name === 'is_projective' || name === 'is_not_projective') {
-      const block = this.projectivityBlock();
-      this.branches *= 2;
-      if (name === 'is_projective') this.where.push(['not', ...block]);
-      else this.where.push(...block);
+      // non-projective(S) = two arcs cross OR an arc covers the root word.
+      const nonProj = ['or', this.crossingGroup(), this.rootCoverGroup()];
+      this.branches *= 10;
+      this.checkDepth(3);
+      if (name === 'is_projective') this.where.push(['not', nonProj]);
+      else this.where.push(nonProj);
       return;
     }
     throw new GrewUnsupportedError(name, `Unsupported global constraint: ${name}`);
@@ -511,26 +513,40 @@ class Compiler {
     this.warnings.push('Tree/cyclicity globals assume well-formed UD trees (one head per word, acyclic); partially-annotated sentences may not satisfy that assumption.');
   }
 
-  // A non-projective configuration in ?S: an edge (h->d) and a node k linearly
-  // between them that h does not dominate. Uses only entity + relationship
-  // clauses + or + nested not (no predicates), so it is legal inside `not`.
-  projectivityBlock() {
+  // Projectivity test, in two non-recursive halves (both pure precedence over
+  // endpoint tokens — no recursive `related*`, so both are fast AND legal inside
+  // `not`). For a dependency tree, non-projective ⟺ two arcs cross OR an arc
+  // covers the root word; either half alone misses cases the other catches.
+
+  // "Two dependency arcs in ?S cross" — their four endpoint tokens interleave.
+  crossingGroup() {
     const REL = this.layerId('relationLayer', 'Dependency');
-    const LEMMA = this.layerId('lemmaLayer', 'Lemma');
-    const MORPH = this.layerId('morphemeTokenLayer', 'word');
-    const h = this.fresh('ph'), d = this.fresh('pd'), e = this.fresh('pe');
-    const ht = this.fresh('pht'), dt = this.fresh('pdt');
-    const k = this.fresh('pk'), kl = this.fresh('pkl');
+    const e1 = this.fresh('pe'), e2 = this.fresh('pe');
+    const h1 = this.fresh('ph'), d1 = this.fresh('pd'), h2 = this.fresh('ph'), d2 = this.fresh('pd');
+    const h1t = this.fresh('pt'), d1t = this.fresh('pt'), h2t = this.fresh('pt'), d2t = this.fresh('pt');
     return [
+      ['relation', e1, { layer: REL, source: h1, target: d1 }],
+      ['relation', e2, { layer: REL, source: h2, target: d2 }],
+      ['covers', h1, h1t], ['covers', d1, d1t], ['covers', h2, h2t], ['covers', d2, d2t],
+      ['within', h1t, '?S'], ['within', d1t, '?S'], ['within', h2t, '?S'], ['within', d2t, '?S'],
+      ['or', ...this.interleavings(h1t, d1t, h2t, d2t)],
+    ];
+  }
+
+  // "A dependency arc covers the root word of ?S" — the root word (dependent of
+  // the `root`-labelled relation) sits strictly between some arc's endpoints.
+  rootCoverGroup() {
+    const REL = this.layerId('relationLayer', 'Dependency');
+    const rr = this.fresh('prr'), rl = this.fresh('prl'), rt = this.fresh('prt');
+    const e = this.fresh('pe'), h = this.fresh('ph'), d = this.fresh('pd'), ht = this.fresh('pt'), dt = this.fresh('pt');
+    return [
+      ['relation', rr, { layer: REL, value: 'root', target: rl }],
+      ['covers', rl, rt], ['within', rt, '?S'],
       ['relation', e, { layer: REL, source: h, target: d }],
-      ['covers', h, ht], ['covers', d, dt],
-      ['within', ht, '?S'], ['within', dt, '?S'],
-      ['token', k, { layer: MORPH }], ['within', k, '?S'],
-      ['span', kl, { layer: LEMMA }], ['covers', kl, k],
+      ['covers', h, ht], ['covers', d, dt], ['within', ht, '?S'], ['within', dt, '?S'],
       ['or',
-        [['precedes*', ht, k], ['precedes*', k, dt]],
-        [['precedes*', dt, k], ['precedes*', k, ht]]],
-      ['not', ['related*', h, kl, { layer: REL }]],
+        [['precedes*', ht, rt], ['precedes*', rt, dt]],
+        [['precedes*', dt, rt], ['precedes*', rt, ht]]],
     ];
   }
 
