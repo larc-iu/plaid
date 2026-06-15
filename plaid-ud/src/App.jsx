@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { UserProfile } from './components/auth/UserProfile';
+import { AdminUsers } from './components/admin/AdminUsers';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectSettings } from './components/projects/ProjectSettings.jsx';
 import { ProjectConfiguration } from './components/projects/ProjectConfiguration.jsx';
@@ -33,7 +34,11 @@ function App() {
             
             {/* User profile page */}
             <Route path="profile" element={<UserProfile />} />
-            
+
+            {/* Instance-wide user administration (admin-only; the component
+                renders a permission notice for non-admins). */}
+            <Route path="admin/users" element={<AdminUsers />} />
+
             {/* Projects page */}
             <Route path="projects" element={<ProjectList />} />
             

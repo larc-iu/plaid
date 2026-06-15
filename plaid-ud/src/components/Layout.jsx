@@ -36,6 +36,11 @@ export const Layout = () => {
             </Title>
             {user && (
               <Group gap="xs">
+                {user.isAdmin && (
+                  <Button component={Link} to="/admin/users" variant="subtle" color="gray" size="sm">
+                    Users
+                  </Button>
+                )}
                 <Button component={Link} to="/profile" variant="subtle" color="gray" size="sm">
                   👤 {user.username}
                 </Button>
