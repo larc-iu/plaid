@@ -40,18 +40,22 @@ Two modes, picked automatically:
   hierarchy. Re-running replaces the document's existing tokens and
   annotations — across ALL apps sharing the project.
 - **Already-tokenized document** (e.g. a project shared with IGT): the
-  existing sentences and words are KEPT; Stanza parses them as given and
-  only UD's own annotation layers are replaced. Other apps' annotations
-  are untouched. (Trade-off: multiword tokens aren't split in this mode.)
+  existing sentences and words are KEPT, and Stanza re-parses PER SENTENCE — a
+  sentence is refreshed only if it has no human-made or human-verified UD
+  annotations, so sentences you've reviewed or edited are left exactly as they
+  are. Clicking Parse again thus refreshes the machine-only and not-yet-parsed
+  sentences without disturbing your work. Other apps' annotations are
+  untouched. (Trade-off: multiword tokens aren't split in this mode.)
 
 Options:
 
 - **Language** selects which Stanza models to use. The first parse in a given
   language downloads its models (one-time) and is slower.
-- **Overwrite human-edited annotations**: machine-made, unverified
-  annotations are always fair game; if any HUMAN-made or human-verified
-  annotations exist in what the parse would replace, it refuses unless this
-  is enabled.
+- **Overwrite human-edited annotations**: by default, sentences carrying
+  human-made or human-verified annotations are left untouched. Enable this to
+  re-parse them too, discarding that work. (In a from-scratch re-tokenize it
+  also lets the parse clear annotations that may belong to other apps sharing
+  the project.)
 
 Everything this service creates carries provenance metadata
 (`prov`/`provSource`), so editors render it distinctly until a human verifies
@@ -67,8 +71,9 @@ PARSER_EXTRAS = build_extras(
         Param.enum('language', 'Language', STANZA_LANGUAGES, default='en',
                    description='Language models Stanza uses for parsing.'),
         Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
-                      description='Replace annotations a human created or verified. '
-                                  'When off, the parse refuses if any exist.'),
+                      description='Re-parse sentences even where a human created or '
+                                  'verified annotations (discarding them). When off, '
+                                  'those sentences are left untouched.'),
     ],
 )
 
@@ -236,6 +241,74 @@ def format_protected_error(total, breakdown, scope):
     )
 
 
+def _token_id(tok):
+    """span/link `tokens` and relation endpoints come back as id strings;
+    tolerate the occasional {id: ...} object shape too."""
+    return tok.get("id") if isinstance(tok, dict) else tok
+
+
+def morpheme_sentence_index(sent_groups, morphemes):
+    """Map each syntactic-word (morpheme) token id to the index of its sentence
+    in `sent_groups`, by character containment (the sentence layer partitions
+    the text, so each morpheme falls in exactly one sentence)."""
+    m2s = {}
+    for m in morphemes or []:
+        for idx, (sent, _ws) in enumerate(sent_groups):
+            if sent["begin"] <= m["begin"] and m["end"] <= sent["end"]:
+                m2s[m["id"]] = idx
+                break
+    return m2s
+
+
+def _sentence_of_tokens(tokens, morph_to_sent):
+    for tok in tokens or []:
+        sidx = morph_to_sent.get(_token_id(tok))
+        if sidx is not None:
+            return sidx
+    return None
+
+
+def protected_sentence_indexes(morpheme_layer, lemma_layer, morph_to_sent):
+    """Indexes (into sent_groups) of sentences carrying ANY human-made or
+    human-verified UD annotation — a span on the syntactic-word layer, a
+    dependency relation, or a vocab link. A selective re-parse leaves these
+    sentences untouched. Scope matches the substrate-preserving blast radius
+    (UD's own syntactic-word subtree); other apps' sibling layers are never
+    touched here, so they don't gate anything."""
+    protected = set()
+    lemma_layer_id = lemma_layer.get("id") if lemma_layer else None
+    lemma_span_to_sent = {}  # lemma span id -> sentence idx (relation endpoints)
+
+    for span_layer in morpheme_layer.get("span_layers", []) or []:
+        is_lemma = span_layer.get("id") == lemma_layer_id
+        for span in span_layer.get("spans", []) or []:
+            sidx = _sentence_of_tokens(span.get("tokens"), morph_to_sent)
+            if is_lemma and sidx is not None:
+                lemma_span_to_sent[span.get("id")] = sidx
+            if sidx is not None and is_protected(span.get("metadata")):
+                protected.add(sidx)
+
+    for span_layer in morpheme_layer.get("span_layers", []) or []:
+        for relation_layer in span_layer.get("relation_layers", []) or []:
+            for rel in relation_layer.get("relations", []) or []:
+                if not is_protected(rel.get("metadata")):
+                    continue
+                for endpoint in (rel.get("source"), rel.get("target")):
+                    sidx = lemma_span_to_sent.get(endpoint)
+                    if sidx is not None:
+                        protected.add(sidx)
+
+    for vocab in morpheme_layer.get("vocabs", []) or []:
+        for link in vocab.get("vocab_links", []) or []:
+            if not is_protected(link.get("metadata")):
+                continue
+            sidx = _sentence_of_tokens(link.get("tokens"), morph_to_sent)
+            if sidx is not None:
+                protected.add(sidx)
+
+    return protected
+
+
 def parse_document(pipeline_provider, client, document_id, text_content, language='en', overwrite=False):
     """Parse a document with Stanza and write UD annotations into Plaid.
 
@@ -247,17 +320,20 @@ def parse_document(pipeline_provider, client, document_id, text_content, languag
       cascade-deletes EVERYTHING under the text layer — other apps' layers
       included — so the provenance guard walks the whole tree.
     - SUBSTRATE-PRESERVING (sentence + word tokens already exist, e.g. a
-      project shared with another app): keep the existing tokenization, run
-      Stanza pretokenized over the existing words, and replace only what UD
-      owns — the syntactic-word tokens and their spans/relations. The guard
-      narrows to exactly those layers. Limitation: pretokenized Stanza does
-      not split multiword tokens, so each word gets exactly one syntactic
-      word (annotators can still split by hand afterwards).
+      project shared with another app): keep the existing tokenization and
+      re-parse PER SENTENCE — only sentences with no human-made/verified UD
+      annotation are refreshed (Stanza runs pretokenized over their words,
+      replacing UD's syntactic-word tokens + spans/relations for just those
+      sentences); sentences a human has touched are left untouched. Limitation:
+      pretokenized Stanza does not split multiword tokens, so each word gets
+      exactly one syntactic word (annotators can still split by hand).
 
-    Provenance write contract: everything created here is stamped machine-
-    made (prov_fragment). Re-running freely replaces machine-made UNVERIFIED
-    material; if any human-made or human-verified annotations exist in the
-    blast radius, the parse refuses unless `overwrite` is set."""
+    Provenance write contract: everything created here is stamped machine-made
+    (prov_fragment). A re-parse replaces machine-made UNVERIFIED material but
+    never human-made/verified work: substrate-preserving mode skips sentences
+    that carry any (unless `overwrite`); a from-scratch re-tokenize refuses
+    outright if such annotations would be lost (unless `overwrite`). Returns a
+    summary dict {mode, parsed_sentences, skipped_sentences}."""
     frag = prov_fragment(language)
 
     def log(msg):
@@ -305,61 +381,80 @@ def parse_document(pipeline_provider, client, document_id, text_content, languag
         preserve = bool(existing_sentences and existing_words)
 
         if preserve:
-            # ----- SUBSTRATE-PRESERVING mode --------------------------------
-            # Provenance guard scoped to what this mode destroys: the
-            # syntactic-word subtree (UD's own spans + relations + any links
-            # on its tokens). Other apps' layers are untouched siblings.
-            protected, breakdown = count_protected_annotations([morpheme_layer])
-            if protected and not overwrite:
-                raise RuntimeError(format_protected_error(
-                    protected, breakdown,
-                    "on the UD annotation layers this parse replaces"))
-            if protected:
-                log(f"Overwrite enabled: replacing {protected} protected annotation(s)")
+            # ----- SUBSTRATE-PRESERVING mode (sentence-selective) -----------
+            # Re-parse only sentences that carry NO human-made/verified UD
+            # annotation; sentences a human has reviewed/edited are left exactly
+            # as they are. This is the "click Parse again" path — it refreshes
+            # the machine-only and not-yet-parsed sentences without disturbing
+            # your work. `overwrite` re-parses every sentence regardless.
 
             # Group the existing words under their containing sentences (the
-            # sentence layer is partitioning, so containment is well-defined).
-            groups = []
+            # sentence layer is partitioning, so containment is well-defined);
+            # keep the sentence object alongside for per-sentence decisions.
+            sent_groups = []  # [(sentence_token, [word_tokens])]
             for sent in existing_sentences:
                 ws = [w for w in existing_words
                       if sent["begin"] <= w["begin"] and w["end"] <= sent["end"]]
-                if ws:
-                    groups.append(ws)
-            grouped_count = sum(len(g) for g in groups)
+                sent_groups.append((sent, ws))
+            grouped_count = sum(len(ws) for _, ws in sent_groups)
             if grouped_count != len(existing_words):
                 log(f"  WARNING: {len(existing_words) - grouped_count} word token(s) "
                     f"fall outside the sentence partition; they get no syntactic word")
 
+            morph_to_sent = morpheme_sentence_index(sent_groups, existing_morphemes)
+            protected_idxs = protected_sentence_indexes(morpheme_layer, lemma_layer, morph_to_sent)
+
+            # Sentences to (re)parse: those with words and — unless overwrite —
+            # no human annotations. Carry the original index for clear errors.
+            reparse = [(idx, sent, ws) for idx, (sent, ws) in enumerate(sent_groups)
+                       if ws and (overwrite or idx not in protected_idxs)]
+            reparse_idxs = {idx for idx, _, _ in reparse}
+            skipped_idxs = protected_idxs - reparse_idxs
+            log(f"Sentence-selective parse: {len(reparse)} sentence(s) to (re)parse; "
+                f"{len(skipped_idxs)} with human annotations "
+                + ("re-parsed anyway (overwrite on)" if overwrite else "left untouched"))
+
+            if not reparse:
+                log("Nothing to (re)parse — every sentence with words has human annotations.")
+                return {"mode": "preserve", "parsed_sentences": 0,
+                        "skipped_sentences": len(skipped_idxs)}
+
             log("Preserving existing tokenization; parsing pretokenized…")
             pipeline = pipeline_provider.get(language, pretokenized=True)
-            stanza_doc = pipeline([[body[w["begin"]:w["end"]] for w in g] for g in groups])
+            stanza_doc = pipeline([[body[w["begin"]:w["end"]] for w in ws] for _, _, ws in reparse])
             sentences_data = stanza_doc.to_dict()
 
-            # Replace only UD's syntactic-word layer; the cascade takes only
-            # UD's spans/relations with it.
-            if existing_morphemes:
-                log(f"  Deleting {len(existing_morphemes)} syntactic-word tokens "
-                    f"(cascades UD spans/relations only)…")
-                client.tokens.bulk_delete([t["id"] for t in existing_morphemes])
+            # Delete syntactic-word tokens of the RE-PARSED sentences only
+            # (cascades their UD spans/relations); skipped sentences keep theirs.
+            morphs_to_delete = [m for m in existing_morphemes
+                                if morph_to_sent.get(m["id"]) in reparse_idxs]
+            if morphs_to_delete:
+                log(f"  Deleting {len(morphs_to_delete)} syntactic-word token(s) in re-parsed "
+                    f"sentences (cascades UD spans/relations only)…")
+                client.tokens.bulk_delete([m["id"] for m in morphs_to_delete])
 
             sentence_ops, word_ops = [], []  # substrate preserved
             morpheme_ops = []
+            # `sent_idx` here is the index INTO `sentences_data` (the re-parsed
+            # subset), so the shared span/relation code below stays consistent.
             morpheme_meta = []  # parallel to morpheme_ops: {sent_idx, row, word_substring}
-            for sent_idx, (g, sentence_data) in enumerate(zip(groups, sentences_data)):
+            for r_idx, ((orig_idx, sent, ws), sentence_data) in enumerate(zip(reparse, sentences_data)):
                 rows = [td for td in sentence_data if not isinstance(td["id"], tuple)]
-                if len(rows) != len(g):
+                if len(rows) != len(ws):
                     # A misalignment would hang annotations on the wrong
                     # words — fail loudly rather than guess.
                     raise RuntimeError(
                         f"Pretokenized parse returned {len(rows)} words for a "
-                        f"{len(g)}-word sentence (index {sent_idx}); aborting")
-                for w, row in zip(g, rows):
+                        f"{len(ws)}-word sentence (original index {orig_idx}); aborting")
+                for w, row in zip(ws, rows):
                     op = make_bulk_token(morpheme_layer["id"], text_id,
                                          w["begin"], w["end"], metadata=dict(frag))
                     op["precedence"] = 0
                     morpheme_ops.append(op)
-                    morpheme_meta.append({"sent_idx": sent_idx, "row": row,
+                    morpheme_meta.append({"sent_idx": r_idx, "row": row,
                                           "word_substring": body[w["begin"]:w["end"]]})
+            parse_summary = {"mode": "preserve", "parsed_sentences": len(reparse),
+                             "skipped_sentences": len(skipped_idxs)}
         else:
             # ----- FULL-REPLACE mode -----------------------------------------
             # The sentence cascade destroys EVERYTHING under the text layer —
@@ -377,6 +472,8 @@ def parse_document(pipeline_provider, client, document_id, text_content, languag
             stanza_doc = pipeline(text_content)
             sentences_data = stanza_doc.to_dict()
             log(f"Parsed {len(sentences_data)} sentences")
+            parse_summary = {"mode": "full", "parsed_sentences": len(sentences_data),
+                             "skipped_sentences": 0}
 
             # Reset: delete pre-existing tokens, leaning on server-side cascade
             # for the normal case. Deleting sentences cascades to their words +
@@ -631,7 +728,7 @@ def parse_document(pipeline_provider, client, document_id, text_content, languag
                 log("  …relations created")
 
         log(f"Successfully parsed document {document_id}")
-        return True
+        return parse_summary
 
     except Exception as e:
         print(f"Error parsing document {document_id}: {e}", flush=True)
@@ -696,14 +793,18 @@ def make_handler(client, pipeline_provider, parse_lock):
             # Building the per-language pipeline also happens under the lock,
             # since Stanza model loading is not thread-safe.
             with parse_lock:
-                success = parse_document(pipeline_provider, client, document_id, text_content,
+                summary = parse_document(pipeline_provider, client, document_id, text_content,
                                          language=language, overwrite=overwrite)
 
-            if success:
-                response_helper.progress(100, "Document parsing completed successfully")
-                response_helper.complete({"document_id": document_id, "status": "success"})
-            else:
-                response_helper.error("Document parsing failed")
+            # parse_document returns a summary dict on success (and raises on
+            # failure, handled below). Report what it actually did.
+            parsed = summary.get("parsed_sentences", 0)
+            skipped = summary.get("skipped_sentences", 0)
+            msg = f"Parsed {parsed} sentence(s)"
+            if skipped:
+                msg += f"; kept {skipped} sentence(s) with human annotations"
+            response_helper.progress(100, msg)
+            response_helper.complete({"document_id": document_id, "status": "success", **summary})
 
         except Exception as e:
             print(f"Error during parse: {str(e)}")
