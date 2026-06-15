@@ -198,6 +198,11 @@ export const ImportFlexProject = () => {
   const warningSamples = parsed
     ? parsed.build.documents.flatMap((d) => d.warnings.map((w) => `${d.name}: ${w}`)).slice(0, 8)
     : [];
+  // Parser-level warnings: references inside the backup that couldn't be
+  // resolved (missing objects, unexpected analysis classes) — distinct from the
+  // alignment warnings above, and a sign some data silently didn't come across.
+  const irWarnings = parsed?.ir.warnings ?? [];
+  const irWarningSamples = irWarnings.slice(0, 8);
   // Selections lock once setup has run: a resume must re-target the same
   // project shape, and the engine skips/redoes per document by name.
   const locked = stage !== 'review' || setupDoneRef.current;
@@ -217,7 +222,8 @@ export const ImportFlexProject = () => {
           <h1 className="text-2xl font-bold">Import from FLEx</h1>
           <p className="text-sm text-muted-foreground">
             Create a project from a FieldWorks backup (<code>.fwbackup</code>). Texts, glosses,
-            morpheme analyses, translations, and the full lexicon are imported.
+            morpheme analyses, translations, and the full lexicon are imported. Media (audio and
+            pictures) is not yet imported.
           </p>
         </div>
 
@@ -270,6 +276,17 @@ export const ImportFlexProject = () => {
                   <ul className="mt-1 list-disc pl-5 text-orange-700">
                     {warningSamples.map((w, i) => <li key={i}>{w}</li>)}
                     {totalWarnings > warningSamples.length && <li>…and {totalWarnings - warningSamples.length} more</li>}
+                  </ul>
+                </div>
+              )}
+              {irWarnings.length > 0 && (
+                <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
+                  <p className="font-medium text-orange-800">
+                    {irWarnings.length} reference{irWarnings.length === 1 ? '' : 's'} in the backup could not be resolved — some data may be missing from the import:
+                  </p>
+                  <ul className="mt-1 list-disc pl-5 text-orange-700">
+                    {irWarningSamples.map((w, i) => <li key={i}>{w}</li>)}
+                    {irWarnings.length > irWarningSamples.length && <li>…and {irWarnings.length - irWarningSamples.length} more</li>}
                   </ul>
                 </div>
               )}

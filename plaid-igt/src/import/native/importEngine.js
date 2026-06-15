@@ -359,18 +359,25 @@ export async function importNativeDocument({
   }
 
   // Media, from the archive bytes.
+  let mediaFailed = false;
   if (mediaBytes) {
     check();
     progress('Uploading media');
     try {
       await client.documents.uploadMedia(docId, new File([mediaBytes], mediaName || 'media'));
     } catch (err) {
-      warnings.push(`"${docData.name}": media upload failed: ${err?.message ?? err}`);
+      mediaFailed = true;
+      warnings.push(`"${docData.name}": media upload failed — document left unfinished so re-importing retries it: ${err?.message ?? err}`);
     }
   }
 
-  // Mark complete LAST — resume treats unmarked documents as partial.
-  await client.documents.setMetadata(docId, { ...(docData.metadata || {}), [DONE_KEY]: true });
+  // Mark complete LAST — resume treats unmarked documents as partial. If the
+  // media upload failed, deliberately leave the document UNMARKED so a re-import
+  // deletes-and-redoes it (recovering the media) instead of silently marking it
+  // done and losing the media forever.
+  if (!mediaFailed) {
+    await client.documents.setMetadata(docId, { ...(docData.metadata || {}), [DONE_KEY]: true });
+  }
   return docId;
 }
 
