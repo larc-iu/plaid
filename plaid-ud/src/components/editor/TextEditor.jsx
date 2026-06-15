@@ -245,18 +245,6 @@ export const TextEditor = () => {
         </Alert>
       )}
 
-      {!readOnly && hasText && (
-        <Group justify="flex-end" mb="md">
-          <NlpServiceControls
-            projectId={projectId}
-            documentId={documentId}
-            project={project}
-            enabled
-            onParsed={() => fetchData()}
-          />
-        </Group>
-      )}
-
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="xl">
         <Stack gap="md">
           <Title order={4}>Text Content</Title>
@@ -311,6 +299,18 @@ This is a second sentence for testing.`}
               <Text span c="yellow.8" fs="italic">Unsaved changes</Text>
             )}
           </Text>
+
+          {!readOnly && hasText && (
+            <Group gap="xs">
+              <NlpServiceControls
+                projectId={projectId}
+                documentId={documentId}
+                project={project}
+                enabled
+                onParsed={() => fetchData()}
+              />
+            </Group>
+          )}
         </Stack>
 
         <Paper withBorder bg="gray.0" p="md" radius="md">
