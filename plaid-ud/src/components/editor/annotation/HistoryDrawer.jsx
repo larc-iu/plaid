@@ -1,7 +1,6 @@
 import { useState, useRef, useMemo } from 'react';
 import { Drawer, Loader, Text, Button, Box, Group } from '@mantine/core';
 import { IconChevronRight } from '@tabler/icons-react';
-import { EntityAvatar } from '../../common/EntityAvatar.jsx';
 import { fullTimestamp } from '../../../utils/formatTime.js';
 import classes from './HistoryDrawer.module.css';
 
@@ -10,56 +9,6 @@ const BUFFER_SIZE = 5; // Number of rows to render outside visible area
 const GROUP_THRESHOLD_MS = 5000; // Entries closer in time than this collapse together
 
 const getEntryDescription = (entry) => entry.ops?.[0]?.description || 'No description available';
-
-const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-
-// Render a server description, swapping embedded UUIDs so the raw id never
-// shows: a UUID that names a known layer becomes a name-pill, any other entity
-// (span/token/etc.) becomes its deterministic avatar glyph (as used in
-// lists/breadcrumbs). Returns a mix of text and inline nodes.
-const renderDescription = (text, layerNames) => {
-  const parts = [];
-  let last = 0;
-  let key = 0;
-  let m;
-  UUID_RE.lastIndex = 0;
-  while ((m = UUID_RE.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    const uuid = m[0];
-    const layerName = layerNames?.[uuid];
-    if (layerName) {
-      parts.push(
-        <span key={key++} className={classes.layerTag}>{layerName}</span>
-      );
-    } else {
-      parts.push(
-        <EntityAvatar
-          key={key++}
-          id={uuid}
-          size={18}
-          style={{ display: 'inline-block', verticalAlign: 'text-bottom', margin: '0 1px' }}
-        />
-      );
-    }
-    last = m.index + uuid.length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
-};
-
-// Map of layer UUID -> display name, for resolving layer ids in descriptions.
-const buildLayerNames = (layerInfo) => {
-  const map = {};
-  if (!layerInfo) return map;
-  const add = (l) => { if (l?.id) map[l.id] = l.name || l.id; };
-  add(layerInfo.textLayer);
-  add(layerInfo.sentenceTokenLayer);
-  add(layerInfo.wordTokenLayer);
-  add(layerInfo.morphemeTokenLayer);
-  (layerInfo.spanLayers || []).forEach(add);
-  add(layerInfo.relationLayer);
-  return map;
-};
 
 // The acting agent behind an audit entry. Two entries only glom if the SAME
 // user is acting through the SAME token — an API token (by id, falling back to
@@ -98,14 +47,11 @@ export const HistoryDrawer = ({
   auditEntries,
   loading,
   onSelectEntry,
-  selectedEntry,
-  layerInfo
+  selectedEntry
 }) => {
   const [scrollTop, setScrollTop] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState(() => new Set());
   const scrollContainerRef = useRef(null);
-
-  const layerNames = useMemo(() => buildLayerNames(layerInfo), [layerInfo]);
 
   // Reverse the audit entries to show most recent first
   const reversedAuditEntries = useMemo(() => [...auditEntries].reverse(), [auditEntries]);
@@ -169,7 +115,7 @@ export const HistoryDrawer = ({
   const renderEntryBody = (entry) => (
     <>
       <div style={{ flex: 1, paddingRight: '0.5rem' }}>
-        <div className={classes.clamp}>{renderDescription(getEntryDescription(entry), layerNames)}</div>
+        <div className={classes.clamp}>{getEntryDescription(entry)}</div>
       </div>
       <div style={{ flexShrink: 0, paddingTop: '0.5rem', borderTop: '1px solid var(--mantine-color-gray-1)' }}>
         <Text size="xs" c="dimmed">{fullTimestamp(entry.time)}</Text>
@@ -222,7 +168,7 @@ export const HistoryDrawer = ({
           <div style={{ display: 'flex', gap: '0.4rem', flex: 1, minHeight: 0 }}>
             <IconChevronRight size={16} className={classes.chevron} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className={classes.clampOne}>{renderDescription(getEntryDescription(first), layerNames)}</div>
+              <div className={classes.clampOne}>{getEntryDescription(first)}</div>
               <Text size="xs" fw={600} c="blue.7">
                 and {others} other action{others === 1 ? '' : 's'}
               </Text>

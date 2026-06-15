@@ -42,21 +42,6 @@
   word-break: break-word;
 }
 
-/* Inline pill for a layer name resolved from a UUID in an op description. */
-.layerTag {
-  display: inline-block;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--mantine-color-gray-1);
-  border: 1px solid var(--mantine-color-gray-3);
-  font-size: 0.82em;
-  font-weight: 600;
-  color: var(--mantine-color-gray-7);
-  line-height: 1.4;
-  vertical-align: text-bottom;
-  white-space: nowrap;
-}
-
 /* Single-line clamp for the group header (room is tighter with the count line). */
 .clampOne {
   white-space: nowrap;

@@ -524,7 +524,6 @@ export const AnnotationEditor = () => {
         loading={loadingAudit}
         onSelectEntry={handleSelectHistoryEntry}
         selectedEntry={selectedHistoryEntry}
-        layerInfo={doc?.layerInfo}
       />
 
       {/* Main content area - pushed right (not overlaid) when the drawer is open */}
