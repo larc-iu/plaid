@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Autocomplete, Button } from '@mantine/core';
+import { Autocomplete, Button, Tooltip, ActionIcon } from '@mantine/core';
 import { IconChevronRight, IconCheck } from '@tabler/icons-react';
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
@@ -467,9 +467,30 @@ const FeaturesCell = React.memo(({ features, featureInferred, spanIds, tokenId, 
 });
 
 // Token Column component
-const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnotationUpdate, onFeatureDelete, onNavigate, maxFeatures, tokenRefs, isReadOnly, vocab, uposColors, featureInventory, visibleFields }) => {
+const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnotationUpdate, onFeatureDelete, onNavigate, onConfirmTokens, maxFeatures, tokenRefs, isReadOnly, vocab, uposColors, featureInventory, visibleFields }) => {
+  // This word still has machine predictions a human hasn't reviewed. When so, a
+  // ✓ reveals on hover / keyboard focus (`:focus-within`) — discoverable at the
+  // moment you're on the word, and it teaches the Ctrl+Enter shortcut (tooltip).
+  const wordInferred = isInferredSpan(data.lemma) || isInferredSpan(data.xpos)
+    || isInferredSpan(data.upos) || (data.feats || []).some(isInferredSpan);
   return (
     <div className="token-column" style={{ width: `${columnWidth}px` }}>
+      {!isReadOnly && onConfirmTokens && wordInferred && (
+        <Tooltip label="Accept this word's predictions (Ctrl+Enter)" withArrow position="top" openDelay={250}>
+          <ActionIcon
+            className="word-accept"
+            size="xs"
+            radius="xl"
+            variant="filled"
+            color="violet"
+            tabIndex={-1}
+            aria-label="Accept this word's predictions"
+            onClick={() => onConfirmTokens([data.token.id])}
+          >
+            <IconCheck size={12} />
+          </ActionIcon>
+        </Tooltip>
+      )}
       {/* Token form (baseline) */}
       <div
         className="token-form"
@@ -812,14 +833,15 @@ export const SentenceRow = React.memo(({
   return (
     <div className="sentence-container" onKeyDown={handleContainerKeyDown}>
       {!isReadOnly && onConfirmTokens && hasInferred && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+        <div className="sentence-confirm">
           <Button
+            className="accept-predictions-btn"
             size="compact-xs"
             variant="subtle"
             color="violet"
             leftSection={<IconCheck size={12} />}
             onClick={handleConfirmSentence}
-            title="Mark every machine prediction in this sentence as reviewed. Ctrl+Enter on a cell confirms just that word."
+            title="Mark every machine prediction in this sentence as reviewed (hover a word for a per-word ✓ / Ctrl+Enter)."
           >
             Accept predictions
           </Button>
@@ -874,6 +896,7 @@ export const SentenceRow = React.memo(({
             onAnnotationUpdate={onAnnotationUpdate}
             onFeatureDelete={onFeatureDelete}
             onNavigate={onNavigate}
+            onConfirmTokens={onConfirmTokens}
             maxFeatures={maxFeatures}
             tokenRefs={tokenRefs}
             isReadOnly={isReadOnly}

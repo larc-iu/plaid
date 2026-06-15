@@ -6,6 +6,42 @@
   position: relative; /* Enable absolute positioning for children */
 }
 
+/* "Accept predictions" affordance. Lives in the gap above the dependency tree,
+   left-aligned so it's always on-screen (the sentence starts at the left, while
+   the far right scrolls out of view on wide sentences). z-index 11 puts it ABOVE
+   the tree (z-index:10) — otherwise the tree's SVG paints over it and eats the
+   click. top:-48px clears the ROOT bar, which sits ~25px down inside the tree. */
+.sentence-confirm {
+  position: absolute;
+  top: -48px;
+  left: 0;
+  z-index: 11;
+}
+
+/* Unobtrusive by default — transparent fill, light violet stroke, dimmed — so it
+   doesn't compete with the annotations. Fills in on hover. The descendant
+   selectors (and `*`) out-specify Mantine's variant styles so the label + icon
+   recolor with the button. */
+.sentence-confirm .accept-predictions-btn {
+  background-color: transparent;
+  border: 1px solid var(--mantine-color-violet-3);
+  opacity: 0.6;
+  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.sentence-confirm .accept-predictions-btn,
+.sentence-confirm .accept-predictions-btn * {
+  color: var(--mantine-color-violet-6);
+}
+.sentence-confirm .accept-predictions-btn:hover {
+  opacity: 1;
+  background-color: var(--mantine-color-violet-6);
+  border-color: var(--mantine-color-violet-6);
+}
+.sentence-confirm .accept-predictions-btn:hover,
+.sentence-confirm .accept-predictions-btn:hover * {
+  color: var(--mantine-color-white);
+}
+
 .sentence-grid {
   display: flex;
   padding-top: 215px; /* Moderate padding to make room for dependency tree */
@@ -28,6 +64,27 @@
   white-space: nowrap;
   flex: 0 0 auto;
   min-width: 0; /* Allow column to shrink */
+  position: relative; /* anchor the per-word accept ✓ */
+}
+
+/* Per-word "accept predictions" ✓ — hidden until you hover the word or focus one
+   of its cells (keyboard review), so it surfaces the Ctrl+Enter shortcut right
+   when you're on the word. tabIndex=-1 keeps it out of the cell tab order. */
+.word-accept {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  /* Above the dependency tree (z-index:10) + its transparent drag hit-areas,
+     which otherwise paint over and swallow clicks on the ✓. */
+  z-index: 12;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 100ms ease;
+}
+.token-column:hover .word-accept,
+.token-column:focus-within .word-accept {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Label styles */
