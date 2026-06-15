@@ -10,6 +10,21 @@ from plaid_client.transforms import transform_response
 
 logger = logging.getLogger(__name__)
 
+# A live SSE stream is never silent for long: the server sends a keepalive
+# comment on service channels (every 25s) and a heartbeat event on the /listen
+# bus (every 30s). So if NOTHING arrives for longer than this, the connection is
+# dead — the server was killed without closing the socket, the network dropped
+# it, or a reconnect caught the server mid-restart (port accepting, app not yet
+# streaming) — and we must surface that as a drop so the registration supervisor
+# can reopen it. With the old ``timeout=None`` such a silent drop blocked
+# ``iter_lines`` (or the header read) forever: ``ready_state`` never reached
+# CLOSED, so the supervisor never reconnected and the service never healed.
+# Read timeout is comfortably above both server cadences (avoids false trips on a
+# healthy idle stream); connect timeout fails a dead port fast so reconnect
+# attempts keep cycling instead of wedging.
+SSE_READ_TIMEOUT_S = 60.0
+SSE_CONNECT_TIMEOUT_S = 10.0
+
 
 def abort_response(resp):
     """Shut down the TCP socket under a streaming `requests` response so a
@@ -139,7 +154,13 @@ class SSEConnection:
                 'Cache-Control': 'no-cache',
             }
 
-            self._response = requests.get(url, headers=headers, stream=True, timeout=None)
+            # Finite read timeout so a silently-dropped stream is detected (see
+            # SSE_READ_TIMEOUT_S) instead of blocking forever; finite connect
+            # timeout so a reconnect to a not-yet-ready server fails fast and
+            # retries rather than wedging.
+            self._response = requests.get(
+                url, headers=headers, stream=True,
+                timeout=(SSE_CONNECT_TIMEOUT_S, SSE_READ_TIMEOUT_S))
             self._response.raise_for_status()
 
             self._is_connected = True
