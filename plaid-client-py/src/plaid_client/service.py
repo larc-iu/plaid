@@ -18,6 +18,7 @@ Two distinct kinds of "arguments", do not conflate them:
 """
 
 import argparse
+import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
@@ -51,8 +52,13 @@ class BaseService(ABC):
         self.extras = build_extras(tasks=tasks or [], summary=summary,
                                    parameters=parameters, extra=extras)
         self.client: Optional[PlaidClient] = None
-        self.service_registration = None
-        self.processing_lock = {"is_processing": False}
+        # One registration per served project (a service can serve many at once;
+        # see :meth:`run`). The lock makes the instance single-flight ACROSS all
+        # of them — each project has its own SSE reader thread, so without it two
+        # projects' requests could enter :meth:`process_request` (and the shared
+        # client's batch state) concurrently.
+        self.service_registrations: List[Any] = []
+        self._processing_lock = threading.Lock()
 
     # --- client bootstrap ---------------------------------------------------
 
@@ -98,14 +104,20 @@ class BaseService(ABC):
         raise NotImplementedError
 
     def handle_service_request(self, request_data: Dict[str, Any], response_helper) -> None:
-        """Wrap :meth:`process_request` with a single-request lock + error reporting."""
-        if self.processing_lock["is_processing"]:
+        """Wrap :meth:`process_request` with a single-flight lock + error reporting.
+
+        When serving several projects each has its own SSE reader thread, so a
+        cross-project race is real. We REJECT (don't block) a second concurrent
+        request: blocking could outlast the requester's response timeout, badly
+        so for slow models. The work is CPU/GPU-bound anyway — one at a time is
+        the right model.
+        """
+        if not self._processing_lock.acquire(blocking=False):
             response_helper.error(
                 f"{self.service_name} is currently processing another request. "
                 f"Please try again later."
             )
             return
-        self.processing_lock["is_processing"] = True
         try:
             self.process_request(request_data, response_helper)
         except Exception as e:
@@ -114,42 +126,56 @@ class BaseService(ABC):
             traceback.print_exc()
             response_helper.error(f"{self.service_name} processing error: {str(e)}")
         finally:
-            self.processing_lock["is_processing"] = False
+            self._processing_lock.release()
 
     # --- registration + lifecycle ------------------------------------------
 
-    def register_service(self, project_id: str) -> None:
-        """Open the inbound request channel (which registers the service) and
-        start handling work. The standardized ``extras`` ride along for
-        discovery."""
+    def register_service(self, project_id: str):
+        """Open the inbound request channel on one project (which registers the
+        service for discovery) and start handling work. The standardized
+        ``extras`` ride along for discovery. Records and returns the
+        ``ServiceRegistration``; call once per project to serve several at once."""
         service_info = {
             'service_id': self.service_id,
             'service_name': self.service_name,
             'description': self.description,
         }
-        print(f"Registering as service: {service_info} (tasks={self.extras.get('tasks')})")
-        print(f"Starting {self.service_name}, listening to project {project_id}")
-        self.service_registration = self.client.messages.serve(
+        registration = self.client.messages.serve(
             project_id, service_info, self.handle_service_request, self.extras
         )
-        print("Service registered successfully. Waiting for requests...")
-        print("Press Ctrl+C to stop the service.")
+        self.service_registrations.append(registration)
+        return registration
 
     def run_service_loop(self) -> None:
-        """Block until the service stops or Ctrl+C."""
+        """Block until every registration stops or Ctrl+C, then stop them all."""
         try:
-            while self.service_registration.is_running():
+            while any(reg.is_running() for reg in self.service_registrations):
                 time.sleep(1)
         except KeyboardInterrupt:
             print(f"\nStopping {self.service_name}...")
-            self.service_registration.stop()
+        finally:
+            for reg in self.service_registrations:
+                try:
+                    reg.stop()
+                except Exception:
+                    pass
             print("Service stopped.")
 
     # --- CLI ----------------------------------------------------------------
 
     def setup_parser_common_args(self, parser: argparse.ArgumentParser) -> None:
-        """Add the args every service needs (project id + API url)."""
-        parser.add_argument('project_id', help='Target project ID')
+        """Add the args every service needs (project id + API url).
+
+        The project id is OPTIONAL: omit it (or pass ``--all``) and the service
+        registers on EVERY project the token can access, so it's discoverable
+        everywhere without a launch per project. Pass a single id for the old
+        one-project behavior."""
+        parser.add_argument('project_id', nargs='?', default=None,
+                            help='Target project ID. Omit (or pass --all) to '
+                                 'serve every accessible project.')
+        parser.add_argument('--all', action='store_true',
+                            help='Serve every project the token can access (the '
+                                 'default when no project ID is given).')
         parser.add_argument('--url', default='http://localhost:8085',
                             help='Plaid API URL (default: http://localhost:8085)')
 
@@ -174,10 +200,53 @@ class BaseService(ABC):
         pass
 
     def run(self, args=None) -> None:
-        """Main entry point: parse args, init client, set up, register, loop."""
+        """Main entry point: parse args, init client, set up, register on the
+        target project(s), loop.
+
+        With no project id (or ``--all``) the service fans out one registration
+        per project the token can access. That gives universal coverage: server
+        side, registration is project-scoped (one SSE channel per project), so
+        being discoverable everywhere means registering everywhere. Every
+        registration shares this instance's client and single-flight lock, so
+        requests are still handled one at a time across all served projects.
+        """
         parser = self.create_argument_parser()
         parsed_args = parser.parse_args(args)
         self.client = self.get_client(parsed_args.url)
+
+        # Resolve the target project set (fail fast before any expensive setup()).
+        serve_all = getattr(parsed_args, 'all', False) or not parsed_args.project_id
+        if serve_all:
+            try:
+                projects = self.client.projects.list()
+            except Exception as e:
+                print(f"Failed to list projects: {e}")
+                raise SystemExit(1)
+            targets = [(p['id'], p.get('name', p['id'])) for p in projects]
+            if not targets:
+                print("Token has access to no projects; nothing to serve.")
+                raise SystemExit(1)
+        else:
+            targets = [(parsed_args.project_id, parsed_args.project_id)]
+
         self.setup(parsed_args)
-        self.register_service(parsed_args.project_id)
+
+        print(f"Registering {self.service_name} (service_id={self.service_id}, "
+              f"tasks={self.extras.get('tasks')}) on {len(targets)} project(s)…")
+        for pid, pname in targets:
+            try:
+                self.register_service(pid)
+                print(f"  Serving project {pname} ({pid})")
+            except Exception as e:
+                # A project the token can list but not register on (e.g. another
+                # live instance already holds this service id) shouldn't take
+                # down coverage of the rest.
+                print(f"  Skipping project {pid}: failed to register: {e}")
+
+        if not self.service_registrations:
+            print("No services registered; exiting.")
+            raise SystemExit(1)
+
+        print(f"{self.service_name} registered on {len(self.service_registrations)} "
+              f"project(s). Waiting for requests… (Press Ctrl+C to stop.)")
         self.run_service_loop()
