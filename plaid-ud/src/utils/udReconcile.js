@@ -91,3 +91,110 @@ export const wordsNeedingSyntacticWord = (layerInfo) => {
     .filter(w => !covered.has(`${w.begin}:${w.end}`))
     .map(w => ({ begin: w.begin, end: w.end }));
 };
+
+/**
+ * Syntactic-word ("morpheme") tokens whose extent matches no word — the
+ * symmetric counterpart to wordsNeedingSyntacticWord. They arise when another
+ * app changes word boundaries (e.g. merges two words) without UD's full-width
+ * syntactic-words following: each old full-width token is now CONTAINED in the
+ * merged word but spans no single word (the server enforces only containment,
+ * not extent equality), so the grid renders it as a spurious extra morpheme.
+ * Heal downward (the word tokenization is authoritative): delete them. The
+ * delete cascades their UD spans + relations server-side — rare, low-impact, and
+ * recoverable via document history. `annotatedCount` reports how many carried
+ * annotation spans so the caller can warn loudly.
+ *
+ * MWT morphemes legitimately share their word's extent, so an extent that
+ * matches a word is never an orphan, no matter how many morphemes share it.
+ *
+ * @param {object} layerInfo the result of getUdLayerInfo (bound layers)
+ * @returns {{ids: string[], annotatedCount: number}}
+ */
+export const orphanSyntacticWords = (layerInfo) => {
+  const wordTokens = layerInfo?.wordTokenLayer?.tokens || [];
+  const morphemeTokens = layerInfo?.morphemeTokenLayer?.tokens || [];
+  if (!morphemeTokens.length) return { ids: [], annotatedCount: 0 };
+
+  const wordExtents = new Set(wordTokens.map(w => `${w.begin}:${w.end}`));
+  const orphans = morphemeTokens.filter(m => !wordExtents.has(`${m.begin}:${m.end}`));
+
+  const annotated = new Set();
+  [layerInfo.formLayer, layerInfo.lemmaLayer, layerInfo.uposLayer, layerInfo.xposLayer, layerInfo.featuresLayer]
+    .filter(Boolean)
+    .forEach(sl => (sl.spans || []).forEach(sp => (sp.tokens || []).forEach(t => annotated.add(t))));
+
+  return {
+    ids: orphans.map(m => m.id),
+    annotatedCount: orphans.filter(m => annotated.has(m.id)).length,
+  };
+};
+
+// One single-valued span layer's dedup plan: at most ONE span per morpheme (the
+// grid renders the first per field), so any extra is invisible + immortal. Heal
+// losslessly — concatenate distinct values into the first span (' | ') and
+// delete the rest, so a human can revise the joined value.
+const planLayerSpanDedup = (layer, field) => {
+  const plans = [];
+  if (!layer) return plans;
+  const byToken = new Map();
+  for (const sp of layer.spans || []) {
+    if (!Array.isArray(sp.tokens) || sp.tokens.length !== 1) continue;
+    const tid = sp.tokens[0];
+    if (!byToken.has(tid)) byToken.set(tid, []);
+    byToken.get(tid).push(sp);
+  }
+  byToken.forEach((spans, tokenId) => {
+    if (spans.length < 2) return;
+    const values = [];
+    for (const sp of spans) {
+      const v = sp.value == null ? '' : String(sp.value);
+      if (v !== '' && !values.includes(v)) values.push(v);
+    }
+    const mergedValue = values.join(' | ');
+    const firstValue = spans[0].value == null ? '' : String(spans[0].value);
+    plans.push({
+      field,
+      layerId: layer.id,
+      tokenId,
+      keepSpanId: spans[0].id,
+      mergedValue,
+      needsUpdate: mergedValue !== firstValue,
+      deleteSpanIds: spans.slice(1).map(s => s.id),
+    });
+  });
+  return plans;
+};
+
+/**
+ * Heal plan for duplicate single-valued spans on a morpheme. UD's single-valued
+ * fields are Form / Lemma / UPOS / XPOS (Features are intentionally many-per-
+ * token, so they are EXCLUDED). Duplicates arise when a token merge in another
+ * app reparents the dying token's spans onto the survivor. Heal per
+ * planLayerSpanDedup.
+ *
+ * @param {object} layerInfo the result of getUdLayerInfo (bound layers)
+ * @returns {Array} dedup plans (one per layer+token with >1 span)
+ */
+export const planSpanDedup = (layerInfo) => [
+  ...planLayerSpanDedup(layerInfo?.formLayer, 'form'),
+  ...planLayerSpanDedup(layerInfo?.lemmaLayer, 'lemma'),
+  ...planLayerSpanDedup(layerInfo?.uposLayer, 'upos'),
+  ...planLayerSpanDedup(layerInfo?.xposLayer, 'xpos'),
+];
+
+/**
+ * Lemma spans that are the TARGET of more than one (non-root) dependency
+ * relation — i.e. a node with more than one head. UD allows exactly one head
+ * per node; createRelation enforces it, so duplicates come only from another
+ * app or a data anomaly. We cannot know which head is correct, so this is
+ * REPORTED (not healed) — the validator surfaces it for a human to resolve.
+ *
+ * @param {object} layerInfo the result of getUdLayerInfo (bound layers)
+ * @returns {Array<{target: string, count: number}>}
+ */
+export const multiHeadTargets = (layerInfo) => {
+  const relations = (layerInfo?.relationLayer?.relations || []).filter(r => r.source !== r.target);
+  const counts = new Map();
+  relations.forEach(r => counts.set(r.target, (counts.get(r.target) || 0) + 1));
+  return [...counts.entries()].filter(([, n]) => n > 1).map(([target, count]) => ({ target, count }));
+};

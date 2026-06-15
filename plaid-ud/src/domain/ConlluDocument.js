@@ -1,6 +1,7 @@
 import { cpLength, cpSlice, utf16ToCp, verifyOnEdit } from '@larc-iu/plaid-client';
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
-import { interSententialRelationIds, wordsNeedingSyntacticWord } from '../utils/udReconcile.js';
+import { interSententialRelationIds, wordsNeedingSyntacticWord, orphanSyntacticWords, planSpanDedup } from '../utils/udReconcile.js';
+import { validateConlluDocument } from './validate.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { basicTokenize } from '../utils/basicTokenize.js';
 import { notifyError } from '../utils/notify.js';
@@ -710,57 +711,80 @@ export class ConlluDocument {
   }
 
   // Reconcile-on-open: repair UD invariants that another app may have broken
-  // while editing the shared substrate. Two repairs, both healing DOWNWARD
-  // toward the substrate (never reverting it), loud + recoverable (ordinary
-  // audited writes):
+  // while editing the shared substrate, then validate what remains. All repairs
+  // heal DOWNWARD toward the substrate (never reverting it), loud + recoverable
+  // (ordinary audited writes):
   //   1. Seed a default full-width syntactic-word for every word that lacks one
   //      (another app, e.g. IGT, can leave words bare — UD annotations live on
   //      the syntactic-word layer, so a bare word is invisible/unannotatable).
-  //   2. Delete dependency relations that now cross a sentence boundary (e.g.
+  //   2. Delete orphan syntactic-words (matching no word) left behind when
+  //      another app re-tokenized words — incl. annotated ones (gloss loss is
+  //      rare and recoverable via document history; they otherwise render as
+  //      spurious extra morphemes).
+  //   3. Losslessly dedup duplicate single-valued spans (Form/Lemma/UPOS/XPOS)
+  //      on a morpheme (only the first is visible in the grid).
+  //   4. Delete dependency relations that now cross a sentence boundary (e.g.
   //      after another app split a sentence).
+  // Then run validateConlluDocument over the reloaded state: residual heal
+  // failures and un-healable contracts (e.g. a node with >1 head) come back as
+  // `findings` for the caller to log + toast.
   // Deliberately NOT via _withSaving: this runs once on a freshly loaded doc,
   // and a heal failure must not trigger _withSaving's reload-and-revert (which
   // would discard the just-loaded doc). A single-flight guard plus the editor's
   // per-document gate keep StrictMode's double-invoke from double-healing (which
   // would otherwise seed duplicate syntactic-words).
   async reconcileOnOpen() {
-    if (this._reconciling) return { deletedRelations: 0, createdSyntacticWords: 0 };
+    const ZERO = {
+      deletedRelations: 0, createdSyntacticWords: 0,
+      deletedOrphans: 0, deletedAnnotatedOrphans: 0, dedupedSpans: 0, findings: [],
+    };
+    if (this._reconciling) return ZERO;
     this._reconciling = true;
     try {
       const info = this.layerInfo;
       const relIds = interSententialRelationIds(info);
       const { morphemeTokenLayer, textLayer } = info;
       const textId = textLayer?.text?.id;
-      const seedExtents = (morphemeTokenLayer?.id && textId)
-        ? wordsNeedingSyntacticWord(info)
-        : [];
-
-      if (!relIds.length && !seedExtents.length) {
-        return { deletedRelations: 0, createdSyntacticWords: 0 };
-      }
+      const canHeal = Boolean(morphemeTokenLayer?.id && textId);
+      const seedExtents = canHeal ? wordsNeedingSyntacticWord(info) : [];
+      const orphans = orphanSyntacticWords(info);
+      // Don't dedup spans on orphan tokens we're about to delete (the cascade
+      // takes those spans anyway; touching them in the same batch would 404).
+      const orphanIdSet = new Set(orphans.ids);
+      const dedupPlans = planSpanDedup(info).filter(p => !orphanIdSet.has(p.tokenId));
 
       let createdSyntacticWords = 0;
       let deletedRelations = 0;
+      let deletedOrphans = 0;
+      let dedupedSpans = 0;
 
-      // (1) Seed one default full-width syntactic-word per bare word. Healed to
-      // a valid-but-empty state the normal grid already surfaces (no spans —
-      // the user fills annotations in).
-      if (seedExtents.length) {
+      // Batch A (atomic): seed bare words + delete orphan syntactic-words +
+      // lossless span dedup. Disjoint targets, all expected to succeed.
+      if (seedExtents.length || orphans.ids.length || dedupPlans.length) {
         this._client.beginBatch();
-        this._client.tokens.bulkCreate(seedExtents.map(e => ({
-          tokenLayerId: morphemeTokenLayer.id,
-          text: textId,
-          begin: e.begin,
-          end: e.end,
-          precedence: 0
-        })));
+        if (seedExtents.length) {
+          this._client.tokens.bulkCreate(seedExtents.map(e => ({
+            tokenLayerId: morphemeTokenLayer.id,
+            text: textId,
+            begin: e.begin,
+            end: e.end,
+            precedence: 0
+          })));
+        }
+        if (orphans.ids.length) this._client.tokens.bulkDelete(orphans.ids);
+        dedupPlans.forEach(p => {
+          if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
+          p.deleteSpanIds.forEach(id => this._client.spans.delete(id));
+        });
         await this._client.submitBatch();
         createdSyntacticWords = seedExtents.length;
+        deletedOrphans = orphans.ids.length;
+        dedupedSpans = dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0);
       }
 
-      // (2) Drop now-inter-sentential dependency relations. If a concurrent open
-      // already deleted them the batch 404s, but the goal state holds — treat
-      // not-found as success rather than a failed repair.
+      // Batch B (404-tolerant): drop now-inter-sentential dependency relations.
+      // A concurrent open may have already deleted them, or an orphan delete
+      // above may have cascaded them — treat not-found as success.
       if (relIds.length) {
         try {
           this._client.beginBatch();
@@ -773,10 +797,15 @@ export class ConlluDocument {
       }
 
       await this._reload();
-      return { deletedRelations, createdSyntacticWords };
+      // Validate the reloaded (true server) state — even when nothing healed.
+      const findings = validateConlluDocument(this.layerInfo);
+      return {
+        deletedRelations, createdSyntacticWords, deletedOrphans,
+        deletedAnnotatedOrphans: orphans.annotatedCount, dedupedSpans, findings,
+      };
     } catch (err) {
       console.error('reconcileOnOpen failed:', err);
-      return { deletedRelations: 0, createdSyntacticWords: 0, error: err };
+      return { ...ZERO, error: err };
     } finally {
       this._reconciling = false;
     }

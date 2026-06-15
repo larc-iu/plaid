@@ -12,8 +12,10 @@ import { useNlpService } from './hooks/useNlpService.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
 import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { notifications } from '@mantine/notifications';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
+import { formatFindingsForClipboard } from '../../domain/validate.js';
 import { notifySuccess, notifyWarning, notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 
@@ -31,6 +33,43 @@ const loadVisibleFields = () => {
     if (saved && typeof saved === 'object') return { ...DEFAULT_VISIBLE_FIELDS, ...saved };
   } catch { /* ignore malformed/absent value */ }
   return DEFAULT_VISIBLE_FIELDS;
+};
+
+// Surface validateConlluDocument findings: full detail to the console (grouped),
+// plus ONE consolidated "Data integrity issue detected" toast with a Copy
+// details button. Findings are things we could NOT auto-repair; healed repairs
+// get their own "Document repaired" toast separately.
+const reportIntegrityFindings = (findings, documentId) => {
+  if (!findings?.length) return;
+  console.group(`[plaid-ud] Document integrity findings (${findings.length})`);
+  findings.forEach(f =>
+    (f.severity === 'error' ? console.error : console.warn)(`[${f.code}] ${f.message}`, f.context));
+  console.groupEnd();
+
+  const errors = findings.filter(f => f.severity === 'error');
+  const headline = errors.length ? errors : findings;
+  const reason = headline.length === 1
+    ? headline[0].message
+    : `${headline.length} issues found — see the browser console for details.`;
+  const detail = formatFindingsForClipboard(findings, { documentId });
+  notifications.show({
+    title: 'Data integrity issue detected',
+    color: errors.length ? 'red' : 'yellow',
+    autoClose: false,
+    message: (
+      <Stack gap="xs">
+        <Text size="sm">{reason}</Text>
+        <Button
+          size="xs"
+          variant="light"
+          w="fit-content"
+          onClick={() => navigator.clipboard?.writeText(detail).catch(() => {})}
+        >
+          Copy details
+        </Button>
+      </Stack>
+    ),
+  });
 };
 
 export const AnnotationEditor = () => {
@@ -85,7 +124,10 @@ export const AnnotationEditor = () => {
       // repair's own write doesn't trip OCC. Loud on success AND on failure.
       if (initial && doReconcile && canEditProject(projectData, user)) {
         try {
-          const { deletedRelations, createdSyntacticWords, error } = await next.reconcileOnOpen();
+          const {
+            deletedRelations, createdSyntacticWords, deletedOrphans,
+            deletedAnnotatedOrphans, dedupedSpans, findings, error,
+          } = await next.reconcileOnOpen();
           if (error) {
             notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
           } else {
@@ -93,6 +135,18 @@ export const AnnotationEditor = () => {
             if (createdSyntacticWords > 0) {
               parts.push(`added ${createdSyntacticWords} word${createdSyntacticWords === 1 ? '' : 's'} ` +
                 'to the annotation grid');
+            }
+            if (deletedOrphans > 0) {
+              let s = `removed ${deletedOrphans} stray word${deletedOrphans === 1 ? '' : 's'} ` +
+                'that no longer matched the text';
+              if (deletedAnnotatedOrphans > 0) {
+                s += ` (${deletedAnnotatedOrphans} had annotations, recoverable via document history)`;
+              }
+              parts.push(s);
+            }
+            if (dedupedSpans > 0) {
+              parts.push(`merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} ` +
+                "(values joined with ' | ' — review them)");
             }
             if (deletedRelations > 0) {
               parts.push(`removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
@@ -105,6 +159,7 @@ export const AnnotationEditor = () => {
                 { autoClose: false }
               );
             }
+            reportIntegrityFindings(findings, next.id);
           }
         } catch (e) {
           console.error('Reconcile-on-open failed:', e);

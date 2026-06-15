@@ -5,7 +5,8 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { AutoAnalysisRunner } from '../../domain/autoPass.js';
-import { notifyError, notifyWarning, notifyInfo } from '@/utils/feedback';
+import { formatFindingsForClipboard } from '../../domain/validate.js';
+import { notifyError, notifyWarning, notifyInfo, toast } from '@/utils/feedback';
 import { History, FileText, Type, Mic, Play, Table, Download } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,34 @@ import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 
 // Renders only the active tab's panel (others stay unmounted).
 const Panel = ({ active, children }) => (active ? children : null);
+
+// Surface validateIgtDocument findings: full detail to the console (grouped),
+// plus ONE consolidated "Data integrity issue detected" toast with a
+// [Copy details] action that drops the lot onto the clipboard for a bug report.
+// Findings are things we could NOT auto-repair; healed repairs get their own
+// "Document repaired" toast separately.
+const reportIntegrityFindings = (findings, documentId) => {
+  if (!findings?.length) return;
+  console.group(`[plaid-igt] Document integrity findings (${findings.length})`);
+  findings.forEach(f =>
+    (f.severity === 'error' ? console.error : console.warn)(`[${f.code}] ${f.message}`, f.context));
+  console.groupEnd();
+
+  const errors = findings.filter(f => f.severity === 'error');
+  const headline = errors.length ? errors : findings;
+  const reason = headline.length === 1
+    ? headline[0].message
+    : `${headline.length} issues found — see the browser console for details.`;
+  const detail = formatFindingsForClipboard(findings, { documentId });
+  toast.warning('Data integrity issue detected', {
+    description: reason,
+    duration: Infinity,
+    action: {
+      label: 'Copy details',
+      onClick: () => navigator.clipboard?.writeText(detail).catch(() => {}),
+    },
+  });
+};
 
 const DocumentEditor = () => {
   const { projectId, documentId } = useParams();
@@ -97,7 +126,7 @@ const DocumentEditor = () => {
     (async () => {
       try {
         const {
-          created = 0, deleted = 0, keptAnnotatedOrphans = 0, dedupedSentenceSpans = 0, error,
+          created = 0, deleted = 0, deletedAnnotatedOrphans = 0, dedupedSpans = 0, findings = [], error,
         } = await doc.reconcileOnOpen();
         if (cancelled) return;
         if (error) {
@@ -107,21 +136,28 @@ const DocumentEditor = () => {
           );
           return;
         }
-        if (created + deleted + keptAnnotatedOrphans + dedupedSentenceSpans === 0) return;
-        const parts = [];
-        if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
-        if (deleted) parts.push(`removed ${deleted} empty orphaned morpheme${deleted === 1 ? '' : 's'}`);
-        if (keptAnnotatedOrphans) {
-          parts.push(`kept ${keptAnnotatedOrphans} annotated morpheme${keptAnnotatedOrphans === 1 ? '' : 's'} that no longer match a word (their glosses were preserved — reattach or delete them)`);
+        // Repair summary (things we DID auto-fix) — one warning toast.
+        if (created + deleted + dedupedSpans > 0) {
+          const parts = [];
+          if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
+          if (deleted) {
+            let s = `removed ${deleted} orphaned morpheme${deleted === 1 ? '' : 's'} (matching no word)`;
+            if (deletedAnnotatedOrphans) {
+              s += ` — ${deletedAnnotatedOrphans} carried annotations, recoverable via document history`;
+            }
+            parts.push(s);
+          }
+          if (dedupedSpans) {
+            parts.push(`merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} left by a merge in another app (values joined with ' | ' — review them)`);
+          }
+          notifyWarning(
+            `Repaired this document after an edit in another app: ${parts.join('; ')}. Please review.`,
+            'Document repaired',
+            { duration: Infinity }
+          );
         }
-        if (dedupedSentenceSpans) {
-          parts.push(`merged ${dedupedSentenceSpans} duplicate sentence annotation${dedupedSentenceSpans === 1 ? '' : 's'} left by a sentence merge in another app (the values were joined with ' | ' — review them)`);
-        }
-        notifyWarning(
-          `Repaired this document after an edit in another app: ${parts.join('; ')}. Please review.`,
-          'Document repaired',
-          { duration: Infinity }
-        );
+        // Integrity findings (things we could NOT auto-repair) — console + toast.
+        reportIntegrityFindings(findings, doc.id);
       } catch (e) {
         console.error('Reconcile-on-open failed:', e);
       }
