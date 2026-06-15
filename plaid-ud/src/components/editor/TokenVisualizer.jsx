@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from 'react';
 import {
-  Alert, Text, HoverCard, Modal, Switch, Button, Group, Stack, TextInput, ActionIcon,
+  Alert, Text, HoverCard, Popover, Switch, Button, Group, Stack, TextInput, ActionIcon,
 } from '@mantine/core';
 import { IconPencil, IconTrash, IconPlus, IconX } from '@tabler/icons-react';
 import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
@@ -22,8 +22,9 @@ import classes from './TokenVisualizer.module.css';
 // shared substrate) silently drift onto different text. Boundary fixes are
 // delete + re-create, which routes through the foreign-annotation warning.
 //
-// UI is plain Mantine (HoverCard for the hover panel, Modal for the word editor)
-// so it matches the rest of the app and inherits robust open/close behavior; the
+// UI is plain Mantine: the hover panel is a HoverCard; the token being edited
+// swaps to a controlled Popover (pinned open) holding the word editor inline, so
+// editing happens in place — no modal — and click-outside / Escape cancels. The
 // only bespoke styling left is the inline token badges themselves.
 export const TokenVisualizer = ({
   text = '',
@@ -262,11 +263,78 @@ export const TokenVisualizer = ({
     // and editing is blocked until the text is saved.
     if (isTextDirty) return <span key={`w-${word.id}`}>{badge}</span>;
 
+    // The token being edited: a controlled Popover (pinned open) with the word
+    // editor inline. Click-outside / Escape cancels (onDismiss); Save/Cancel
+    // close it explicitly. Rendered INSTEAD of the HoverCard (never nested).
+    if (editorWord?.id === word.id) {
+      return (
+        <Popover
+          key={`w-${word.id}`}
+          opened
+          onDismiss={closeWordEditor}
+          position="bottom"
+          withArrow
+          shadow="md"
+          radius="md"
+          trapFocus
+          withinPortal
+        >
+          <Popover.Target>{badge}</Popover.Target>
+          <Popover.Dropdown p="sm">
+            <Stack gap="sm" miw={244}>
+              <Text size="sm" fw={600}>Words of “{wordText}”</Text>
+              <Text size="xs" c="dimmed">One word = an ordinary token; multiple = a multi-word token.</Text>
+              <Stack gap="xs">
+                {draftForms.map((form, i) => (
+                  <Group key={i} gap="xs" wrap="nowrap">
+                    <TextInput
+                      size="xs"
+                      value={form}
+                      onChange={(e) => setDraftForms(prev => prev.map((f, idx) => (idx === i ? e.target.value : f)))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveWordEditor(); } }}
+                      style={{ flex: 1 }}
+                      data-autofocus={i === draftForms.length - 1 || undefined}
+                      autoFocus={i === draftForms.length - 1}
+                      styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
+                    />
+                    {draftForms.length > 1 && (
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))}
+                        aria-label="Remove word"
+                      >
+                        <IconX size={16} />
+                      </ActionIcon>
+                    )}
+                  </Group>
+                ))}
+              </Stack>
+              <Group justify="space-between">
+                <Button
+                  variant="subtle"
+                  size="compact-sm"
+                  leftSection={<IconPlus size={14} />}
+                  onClick={() => setDraftForms(prev => [...prev, ''])}
+                >
+                  Add word
+                </Button>
+                <Group gap="xs">
+                  <Button variant="default" size="xs" onClick={closeWordEditor}>Cancel</Button>
+                  <Button size="xs" onClick={saveWordEditor}>Save</Button>
+                </Group>
+              </Group>
+            </Stack>
+          </Popover.Dropdown>
+        </Popover>
+      );
+    }
+
     return (
       <HoverCard
         key={`w-${word.id}`}
         openDelay={200}
-        closeDelay={120}
+        closeDelay={150}
         position="bottom"
         withArrow
         shadow="md"
@@ -274,8 +342,8 @@ export const TokenVisualizer = ({
         withinPortal
       >
         <HoverCard.Target>{badge}</HoverCard.Target>
-        <HoverCard.Dropdown p="xs">
-          <Stack gap={8} maw={260}>
+        <HoverCard.Dropdown p="sm">
+          <Stack gap="xs" miw={208} maw={300}>
             <Group justify="space-between" gap="md" wrap="nowrap">
               <Text ff="monospace" fw={600} size="sm">{display}</Text>
               <Text size="xs" c="dimmed">[{word.begin}–{word.end}]</Text>
@@ -289,37 +357,33 @@ export const TokenVisualizer = ({
 
             {onSentenceToggle && (
               <Switch
-                size="xs"
+                size="sm"
                 checked={isSentStart}
                 onChange={() => toggleSentence(word)}
                 label="Start of sentence"
               />
             )}
 
-            {(onSetWordMorphemes || onWordDelete) && (
-              <Group gap="xs" grow>
-                {onSetWordMorphemes && (
-                  <Button
-                    size="compact-xs"
-                    variant="light"
-                    leftSection={<IconPencil size={14} />}
-                    onClick={() => openWordEditor(word)}
-                  >
-                    Edit words
-                  </Button>
-                )}
-                {onWordDelete && (
-                  <Button
-                    size="compact-xs"
-                    variant="light"
-                    color="red"
-                    leftSection={<IconTrash size={14} />}
-                    onClick={() => handleDeleteClick(word)}
-                  >
-                    Delete
-                  </Button>
-                )}
-              </Group>
+            {onSetWordMorphemes && (
+              <Button
+                fullWidth
+                variant="light"
+                leftSection={<IconPencil size={16} />}
+                onClick={() => openWordEditor(word)}
+              >
+                Edit words
+              </Button>
+            )}
+            {onWordDelete && (
+              <Button
+                fullWidth
+                variant="light"
+                color="red"
+                leftSection={<IconTrash size={16} />}
+                onClick={() => handleDeleteClick(word)}
+              >
+                Delete
+              </Button>
             )}
           </Stack>
         </HoverCard.Dropdown>
@@ -386,56 +450,6 @@ export const TokenVisualizer = ({
         Click a token to toggle its sentence boundary; hover a token to edit its words or delete it;
         select text to create a token.
       </Text>
-
-      <Modal
-        opened={Boolean(editorWord)}
-        onClose={closeWordEditor}
-        title={editorWord ? `Words of “${cpSlice(text, editorWord.begin, editorWord.end)}”` : ''}
-        size="sm"
-        centered
-      >
-        <Stack gap="sm">
-          <Text size="xs" c="dimmed">One word = an ordinary token; multiple words = a multi-word token.</Text>
-          <Stack gap="xs">
-            {draftForms.map((form, i) => (
-              <Group key={i} gap="xs" wrap="nowrap">
-                <TextInput
-                  value={form}
-                  onChange={(e) => setDraftForms(prev => prev.map((f, idx) => (idx === i ? e.target.value : f)))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveWordEditor(); } }}
-                  style={{ flex: 1 }}
-                  autoFocus={i === draftForms.length - 1}
-                  styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
-                />
-                {draftForms.length > 1 && (
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))}
-                    aria-label="Remove word"
-                  >
-                    <IconX size={16} />
-                  </ActionIcon>
-                )}
-              </Group>
-            ))}
-          </Stack>
-          <Group justify="space-between">
-            <Button
-              variant="subtle"
-              size="compact-sm"
-              leftSection={<IconPlus size={14} />}
-              onClick={() => setDraftForms(prev => [...prev, ''])}
-            >
-              Add word
-            </Button>
-            <Group gap="xs">
-              <Button variant="default" onClick={closeWordEditor}>Cancel</Button>
-              <Button onClick={saveWordEditor}>Save</Button>
-            </Group>
-          </Group>
-        </Stack>
-      </Modal>
     </div>
   );
 };

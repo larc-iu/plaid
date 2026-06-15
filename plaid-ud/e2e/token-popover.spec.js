@@ -91,16 +91,26 @@ test('hovering a token shows the Mantine panel with actions', async ({ page }) =
   await expect(page.getByRole('button', { name: 'Delete' })).toBeVisible();
 });
 
-test('Edit words opens the word-editor modal', async ({ page }) => {
+test('Edit words edits inline in a popover (no modal) and stays open', async ({ page }) => {
   await openEditor(page);
   await badges(page).nth(1).hover(); // "dog"
   await page.getByRole('button', { name: 'Edit words' }).click();
 
-  // The HoverCard dropdown also has role=dialog, so target the Modal by name.
-  const dialog = page.getByRole('dialog', { name: /Words of/ });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox').first()).toHaveValue('dog');
-  await expect(dialog.getByRole('button', { name: 'Add word' })).toBeVisible();
+  // Inline editor lives in a Popover dropdown (HoverCard dropdowns carry the
+  // mantine-HoverCard-dropdown class instead), not a centered Modal.
+  const editor = page.locator('.mantine-Popover-dropdown');
+  await expect(editor).toBeVisible();
+  await expect(editor).toContainText('Words of');
+  await expect(editor.getByRole('textbox')).toHaveValue('dog');
+  await expect(editor.getByRole('button', { name: 'Add word' })).toBeVisible();
+
+  // It must NOT dismiss on mouse-away (the old hover tooltip's failure mode).
+  await page.mouse.move(2, 2);
+  await expect(editor).toBeVisible();
+
+  // Escape / click-outside cancels.
+  await page.keyboard.press('Escape');
+  await expect(editor).toHaveCount(0);
 });
 
 test('clicking a token toggles its sentence boundary', async ({ page }) => {
