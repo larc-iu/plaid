@@ -39,7 +39,17 @@
                          (mapv :user_id))]
     (assoc record :vocab/maintainers maintainers)))
 
-(declare get-items-fn)
+(defn maintainer-of-any?
+  "True iff `user-id` maintains at least one vocab layer. Gates user-directory
+  access alongside project maintainership — vocab maintainers also need to find
+  users to grant vocab maintainership."
+  [db user-id]
+  (boolean (psc/q1 db {:select [[1 :one]]
+                       :from [:vocab_maintainers]
+                       :where [:= :user_id user-id]
+                       :limit 1})))
+
+(declare get-items-fn fetch-vocab-maintainer-ids)
 
 (defn get
   "Get a vocab layer by ID, fully enriched.
@@ -190,9 +200,19 @@
 ;; ============================================================
 
 (defn create
-  "Create a new vocab layer. Returns {:success true :extra <new-id>}."
+  "Create a new vocab layer, granting the maintainer role to every user-id in
+  `:vocab/maintainers` (the REST handler passes the creating user). Returns
+  {:success true :extra <new-id>}.
+
+  Audit shape mirrors project/create: ONE :vocab_layers audit row with
+  change_type :insert whose post-image folds the maintainer-id vector under
+  :maintainers (UNNAMESPACED — the audit \"extras\" shape; see
+  `audit-vocab-maintainers-change!`). Manual insert (`execute!`, no auto-audit)
+  + folded audit so the maintainer grant rides the SAME audit row. Without the
+  grant a non-admin creator would NOT be a maintainer of their own vocab and
+  couldn't manage it (the route summary already promised this registration)."
   [db attrs user-id]
-  (let [{:vocab/keys [name]} attrs
+  (let [{:vocab/keys [name maintainers]} attrs
         new-id (psc/new-uuid)
         config (clojure.core/get attrs :config {})]
     (submit-operation! [tx db {:type :vocab/create
@@ -201,10 +221,22 @@
                                :description (str "Create vocab '" name "'")
                                :user user-id}]
                        (psc/valid-name? name)
-                       (psc/insert! tx :vocab_layers
-                                    {:id new-id
-                                     :name name
-                                     :config (psc/serialize-config config)})
+                       (psc/execute! tx {:insert-into :vocab_layers
+                                         :values [{:id new-id
+                                                   :name name
+                                                   :config (psc/serialize-config config)}]})
+                       ;; Grant the maintainer role to the creator (and any
+                       ;; other requested maintainers). vocab_maintainers rows
+                       ;; are unaudited; their state is folded into the :insert
+                       ;; image below.
+                       (doseq [uid (distinct maintainers)]
+                         (when (nil? (psc/fetch-by-id tx :users uid))
+                           (throw (ex-info (str "Not a valid user ID: " uid) {:id uid :code 400})))
+                         (psc/add-join! tx :vocab_maintainers
+                                        {:vocab_layer_id new-id :user_id uid}))
+                       (let [vl-row (psc/fetch-by-id tx :vocab_layers new-id)
+                             post-image (assoc vl-row :maintainers (fetch-vocab-maintainer-ids tx new-id))]
+                         (psc/record-audit-write! tx :vocab_layers new-id :insert nil post-image))
                        new-id)))
 
 (defn merge

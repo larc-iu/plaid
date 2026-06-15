@@ -13,8 +13,8 @@
     {:get {:summary "List/search users, keyset-paginated by username"
            ;; Task #95 locked the roster down to admins (it was an account-
            ;; enumeration surface for any authenticated caller). It's now also
-           ;; open to project MAINTAINERS, who need to find users to grant
-           ;; project access — see `wrap-user-directory-access`. Ordinary
+           ;; open to project AND vocab MAINTAINERS, who need to find users to
+           ;; grant project/vocab access — see `wrap-user-directory-access`. Ordinary
            ;; readers/writers still get 403. Optional `?q=` filters to usernames
            ;; containing that text. Returns the uniform {:entries :next-cursor}
            ;; envelope (default page 100, max 1000).
