@@ -132,6 +132,9 @@ test('is_not_projective: positive top-level crossing/root-cover or, no negation'
   const or = query.where.find(c => c[0] === 'or');
   assert.ok(or && or.length - 1 === 2, 'an or of crossing + root-cover groups');
   assert.ok(!flat(query.where).some(c => c[0] === 'related*'));
+  // arcs are pinned to the sentence's document so the engine can use an index.
+  const rels = flat(query.where).filter(c => c[0] === 'relation');
+  assert.ok(rels.length > 0 && rels.every(r => r[2].doc && r[2].doc.var), 'arcs are doc-correlated');
 });
 
 test('is_cyclic constant-folds to impossible; is_tree is fine', () => {

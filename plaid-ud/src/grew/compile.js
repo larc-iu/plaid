@@ -496,6 +496,11 @@ class Compiler {
     if (TRUE.has(name)) { this.warnTreeInvariant(); return; }
     if (FALSE.has(name)) { this.warnTreeInvariant(); this.impossible = true; return; }
     if (name === 'is_projective' || name === 'is_not_projective') {
+      // Pin the arcs to the sentence's document: a crossing is sentence-internal,
+      // so this changes no results but lets the engine use idx_relations_layer_doc
+      // instead of scanning every relation for each candidate sentence.
+      this.sdocVar = this.fresh('sdoc');
+      this.where.push(['token', '?S', { doc: { var: this.sdocVar } }]);
       // non-projective(S) = two arcs cross OR an arc covers the root word.
       const nonProj = ['or', this.crossingGroup(), this.rootCoverGroup()];
       this.branches *= 10;
@@ -521,12 +526,13 @@ class Compiler {
   // "Two dependency arcs in ?S cross" — their four endpoint tokens interleave.
   crossingGroup() {
     const REL = this.layerId('relationLayer', 'Dependency');
+    const doc = { var: this.sdocVar };
     const e1 = this.fresh('pe'), e2 = this.fresh('pe');
     const h1 = this.fresh('ph'), d1 = this.fresh('pd'), h2 = this.fresh('ph'), d2 = this.fresh('pd');
     const h1t = this.fresh('pt'), d1t = this.fresh('pt'), h2t = this.fresh('pt'), d2t = this.fresh('pt');
     return [
-      ['relation', e1, { layer: REL, source: h1, target: d1 }],
-      ['relation', e2, { layer: REL, source: h2, target: d2 }],
+      ['relation', e1, { layer: REL, doc, source: h1, target: d1 }],
+      ['relation', e2, { layer: REL, doc, source: h2, target: d2 }],
       ['covers', h1, h1t], ['covers', d1, d1t], ['covers', h2, h2t], ['covers', d2, d2t],
       ['within', h1t, '?S'], ['within', d1t, '?S'], ['within', h2t, '?S'], ['within', d2t, '?S'],
       ['or', ...this.interleavings(h1t, d1t, h2t, d2t)],
@@ -537,12 +543,13 @@ class Compiler {
   // the `root`-labelled relation) sits strictly between some arc's endpoints.
   rootCoverGroup() {
     const REL = this.layerId('relationLayer', 'Dependency');
+    const doc = { var: this.sdocVar };
     const rr = this.fresh('prr'), rl = this.fresh('prl'), rt = this.fresh('prt');
     const e = this.fresh('pe'), h = this.fresh('ph'), d = this.fresh('pd'), ht = this.fresh('pt'), dt = this.fresh('pt');
     return [
-      ['relation', rr, { layer: REL, value: 'root', target: rl }],
+      ['relation', rr, { layer: REL, doc, value: 'root', target: rl }],
       ['covers', rl, rt], ['within', rt, '?S'],
-      ['relation', e, { layer: REL, source: h, target: d }],
+      ['relation', e, { layer: REL, doc, source: h, target: d }],
       ['covers', h, ht], ['covers', d, dt], ['within', ht, '?S'], ['within', dt, '?S'],
       ['or',
         [['precedes*', ht, rt], ['precedes*', rt, dt]],
