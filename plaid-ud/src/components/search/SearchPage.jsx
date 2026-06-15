@@ -114,12 +114,8 @@ export const SearchPage = () => {
         </Alert>
       ) : (
         <>
-          <Text size="sm" c="dimmed">
-            Search this project’s sentences with a Grew query. Matched words are highlighted; click a
-            sentence to open it in the editor.
-          </Text>
-          <GrewQueryInput value={queryText} onChange={setQueryText} onRun={run} running={running} error={error} />
           <GrewHelp onPick={(q) => setQueryText(q)} />
+          <GrewQueryInput value={queryText} onChange={setQueryText} onRun={run} running={running} error={error} />
           <SearchResults
             groups={groups}
             count={count}

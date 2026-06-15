@@ -74,5 +74,5 @@ export function provCellTitle(base, metadata) {
   const who = state === PROV_STATES.VERIFIED
     ? 'machine-made, human-verified'
     : 'machine-made, unverified';
-  return `${base} — ${who} (${bits.filter(Boolean).join(' · ')})`;
+  return `${base}: ${who} (${bits.filter(Boolean).join(' · ')})`;
 }

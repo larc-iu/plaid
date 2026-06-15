@@ -556,7 +556,7 @@ export const AnnotationEditor = () => {
               {processedSentences.length > 0 && !readOnly && (
                 <Text size="xs" c="dimmed" mt="sm">
                   Tip: drag from one token to another to create a dependency relation; click a relation's
-                  label to rename it, and double-click a cell to edit an annotation. Accept a machine
+                  label to rename it, and click a cell to edit an annotation. Accept a machine
                   prediction without editing with Ctrl+Enter (the word's ✓), or “Accept predictions” for
                   the whole sentence.
                 </Text>
