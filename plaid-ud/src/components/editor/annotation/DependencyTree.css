@@ -123,9 +123,10 @@
   outline-offset: 2px;
 }
 
-/* Machine-made, not yet human-verified (provenance convention). Keeps the
-   deprel color (fill is set inline) but italicizes so machine state stays
-   visible; editing the label verifies it and clears this. */
+/* Machine-made, not yet human-verified (provenance convention). The fill is set
+   inline to the unapproved violet (see INFERRED_COLOR in DependencyTree.jsx, which
+   also dashes the arc); this italicizes to reinforce the state. Editing the label
+   verifies it and clears this. */
 .tree-deprel-text--inferred {
   font-style: italic;
   opacity: 0.85;

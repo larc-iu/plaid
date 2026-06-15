@@ -68,12 +68,15 @@ test.beforeAll(async () => {
   const morphIds = (await client.submitBatch())[2].body.ids;
   S.morphIds = morphIds; // [the, dog, runs]
 
-  await client.spans.create(byKey.lemma, [morphIds[0]], 'the');
+  const lemThe = (await client.spans.create(byKey.lemma, [morphIds[0]], 'the')).id;
   await client.spans.create(byKey.lemma, [morphIds[1]], 'dog');
-  await client.spans.create(byKey.lemma, [morphIds[2]], 'run');
+  const lemRuns = (await client.spans.create(byKey.lemma, [morphIds[2]], 'run')).id;
   // A machine prediction (unconfirmed) on "dog"'s UPOS — drives the review UI.
   const upos = await client.spans.create(byKey.upos, [morphIds[1]], 'NOUN', { prov: 'inferred', provSource: 'service:test' });
   S.uposSpanId = upos.id;
+  // An unapproved (machine) dependency relation runs(head) -> the(dependent).
+  // Targets "the", not "dog", so the per-word dog-accept tests leave it inferred.
+  await client.relations.create(relationLayerId, lemRuns, lemThe, 'det', { prov: 'inferred', provSource: 'service:test' });
 });
 
 // Each accept test confirms the prediction, so reset it to unconfirmed first.
@@ -134,6 +137,15 @@ test('the per-word ✓ is reachable by mouse and accepts the word', async ({ pag
   await accept.click();
   await expect(page.locator('.editable-field--inferred')).toHaveCount(0, { timeout: 8000 });
   await expect(page.locator('.word-accept')).toHaveCount(0, { timeout: 8000 });
+});
+
+test('an unapproved dependency edge is violet + dashed', async ({ page }) => {
+  await openAnnotate(page);
+  const arc = page.locator('.tree-arc-path').first(); // the lone (unapproved) relation
+  await expect(arc).toBeVisible();
+  // Unapproved violet #6d28d9 = rgb(109, 40, 217), and a dashed stroke.
+  await expect.poll(() => arc.evaluate((el) => getComputedStyle(el).stroke)).toBe('rgb(109, 40, 217)');
+  expect(await arc.evaluate((el) => getComputedStyle(el).strokeDasharray)).not.toBe('none');
 });
 
 test('Ctrl+Enter accepts the token and keeps focus on the cell', async ({ page }) => {

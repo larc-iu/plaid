@@ -9,6 +9,11 @@ import './DependencyTree.css';
 // label renders distinctly until a human edits it (which verifies it).
 const isInferredRelation = (relation) => provState(relation?.metadata) === PROV_STATES.MACHINE;
 
+// The "unapproved" violet, matching the inferred annotation cells. Paired with a
+// dashed stroke so the unapproved state never relies on color alone (a configured
+// DEPREL color could itself be purple — see the dash below).
+const INFERRED_COLOR = '#6d28d9';
+
 export const DependencyTree = forwardRef(({
   tokens,
   relations,
@@ -489,12 +494,17 @@ export const DependencyTree = forwardRef(({
       labelX = midX;
     }
     
-    // At rest, color by the base DEPREL (configured map → deterministic auto);
-    // selection/hover/focus keep the highlight blue. `color` drives the arc
-    // stroke, arrowhead fill, and resting label fill, so the label matches.
-    const restColor = resolveColor(baseRel(relation.value || 'dep'), deprelColors);
-    const color = isSelected || isHovered || isFocused ? '#2563eb' : restColor;
-    const strokeWidth = isSelected || isHovered || isFocused ? 2 : 1;
+    // Unapproved (machine) relations read as "unapproved" violet + a dashed
+    // stroke — the dash is the unambiguous cue, so it can't be confused with an
+    // APPROVED relation whose configured DEPREL color happens to be purple.
+    // Approved relations color by the base DEPREL (configured map → deterministic
+    // auto); selection/hover/focus keep the highlight blue. `color` drives the
+    // arc stroke, arrowhead fill, and resting label fill, so the label matches.
+    const inferred = isInferredRelation(relation);
+    const active = isSelected || isHovered || isFocused;
+    const restColor = inferred ? INFERRED_COLOR : resolveColor(baseRel(relation.value || 'dep'), deprelColors);
+    const color = active ? '#2563eb' : restColor;
+    const strokeWidth = active ? 2 : 1;
     
     // Split into `body` (arc + arrowhead) and `label` so the caller can paint
     // ALL bodies first and ALL labels after — in SVG, later = on top, so every
@@ -507,6 +517,7 @@ export const DependencyTree = forwardRef(({
           d={pathData}
           stroke={color}
           strokeWidth={strokeWidth}
+          strokeDasharray={inferred ? '5,4' : undefined}
           className="tree-arc-path"
           onMouseEnter={() => setHoveredRelation(relation.id)}
           onMouseLeave={() => setHoveredRelation(null)}
