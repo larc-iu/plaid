@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from contextlib import contextmanager
 from typing import Any
 
 import requests as req_lib
@@ -931,6 +933,56 @@ class DocumentsResource(_Resource):
             document_id: The document ID
         """
         return self._request('DELETE', f'/api/v1/documents/{document_id}/lock')
+
+    @contextmanager
+    def locked(self, document_id: str):
+        """Hold this document's server-enforced lock for a ``with`` block,
+        releasing it on exit (including on error).
+
+        Wrap any multi-step, server-side mutation of a document that must not
+        interleave with a human editor or another service — e.g. a parser or
+        tokenizer that deletes and recreates a document's tokens/spans/relations
+        (a single atomic call doesn't need this). While the lock is held, writes
+        to the document by ANOTHER user are rejected by the server with HTTP 423;
+        the holder's own writes pass and refresh the lock. If another user
+        already holds it, this raises :class:`PlaidAPIError` (``status == 423``,
+        the same Locked code the server returns when rejecting another user's
+        write) with a readable message and the block does NOT run::
+
+            with client.documents.locked(doc_id):
+                ...delete + recreate tokens...
+
+        Notes:
+        - The lock is per-USER and TTL-bound (server default ~60s), refreshed by
+          the holder's writes. A long compute with no intervening write can let
+          it lapse; for typical service workloads the writes keep it alive.
+        - NOT re-entrant: nesting two ``locked(same_doc)`` blocks would release
+          on the inner exit and leave the outer unprotected. Lock at exactly one
+          level per call path.
+        """
+        try:
+            self.acquire_lock(document_id)
+        except PlaidAPIError as e:
+            if e.status == 423:
+                data = e.response_data or {}
+                holder = data.get('user-id') or data.get('user_id') or 'another user'
+                raise PlaidAPIError(
+                    f"Document {document_id} is locked by {holder} "
+                    f"(likely being edited); try again once they're done.",
+                    status=423, url=e.url, method=e.method,
+                    response_data=e.response_data, status_text=e.status_text,
+                    original_error=e) from e
+            raise
+        try:
+            yield
+        finally:
+            # Best-effort release: the server TTL reclaims a stranded lock, and
+            # we must not let a release failure mask the real error from the body.
+            try:
+                self.release_lock(document_id)
+            except Exception as release_err:
+                logging.getLogger(__name__).warning(
+                    "Failed to release lock on document %s: %s", document_id, release_err)
 
     def get_media(self, document_id: str, *, as_of: str | None = None) -> bytes:
         """Get media file for a document.

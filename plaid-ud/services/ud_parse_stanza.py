@@ -60,6 +60,10 @@ Options:
 Everything this service creates carries provenance metadata
 (`prov`/`provSource`), so editors render it distinctly until a human verifies
 it by editing or confirming.
+
+While parsing, the document is locked so a concurrent editor can't race the
+rewrite; if someone else holds the lock, the parse is refused rather than
+clobbering their work.
 """
 
 # Standardized self-description carried in `extras` for discovery. The parameter
@@ -792,9 +796,20 @@ def make_handler(client, pipeline_provider, parse_lock):
             # check above stay outside the lock — they're per-client reads.)
             # Building the per-language pipeline also happens under the lock,
             # since Stanza model loading is not thread-safe.
+            #
+            # `parse_lock` is process-local (Stanza thread-safety); it does NOT
+            # protect the DOCUMENT. The parse deletes + recreates tokens / spans
+            # / relations, so a human editing the same document in the web UI —
+            # or another service — would race the rewrite. Hold plaid-core's
+            # server-enforced document lock for the duration (writes by another
+            # user are rejected with 423 while we hold it; if someone else holds
+            # it, `locked` raises and we refuse rather than clobber their work).
+            # Acquire once we actually hold the Stanza lock and are about to work.
             with parse_lock:
-                summary = parse_document(pipeline_provider, client, document_id, text_content,
-                                         language=language, overwrite=overwrite)
+                response_helper.progress(15, "Acquiring document lock...")
+                with client.documents.locked(document_id):
+                    summary = parse_document(pipeline_provider, client, document_id, text_content,
+                                             language=language, overwrite=overwrite)
 
             # parse_document returns a summary dict on success (and raises on
             # failure, handled below). Report what it actually did.

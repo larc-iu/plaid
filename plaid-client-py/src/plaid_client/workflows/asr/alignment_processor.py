@@ -65,11 +65,12 @@ class AlignmentProcessor:
         Returns:
             Number of new alignment tokens created
         """
-        try:
-            # Acquire document lock since we'll be modifying text and tokens
-            response_helper.progress(2, "Acquiring document lock...")
-            client.documents.acquire_lock(document_id)
-            
+        # Hold the document lock since we'll be modifying text and tokens; the
+        # context manager acquires it (refusing with a clear error if another
+        # user holds it) and always releases on exit. See
+        # PlaidClient.documents.locked.
+        response_helper.progress(2, "Acquiring document lock...")
+        with client.documents.locked(document_id):
             # Convert alignments to transcription format
             transcriptions = [
                 {
@@ -80,21 +81,14 @@ class AlignmentProcessor:
                 }
                 for alignment in alignments
             ]
-            
+
             # Create time alignment tokens (preserve existing ones)
             tokens_created = self._create_time_alignment_tokens(
-                client, document_id, transcriptions, text_layer_id, 
+                client, document_id, transcriptions, text_layer_id,
                 alignment_token_layer_id, sentence_token_layer_id, response_helper
             )
-            
+
             return tokens_created
-            
-        finally:
-            # Always release document lock
-            try:
-                client.documents.release_lock(document_id)
-            except Exception as lock_error:
-                print(f"Failed to release document lock: {lock_error}")
     
     def download_media_file(self, client, media_url: str, temp_dir: str) -> str:
         """

@@ -35,6 +35,23 @@ class TokenProcessor:
     def process_tokens(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
                       prov_source: Optional[str] = None, overwrite: bool = False) -> Dict[str, int]:
+        """Hold the document lock for the whole tokenization rewrite, then
+        delegate to :meth:`_process_tokens_locked`.
+
+        Re-tokenizing deletes + recreates tokens (and cascade-deletes their
+        spans/relations), which must not interleave with a concurrent editor or
+        another service — see :meth:`PlaidClient.documents.locked`. If another
+        user holds the lock, ``locked`` raises and we refuse rather than clobber.
+        """
+        with client.documents.locked(document_id):
+            return self._process_tokens_locked(
+                client, document_id, sentences, words,
+                primary_token_layer_id, sentence_layer_id, response_helper,
+                prov_source=prov_source, overwrite=overwrite)
+
+    def _process_tokens_locked(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
+                      primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
+                      prov_source: Optional[str] = None, overwrite: bool = False) -> Dict[str, int]:
         """
         Process tokenization results and update the Plaid document.
 
