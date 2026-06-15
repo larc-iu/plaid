@@ -67,17 +67,15 @@
   position: relative; /* anchor the per-word accept ✓ */
 }
 
-/* Per-word "accept predictions" ✓ — sits centered just ABOVE the baseline token.
-   Revealed whenever the cursor (or keyboard focus) is anywhere in the sentence,
-   so every word with unconfirmed predictions shows its ✓ together and each one
-   is reachable (hovering up toward it crosses the dependency tree's SVG, which
-   would otherwise drop a per-column hover). tabIndex=-1 keeps it out of the cell
-   tab order; z-index sits above the tree (z-index:10) so it stays clickable. */
+/* Per-word "accept predictions" ✓ — sits centered just ABOVE the baseline token,
+   shown only while you're on THIS word (mouse: data-show, driven by JS with a
+   close-delay; keyboard: :focus-within). The JS delay lets it survive the trip
+   up across the dependency tree's SVG, which would otherwise drop a pure-CSS
+   hover before you reach it. No `transform` — that forms a stacking context that
+   ends up behind the tree SVG and swallows the click; z-index keeps it above
+   the tree (z-index:10). tabIndex=-1 keeps it out of the cell tab order. */
 .word-accept {
   position: absolute;
-  /* Centered over the column, lifted just above the baseline token. No
-     `transform` — a transform makes this a stacking context that ends up behind
-     the tree SVG, swallowing the click. */
   top: -20px;
   left: calc(50% - 9px); /* 9px ≈ half the xs ActionIcon */
   z-index: 12;
@@ -85,8 +83,8 @@
   pointer-events: none;
   transition: opacity 100ms ease;
 }
-.sentence-container:hover .word-accept,
-.sentence-container:focus-within .word-accept {
+.word-accept[data-show],
+.token-column:focus-within .word-accept {
   opacity: 1;
   pointer-events: auto;
 }

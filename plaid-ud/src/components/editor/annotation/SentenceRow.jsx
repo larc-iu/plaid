@@ -469,16 +469,38 @@ const FeaturesCell = React.memo(({ features, featureInferred, spanIds, tokenId, 
 // Token Column component
 const TokenColumn = React.memo(({ data, index, columnWidth, getTabIndex, onAnnotationUpdate, onFeatureDelete, onNavigate, onConfirmTokens, maxFeatures, tokenRefs, isReadOnly, vocab, uposColors, featureInventory, visibleFields }) => {
   // This word still has machine predictions a human hasn't reviewed. When so, a
-  // ✓ reveals on hover / keyboard focus (`:focus-within`) — discoverable at the
-  // moment you're on the word, and it teaches the Ctrl+Enter shortcut (tooltip).
+  // ✓ reveals while you're on THIS word — discoverable at the moment, teaching
+  // the Ctrl+Enter shortcut (tooltip). Keyboard focus reveals it via CSS
+  // (:focus-within); mouse reveal is JS with a short close-delay so the ✓
+  // survives the trip up across the dependency tree's SVG (which otherwise drops
+  // a pure-CSS column hover before you can reach it).
   const wordInferred = isInferredSpan(data.lemma) || isInferredSpan(data.xpos)
     || isInferredSpan(data.upos) || (data.feats || []).some(isInferredSpan);
+  const showCheck = !isReadOnly && onConfirmTokens && wordInferred;
+  const [hoverShow, setHoverShow] = useState(false);
+  const hideTimer = useRef(null);
+  useEffect(() => () => { if (hideTimer.current) clearTimeout(hideTimer.current); }, []);
+  const revealCheck = () => {
+    if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+    setHoverShow(true);
+  };
+  const hideCheckSoon = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setHoverShow(false), 250);
+  };
+
   return (
-    <div className="token-column" style={{ width: `${columnWidth}px` }}>
-      {!isReadOnly && onConfirmTokens && wordInferred && (
+    <div
+      className="token-column"
+      style={{ width: `${columnWidth}px` }}
+      onMouseEnter={showCheck ? revealCheck : undefined}
+      onMouseLeave={showCheck ? hideCheckSoon : undefined}
+    >
+      {showCheck && (
         <Tooltip label="Accept this word's predictions (Ctrl+Enter)" withArrow position="top" openDelay={250}>
           <ActionIcon
             className="word-accept"
+            data-show={hoverShow || undefined}
             size="xs"
             radius="xl"
             variant="filled"

@@ -102,23 +102,29 @@ test('the sentence "Accept predictions" button is subtle, prominent on hover', a
   await expect.poll(() => opacityOf(btn)).toBe('1'); // pops on hover
 });
 
-test('a word with predictions shows a ✓ that reveals on focus and accepts it', async ({ page }) => {
+test('the per-word ✓ is hidden by default and reveals on keyboard focus', async ({ page }) => {
   await openAnnotate(page);
 
   // "dog"'s UPOS is a machine prediction → rendered inferred (violet).
   await expect(page.locator('.editable-field--inferred')).toHaveCount(1);
-
   const accept = page.locator('.word-accept');
   await expect(accept).toHaveCount(1);
-  expect(await opacityOf(accept)).toBe('0'); // hidden by default
+  expect(await opacityOf(accept)).toBe('0'); // NOT always-visible
 
-  // Focusing any of the word's cells reveals it (keyboard-review
-  // discoverability). Use the lemma cell — a plain input whose focus doesn't
-  // open a vocab dropdown that would overlay the ✓.
+  // Focusing one of the word's cells reveals it (keyboard review). Use the lemma
+  // cell — a plain input whose focus doesn't open a vocab dropdown.
   await page.locator(`[id="${S.morphIds[1]}-lemma"]`).focus();
   await expect.poll(() => opacityOf(accept)).toBe('1');
+});
 
-  // Clicking it accepts the word → the inferred styling and the ✓ both clear.
+test('the per-word ✓ is reachable by mouse and accepts the word', async ({ page }) => {
+  await openAnnotate(page);
+  const accept = page.locator('.word-accept');
+
+  await page.locator(`[id="${S.morphIds[1]}-lemma"]`).hover(); // mouse reveal
+  await expect.poll(() => opacityOf(accept)).toBe('1');
+
+  // Must survive the trip up to it (across the tree SVG) and be clickable.
   await accept.click();
   await expect(page.locator('.editable-field--inferred')).toHaveCount(0, { timeout: 8000 });
   await expect(page.locator('.word-accept')).toHaveCount(0, { timeout: 8000 });
