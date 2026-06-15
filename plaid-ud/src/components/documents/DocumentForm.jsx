@@ -1,17 +1,20 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Modal, TextInput, Button, Group, Stack, Alert } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 
-export const DocumentForm = ({ projectId, isOpen, onClose, onSuccess }) => {
+export const DocumentForm = ({ projectId, isOpen, onClose }) => {
   const [documentName, setDocumentName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { getClient } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!documentName.trim()) {
+    const name = documentName.trim();
+    if (!name) {
       setError('Document name is required');
       return;
     }
@@ -21,12 +24,15 @@ export const DocumentForm = ({ projectId, isOpen, onClose, onSuccess }) => {
 
     try {
       const client = getClient();
-      await client.documents.create(projectId, documentName);
-      onSuccess();
+      const created = await client.documents.create(projectId, name);
+      // A new document has no tokens yet, so the Annotate tab would just say
+      // "tokenize first" — open it directly in the Text Editor instead. We stay
+      // in the loading state through navigation: this list route (and the modal
+      // with it) unmounts, so there's no need to reset it.
+      navigate(`/projects/${projectId}/documents/${created.id}/edit`);
     } catch (err) {
       setError('Failed to create document');
       console.error('Error creating document:', err);
-    } finally {
       setLoading(false);
     }
   };

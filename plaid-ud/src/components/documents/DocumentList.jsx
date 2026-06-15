@@ -125,14 +125,19 @@ export const DocumentList = () => {
     });
   };
 
-  const handleDocumentCreated = () => {
-    setShowCreateForm(false);
-    fetchProjectAndDocuments(); // Refresh the list
-  };
-
   const handleImportSuccess = () => {
     setShowImportModal(false);
     fetchProjectAndDocuments(); // Refresh the list
+  };
+
+  // Opening a document lands on the Annotate tab by default; but a document with
+  // no tokens yet has nothing to annotate (the tab would just say "tokenize
+  // first"), so divert it to the Text Editor. Only do so once word counts have
+  // loaded and confirm zero tokens — while they're still loading we keep the
+  // default so a tokenized doc clicked early doesn't get mis-routed.
+  const openDocument = (documentId) => {
+    const knownEmpty = hasWordLayer && !wordsLoading && (wordCounts[documentId] ?? 0) === 0;
+    navigate(`/projects/${projectId}/documents/${documentId}/${knownEmpty ? 'edit' : 'annotate'}`);
   };
 
   const onSort = (key) => setSort(nextSort(key));
@@ -212,7 +217,6 @@ export const DocumentList = () => {
         projectId={projectId}
         isOpen={showCreateForm}
         onClose={() => setShowCreateForm(false)}
-        onSuccess={handleDocumentCreated}
       />
 
       <ImportModal
@@ -247,7 +251,7 @@ export const DocumentList = () => {
               <Box
                 key={document.id}
                 className={classes.row}
-                onClick={() => navigate(`/projects/${projectId}/documents/${document.id}/annotate`)}
+                onClick={() => openDocument(document.id)}
                 p="md"
               >
                 <Group gap="sm" wrap="nowrap">
