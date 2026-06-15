@@ -81,35 +81,44 @@
       to   (conj [:<= :ts to]))))
 
 (defn- query-ops
-  "Fetch a keyset page of operations rows ordered deterministically by
-  (ts, id) — both TEXT columns, so the shared lexicographic seek applies.
+  "Build + run a keyset-paginated query over operations rows, ordered
+  deterministically by (ts, id) — both TEXT columns, so the shared
+  lexicographic seek applies.
 
-  - `base-where`  — caller-supplied scoping clause (e.g. `[:= :project_id pid]`).
+  - `from-spec`   — HoneySQL `:from` value. Either `[:operations]` (project /
+                    user scopes, narrowed by `scope-where`) or a subquery that
+                    already encodes the scope (the document UNION below).
+  - `scope-where` — clause ANDed into WHERE to scope the operations table, or
+                    nil when `from-spec` already encodes the scope.
   - `time-range`  — `[start end]` ISO-string range; either may be nil.
   - `eff-limit`   — already-clamped page size.
   - `cursor-vals` — `[ts id]` of the LAST row from the previous page (or
                     nil for the first page); results start strictly after it."
-  [db base-where time-range eff-limit cursor-vals]
+  [db from-spec scope-where time-range eff-limit cursor-vals]
   (let [ts-clauses (ts-where (first time-range) (second time-range))
         seek (pagination/keyset-where [:ts :id] cursor-vals)
-        all-extra (cond-> (vec ts-clauses) seek (conj seek))
-        where (if (seq all-extra)
-                (into [:and base-where] all-extra)
-                base-where)]
-    (psc/q db {:select [:*]
-               :from [:operations]
-               :where where
-               :order-by [:ts :id]
-               :limit eff-limit})))
+        clauses (cond-> []
+                  scope-where (conj scope-where)
+                  :always (into ts-clauses)
+                  seek (conj seek))
+        where (case (count clauses)
+                0 nil
+                1 (first clauses)
+                (into [:and] clauses))]
+    (psc/q db (cond-> {:select [:*]
+                       :from from-spec
+                       :order-by [:ts :id]
+                       :limit eff-limit}
+                where (assoc :where where)))))
 
 (defn- audit-page
   "Fetch + enrich one keyset page into the uniform envelope
   `{:entries [...] :next-cursor [ts id]-or-nil}`. `opts` carries
   `{:limit n :cursor-vals [ts id]}`; the audit log is now always
   paginated (default page 100, max 1000)."
-  [db base-where time-range {:keys [limit cursor-vals]}]
+  [db from-spec scope-where time-range {:keys [limit cursor-vals]}]
   (let [eff (pagination/clamp-limit limit)
-        rows (query-ops db base-where time-range eff cursor-vals)
+        rows (query-ops db from-spec scope-where time-range eff cursor-vals)
         next-cursor (when (= (count rows) eff)
                       (let [r (peek (vec rows))] [(:ts r) (:id r)]))]
     {:entries (enrich-ops db rows)
@@ -121,16 +130,43 @@
   ([db project-id start-time end-time]
    (get-project-audit-log db project-id start-time end-time nil))
   ([db project-id start-time end-time opts]
-   (audit-page db [:= :project_id project-id] [start-time end-time] opts)))
+   (audit-page db [:operations] [:= :project_id project-id] [start-time end-time] opts)))
+
+(defn- document-ops-source
+  "A UNION subquery yielding every operations row that affects `document-id`,
+  either directly (`operations.document_id`) or via an `audit_writes` row that
+  touched the documents row — e.g. a doc-version bump fired by
+  `bump-document-versions!` under a parent vocab/delete op whose own
+  `document_id` is nil (task #91).
+
+  UNION of two index-friendly branches rather than `OR`/correlated-EXISTS on
+  the operations table: branch 1 hits `idx_operations_document_ts`, branch 2's
+  `IN` list hits `idx_audit_writes_target`, and the cost scales with the result
+  size — not the (append-only, ever-growing) operations table. The OR form
+  forced a full `SCAN operations` with a per-row subquery probe (~12s on a
+  ~117k-row log). Each branch is one-row-per-op so there are no spurious
+  duplicates; UNION dedupes the overlap (an op that both targets the doc AND
+  bumps its version)."
+  [document-id]
+  [[{:union [{:select [:*]
+              :from [:operations]
+              :where [:= :document_id document-id]}
+             {:select [:o.*]
+              :from [[:operations :o]]
+              :where [:in :o.id {:select [:op_id]
+                                 :from [:audit_writes]
+                                 :where [:and
+                                         [:= :target_table "documents"]
+                                         [:= :target_id document-id]]}]}]}
+    :ops]])
 
 (defn get-document-audit-log
   "Audit entries that affect `document-id`. Returns ops whose
   `documents.id = document-id` AND/OR whose `audit_writes` row touched the
   documents row for `document-id` (e.g. doc-version-bump rows emitted
   under a parent vocab/delete op that itself carries `document_id = nil`).
-  The second branch is implemented as an EXISTS subquery against
-  `audit_writes` (NOT a JOIN — see the comment on `base-where` below for
-  why). Without that branch, doc-version bumps fired by
+  See `document-ops-source` for why the second branch is a UNION rather than
+  an `OR`/correlated-EXISTS. Without that branch, doc-version bumps fired by
   `bump-document-versions!` from vocab/delete or project/remove-vocab
   silently disappear from the per-doc endpoint (task #91)."
   ([db document-id]
@@ -138,19 +174,7 @@
   ([db document-id start-time end-time]
    (get-document-audit-log db document-id start-time end-time nil))
   ([db document-id start-time end-time opts]
-   ;; The base-where is matched against the `operations` table by
-   ;; `query-ops`. We use EXISTS subquery rather than a JOIN so the LEFT
-   ;; side stays one row per operation (no DISTINCT needed, and the
-   ;; ORDER BY (ts, id) doesn't have to fight duplicate join rows).
-   (let [base-where [:or
-                     [:= :document_id document-id]
-                     [:exists {:select [1]
-                               :from [:audit_writes]
-                               :where [:and
-                                       [:= :audit_writes.op_id :operations.id]
-                                       [:= :audit_writes.target_table "documents"]
-                                       [:= :audit_writes.target_id document-id]]}]]]
-     (audit-page db base-where [start-time end-time] opts))))
+   (audit-page db (document-ops-source document-id) nil [start-time end-time] opts)))
 
 (defn get-user-audit-log
   ([db user-id]
@@ -158,4 +182,4 @@
   ([db user-id start-time end-time]
    (get-user-audit-log db user-id start-time end-time nil))
   ([db user-id start-time end-time opts]
-   (audit-page db [:= :user_id user-id] [start-time end-time] opts)))
+   (audit-page db [:operations] [:= :user_id user-id] [start-time end-time] opts)))
