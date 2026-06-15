@@ -1,8 +1,8 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  Alert, Text, HoverCard, Popover, Switch, Button, Group, Stack, TextInput, ActionIcon,
+  Alert, Text, Popover, Switch, Button, Group, Stack, TextInput, ActionIcon, Divider,
 } from '@mantine/core';
-import { IconPencil, IconTrash, IconPlus, IconX } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconX } from '@tabler/icons-react';
 import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
 import { containsToken } from '../../utils/udLayerUtils.js';
 import { notifyError } from '../../utils/feedback.jsx';
@@ -10,22 +10,20 @@ import classes from './TokenVisualizer.module.css';
 
 // Raw-text overlay editor for the three-layer token hierarchy. The editable
 // surface is the TOKEN layer (rendered as badges over the document text); a
-// token split into more than one word is a multi-word token (orange), edited via
-// the word editor. Sentences are shown by a green border on each sentence's
-// first token and toggled by clicking a token (split/merge server-side).
+// token split into more than one word is a multi-word token (orange). Sentences
+// are shown by a green border on each sentence's first token and toggled by
+// clicking a token (split/merge server-side).
 //
-// Affordances: select text to create a token; hover a token for a panel with its
-// words + a sentence-start toggle + edit/delete actions; and a live preview that
-// relocates tokens when the document text is edited after tokenization. There is
-// deliberately NO token-resize affordance: a resize keeps token identity while
-// changing what the token means, so annotations (incl. other apps' glosses on a
-// shared substrate) silently drift onto different text. Boundary fixes are
-// delete + re-create, which routes through the foreign-annotation warning.
-//
-// UI is plain Mantine: the hover panel is a HoverCard; the token being edited
-// swaps to a controlled Popover (pinned open) holding the word editor inline, so
-// editing happens in place — no modal — and click-outside / Escape cancels. The
-// only bespoke styling left is the inline token badges themselves.
+// Hovering a token opens its panel — token text + range, a sentence-start
+// toggle, the word editor inline (split a token into words / a multi-word
+// token), and a Delete. The panel is a Mantine Popover opened on hover but
+// PINNED while you're editing inside it (so it never vanishes mid-edit); it
+// dismisses on click-outside / Escape. Selecting text creates a token, and a
+// live preview relocates tokens when the document text is edited after
+// tokenization. There is deliberately NO token-resize affordance: a resize
+// keeps token identity while changing what the token means, so annotations
+// (incl. other apps' glosses on a shared substrate) silently drift onto
+// different text. Boundary fixes are delete + re-create.
 export const TokenVisualizer = ({
   text = '',
   originalText = '',
@@ -45,17 +43,19 @@ export const TokenVisualizer = ({
     if (typeof setError === 'function') setError(msg);
     else notifyError(msg);
   };
-  // The word editor (Modal) — `editorWord` is the token being split; null = closed.
-  const [editorWord, setEditorWord] = useState(null);
+  // `openId` = the token whose panel is open (hover or pinned-while-editing).
+  const [openId, setOpenId] = useState(null);
   const [draftForms, setDraftForms] = useState([]);
   const textContainerRef = useRef(null);
+  const openTimer = useRef(null);
+  const closeTimer = useRef(null);
+  const panelRef = useRef(null); // the open panel's content, for focus checks
 
   const isTextDirty = Boolean(originalText) && text !== originalText;
   const contains = containsToken;
   const sortPos = (a, b) => (a.begin - b.begin) || (a.end - b.end) || ((a.precedence ?? 0) - (b.precedence ?? 0));
 
   // Words per token (server positions), and which tokens begin a sentence.
-  // Memoized to avoid recomputing the read model on every render.
   const sortedMorphemes = useMemo(
     () => [...morphemeTokens].sort(sortPos),
     [morphemeTokens]
@@ -64,6 +64,7 @@ export const TokenVisualizer = ({
     () => new Map(wordTokens.map(w => [w.id, sortedMorphemes.filter(m => contains(w, m))])),
     [wordTokens, sortedMorphemes]
   );
+  const wordById = useMemo(() => new Map(wordTokens.map(w => [w.id, w])), [wordTokens]);
   const sentenceBegins = useMemo(
     () => new Set(sentenceTokens.map(s => s.begin)),
     [sentenceTokens]
@@ -77,9 +78,46 @@ export const TokenVisualizer = ({
     const f = morphemeForms.get(m.id);
     return (f != null && f !== '') ? f : cpSlice(text, word.begin, word.end);
   };
+  // A token's current word forms — its words' Form-or-substring, or the token's
+  // own surface for a 1:1 token. Seeds the editor and detects unsaved changes.
+  const currentFormsOf = (word) => {
+    const ms = morphemesByWord.get(word.id) || [];
+    return ms.length ? ms.map(m => formOf(m, word)) : [cpSlice(text, word.begin, word.end)];
+  };
 
-  // Click a token (or its hover-panel switch) to toggle whether it starts a
-  // sentence. No-op while the text is dirty or in read-only mode (no handler).
+  // --- hover open/close with pin-while-editing ---
+  const OPEN_DELAY = 150;
+  const CLOSE_DELAY = 200;
+  const clearOpen = () => { if (openTimer.current) { clearTimeout(openTimer.current); openTimer.current = null; } };
+  const clearClose = () => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; } };
+  // True while focus is inside the open panel — i.e. the user is editing.
+  const isEditing = () => !!(panelRef.current && panelRef.current.contains(document.activeElement));
+  const requestOpen = (id) => {
+    clearClose();
+    if (openId === id) return;
+    if (isEditing()) return; // don't yank focus away from an in-progress edit
+    clearOpen();
+    openTimer.current = setTimeout(() => {
+      openTimer.current = null;
+      const word = wordById.get(id);
+      if (word) setDraftForms(currentFormsOf(word)); // seed editor with current words
+      setOpenId(id);
+    }, OPEN_DELAY);
+  };
+  const requestClose = () => {
+    clearOpen();
+    clearClose();
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = null;
+      if (isEditing()) return; // keep open while editing
+      setOpenId(null);
+    }, CLOSE_DELAY);
+  };
+  const keepOpen = () => { clearOpen(); clearClose(); };
+  const closePanel = () => { clearOpen(); clearClose(); setOpenId(null); };
+  useEffect(() => () => { clearOpen(); clearClose(); }, []);
+
+  // Click a token (or its panel switch) to toggle whether it starts a sentence.
   const toggleSentence = async (word) => {
     if (isTextDirty || !onSentenceToggle) return;
     try {
@@ -90,6 +128,7 @@ export const TokenVisualizer = ({
   };
 
   const handleDeleteClick = async (word) => {
+    closePanel();
     try {
       await onWordDelete?.(word.id);
     } catch (e) {
@@ -97,21 +136,14 @@ export const TokenVisualizer = ({
     }
   };
 
-  // --- word editor (multi-word tokens) ---
-  const openWordEditor = (word) => {
-    const ms = morphemesByWord.get(word.id) || [];
-    setDraftForms(ms.length ? ms.map(m => formOf(m, word)) : [cpSlice(text, word.begin, word.end)]);
-    setEditorWord(word);
-  };
-  const closeWordEditor = () => {
-    setEditorWord(null);
-    setDraftForms([]);
-  };
-  const saveWordEditor = async () => {
+  // Apply the edited word forms (split into words / a multi-word token). No-op
+  // when unchanged, so simply hovering + closing never rewrites the token.
+  const saveWords = async (word) => {
     const forms = draftForms.map(f => f.trim()).filter(Boolean);
-    const word = editorWord;
-    closeWordEditor();
-    if (forms.length && onSetWordMorphemes) {
+    const current = currentFormsOf(word).map(f => f.trim());
+    closePanel();
+    const changed = forms.length > 0 && JSON.stringify(forms) !== JSON.stringify(current);
+    if (changed && onSetWordMorphemes) {
       try { await onSetWordMorphemes(word, forms); } catch (e) { console.error('Set words failed:', e); }
     }
   };
@@ -179,14 +211,12 @@ export const TokenVisualizer = ({
   };
 
   // --- live relocation of tokens when the text is edited after tokenization ---
-  // Memoized: this is O(tokens × occurrences) and was running per render.
   const adjustedWords = useMemo(() => {
     const words = wordTokens;
     const original = originalText;
     const current = text;
     if (!original || original === current) return words;
-    // Work in code points (token offsets are code points). Compare code-point
-    // sequences so editPos / lengthDiff / search indices are all code-point.
+    // Work in code points (token offsets are code points).
     const oCps = Array.from(original);
     const cCps = Array.from(current);
     const curLen = cCps.length;
@@ -204,7 +234,6 @@ export const TokenVisualizer = ({
           return { ...word, begin: nb, end: ne, adjusted: true };
         }
       }
-      // search for the token text near its old position
       let best = null;
       let bestScore = -1;
       let from = 0;
@@ -254,106 +283,35 @@ export const TokenVisualizer = ({
         data-mwt={isMwt}
         data-sent-start={isSentStart}
         onClick={() => toggleSentence(word)}
+        onMouseEnter={isTextDirty ? undefined : () => requestOpen(word.id)}
+        onMouseLeave={isTextDirty ? undefined : requestClose}
       >
         {display}
       </span>
     );
 
-    // No hover panel while the text is dirty — the badges are relocated previews,
+    // No panel while the text is dirty — the badges are relocated previews,
     // and editing is blocked until the text is saved.
     if (isTextDirty) return <span key={`w-${word.id}`}>{badge}</span>;
 
-    // The token being edited: a controlled Popover (pinned open) with the word
-    // editor inline. Click-outside / Escape cancels (onDismiss); Save/Cancel
-    // close it explicitly. Rendered INSTEAD of the HoverCard (never nested).
-    if (editorWord?.id === word.id) {
-      return (
-        <Popover
-          key={`w-${word.id}`}
-          opened
-          onDismiss={closeWordEditor}
-          position="bottom"
-          withArrow
-          shadow="md"
-          radius="md"
-          trapFocus
-          withinPortal
-        >
-          <Popover.Target>{badge}</Popover.Target>
-          <Popover.Dropdown p="sm">
-            <Stack gap="sm" miw={244}>
-              <Text size="sm" fw={600}>Words of “{wordText}”</Text>
-              <Text size="xs" c="dimmed">One word = an ordinary token; multiple = a multi-word token.</Text>
-              <Stack gap="xs">
-                {draftForms.map((form, i) => (
-                  <Group key={i} gap="xs" wrap="nowrap">
-                    <TextInput
-                      size="xs"
-                      value={form}
-                      onChange={(e) => setDraftForms(prev => prev.map((f, idx) => (idx === i ? e.target.value : f)))}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveWordEditor(); } }}
-                      style={{ flex: 1 }}
-                      data-autofocus={i === draftForms.length - 1 || undefined}
-                      autoFocus={i === draftForms.length - 1}
-                      styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
-                    />
-                    {draftForms.length > 1 && (
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))}
-                        aria-label="Remove word"
-                      >
-                        <IconX size={16} />
-                      </ActionIcon>
-                    )}
-                  </Group>
-                ))}
-              </Stack>
-              <Group justify="space-between">
-                <Button
-                  variant="subtle"
-                  size="compact-sm"
-                  leftSection={<IconPlus size={14} />}
-                  onClick={() => setDraftForms(prev => [...prev, ''])}
-                >
-                  Add word
-                </Button>
-                <Group gap="xs">
-                  <Button variant="default" size="xs" onClick={closeWordEditor}>Cancel</Button>
-                  <Button size="xs" onClick={saveWordEditor}>Save</Button>
-                </Group>
-              </Group>
-            </Stack>
-          </Popover.Dropdown>
-        </Popover>
-      );
-    }
-
     return (
-      <HoverCard
+      <Popover
         key={`w-${word.id}`}
-        openDelay={200}
-        closeDelay={150}
+        opened={openId === word.id}
+        onDismiss={closePanel}
         position="bottom"
         withArrow
         shadow="md"
         radius="md"
         withinPortal
       >
-        <HoverCard.Target>{badge}</HoverCard.Target>
-        <HoverCard.Dropdown p="sm">
-          <Stack gap="xs" miw={208} maw={300}>
+        <Popover.Target>{badge}</Popover.Target>
+        <Popover.Dropdown p="sm" onMouseEnter={keepOpen} onMouseLeave={requestClose}>
+          <Stack ref={panelRef} gap="xs" miw={244} maw={320}>
             <Group justify="space-between" gap="md" wrap="nowrap">
               <Text ff="monospace" fw={600} size="sm">{display}</Text>
               <Text size="xs" c="dimmed">[{word.begin}–{word.end}]</Text>
             </Group>
-
-            {isMwt && (
-              <Text size="xs" c="orange.7">
-                {morphs.length} words: {morphs.map(m => formOf(m, word)).join(' + ')}
-              </Text>
-            )}
 
             {onSentenceToggle && (
               <Switch
@@ -365,29 +323,66 @@ export const TokenVisualizer = ({
             )}
 
             {onSetWordMorphemes && (
-              <Button
-                fullWidth
-                variant="light"
-                leftSection={<IconPencil size={16} />}
-                onClick={() => openWordEditor(word)}
-              >
-                Edit words
-              </Button>
+              <>
+                <Divider my={2} />
+                <Text size="xs" c="dimmed">Words{isMwt ? ' (multi-word token)' : ''}</Text>
+                <Stack gap={6}>
+                  {draftForms.map((form, i) => (
+                    <Group key={i} gap="xs" wrap="nowrap">
+                      <TextInput
+                        size="xs"
+                        value={form}
+                        onChange={(e) => setDraftForms(prev => prev.map((f, idx) => (idx === i ? e.target.value : f)))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveWords(word); } }}
+                        style={{ flex: 1 }}
+                        styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
+                      />
+                      {draftForms.length > 1 && (
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          size="sm"
+                          onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))}
+                          aria-label="Remove word"
+                        >
+                          <IconX size={14} />
+                        </ActionIcon>
+                      )}
+                    </Group>
+                  ))}
+                  <Button
+                    variant="subtle"
+                    size="compact-xs"
+                    leftSection={<IconPlus size={14} />}
+                    onClick={() => setDraftForms(prev => [...prev, ''])}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    Add word
+                  </Button>
+                </Stack>
+              </>
             )}
-            {onWordDelete && (
-              <Button
-                fullWidth
-                variant="light"
-                color="red"
-                leftSection={<IconTrash size={16} />}
-                onClick={() => handleDeleteClick(word)}
-              >
-                Delete
-              </Button>
-            )}
+
+            <Divider my={2} />
+            <Group justify="space-between" gap="xs">
+              {onWordDelete ? (
+                <Button
+                  variant="subtle"
+                  color="red"
+                  size="compact-xs"
+                  leftSection={<IconTrash size={14} />}
+                  onClick={() => handleDeleteClick(word)}
+                >
+                  Delete
+                </Button>
+              ) : <span />}
+              {onSetWordMorphemes && (
+                <Button size="compact-xs" onClick={() => saveWords(word)}>Save</Button>
+              )}
+            </Group>
           </Stack>
-        </HoverCard.Dropdown>
-      </HoverCard>
+        </Popover.Dropdown>
+      </Popover>
     );
   };
 

@@ -81,36 +81,51 @@ async function openEditor(page) {
 
 const badges = (page) => page.locator('[data-mwt]');
 
-test('hovering a token shows the Mantine panel with actions', async ({ page }) => {
-  await openEditor(page);
-  await badges(page).first().hover();
+const panel = (page) => page.locator('.mantine-Popover-dropdown');
 
-  // Portaled HoverCard dropdown with the sentence toggle + actions.
-  await expect(page.getByText('Start of sentence')).toBeVisible({ timeout: 5000 });
-  await expect(page.getByRole('button', { name: 'Edit words' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Delete' })).toBeVisible();
-});
-
-test('Edit words edits inline in a popover (no modal) and stays open', async ({ page }) => {
+test('hovering a token shows the inline panel (switch, word editor, footer)', async ({ page }) => {
   await openEditor(page);
   await badges(page).nth(1).hover(); // "dog"
-  await page.getByRole('button', { name: 'Edit words' }).click();
 
-  // Inline editor lives in a Popover dropdown (HoverCard dropdowns carry the
-  // mantine-HoverCard-dropdown class instead), not a centered Modal.
-  const editor = page.locator('.mantine-Popover-dropdown');
-  await expect(editor).toBeVisible();
-  await expect(editor).toContainText('Words of');
-  await expect(editor.getByRole('textbox')).toHaveValue('dog');
-  await expect(editor.getByRole('button', { name: 'Add word' })).toBeVisible();
+  const p = panel(page);
+  await expect(p).toBeVisible({ timeout: 5000 });
+  await expect(p.getByText('Start of sentence')).toBeVisible();
+  await expect(p.getByText('Words', { exact: false })).toBeVisible();
+  await expect(p.getByRole('textbox')).toHaveValue('dog'); // word editor is inline
+  await expect(p.getByRole('button', { name: 'Add word' })).toBeVisible();
+  await expect(p.getByRole('button', { name: 'Delete' })).toBeVisible();
+  await expect(p.getByRole('button', { name: 'Save' })).toBeVisible();
+});
 
-  // It must NOT dismiss on mouse-away (the old hover tooltip's failure mode).
-  await page.mouse.move(2, 2);
-  await expect(editor).toBeVisible();
+test('panel stays open while editing inline, cancels on Escape', async ({ page }) => {
+  await openEditor(page);
+  await badges(page).nth(1).hover(); // "dog"
+  const p = panel(page);
+  await expect(p).toBeVisible();
 
-  // Escape / click-outside cancels.
-  await page.keyboard.press('Escape');
-  await expect(editor).toHaveCount(0);
+  const input = p.getByRole('textbox').first();
+  await input.click();      // focus → pins the panel
+  await input.fill('dogg'); // unsaved draft
+  await page.mouse.move(2, 2); // move the cursor well away
+  await page.waitForTimeout(400); // longer than the close delay
+  await expect(p).toBeVisible(); // must NOT dismiss while editing
+
+  await page.keyboard.press('Escape'); // discard + close
+  await expect(p).toHaveCount(0);
+});
+
+test('editing words inline creates a multi-word token on save', async ({ page }) => {
+  await openEditor(page);
+  await badges(page).nth(2).hover(); // "runs"
+  const p = panel(page);
+  await expect(p).toBeVisible();
+
+  await p.getByRole('textbox').first().fill('run');
+  await p.getByRole('button', { name: 'Add word' }).click();
+  await p.getByRole('textbox').nth(1).fill('s');
+  await p.getByRole('button', { name: 'Save' }).click();
+
+  await expect(badges(page).nth(2)).toHaveAttribute('data-mwt', 'true', { timeout: 8000 });
 });
 
 test('clicking a token toggles its sentence boundary', async ({ page }) => {
