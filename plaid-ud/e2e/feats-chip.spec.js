@@ -367,6 +367,30 @@ test('B4+B5: grid arrow navigation and tab order', async ({ page }) => {
   expect.soft(collected.errors, 'console errors').toEqual([]);
 });
 
+test('B6: auto-highlighted suggestion is selected by Enter (no arrowing)', async ({ page }) => {
+  const collected = await openGrid(page);
+  const input = featsInput(page, 2); // "runs" — assert the specific pill, robust to other state
+  await input.click();
+
+  // Key stage: typing a prefix auto-highlights "Gender=", Enter fills it (no commit).
+  await input.pressSequentially('Gend', { delay: 30 });
+  await input.press('Enter');
+  await expect(input).toHaveValue('Gender=');
+
+  // Value stage: typing a prefix auto-highlights "Gender=Fem", Enter commits it.
+  await input.pressSequentially('Fem', { delay: 30 });
+  const post = page.waitForResponse(
+    (r) => r.url().includes('/api/v1/spans') && r.request().method() === 'POST',
+    { timeout: 8000 }
+  );
+  await input.press('Enter');
+  await post;
+
+  await expect(pillsOf(page, 2).filter({ hasText: 'Gender=Fem' })).toHaveCount(1, { timeout: 8000 });
+  await expect(input).toHaveValue(''); // committed + cleared (single add, not double)
+  expect.soft(collected.errors, 'console errors').toEqual([]);
+});
+
 test('screenshot: grid with committed pills', async ({ page }) => {
   // Self-sufficient: a worker restart (after any failed test) re-runs
   // beforeAll with a FRESH project, so don't rely on pills from B1/B2 —

@@ -342,9 +342,13 @@ const FeaturesCell = React.memo(({ features, featureInferred, spanIds, tokenId, 
     const input = inputRef.current;
     const empty = !text;
     // While the dropdown is open (or an option is highlighted), Enter and the
-    // vertical arrows belong to the combobox, not to us.
+    // vertical arrows belong to the combobox, not to us. An option counts as
+    // highlighted when the open dropdown has a [data-combobox-selected] item —
+    // set by BOTH arrow nav and auto-highlight (selectFirstOptionOnChange).
+    // (aria-activedescendant only tracks arrow nav, so relying on it would let
+    // Enter both commit the typed text AND submit the auto-highlighted option.)
     const dropdownOpen = e.target.getAttribute('aria-expanded') === 'true';
-    const optionActive = Boolean(e.target.getAttribute('aria-activedescendant'));
+    const optionActive = dropdownOpen && !!document.querySelector('[data-combobox-selected]');
 
     if (e.key === 'Enter') {
       // Ctrl/Cmd+Enter confirms the whole token (container handler) — don't also
@@ -452,7 +456,12 @@ const FeaturesCell = React.memo(({ features, featureInferred, spanIds, tokenId, 
             }
           }}
           onKeyDown={handleKeyDown}
-          selectFirstOptionOnChange={false}
+          // Auto-highlight the best match once typing starts, so Enter selects it
+          // (like the deprel editor). The existing Enter/onOptionSubmit logic then
+          // does the right thing: a "Key=" pick fills the input, a "Key=Value"
+          // pick commits. Gated on input so Enter on an EMPTY cell doesn't insert
+          // the first inventory key.
+          selectFirstOptionOnChange={text.length > 0}
           variant="unstyled"
           size="xs"
           tabIndex={tabIndex}
