@@ -96,9 +96,15 @@ export const ProjectList = () => {
     return () => { cancelled = true; };
   }, [projects, getClient]);
 
-  const handleProjectCreated = () => {
+  const handleProjectCreated = (project) => {
     setShowCreateForm(false);
-    fetchProjects(); // Refresh the list
+    // Jump straight into the new project. If the id is somehow missing, fall
+    // back to refreshing the list in place.
+    if (project?.id) {
+      navigate(`/projects/${project.id}/documents`);
+    } else {
+      fetchProjects();
+    }
   };
 
   const onSort = (key) => setSort(nextSort(key));

@@ -133,8 +133,8 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
     setError('');
 
     try {
-      await createProjectWithLayers();
-      onSuccess();
+      const created = await createProjectWithLayers();
+      onSuccess(created);
     } catch (err) {
       console.error('Error creating project:', err);
       setError(err?.message || 'Failed to create project with layers');
