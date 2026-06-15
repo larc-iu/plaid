@@ -72,7 +72,13 @@ test.beforeAll(async () => {
   await client.spans.create(byKey.lemma, [morphIds[1]], 'dog');
   await client.spans.create(byKey.lemma, [morphIds[2]], 'run');
   // A machine prediction (unconfirmed) on "dog"'s UPOS — drives the review UI.
-  await client.spans.create(byKey.upos, [morphIds[1]], 'NOUN', { prov: 'inferred', provSource: 'service:test' });
+  const upos = await client.spans.create(byKey.upos, [morphIds[1]], 'NOUN', { prov: 'inferred', provSource: 'service:test' });
+  S.uposSpanId = upos.id;
+});
+
+// Each accept test confirms the prediction, so reset it to unconfirmed first.
+test.beforeEach(async () => {
+  await S.client.spans.patchMetadata(S.uposSpanId, { prov: 'inferred', provSource: 'service:test', provConfirmed: null });
 });
 
 test.afterAll(async () => {
@@ -128,4 +134,16 @@ test('the per-word ✓ is reachable by mouse and accepts the word', async ({ pag
   await accept.click();
   await expect(page.locator('.editable-field--inferred')).toHaveCount(0, { timeout: 8000 });
   await expect(page.locator('.word-accept')).toHaveCount(0, { timeout: 8000 });
+});
+
+test('Ctrl+Enter accepts the token and keeps focus on the cell', async ({ page }) => {
+  await openAnnotate(page);
+  const lemmaId = `${S.morphIds[1]}-lemma`;
+  await page.locator(`[id="${lemmaId}"]`).focus();
+
+  await page.keyboard.press('Control+Enter');
+
+  await expect(page.locator('.editable-field--inferred')).toHaveCount(0, { timeout: 8000 });
+  // Focus must stay on the same cell (not blur away).
+  await expect.poll(() => page.evaluate(() => document.activeElement?.id)).toBe(lemmaId);
 });

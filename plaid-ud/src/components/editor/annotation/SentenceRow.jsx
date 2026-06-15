@@ -83,6 +83,10 @@ const EditableCell = React.memo(({ value, tokenId, tokenIndex, field, tokenForm,
     }
 
     if (e.key === 'Enter') {
+      // Ctrl/Cmd+Enter is the per-token "accept predictions" gesture (handled by
+      // the sentence container). Let it bubble and keep focus on this cell
+      // rather than blurring.
+      if (e.ctrlKey || e.metaKey) return;
       e.preventDefault();
       inputRef.current?.blur();
       return;
@@ -343,6 +347,9 @@ const FeaturesCell = React.memo(({ features, featureInferred, spanIds, tokenId, 
     const optionActive = Boolean(e.target.getAttribute('aria-activedescendant'));
 
     if (e.key === 'Enter') {
+      // Ctrl/Cmd+Enter confirms the whole token (container handler) — don't also
+      // commit a (possibly empty) feature, and keep focus on this cell.
+      if (e.ctrlKey || e.metaKey) return;
       if (!optionActive) {
         e.preventDefault();
         commit();
