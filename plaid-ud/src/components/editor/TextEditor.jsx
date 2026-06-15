@@ -12,6 +12,7 @@ import { confirmDelete } from '../../utils/feedback.jsx';
 import { canEditProject } from '../../utils/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { DocumentTabs } from './DocumentTabs.jsx';
+import { NlpServiceControls } from './NlpServiceControls.jsx';
 
 export const TextEditor = () => {
   const { projectId, documentId } = useParams();
@@ -188,6 +189,7 @@ export const TextEditor = () => {
 
   const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
   const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
+  const hasText = Boolean(layerInfo.textLayer?.text?.body);
   const saving = doc.isSaving;
 
   // Viewer-access users get the text editor read-only: the textarea is locked,
@@ -241,6 +243,18 @@ export const TextEditor = () => {
           will still work, but server-enforced nesting and partitioning won't.
           Consider recreating the project.
         </Alert>
+      )}
+
+      {!readOnly && hasText && (
+        <Group justify="flex-end" mb="md">
+          <NlpServiceControls
+            projectId={projectId}
+            documentId={documentId}
+            project={project}
+            enabled
+            onParsed={() => fetchData()}
+          />
+        </Group>
       )}
 
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="xl">

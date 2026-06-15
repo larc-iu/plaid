@@ -1,14 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Box, Group, Button, Loader, Text, Center, Alert, Stack, Select, ActionIcon, Popover } from '@mantine/core';
-import { IconHistory, IconBolt, IconInfoCircle, IconAdjustments } from '@tabler/icons-react';
-import { ServiceSummary } from './ServiceSummary.jsx';
-import { ServiceParamForm } from './ServiceParamForm.jsx';
+import { Box, Group, Button, Loader, Text, Center, Alert, Stack } from '@mantine/core';
+import { IconHistory, IconInfoCircle } from '@tabler/icons-react';
+import { NlpServiceControls } from './NlpServiceControls.jsx';
 import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
-import { useNlpService } from './hooks/useNlpService.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
 import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -16,7 +14,7 @@ import { notifications } from '@mantine/notifications';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
-import { notifySuccess, notifyWarning, notifyError } from '../../utils/feedback.jsx';
+import { notifyWarning, notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 
 const DRAWER_WIDTH = 384;
@@ -295,26 +293,6 @@ export const AnnotationEditor = () => {
   const handleRelationDelete = useCallback((id) => doc?.deleteRelation(id), [doc]);
   const handleConfirmTokens = useCallback((tokenIds) => doc?.confirmTokens(tokenIds), [doc]);
 
-  // NLP Service integration
-  const {
-    isParsing,
-    isDiscovering,
-    hasServices,
-    parseStatus,
-    discoverServices,
-    requestParse,
-    clearParseStatus,
-    canParse,
-    parseServices,
-    selectedServiceId,
-    setSelectedService,
-    selectedService,
-    paramSchema,
-    paramValues,
-    paramErrors,
-    setParam,
-  } = useNlpService(projectId, documentId, project);
-
   // History drawer handlers
   const handleOpenHistory = () => {
     setIsHistoryDrawerOpen(true);
@@ -362,22 +340,6 @@ export const AnnotationEditor = () => {
     }
   };
 
-  // Handle parse success - refresh data, toast, and clear status after delay
-  useEffect(() => {
-    if (parseStatus === 'success') {
-      // Refresh document data to show new annotations
-      refreshData();
-      notifySuccess('Document parsed successfully!');
-
-      // Clear success state after 3 seconds
-      const timer = setTimeout(() => {
-        clearParseStatus();
-      }, 3000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [parseStatus, refreshData, clearParseStatus]);
-
   const hasText = !viewingHistoricalState && Boolean(activeDocument?.textLayers?.[0]?.text);
 
   // Single shared toolbar: History on the left; everything NLP lives in one
@@ -399,67 +361,13 @@ export const AnnotationEditor = () => {
           <Button onClick={handleCloseHistory}>Return to Current</Button>
         )}
 
-        {hasText && canEdit && !selectedHistoryEntry && !hasServices && (
-          isDiscovering ? (
-            <Group gap={6}>
-              <Loader size={14} color="gray" />
-              <Text size="sm" c="dimmed">Checking for NLP services…</Text>
-            </Group>
-          ) : (
-            <Group gap="xs">
-              <Text size="sm" c="dimmed">No parsing service online</Text>
-              <Button size="xs" variant="light" color="gray" onClick={discoverServices}>
-                Retry
-              </Button>
-            </Group>
-          )
-        )}
-
-        {hasText && canEdit && hasServices && !selectedHistoryEntry && (
-          <Group gap="xs">
-            <Select
-              size="sm"
-              w={220}
-              data={parseServices.map((s) => ({ value: s.serviceId, label: s.serviceName }))}
-              value={selectedServiceId}
-              onChange={(v) => v && setSelectedService(v)}
-              allowDeselect={false}
-              disabled={isParsing}
-              aria-label="Parsing service"
-            />
-
-            <ServiceSummary service={selectedService} />
-
-            {paramSchema.length > 0 && (
-              <Popover width={320} position="bottom-end" withArrow shadow="md">
-                <Popover.Target>
-                  <ActionIcon variant="light" color="gray" size="lg" aria-label="Service options" disabled={isParsing}>
-                    <IconAdjustments size={18} />
-                  </ActionIcon>
-                </Popover.Target>
-                <Popover.Dropdown>
-                  <ServiceParamForm
-                    schema={paramSchema}
-                    values={paramValues}
-                    errors={paramErrors}
-                    onChange={setParam}
-                    disabled={isParsing}
-                  />
-                </Popover.Dropdown>
-              </Popover>
-            )}
-
-            <Button
-              color="green"
-              leftSection={<IconBolt size={16} />}
-              onClick={requestParse}
-              disabled={!canParse || isParsing}
-              loading={isParsing}
-            >
-              Auto Parse
-            </Button>
-          </Group>
-        )}
+        <NlpServiceControls
+          projectId={projectId}
+          documentId={documentId}
+          project={project}
+          enabled={hasText && canEdit && !selectedHistoryEntry}
+          onParsed={refreshData}
+        />
       </Group>
     </Group>
   );
