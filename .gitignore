@@ -34,6 +34,9 @@ builds/
 # ship in the jar and are the source of operator-facing defaults)
 !/plaid-core/resources/config.toml
 !/plaid-core/resources/config.dev.toml
+# keep the slf4j-simple format config tracked (governs the third-party library
+# log stream; ships in the jar)
+!/plaid-core/resources/simplelogger.properties
 mutations.ednl
 Gemfile.lock
 .aider*

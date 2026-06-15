@@ -12,7 +12,8 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [mount.core :refer [defstate args]]
-            [taoensso.timbre :as log])
+            [taoensso.timbre :as log]
+            [taoensso.timbre.appenders.community.rolling :as rolling])
   (:import (org.tomlj Toml TomlArray TomlTable)))
 
 (defn- deep-merge [a b]
@@ -48,7 +49,13 @@
                                                                  :mode :block}}}
 
    :taoensso.timbre/logging-config {:ns-whitelist []
-                                    :ns-blacklist []}})
+                                    :ns-blacklist []}
+
+   ;; Third-party LIBRARY log stream (slf4j-simple). Defaults to :warn so
+   ;; library chatter (Hikari pool banner, etc.) stays quiet unless an
+   ;; operator opts into it via [logging] library_level. The template
+   ;; supplies :warn too; this is the floor if the key is deleted.
+   :plaid.logging/config {:library-level :warn}})
 
 ;; -----------------------------------------------------------------------------
 ;; TOML -> internal translation
@@ -69,6 +76,8 @@
    [["server" "static_resources_path"]    [:plaid.server.middleware/static-resources-path]                  identity]
 
    [["logging" "level"]                   [:taoensso.timbre/logging-config :min-level]                       ->kw]
+   [["logging" "library_level"]           [:plaid.logging/config :library-level]                             ->kw]
+   [["logging" "file"]                    [:plaid.logging/config :file]                                      identity]
 
    [["auth" "jwt_ttl_seconds"]            [:plaid.auth :jwt-ttl-seconds]                                     identity]
 
@@ -204,10 +213,72 @@
 (defn- default-config-path []
   (or (not-empty (System/getenv "PLAID_CONFIG")) "data/config.toml"))
 
-(defn configure-logging! [config]
-  (let [{:keys [taoensso.timbre/logging-config]} config]
-    (log/info "Configuring Timbre with " logging-config)
-    (log/merge-config! logging-config)))
+(defn- ->slf4j-level
+  "Map a Timbre/keyword level onto an slf4j-simple level string. slf4j-simple
+   has no :fatal/:report, so fold them onto the nearest equivalent; anything
+   unrecognized falls back to warn."
+  [level]
+  (case (keyword level)
+    :trace "trace"
+    :debug "debug"
+    (:info :report) "info"
+    :warn "warn"
+    (:error :fatal) "error"
+    "warn"))
+
+(defn- log-output-fn
+  "Concise single-line Timbre format that visually matches the slf4j-simple
+   library stream: `2026-06-15 12:00:00.123 [INFO] plaid.x.y - message`.
+   Drops Timbre's default hostname (noise on a single-host deployment) and the
+   source line (the namespace is enough to locate a call), but still appends a
+   stacktrace when an error is attached."
+  [{:keys [level ?ns-str timestamp_ msg_ ?err]}]
+  (str (force timestamp_)
+       " [" (str/upper-case (name level)) "] "
+       (or ?ns-str "?")
+       " - " (force msg_)
+       (when ?err
+         (str \newline (log/stacktrace ?err)))))
+
+(defn configure-logging!
+  "Wire up both log streams from config:
+
+   * Plaid's own code logs through Timbre — `[logging] level` sets its min
+     level, with a clean single-line format. When `[logging] file` is set the
+     console appender is replaced by a daily-rolling file appender (old days
+     kept as `<file>.YYYYMMDD`).
+   * Third-party libraries log through slf4j-simple, driven by `[logging]
+     library_level` (default warn) and pointed at the same destination. These
+     properties are read once at slf4j init, so we set them here — ahead of the
+     datasource pool, the first library logger — and a change needs a process
+     restart to take effect."
+  [config]
+  (let [logging-config (:taoensso.timbre/logging-config config)
+        {:keys [library-level file]} (:plaid.logging/config config)]
+    ;; --- third-party library stream (slf4j-simple) ---
+    (doto (System/getProperties)
+      (.setProperty "org.slf4j.simpleLogger.defaultLogLevel"
+                    (->slf4j-level (or library-level :warn)))
+      (.setProperty "org.slf4j.simpleLogger.logFile" (or file "System.out")))
+    ;; --- Plaid's own stream (Timbre) ---
+    ;; Spell out BOTH appenders' :enabled? either way so the result is the same
+    ;; regardless of prior state (merge-config! is additive — a stale :rolling
+    ;; from an earlier file-configured call would otherwise keep firing). With a
+    ;; file we swap the console appender for the daily-rolling one; without, the
+    ;; console appender is on and any rolling appender is inert. Timbre skips
+    ;; disabled appenders before touching :fn, so the stubs are harmless.
+    (log/merge-config!
+     (merge logging-config
+            {:min-level (or (:min-level logging-config) :info)
+             :timestamp-opts {:pattern "yyyy-MM-dd HH:mm:ss.SSS"
+                              :locale :jvm-default
+                              :timezone :jvm-default}
+             :output-fn log-output-fn
+             :appenders (if file
+                          {:println {:enabled? false}
+                           :rolling (rolling/rolling-appender {:path file :pattern :daily})}
+                          {:println {:enabled? true}
+                           :rolling {:enabled? false}})}))))
 
 (defstate config
   :start (let [{:keys [config]} (args)
@@ -222,5 +293,7 @@
                configuration (load-config! {:config-path path :explicit? explicit?})]
            (configure-logging! configuration)
            (log/info "Loaded config from" path)
-           (log/info (pr-str configuration))
+           ;; Full resolved config (incl. internal plumbing) is verbose and
+           ;; only useful when diagnosing — keep it at debug.
+           (log/debug (pr-str configuration))
            configuration))

@@ -36,8 +36,25 @@ max_json_body_mb = 10
 # Logging
 # -----------------------------------------------------------------------------
 [logging]
-# Minimum log level. One of: trace, debug, info, warn, error, fatal, report.
+# Minimum log level for Plaid's OWN code. One of:
+# trace, debug, info, warn, error, fatal, report.
+# At "info" you get one line per HTTP request (method, path, status, timing)
+# plus startup/shutdown; warnings and errors always surface. Use "debug" to
+# additionally see full request/response bodies (sensitive fields redacted)
+# and other granular detail.
 level = "info"
+
+# Log level for THIRD-PARTY libraries (database connection pool, SQLite driver,
+# HTTP server, file-type detection, ...). These are chatty at "info", so the
+# default keeps them quiet unless something needs attention. Raise to
+# "info"/"debug" when diagnosing a library-level problem. Applied once at
+# startup — changing it needs a restart.
+library_level = "warn"
+
+# Write logs to a FILE (rotated daily; previous days kept as "<file>.YYYYMMDD")
+# instead of stdout. Leave commented to log to stdout — recommended when running
+# under systemd or Docker, which capture and rotate stdout for you.
+# file = "data/plaid.log"
 
 # -----------------------------------------------------------------------------
 # Authentication

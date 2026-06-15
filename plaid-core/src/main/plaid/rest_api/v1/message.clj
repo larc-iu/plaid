@@ -66,7 +66,7 @@
                                           (let [new-misses (inc consecutive-misses)]
                                             (if (>= new-misses max-misses)
                                               (do
-                                                (log/info "Client" client-id "disconnected after" new-misses "consecutive missed heartbeats")
+                                                (log/debug "Client" client-id "disconnected after" new-misses "consecutive missed heartbeats")
                                                 (events/cleanup-channel! channel)
                                                 nil)  ; exit loop
                                               (recur new-misses (System/currentTimeMillis))))))

@@ -35,7 +35,10 @@
     (is (= "data/plaid.db" (get-in cfg [:plaid.server.sql/config :main-db-path])))
     ;; internal-only plumbing present even though it's not in the TOML
     (is (contains? cfg :ring.middleware/defaults-config))
-    (is (= [] (get-in cfg [:taoensso.timbre/logging-config :ns-whitelist])))))
+    (is (= [] (get-in cfg [:taoensso.timbre/logging-config :ns-whitelist])))
+    ;; library log level defaults to warn; no file (stdout) by default
+    (is (= :warn (get-in cfg [:plaid.logging/config :library-level])))
+    (is (nil? (get-in cfg [:plaid.logging/config :file])))))
 
 (deftest keyword-and-vector-coercion
   ;; logging level + cors methods are keyword-valued internally but strings in
@@ -58,6 +61,17 @@
         ;; un-overridden defaults intact
         (is (= 200 (get-in cfg [:plaid.media/config :max-file-size-mb])))
         (is (contains? cfg :ring.middleware/defaults-config)))
+      (finally (.delete f)))))
+
+(deftest logging-library-level-and-file-overlay
+  ;; The split app/library levels + optional file destination translate onto
+  ;; the internal :plaid.logging/config map.
+  (let [f (temp-toml "[logging]\nlevel = \"warn\"\nlibrary_level = \"info\"\nfile = \"data/plaid.log\"\n")]
+    (try
+      (let [cfg (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})]
+        (is (= :warn (get-in cfg [:taoensso.timbre/logging-config :min-level])))
+        (is (= :info (get-in cfg [:plaid.logging/config :library-level])))
+        (is (= "data/plaid.log" (get-in cfg [:plaid.logging/config :file]))))
       (finally (.delete f)))))
 
 (deftest advanced-pool-override-works

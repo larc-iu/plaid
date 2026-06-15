@@ -275,7 +275,9 @@
                             op/*deferred-events* deferred-events]
                     (loop [remaining operations responses []]
                       (if (empty? remaining)
-                        (do (log/info "Batch" batch-id "ok with" (count responses) "ops")
+                        ;; The access-log line already covers this HTTP request;
+                        ;; the per-batch op count is granular detail, so debug.
+                        (do (log/debug "Batch" batch-id "ok with" (count responses) "ops")
                             ;; Collect the union of all sub-responses' X-Document-Versions
                             ;; headers (last-write-wins per doc-id) and surface them on
                             ;; the outer batch response so OCC state isn't silently lost

@@ -138,10 +138,19 @@
                            (some? @response) (:status @response)
                            :else "???")]
               (when-not skip?
-                (log/info (str (method-name (:request-method request))
-                               " " uri
-                               " " status
-                               " " elapsed "ms"))
+                ;; One access line per request. Level tracks the outcome so a
+                ;; default-level (info) log surfaces failures without the
+                ;; granular per-request debug dumps: a thrown handler or 5xx is
+                ;; an error, a 4xx is a warning, everything else is info.
+                (let [line (str (method-name (:request-method request))
+                                " " uri
+                                " " status
+                                " " elapsed "ms")]
+                  (cond
+                    @thrown                                  (log/error line)
+                    (and (integer? status) (>= status 500))  (log/error line)
+                    (and (integer? status) (>= status 400))  (log/warn line)
+                    :else                                     (log/info line)))
                 (when @response
                   (log/debug (str "Sending response to request " req-id ": "
                                   (redact-sensitive @response))))))))
