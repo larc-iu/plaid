@@ -167,11 +167,11 @@ export const ProjectConfiguration = ({ embedded = false }) => {
       );
       const wordLayer = await ensureTokenLayer(
         client, textLayerId, existingTextLayer,
-        ROLES.WORD, 'Words', 'non-overlapping', sentenceLayer.id
+        ROLES.WORD, 'Tokens', 'non-overlapping', sentenceLayer.id
       );
       const morphemeLayer = await ensureTokenLayer(
         client, textLayerId, existingTextLayer,
-        ROLES.SYNTACTIC_WORD, 'Morphemes', 'any', wordLayer.id
+        ROLES.SYNTACTIC_WORD, 'Words', 'any', wordLayer.id
       );
 
       // 3. Annotation span layers, all under the syntactic-word ("Morphemes") layer
@@ -280,9 +280,9 @@ export const ProjectConfiguration = ({ embedded = false }) => {
             </Text>
             <List size="sm" spacing={4}>
               <List.Item><Text span fw={500}>Sentences</Text> token layer (partitioning)</List.Item>
-              <List.Item><Text span fw={500}>Words</Text> token layer (non-overlapping, nested in sentences)</List.Item>
-              <List.Item><Text span fw={500}>Morphemes</Text> token layer (overlap allowed, nested in words)</List.Item>
-              <List.Item>Span layers on morphemes: Form, Lemma, UPOS, XPOS, Features</List.Item>
+              <List.Item><Text span fw={500}>Tokens</Text> token layer (non-overlapping, nested in sentences) — orthographic tokens</List.Item>
+              <List.Item><Text span fw={500}>Words</Text> token layer (overlap allowed, nested in tokens) — where annotations live; a token splits into one or more words (multi-word tokens)</List.Item>
+              <List.Item>Span layers on words: Form, Lemma, UPOS, XPOS, Features</List.Item>
               <List.Item>Dependency relation layer on the Lemma layer</List.Item>
             </List>
           </Paper>

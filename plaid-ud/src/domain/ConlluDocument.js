@@ -87,7 +87,7 @@ export class ConlluDocument {
     if (miscTokens > 0) {
       importWarnings.push(
         `MISC values on ${miscTokens} token row${miscTokens === 1 ? '' : 's'} ` +
-        'dropped: Plaid UD does not store the MISC column (multiword-token MISC is kept).'
+        'dropped: Plaid UD does not store the MISC column (multi-word token MISC is kept).'
       );
     }
 
@@ -795,12 +795,12 @@ export class ConlluDocument {
     const cleanForms = forms.map(f => (f || '').trim()).filter(f => f.length > 0);
     if (cleanForms.length === 0) return false;
 
-    return this._withSaving('Failed to set morphemes', async () => {
+    return this._withSaving('Failed to set words', async () => {
       const { textLayer, morphemeTokenLayer, lemmaLayer, formLayer } = this.layerInfo;
       const text = textLayer?.text;
       const morphemeTokens = morphemeTokenLayer?.tokens || [];
       if (!morphemeTokenLayer?.id || !text?.id) {
-        throw new Error('Morpheme layer not configured');
+        throw new Error('Word layer not configured');
       }
 
       // Use the persisted body for the form-vs-substring comparison and for
@@ -871,7 +871,7 @@ export class ConlluDocument {
   // server-side). Locally we mirror the cascade so the UI updates
   // immediately without a refetch.
   async deleteWord(wordId) {
-    return this._withSaving('Failed to delete word', async () => {
+    return this._withSaving('Failed to delete token', async () => {
       const { wordTokenLayer, morphemeTokenLayer, lemmaLayer } = this.layerInfo;
       const wordTokens = wordTokenLayer?.tokens || [];
       const morphemeTokens = morphemeTokenLayer?.tokens || [];
@@ -929,7 +929,7 @@ export class ConlluDocument {
       return false;
     }
 
-    return this._withSaving('Failed to create word', async () => {
+    return this._withSaving('Failed to create token', async () => {
       // Token offsets are code points; .length is UTF-16 units and overshoots
       // on astral characters.
       const fullLen = cpLength(textContent);

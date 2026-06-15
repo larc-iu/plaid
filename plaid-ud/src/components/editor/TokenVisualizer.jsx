@@ -219,7 +219,7 @@ export const TokenVisualizer = ({
     end = utf16ToCp(text, end);
 
     if (wordTokens.some(w => start < w.end && end > w.begin)) {
-      reportError('Cannot create word: selection overlaps an existing word');
+      reportError('Cannot create token: selection overlaps an existing token');
       return;
     }
     onWordCreate(start, end);
@@ -283,7 +283,7 @@ export const TokenVisualizer = ({
           {text}
         </div>
         <p className={classes.emptyHint}>
-          No tokens yet. Click &quot;Basic Tokenize&quot; to create the hierarchy, or select text to create a word.
+          No tokens yet. Click &quot;Basic Tokenize&quot; to create the hierarchy, or select text to create a token.
         </p>
       </div>
     );
@@ -328,10 +328,10 @@ export const TokenVisualizer = ({
             onClick={(e) => e.stopPropagation()}
           >
             <div className={classes.tooltipMeta}>
-              <div className={classes.tooltipTitle}>Word {String(word.id).slice(0, 8)}</div>
+              <div className={classes.tooltipTitle}>Token {String(word.id).slice(0, 8)}</div>
               <div className={classes.tooltipDim}>Range: [{word.begin}-{word.end}]</div>
               <div className={classes.tooltipDim}>Text: &quot;{wordText}&quot;</div>
-              {isMwt && <div className={classes.tooltipMorph}>Morphemes: {morphs.map(m => formOf(m, word)).join(' + ')}</div>}
+              {isMwt && <div className={classes.tooltipMorph}>Words: {morphs.map(m => formOf(m, word)).join(' + ')}</div>}
             </div>
 
             {onSentenceToggle && (
@@ -354,7 +354,7 @@ export const TokenVisualizer = ({
 
             <div className={classes.tooltipActions}>
               {onSetWordMorphemes && (
-                <button onClick={() => openMorphemeEditor(word)} className={`${classes.tipBtn} ${classes.tipBtnMorph}`}>Morphemes</button>
+                <button onClick={() => openMorphemeEditor(word)} className={`${classes.tipBtn} ${classes.tipBtnMorph}`}>Words</button>
               )}
               <button onClick={() => handleDeleteClick(word)} className={`${classes.tipBtn} ${classes.tipBtnDelete}`}>Delete</button>
             </div>
@@ -366,8 +366,8 @@ export const TokenVisualizer = ({
             className={`tv-overlay ${classes.popover} ${classes.popoverLeft}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className={classes.popoverTitle}>Morphemes of &quot;{cpSlice(text, word.begin, word.end)}&quot;</div>
-            <div className={classes.popoverHint}>One form = an ordinary word; multiple = a multiword token.</div>
+            <div className={classes.popoverTitle}>Words of &quot;{cpSlice(text, word.begin, word.end)}&quot;</div>
+            <div className={classes.popoverHint}>One word = an ordinary token; multiple words = a multi-word token.</div>
             <div className={classes.morphList}>
               {draftForms.map((form, i) => (
                 <div key={i} className={classes.morphRow}>
@@ -380,13 +380,13 @@ export const TokenVisualizer = ({
                     autoFocus={i === draftForms.length - 1}
                   />
                   {draftForms.length > 1 && (
-                    <button onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))} className={classes.morphRemove} title="Remove morpheme">×</button>
+                    <button onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))} className={classes.morphRemove} title="Remove word">×</button>
                   )}
                 </div>
               ))}
             </div>
             <div className={classes.morphFooter}>
-              <button onClick={() => setDraftForms(prev => [...prev, ''])} className={classes.addMorph}>+ morpheme</button>
+              <button onClick={() => setDraftForms(prev => [...prev, ''])} className={classes.addMorph}>+ word</button>
               <div className={classes.morphActions}>
                 <button onClick={cancelMorphemes} className={classes.miniCancel}>Cancel</button>
                 <button onClick={saveMorphemes} className={classes.miniSave}>Save</button>
@@ -432,7 +432,7 @@ export const TokenVisualizer = ({
     if (invalid.length) {
       blocks.push(
         <div key="invalid" className={classes.invalidNote}>
-          {invalid.length} word{invalid.length !== 1 ? 's' : ''} no longer match the edited text — save and re-tokenize to resync.
+          {invalid.length} token{invalid.length !== 1 ? 's' : ''} no longer match the edited text — save and re-tokenize to resync.
         </div>
       );
     }
@@ -454,8 +454,8 @@ export const TokenVisualizer = ({
         {renderText()}
       </div>
       <p className={classes.hint}>
-        Click a word to toggle a sentence boundary; hover for Morphemes / Delete; select text to create a word.
-        With a word hovered, <code>s</code>/<code>S</code> move its start, <code>d</code>/<code>D</code> move its end.
+        Click a token to toggle a sentence boundary; hover for Words / Delete; select text to create a token.
+        With a token hovered, <code>s</code>/<code>S</code> move its start, <code>d</code>/<code>D</code> move its end.
       </p>
     </div>
   );

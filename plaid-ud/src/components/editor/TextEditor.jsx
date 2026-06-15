@@ -284,7 +284,7 @@ This is a second sentence for testing.`}
             )}
 
             <Text size="sm" fw={500} c="dimmed" ml="auto">
-              {wordTokens.length} word{wordTokens.length !== 1 ? 's' : ''}, {sentenceTokens.length} sentence{sentenceTokens.length !== 1 ? 's' : ''}
+              {wordTokens.length} token{wordTokens.length !== 1 ? 's' : ''}, {sentenceTokens.length} sentence{sentenceTokens.length !== 1 ? 's' : ''}
             </Text>
           </Group>
 

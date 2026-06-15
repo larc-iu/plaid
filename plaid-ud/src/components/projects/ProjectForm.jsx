@@ -60,14 +60,14 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
       // B4: sentenceLayer.setConfig + wordLayer.create
       client.beginBatch();
       client.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
-      client.tokenLayers.create(textLayerId, 'Words', 'non-overlapping', sentenceLayerId);
+      client.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
       const b4 = await client.submitBatch();
       const wordLayerId = b4[1].body.id;
 
       // B5: wordLayer.setConfig + morphemeLayer.create
       client.beginBatch();
       client.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
-      client.tokenLayers.create(textLayerId, 'Morphemes', 'any', wordLayerId);
+      client.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
       const b5 = await client.submitBatch();
       const morphemeLayerId = b5[1].body.id;
 
@@ -166,7 +166,7 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
             </Text>
             <List size="sm" spacing={4} mt="xs" c="dimmed">
               <List.Item>Text layer</List.Item>
-              <List.Item>Token hierarchy: Sentences &rarr; Words &rarr; Morphemes</List.Item>
+              <List.Item>Token hierarchy: Sentences &rarr; Tokens &rarr; Words</List.Item>
               <List.Item>Span layers for: Form, Lemma, UPOS, XPOS, Features</List.Item>
               <List.Item>Relation layer for dependency parsing</List.Item>
             </List>
