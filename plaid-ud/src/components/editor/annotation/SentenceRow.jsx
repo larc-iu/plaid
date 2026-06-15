@@ -832,21 +832,6 @@ export const SentenceRow = React.memo(({
 
   return (
     <div className="sentence-container" onKeyDown={handleContainerKeyDown}>
-      {!isReadOnly && onConfirmTokens && hasInferred && (
-        <div className="sentence-confirm">
-          <Button
-            className="accept-predictions-btn"
-            size="compact-xs"
-            variant="subtle"
-            color="violet"
-            leftSection={<IconCheck size={12} />}
-            onClick={handleConfirmSentence}
-            title="Mark every machine prediction in this sentence as reviewed (hover a word for a per-word ✓ / Ctrl+Enter)."
-          >
-            Accept predictions
-          </Button>
-        </div>
-      )}
       {/* Dependency tree visualization */}
       <DependencyTree
         ref={treeRef}
@@ -907,6 +892,24 @@ export const SentenceRow = React.memo(({
           />
         ))}
       </div>
+
+      {/* Sentence-level "Accept predictions" — BELOW the grid and left-aligned
+          with the first token, so it reads as belonging to this sentence. */}
+      {!isReadOnly && onConfirmTokens && hasInferred && (
+        <div className="sentence-confirm">
+          <Button
+            className="accept-predictions-btn"
+            size="compact-xs"
+            variant="subtle"
+            color="violet"
+            leftSection={<IconCheck size={12} />}
+            onClick={handleConfirmSentence}
+            title="Mark every machine prediction in this sentence as reviewed (hover a word for a per-word ✓ / Ctrl+Enter)."
+          >
+            Accept predictions
+          </Button>
+        </div>
+      )}
     </div>
   );
 });

@@ -2,20 +2,20 @@
 .sentence-container {
   margin: 20px;
   margin-top: 56px;
+  /* Generous gap below each sentence so the whitespace groups a sentence with
+     its own "Accept predictions" button (which sits below the grid) and clearly
+     separates it from the next sentence. */
+  margin-bottom: 88px;
   width: 100%;
   position: relative; /* Enable absolute positioning for children */
 }
 
-/* "Accept predictions" affordance. Lives in the gap above the dependency tree,
-   left-aligned so it's always on-screen (the sentence starts at the left, while
-   the far right scrolls out of view on wide sentences). z-index 11 puts it ABOVE
-   the tree (z-index:10) — otherwise the tree's SVG paints over it and eats the
-   click. top:-48px clears the ROOT bar, which sits ~25px down inside the tree. */
+/* "Accept predictions" affordance. Sits BELOW this sentence's grid and is
+   left-aligned with the first token column (the labels column is 80px wide), so
+   it unambiguously belongs to the sentence above it. */
 .sentence-confirm {
-  position: absolute;
-  top: -48px;
-  left: 0;
-  z-index: 11;
+  margin-top: 6px;
+  margin-left: 80px;
 }
 
 /* Unobtrusive by default — transparent fill, light violet stroke, dimmed — so it
@@ -67,22 +67,26 @@
   position: relative; /* anchor the per-word accept ✓ */
 }
 
-/* Per-word "accept predictions" ✓ — hidden until you hover the word or focus one
-   of its cells (keyboard review), so it surfaces the Ctrl+Enter shortcut right
-   when you're on the word. tabIndex=-1 keeps it out of the cell tab order. */
+/* Per-word "accept predictions" ✓ — sits centered just ABOVE the baseline token.
+   Revealed whenever the cursor (or keyboard focus) is anywhere in the sentence,
+   so every word with unconfirmed predictions shows its ✓ together and each one
+   is reachable (hovering up toward it crosses the dependency tree's SVG, which
+   would otherwise drop a per-column hover). tabIndex=-1 keeps it out of the cell
+   tab order; z-index sits above the tree (z-index:10) so it stays clickable. */
 .word-accept {
   position: absolute;
-  top: 0;
-  right: -2px;
-  /* Above the dependency tree (z-index:10) + its transparent drag hit-areas,
-     which otherwise paint over and swallow clicks on the ✓. */
+  /* Centered over the column, lifted just above the baseline token. No
+     `transform` — a transform makes this a stacking context that ends up behind
+     the tree SVG, swallowing the click. */
+  top: -20px;
+  left: calc(50% - 9px); /* 9px ≈ half the xs ActionIcon */
   z-index: 12;
   opacity: 0;
   pointer-events: none;
   transition: opacity 100ms ease;
 }
-.token-column:hover .word-accept,
-.token-column:focus-within .word-accept {
+.sentence-container:hover .word-accept,
+.sentence-container:focus-within .word-accept {
   opacity: 1;
   pointer-events: auto;
 }
