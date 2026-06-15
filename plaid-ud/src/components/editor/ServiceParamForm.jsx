@@ -62,6 +62,10 @@ function ParamField({ param, value, error, onChange, disabled }) {
           onChange={(v) => onChange(v)}
           allowDeselect={false}
           disabled={disabled}
+          // Render the dropdown inside this form's DOM, not a body portal. When
+          // the form lives in a Popover (the editor's service-options panel),
+          // a portaled dropdown counts as an outside click and closes it.
+          comboboxProps={{ withinPortal: false }}
         />
       );
     case 'multiselect':
@@ -74,6 +78,7 @@ function ParamField({ param, value, error, onChange, disabled }) {
           value={Array.isArray(value) ? value : []}
           onChange={onChange}
           disabled={disabled}
+          comboboxProps={{ withinPortal: false }}
         />
       );
     case 'string':
