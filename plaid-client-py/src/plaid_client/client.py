@@ -31,6 +31,19 @@ def _body_of(**kwargs):
     return {k: v for k, v in kwargs.items() if v is not _UNSET}
 
 
+class _BatchContext:
+    """Carries the submitted results out of a ``with client.batch()`` block.
+
+    A context manager can't return a value, so the block's batch results land on
+    this object's ``.results`` after the block exits cleanly (``[]`` for an empty
+    block or on abort).
+    """
+    __slots__ = ('results',)
+
+    def __init__(self):
+        self.results = []
+
+
 class _Resource:
     def __init__(self, client: PlaidClient):
         self._client = client
@@ -2026,6 +2039,40 @@ class PlaidClient:
             Whether the client is currently collecting batch operations.
         """
         return self.is_batching
+
+    @contextmanager
+    def batched(self):
+        """Collect the calls in this block into ONE atomic batch request.
+
+        Begins a batch, runs the block (every mutating call inside is queued
+        instead of sent), then on clean exit submits all queued ops as a single
+        atomic request — or, if the block raises, aborts the batch so a
+        half-open batch can never silently swallow later non-batch calls. The
+        submitted results land on the yielded object's ``.results`` (a context
+        manager can't return a value)::
+
+            with client.batched() as b:
+                client.tokens.bulk_create(sentence_ops)
+                client.tokens.bulk_create(word_ops)
+            sentence_results, word_results = b.results
+
+        An empty block submits nothing and leaves ``.results == []``. Server-side
+        a batch runs sequentially in one transaction, so a child op sees parents
+        created earlier in the same block, and any op's failure rolls the whole
+        batch back. Not nestable (begin/submit is per-client state).
+        """
+        self.begin_batch()
+        ctx = _BatchContext()
+        try:
+            yield ctx
+        except BaseException:
+            # Block failed (or was cancelled): drop the queued ops so the client
+            # leaves batch mode and later plain calls don't queue into it.
+            if self.is_batch_mode():
+                self.abort_batch()
+            raise
+        else:
+            ctx.results = self.submit_batch()
 
     def close(self) -> None:
         """Close the underlying HTTP session."""

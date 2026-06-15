@@ -1,6 +1,6 @@
 import stanza
 import traceback
-from plaid_client import (BaseService, TASKS, Param,
+from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
 
 
@@ -110,16 +110,6 @@ def relation_layer_by_ud_config(span_layer, key, fallback_index=0):
             return relation_layers[fallback_index]
         except IndexError:
             return relation_layers[0]
-    return None
-
-
-def token_layer_by_role(token_layers, role):
-    # Substrate token layers are bound by their shared role (config.plaid.role),
-    # NOT by the per-app ud.* flags. UD's "Morphemes" layer carries role
-    # "syntactic-word" (it holds CoNLL-U syntactic words), not "morpheme".
-    for layer in token_layers or []:
-        if layer.get("config", {}).get("plaid", {}).get("role") == role:
-            return layer
     return None
 
 
@@ -304,26 +294,27 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         log("Fetching document with layers…")
         full_document = client.documents.get(document_id, include_body=True)
         log("  …document fetched")
+        # Resolve the substrate by its cross-app role tag (config.plaid.role),
+        # never by position: find_by_role returns None rather than guessing, so
+        # a missing/mistagged baseline fails loudly instead of parsing the wrong
+        # text layer. The parse runs on (and offsets into) THIS baseline body —
+        # parsing one string while offsetting into another would corrupt tokens.
         text_layers = full_document["text_layers"]
-        text_layer = next(
-            (tl for tl in text_layers
-             if tl.get("config", {}).get("plaid", {}).get("role") == "baseline"),
-            text_layers[0],
-        )
+        text_layer = find_by_role(text_layers, ROLES.BASELINE)
+        if not text_layer:
+            raise RuntimeError("Project has no baseline-role text layer")
         text_id = text_layer["text"]["id"]
         body = text_layer["text"]["body"]
-        # The parse runs on (and computes offsets into) THIS baseline body. We
-        # deliberately re-resolve it here rather than trusting a caller-supplied
-        # string: the baseline-role layer is not necessarily text_layers[0] on a
-        # multi-text-layer document, and parsing one string while offsetting into
-        # another would corrupt every token.
         if not (body or "").strip():
             raise RuntimeError(f"Text content is empty for document {document_id}")
 
+        # Substrate token layers are bound by their shared role (config.plaid.role),
+        # NOT by the per-app ud.* flags. UD's "Morphemes" layer carries role
+        # "syntactic-word" (it holds CoNLL-U syntactic words), not "morpheme".
         token_layers = text_layer.get("token_layers", [])
-        sentence_layer = token_layer_by_role(token_layers, "sentence")
-        word_layer = token_layer_by_role(token_layers, "word")
-        morpheme_layer = token_layer_by_role(token_layers, "syntactic-word")
+        sentence_layer = find_by_role(token_layers, ROLES.SENTENCE)
+        word_layer = find_by_role(token_layers, ROLES.WORD)
+        morpheme_layer = find_by_role(token_layers, ROLES.SYNTACTIC_WORD)
 
         if not (sentence_layer and word_layer and morpheme_layer):
             raise RuntimeError("Project is missing the sentence/word/morpheme token layers")
@@ -530,9 +521,8 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         # sentence/word op lists are empty and only syntactic words land.
         log(f"Building token ops: {len(sentence_ops)} sentences, "
             f"{len(word_ops)} words, {len(morpheme_ops)} morphemes")
-        client.begin_batch()
-        order = []  # which kind sits at each index in submit_batch results
-        try:
+        order = []  # which kind sits at each index in the batch results
+        with client.batched() as token_batch:
             if sentence_ops:
                 client.tokens.bulk_create(sentence_ops)
                 order.append("sentences")
@@ -543,15 +533,8 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                 client.tokens.bulk_create(morpheme_ops)
                 order.append("morphemes")
             log(f"  Submitting token batch ({len(order)} ops)…")
-            token_results = client.submit_batch() if order else []
-            log("  …token batch returned")
-        finally:
-            # If submit_batch wasn't reached (e.g., `order` was empty, or an
-            # exception fired mid-queue), drop the dangling batch so later
-            # plain calls (including send_message in response_helper) don't
-            # silently queue into a never-submitted batch.
-            if client.is_batch_mode():
-                client.abort_batch()
+        token_results = token_batch.results
+        log("  …token batch returned")
         morpheme_ids = []
         if "sentences" in order:
             log(f"Created {len(sentence_ops)} sentence tokens")
@@ -611,9 +594,8 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         # partial-state tokens before re-creating.
         log(f"Building span ops: form={len(form_spans)}, lemma={len(lemma_spans)}, "
             f"upos={len(upos_spans)}, xpos={len(xpos_spans)}, features={len(feature_spans)}")
-        client.begin_batch()
         span_order = []
-        try:
+        with client.batched() as span_batch:
             if form_spans:
                 client.spans.bulk_create(form_spans)
                 span_order.append("form")
@@ -630,15 +612,8 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                 client.spans.bulk_create(feature_spans)
                 span_order.append("features")
             log(f"  Submitting span batch ({len(span_order)} ops)…")
-            span_results = client.submit_batch() if span_order else []
-            log("  …span batch returned")
-        finally:
-            # Same safety as the token batch: never leave the client in
-            # batch mode if submit_batch didn't run, or send_message inside
-            # response_helper will silently queue and the web client will
-            # time out.
-            if client.is_batch_mode():
-                client.abort_batch()
+        span_results = span_batch.results
+        log("  …span batch returned")
         if "lemma" in span_order:
             lemma_idx = span_order.index("lemma")
             created = span_results[lemma_idx]["body"]["ids"]
@@ -697,12 +672,6 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         print(f"Error parsing document {document_id}: {e}", flush=True)
         traceback.print_exc()
         raise e
-    finally:
-        # Belt-and-suspenders: if we somehow exit parse_document with the
-        # client still in batch mode, drop it so the caller's response_helper
-        # send_message doesn't silently queue.
-        if client.is_batch_mode():
-            client.abort_batch()
 
 
 class StanzaParserService(BaseService):

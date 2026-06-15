@@ -21,6 +21,13 @@ from plaid_client.provenance import (
     verify_on_edit,
     service_source,
 )
+from plaid_client.roles import (
+    PLAID_NAMESPACE,
+    ROLE_KEY,
+    ROLES,
+    read_role,
+    find_by_role,
+)
 
 __all__ = [
     "PlaidClient",
@@ -42,4 +49,9 @@ __all__ = [
     "is_protected",
     "verify_on_edit",
     "service_source",
+    "PLAID_NAMESPACE",
+    "ROLE_KEY",
+    "ROLES",
+    "read_role",
+    "find_by_role",
 ]
