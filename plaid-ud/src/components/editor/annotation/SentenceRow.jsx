@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Autocomplete } from '@mantine/core';
-import { IconChevronRight } from '@tabler/icons-react';
+import { Autocomplete, Button } from '@mantine/core';
+import { IconChevronRight, IconCheck } from '@tabler/icons-react';
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
@@ -640,6 +640,7 @@ export const SentenceRow = React.memo(({
   onRelationCreate,
   onRelationUpdate,
   onRelationDelete,
+  onConfirmTokens,
   sentenceIndex = 0,
   totalTokensBefore = 0,
   vocab,
@@ -762,8 +763,50 @@ export const SentenceRow = React.memo(({
     return true;
   }, [tokenData, NAV_FIELDS]);
 
+  // Provenance review (see ConlluDocument.confirmTokens): show an "Accept
+  // predictions" affordance only when this sentence still has machine-made,
+  // unverified material — on a span (lemma/xpos/upos/feats) or a relation.
+  const hasInferred = useMemo(() => {
+    const spanInferred = tokenData.some((d) =>
+      isInferredSpan(d.lemma) || isInferredSpan(d.xpos) || isInferredSpan(d.upos)
+      || (d.feats || []).some(isInferredSpan));
+    return spanInferred || (relations || []).some((r) => provState(r.metadata) === PROV_STATES.MACHINE);
+  }, [tokenData, relations]);
+
+  const handleConfirmSentence = useCallback(() => {
+    onConfirmTokens?.(tokenData.map((d) => d.token.id));
+  }, [onConfirmTokens, tokenData]);
+
+  // Ctrl/Cmd+Enter confirms just the focused token. The focused cell's input id
+  // is `${tokenId}-${field}` — read it off the event target (the cell's own
+  // Enter handler may blur before this bubbling handler runs, so activeElement
+  // is unreliable, but e.target still points at the input).
+  const handleContainerKeyDown = useCallback((e) => {
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+    if (isReadOnly || !onConfirmTokens) return;
+    const m = /^(.*)-(?:lemma|xpos|upos|feats)$/.exec(e.target?.id || '');
+    if (m) {
+      e.preventDefault();
+      onConfirmTokens([m[1]]);
+    }
+  }, [isReadOnly, onConfirmTokens]);
+
   return (
-    <div className="sentence-container">
+    <div className="sentence-container" onKeyDown={handleContainerKeyDown}>
+      {!isReadOnly && onConfirmTokens && hasInferred && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+          <Button
+            size="compact-xs"
+            variant="subtle"
+            color="violet"
+            leftSection={<IconCheck size={12} />}
+            onClick={handleConfirmSentence}
+            title="Mark every machine prediction in this sentence as reviewed. Ctrl+Enter on a cell confirms just that word."
+          >
+            Accept predictions
+          </Button>
+        </div>
+      )}
       {/* Dependency tree visualization */}
       <DependencyTree
         tokens={sentenceData.tokens.map(t => t.token)}

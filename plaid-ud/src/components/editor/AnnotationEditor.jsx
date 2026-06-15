@@ -215,6 +215,7 @@ export const AnnotationEditor = () => {
   const handleRelationCreate = useCallback((s, t, dep) => doc?.createRelation(s, t, dep), [doc]);
   const handleRelationUpdate = useCallback((id, dep) => doc?.updateRelation(id, dep), [doc]);
   const handleRelationDelete = useCallback((id) => doc?.deleteRelation(id), [doc]);
+  const handleConfirmTokens = useCallback((tokenIds) => doc?.confirmTokens(tokenIds), [doc]);
 
   // NLP Service integration
   const {
@@ -504,6 +505,7 @@ export const AnnotationEditor = () => {
                     onRelationCreate={readOnly ? null : handleRelationCreate}
                     onRelationUpdate={readOnly ? null : handleRelationUpdate}
                     onRelationDelete={readOnly ? null : handleRelationDelete}
+                    onConfirmTokens={readOnly ? null : handleConfirmTokens}
                     sentenceIndex={index}
                     totalTokensBefore={totalTokensBefore}
                     estimatedHeight={250} // Estimated height for placeholder

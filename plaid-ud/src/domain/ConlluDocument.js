@@ -1256,6 +1256,66 @@ export class ConlluDocument {
     });
   }
 
+  // Confirm machine-made (unverified) predictions on the given tokens WITHOUT
+  // changing their values: stamp { provConfirmed: true } on every inferred span
+  // (lemma/upos/xpos/features) and incoming dependency relation, so a later
+  // re-parse's protect-guard leaves the reviewed material alone. Human-made and
+  // already-verified annotations are skipped (verifyOnEdit returns null for
+  // them). Used by the editor's per-token Ctrl+Enter and per-sentence
+  // "Accept predictions" gestures.
+  async confirmTokens(tokenIds) {
+    const idSet = new Set(tokenIds || []);
+    if (idSet.size === 0) return false;
+    return this._withSaving('Failed to confirm annotations', async () => {
+      const info = this.layerInfo;
+      const spanLayers = [info.lemmaLayer, info.uposLayer, info.xposLayer, info.featuresLayer].filter(Boolean);
+
+      // Machine-unverified spans on the target tokens.
+      const spanPatchById = new Map();
+      for (const layer of spanLayers) {
+        for (const span of layer.spans || []) {
+          if (Array.isArray(span.tokens) && span.tokens.some(t => idSet.has(t))) {
+            const verify = verifyOnEdit(span.metadata);
+            if (verify) spanPatchById.set(span.id, verify);
+          }
+        }
+      }
+
+      // Incoming dependency relations: the dependent is the relation's TARGET
+      // lemma span, so map target span → its tokens and match against the set.
+      const lemmaTokensBySpan = new Map((info.lemmaLayer?.spans || []).map(s => [s.id, s.tokens || []]));
+      const relPatchById = new Map();
+      for (const rel of info.relationLayer?.relations || []) {
+        const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
+        if (targetTokens.some(t => idSet.has(t))) {
+          const verify = verifyOnEdit(rel.metadata);
+          if (verify) relPatchById.set(rel.id, verify);
+        }
+      }
+
+      if (spanPatchById.size === 0 && relPatchById.size === 0) return; // nothing to confirm
+
+      // Optimistic: stamp confirmed locally so the inferred styling clears now.
+      this._applyRawPatch((next, infoNext) => {
+        for (const layer of [infoNext.lemmaLayer, infoNext.uposLayer, infoNext.xposLayer, infoNext.featuresLayer]) {
+          for (const span of layer?.spans || []) {
+            const patch = spanPatchById.get(span.id);
+            if (patch) span.metadata = { ...(span.metadata || {}), ...patch };
+          }
+        }
+        for (const rel of infoNext.relationLayer?.relations || []) {
+          const patch = relPatchById.get(rel.id);
+          if (patch) rel.metadata = { ...(rel.metadata || {}), ...patch };
+        }
+      });
+
+      this._client.beginBatch();
+      for (const [id, patch] of spanPatchById) this._client.spans.patchMetadata(id, patch);
+      for (const [id, patch] of relPatchById) this._client.relations.patchMetadata(id, patch);
+      await this._client.submitBatch();
+    });
+  }
+
   // ============================================================
   // CoNLL-U export
   // ============================================================
