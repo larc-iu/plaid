@@ -1,9 +1,6 @@
-import sys
-import threading
 import stanza
-import requests
 import traceback
-from plaid_client import (PlaidClient, TASKS, Param, build_extras,
+from plaid_client import (BaseService, TASKS, Param,
                           stamp_inferred, is_protected, service_source)
 
 
@@ -66,28 +63,13 @@ rewrite; if someone else holds the lock, the parse is refused rather than
 clobbering their work.
 """
 
-# Standardized self-description carried in `extras` for discovery. The parameter
-# `language` is read back as `request_data['language']` in the handler.
-PARSER_EXTRAS = build_extras(
-    tasks=[TASKS.PARSE],
-    summary=PARSER_SUMMARY,
-    parameters=[
-        Param.enum('language', 'Language', STANZA_LANGUAGES, default='en',
-                   description='Language models Stanza uses for parsing.'),
-        Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
-                      description='Re-parse sentences even where a human created or '
-                                  'verified annotations (discarding them). When off, '
-                                  'those sentences are left untouched.'),
-    ],
-)
-
-
 class PipelineProvider:
     """Lazily build and cache one Stanza pipeline per language.
 
     The pipelines are not thread-safe, so callers must build + drive them under
-    the shared parse lock (see `make_handler`). Each distinct language used adds
-    one cached pipeline (and a one-time model download)."""
+    a single-flight lock (BaseService.handle_service_request provides one). Each
+    distinct language used adds one cached pipeline (and a one-time model
+    download)."""
 
     def __init__(self, processors='tokenize,pos,lemma,depparse'):
         self.processors = processors
@@ -105,36 +87,6 @@ class PipelineProvider:
                                    tokenize_pretokenized=pretokenized)
             self._cache[key] = pipe
         return pipe
-
-
-def get_token(api_url):
-    """Resolve a token from `.token`, prompting + validating on first run.
-
-    Returns the raw token STRING (not a client) so each served project can
-    get its own client instance with it.
-
-    Prefer a named API token, minted in the web UI under your user profile's
-    "API Tokens" panel. Unlike a login session token it doesn't expire,
-    survives password changes, can be revoked on its own, and — because it's a
-    distinct credential — its name shows up in the audit history, so the rows
-    this parser writes are clearly attributable to the machine. Paste it once
-    and it's cached in `.token`.
-    """
-    try:
-        with open(".token", "r") as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        while True:
-            token = input("Enter Plaid API token (create one in the web UI: Profile → API Tokens): ").strip()
-            try:
-                _ = PlaidClient(api_url, token).projects.list()
-            except requests.exceptions.HTTPError as e:
-                print("Error when attempting to connect to Plaid API: {}".format(e))
-                continue
-            with open(".token", "w") as f:
-                f.write(token)
-                print("Token valid. Wrote token to .token")
-            return token
 
 
 def span_layer_by_ud_config(layers, key, fallback_name=None):
@@ -313,7 +265,7 @@ def protected_sentence_indexes(morpheme_layer, lemma_layer, morph_to_sent):
     return protected
 
 
-def parse_document(pipeline_provider, client, document_id, text_content, language='en', overwrite=False):
+def parse_document(pipeline_provider, client, document_id, language='en', overwrite=False):
     """Parse a document with Stanza and write UD annotations into Plaid.
 
     Two modes, chosen by what already exists:
@@ -360,6 +312,13 @@ def parse_document(pipeline_provider, client, document_id, text_content, languag
         )
         text_id = text_layer["text"]["id"]
         body = text_layer["text"]["body"]
+        # The parse runs on (and computes offsets into) THIS baseline body. We
+        # deliberately re-resolve it here rather than trusting a caller-supplied
+        # string: the baseline-role layer is not necessarily text_layers[0] on a
+        # multi-text-layer document, and parsing one string while offsetting into
+        # another would corrupt every token.
+        if not (body or "").strip():
+            raise RuntimeError(f"Text content is empty for document {document_id}")
 
         token_layers = text_layer.get("token_layers", [])
         sentence_layer = token_layer_by_role(token_layers, "sentence")
@@ -473,7 +432,7 @@ def parse_document(pipeline_provider, client, document_id, text_content, languag
 
             log("Tokenizing + parsing from scratch…")
             pipeline = pipeline_provider.get(language)
-            stanza_doc = pipeline(text_content)
+            stanza_doc = pipeline(body)
             sentences_data = stanza_doc.to_dict()
             log(f"Parsed {len(sentences_data)} sentences")
             parse_summary = {"mode": "full", "parsed_sentences": len(sentences_data),
@@ -746,190 +705,86 @@ def parse_document(pipeline_provider, client, document_id, text_content, languag
             client.abort_batch()
 
 
-# The Python client's `serve()` reads snake_case keys here (`service_id` /
-# `service_name`), unlike most of the rest of plaid-client which is camelCase.
-# Don't be misled by the camelCase `serviceId` you'll see in messages on the
-# wire — that's the JSON shape; this dict is a kwargs bag for the Python helper.
-SERVICE_INFO = {
-    'service_id': 'stanza-parser',
-    'service_name': 'Stanza Parser',
-    'description': 'Provides document parsing using Stanza pipeline with tokenization, POS tagging, lemmatization, and dependency parsing'
-}
+class StanzaParserService(BaseService):
+    """Stanza-based UD parser served on every accessible project.
 
+    Built on the shared `BaseService` SDK (client/token bootstrap, registration,
+    the single-flight processing lock, and the CLI loop). Per-request user args
+    (`language`, `overwrite`) are declared in the parameter schema below and read
+    back from `request_data` in `process_request`. Audit attribution comes from
+    the named API token the service authenticates with (mint one under
+    Profile → API Tokens), so the rows it writes are attributable to the machine.
+    """
 
-def make_handler(client, pipeline_provider, parse_lock):
-    """Build a per-project service-request handler bound to that project's own
-    `client`. Each served project gets its own client so batch state (which is
-    per-client, mutable instance state) never collides across projects' SSE
-    threads."""
-    def handle_service_request(request_data, response_helper):
-        """Handle structured service requests for document parsing.
+    def __init__(self):
+        super().__init__(
+            service_id='stanza-parser',
+            service_name='Stanza Parser',
+            description=('Provides document parsing using Stanza pipeline with '
+                         'tokenization, POS tagging, lemmatization, and dependency parsing'),
+            tasks=[TASKS.PARSE],
+            summary=PARSER_SUMMARY,
+            parameters=[
+                Param.enum('language', 'Language', STANZA_LANGUAGES, default='en',
+                           description='Language models Stanza uses for parsing.'),
+                Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
+                              description='Re-parse sentences even where a human created or '
+                                          'verified annotations (discarding them). When off, '
+                                          'those sentences are left untouched.'),
+            ],
+        )
+        self.pipeline_provider = None
 
-        The Python client normalizes incoming JSON keys to snake_case before
-        the handler runs (see `transform_response` in plaid_client/transforms.py),
-        so the JS sender's `documentId` arrives here as `document_id`. The
-        outbound `response_helper.complete(...)` payload goes through the
-        symmetric snake→kebab transform on send, so use snake_case here too.
-        """
+    def setup(self, args):
+        # Pipelines are built lazily per requested language and cached; preload
+        # the default so the common case is warm at startup.
+        print("Loading Stanza pipeline (en)…")
+        self.pipeline_provider = PipelineProvider(processors='tokenize,pos,lemma,depparse')
+        self.pipeline_provider.get('en')
+
+    def process_request(self, request_data, response_helper):
+        # `BaseService.handle_service_request` already wraps this in a
+        # non-blocking single-flight lock — only one parse runs at a time across
+        # every served project, which is what the shared (not thread-safe) Stanza
+        # pipelines need — and reports any exception via response_helper.error.
+        # So this just does the work; a second concurrent request is rejected
+        # with "try again later" rather than queued (parsing is CPU-bound).
         print(f"Received service request: {request_data}")
         document_id = request_data.get('document_id')
-        # User-controlled arguments (declared in PARSER_EXTRAS' parameter schema).
+        # User-controlled arguments (declared in the parameter schema above; the
+        # client delivers request keys to Python as snake_case).
         language = request_data.get('language', 'en')
         overwrite = bool(request_data.get('overwrite', False))
-        try:
-            # Get document content
-            document = client.documents.get(document_id, include_body=True)
-            text_layer = document["text_layers"][0]
-            text_content = text_layer["text"]["body"]
-            if not text_content.strip():
-                response_helper.error(f"Text content is empty for document {document_id}")
-                return
 
-            # Send progress updates
-            response_helper.progress(10, f"Starting document parsing ({language})...")
+        response_helper.progress(10, f"Starting document parsing ({language})...")
+        # The parse deletes + recreates tokens / spans / relations, so a human
+        # editing the same document — or another service — would race the
+        # rewrite. Hold plaid-core's server-enforced document lock for the
+        # duration: writes by another user are rejected with 423 while we hold
+        # it, and if someone else already holds it `locked` raises and we refuse
+        # rather than clobber their work.
+        response_helper.progress(15, "Acquiring document lock...")
+        with self.client.documents.locked(document_id):
+            summary = parse_document(self.pipeline_provider, self.client, document_id,
+                                     language=language, overwrite=overwrite)
 
-            # Serialize the actual parse across ALL served projects: the Stanza
-            # pipelines are shared and not thread-safe, and parse_document drives
-            # this project's client through batch mode. With one SSE thread per
-            # served project, two requests could otherwise run concurrently; the
-            # lock makes them run one at a time. (Document fetch + the empty
-            # check above stay outside the lock — they're per-client reads.)
-            # Building the per-language pipeline also happens under the lock,
-            # since Stanza model loading is not thread-safe.
-            #
-            # `parse_lock` is process-local (Stanza thread-safety); it does NOT
-            # protect the DOCUMENT. The parse deletes + recreates tokens / spans
-            # / relations, so a human editing the same document in the web UI —
-            # or another service — would race the rewrite. Hold plaid-core's
-            # server-enforced document lock for the duration (writes by another
-            # user are rejected with 423 while we hold it; if someone else holds
-            # it, `locked` raises and we refuse rather than clobber their work).
-            # Acquire once we actually hold the Stanza lock and are about to work.
-            with parse_lock:
-                response_helper.progress(15, "Acquiring document lock...")
-                with client.documents.locked(document_id):
-                    summary = parse_document(pipeline_provider, client, document_id, text_content,
-                                             language=language, overwrite=overwrite)
-
-            # parse_document returns a summary dict on success (and raises on
-            # failure, handled below). Report what it actually did.
-            parsed = summary.get("parsed_sentences", 0)
-            skipped = summary.get("skipped_sentences", 0)
-            msg = f"Parsed {parsed} sentence(s)"
-            if skipped:
-                msg += f"; kept {skipped} sentence(s) with human annotations"
-            response_helper.progress(100, msg)
-            response_helper.complete({"document_id": document_id, "status": "success", **summary})
-
-        except Exception as e:
-            print(f"Error during parse: {str(e)}")
-            response_helper.error(f"Parsing error: {str(e)}")
-            traceback.print_exc()
-
-    return handle_service_request
-
-
-def serve_project(api_url, token, project_id, pipeline_provider, parse_lock):
-    """Register the Stanza service on a single project. Returns its
-    ServiceRegistration (one SSE connection / daemon thread)."""
-    client = PlaidClient(api_url, token)
-    # Audit attribution comes from the named API token the client authenticates
-    # with (its name shows up as the actor in the audit log). Mint one in the
-    # web UI under Profile → API Tokens.
-    handler = make_handler(client, pipeline_provider, parse_lock)
-    # The standardized self-description (tasks/summary/parameters) rides along
-    # for discovery as the 4th `serve` argument.
-    return client.messages.serve(project_id, SERVICE_INFO, handler, PARSER_EXTRAS)
-
-
-def main():
-    # CLI:
-    #   python parser_service.py                 → serve ALL accessible projects
-    #   python parser_service.py --all [URL]     → serve ALL accessible projects
-    #   python parser_service.py PROJECT_ID [URL]→ serve one project (back-compat)
-    #
-    # "All accessible" = exactly the set the token's user can reach
-    # (`projects.list()`). Service registration is project-scoped server-side
-    # (one SSE stream per project at /projects/:id/listen), so universal
-    # coverage is achieved by fanning out one registration per project.
-    argv = sys.argv[1:]
-    serve_all = False
-    project_id = None
-    if argv and argv[0] == "--all":
-        serve_all = True
-        argv = argv[1:]
-    elif argv:
-        project_id = argv[0]
-        argv = argv[1:]
-    else:
-        # No positional project given → default to universal coverage.
-        serve_all = True
-    api_url = argv[0] if argv else "http://localhost:8085"
-
-    token = get_token(api_url)
-    bootstrap = PlaidClient(api_url, token)
-
-    # Resolve the target project set.
-    if serve_all:
-        try:
-            projects = bootstrap.projects.list()
-        except requests.exceptions.HTTPError as e:
-            print(f"Failed to list projects: {e}", file=sys.stderr)
-            sys.exit(1)
-        targets = [(p["id"], p.get("name", p["id"])) for p in projects]
-        if not targets:
-            print("Token has access to no projects; nothing to serve.", file=sys.stderr)
-            sys.exit(1)
-    else:
-        try:
-            proj = bootstrap.projects.get(project_id)
-        except requests.exceptions.HTTPError as e:
-            print(f"Invalid project ID {project_id}: {e}", file=sys.stderr)
-            sys.exit(1)
-        targets = [(project_id, proj.get("name", project_id))]
-
-    # Pipelines are built lazily per requested language and cached; preload the
-    # default so the common case is warm at startup.
-    print("Loading Stanza pipeline (en)…")
-    pipeline_provider = PipelineProvider(processors='tokenize,pos,lemma,depparse')
-    pipeline_provider.get('en')
-    # One global lock serializes parses across every project's SSE thread (the
-    # pipelines are shared + not thread-safe). Parsing is CPU-bound, so one-at-a-
-    # time is the right model regardless.
-    parse_lock = threading.Lock()
-
-    registrations = []
-    for pid, pname in targets:
-        try:
-            reg = serve_project(api_url, token, pid, pipeline_provider, parse_lock)
-            registrations.append((pid, pname, reg))
-            print(f"  Serving project {pname} ({pid})")
-        except Exception as e:
-            # A project the token can list but not register on (e.g. lost access
-            # mid-flight) shouldn't take down the whole service.
-            print(f"  Skipping project {pid}: failed to register service: {e}", file=sys.stderr)
-
-    if not registrations:
-        print("No services registered; exiting.", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Stanza Parser registered on {len(registrations)} project(s). Waiting for requests...")
-    print("Press Ctrl+C to stop.")
-
-    try:
-        # ServiceRegistration objects expose is_running()/stop() directly.
-        import time
-        while any(reg.is_running() for _, _, reg in registrations):
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\nStopping service(s)...")
-        for _, _, reg in registrations:
-            try:
-                reg.stop()
-            except Exception:
-                pass
-        print("Service(s) stopped.")
+        # parse_document returns a summary dict; report what it actually did.
+        parsed = summary.get("parsed_sentences", 0)
+        skipped = summary.get("skipped_sentences", 0)
+        msg = f"Parsed {parsed} sentence(s)"
+        if skipped:
+            msg += f"; kept {skipped} sentence(s) with human annotations"
+        response_helper.progress(100, msg)
+        # Outbound keys are snake_case (already so in `summary`): the client's
+        # snake→kebab transform on send + the JS client's kebab→camel on receive
+        # deliver them to the UI as camelCase.
+        response_helper.complete({"document_id": document_id, "status": "success", **summary})
 
 
 if __name__ == '__main__':
-    main()
+    # CLI (handled by BaseService.run):
+    #   python ud_parse_stanza.py                → serve ALL accessible projects
+    #   python ud_parse_stanza.py --all          → serve ALL accessible projects
+    #   python ud_parse_stanza.py PROJECT_ID     → serve one project
+    #   --url URL                                → Plaid API URL (default :8085)
+    StanzaParserService().run()

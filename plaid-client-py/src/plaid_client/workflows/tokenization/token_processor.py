@@ -86,7 +86,7 @@ class TokenProcessor:
             
             if not text_content.strip():
                 response_helper.error(f"Text content is empty for document {document_id}")
-                return {"tokensCreated": 0, "tokensDeleted": 0, "sentencesCreated": 0}
+                return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
             
             # Get existing tokens
             response_helper.progress(20, "Analyzing existing tokens...")
@@ -101,7 +101,7 @@ class TokenProcessor:
             
             if not primary_layer:
                 response_helper.error("Primary token layer not found")
-                return {"tokensCreated": 0, "tokensDeleted": 0, "sentencesCreated": 0}
+                return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
             
             existing_tokens = primary_layer.get("tokens", [])
             existing_sentences = sentence_layer.get("tokens", []) if sentence_layer else []
@@ -144,7 +144,7 @@ class TokenProcessor:
                     response_helper.error(
                         f"Sentence tokenization did not produce a valid partition of [0, {text_length})"
                     )
-                    return {"tokensCreated": 0, "tokensDeleted": 0, "sentencesCreated": 0}
+                    return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
 
                 # Provenance write contract: the sentence reset cascade-deletes
                 # every sentence-level annotation. Machine-made UNVERIFIED ones
@@ -156,7 +156,7 @@ class TokenProcessor:
                         f"Re-tokenizing would delete {protected} human-made or human-verified "
                         f"sentence-level annotation(s); re-run with overwrite enabled to replace them."
                     )
-                    return {"tokensCreated": 0, "tokensDeleted": 0, "sentencesCreated": 0}
+                    return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
             elif sentence_layer and len(existing_sentences) != 1:
                 response_helper.progress(33, "Skipping sentence tokenization (not exactly one existing sentence)...")
 
@@ -305,9 +305,9 @@ class TokenProcessor:
                 client.submit_batch()
             
             return {
-                "tokensCreated": len(words_to_create) if words_to_create else 0,
-                "tokensDeleted": tokens_deleted,
-                "sentencesCreated": sentences_created
+                "tokens_created": len(words_to_create) if words_to_create else 0,
+                "tokens_deleted": tokens_deleted,
+                "sentences_created": sentences_created
             }
             
         except Exception as e:

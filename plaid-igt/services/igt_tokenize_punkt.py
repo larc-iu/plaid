@@ -186,9 +186,9 @@ class NLTKTokenizerService(BaseService):
             
             response_helper.progress(100, "Tokenization completed successfully")
             response_helper.complete({
-                "documentId": document_id,
+                "document_id": document_id,
                 "status": "success",
-                **results  # Include tokensCreated, tokensDeleted, sentencesCreated
+                **results  # tokens_created, tokens_deleted, sentences_created
             })
             
         except Exception as e:

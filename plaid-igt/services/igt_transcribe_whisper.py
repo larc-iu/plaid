@@ -255,10 +255,10 @@ class WhisperASRService(BaseService):
             
             response_helper.progress(100, "ASR processing completed successfully")
             response_helper.complete({
-                "documentId": document_id,
+                "document_id": document_id,
                 "status": "success",
-                "tokensCreated": tokens_created,
-                "segmentsTranscribed": len(alignments)
+                "tokens_created": tokens_created,
+                "segments_transcribed": len(alignments)
             })
             
         except Exception as e:

@@ -74,7 +74,12 @@ class BaseService(ABC):
                 token = f.read().strip()
         except FileNotFoundError:
             while True:
-                token = input("Enter Plaid API token: ").strip()
+                # Prefer a NAMED API token (web UI: Profile → API Tokens): it
+                # doesn't expire, survives password changes, can be revoked on
+                # its own, and its name shows up as the actor in the audit log,
+                # so rows a service writes are attributable to the machine.
+                token = input("Enter Plaid API token (create one in the web UI: "
+                              "Profile → API Tokens): ").strip()
                 client = PlaidClient(api_url, token)
                 # Any failure validating the token (bad token -> PlaidAPIError,
                 # or a network error) just means "try again".
