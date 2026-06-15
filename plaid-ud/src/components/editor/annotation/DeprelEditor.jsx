@@ -56,8 +56,16 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
       onChange={(v) => { setValue(v); setPristine(false); }}
       onFocus={(e) => { setPristine(true); setTimeout(() => e.target.select?.(), 0); }}
       onBlur={() => once(() => onCommit(value))}
+      // Arrow-key navigation only HIGHLIGHTS an option; it doesn't update
+      // `value`. Mantine applies the highlighted option via onOptionSubmit (on
+      // Enter or click) — commit *that* value. The Enter branch below handles
+      // free text (no highlighted option, so onOptionSubmit never fires); it's
+      // deferred to a microtask so that when an option IS highlighted,
+      // onOptionSubmit (which runs synchronously right after our keydown) wins
+      // and `once` blocks the stale typed-value commit.
+      onOptionSubmit={(v) => once(() => onCommit(v))}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); once(() => onCommit(value)); }
+        if (e.key === 'Enter') { e.preventDefault(); queueMicrotask(() => once(() => onCommit(value))); }
         else if (e.key === 'Escape') { e.preventDefault(); once(onCancel); }
         else if (e.key === 'Delete' && e.shiftKey) { e.preventDefault(); once(onDelete); }
         else if (e.key === 'Tab') { e.preventDefault(); once(() => onTab(value, e.shiftKey)); }
