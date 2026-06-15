@@ -568,6 +568,84 @@
         (when-let [t (:target cmap)]
           (add-where! st [:= (col ra :target_span_id) (col (ensure-var! st t constraints) :id)]))))))
 
+;; ---------------------------------------------------------------------------
+;; Implicit document co-location
+;;
+;; The relationship operators (covers / precedes / within / first-in / source /
+;; target / span topology / related*) are PHYSICALLY document-internal: a token
+;; only precedes a token in the same text, a span only covers its own tokens, a
+;; relation only links spans in its document. So entities connected by them share
+;; a document — but the planner doesn't know that, so a relation matched in a
+;; `:not` (or a relation self-join) gets SCANNED in full for every candidate
+;; sentence before the within/covers joins reveal which document it's in. The
+;; client shouldn't have to spell out a `doc` correlation to fix that; we do it
+;; here.
+;;
+;; For each RELATION var we add `relation.document_id = container.document_id`,
+;; where the container is the within/first-in parent (the sentence/word spine) in
+;; the relation's connected component. Only relations get the extra predicate:
+;; pinning the token/span join spine instead (a dense web of document_id
+;; equalities) measurably perturbs the planner into worse join orders, whereas a
+;; single relation->container edge lets it use idx_relations_layer_doc and keeps
+;; the existing token/span plan. The equality is always true for valid data
+;; (document_id is a non-null denormalized column on every annotation table), so
+;; results never change — this is purely a planning hint. Vocab links are
+;; excluded (vocab items are global, legitimately cross-document).
+;; ---------------------------------------------------------------------------
+
+(def ^:private doc-local-rel-ops
+  #{:covers :precedes :precedes* :within :first-in
+    :overlaps :contains :coextensive :related* :source :target})
+
+(defn- doc-local-edges
+  "Var pairs that document-local relationship clauses force into one document."
+  [clauses]
+  (mapcat (fn [c]
+            (let [h (first c)]
+              (cond
+                (doc-local-rel-ops h) [[(nth c 1) (nth c 2)]]
+                (= :relation h) (let [cmap (nth c 2 nil)]
+                                  (keep (fn [k] (when-let [s (get cmap k)] [(nth c 1) s]))
+                                        [:source :target]))
+                :else nil)))
+          clauses))
+
+(defn- container-vars
+  "Token vars used as the within/first-in PARENT — the spine to anchor onto."
+  [clauses]
+  (into #{} (keep #(case (first %) (:within :first-in) (nth % 2) nil)) clauses))
+
+(defn- union-find
+  "Returns a fn var->root for the components induced by `edges` over `vars`."
+  [vars edges]
+  (let [parent (atom (zipmap vars vars))]
+    (letfn [(root [x] (let [p (@parent x)]
+                        (if (or (nil? p) (= p x)) p
+                            (let [r (root p)] (swap! parent assoc x r) r))))]
+      (doseq [[a b] edges]
+        (let [ra (root a) rb (root b)]
+          (when (and ra rb (not= ra rb)) (swap! parent assoc ra rb))))
+      root)))
+
+(defn- anchor-relations!
+  "Pin each relation var to the document of a container token in its connected
+  component, so the planner can localize the relation by document (see the block
+  comment above). A no-op when a relation's component has no container token."
+  [st clauses]
+  (let [kinds (:kinds @st)
+        v->alias (:var->alias @st)
+        entity-var? (fn [v] (contains? entity-table (get kinds v)))
+        evars (filter entity-var? (keys v->alias))
+        root (union-find evars (filter (fn [[a b]] (and (entity-var? a) (entity-var? b)))
+                                       (doc-local-edges clauses)))
+        conts (filter #(and (entity-var? %) (= :token (get kinds %))) (container-vars clauses))]
+    (doseq [r evars
+            :when (= :relation (get kinds r))
+            :let [rr (root r)
+                  anchor (first (filter #(= rr (root %)) conts))]
+            :when anchor]
+      (add-where! st [:= (col (v->alias r) :document_id) (col (v->alias anchor) :document_id)]))))
+
 (defn- compile-not!
   "Compile a `[:not & inner-clauses]` clause to a correlated `NOT EXISTS`. A var
   already bound in the outer query is CORRELATED (the subquery references its
@@ -603,6 +681,7 @@
           (emit-entity-filters! sub-st (first c) (get-in @sub-st [:var->alias v]) (or cmap {}))
           (compile-relation-inline! sub-st inner-cons c))
         :else (compile-rel! sub-st constraints c)))
+    (anchor-relations! sub-st inner)
     (let [subq (cond-> {:select [1] :where (into [:and] (:where @sub-st))}
                  (seq (:from @sub-st)) (assoc :from (:from @sub-st)))]
       (add-where! outer-st [:not [:exists subq]]))
@@ -888,6 +967,7 @@
         (= ast/op-match (first clause)) (compile-regex-pred! st clause)
         (= :in (first clause)) (compile-in-pred! st clause)
         :else (compile-rel! st constraints clause)))
+    (anchor-relations! st (:where resolved))
     (assert-acl-invariant! st)
     (if (ast/aggregate? resolved)
       ;; aggregate mode: project the distinct-match columns; exec wraps in GROUP BY
