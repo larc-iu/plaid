@@ -706,9 +706,13 @@ export const SentenceRow = React.memo(({
 
   // Use the token positions hook
   const { tokenPositions, sentenceGridRef, tokenRefs } = useTokenPositions(
-    tokenData, 
+    tokenData,
     lemmaSpans
   );
+
+  // Imperative handle into this sentence's dependency tree, for the arrow
+  // handoff between the grid and the deprel labels.
+  const treeRef = useRef(null);
 
 
   // Detect if we're in read-only mode (historical state)
@@ -745,8 +749,14 @@ export const SentenceRow = React.memo(({
     let nextTokenIdx = tokenIndex;
     if (dir === 'up' || dir === 'down') {
       const fi = NAV_FIELDS.indexOf(field);
+      if (fi < 0) return false;
       const ni = fi + (dir === 'up' ? -1 : 1);
-      if (fi < 0 || ni < 0 || ni >= NAV_FIELDS.length) return false;
+      if (ni < 0) {
+        // Top annotation row + ArrowUp: hand off to this token's deprel label
+        // in the tree above. Falls through (dead-ends) if it has no relation.
+        return treeRef.current?.focusRelationForToken(tokenData[tokenIndex]?.token.id) || false;
+      }
+      if (ni >= NAV_FIELDS.length) return false;
       nextField = NAV_FIELDS[ni];
     } else if (dir === 'left' || dir === 'right') {
       const ni = tokenIndex + (dir === 'left' ? -1 : 1);
@@ -762,6 +772,14 @@ export const SentenceRow = React.memo(({
     el.focus();
     return true;
   }, [tokenData, NAV_FIELDS]);
+
+  // ArrowDown out of a deprel label lands on that dependent token's top
+  // (first visible) annotation cell — the mirror of the ArrowUp handoff above.
+  const focusGridCell = useCallback((tokenId) => {
+    const top = NAV_FIELDS[0];
+    if (!top) return;
+    document.getElementById(`${tokenId}-${top}`)?.focus();
+  }, [NAV_FIELDS]);
 
   // Provenance review (see ConlluDocument.confirmTokens): show an "Accept
   // predictions" affordance only when this sentence still has machine-made,
@@ -809,6 +827,7 @@ export const SentenceRow = React.memo(({
       )}
       {/* Dependency tree visualization */}
       <DependencyTree
+        ref={treeRef}
         tokens={sentenceData.tokens.map(t => t.token)}
         relations={relations}
         lemmaSpans={lemmaSpans}
@@ -819,6 +838,7 @@ export const SentenceRow = React.memo(({
         tokenPositions={tokenPositions}
         deprelColors={colors?.deprel}
         deprelVocab={vocab?.deprel}
+        onExitDown={focusGridCell}
       />
 
       {/* Main container with labels and columns */}

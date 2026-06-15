@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
 import { provCellTitle } from '../../../utils/provenanceUi.js';
@@ -9,7 +9,7 @@ import './DependencyTree.css';
 // label renders distinctly until a human edits it (which verifies it).
 const isInferredRelation = (relation) => provState(relation?.metadata) === PROV_STATES.MACHINE;
 
-export const DependencyTree = ({
+export const DependencyTree = forwardRef(({
   tokens,
   relations,
   lemmaSpans,
@@ -19,8 +19,9 @@ export const DependencyTree = ({
   textContent,
   tokenPositions = [],
   deprelColors,
-  deprelVocab
-}) => {
+  deprelVocab,
+  onExitDown
+}, ref) => {
   const [selectedSource, setSelectedSource] = useState(null);
   const [hoveredToken, setHoveredToken] = useState(null);
   const [editingRelation, setEditingRelation] = useState(null);
@@ -351,41 +352,17 @@ export const DependencyTree = ({
     return getLabelX(a) - getLabelX(b);
   });
 
-  // Handle keyboard navigation
+  // Global keydown: only the Ctrl+D entry point (jump into the dependency
+  // labels) and Escape (bail out of any in-progress interaction) live here.
+  // Per-label navigation (arrows / Tab / Enter) is handled element-scoped on the
+  // focused <text> below, so it doesn't fight this listener or fire once per
+  // mounted sentence.
   const handleKeyDown = (e) => {
-    // Handle initial focus with Ctrl+D (for Dependency labels)
     if (e.key === 'd' && e.ctrlKey && !focusedRelation && !editingRelation) {
       e.preventDefault();
       focusFirstRelation();
       return;
     }
-    
-    // Handle Tab navigation for dependency labels
-    if (e.key === 'Tab' && focusedRelation) {
-      e.preventDefault();
-      const currentIndex = sortedRelations.findIndex(r => r.id === focusedRelation);
-      
-      if (e.shiftKey) {
-        // Shift+Tab: Previous relation
-        const prevIndex = currentIndex > 0 ? currentIndex - 1 : sortedRelations.length - 1;
-        if (sortedRelations[prevIndex]) {
-          setFocusedRelation(sortedRelations[prevIndex].id);
-          const labelElement = labelRefs.current.get(sortedRelations[prevIndex].id);
-          labelElement?.focus();
-        }
-      } else {
-        // Tab: Next relation
-        const nextIndex = currentIndex < sortedRelations.length - 1 ? currentIndex + 1 : 0;
-        if (sortedRelations[nextIndex]) {
-          setFocusedRelation(sortedRelations[nextIndex].id);
-          const labelElement = labelRefs.current.get(sortedRelations[nextIndex].id);
-          labelElement?.focus();
-        }
-      }
-      return;
-    }
-    
-    // Handle Escape key
     if (e.key === 'Escape') {
       setSelectedSource(null);
       setEditingRelation(null);
@@ -400,6 +377,56 @@ export const DependencyTree = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [focusedRelation, editingRelation, sortedRelations, relations]);
+
+  // Selecting (not editing) a label keeps focus on its <text> so arrows/Tab can
+  // move on. When editing ends (Enter/Escape commit), the <foreignObject> editor
+  // unmounts and focus would fall to <body>; this returns it to the now-selected
+  // label so navigation continues. Editing transitions (editingRelation set)
+  // are skipped — the editor autofocuses itself.
+  useEffect(() => {
+    if (!editingRelation && focusedRelation) {
+      labelRefs.current.get(focusedRelation)?.focus();
+    }
+  }, [editingRelation, focusedRelation]);
+
+  // A relation's dependent is its `target` (source = head), so a token in the
+  // grid maps 1:1 to the label of the relation it heads (its own deprel). These
+  // power the arrow handoff between the grid and the tree.
+  const relationForToken = (tokenId) => {
+    const pos = adjustedTokenPositions.find((p) => p.token?.id === tokenId);
+    if (!pos) return null;
+    return relations.find((rel) => positionMatchesSpanId(pos, rel.target)) || null;
+  };
+  const tokenIdForRelation = (relation) => {
+    const pos = adjustedTokenPositions.find((p) => positionMatchesSpanId(p, relation.target));
+    return pos?.token?.id || null;
+  };
+  const selectRelation = (relationId) => {
+    setFocusedRelation(relationId);
+    labelRefs.current.get(relationId)?.focus();
+  };
+  // Move selection to the adjacent label in visual (left-to-right) order.
+  const selectAdjacentRelation = (relationId, delta) => {
+    if (sortedRelations.length === 0) return;
+    const idx = sortedRelations.findIndex((r) => r.id === relationId);
+    if (idx < 0) return;
+    const next = sortedRelations[(idx + delta + sortedRelations.length) % sortedRelations.length];
+    selectRelation(next.id);
+  };
+
+  // Imperative entry from the grid: ArrowUp out of the top annotation row lands
+  // on that token's deprel label. Returns true when a label was focused so the
+  // caller can preventDefault (else the grid handler dead-ends as before).
+  useImperativeHandle(ref, () => ({
+    // Selection (not editing) is allowed even in read-only, so viewers can move
+    // focus through the labels; opening the editor is what's gated elsewhere.
+    focusRelationForToken: (tokenId) => {
+      const rel = relationForToken(tokenId);
+      if (!rel) return false;
+      selectRelation(rel.id);
+      return true;
+    }
+  }));
 
   // Track when token positions are initialized
   useEffect(() => {
@@ -513,10 +540,12 @@ export const DependencyTree = ({
               onCommit={(v) => {
                 const t = (v || '').trim();
                 if (t && t !== (relation.value || 'dep')) onRelationUpdate(relation.id, t);
+                // Stay on this label (selected, not editing) so arrow/Tab nav
+                // continues; the refocus effect returns focus to its <text>.
                 setEditingRelation(null);
-                setFocusedRelation(null);
+                setFocusedRelation(relation.id);
               }}
-              onCancel={() => { setEditingRelation(null); setFocusedRelation(null); }}
+              onCancel={() => { setEditingRelation(null); setFocusedRelation(relation.id); }}
               onDelete={() => {
                 onRelationDelete(relation.id);
                 setEditingRelation(null);
@@ -545,14 +574,37 @@ export const DependencyTree = ({
             onMouseEnter={() => setHoveredRelation(relation.id)}
             onMouseLeave={() => setHoveredRelation(null)}
             onFocus={() => {
-              if (isReadOnly) return;
+              // Focusing SELECTS the label (highlight + keyboard target); it no
+              // longer opens the editor — Enter/click does. This is what lets
+              // arrows move between labels and focus return here after Enter.
               setFocusedRelation(relation.id);
-              setEditingRelation(relation);
             }}
             onBlur={() => {
-              // Only clear focus if we're not editing
+              // Clear selection only when focus leaves for good (not while the
+              // editor is taking over). The editor transitions re-set
+              // focusedRelation, so a transient clear here is harmless.
               if (!editingRelation) {
                 setFocusedRelation(null);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (!isReadOnly) setEditingRelation(relation);
+              } else if (e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey)) {
+                e.preventDefault();
+                selectAdjacentRelation(relation.id, 1);
+              } else if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
+                e.preventDefault();
+                selectAdjacentRelation(relation.id, -1);
+              } else if (e.key === 'ArrowDown') {
+                // Drop into the grid: this label's dependent token column.
+                const tid = tokenIdForRelation(relation);
+                if (tid && onExitDown) { e.preventDefault(); onExitDown(tid); }
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setFocusedRelation(null);
+                e.currentTarget.blur();
               }
             }}
             onClick={() => {
@@ -717,4 +769,6 @@ export const DependencyTree = ({
       </svg>
     </div>
   );
-};
+});
+
+DependencyTree.displayName = 'DependencyTree';

@@ -112,10 +112,14 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
       // and `once` blocks the stale typed-value commit.
       onOptionSubmit={(v) => once(() => onCommit(v))}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); queueMicrotask(() => once(() => onCommit(value))); }
-        else if (e.key === 'Escape') { e.preventDefault(); once(onCancel); }
-        else if (e.key === 'Delete' && e.shiftKey) { e.preventDefault(); once(onDelete); }
-        else if (e.key === 'Tab') { e.preventDefault(); once(() => onTab(value, e.shiftKey)); }
+        // stopPropagation so the dependency tree's global document keydown
+        // listener (Escape = bail, Ctrl+D = enter) doesn't also fire while the
+        // editor owns these keys — keeps Enter/Escape returning focus to the
+        // selected label instead of clearing it.
+        if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); queueMicrotask(() => once(() => onCommit(value))); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); once(onCancel); }
+        else if (e.key === 'Delete' && e.shiftKey) { e.preventDefault(); e.stopPropagation(); once(onDelete); }
+        else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); once(() => onTab(value, e.shiftKey)); }
       }}
       filter={optionsFilter}
       // Auto-highlight the best match for Enter — but only once typing has
