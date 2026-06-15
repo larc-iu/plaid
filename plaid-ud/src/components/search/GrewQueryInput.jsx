@@ -1,9 +1,11 @@
-import { Stack, Textarea, Group, Button, Alert, Code } from '@mantine/core';
+import Editor from 'react-simple-code-editor';
+import { Stack, Box, Group, Button, Alert, Code } from '@mantine/core';
 import { IconSearch, IconAlertTriangle } from '@tabler/icons-react';
+import { highlightGrew } from './grewSyntax.js';
 
-// The query editor: a monospace textarea + Run, plus an inline error panel.
-// Parse/compile errors (GrewParseError / GrewUnsupportedError) render here with
-// a caret pointing at the offending line; server errors render as a message.
+// The query editor: a syntax-highlighted code box (react-simple-code-editor +
+// our tolerant Grew highlighter) + Run, plus an inline error panel. Parse/
+// compile errors render here with a caret; server errors render as a message.
 export const GrewQueryInput = ({ value, onChange, onRun, running, error }) => {
   const onKeyDown = (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); onRun(); }
@@ -11,17 +13,32 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error }) => {
 
   return (
     <Stack gap="xs">
-      <Textarea
-        value={value}
-        onChange={(e) => onChange(e.currentTarget.value)}
-        onKeyDown={onKeyDown}
-        placeholder={'pattern { X [upos=VERB]; Y [upos=NOUN]; X -[nsubj]-> Y }'}
-        autosize
-        minRows={3}
-        maxRows={12}
-        spellCheck={false}
-        styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 13 } }}
-      />
+      <Box
+        style={{
+          border: '1px solid var(--mantine-color-gray-4)',
+          borderRadius: 'var(--mantine-radius-sm)',
+          background: 'var(--mantine-color-body)',
+          overflow: 'auto',
+          maxHeight: 280,
+        }}
+      >
+        <Editor
+          value={value}
+          onValueChange={onChange}
+          highlight={highlightGrew}
+          onKeyDown={onKeyDown}
+          padding={10}
+          textareaId="grew-query"
+          placeholder={'pattern { X [upos=VERB]; Y [upos=NOUN]; X -[nsubj]-> Y }'}
+          spellCheck={false}
+          style={{
+            fontFamily: 'var(--mantine-font-family-monospace)',
+            fontSize: 13,
+            lineHeight: 1.5,
+            minHeight: 72,
+          }}
+        />
+      </Box>
       <Group justify="space-between">
         <Button onClick={onRun} loading={running} leftSection={<IconSearch size={16} />}>
           Search
