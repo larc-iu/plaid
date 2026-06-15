@@ -32,7 +32,6 @@ export const VocabularyDetail = () => {
   const isNewVocabulary = !vocabularyId;
 
   const [vocabulary, setVocabulary] = useState(null);
-  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState(isNewVocabulary ? 'settings' : 'items');
@@ -78,12 +77,6 @@ export const VocabularyDetail = () => {
       // Normalize the field inventory (guarantees immutable morphType, tolerates
       // the legacy boolean format).
       setFields(normalizeVocabFields(readVocabFields(vocabularyData.config)));
-
-      // Fetch users if user can manage this vocabulary
-      if (canManageVocabulary(vocabularyData)) {
-        const usersData = await client.users.list();
-        setUsers(usersData);
-      }
 
       setError('');
     } catch (err) {
@@ -414,7 +407,6 @@ export const VocabularyDetail = () => {
               <TabsContent value="maintainers">
                 <VocabularyMaintainers
                   vocabulary={vocabulary}
-                  users={users}
                   user={user}
                   vocabularyId={vocabularyId}
                   client={client}
