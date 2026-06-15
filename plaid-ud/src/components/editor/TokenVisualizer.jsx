@@ -1,23 +1,30 @@
 import { useState, useRef, useMemo } from 'react';
-import { Alert, Text } from '@mantine/core';
+import {
+  Alert, Text, HoverCard, Modal, Switch, Button, Group, Stack, TextInput, ActionIcon,
+} from '@mantine/core';
+import { IconPencil, IconTrash, IconPlus, IconX } from '@tabler/icons-react';
 import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
 import { containsToken } from '../../utils/udLayerUtils.js';
 import { notifyError } from '../../utils/feedback.jsx';
 import classes from './TokenVisualizer.module.css';
 
 // Raw-text overlay editor for the three-layer token hierarchy. The editable
-// surface is the WORD layer (rendered as badges over the document text); a word
-// with more than one morpheme is a multiword token (orange), edited via the
-// morpheme editor. Sentences are shown by a green border on each sentence's
-// first word and toggled by clicking a word (split/merge server-side).
+// surface is the TOKEN layer (rendered as badges over the document text); a
+// token split into more than one word is a multi-word token (orange), edited via
+// the word editor. Sentences are shown by a green border on each sentence's
+// first token and toggled by clicking a token (split/merge server-side).
 //
-// Affordances: select text to create a word, hover tooltip (id / range /
-// text), morpheme editor, delete, and a live preview that relocates words when
-// the document text is edited after tokenization. There is deliberately NO
-// word-resize affordance: a resize keeps token identity while changing what
-// the token means, so annotations (incl. other apps' glosses on a shared
-// substrate) silently drift onto different text. Boundary fixes are
+// Affordances: select text to create a token; hover a token for a panel with its
+// words + a sentence-start toggle + edit/delete actions; and a live preview that
+// relocates tokens when the document text is edited after tokenization. There is
+// deliberately NO token-resize affordance: a resize keeps token identity while
+// changing what the token means, so annotations (incl. other apps' glosses on a
+// shared substrate) silently drift onto different text. Boundary fixes are
 // delete + re-create, which routes through the foreign-annotation warning.
+//
+// UI is plain Mantine (HoverCard for the hover panel, Modal for the word editor)
+// so it matches the rest of the app and inherits robust open/close behavior; the
+// only bespoke styling left is the inline token badges themselves.
 export const TokenVisualizer = ({
   text = '',
   originalText = '',
@@ -37,18 +44,17 @@ export const TokenVisualizer = ({
     if (typeof setError === 'function') setError(msg);
     else notifyError(msg);
   };
-  const [hoveredWord, setHoveredWord] = useState(null);
-  const [morphemeWord, setMorphemeWord] = useState(null);
+  // The word editor (Modal) — `editorWord` is the token being split; null = closed.
+  const [editorWord, setEditorWord] = useState(null);
   const [draftForms, setDraftForms] = useState([]);
-  const closeTimeoutRef = useRef(null);
   const textContainerRef = useRef(null);
 
   const isTextDirty = Boolean(originalText) && text !== originalText;
   const contains = containsToken;
   const sortPos = (a, b) => (a.begin - b.begin) || (a.end - b.end) || ((a.precedence ?? 0) - (b.precedence ?? 0));
 
-  // Morphemes per word (server positions), and which words begin a sentence.
-  // Memoized — fix #10: avoid recomputing the read model on every render.
+  // Words per token (server positions), and which tokens begin a sentence.
+  // Memoized to avoid recomputing the read model on every render.
   const sortedMorphemes = useMemo(
     () => [...morphemeTokens].sort(sortPos),
     [morphemeTokens]
@@ -71,100 +77,45 @@ export const TokenVisualizer = ({
     return (f != null && f !== '') ? f : cpSlice(text, word.begin, word.end);
   };
 
-  // --- hover tooltip timing ---
-  // Open the tooltip only after the cursor lingers on a badge for a moment.
-  // Pass-overs through multiple badges should NOT flash tooltips on each;
-  // only deliberate stops should. This also kills a class of "opens then
-  // immediately closes" bugs caused by deferred close timers from earlier
-  // badges firing after a rapid-traverse hand-off.
-  const HOVER_OPEN_DELAY_MS = 120;
-  // After cursor leaves the badge, give the user time to reach the tooltip
-  // (which sits below the badge). 500ms is the lower bound; tighten if it
-  // starts to feel sticky.
-  const HOVER_CLOSE_DELAY_MS = 500;
-  // Once the mouse is INSIDE the tooltip, leaving its edge for a moment
-  // (e.g. mousing past a button) shouldn't dismiss it instantly either.
-  const TOOLTIP_LEAVE_DELAY_MS = 250;
-  // When a popup (the morpheme editor) closes, the cursor is
-  // usually still over the badge, so removing the popup fires a mouseenter on
-  // the badge and the tooltip pops back up. Suppress hover-opens for a short
-  // window after an explicit close so Save/Cancel actually dismisses the UI.
-  const SUPPRESS_HOVER_MS = 600;
-  const suppressHoverUntilRef = useRef(0);
-  const suppressHover = () => { suppressHoverUntilRef.current = Date.now() + SUPPRESS_HOVER_MS; };
-
-  const cancelPendingTimer = () => {
-    if (closeTimeoutRef.current) {
-      clearTimeout(closeTimeoutRef.current);
-      closeTimeoutRef.current = null;
+  // Click a token (or its hover-panel switch) to toggle whether it starts a
+  // sentence. No-op while the text is dirty or in read-only mode (no handler).
+  const toggleSentence = async (word) => {
+    if (isTextDirty || !onSentenceToggle) return;
+    try {
+      await onSentenceToggle(word.begin);
+    } catch (e) {
+      console.error('Failed to toggle sentence boundary:', e);
     }
-  };
-  const handleWordMouseEnter = (word) => {
-    if (isTextDirty) return;
-    if (Date.now() < suppressHoverUntilRef.current) return;
-    cancelPendingTimer();
-    // If the tooltip is already open for this word, keep it open. Otherwise
-    // schedule an open — gated so quick traversals don't blink tooltips.
-    if (hoveredWord && hoveredWord.id === word.id) return;
-    closeTimeoutRef.current = setTimeout(() => {
-      closeTimeoutRef.current = null;
-      setHoveredWord(word);
-    }, HOVER_OPEN_DELAY_MS);
-  };
-  const handleWordMouseLeave = () => {
-    cancelPendingTimer();
-    // Only schedule a close if a tooltip is currently open. (If the user
-    // never lingered, there's nothing to close.)
-    if (!hoveredWord) return;
-    closeTimeoutRef.current = setTimeout(() => {
-      closeTimeoutRef.current = null;
-      setHoveredWord(null);
-    }, HOVER_CLOSE_DELAY_MS);
-  };
-  const handleTooltipMouseEnter = () => {
-    cancelPendingTimer();
-  };
-  const handleTooltipMouseLeave = () => {
-    cancelPendingTimer();
-    closeTimeoutRef.current = setTimeout(() => {
-      closeTimeoutRef.current = null;
-      setHoveredWord(null);
-    }, TOOLTIP_LEAVE_DELAY_MS);
   };
 
   const handleDeleteClick = async (word) => {
-    setHoveredWord(null);
     try {
       await onWordDelete?.(word.id);
     } catch (e) {
-      console.error('Word delete failed:', e);
+      console.error('Token delete failed:', e);
     }
   };
 
-  // --- morpheme editor (multiword tokens) ---
-  const openMorphemeEditor = (word) => {
+  // --- word editor (multi-word tokens) ---
+  const openWordEditor = (word) => {
     const ms = morphemesByWord.get(word.id) || [];
     setDraftForms(ms.length ? ms.map(m => formOf(m, word)) : [cpSlice(text, word.begin, word.end)]);
-    setMorphemeWord(word);
-    setHoveredWord(null);
+    setEditorWord(word);
   };
-  const cancelMorphemes = () => {
-    setMorphemeWord(null);
+  const closeWordEditor = () => {
+    setEditorWord(null);
     setDraftForms([]);
-    setHoveredWord(null);
-    cancelPendingTimer();
-    suppressHover();
   };
-  const saveMorphemes = async () => {
+  const saveWordEditor = async () => {
     const forms = draftForms.map(f => f.trim()).filter(Boolean);
-    const word = morphemeWord;
-    cancelMorphemes();
+    const word = editorWord;
+    closeWordEditor();
     if (forms.length && onSetWordMorphemes) {
-      try { await onSetWordMorphemes(word, forms); } catch (e) { console.error('Set morphemes failed:', e); }
+      try { await onSetWordMorphemes(word, forms); } catch (e) { console.error('Set words failed:', e); }
     }
   };
 
-  // --- select text -> create word --- (offsets mapped via a TreeWalker that
+  // --- select text -> create token --- (offsets mapped via a TreeWalker that
   // skips overlay nodes so only the linear document text is measured)
   const handleTextSelection = () => {
     if (!onWordCreate || isTextDirty) return;
@@ -226,8 +177,8 @@ export const TokenVisualizer = ({
     selection.removeAllRanges();
   };
 
-  // --- live relocation of words when the text is edited after tokenization ---
-  // Memoized — fix #11: this is O(words × occurrences) and was running per render.
+  // --- live relocation of tokens when the text is edited after tokenization ---
+  // Memoized: this is O(tokens × occurrences) and was running per render.
   const adjustedWords = useMemo(() => {
     const words = wordTokens;
     const original = originalText;
@@ -252,7 +203,7 @@ export const TokenVisualizer = ({
           return { ...word, begin: nb, end: ne, adjusted: true };
         }
       }
-      // search for the word text near its old position
+      // search for the token text near its old position
       let best = null;
       let bestScore = -1;
       let from = 0;
@@ -282,9 +233,9 @@ export const TokenVisualizer = ({
         >
           {text}
         </div>
-        <p className={classes.emptyHint}>
+        <Text size="sm" c="dimmed" ta="center" mt="md">
           No tokens yet. Click &quot;Basic Tokenize&quot; to create the hierarchy, or select text to create a token.
-        </p>
+        </Text>
       </div>
     );
   }
@@ -296,105 +247,83 @@ export const TokenVisualizer = ({
     const morphs = morphemesByWord.get(word.id) || [];
     const isMwt = morphs.length > 1;
 
-    return (
+    const badge = (
       <span
-        key={`w-${word.id}`}
         className={classes.badge}
         data-mwt={isMwt}
         data-sent-start={isSentStart}
-        onMouseEnter={() => handleWordMouseEnter(word)}
-        onMouseLeave={handleWordMouseLeave}
-        onClick={async () => {
-          if (isTextDirty || !onSentenceToggle) return;
-          try {
-            await onSentenceToggle(word.begin);
-            setHoveredWord(null);
-          } catch (e) {
-            console.error('Failed to toggle sentence boundary:', e);
-          }
-        }}
+        onClick={() => toggleSentence(word)}
       >
         {display}
+      </span>
+    );
 
-        {hoveredWord && hoveredWord.id === word.id && !morphemeWord && (
-          // Overlap the badge by a few px (negative top margin) so the mouse
-          // can travel from badge to tooltip without crossing empty row-gap
-          // — that gap occasionally hits a sibling badge mid-traverse and
-          // pre-empts the hover-close delay, swapping to the wrong tooltip.
-          <div
-            className={`tv-overlay ${classes.tooltip}`}
-            onMouseEnter={handleTooltipMouseEnter}
-            onMouseLeave={handleTooltipMouseLeave}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className={classes.tooltipMeta}>
-              <div className={classes.tooltipTitle}>Token {String(word.id).slice(0, 8)}</div>
-              <div className={classes.tooltipDim}>Range: [{word.begin}-{word.end}]</div>
-              <div className={classes.tooltipDim}>Text: &quot;{wordText}&quot;</div>
-              {isMwt && <div className={classes.tooltipMorph}>Words: {morphs.map(m => formOf(m, word)).join(' + ')}</div>}
-            </div>
+    // No hover panel while the text is dirty — the badges are relocated previews,
+    // and editing is blocked until the text is saved.
+    if (isTextDirty) return <span key={`w-${word.id}`}>{badge}</span>;
 
-            {onSentenceToggle && (
-              <label
-                className={classes.tooltipSentToggle}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <input
-                  type="checkbox"
-                  checked={isSentStart}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={async () => {
-                    try { await onSentenceToggle(word.begin); setHoveredWord(null); }
-                    catch (e) { console.error('Failed to toggle sentence boundary:', e); }
-                  }}
-                />
-                <span className={classes.tooltipSentLabel}>Start of sentence</span>
-              </label>
+    return (
+      <HoverCard
+        key={`w-${word.id}`}
+        openDelay={200}
+        closeDelay={120}
+        position="bottom"
+        withArrow
+        shadow="md"
+        radius="md"
+        withinPortal
+      >
+        <HoverCard.Target>{badge}</HoverCard.Target>
+        <HoverCard.Dropdown p="xs">
+          <Stack gap={8} maw={260}>
+            <Group justify="space-between" gap="md" wrap="nowrap">
+              <Text ff="monospace" fw={600} size="sm">{display}</Text>
+              <Text size="xs" c="dimmed">[{word.begin}–{word.end}]</Text>
+            </Group>
+
+            {isMwt && (
+              <Text size="xs" c="orange.7">
+                {morphs.length} words: {morphs.map(m => formOf(m, word)).join(' + ')}
+              </Text>
             )}
 
-            <div className={classes.tooltipActions}>
-              {onSetWordMorphemes && (
-                <button onClick={() => openMorphemeEditor(word)} className={`${classes.tipBtn} ${classes.tipBtnMorph}`}>Words</button>
-              )}
-              <button onClick={() => handleDeleteClick(word)} className={`${classes.tipBtn} ${classes.tipBtnDelete}`}>Delete</button>
-            </div>
-          </div>
-        )}
+            {onSentenceToggle && (
+              <Switch
+                size="xs"
+                checked={isSentStart}
+                onChange={() => toggleSentence(word)}
+                label="Start of sentence"
+              />
+            )}
 
-        {morphemeWord && morphemeWord.id === word.id && (
-          <div
-            className={`tv-overlay ${classes.popover} ${classes.popoverLeft}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className={classes.popoverTitle}>Words of &quot;{cpSlice(text, word.begin, word.end)}&quot;</div>
-            <div className={classes.popoverHint}>One word = an ordinary token; multiple words = a multi-word token.</div>
-            <div className={classes.morphList}>
-              {draftForms.map((form, i) => (
-                <div key={i} className={classes.morphRow}>
-                  <input
-                    type="text"
-                    value={form}
-                    onChange={(e) => setDraftForms(prev => prev.map((f, idx) => (idx === i ? e.target.value : f)))}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveMorphemes(); } else if (e.key === 'Escape') { e.preventDefault(); cancelMorphemes(); } }}
-                    className={classes.morphInput}
-                    autoFocus={i === draftForms.length - 1}
-                  />
-                  {draftForms.length > 1 && (
-                    <button onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))} className={classes.morphRemove} title="Remove word">×</button>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className={classes.morphFooter}>
-              <button onClick={() => setDraftForms(prev => [...prev, ''])} className={classes.addMorph}>+ word</button>
-              <div className={classes.morphActions}>
-                <button onClick={cancelMorphemes} className={classes.miniCancel}>Cancel</button>
-                <button onClick={saveMorphemes} className={classes.miniSave}>Save</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </span>
+            {(onSetWordMorphemes || onWordDelete) && (
+              <Group gap="xs" grow>
+                {onSetWordMorphemes && (
+                  <Button
+                    size="compact-xs"
+                    variant="light"
+                    leftSection={<IconPencil size={14} />}
+                    onClick={() => openWordEditor(word)}
+                  >
+                    Edit words
+                  </Button>
+                )}
+                {onWordDelete && (
+                  <Button
+                    size="compact-xs"
+                    variant="light"
+                    color="red"
+                    leftSection={<IconTrash size={14} />}
+                    onClick={() => handleDeleteClick(word)}
+                  >
+                    Delete
+                  </Button>
+                )}
+              </Group>
+            )}
+          </Stack>
+        </HoverCard.Dropdown>
+      </HoverCard>
     );
   };
 
@@ -403,7 +332,7 @@ export const TokenVisualizer = ({
     const valid = adjusted.filter(w => !w.invalid).sort((a, b) => a.begin - b.begin);
     const invalid = adjusted.filter(w => w.invalid);
 
-    // Group words into sentences (a word that begins a sentence starts a block).
+    // Group tokens into sentences (a token that begins a sentence starts a block).
     const sentences = [];
     let current = [];
     valid.forEach(word => {
@@ -431,9 +360,9 @@ export const TokenVisualizer = ({
     }
     if (invalid.length) {
       blocks.push(
-        <div key="invalid" className={classes.invalidNote}>
+        <Text key="invalid" size="xs" c="orange.6" mt="xs">
           {invalid.length} token{invalid.length !== 1 ? 's' : ''} no longer match the edited text — save and re-tokenize to resync.
-        </div>
+        </Text>
       );
     }
     return blocks;
@@ -453,10 +382,60 @@ export const TokenVisualizer = ({
       >
         {renderText()}
       </div>
-      <p className={classes.hint}>
-        Click a token to toggle a sentence boundary; hover for Words / Delete; select text to create a token.
-        With a token hovered, <code>s</code>/<code>S</code> move its start, <code>d</code>/<code>D</code> move its end.
-      </p>
+      <Text size="xs" c="dimmed" mt="sm">
+        Click a token to toggle its sentence boundary; hover a token to edit its words or delete it;
+        select text to create a token.
+      </Text>
+
+      <Modal
+        opened={Boolean(editorWord)}
+        onClose={closeWordEditor}
+        title={editorWord ? `Words of “${cpSlice(text, editorWord.begin, editorWord.end)}”` : ''}
+        size="sm"
+        centered
+      >
+        <Stack gap="sm">
+          <Text size="xs" c="dimmed">One word = an ordinary token; multiple words = a multi-word token.</Text>
+          <Stack gap="xs">
+            {draftForms.map((form, i) => (
+              <Group key={i} gap="xs" wrap="nowrap">
+                <TextInput
+                  value={form}
+                  onChange={(e) => setDraftForms(prev => prev.map((f, idx) => (idx === i ? e.target.value : f)))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveWordEditor(); } }}
+                  style={{ flex: 1 }}
+                  autoFocus={i === draftForms.length - 1}
+                  styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
+                />
+                {draftForms.length > 1 && (
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))}
+                    aria-label="Remove word"
+                  >
+                    <IconX size={16} />
+                  </ActionIcon>
+                )}
+              </Group>
+            ))}
+          </Stack>
+          <Group justify="space-between">
+            <Button
+              variant="subtle"
+              size="compact-sm"
+              leftSection={<IconPlus size={14} />}
+              onClick={() => setDraftForms(prev => [...prev, ''])}
+            >
+              Add word
+            </Button>
+            <Group gap="xs">
+              <Button variant="default" onClick={closeWordEditor}>Cancel</Button>
+              <Button onClick={saveWordEditor}>Save</Button>
+            </Group>
+          </Group>
+        </Stack>
+      </Modal>
     </div>
   );
 };
