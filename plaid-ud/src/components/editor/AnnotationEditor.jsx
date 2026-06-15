@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, Group, Button, Loader, Text, Center, Alert, Stack, Select, ActionIcon, Popover } from '@mantine/core';
 import { IconHistory, IconBolt, IconInfoCircle, IconAdjustments } from '@tabler/icons-react';
 import { ServiceSummary } from './ServiceSummary.jsx';
@@ -75,6 +75,12 @@ const reportIntegrityFindings = (findings, documentId) => {
 export const AnnotationEditor = () => {
   const { projectId, documentId } = useParams();
   const navigate = useNavigate();
+  // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
+  // briefly highlights that sentence once the grid is rendered.
+  const [searchParams] = useSearchParams();
+  const sentParam = searchParams.get('sent');
+  const [flashSentId, setFlashSentId] = useState(null);
+  const scrolledForRef = useRef(null);
   // History viewer state
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
   const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
@@ -239,6 +245,23 @@ export const AnnotationEditor = () => {
   const processedSentences = viewingHistoricalState
     ? historicalSentences
     : (doc?.sentences || []);
+
+  // Scroll to (and flash) the sentence named by ?sent= once, after the grid
+  // has rendered. Rows are virtualized but their placeholders hold the slot, so
+  // the wrapper is always in the DOM to scroll to.
+  useEffect(() => {
+    if (loading || !sentParam || !processedSentences.length) return;
+    if (scrolledForRef.current === sentParam) return;
+    if (!processedSentences.some(s => String(s.id) === String(sentParam))) return;
+    scrolledForRef.current = sentParam;
+    const raf = requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-sentence-row="${CSS.escape(String(sentParam))}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setFlashSentId(String(sentParam));
+      setTimeout(() => setFlashSentId(null), 2000);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [loading, sentParam, processedSentences]);
 
   useEffect(() => {
     if (loading) return;
@@ -554,8 +577,14 @@ export const AnnotationEditor = () => {
                   .reduce((total, prevSentence) => total + prevSentence.tokens.length, 0);
 
                 return (
-                  <VirtualSentenceRow
+                  <Box
                     key={sentenceData.id}
+                    data-sentence-row={sentenceData.id}
+                    style={flashSentId === String(sentenceData.id)
+                      ? { boxShadow: '0 0 0 3px var(--mantine-color-yellow-4)', borderRadius: 6, transition: 'box-shadow 0.3s' }
+                      : { transition: 'box-shadow 0.3s' }}
+                  >
+                  <VirtualSentenceRow
                     sentenceData={sentenceData}
                     onAnnotationUpdate={readOnly ? null : handleAnnotationUpdate}
                     onFeatureDelete={readOnly ? null : handleFeatureDelete}
@@ -571,6 +600,7 @@ export const AnnotationEditor = () => {
                     visibleFields={visibleFields}
                     onToggleField={handleToggleField}
                   />
+                  </Box>
                 );
               })
             )}

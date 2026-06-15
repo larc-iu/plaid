@@ -4,7 +4,7 @@ import {
   Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader,
   ActionIcon, Tooltip, Breadcrumbs, Anchor,
 } from '@mantine/core';
-import { IconPlus, IconTrash, IconPencil, IconUpload, IconSettings } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconPencil, IconUpload, IconSettings, IconSearch } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
 import { ImportModal } from './ImportModal';
@@ -188,6 +188,16 @@ export const DocumentList = () => {
       <Group justify="space-between" mb="lg">
         <Title order={2}>Documents in {project.name}</Title>
         <Group gap="sm">
+          {projectConfigured && (
+            <Button
+              component={Link}
+              to={`/projects/${projectId}/search`}
+              variant="default"
+              leftSection={<IconSearch size={16} />}
+            >
+              Search
+            </Button>
+          )}
           {canManage && (
             <Button
               component={Link}

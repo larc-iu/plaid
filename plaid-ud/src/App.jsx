@@ -9,6 +9,7 @@ import { ProjectList } from './components/projects/ProjectList';
 import { ProjectSettings } from './components/projects/ProjectSettings.jsx';
 import { ProjectConfiguration } from './components/projects/ProjectConfiguration.jsx';
 import { DocumentList } from './components/documents/DocumentList';
+import { SearchPage } from './components/search/SearchPage.jsx';
 import { TextEditor } from './components/editor/TextEditor.jsx';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
 import { ExportEditor } from './components/editor/ExportEditor.jsx';
@@ -44,6 +45,9 @@ function App() {
             
             {/* Documents page */}
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
+
+            {/* Grew-match search over the project's sentences */}
+            <Route path="projects/:projectId/search" element={<SearchPage />} />
             
             {/* Project settings (tabbed: users & permissions, UD customization,
                 services, access tokens, general). All paths render the same
