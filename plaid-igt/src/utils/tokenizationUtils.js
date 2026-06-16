@@ -134,15 +134,17 @@ export function tokenizeText(text, config, untokenizedRanges) {
           }
         }
         
-        // Skip whitespace, but create token for non-whitespace punctuation
-        if (!isWhitespace(char)) {
-          tokens.push({
-            text: char,
-            begin: i,
-            end: i + 1
-          });
-        }
-        
+        // Ignored break chars (punctuation, or blacklisted chars per the
+        // ignored-tokens config) are NOT emitted as tokens — they're left in
+        // the gap between word tokens, matching the .fwbackup import
+        // convention. They render identically to a punctuation token anyway
+        // (gaps and ignored tokens both go through _inertCol in the Analyze
+        // island), so this is a pure data-model cleanup: no junk
+        // non-annotatable tokens, and a run like "..." stays one gap instead
+        // of three throwaway tokens. Whitelisted punctuation never reaches
+        // this branch (shouldTokenizeCharacter returns false), so it still
+        // stays inside its word.
+
         // Skip to next non-whitespace character
         i++;
         while (i < range.end && isWhitespace(cps[i])) {
