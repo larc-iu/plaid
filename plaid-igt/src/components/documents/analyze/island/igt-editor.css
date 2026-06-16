@@ -199,7 +199,7 @@
   padding: 20px 12px 20px 34px;
 }
 .igt-sentence:nth-child(odd) { background: #ffffff; }
-.igt-sentence:nth-child(even) { background: #effcff; }
+.igt-sentence:nth-child(even) { background: #f8fcff; }
 
 /* Search click-through: flash the focused sentence. */
 @keyframes igt-flash {
