@@ -61,6 +61,7 @@ jobs:
       - uses: DeLaGuardo/setup-clojure@13.6.1
         with:
           cli: latest
+          bb: latest
       - name: Cache Maven + gitlibs
         uses: actions/cache@v5
         with:
@@ -69,6 +70,7 @@ jobs:
             ~/.gitlibs
           key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
           restore-keys: ${{ runner.os }}-cljdeps-
+      # `bb test` == `clojure -M:test` in plaid-core — shared with release.yml
+      # and local dev (bb/pipeline.clj), so the gate can't drift.
       - name: Run tests
-        working-directory: plaid-core
-        run: clojure -M:test
+        run: bb test

@@ -3,13 +3,20 @@ name: Release
 # Tag-driven release. Push a tag like `v0.2.0-alpha.1` (e.g. via `bb release
 # 0.2.0-alpha.1`) and this workflow:
 #   1. runs the full test suite (gate — nothing publishes if it's red),
-#   2. builds ALL artifacts (uberjar with the plaid-ud SPA bundled, npm
-#      tarball, Python sdist/wheel) and uploads them,
+#   2. builds ALL artifacts (uberjar with the plaid-ud + plaid-igt SPAs and the
+#      official services bundled, npm tarball, Python sdist/wheel) and uploads
+#      them,
 #   3. publishes everything LAST, in one job, each step idempotent
 #      (skip-if-version-already-exists) so re-running a failed tag is safe.
 #
+# The test + build logic is SHARED with local dev via babashka: `bb test` and
+# `bb build` (see bb/pipeline.clj) are the single source of truth, so what CI
+# runs is exactly what you can run on your laptop — no drift. Only publishing
+# lives here (it's CI-only: OIDC trusted publishing + the GitHub Release).
+#
 # The git tag is the SOLE source of truth for the version. In-repo manifests
-# stay at a placeholder (0.0.0) and are stamped from the tag here at build time.
+# stay at a placeholder (0.0.0) and are stamped from the tag at build time
+# (`bb build <version>` does the stamping + the PEP440 translation for PyPI).
 #
 # Versioning is lock-step alpha: tag `v0.2.0-alpha.1` ->
 #   npm   0.2.0-alpha.1  (dist-tag `alpha`, never `latest`)
@@ -28,9 +35,9 @@ permissions:
 
 jobs:
   # --------------------------------------------------------------------------
-  # Gate: full Clojure suite. Expensive, so it only runs here (on tags) and in
-  # nightly.yml — never per-commit. A red suite aborts the whole release before
-  # anything is published.
+  # Gate: full Clojure suite (`bb test`). Expensive, so it only runs here (on
+  # tags) and in nightly.yml — never per-commit. A red suite aborts the whole
+  # release before anything is published.
   # --------------------------------------------------------------------------
   test:
     runs-on: ubuntu-latest
@@ -43,6 +50,7 @@ jobs:
       - uses: DeLaGuardo/setup-clojure@13.6.1
         with:
           cli: latest
+          bb: latest
       - name: Cache Maven + gitlibs
         uses: actions/cache@v5
         with:
@@ -52,29 +60,19 @@ jobs:
           key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
           restore-keys: ${{ runner.os }}-cljdeps-
       - name: Run tests
-        working-directory: plaid-core
-        run: clojure -M:test
+        run: bb test
 
   # --------------------------------------------------------------------------
-  # Build every artifact. No publishing here — just produce + upload, so the
-  # publish job has nothing left to fail on except the registries themselves.
+  # Build every artifact via `bb build` — the SAME task used locally, so the
+  # bundling / smoke-test / version-stamping logic can't drift from dev. No
+  # publishing here — just produce + upload, so the publish job has nothing left
+  # to fail on except the registries themselves.
   # --------------------------------------------------------------------------
   build:
     needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: Derive versions from tag
-        id: ver
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          # PEP440 form for Python: -alpha.N -> aN, -beta.N -> bN, -rc.N -> rcN
-          PEP440="$(echo "$VERSION" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')"
-          echo "version=$VERSION"   >> "$GITHUB_OUTPUT"
-          echo "pep440=$PEP440"     >> "$GITHUB_OUTPUT"
-          echo "Release version=$VERSION  pep440=$PEP440"
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -82,6 +80,7 @@ jobs:
       - uses: DeLaGuardo/setup-clojure@13.6.1
         with:
           cli: latest
+          bb: latest
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
@@ -97,98 +96,14 @@ jobs:
           key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
           restore-keys: ${{ runner.os }}-cljdeps-
 
-      # --- Build the SPA(s) and bundle into the jar's resources --------------
-      - name: Build plaid-ud
-        working-directory: plaid-ud
-        run: |
-          # `npm install`, not `npm ci`: this repo gitignores package-lock.json,
-          # so there's no lockfile to clean-install from in a fresh checkout.
-          npm install
-          npm run build
-      - name: Build plaid-igt
-        working-directory: plaid-igt
-        run: |
-          npm install
-          npm run build
-      - name: Bundle SPAs + version.edn into plaid-core resources
-        run: |
-          rm -rf plaid-core/resources/ud plaid-core/resources/igt
-          cp -r plaid-ud/dist plaid-core/resources/ud
-          cp -r plaid-igt/dist plaid-core/resources/igt
-          printf '{:version "%s"}\n' "${{ steps.ver.outputs.version }}" > plaid-core/resources/version.edn
-          cat plaid-core/resources/version.edn
-
-      - name: Bundle official services into plaid-core resources
-        run: |
-          # Each app's services/*.py rides the jar and is extracted to a
-          # services/ folder next to data/ on boot (plaid.server.services-extract).
-          # manifest.edn maps filename -> sha256; the extractor enumerates from it
-          # (a jar "directory" can't be listed portably) and uses the hashes for
-          # overwrite-if-unmodified semantics across upgrades.
-          rm -rf plaid-core/resources/services
-          mkdir -p plaid-core/resources/services
-          cp plaid-ud/services/*.py plaid-igt/services/*.py plaid-core/resources/services/
-          ( cd plaid-core/resources/services
-            printf '{'
-            for f in *.py; do printf '"%s" "%s" ' "$f" "$(sha256sum "$f" | cut -d' ' -f1)"; done
-            printf '}\n'
-          ) > plaid-core/resources/services/manifest.edn
-          cat plaid-core/resources/services/manifest.edn
-
-      - name: Build uberjar
-        working-directory: plaid-core
-        run: |
-          clojure -X:uberjar
-          mv target/plaid.jar "target/plaid-${{ steps.ver.outputs.version }}.jar"
-
-      - name: Smoke-test the jar (boots via re-exec + reports release version)
-        env:
-          SKIP_ACCOUNT_CREATION_PROMPT: "1"
-        run: |
-          # `plaid.server.main` self-heals the JDK access flags: it probes for
-          # --add-opens / --enable-native-access and, if absent, re-execs the
-          # JVM with them (PLAID_NO_REEXEC guards the child). So a bare
-          # `java -jar` must boot unattended. The server listens on :8080 by
-          # default and the config.toml + JWT secret + SQLite db all
-          # auto-generate, so no config/env is needed. We assert /health reports
-          # the release version (proving version.edn was bundled), then tear the
-          # process(es) down.
-          JAR="plaid-core/target/plaid-${{ steps.ver.outputs.version }}.jar"
-          java -jar "$JAR" &
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8080/health | grep -q "\"version\":\"${{ steps.ver.outputs.version }}\""; then
-              echo "jar booted; /health reports the release version"; OK=1; break
-            fi
-            sleep 2
-          done
-          # Kill the parent AND the re-exec'd child (matched by jar path).
-          pkill -f "plaid-${{ steps.ver.outputs.version }}.jar" 2>/dev/null || true
-          if [ -z "$OK" ]; then echo "jar failed to boot / report version"; exit 1; fi
-          # First boot must also have extracted the bundled services next to data/.
-          for f in ud_parse_stanza.py igt_tokenize_punkt.py igt_transcribe_whisper.py; do
-            if [ ! -f "services/$f" ]; then echo "services/$f was not extracted"; exit 1; fi
-          done
-          echo "bundled services extracted on first run"
-
-      # --- Build the npm tarball (NOT publish) -------------------------------
-      - name: Pack npm client
-        working-directory: plaid-client-js
-        run: |
-          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
-          mkdir -p ../dist-artifacts
-          npm pack --pack-destination ../dist-artifacts
-
-      # --- Build the Python sdist + wheel (NOT publish) ----------------------
-      - name: Build Python client
-        working-directory: plaid-client-py
-        run: |
-          python -m pip install --upgrade build
-          # Stamp the PEP440 version into pyproject before building.
-          sed -i -E "s/^version = \".*\"/version = \"${{ steps.ver.outputs.pep440 }}\"/" pyproject.toml
-          python -m build --outdir ../dist-artifacts
-
-      - name: Stage the jar for upload
-        run: cp "plaid-core/target/plaid-${{ steps.ver.outputs.version }}.jar" dist-artifacts/
+      # Builds both SPAs, bundles them + services/manifest.edn + version.edn
+      # into plaid-core resources, builds the uberjar, boots it and asserts
+      # /health reports the release version (+ that services were extracted),
+      # packs the npm tarball, builds the Python sdist+wheel, and stages all of
+      # it into dist-artifacts/. The version comes from the tag; bb does the
+      # PEP440 translation for the Python dist. (See bb/pipeline.clj.)
+      - name: Build all release artifacts (`bb build`)
+        run: bb build "${GITHUB_REF_NAME#v}"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -198,7 +113,8 @@ jobs:
 
   # --------------------------------------------------------------------------
   # Publish everything. Runs only after build succeeds, so all artifacts exist
-  # before any registry is touched. Each publish is idempotent.
+  # before any registry is touched. Each publish is idempotent. CI-only — no
+  # local counterpart, so nothing here can drift against `bb`.
   # --------------------------------------------------------------------------
   publish:
     needs: build
