@@ -116,8 +116,7 @@ export function parseCoNLLU(text) {
       currentSentence.multiWordTokens.push({
         start: start,
         end: end,
-        form: form === '_' ? '' : form,
-        misc: misc === '_' ? null : misc
+        form: form === '_' ? '' : form
       });
       continue;
     }
@@ -128,10 +127,11 @@ export function parseCoNLLU(text) {
       throw new Error(`Invalid token ID: ${id}`);
     }
     
-    // Word-row MISC is deliberately unsupported (it often carries annotations
-    // like entity info that tokenization changes would silently corrupt;
-    // see plaid-ud scope decisions) — count the drop so the user hears about
-    // it. MWT-line MISC IS kept, on the word token's metadata.misc.
+    // The MISC column is deliberately unsupported (it often carries annotations
+    // like entity info that tokenization changes would silently corrupt; see
+    // plaid-ud scope decisions). Count word-row MISC drops so the user hears
+    // about it. (MWT-row MISC — almost always just SpaceAfter=No — is also
+    // dropped, but silently, since the stored text body already encodes spacing.)
     if (misc !== '_' && misc !== '') {
       droppedMiscTokens += 1;
     }
@@ -239,12 +239,11 @@ export function buildConlluHierarchy(parsedData) {
           surfaceForm,
           hasExplicitForm,
           isMwt: true,
-          members,
-          misc: mwt.misc || null
+          members
         });
         i = endIdx + 1;
       } else {
-        units.push({ surfaceForm: rows[i].form, hasExplicitForm: false, isMwt: false, members: [rows[i]], misc: null });
+        units.push({ surfaceForm: rows[i].form, hasExplicitForm: false, isMwt: false, members: [rows[i]] });
         i += 1;
       }
     }
@@ -330,8 +329,7 @@ export function buildConlluHierarchy(parsedData) {
         isMwt: unit.isMwt,
         hasExplicitForm: unit.hasExplicitForm,
         surfaceForm: unit.surfaceForm,
-        morphemes,
-        misc: unit.misc
+        morphemes
       };
     });
 

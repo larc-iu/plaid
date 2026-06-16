@@ -88,7 +88,7 @@ export class ConlluDocument {
     if (miscTokens > 0) {
       importWarnings.push(
         `MISC values on ${miscTokens} token row${miscTokens === 1 ? '' : 's'} ` +
-        'dropped: Plaid UD does not store the MISC column (multi-word token MISC is kept).'
+        'dropped: Plaid UD does not store the MISC column.'
       );
     }
 
@@ -126,9 +126,9 @@ export class ConlluDocument {
       const textResponse = await client.texts.create(textLayer.id, createdDocumentId, hierarchy.text);
       const textId = textResponse.id;
 
-      // Sentences carry arbitrary `# k = v` metadata; words carry MWT
+      // Sentences carry arbitrary `# k = v` metadata; words carry the MWT
       // surface form on `metadata.form` ONLY when the FORM column was
-      // explicitly non-underscore, and MWT MISC on `metadata.misc`.
+      // explicitly non-underscore. (MISC is not stored — see scope decisions.)
       const sentenceOps = hierarchy.sentences.map(s => {
         const op = { tokenLayerId: sentenceTokenLayer.id, text: textId, begin: s.begin, end: s.end };
         if (s.metadata && Object.keys(s.metadata).length > 0) op.metadata = s.metadata;
@@ -139,7 +139,6 @@ export class ConlluDocument {
         const op = { tokenLayerId: wordTokenLayer.id, text: textId, begin: w.begin, end: w.end };
         const meta = {};
         if (w.isMwt && w.hasExplicitForm && w.surfaceForm) meta.form = w.surfaceForm;
-        if (w.misc) meta.misc = w.misc;
         if (Object.keys(meta).length > 0) op.metadata = meta;
         wordOps.push(op);
       }));
@@ -1456,10 +1455,11 @@ export class ConlluDocument {
         if (groupLen > 1) {
           const wordMeta = morphemes[i].word?.metadata || {};
           const surfaceForm = wordMeta.form || UNDERSCORE;
-          const mwtMisc = wordMeta.misc || UNDERSCORE;
+          // MISC is not stored (see scope decisions), so the bracket row's MISC
+          // column is always `_`.
           output.push([
             `${i + 1}-${i + groupLen}`, surfaceForm,
-            UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, mwtMisc
+            UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE
           ].join('\t'));
         }
 
