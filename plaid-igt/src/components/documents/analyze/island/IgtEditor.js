@@ -965,7 +965,7 @@ export class IgtEditor {
         <div class="igt-legend__row">
           <strong>Provenance</strong>
           <span><span class="igt-legend__prov igt-legend__prov--machine">violet dashed</span> = machine-made, unverified ·
-            <span class="igt-legend__prov igt-legend__prov--verified">underlined ✓</span> = machine-made, confirmed by a person ·
+            <span class="igt-legend__prov igt-legend__prov--verified">violet underline</span> = machine-made, confirmed by a person ·
             plain = made by a person · editing a value confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> confirms a whole word and jumps to the next</span>
         </div>
         <div class="igt-legend__row">

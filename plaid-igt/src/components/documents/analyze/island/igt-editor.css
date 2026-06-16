@@ -174,7 +174,7 @@
   font-style: italic;
   border-bottom: 1px dashed #c4b5fd;
 }
-.igt-legend__prov--verified { border-bottom: 1px solid #c4b5fd; }
+.igt-legend__prov--verified { border-bottom: 1px solid var(--igt-violet); }
 .igt-legend kbd {
   font: inherit; font-size: 10px; background: #fff; border: 1px solid #d1d5db;
   border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: #374151;
@@ -615,18 +615,12 @@
   text-decoration-color: currentColor;
 }
 /* Auto-made links a person has confirmed: back to the quiet gray, but with a
-   solid violet underline + check so machine origin stays visible. */
+   solid violet underline (the same violet the machine states use) so machine
+   origin stays visible — the dashed→solid shift signals "confirmed" without
+   the noisier ✓ marker. */
 .igt-vocab__hint--verified {
   text-decoration-style: solid;
-  text-decoration-color: #c4b5fd;
-}
-.igt-vocab__hint--verified::after {
-  content: '✓';
-  font-size: 9px;
-  color: var(--igt-violet);
-  margin-left: 2px;
-  text-decoration: none;
-  display: inline-block;
+  text-decoration-color: var(--igt-violet);
 }
 /* Unlinked: hidden at rest — a "+ link" under every unlinked form is too
    noisy (user call, 2026-06-10; a fuller vocab-linking rethink is a planned
