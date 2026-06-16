@@ -1,4 +1,4 @@
-// Idempotent IGT fixture builder. Creates a Plaid-Base ("IGT") project with the
+// Idempotent IGT fixture builder. Creates a Plaid IGT project with the
 // full layer hierarchy the app expects (text > sentence/word/morpheme/alignment
 // token layers + scoped span layers), the plaid.* config flags, and one document
 // with a seeded text body. Reuses by name on subsequent runs.

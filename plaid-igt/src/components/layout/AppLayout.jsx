@@ -27,7 +27,7 @@ export function AppLayout({ children }) {
     <div className="min-h-screen bg-background text-foreground">
       <header className="tw sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
-          <Link to="/projects" className="font-bold">Plaid Base</Link>
+          <Link to="/projects" className="font-bold">Plaid IGT</Link>
           <nav className="flex items-center gap-1">
             {navItem('/projects', 'Projects', location.pathname.startsWith('/projects'))}
             {navItem('/vocabularies', 'Vocabularies', location.pathname.startsWith('/vocabularies'))}

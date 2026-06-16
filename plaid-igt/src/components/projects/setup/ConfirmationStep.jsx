@@ -53,7 +53,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
 
       if (result.alreadyInitialized) {
         notifyError(
-          'This project is already initialized with Plaid Base. Re-running setup is not supported — create a new project instead.',
+          'This project is already initialized with Plaid IGT. Re-running setup is not supported — create a new project instead.',
           'Project Already Initialized'
         );
         return;
@@ -76,7 +76,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
       setIsComplete(true);
 
       notifySuccess(
-        'Your project has been successfully configured with Plaid Base.',
+        'Your project has been successfully configured with Plaid IGT.',
         'Setup Complete'
       );
 
@@ -276,7 +276,7 @@ export const ConfirmationStep = ({ data, onDataChange, setupData, isNewProject, 
             <div className="text-sm">
               <p className="font-medium">Setup Complete!</p>
               <p className="mt-1 text-muted-foreground">
-                Your project has been successfully configured with Plaid Base. Redirecting to project...
+                Your project has been successfully configured with Plaid IGT. Redirecting to project...
               </p>
             </div>
           </div>

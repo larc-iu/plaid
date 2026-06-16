@@ -150,8 +150,8 @@ export const ProjectSetup = () => {
           </h1>
           <p className="text-sm text-muted-foreground">
             {isNewProject
-              ? 'Set up a new Plaid Base project.'
-              : 'Configure your existing project for annotation with Plaid Base.'
+              ? 'Set up a new Plaid IGT project.'
+              : 'Configure your existing project for annotation with Plaid IGT.'
             }
           </p>
         </div>

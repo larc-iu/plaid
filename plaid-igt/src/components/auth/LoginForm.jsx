@@ -44,7 +44,7 @@ export const LoginForm = () => {
     <div className="tw flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <CardTitle className="text-2xl">Plaid Base Login</CardTitle>
+          <CardTitle className="text-2xl">Plaid IGT Login</CardTitle>
           <CardDescription>Plaid Annotation Interface</CardDescription>
         </CardHeader>
         <CardContent>

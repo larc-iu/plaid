@@ -118,7 +118,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
             <div className="text-sm">
               <p className="font-medium">This project already has a compatible text layer</p>
               <p className="mt-1 text-muted-foreground">
-                Plaid Base will reuse the existing baseline text layer and automatically
+                Plaid IGT will reuse the existing baseline text layer and automatically
                 create any word, morpheme, sentence, and alignment layers it needs.
                 There's nothing to configure here — continue to the next step.
               </p>
@@ -136,7 +136,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
       {/* Explanatory header */}
       <div>
         <p className="text-sm">
-          Choose the text layer Plaid Base should use as the baseline.
+          Choose the text layer Plaid IGT should use as the baseline.
           <strong> Text layers</strong> contain the baseline text content of your documents.
           The word and morpheme token layers are created automatically — you don't need to
           name them.
