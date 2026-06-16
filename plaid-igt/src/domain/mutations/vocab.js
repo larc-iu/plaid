@@ -8,6 +8,10 @@
 
 import { stampInferred, provState, PROV, PROV_STATES } from '@larc-iu/plaid-client';
 
+// The server caps a single atomic batch at 1000 ops (plaid-core
+// rest_api/v1/batch.clj). Keep a margin so a chunk never trips the cap.
+const LINK_BATCH_CHUNK = 500;
+
 // Locate the existing single-token vocab link for `tokenId` across all
 // vocabularies. By convention there is at most one.
 const findPriorLink = (vocabularies, tokenId) => {
@@ -46,9 +50,20 @@ export const vocabMutations = {
     const metadata = stampInferred(provSource);
 
     const ok = await this._withSaving('Failed to auto-link', async () => {
-      const results = await this._client.batched(async () => {
-        todo.forEach(p => this._client.vocabLinks.create(p.vocabItemId, [p.tokenId], metadata));
-      });
+      // A large document can have far more unlinked tokens than fit in one
+      // batch (this runs unattended from the auto-analysis pass). Split into
+      // chunks under the server cap; each chunk is its own atomic batch. Links
+      // are independent, so partial progress across chunks is fine — and it's
+      // what stops a too-big batch from failing forever and re-triggering the
+      // pass on every reload.
+      const results = [];
+      for (let i = 0; i < todo.length; i += LINK_BATCH_CHUNK) {
+        const chunk = todo.slice(i, i + LINK_BATCH_CHUNK);
+        const chunkResults = await this._client.batched(async () => {
+          chunk.forEach(p => this._client.vocabLinks.create(p.vocabItemId, [p.tokenId], metadata));
+        });
+        results.push(...chunkResults);
+      }
 
       this._applyRawPatch((next, info, vocabs) => {
         todo.forEach((p, i) => {

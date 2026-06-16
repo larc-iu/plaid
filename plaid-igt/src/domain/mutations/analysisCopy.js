@@ -20,6 +20,23 @@
 import { stampInferred, provState, PROV, PROV_STATES } from '@larc-iu/plaid-client';
 import { isUnanalyzedWord } from '../analysisMemory.js';
 
+// The server caps a single atomic batch at 1000 ops (plaid-core
+// rest_api/v1/batch.clj). A copy emits several ops per word, so pack words into
+// chunks whose batch-1 estimate stays comfortably under the cap.
+const ANALYSIS_BATCH_BUDGET = 800;
+
+// Worst-case batch-1 op count for one word's copy: the default-morpheme patch,
+// a create per extra morpheme, and a link + fields for every slot and the word.
+const opsForWord = (p) => {
+  const a = p.analysis || {};
+  const slots = a.morphemes || [];
+  let n = 1; // token patch for the default morpheme
+  for (const s of slots) n += 1 + Object.keys(s.fields || {}).length; // link + fields per slot
+  n += Math.max(0, slots.length - 1); // one create per extra morpheme
+  n += 1 + Object.keys(a.word?.fields || {}).length; // word link + fields
+  return n;
+};
+
 const findVocabItem = (vocabularies, vocabItemId) => {
   if (!vocabItemId) return null;
   for (const vocab of Object.values(vocabularies || {})) {
@@ -55,88 +72,107 @@ export const analysisCopyMutations = {
 
     const stamp = stampInferred(provSource);
 
+    // A large unanalyzed document can emit far more than one batch's worth of
+    // ops (this runs unattended from the auto-analysis pass). Pack words into
+    // chunks under the server cap; each chunk runs its own batch-1 + batch-2
+    // atomically. Partial progress across chunks is fine — a copied word is no
+    // longer unanalyzed, so it won't be silently re-targeted — and it keeps a
+    // too-big copy from failing forever and re-triggering the pass on reload.
+    const chunks = [];
+    let cur = [];
+    let curOps = 0;
+    for (const p of todo) {
+      const w = opsForWord(p);
+      if (cur.length && curOps + w > ANALYSIS_BATCH_BUDGET) { chunks.push(cur); cur = []; curOps = 0; }
+      cur.push(p);
+      curOps += w;
+    }
+    if (cur.length) chunks.push(cur);
+
     return (await this._withSaving('Failed to copy previous analyses', async () => {
-      // ---- batch 1: structure + everything addressable now ----
-      let opIdx = 0;
-      const pendingMorphs = []; // { slot, opIdx } — created morphemes needing batch-2 links/spans
-      const queueLinkAndSpans = (tokenId, slot) => {
-        const item = findVocabItem(this._vocabularies, slot.vocabItemId);
-        if (item) {
-          this._client.vocabLinks.create(item.id, [tokenId], stamp);
-          opIdx++;
-        }
-        for (const [name, value] of Object.entries(slot.fields || {})) {
-          const layer = morphLayersByName.get(name);
-          if (!layer) continue;
-          this._client.spans.create(layer.id, [tokenId], value, stamp);
-          opIdx++;
-        }
-      };
+      for (const chunk of chunks) {
+        // ---- batch 1: structure + everything addressable now ----
+        let opIdx = 0;
+        const pendingMorphs = []; // { slot, opIdx } — created morphemes needing batch-2 links/spans
+        const queueLinkAndSpans = (tokenId, slot) => {
+          const item = findVocabItem(this._vocabularies, slot.vocabItemId);
+          if (item) {
+            this._client.vocabLinks.create(item.id, [tokenId], stamp);
+            opIdx++;
+          }
+          for (const [name, value] of Object.entries(slot.fields || {})) {
+            const layer = morphLayersByName.get(name);
+            if (!layer) continue;
+            this._client.spans.create(layer.id, [tokenId], value, stamp);
+            opIdx++;
+          }
+        };
 
-      const results = await this._client.batched(async () => {
-        for (const p of todo) {
-          const { token, m0, analysis } = p;
-          const slots = analysis.morphemes || [];
-          const s0 = slots[0] || null;
+        const results = await this._client.batched(async () => {
+          for (const p of chunk) {
+            const { token, m0, analysis } = p;
+            const slots = analysis.morphemes || [];
+            const s0 = slots[0] || null;
 
-          // First slot reuses the existing default morpheme. Only stamp the
-          // token when the copy actually changes its segmentation-tier data
-          // (form/morphType) — links/spans carry their own provenance.
-          if (s0) {
-            const patch = {};
-            if (s0.form != null && s0.form !== token.content) patch.form = s0.form;
-            if (s0.morphType != null) patch.morphType = s0.morphType;
-            if (Object.keys(patch).length || slots.length > 1) {
-              this._client.tokens.patchMetadata(m0.id, { ...patch, ...stamp });
+            // First slot reuses the existing default morpheme. Only stamp the
+            // token when the copy actually changes its segmentation-tier data
+            // (form/morphType) — links/spans carry their own provenance.
+            if (s0) {
+              const patch = {};
+              if (s0.form != null && s0.form !== token.content) patch.form = s0.form;
+              if (s0.morphType != null) patch.morphType = s0.morphType;
+              if (Object.keys(patch).length || slots.length > 1) {
+                this._client.tokens.patchMetadata(m0.id, { ...patch, ...stamp });
+                opIdx++;
+              }
+              queueLinkAndSpans(m0.id, s0);
+            }
+            // Remaining slots: create stamped morpheme tokens; their links/spans
+            // wait for batch 2 (ids unknown until this batch lands).
+            slots.slice(1).forEach((slot, j) => {
+              this._client.tokens.create(
+                morphemeLayer.id, textId, token.begin, token.end, j + 2,
+                {
+                  ...(slot.form != null ? { form: slot.form } : {}),
+                  ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
+                  ...stamp,
+                }
+              );
+              pendingMorphs.push({ slot, opIdx });
+              opIdx++;
+            });
+            // Word-level link + fields.
+            const wordItem = findVocabItem(this._vocabularies, analysis.word?.vocabItemId);
+            if (wordItem) {
+              this._client.vocabLinks.create(wordItem.id, [token.id], stamp);
               opIdx++;
             }
-            queueLinkAndSpans(m0.id, s0);
-          }
-          // Remaining slots: create stamped morpheme tokens; their links/spans
-          // wait for batch 2 (ids unknown until this batch lands).
-          slots.slice(1).forEach((slot, j) => {
-            this._client.tokens.create(
-              morphemeLayer.id, textId, token.begin, token.end, j + 2,
-              {
-                ...(slot.form != null ? { form: slot.form } : {}),
-                ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
-                ...stamp,
-              }
-            );
-            pendingMorphs.push({ slot, opIdx });
-            opIdx++;
-          });
-          // Word-level link + fields.
-          const wordItem = findVocabItem(this._vocabularies, analysis.word?.vocabItemId);
-          if (wordItem) {
-            this._client.vocabLinks.create(wordItem.id, [token.id], stamp);
-            opIdx++;
-          }
-          for (const [name, value] of Object.entries(analysis.word?.fields || {})) {
-            const layer = wordLayersByName.get(name);
-            if (!layer) continue;
-            this._client.spans.create(layer.id, [token.id], value, stamp);
-            opIdx++;
-          }
-        }
-      });
-
-      // ---- batch 2: links/spans for the created morphemes ----
-      const second = pendingMorphs
-        .map(({ slot, opIdx: i }) => ({ slot, id: results[i]?.body?.id }))
-        .filter(({ slot, id }) => id && (slot.vocabItemId || Object.keys(slot.fields || {}).length));
-      if (second.length) {
-        await this._client.batched(async () => {
-          for (const { slot, id } of second) {
-            const item = findVocabItem(this._vocabularies, slot.vocabItemId);
-            if (item) this._client.vocabLinks.create(item.id, [id], stamp);
-            for (const [name, value] of Object.entries(slot.fields || {})) {
-              const layer = morphLayersByName.get(name);
+            for (const [name, value] of Object.entries(analysis.word?.fields || {})) {
+              const layer = wordLayersByName.get(name);
               if (!layer) continue;
-              this._client.spans.create(layer.id, [id], value, stamp);
+              this._client.spans.create(layer.id, [token.id], value, stamp);
+              opIdx++;
             }
           }
         });
+
+        // ---- batch 2: links/spans for the created morphemes ----
+        const second = pendingMorphs
+          .map(({ slot, opIdx: i }) => ({ slot, id: results[i]?.body?.id }))
+          .filter(({ slot, id }) => id && (slot.vocabItemId || Object.keys(slot.fields || {}).length));
+        if (second.length) {
+          await this._client.batched(async () => {
+            for (const { slot, id } of second) {
+              const item = findVocabItem(this._vocabularies, slot.vocabItemId);
+              if (item) this._client.vocabLinks.create(item.id, [id], stamp);
+              for (const [name, value] of Object.entries(slot.fields || {})) {
+                const layer = morphLayersByName.get(name);
+                if (!layer) continue;
+                this._client.spans.create(layer.id, [id], value, stamp);
+              }
+            }
+          });
+        }
       }
 
       await this._reload();
