@@ -325,7 +325,8 @@ export const ProjectImportExport = () => {
                   </Text>
                   <ScrollArea.Autosize mah={360}>
                     <Stack gap="xs">
-                      {results.map((r) => (
+                      {/* Most recent on top. */}
+                      {results.slice().reverse().map((r) => (
                         <div key={r.key}>
                           <Group gap="xs" wrap="nowrap">
                             {r.status === 'imported'
@@ -346,7 +347,7 @@ export const ProjectImportExport = () => {
                       ))}
                     </Stack>
                   </ScrollArea.Autosize>
-                  {importedCount > 0 && (
+                  {!importing && importedCount > 0 && (
                     <Button
                       component={Link}
                       to={`/projects/${projectId}/documents`}
