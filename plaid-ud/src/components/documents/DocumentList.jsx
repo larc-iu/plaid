@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader,
-  ActionIcon, Tooltip, Pagination,
+  ActionIcon, Tooltip, Pagination, TextInput, CloseButton,
 } from '@mantine/core';
-import { IconPlus, IconTrash, IconPencil } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconPencil, IconSearch } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
@@ -37,6 +37,7 @@ export const DocumentList = () => {
   const [hasWordLayer, setHasWordLayer] = useState(true);
   const [wordsLoading, setWordsLoading] = useState(true);
   const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
+  const [filter, setFilter] = useState('');
   const [page, setPage] = useState(1);
   const { user, getClient, logout } = useAuth();
 
@@ -137,15 +138,18 @@ export const DocumentList = () => {
   };
 
   const onSort = (key) => { setSort(nextSort(key)); setPage(1); };
+  const onFilter = (value) => { setFilter(value); setPage(1); };
 
   const sortedDocuments = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const matched = q ? documents.filter((d) => (d.name || '').toLowerCase().includes(q)) : documents;
     const extract = {
       name: (d) => d.name?.toLowerCase() ?? '',
       words: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : null),
       updated: (d) => d.timeModified ?? null,
     }[sort.key];
-    return sortBy(documents, extract, sort.dir);
-  }, [documents, wordCounts, hasWordLayer, sort]);
+    return sortBy(matched, extract, sort.dir);
+  }, [documents, wordCounts, hasWordLayer, sort, filter]);
 
   // Page the sorted list at PAGE_SIZE. `currentPage` is clamped so deleting
   // documents off the last page falls back into range instead of showing blank.
@@ -178,6 +182,16 @@ export const DocumentList = () => {
       <Group justify="space-between" mb="lg">
         <Title order={2}>Documents in {project.name}</Title>
         <Group gap="sm">
+          <TextInput
+            placeholder="Filter by name…"
+            value={filter}
+            onChange={(e) => onFilter(e.currentTarget.value)}
+            leftSection={<IconSearch size={16} />}
+            rightSection={filter
+              ? <CloseButton size="sm" onClick={() => onFilter('')} aria-label="Clear filter" />
+              : null}
+            w={240}
+          />
           {canEdit && (
             <Button color="dark" leftSection={<IconPlus size={16} />} onClick={() => setShowCreateForm(true)}>
               New Document
@@ -197,6 +211,10 @@ export const DocumentList = () => {
       {documents.length === 0 ? (
         <Center py={48}>
           <Text c="dimmed">No documents yet. Create your first document to start annotating!</Text>
+        </Center>
+      ) : sortedDocuments.length === 0 ? (
+        <Center py={48}>
+          <Text c="dimmed">No documents match “{filter.trim()}”.</Text>
         </Center>
       ) : (
         <Paper withBorder radius="md">
