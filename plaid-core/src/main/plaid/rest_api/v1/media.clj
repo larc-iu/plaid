@@ -54,7 +54,6 @@
 
    [""
     {:get {:summary "Get media file for a document"
-           :openapi {:x-client-method "get-media"}
            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
            :handler (fn [{{{:keys [document-id]} :path} :parameters headers :headers}]
                       (let [result (media/get-media-file document-id)
@@ -71,8 +70,7 @@
      :put {:summary "Upload a media file for a document. Uses Apache Tika for content validation."
            :middleware [[pra/wrap-writer-required get-project-id-from-document]]
            :parameters {:path [:map [:document-id :uuid]]}
-           :openapi {:x-client-method "upload-media"
-                     :requestBody {:content {"multipart/form-data"
+           :openapi {:requestBody {:content {"multipart/form-data"
                                              {:schema {:type "object"
                                                        :properties {:file {:type "string"
                                                                            :format "binary"
@@ -108,7 +106,6 @@
                            :body {:error "No file provided in multipart upload"}})))}
 
      :delete {:summary "Delete media file for a document"
-              :openapi {:x-client-method "delete-media"}
               :middleware [[pra/wrap-writer-required get-project-id-from-document]]
               :handler (fn [{{{:keys [document-id]} :path} :parameters}]
                          (let [result (media/delete-media-file! document-id)]

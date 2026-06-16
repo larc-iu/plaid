@@ -333,8 +333,6 @@
                          "Atomicity is guaranteed. "
                          "On success, returns an array of each response associated with each submitted request in the batch. "
                          "On failure, returns a single response map with the first failing response in the batch. ")
-           :openapi {:x-client-bundle "batch"
-                     :x-client-method "submit"}
            :parameters {:body [:sequential
                                [:map
                                 [:path string?]

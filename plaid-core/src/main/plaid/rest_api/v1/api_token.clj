@@ -29,8 +29,6 @@
 
    [""
     {:get {:summary "List a user's named API tokens (never includes the signed token itself); keyset-paginated."
-           :openapi {:x-client-bundle "apiTokens"
-                     :x-client-method "list"}
            :parameters {:query (into [:map] pagination/query-params)}
            :handler (fn [{{{:keys [user-id]} :path query :query} :parameters db :db}]
                       (pagination/list-response query (fn [opts] (api-token/list-for-user db user-id opts))))}
@@ -38,8 +36,6 @@
                           "returned ONCE in the response and never again — store it securely. "
                           "API tokens do not expire and survive password changes / logout; "
                           "use DELETE to revoke.")
-            :openapi {:x-client-bundle "apiTokens"
-                      :x-client-method "create"}
             :parameters {:body {:name string?}}
             :handler (fn [{{{:keys [user-id]} :path {:keys [name]} :body} :parameters
                            db :db secret-key :secret-key :as request}]
@@ -55,8 +51,6 @@
     {:parameters {:path [:map [:token-id string?]]}}
     [""
      {:delete {:summary "Revoke a named API token. Idempotent; the row is kept (soft-revoke) so the audit log can still resolve it."
-               :openapi {:x-client-bundle "apiTokens"
-                         :x-client-method "revoke"}
                :handler (fn [{{{:keys [user-id token-id]} :path} :parameters db :db :as request}]
                           ;; Confirm the token belongs to the path user before
                           ;; revoking — gives a clean 404 for unknown ids and

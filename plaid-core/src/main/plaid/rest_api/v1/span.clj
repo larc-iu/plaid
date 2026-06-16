@@ -94,7 +94,6 @@
                                   "<body>tokens</body>, the IDs of the span's constituent tokens\n"
                                   "<body>value</body>, the relation's value\n"
                                   "<body>metadata</body>, an optional map of metadata")
-                    :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                  [prm/wrap-document-version bulk-get-document-id]
                                  metadata/wrap-inline-metadata-shape-guard]
@@ -123,7 +122,6 @@
                                     db doc-id)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple spans in a single operation. Provide an array of IDs."
-                      :openapi {:x-client-method "bulk-delete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
                       :parameters {:query [:map [:document-version {:optional true} :int]]
@@ -178,7 +176,6 @@
     ["/tokens" {:put {:summary "Replace tokens for a span."
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
-                      :openapi {:x-client-method "set-tokens"}
                       :parameters {:body [:map [:tokens [:vector uuid?]]]
                                    :query [:map [:document-version {:optional true} :int]]}
                       :handler (fn [{{{:keys [span-id]} :path {:keys [tokens]} :body} :parameters db :db user-id :user/id :as request}]

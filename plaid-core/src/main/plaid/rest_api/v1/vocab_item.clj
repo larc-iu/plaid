@@ -82,7 +82,6 @@
      :put {:summary "Replace all metadata for a vocab item. The entire metadata map is replaced - existing metadata keys not included in the request will be removed."
            :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]
                         metadata/wrap-metadata-shape-guard]
-           :openapi {:x-client-method "set-metadata"}
            :parameters {:body [:map-of string? any?]}
            :handler (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id}]
                       (let [item-id (:id path-params)
@@ -94,7 +93,6 @@
      :patch {:summary "Patch (shallow-merge) metadata for a vocab item. Keys present in the request are set or overwritten; keys NOT present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata."
              :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]
                           metadata/wrap-metadata-shape-guard]
-             :openapi {:x-client-method "patch-metadata"}
              :parameters {:body [:map-of string? any?]}
              :handler (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id}]
                         (let [item-id (:id path-params)
@@ -105,7 +103,6 @@
 
      :delete {:summary "Remove all metadata from a vocab item."
               :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
-              :openapi {:x-client-method "delete-metadata"}
               :handler (fn [{{path-params :path} :parameters db :db user-id :user/id}]
                          (let [item-id (:id path-params)
                                {:keys [success code error]} (vocab-item/delete-metadata db item-id user-id)]

@@ -76,7 +76,7 @@ The application demonstrates key Plaid API concepts:
 
 ## API Integration
 
-The app uses the generated `PlaidClient.js` to interact with the Plaid API:
+The app uses the `PlaidClient` JavaScript client to interact with the Plaid API:
 
 - `client.login.create()` - User authentication
 - `client.projects.*` - Project CRUD operations

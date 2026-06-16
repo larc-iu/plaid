@@ -104,7 +104,6 @@
                            "memberships, vocab maintainerships, and API tokens removed at deactivation "
                            "are NOT restored — re-grant them deliberately. 400 if the user is not "
                            "deactivated.")
-             :openapi {:x-client-method "activate"}
              :middleware [pra/wrap-admin-required]
              :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id}]
                         (let [{:keys [success code error]} (user/reactivate db id user-id)]

@@ -21,7 +21,6 @@
 
    [""
     {:post {:summary    "Create a new relation layer."
-            :x-client-method "create"
             :middleware [[pra/wrap-maintainer-required get-project-id]]
             :parameters {:body [:map
                                 [:span-layer-id :uuid]
@@ -40,7 +39,6 @@
 
     [""
      {:get    {:summary "Get a relation layer by ID."
-               :x-client-method "get"
                :middleware [[pra/wrap-reader-required get-project-id]]
                :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters db :db}]
                           (let [relation-layer (rl/get db relation-layer-id)]
@@ -50,7 +48,6 @@
                               {:status 404
                                :body   {:error "Relation layer not found"}})))}
       :patch  {:summary    "Update a relation layer's name."
-               :x-client-method "update"
                :middleware [[pra/wrap-maintainer-required get-project-id]]
                :parameters {:body [:map [:name :string]]}
                :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [name]} :body} :parameters db :db user-id :user/id}]
@@ -61,7 +58,6 @@
                                  {:status (or code 500)
                                   :body   {:error (or error "Internal server error")}})))}
       :delete {:summary "Delete a relation layer."
-               :x-client-method "delete"
                :middleware [[pra/wrap-maintainer-required get-project-id]]
                :handler (fn [{{{:keys [relation-layer-id]} :path} :parameters db :db user-id :user/id}]
                           (let [{:keys [success code error]} (rl/delete db relation-layer-id user-id)]
@@ -72,7 +68,6 @@
 
     ["/shift"
      {:post {:summary    "Shift a relation layer's order."
-             :x-client-method "shift"
              :middleware [[pra/wrap-maintainer-required get-project-id]]
              :parameters {:body [:map [:direction [:enum "up" "down"]]]}
              :handler    (fn [{{{:keys [relation-layer-id]} :path {:keys [direction]} :body} :parameters db :db user-id :user/id}]

@@ -90,7 +90,6 @@
                                   "<body>end</body>, the exclusive Unicode code-point offset at which the token ends\n"
                                   "<body>precedence</body>, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same <body>begin</body>\n"
                                   "<body>metadata</body>, an optional map of metadata")
-                    :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                  [prm/wrap-document-version bulk-get-document-id]
                                  metadata/wrap-inline-metadata-shape-guard]
@@ -127,7 +126,6 @@
                                     "single delete, each deleted token also drags down the descendant tokens nested "
                                     "within it (and their dependent spans, relations, and vocab-links) if the layer "
                                     "has child token layers.")
-                      :openapi {:x-client-method "bulk-delete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
                       :parameters {:query [:map [:document-version {:optional true} :int]]

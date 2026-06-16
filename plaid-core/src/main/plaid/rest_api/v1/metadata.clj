@@ -152,7 +152,6 @@
              :middleware [[pra/wrap-writer-required get-project-id-fn]
                           [prm/wrap-document-version get-document-id-fn]
                           wrap-metadata-shape-guard]
-             :openapi    {:x-client-method "set-metadata"}
              :parameters {:query [:map [:document-version {:optional true} :int]]
                           :body [:map-of string? any?]}
              :handler    (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id :as request}]
@@ -173,7 +172,6 @@
              :middleware [[pra/wrap-writer-required get-project-id-fn]
                           [prm/wrap-document-version get-document-id-fn]
                           wrap-metadata-shape-guard]
-             :openapi    {:x-client-method "patch-metadata"}
              :parameters {:query [:map [:document-version {:optional true} :int]]
                           :body [:map-of string? any?]}
              :handler    (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id :as request}]
@@ -189,7 +187,6 @@
              :middleware [[pra/wrap-writer-required get-project-id-fn]
                           [prm/wrap-document-version get-document-id-fn]]
              :parameters {:query [:map [:document-version {:optional true} :int]]}
-             :openapi {:x-client-method "delete-metadata"}
              :handler (fn [{{path-params :path} :parameters db :db user-id :user/id :as request}]
                         (let [entity-id (get path-params entity-id-key)
                               doc-id (get-document-id-fn request)

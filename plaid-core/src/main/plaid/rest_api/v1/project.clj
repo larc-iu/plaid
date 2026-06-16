@@ -64,7 +64,6 @@
    ;; Documents (keyset-paginated)
    ["/:id/documents"
     {:get {:summary "List documents in a project."
-           :openapi {:x-client-method "list-documents"}
            :middleware [[pra/wrap-reader-required get-project-id]]
            :parameters {:path [:map [:id :uuid]]
                         :query (into [:map] pagination/query-params)}
@@ -130,7 +129,6 @@
     {:middleware [[pra/wrap-maintainer-required get-project-id]]}
     ["/vocabs/:vocab-id"
      {:post {:summary "Link a vocabulary to a project."
-             :openapi {:x-client-method "link-vocab"}
              :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
              :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
                         (let [{:keys [success code error]} (prj/add-vocab db id vocab-id user-id)]
@@ -139,7 +137,6 @@
                             {:status (or code 500) :body {:error error}})))}
 
       :delete {:summary "Unlink a vocabulary to a project."
-               :openapi {:x-client-method "unlink-vocab"}
                :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
                :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
                           (let [{:keys [success code error]} (prj/remove-vocab db id vocab-id user-id)]

@@ -133,8 +133,6 @@
                          "bumping the per-user password_changes counter (the same "
                          "mechanism a password change uses). Subsequent requests with "
                          "the old token will be rejected with 401.")
-           :openapi {:x-client-bundle "auth"
-                     :x-client-method "logout"}
            ;; #120 — important behavioral note for API clients:
            ;;
            ;; Logout invalidates ALL of the user's live tokens across EVERY

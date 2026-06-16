@@ -101,7 +101,6 @@
                                   "<body>target</body>, the span id of the relation's target\n"
                                   "<body>value</body>, the relation's value\n"
                                   "<body>metadata</body>, an optional map of metadata")
-                    :openapi {:x-client-method "bulk-create"}
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                  [prm/wrap-document-version bulk-get-document-id]
                                  metadata/wrap-inline-metadata-shape-guard]
@@ -133,7 +132,6 @@
                                    {:status (or (:code result) 500)
                                     :body {:error (:error result)}})))}
              :delete {:summary "Delete multiple relations in a single operation. Provide an array of IDs."
-                      :openapi {:x-client-method "bulk-delete"}
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]
                       :parameters {:query [:map [:document-version {:optional true} :int]]
@@ -186,7 +184,6 @@
     ["/source" {:put {:summary "Update the source span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
-                      :openapi {:x-client-method "set-source"}
                       :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:map [:span-id :uuid]]}
                       :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters db :db user-id :user/id :as request}]
@@ -200,7 +197,6 @@
     ["/target" {:put {:summary "Update the target span of a relation."
                       :middleware [[pra/wrap-writer-required get-project-id]
                                    [prm/wrap-document-version get-document-id]]
-                      :openapi {:x-client-method "set-target"}
                       :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:map [:span-id :uuid]]}
                       :handler (fn [{{{:keys [relation-id]} :path {:keys [span-id]} :body} :parameters db :db user-id :user/id :as request}]

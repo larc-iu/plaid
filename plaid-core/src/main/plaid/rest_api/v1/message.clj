@@ -252,8 +252,7 @@
         {:status 200 :body {:success true}}))))
 
 (def message-routes
-  ["/projects/:id" {:parameters {:path [:map [:id :uuid]]}
-                    :openapi {:x-client-bundle "messages"}}
+  ["/projects/:id" {:parameters {:path [:map [:id :uuid]]}}
 
    ;; SSE endpoint for audit log events
    ["/listen"
@@ -281,7 +280,6 @@
     {:post {:summary (str "Send a message to all clients that are listening to a project. "
                           "Useful for e.g. telling an NLP service to perform some work.")
             :middleware [[pra/wrap-writer-required get-project-id]]
-            :openapi {:x-client-method "send-message"}
             :parameters {:body any?}
             :handler (fn [{{{:keys [id]} :path
                             body :body} :parameters
@@ -330,7 +328,6 @@
     {:parameters {:path [:map [:id :uuid] [:service-id :string]]}
      :delete {:summary "Forget a previously-seen service. 409 if it is currently connected."
               :middleware [[pra/wrap-maintainer-required get-project-id]]
-              :openapi {:x-client-method "discard-service"}
               :handler (fn [{{{:keys [id service-id]} :path} :parameters db :db}]
                          (if (events/channel-alive? (events/get-service-channel id service-id))
                            {:status 409 :body {:error (str "Service '" service-id "' is currently connected; it would just re-register")}}
@@ -346,7 +343,6 @@
     {:parameters {:path [:map [:id :uuid] [:service-id :string]]}
      :get {:summary "Service: open the inbound work-request stream (SSE); this registers the service."
            :middleware [[pra/wrap-writer-required get-project-id]]
-           :openapi {:x-client-method "serve-channel"}
            :parameters {:query [:map
                                 [:service-name {:optional true} :string]
                                 [:description {:optional true} :string]
@@ -354,7 +350,6 @@
            :handler service-channel-handler}
      :post {:summary "Client: submit work to a service; streams progress + result (SSE)."
             :middleware [[pra/wrap-writer-required get-project-id]]
-            :openapi {:x-client-method "submit-request"}
             :parameters {:body any?}
             :handler submit-request-handler}}]
 
@@ -364,7 +359,6 @@
     {:parameters {:path [:map [:id :uuid] [:request-id :string]]}
      :post {:summary "Service: report progress/result/error for an in-flight request."
             :middleware [[pra/wrap-writer-required get-project-id]]
-            :openapi {:x-client-method "report-request-event"}
             :parameters {:body [:map
                                 [:status [:enum "progress" "completed" "error"]]
                                 [:progress {:optional true} any?]
