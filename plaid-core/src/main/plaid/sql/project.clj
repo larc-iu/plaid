@@ -11,9 +11,7 @@
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.pagination :as pagination]
-            [plaid.sql.user :as user]
-            [plaid.sql.document :as document]
-            [plaid.sql.text-layer :as text-layer])
+            [plaid.sql.user :as user])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:project/id
@@ -463,12 +461,31 @@
                          eid))))
 
 (defn delete
-  "Delete a project. Walks the descendant subtree (documents via
-  document/cascade-delete!, then text_layers via text-layer/
-  cascade-delete!) and audits each row deletion through the audited
-  helpers so audit_writes captures every change — FK ON DELETE CASCADE
-  would otherwise silently sweep them. Project_users / project_vocabs
-  are junction tables and are left to FK CASCADE (per audit policy)."
+  "Delete a project — and truly delete it. A deleted project is gone: it is
+  NOT recoverable and NOT time-travelable (`plaid.history.read` refuses
+  as-of reads for documents whose project no longer exists). So, unlike
+  single-document / single-layer delete, we do NOT audit every descendant
+  row — that history would be write-only. Instead:
+
+  - FK ON DELETE CASCADE sweeps the entire descendant subtree in the DB
+    engine when the `projects` row is dropped: documents → texts / tokens /
+    spans / relations / vocab_links, the text→token→span→relation layer
+    tree, and every junction table (project_users, project_vocabs,
+    span_tokens, vocab_link_tokens, ...).
+  - `entity_metadata` is the one table with no FK to its owning entity
+    (it's a polymorphic key-value table), so cascade can't reach it. We
+    bulk-delete the project's metadata rows by entity-type — scoped through
+    the project's documents (document-owned entities) or the denormalized
+    `project_id` (layers) — BEFORE dropping the project row, while the
+    referenced entity rows still exist. These sweeps are unaudited, per the
+    parent-owned-metadata contract. Vocab layers/items are global (shared
+    via project_vocabs) and are intentionally left untouched.
+  - Exactly ONE audit row is emitted: the `:projects` `:delete` row from
+    `delete-by-id!`.
+
+  This makes project deletion a handful of statements instead of one
+  audited DELETE per descendant — a ~200-document project was ~188k audited
+  deletes, enough to blow past the client's HTTP timeout."
   [db eid user-id]
   (submit-operation! [tx db {:type :project/delete
                              :project eid
@@ -478,32 +495,36 @@
                      (let [existing (psc/fetch-by-id tx :projects eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Project" eid) {:code 404 :id eid})))
-                       ;; Documents first (their text_layer is the
-                       ;; same project's, but document cascade sweeps
-                       ;; document-scoped tokens/spans/relations/
-                       ;; vocab_links so the text_layer cascade has
-                       ;; less to do).
-                       (let [doc-ids (->> (psc/q tx {:select [:id]
-                                                     :from :documents
-                                                     :where [:= :project_id eid]})
-                                          (mapv :id))]
-                         (doseq [did doc-ids]
-                           (document/cascade-delete! tx did)))
-                       ;; Text layers (cascade walks token_layers →
-                       ;; span_layers → relation_layers).
-                       (let [tl-ids (->> (psc/q tx {:select [:id]
-                                                    :from :text_layers
-                                                    :where [:= :project_id eid]})
-                                         (mapv :id))]
-                         (doseq [tl-id tl-ids]
-                           (text-layer/cascade-delete! tx tl-id)))
-                       ;; Defensive: sweep entity_metadata rows whose
-                       ;; entity_type is "project" (rare but no FK).
-                       (psc/execute! tx
-                                     {:delete-from :entity_metadata
-                                      :where [:and
-                                              [:= :entity_type "project"]
-                                              [:= :entity_id eid]]})
+                       ;; entity_metadata cleanup (FK cascade can't reach
+                       ;; this table). Run BEFORE the project row is dropped
+                       ;; so the entity-id subqueries still resolve their
+                       ;; soon-to-be-cascaded rows. Unaudited.
+                       (let [doc-ids {:select [:id] :from [:documents] :where [:= :project_id eid]}
+                             sweep-meta! (fn [etype table where]
+                                           (psc/execute! tx
+                                                         {:delete-from :entity_metadata
+                                                          :where [:and
+                                                                  [:= :entity_type etype]
+                                                                  [:in :entity_id {:select [:id]
+                                                                                   :from [table]
+                                                                                   :where where}]]}))]
+                         (sweep-meta! "document"       :documents       [:= :project_id eid])
+                         (sweep-meta! "text"           :texts           [:in :document_id doc-ids])
+                         (sweep-meta! "token"          :tokens          [:in :document_id doc-ids])
+                         (sweep-meta! "span"           :spans           [:in :document_id doc-ids])
+                         (sweep-meta! "relation"       :relations       [:in :document_id doc-ids])
+                         (sweep-meta! "vocab-link"     :vocab_links     [:in :document_id doc-ids])
+                         (sweep-meta! "text-layer"     :text_layers     [:= :project_id eid])
+                         (sweep-meta! "token-layer"    :token_layers    [:= :project_id eid])
+                         (sweep-meta! "span-layer"     :span_layers     [:= :project_id eid])
+                         (sweep-meta! "relation-layer" :relation_layers [:= :project_id eid])
+                         (psc/execute! tx
+                                       {:delete-from :entity_metadata
+                                        :where [:and
+                                                [:= :entity_type "project"]
+                                                [:= :entity_id eid]]}))
+                       ;; One audit row; FK ON DELETE CASCADE sweeps the
+                       ;; descendant subtree + junction tables.
                        (psc/delete-by-id! tx :projects eid)
                        eid)))
 

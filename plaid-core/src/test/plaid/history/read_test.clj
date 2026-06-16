@@ -133,6 +133,31 @@
       (is (nil? (hread/get-at db doc-id t-dead)))
       (is (false? (hread/exists-at? db doc-id t-dead))))))
 
+(deftest deleted-project-is-not-time-travelable
+  ;; A project delete is a TRUE delete: plaid.sql.project/delete relies on
+  ;; FK cascade and does NOT audit the descendant deletions. To avoid
+  ;; serving a "ghost" document whose deletion was never recorded, history
+  ;; reads refuse any document whose project no longer exists — even at a T
+  ;; when both the project and the document existed. (A deleted DOCUMENT in
+  ;; a LIVE project stays time-travelable — see the test above.)
+  (let [proj (create-test-project admin-request "HReadDelWholeProj")
+        doc-id (create-test-document admin-request proj "DoomedWithProject")
+        tl (-> (create-text-layer admin-request proj "HRDW-TL") :body :id)
+        _ (assert-created (create-text admin-request tl doc-id "alive then gone"))
+        t-alive (latest-op-ts)]
+    (testing "while the project lives, the doc is time-travelable at t-alive"
+      (is (some? (hread/get-with-layer-data-at db doc-id t-alive))))
+    (assert-no-content (delete-test-project admin-request proj))
+    (testing "after the project is deleted, NO T resolves its documents"
+      (is (nil? (hread/get-at db doc-id t-alive)))
+      (is (nil? (hread/get-with-layer-data-at db doc-id t-alive)))
+      (is (false? (hread/exists-at? db doc-id t-alive))))
+    (testing "REST as-of GET on a deleted project's doc 404s"
+      (is (= 404 (:status (api-call admin-request
+                                    {:method :get
+                                     :path (str "/api/v1/documents/" doc-id
+                                                "?include-body=true&as-of=" t-alive)})))))))
+
 (deftest rest-as-of-get-end-to-end
   ;; Through the full REST stack: ?as-of= on the top-level document GET
   ;; serves the audit-log reconstruction. Notably this runs with ZERO

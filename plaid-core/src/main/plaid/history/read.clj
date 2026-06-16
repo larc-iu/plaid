@@ -263,26 +263,44 @@
 ;; Public API
 ;; ============================================================
 
+(defn- project-live?
+  "True iff `project-id` still exists in OLTP. A deleted project is truly
+  gone and is NOT time-travelable: once its row is dropped (see
+  `plaid.sql.project/delete`) the descendant deletions are intentionally
+  left un-audited, so reconstructing those documents would serve a 'ghost'
+  whose deletion the log never recorded. Gating every as-of read on the
+  document's (immutable) project still existing makes deleted projects
+  uniformly unreadable, while deleted documents in a LIVE project remain
+  time-travelable. A nil project-id reads as not-live."
+  [db project-id]
+  (and (some? project-id)
+       (some? (psc/fetch-by-id db :projects project-id))))
+
 (defn get-at
   "Shape of `plaid.sql.document/get` at time `ts`. Returns nil if the
-  document didn't exist at `ts`."
+  document didn't exist at `ts`, or if its project has since been deleted
+  (deleted projects are not time-travelable — see `project-live?`)."
   [db doc-id ts]
   (let [ts-iso (->ts-iso ts)
         _ (check-retention! db ts-iso)
         bound (effective-bound db ts-iso)
         folded (fold-rows (q-doc-row-only db doc-id bound))
-        entity (clojure.core/get folded ["documents" (str doc-id)])]
-    (when entity
-      (build-document db (coerce-entity entity)))))
+        entity (some-> (clojure.core/get folded ["documents" (str doc-id)])
+                       coerce-entity)]
+    (when (and entity (project-live? db (:project_id entity)))
+      (build-document db entity))))
 
 (defn exists-at?
-  "Cheap presence probe: did `doc-id` exist at `ts`?"
+  "Cheap presence probe: did `doc-id` exist at `ts` (in a still-live
+  project)?"
   [db doc-id ts]
   (let [ts-iso (->ts-iso ts)
         _ (check-retention! db ts-iso)
-        bound (effective-bound db ts-iso)]
-    (contains? (fold-rows (q-doc-row-only db doc-id bound))
-               ["documents" (str doc-id)])))
+        bound (effective-bound db ts-iso)
+        entity (some-> (clojure.core/get (fold-rows (q-doc-row-only db doc-id bound))
+                                         ["documents" (str doc-id)])
+                       coerce-entity)]
+    (boolean (and entity (project-live? db (:project_id entity))))))
 
 (defn get-with-layer-data-at
   "Deep document read at time `ts`. Result shape mirrors
@@ -300,7 +318,10 @@
         folded (fold-rows (q-doc-rows db doc-id bound))
         doc-entity (some-> (clojure.core/get folded ["documents" (str doc-id)])
                            coerce-entity)]
-    (when doc-entity
+    ;; A deleted project is not time-travelable (see `project-live?`): refuse
+    ;; the read so reconstruction never serves a document whose project — and
+    ;; thus the document itself — has been truly deleted.
+    (when (and doc-entity (project-live? db (:project_id doc-entity)))
       (let [doc (build-document db doc-entity)
             prj-id (:project_id doc-entity)
             ;; --- layer skeleton at T, filtered to this project ---

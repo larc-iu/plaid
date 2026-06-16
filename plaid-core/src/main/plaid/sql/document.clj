@@ -531,15 +531,20 @@
                                  :where [:= :document_id eid]})
                       (mapv :id))
         multi-delete! (requiring-resolve 'plaid.sql.token/multi-delete!)]
-    (doseq [text-id text-ids]
+    (when (seq text-ids)
+      ;; Delete every token across this document's texts in ONE
+      ;; multi-delete! call. multi-delete! partitions spans/relations/
+      ;; vocab_links by the deleted token set (audited) regardless of
+      ;; which text a token belongs to, so a single call over the full
+      ;; set does the same work as one-per-text with far fewer
+      ;; round-trips and one batched audit pass.
       (let [tok-ids (->> (psc/q tx {:select [:id]
                                     :from :tokens
-                                    :where [:= :text_id text-id]})
+                                    :where [:in :text_id text-ids]})
                          (mapv :id))]
         (when (seq tok-ids)
           (multi-delete! tx tok-ids)))
-      (psc/delete-by-id! tx :texts text-id))
-    (when (seq text-ids)
+      (psc/delete-where! tx :texts [:in :id text-ids])
       (psc/execute! tx
                     {:delete-from :entity_metadata
                      :where [:and
@@ -548,37 +553,24 @@
   ;; Defensive sweep: any spans/relations/vocab_links left attached to
   ;; the document but not removed via the token cascade (orphans the
   ;; partition-spans-by-deletion split can't see because their token
-  ;; lists were already empty).
-  (let [rel-ids (->> (psc/q tx {:select [:id]
-                                :from :relations
-                                :where [:= :document_id eid]})
-                     (mapv :id))]
-    (doseq [rid rel-ids]
-      (psc/delete-by-id! tx :relations rid))
+  ;; lists were already empty). Each is one audited
+  ;; `DELETE ... WHERE document_id = ?` round-trip (batched audit via
+  ;; delete-where!), not a per-row SELECT + delete-by-id! loop.
+  (let [rel-ids (mapv :id (psc/delete-where! tx :relations [:= :document_id eid]))]
     (when (seq rel-ids)
       (psc/execute! tx
                     {:delete-from :entity_metadata
                      :where [:and
                              [:= :entity_type "relation"]
                              [:in :entity_id rel-ids]]})))
-  (let [span-ids (->> (psc/q tx {:select [:id]
-                                 :from :spans
-                                 :where [:= :document_id eid]})
-                      (mapv :id))]
-    (doseq [sid span-ids]
-      (psc/delete-by-id! tx :spans sid))
+  (let [span-ids (mapv :id (psc/delete-where! tx :spans [:= :document_id eid]))]
     (when (seq span-ids)
       (psc/execute! tx
                     {:delete-from :entity_metadata
                      :where [:and
                              [:= :entity_type "span"]
                              [:in :entity_id span-ids]]})))
-  (let [vl-ids (->> (psc/q tx {:select [:id]
-                               :from :vocab_links
-                               :where [:= :document_id eid]})
-                    (mapv :id))]
-    (doseq [vlid vl-ids]
-      (psc/delete-by-id! tx :vocab_links vlid))
+  (let [vl-ids (mapv :id (psc/delete-where! tx :vocab_links [:= :document_id eid]))]
     (when (seq vl-ids)
       (psc/execute! tx
                     {:delete-from :entity_metadata

@@ -756,6 +756,53 @@
 ;; delete time).
 ;; ----------------------------------------------------------------
 
+;; audit_writes has 10 columns, so each batched row contributes 10
+;; placeholders to a multi-row INSERT. Chunk at 3000 rows (30000 params)
+;; to stay under SQLite's SQLITE_MAX_VARIABLE_NUMBER (32766). (The general
+;; `bulk-chunk-size` of 4000 is sized for ~7-column rows and would blow
+;; the ceiling for this wider shape; it is also defined later in the file.)
+(def ^:private audit-bulk-chunk-size 3000)
+
+(defn- reserve-seqs!
+  "Reserve `n` consecutive per-op `:seq` ordinals from the op's counter
+  atom and return the first reserved ordinal. The op is single-threaded
+  inside submit-operation*, so the atom is just an in-memory counter — no
+  real contention.
+
+  Fallback for any old op shape that lacks `:seq-counter` (shouldn't happen
+  in normal flow): start at 0. Callers still receive a distinct ordinal per
+  row in a batch, so the UNIQUE(op_id, seq) constraint in audit_writes holds
+  even on that path."
+  [op n]
+  (if-let [c (:seq-counter op)]
+    (let [start @c] (swap! c + n) start)
+    0))
+
+(defn- audit-row-values
+  "Build the column-keyed value map for one audit_writes row. Shared by the
+  single-row (`record-audit-write!`) and batched (`record-audit-writes!`)
+  entry points so the two stay identical except for how the INSERT is issued."
+  [op seq-n target-table target-id change-type pre-image post-image]
+  {:id (new-uuid)
+   :op_id (:id op)
+   :seq seq-n
+   :target_table (name target-table)
+   :target_id target-id
+   :change_type (name change-type)
+   :pre_image (some-> pre-image write-json)
+   :post_image (some-> post-image write-json)
+   ;; Per-row document attribution, from the row's OWN image — not the
+   ;; op's :document, which is nil for multi-document cascade ops
+   ;; (project/delete, vocab/delete) and was even once plain wrong
+   ;; (pre-guard cross-document bulk-delete). This column is what as-of
+   ;; reconstruction scopes by, so a missing stamp = a row invisible to
+   ;; time travel.
+   :document_id (or (:document_id post-image)
+                    (:document_id pre-image)
+                    (when (= (name target-table) "documents")
+                      target-id))
+   :ts (:ts op)})
+
 (defn record-audit-write!
   "Emit an audit_writes row for `target-table`/`target-id` with the given
   change-type and pre/post images. Requires *op* to be bound (or ::skip).
@@ -773,7 +820,10 @@
   This is load-bearing for ETL replay: all rows in one op share the same
   `:ts` (taken once in submit-operation*), so `seq` is what disambiguates
   the order of multiple writes to the same target row inside one op
-  (e.g. bump-document-version! plus a body update on the same document)."
+  (e.g. bump-document-version! plus a body update on the same document).
+
+  For high-volume same-table deletes/inserts prefer `record-audit-writes!`,
+  which batches into chunked multi-row INSERTs."
   [tx target-table target-id change-type pre-image post-image]
   (ensure-op-bound!)
   (let [op *op*]
@@ -788,44 +838,54 @@
       nil
 
       :else
-      (let [;; Post-increment via swap! returning the previous value.
-            ;; First write in an op gets seq=0, then 1, 2, ... The op is
-            ;; single-threaded inside submit-operation*, so the atom is
-            ;; just an in-memory counter — no real contention.
-            seq-n (if-let [c (:seq-counter op)]
-                    (let [n @c] (swap! c inc) n)
-                    ;; Fallback for any old op shape that lacks
-                    ;; :seq-counter (shouldn't happen in normal flow).
-                    ;; Note this does NOT degrade gracefully: if a
-                    ;; single op records more than one audit row with
-                    ;; this branch active, the second insert fails
-                    ;; loudly via the UNIQUE(op_id, seq) constraint
-                    ;; in audit_writes.
-                    0)
-            ;; Per-row document attribution, from the row's OWN image —
-            ;; not the op's :document, which is nil for multi-document
-            ;; cascade ops (project/delete, vocab/delete) and was even
-            ;; once plain wrong (pre-guard cross-document bulk-delete).
-            ;; This column is what as-of reconstruction scopes by, so a
-            ;; missing stamp = a row invisible to time travel.
-            document-id (or (:document_id post-image)
-                            (:document_id pre-image)
-                            (when (= (name target-table) "documents")
-                              target-id))]
-        (jdbc/execute-one!
-         tx
-         (format-sql
-          {:insert-into :audit_writes
-           :values [{:id (new-uuid)
-                     :op_id (:id op)
-                     :seq seq-n
-                     :target_table (name target-table)
-                     :target_id target-id
-                     :change_type (name change-type)
-                     :pre_image (some-> pre-image write-json)
-                     :post_image (some-> post-image write-json)
-                     :document_id document-id
-                     :ts (:ts op)}]}))))))
+      (jdbc/execute-one!
+       tx
+       (format-sql
+        {:insert-into :audit_writes
+         :values [(audit-row-values op (reserve-seqs! op 1)
+                                    target-table target-id change-type
+                                    pre-image post-image)]})))))
+
+(defn record-audit-writes!
+  "Batched form of `record-audit-write!` for many rows that share one
+  `target-table` and `change-type`. `entries` is a seq of
+  `[target-id pre-image post-image]` triples.
+
+  Emits the audit rows as chunked multi-row INSERTs rather than one
+  `jdbc/execute-one!` round-trip per row. The per-row path dominates large
+  cascade deletes: a ~200-document project delete emits ~188k audit rows,
+  i.e. ~188k serial INSERTs. Per-op `:seq` ordinals are reserved in
+  `entries` order, so the result is identical to calling
+  `record-audit-write!` once per entry — just far fewer round-trips.
+
+  No-op when `entries` is empty or *op* is ::skip."
+  [tx target-table change-type entries]
+  (ensure-op-bound!)
+  (let [op *op*
+        entries (vec entries)]
+    (cond
+      (empty? entries) nil
+
+      (nil? op)
+      (throw (ex-info (str "Audited write to " target-table
+                           " outside of submit-operation!. Wrap the call, or pass"
+                           " {:audit ::skip} for bootstrap-only writes.")
+                      {:code 500 :target target-table}))
+
+      (= op ::skip)
+      nil
+
+      :else
+      (let [start (reserve-seqs! op (count entries))
+            rows (map-indexed
+                  (fn [i [target-id pre-image post-image]]
+                    (audit-row-values op (+ start i)
+                                      target-table target-id change-type
+                                      pre-image post-image))
+                  entries)]
+        (doseq [chunk (partition-all audit-bulk-chunk-size rows)]
+          (jdbc/execute-one! tx (format-sql {:insert-into :audit_writes
+                                             :values (vec chunk)})))))))
 
 ;; ============================================================
 ;; Read primitives
@@ -1030,8 +1090,8 @@
         (let [posts (execute-returning! tx {:insert-into table
                                             :values (vec chunk)
                                             :returning [:*]})]
-          (doseq [post posts]
-            (record-audit-write! tx table (:id post) :insert nil post))))
+          (record-audit-writes! tx table :insert
+                                (map (fn [post] [(:id post) nil post]) posts))))
       (count rows))))
 
 (defn bulk-update-by-id!
@@ -1138,11 +1198,14 @@
                           post-by-id (into {} (map (juxt id-col identity)) posts)]
                       ;; One audit row per id (in input order), skipping
                       ;; no-ops where pre == post.
-                      (doseq [id present-ids]
-                        (let [pre (get pre-by-id id)
-                              post (get post-by-id id)]
-                          (when (and (some? post) (not= pre post))
-                            (record-audit-write! tx table id :update pre post))))
+                      (record-audit-writes!
+                       tx table :update
+                       (keep (fn [id]
+                               (let [pre (get pre-by-id id)
+                                     post (get post-by-id id)]
+                                 (when (and (some? post) (not= pre post))
+                                   [id pre post])))
+                             present-ids))
                       posts)))))
              chunks)))))
 
@@ -1158,8 +1221,8 @@
    (let [pres (execute-returning! tx {:delete-from table
                                       :where where-clause
                                       :returning [:*]})]
-     (doseq [pre pres]
-       (record-audit-write! tx table (get pre id-col) :delete pre nil))
+     (record-audit-writes! tx table :delete
+                           (map (fn [pre] [(get pre id-col) pre nil]) pres))
      pres)))
 
 ;; ============================================================

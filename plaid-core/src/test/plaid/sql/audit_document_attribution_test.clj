@@ -47,16 +47,22 @@
       (is (= [nil] (distinct (map :document_id (doc-stamps tkl))))
           "layer rows carry no document"))
 
-    (testing "cascade rows under a NULL-document op are still stamped"
-      ;; project/delete carries :document nil but cascade-deletes every
-      ;; entity in every document — THE case op-level attribution loses
-      ;; (demonstrated by the spike: a project-deleted doc reconstructed
-      ;; as alive). The row's image carries the truth.
-      (assert-no-content (api-call admin-request
-                                   {:method :delete :path (str "/api/v1/projects/" proj)}))
-      (let [tok-rows (doc-stamps tok)
-            delete-row (last tok-rows)]
-        (is (= "delete" (:change_type delete-row))
-            "the cascade delete row exists")
-        (is (= (str doc) (str (:document_id delete-row)))
-            "and is stamped with the token's document despite the op's nil :document")))))
+    (testing "cascade rows under a NULL-document op are still stamped from the row image"
+      ;; vocab/delete carries :document nil but cascade-deletes vocab_links
+      ;; across EVERY document that references the vocab — the case op-level
+      ;; attribution loses (the row's own image carries the document).
+      ;;
+      ;; (project/delete is no longer such a case: it is a TRUE delete that
+      ;; relies on FK ON DELETE CASCADE and does not audit descendants — see
+      ;; plaid.sql.audit-cascade-test.)
+      (let [vid (-> (create-vocab-layer admin-request "AuditDocAttrVocab") :body :id)
+            _ (assert-no-content (link-vocab-to-project admin-request proj vid))
+            item (-> (create-vocab-item admin-request vid "form") :body :id)
+            vl (-> (create-vocab-link admin-request item [tok]) :body :id)]
+        (assert-no-content (delete-vocab-layer admin-request vid))
+        (let [vl-rows (doc-stamps vl)
+              delete-row (last vl-rows)]
+          (is (= "delete" (:change_type delete-row))
+              "the cascade delete row exists")
+          (is (= (str doc) (str (:document_id delete-row)))
+              "and is stamped with the vocab_link's document despite the op's nil :document"))))))
