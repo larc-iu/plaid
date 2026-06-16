@@ -1333,13 +1333,22 @@ class ProjectsResource(_Resource):
         return self._request('GET', f'/api/v1/projects/{id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, id: str, audit_message=None) -> Any:
-        """Delete a project.
+    def delete(self, id: str, audit_message=None, timeout=None) -> Any:
+        """Delete a project — and everything in it.
+
+        Deleting a large project (a whole treebank: millions of tokens/spans/
+        relations) is one long server-side transaction — tens of seconds — so
+        this DISABLES the per-request timeout by default (the server just runs
+        the FK cascade to completion). Pass ``timeout=<seconds>`` for a finite
+        bound.
 
         Args:
             id: The resource ID
+            audit_message: Custom audit-log message.
+            timeout: Per-request timeout in seconds; ``None`` (default) disables it.
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/projects/{id}',
+                              audit_message=audit_message, timeout=timeout)
 
     def update(self, id: str, name: str, audit_message=None) -> Any:
         """Update a project's name.

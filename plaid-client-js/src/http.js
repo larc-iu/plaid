@@ -94,6 +94,9 @@ export function timeoutSignal(timeout) {
  *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
  *   noAuth          - Skip Authorization header
  *   binaryResponse  - Return arrayBuffer instead of JSON/text
+ *   timeout         - Per-request timeout in ms overriding client.timeout
+ *                     for this call (0/null disables). Used for known-long
+ *                     ops like project delete.
  */
 export async function makeRequest(client, method, path, options = {}) {
   const {
@@ -106,6 +109,7 @@ export async function makeRequest(client, method, path, options = {}) {
     noAuth,
     binaryResponse,
     auditMessage,
+    timeout,
   } = options;
 
   // Build URL
@@ -194,7 +198,7 @@ export async function makeRequest(client, method, path, options = {}) {
   if (requestBody !== undefined) {
     fetchOptions.body = formData ? requestBody : JSON.stringify(requestBody);
   }
-  const signal = timeoutSignal(client.timeout);
+  const signal = timeoutSignal(timeout !== undefined ? timeout : client.timeout);
   if (signal) fetchOptions.signal = signal;
 
   try {

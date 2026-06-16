@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 # this also bounds media up/downloads — raise it (or disable) for large files.
 DEFAULT_TIMEOUT_S = 30.0
 
+# Sentinel distinguishing "no per-call timeout override" from an explicit
+# ``timeout=None`` (which disables the timeout for that call).
+_UNSET = object()
+
 
 class PlaidAPIError(Exception):
     """Enriched API error raised for failed HTTP responses and network errors.
@@ -213,7 +217,8 @@ def list_all(client, path, *, page_size=1000, query=None):
 
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, skip_response_transform=False,
-                 no_auth=False, binary_response=False, audit_message=None):
+                 no_auth=False, binary_response=False, audit_message=None,
+                 timeout=_UNSET):
     """Generic request method handling all HTTP logic.
 
     Args:
@@ -305,7 +310,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         headers['Content-Type'] = 'application/json'
 
     kwargs = {'method': method, 'url': url, 'headers': headers,
-              'timeout': getattr(client, 'timeout', DEFAULT_TIMEOUT_S)}
+              'timeout': (timeout if timeout is not _UNSET
+                          else getattr(client, 'timeout', DEFAULT_TIMEOUT_S))}
 
     if request_body is not None:
         if form_data:

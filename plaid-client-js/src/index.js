@@ -1015,11 +1015,20 @@ class PlaidClient {
       iterDocuments: (id, { pageSize } = {}) =>
         iterPages(this, `/api/v1/projects/${id}/documents`, { pageSize }),
       /**
-       * Delete a project.
+       * Delete a project — and everything in it.
+       *
+       * Deleting a large project (a whole treebank: millions of tokens/spans/
+       * relations) is one long server-side transaction — tens of seconds — so
+       * this call DISABLES the client's per-request timeout by default (the
+       * server just runs the FK cascade to completion). Pass `{ timeout }` to
+       * impose a finite bound.
        * @param {string} id - The resource ID
+       * @param {string} [auditMessage] - Custom audit-log message
+       * @param {object} [options]
+       * @param {number} [options.timeout=0] - Per-request timeout in ms (0/null disables)
        */
-      delete: (id, auditMessage) =>
-        this._request('DELETE', `/api/v1/projects/${id}`, { auditMessage }),
+      delete: (id, auditMessage, { timeout = 0 } = {}) =>
+        this._request('DELETE', `/api/v1/projects/${id}`, { auditMessage, timeout }),
       /**
        * Update a project's name.
        * @param {string} id - The resource ID
