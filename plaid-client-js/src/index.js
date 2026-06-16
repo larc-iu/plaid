@@ -41,6 +41,9 @@ class PlaidClient {
     this.batchOperations = [];
     this.documentVersions = {};
     this.strictModeDocumentId = null;
+    // Ambient custom audit-log message applied to write requests; null = use
+    // the server's auto-generated description. See setAuditMessage / withAuditMessage.
+    this.auditMessage = null;
 
     // --- API Bundles ---
 
@@ -1509,6 +1512,54 @@ class PlaidClient {
   /** Exit strict mode and stop tracking document versions for writes. */
   exitStrictMode() {
     this.strictModeDocumentId = null;
+  }
+
+  /**
+   * Set a custom audit-log message applied to every subsequent write request,
+   * OVERRIDING the server's auto-generated description (e.g. "Patch metadata
+   * on span X"). The message may template the endpoint's own path/query/body
+   * params with `{param}` placeholders, resolved server-side — e.g.
+   * `"Approve span {spanId}"`. Placeholder names are case/separator-insensitive
+   * (`{spanId}` == `{span-id}` == `{span_id}`). Applies to GET-less requests
+   * only, including every operation queued in a batch.
+   * @param {string} message - The custom message (template).
+   */
+  setAuditMessage(message) {
+    this.auditMessage = message;
+    return this;
+  }
+
+  /** Clear the ambient custom audit-log message (revert to auto-generated). */
+  clearAuditMessage() {
+    this.auditMessage = null;
+    return this;
+  }
+
+  /**
+   * Run `fn` with a custom audit-log message in effect, restoring the previous
+   * message afterward (supports nesting). Use it to scope ONE call (per-call
+   * precision) or MANY (a logical unit):
+   *
+   *   await client.withAuditMessage('Approve span {spanId}', () =>
+   *     client.spans.update(spanId, ...));
+   *
+   *   await client.withAuditMessage('Import sentence', async () => {
+   *     await client.tokens.create(...);
+   *     await client.spans.create(...);
+   *   });
+   *
+   * @param {string} message - The custom message (template).
+   * @param {() => (Promise<any>|any)} fn - The work to run with the message set.
+   * @returns {Promise<any>} Whatever `fn` resolves to.
+   */
+  async withAuditMessage(message, fn) {
+    const prev = this.auditMessage;
+    this.auditMessage = message;
+    try {
+      return await fn();
+    } finally {
+      this.auditMessage = prev;
+    }
   }
 
   /** Begin a batch of operations. Subsequent API calls will be queued. */

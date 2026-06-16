@@ -393,3 +393,104 @@
   (fn [request]
     (binding [op/*token-id* (:api-token/id request)]
       (handler request))))
+
+(def ^:private audit-message-max-length
+  "Cap on a client-supplied audit message AFTER templating. Generous —
+  this is audit-log readability, not a security control (trusted-user
+  threat model); it just bounds pathological description bloat."
+  1000)
+
+(defn- raw-audit-message-param
+  "Pull the raw `audit-message=` value out of the request's query string
+  (URL-decoded), or nil if absent. Read from the raw query string — not
+  `:parameters` — because the param is not declared in route OpenAPI
+  schemas, so reitit/malli request coercion (`:strip-extra-keys true` +
+  closed schemas) drops it before middleware would see it. Same approach
+  as `as-of`/`document-version`.
+
+  Takes everything after the FIRST `=` so an encoded `%3D` inside the
+  message survives. Param NAME match is case-insensitive. Falls back to
+  the raw (still-encoded) value if URLDecoder rejects a malformed
+  `%`-sequence rather than 500-ing."
+  [request]
+  (when-let [qs (:query-string request)]
+    (some (fn [^String p]
+            (let [eq (.indexOf p "=")]
+              (when (and (pos? eq)
+                         (= "audit-message" (str/lower-case (subs p 0 eq))))
+                (let [v (subs p (inc eq))]
+                  (try
+                    (java.net.URLDecoder/decode v "UTF-8")
+                    (catch IllegalArgumentException _ v))))))
+          (str/split qs #"&"))))
+
+(defn- normalize-template-key
+  "Fold a param key to a canonical form so `{spanId}`, `{span-id}`, and
+  `{span_id}` all resolve to the same wire param. Lowercase, drop `-`/`_`."
+  [k]
+  (-> (if (keyword? k) (name k) (str k))
+      (str/lower-case)
+      (str/replace #"[-_]" "")))
+
+(defn- template-lookup-map
+  "Merge the request's path/query/body params into one normalized-key map
+  for `{placeholder}` substitution. Coerced `:parameters` (keyword keys)
+  are the primary source; raw `:path-params` (string keys) are folded in
+  as a fallback. Only an associative (JSON object) body contributes — a
+  vector/scalar/multipart body simply yields no body keys."
+  [request]
+  (let [{:keys [path query body]} (:parameters request)]
+    (reduce (fn [acc [k v]] (assoc acc (normalize-template-key k) v))
+            {}
+            (concat (when (map? path) path)
+                    (when (map? query) query)
+                    (when (map? body) body)
+                    (when (map? (:path-params request)) (:path-params request))))))
+
+(defn- apply-audit-template
+  "Substitute `{name}` placeholders in `message` from `lookup`. Single
+  pass — Clojure's fn-replace quotes the replacement and writes past each
+  match, so a substituted value containing braces is never re-scanned and
+  `$`/`\\` are literal. Unresolved placeholders are left literal as a
+  debugging signal that the template references a missing param."
+  [^String message lookup]
+  (str/replace message
+               #"\{([^{}]+)\}"
+               (fn [[whole k]]
+                 (if-let [v (get lookup (normalize-template-key k))]
+                   (str v)
+                   whole))))
+
+(defn- truncate-audit-message
+  "Truncate to `audit-message-max-length` UTF-16 units without splitting a
+  surrogate pair (a lone high surrogate can't be encoded as valid UTF-8
+  for SQLite TEXT)."
+  [^String s]
+  (if (<= (count s) audit-message-max-length)
+    s
+    (let [n audit-message-max-length
+          end (if (Character/isHighSurrogate (.charAt s (dec n))) (dec n) n)]
+      (subs s 0 end))))
+
+(defn wrap-audit-message
+  "When a write request carries `?audit-message=<template>`, template it
+  against the endpoint's OWN path/query/body params and BIND the result to
+  `plaid.sql.operation/*custom-description*`, which `submit-operation*`
+  uses to OVERRIDE the auto-generated `operations.description`.
+
+  Registered as GLOBAL middleware (`core.clj`), so it also runs for every
+  batch sub-operation re-routed through `rest-handler`: a per-op
+  `?audit-message=` is templated and bound per op. Harmless on GET (no
+  operation row is created).
+
+  The stored message is client-chosen free text (NOT server-authoritative)
+  for audit-log readability; it is capped at `audit-message-max-length` and
+  stored verbatim — HTML-escaping for display is the audit UI's job."
+  [handler]
+  (fn [request]
+    (if-let [raw (raw-audit-message-param request)]
+      (binding [op/*custom-description*
+                (truncate-audit-message
+                 (apply-audit-template raw (template-lookup-map request)))]
+        (handler request))
+      (handler request))))

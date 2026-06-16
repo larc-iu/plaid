@@ -299,6 +299,13 @@ export declare class PlaidClient {
   enterStrictMode(documentId: string): void;
   exitStrictMode(): void;
 
+  // Custom audit-log message (overrides the auto-generated description; may
+  // template the endpoint's path/query/body params with {param} placeholders).
+  auditMessage: string | null;
+  setAuditMessage(message: string): this;
+  clearAuditMessage(): this;
+  withAuditMessage<T>(message: string, fn: () => Promise<T> | T): Promise<T>;
+
   // Query
   query(body: any): Promise<any>;
 

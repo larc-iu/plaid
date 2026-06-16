@@ -213,7 +213,7 @@ def list_all(client, path, *, page_size=1000, query=None):
 
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, skip_response_transform=False,
-                 no_auth=False, binary_response=False):
+                 no_auth=False, binary_response=False, audit_message=None):
     """Generic request method handling all HTTP logic.
 
     Args:
@@ -271,6 +271,18 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             url += f'{separator}document-version={quote(str(doc_version), safe="")}'
             if client.is_batching:
                 client.batch_version_stamped = True
+
+    # Custom audit-log message (overrides the auto-generated description).
+    # Per-call `audit_message` wins, else the ambient `client.audit_message`
+    # (see set_audit_message / audit_message context manager). Unlike
+    # document-version this has no OCC self-conflict, so it is stamped on EVERY
+    # queued batch op, not just the first. The server templates `{param}`
+    # placeholders against the endpoint's own path/query/body params.
+    effective_audit_message = (audit_message if audit_message is not None
+                               else getattr(client, '_audit_message', None))
+    if effective_audit_message and method != 'GET':
+        separator = '&' if '?' in url else '?'
+        url += f'{separator}audit-message={quote(str(effective_audit_message), safe="")}'
 
     # Batch mode
     if client.is_batching:

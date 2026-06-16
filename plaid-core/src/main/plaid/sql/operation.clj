@@ -34,6 +34,18 @@
   no application-level coordination implied."
   nil)
 
+(def ^:dynamic *custom-description*
+  "Optional client-supplied audit-log message for the current request,
+  bound by `wrap-audit-message` from the (templated) `?audit-message=`
+  query param. When non-nil it OVERRIDES the caller's auto-generated
+  `:description` on the operations row.
+
+  Unlike `*token-id*` this is NOT server-authoritative — it is free text
+  the client chose, and is for human readability of the audit log only.
+  The structured forensic record (op_type + per-row audit_writes pre/post
+  images) is unaffected."
+  nil)
+
 (defn- insert-operation-row!
   [tx {:keys [id type project document description user token-id batch-id ts]}]
   (psc/execute!
@@ -291,7 +303,11 @@
                                          :batch-id (or (:batch-id op-attrs) *current-batch-id*)
                                          ;; Server-authoritative: bound from the
                                          ;; validated JWT claim by wrap-api-token-id.
-                                         :token-id (or (:token-id op-attrs) *token-id*))]
+                                         :token-id (or (:token-id op-attrs) *token-id*)
+                                         ;; Client-supplied (templated) audit message
+                                         ;; overrides the auto-generated description.
+                                         ;; See *custom-description* / wrap-audit-message.
+                                         :description (or *custom-description* (:description op-attrs)))]
                     (vreset! op-record* op-record)
                     (insert-operation-row! tx op-record)
                     ;; In-tx OCC check (task #108). Before the body runs,

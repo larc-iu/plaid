@@ -105,6 +105,7 @@ export async function makeRequest(client, method, path, options = {}) {
     skipResponseTransform,
     noAuth,
     binaryResponse,
+    auditMessage,
   } = options;
 
   // Build URL
@@ -150,6 +151,18 @@ export async function makeRequest(client, method, path, options = {}) {
       url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       if (client.isBatching) client.batchVersionStamped = true;
     }
+  }
+
+  // Custom audit-log message (overrides the auto-generated description).
+  // Per-call `auditMessage` option wins, else the ambient `client.auditMessage`
+  // (see setAuditMessage/withAuditMessage). Unlike document-version this has no
+  // OCC self-conflict, so it is stamped on EVERY queued batch op, not just the
+  // first. The server templates `{param}` placeholders against the endpoint's
+  // own path/query/body params.
+  const effectiveAuditMessage = auditMessage !== undefined ? auditMessage : client.auditMessage;
+  if (effectiveAuditMessage && method !== 'GET') {
+    const separator = url.includes('?') ? '&' : '?';
+    url += `${separator}audit-message=${encodeURIComponent(effectiveAuditMessage)}`;
   }
 
   // Batch mode

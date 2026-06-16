@@ -167,6 +167,13 @@
                                        ;; Inside wrap-read-jwt: needs the
                                        ;; :api-token/id it sets on the request.
                                        prm/wrap-api-token-id
+                                       ;; Inner of coercion/multipart so
+                                       ;; :parameters/:path-params/:body-params
+                                       ;; are populated for `{...}` templating.
+                                       ;; Binds op/*custom-description* from a
+                                       ;; templated `?audit-message=`. Runs per
+                                       ;; batch sub-op (re-routed via rest-handler).
+                                       prm/wrap-audit-message
                                        openapi/openapi-feature]}})
                  (ring/create-default-handler))]
     ;; Wrap handler to inject itself into requests for bulk operations

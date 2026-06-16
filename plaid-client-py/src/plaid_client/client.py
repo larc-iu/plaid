@@ -1884,6 +1884,11 @@ class PlaidClient:
         self.batch_operations: list[dict] = []
         self.document_versions: dict[str, str] = {}
         self.strict_mode_document_id: str | None = None
+        # Ambient custom audit-log message applied to write requests; None = use
+        # the server's auto-generated description. Private: the public surface is
+        # set_audit_message / the audit_message() context manager (a context
+        # manager method can't share the attribute's name).
+        self._audit_message: str | None = None
         self.session = req_lib.Session()
 
         self.vocab_links = VocabLinksResource(self)
@@ -1959,6 +1964,48 @@ class PlaidClient:
     def exit_strict_mode(self) -> None:
         """Exit strict mode and stop tracking document versions for writes."""
         self.strict_mode_document_id = None
+
+    def set_audit_message(self, message: str | None) -> None:
+        """Set a custom audit-log message applied to every subsequent write,
+        OVERRIDING the server's auto-generated description (e.g. "Patch metadata
+        on span X").
+
+        The message may template the endpoint's own path/query/body params with
+        ``{param}`` placeholders, resolved server-side — e.g.
+        ``"Approve span {spanId}"``. Placeholder names are case/separator-
+        insensitive (``{spanId}`` == ``{span-id}`` == ``{span_id}``). Applies to
+        non-GET requests only, including every operation queued in a batch.
+
+        Prefer the ``audit_message`` context manager for scoped use; this setter
+        is for manual ambient control. Pass ``None`` to clear.
+        """
+        self._audit_message = message
+
+    def clear_audit_message(self) -> None:
+        """Clear the ambient custom audit-log message (revert to auto-generated)."""
+        self._audit_message = None
+
+    @contextmanager
+    def audit_message(self, message: str):
+        """Run the block with a custom audit-log message in effect, restoring
+        the previous message afterward (supports nesting). Use it to scope ONE
+        call (per-call precision) or MANY (a logical unit)::
+
+            with client.audit_message('Approve span {spanId}'):
+                client.spans.update(span_id, ...)
+
+            with client.audit_message('Import sentence'):
+                client.tokens.create(...)
+                client.spans.create(...)
+
+        See ``set_audit_message`` for the semantics of the message + templating.
+        """
+        prev = self._audit_message
+        self._audit_message = message
+        try:
+            yield
+        finally:
+            self._audit_message = prev
 
     def begin_batch(self) -> None:
         """Begin a batch of operations. Subsequent API calls will be queued."""

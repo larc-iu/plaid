@@ -133,6 +133,33 @@ for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
 # Luke G, 2025-07-09T20:27:59.611Z: Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to "New Document Name"
 ----
 
+=== Custom messages
+
+Each write's `description` is generated automatically (e.g. `Patch metadata on span …`). When a write is part of some larger, more meaningful action, you can supply your own message that replaces the auto-generated one — so the log reads `Mark machine-provided annotation as approved` instead. Set it for a scope of writes and every write inside that scope is recorded with it (including each operation of a batch):
+
+[,python]
+----
+with c.audit_message("Mark machine-provided annotation as approved"):
+    c.spans.set_metadata(span_id, {"approved": True})
+----
+
+[,javascript]
+----
+await c.withAuditMessage("Mark machine-provided annotation as approved", () =>
+  c.spans.setMetadata(spanId, { approved: true }));
+----
+
+The message may template any of the endpoint's own path, query, or body parameters with `{...}` placeholders, filled in by the server. Placeholder names are matched case- and separator-insensitively, so `{spanId}`, `{span-id}`, and `{span_id}` all refer to the same parameter:
+
+[,python]
+----
+with c.audit_message("Approve span {spanId}"):
+    c.spans.set_metadata(span_id, {"approved": True})
+# logged as: Approve span 35424d64-a077-4a29-8006-5a0c3b76aedb
+----
+
+A placeholder that names no parameter of the request is left as-is. The message is stored verbatim, so do not template a parameter that may carry a secret (e.g. a password) into the log. Custom messages only affect this human-readable description; the structured forensic record (the operation type and the per-row before/after images) is unchanged.
+
 == Real-time Messaging
 Plaid offers a simple system for real-time communication on a per-project basis.
 This is intended to support two purposes:
