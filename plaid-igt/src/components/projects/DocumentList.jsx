@@ -83,10 +83,6 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
     return () => { cancelled = true; };
   }, [project, client]);
 
-  const handleDocumentClick = (document) => {
-    window.location.href = `#/projects/${projectId}/documents/${document.id}`;
-  };
-
   const handleCreateDocument = async () => {
     if (!documentName.trim()) {
       notifyError('Document name is required', 'Error');
@@ -213,35 +209,44 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
                 </tr>
               </thead>
               <tbody>
-                {pageDocuments.map((d) => (
-                  <tr
-                    key={d.id}
-                    onClick={() => handleDocumentClick(d)}
-                    className="cursor-pointer border-b last:border-0 hover:bg-accent/40"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{d.name}</div>
-                        <div className="truncate text-xs text-muted-foreground">ID: {d.id}</div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                      {renderWords(d.id)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-muted-foreground">
-                      {d.timeModified ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span>{timeAgo(d.timeModified) || '—'}</span>
-                          </TooltipTrigger>
-                          <TooltipContent>{fullTimestamp(d.timeModified)}</TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {pageDocuments.map((d) => {
+                  // Each cell wraps its content in a real <a> (rather than a row
+                  // onClick) so the row behaves as a true link: middle-click and
+                  // right-click → "open in new tab" work natively. Tailwind
+                  // preflight (scoped to .tw) resets anchor color/underline.
+                  const href = `#/projects/${projectId}/documents/${d.id}`;
+                  return (
+                    <tr key={d.id} className="border-b last:border-0 hover:bg-accent/40">
+                      <td className="p-0">
+                        <a href={href} className="block px-4 py-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{d.name}</div>
+                            <div className="truncate text-xs text-muted-foreground">ID: {d.id}</div>
+                          </div>
+                        </a>
+                      </td>
+                      <td className="p-0">
+                        <a href={href} className="block px-4 py-3 text-right tabular-nums text-muted-foreground">
+                          {renderWords(d.id)}
+                        </a>
+                      </td>
+                      <td className="p-0">
+                        <a href={href} className="block px-4 py-3 text-right text-muted-foreground">
+                          {d.timeModified ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>{timeAgo(d.timeModified) || '—'}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>{fullTimestamp(d.timeModified)}</TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            '—'
+                          )}
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
