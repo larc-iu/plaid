@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   Title, Anchor, Stack, Center, Loader, Alert,
 } from '@mantine/core';
@@ -13,9 +13,13 @@ import { GrewQueryInput } from './GrewQueryInput.jsx';
 import { GrewHelp } from './GrewHelp.jsx';
 import { SearchResults } from './SearchResults.jsx';
 
+// Ask for everything the query API will return. The server hard-caps an
+// entities query at 100k rows and has no offset/cursor, so this is effectively
+// "all matches"; the results are paged client-side in SearchResults.
+const RESULT_LIMIT = 100000;
+
 export const SearchPage = () => {
   const { projectId } = useParams();
-  const navigate = useNavigate();
   const { getClient } = useAuth();
 
   const [project, setProject] = useState(null);
@@ -67,7 +71,7 @@ export const SearchPage = () => {
     setRunning(true);
     setError(null);
     try {
-      const { query, warnings: warns, impossible } = parseAndCompile(queryText, layerInfo, { projectId, limit: 200 });
+      const { query, warnings: warns, impossible } = parseAndCompile(queryText, layerInfo, { projectId, limit: RESULT_LIMIT });
       setWarnings(warns || []);
       if (impossible) {
         setGroups([]); setCount(0); setTruncated(false); setSearched(true);
@@ -91,9 +95,10 @@ export const SearchPage = () => {
     }
   }, [queryText, running, layerInfo, projectId, getClient]);
 
-  const openSentence = useCallback((docId, sentenceId) => {
-    navigate(`/projects/${projectId}/documents/${docId}/annotate?sent=${encodeURIComponent(sentenceId)}`);
-  }, [navigate, projectId]);
+  const sentenceHref = useCallback(
+    (docId, sentenceId) => `/projects/${projectId}/documents/${docId}/annotate?sent=${encodeURIComponent(sentenceId)}`,
+    [projectId],
+  );
 
   if (loading) return <Center py={48}><Loader /></Center>;
   if (loadError) return <Alert color="red">{loadError}</Alert>;
@@ -121,7 +126,7 @@ export const SearchPage = () => {
               warnings={warnings}
               searched={searched}
               docName={docName}
-              onOpen={openSentence}
+              hrefFor={sentenceHref}
             />
           </>
         )}

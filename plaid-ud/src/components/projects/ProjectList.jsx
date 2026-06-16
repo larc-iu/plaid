@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader, Tooltip,
 } from '@mantine/core';
@@ -170,8 +170,9 @@ export const ProjectList = () => {
             {sortedProjects.map((project) => (
               <Box
                 key={project.id}
+                component={Link}
+                to={`/projects/${project.id}/documents`}
                 className={classes.row}
-                onClick={() => navigate(`/projects/${project.id}/documents`)}
                 p="md"
               >
                 <Group gap="sm" wrap="nowrap">

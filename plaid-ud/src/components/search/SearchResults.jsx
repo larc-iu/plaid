@@ -1,21 +1,34 @@
-import { useMemo } from 'react';
-import { Stack, Paper, Text, Box, Alert, Divider } from '@mantine/core';
+import { useMemo, useState, useEffect } from 'react';
+import { Stack, Paper, Text, Box, Alert, Divider, Group, Pagination } from '@mantine/core';
+import { Link } from 'react-router-dom';
 import { IconInfoCircle } from '@tabler/icons-react';
 import classes from '../common/listRow.module.css';
 import { segmentize } from './grewToHighlight.js';
 
+const PAGE_SIZE = 50; // matched sentences per page
+
 // Renders grouped sentence matches. `groups` come from groupResults():
-// [{ docId, sentenceId, text, highlights }]. Clicking a sentence opens it in
-// the annotation editor (deep-linked via ?sent=).
-export const SearchResults = ({ groups, count, truncated, warnings, searched, docName, onOpen }) => {
+// [{ docId, sentenceId, text, highlights }]. Each sentence is a real link to
+// the annotation editor (deep-linked via ?sent=), built by `hrefFor`. The full
+// match set is paged client-side (the query API returns all matches at once —
+// it has no offset/cursor).
+export const SearchResults = ({ groups, count, truncated, warnings, searched, docName, hrefFor }) => {
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [groups]);
+
+  const totalPages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+
+  // Group only the current page's sentences by document for rendering.
   const byDoc = useMemo(() => {
+    const slice = groups.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
     const m = new Map();
-    for (const g of groups) {
+    for (const g of slice) {
       if (!m.has(g.docId)) m.set(g.docId, []);
       m.get(g.docId).push(g);
     }
     return [...m.entries()];
-  }, [groups]);
+  }, [groups, currentPage]);
 
   return (
     <Stack gap="md">
@@ -30,7 +43,7 @@ export const SearchResults = ({ groups, count, truncated, warnings, searched, do
           {groups.length === 0
             ? 'No matching sentences.'
             : `${groups.length} matching sentence${groups.length === 1 ? '' : 's'}` +
-              (truncated ? ` (showing the first ${count}; refine the query for more)` : '')}
+              (truncated ? ` (capped at ${count}; refine the query for more)` : '')}
         </Text>
       )}
 
@@ -43,7 +56,7 @@ export const SearchResults = ({ groups, count, truncated, warnings, searched, do
             {sentences.map((s, idx) => (
               <Box key={s.sentenceId}>
                 {idx > 0 && <Divider />}
-                <Box className={classes.row} p="md" onClick={() => onOpen(s.docId, s.sentenceId)}>
+                <Box className={classes.row} p="md" component={Link} to={hrefFor(s.docId, s.sentenceId)}>
                   <Text size="sm" style={{ lineHeight: 1.6 }}>
                     {segmentize(s.text, s.highlights).map((seg, i) =>
                       seg.hl
@@ -57,6 +70,12 @@ export const SearchResults = ({ groups, count, truncated, warnings, searched, do
           </Stack>
         </Paper>
       ))}
+
+      {totalPages > 1 && (
+        <Group justify="center" mt="xs">
+          <Pagination total={totalPages} value={currentPage} onChange={setPage} />
+        </Group>
+      )}
     </Stack>
   );
 };
