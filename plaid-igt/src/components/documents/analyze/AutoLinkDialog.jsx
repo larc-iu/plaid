@@ -65,7 +65,7 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
   const serviceOptions = onlineServices
     .map((s) => ({ value: encodeServiceSelection(s.serviceId), label: s.serviceName, service: s }));
   const options = [
-    { value: BUILTIN, label: 'Built-in — follow precedent & unique matches' },
+    { value: BUILTIN, label: 'Built-in' },
     ...serviceOptions,
   ];
   // Resolve until the user explicitly picks: cached -> project default ->
@@ -187,11 +187,9 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
           {effective === BUILTIN ? (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
-                Links every word and morpheme whose form follows the project's
-                existing links (strict majority) or matches exactly one lexicon
-                entry. Ambiguous forms are skipped. Earlier machine suggestions
-                are refreshed; links you made or confirmed are left untouched.
-                New links show in violet until you confirm them.
+                Attempt to link words and morphemes with majority voting from existing
+                links on the same surface form. Earlier machine-provided linking suggestions
+                are refreshed, and links that humans confirmed or originally made are left alone.
               </p>
               <label className="flex items-start gap-2 text-sm">
                 <input
