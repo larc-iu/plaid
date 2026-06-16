@@ -591,7 +591,10 @@
   text-decoration: underline dotted;
   text-decoration-color: #c9cfd8;
   text-underline-offset: 2px;
-  max-width: 16ch;
+  /* Cap to the column, not a fixed ch count — the form/gloss bands above set
+     the column width and the 10px hint is almost always narrower, so this
+     rarely widens a column; ellipsis stays a safety net for squeezed columns. */
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
