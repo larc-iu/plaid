@@ -172,9 +172,9 @@
 .igt-legend__prov--machine {
   color: var(--igt-violet);
   font-style: italic;
-  border-bottom: 1px dashed #c4b5fd;
+  border-bottom: 1px dotted #c4b5fd;
 }
-.igt-legend__prov--verified { border-bottom: 1px solid var(--igt-violet); }
+.igt-legend__prov--verified { border-bottom: 1px dotted #c4b5fd; }
 .igt-legend kbd {
   font: inherit; font-size: 10px; background: #fff; border: 1px solid #d1d5db;
   border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: #374151;
@@ -617,13 +617,13 @@
   color: var(--igt-violet);
   text-decoration-color: currentColor;
 }
-/* Auto-made links a person has confirmed: back to the quiet gray, but with a
-   solid violet underline (the same violet the machine states use) so machine
-   origin stays visible — the dashed→solid shift signals "confirmed" without
-   the noisier ✓ marker. */
+/* Auto-made links a person has confirmed: quiet — normal gray text, same light
+   dotted purple underline as the unconfirmed state (inherited from the base).
+   The purple-tinted underline keeps machine origin visible vs the gray-dotted
+   human underline; dropping the purple italic text is what reads as "settled,
+   no longer needs attention". */
 .igt-vocab__hint--verified {
-  text-decoration-style: solid;
-  text-decoration-color: var(--igt-violet);
+  text-decoration-color: #c4b5fd;
 }
 /* Unlinked: hidden at rest — a "+ link" under every unlinked form is too
    noisy (user call, 2026-06-10; a fuller vocab-linking rethink is a planned
