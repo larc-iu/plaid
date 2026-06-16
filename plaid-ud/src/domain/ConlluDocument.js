@@ -249,6 +249,9 @@ export class ConlluDocument {
 
       return { documentId: createdDocumentId, importWarnings };
     } catch (err) {
+      // A mid-batch failure leaves the client in batch mode; drop it so the
+      // cleanup delete below actually runs instead of queuing into the dead batch.
+      if (client.isBatchMode()) client.abortBatch();
       if (createdDocumentId) {
         try {
           await client.documents.delete(createdDocumentId);
@@ -498,6 +501,11 @@ export class ConlluDocument {
   // Emits so the version bumps in lockstep with the `_raw` swap.
   async _reload() {
     if (!this._client || !this.id) return;
+    // A failed mutation may have left a half-open batch; drop it first, or this
+    // resync GET would queue into the dead batch instead of executing (and every
+    // later call would too). This is the central recovery chokepoint, so the
+    // guard here covers all _withSaving mutations.
+    if (this._client.isBatchMode()) this._client.abortBatch();
     const updated = await this._client.documents.get(this.id, true);
     this._raw = updated;
     this._dataVersion++;
@@ -804,6 +812,10 @@ export class ConlluDocument {
         deletedAnnotatedOrphans: orphans.annotatedCount, dedupedSpans, findings,
       };
     } catch (err) {
+      // A failed heal batch leaves the client in batch mode (we skip the
+      // _reload below on the throw path); drop it so later edits don't queue
+      // into the dead batch.
+      if (this._client?.isBatchMode?.()) this._client.abortBatch();
       console.error('reconcileOnOpen failed:', err);
       return { ...ZERO, error: err };
     } finally {

@@ -222,87 +222,86 @@ class TokenProcessor:
             tokens_deleted = len(tokens_to_delete)
 
             if words_to_create or sentences_to_create or sentence_ids_to_delete or tokens_to_delete:
-                client.begin_batch()
+                with client.batched():
 
-                # TODO(annotation-preservation): when the new sentence partition is a strict
-                # REFINEMENT of the existing one (every new boundary falls inside the SAME old
-                # sentence — i.e. we're only ADDING cut points, never moving or removing them),
-                # we could iteratively `client.tokens.split(sentence_id, position)` to add the
-                # cut points instead of doing a full bulk_delete + bulk_create reset. `split`
-                # preserves the original sentence's spans and vocab-links on the left half and
-                # leaves the right half un-annotated, which is much better than the current
-                # behavior of cascade-deleting EVERY sentence-level annotation.
-                #
-                # We don't bother today because the gate above is "exactly one existing
-                # sentence", so the annotation-loss scope is bounded (and we already log a
-                # warning below). If we ever loosen the gate to allow re-tokenization across
-                # multiple existing sentences, switch to the refinement-check + split path.
-                #
-                # Reset sentence partition: bulk_delete existing + bulk_create new in one batch.
-                # Sentence layer is :partitioning so single delete/create is rejected, and
-                # partial bulk_delete is also rejected — we must clear the whole partition.
-                if sentence_ids_to_delete:
-                    # Warn the operator that any sentence-level annotations on the
-                    # existing sentence will be cascade-deleted by the bulk_delete
-                    # below. The gate is "exactly one existing sentence" so the
-                    # scope is bounded, but the loss is silent without this warning.
-                    self._warn_about_sentence_annotation_loss(
-                        sentence_layer, sentence_ids_to_delete
-                    )
-                    client.tokens.bulk_delete(sentence_ids_to_delete)
+                    # TODO(annotation-preservation): when the new sentence partition is a strict
+                    # REFINEMENT of the existing one (every new boundary falls inside the SAME old
+                    # sentence — i.e. we're only ADDING cut points, never moving or removing them),
+                    # we could iteratively `client.tokens.split(sentence_id, position)` to add the
+                    # cut points instead of doing a full bulk_delete + bulk_create reset. `split`
+                    # preserves the original sentence's spans and vocab-links on the left half and
+                    # leaves the right half un-annotated, which is much better than the current
+                    # behavior of cascade-deleting EVERY sentence-level annotation.
+                    #
+                    # We don't bother today because the gate above is "exactly one existing
+                    # sentence", so the annotation-loss scope is bounded (and we already log a
+                    # warning below). If we ever loosen the gate to allow re-tokenization across
+                    # multiple existing sentences, switch to the refinement-check + split path.
+                    #
+                    # Reset sentence partition: bulk_delete existing + bulk_create new in one batch.
+                    # Sentence layer is :partitioning so single delete/create is rejected, and
+                    # partial bulk_delete is also rejected — we must clear the whole partition.
+                    if sentence_ids_to_delete:
+                        # Warn the operator that any sentence-level annotations on the
+                        # existing sentence will be cascade-deleted by the bulk_delete
+                        # below. The gate is "exactly one existing sentence" so the
+                        # scope is bounded, but the loss is silent without this warning.
+                        self._warn_about_sentence_annotation_loss(
+                            sentence_layer, sentence_ids_to_delete
+                        )
+                        client.tokens.bulk_delete(sentence_ids_to_delete)
 
-                # Delete tokens that were split (word-layer tokens, :non-overlapping — single
-                # delete is fine here; cascades to dependent morpheme tokens server-side).
-                #
-                # IMPORTANT: when sentences are being reset, the bulk_delete above already
-                # cascade-deletes every word token nested in the deleted sentence partition
-                # (the single existing sentence covers [0, text_length), which contains
-                # every word). Issuing individual deletes for those same token IDs would
-                # 404 (>= 300 -> batch rollback). Only run the per-word delete loop in
-                # the word-only retokenization path.
-                if not should_do_sentences:
-                    for token_id in tokens_to_delete:
-                        client.tokens.delete(token_id)
+                    # Delete tokens that were split (word-layer tokens, :non-overlapping — single
+                    # delete is fine here; cascades to dependent morpheme tokens server-side).
+                    #
+                    # IMPORTANT: when sentences are being reset, the bulk_delete above already
+                    # cascade-deletes every word token nested in the deleted sentence partition
+                    # (the single existing sentence covers [0, text_length), which contains
+                    # every word). Issuing individual deletes for those same token IDs would
+                    # 404 (>= 300 -> batch rollback). Only run the per-word delete loop in
+                    # the word-only retokenization path.
+                    if not should_do_sentences:
+                        for token_id in tokens_to_delete:
+                            client.tokens.delete(token_id)
 
-                # Provenance: stamp everything this (machine) run creates.
-                prov_fragment = stamp_inferred(prov_source) if prov_source else None
+                    # Provenance: stamp everything this (machine) run creates.
+                    prov_fragment = stamp_inferred(prov_source) if prov_source else None
 
-                # Create new sentence tokens (establishes the new partition)
-                if sentences_to_create:
-                    sent_operations = []
-                    for sent in sentences_to_create:
-                        op = {
-                            "token_layer_id": sentence_layer_id,
-                            "text": text_id,
-                            "begin": sent['begin'],
-                            "end": sent['end']
-                        }
-                        if prov_fragment:
-                            op["metadata"] = dict(prov_fragment)
-                        sent_operations.append(op)
+                    # Create new sentence tokens (establishes the new partition)
+                    if sentences_to_create:
+                        sent_operations = []
+                        for sent in sentences_to_create:
+                            op = {
+                                "token_layer_id": sentence_layer_id,
+                                "text": text_id,
+                                "begin": sent['begin'],
+                                "end": sent['end']
+                            }
+                            if prov_fragment:
+                                op["metadata"] = dict(prov_fragment)
+                            sent_operations.append(op)
 
-                    client.tokens.bulk_create(sent_operations)
-                    sentences_created = len(sent_operations)
+                        client.tokens.bulk_create(sent_operations)
+                        sentences_created = len(sent_operations)
 
-                # Create word tokens
-                if words_to_create:
-                    token_operations = []
-                    for token in words_to_create:
-                        op = {
-                            "token_layer_id": primary_token_layer_id,
-                            "text": text_id,
-                            "begin": token['begin'],
-                            "end": token['end']
-                        }
-                        if prov_fragment:
-                            op["metadata"] = dict(prov_fragment)
-                        token_operations.append(op)
+                    # Create word tokens
+                    if words_to_create:
+                        token_operations = []
+                        for token in words_to_create:
+                            op = {
+                                "token_layer_id": primary_token_layer_id,
+                                "text": text_id,
+                                "begin": token['begin'],
+                                "end": token['end']
+                            }
+                            if prov_fragment:
+                                op["metadata"] = dict(prov_fragment)
+                            token_operations.append(op)
 
-                    client.tokens.bulk_create(token_operations)
-                    response_helper.progress(90, f"Created {len(token_operations)} tokens...")
+                        client.tokens.bulk_create(token_operations)
+                        response_helper.progress(90, f"Created {len(token_operations)} tokens...")
                 
-                response_helper.progress(95, "Committing changes...")
-                client.submit_batch()
+                    response_helper.progress(95, "Committing changes...")
             
             return {
                 "tokens_created": len(words_to_create) if words_to_create else 0,

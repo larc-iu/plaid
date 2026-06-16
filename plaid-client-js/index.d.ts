@@ -295,6 +295,8 @@ export declare class PlaidClient {
   submitBatch(): Promise<any[]>;
   abortBatch(): void;
   isBatchMode(): boolean;
+  /** Run `fn` with a batch open, then submit atomically (or abort if `fn` throws). Resolves to the results array. */
+  batched(fn: () => void | Promise<void>): Promise<any[]>;
 
   // Strict mode methods
   enterStrictMode(documentId: string): void;

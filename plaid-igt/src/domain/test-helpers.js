@@ -116,6 +116,7 @@ export function makeFakeClient(opts = {}) {
       return results;
     },
     abortBatch() { batching = false; this.isBatching = false; queue = null; },
+    isBatchMode() { return this.isBatching; },
 
     tokens: {
       create: op('tokens.create', () => ({ id: nextId('tok') })),

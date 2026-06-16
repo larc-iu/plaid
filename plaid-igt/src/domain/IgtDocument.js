@@ -220,6 +220,11 @@ export class IgtDocument {
   // big-bang multi-batch ops where local replay would be too complex.
   async _reload() {
     if (!this._client || !this.id) return;
+    // A failed mutation may have left a half-open batch; drop it first, or this
+    // resync GET would queue into the dead batch instead of executing (and every
+    // later call would too). Central recovery chokepoint, so this covers all
+    // _withSaving mutations.
+    if (this._client.isBatchMode()) this._client.abortBatch();
     const at = this._asOf || undefined;
     const updated = await this._client.documents.get(this.id, true, at);
     this._raw = updated;
@@ -339,6 +344,9 @@ export class IgtDocument {
         findings,
       };
     } catch (err) {
+      // A failed heal batch leaves the client in batch mode (we skip _reload on
+      // the throw path); drop it so later edits don't queue into the dead batch.
+      if (this._client?.isBatchMode?.()) this._client.abortBatch();
       console.error('reconcileOnOpen failed:', err);
       return { ...ZERO, error: err };
     } finally {

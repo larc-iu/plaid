@@ -1654,6 +1654,38 @@ class PlaidClient {
   }
 
   /**
+   * Run `fn` with a batch open, then submit all queued ops as ONE atomic
+   * request — or abort the batch if `fn` throws, so a half-open batch can never
+   * silently swallow later non-batch calls. `fn` makes the (queued) client
+   * calls; it must NOT call submitBatch itself. Resolves to the batch results
+   * array (`[]` if `fn` queued nothing).
+   *
+   *   const [sentRes, wordRes] = await client.batched(async () => {
+   *     client.tokens.bulkCreate(sentenceOps);
+   *     client.tokens.bulkCreate(wordOps);
+   *   });
+   *
+   * Server-side a batch runs sequentially in one transaction (a child op sees
+   * parents created earlier in the same `fn`; any op's failure rolls the whole
+   * batch back). Not nestable. Named `batched()` because `client.batch` is the
+   * low-level batch resource.
+   * @param {() => (void | Promise<void>)} fn
+   * @returns {Promise<Array>}
+   */
+  async batched(fn) {
+    this.beginBatch();
+    try {
+      await fn();
+    } catch (e) {
+      // fn failed: drop the queued ops so the client leaves batch mode and
+      // later plain calls don't queue into a never-submitted batch.
+      if (this.isBatchMode()) this.abortBatch();
+      throw e;
+    }
+    return this.submitBatch();
+  }
+
+  /**
    * Authenticate and return a new client instance with token. This is the
    * single auth entry point — there is no `client.login` resource.
    * @param {string} baseUrl - The base URL for the API

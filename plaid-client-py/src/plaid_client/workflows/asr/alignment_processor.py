@@ -267,60 +267,60 @@ class AlignmentProcessor:
                 
                 # Begin atomic batch operation
                 response_helper.progress(88, "Committing changes...")
-                client.begin_batch()
+                with client.batched():
 
-                # Build explicit insert ops rather than passing the full new_text
-                # string. Passing a string would make the server run an editscript
-                # diff that CAN synthesize replacement (:r) ops covering deletions;
-                # if such a synthesized delete fully covered an existing sentence,
-                # that sentence row would be gone by the time bulk_delete(sentence_ids)
-                # ran (partitioning layers require deleting ALL or none), causing a
-                # 400 and full batch rollback. ASR is insert-only by construction,
-                # so emit explicit :insert directives — they cannot synthesize deletes.
-                #
-                # Edit ops MUST be applied left-to-right against the ORIGINAL text
-                # (the server's apply-text-edits applies them in sequence and each
-                # op's index is into the text as of that point). Our text_modifications
-                # are sorted by 'position' (= insertion index in the original text),
-                # and we tracked cumulative_offset against the previous original
-                # positions, so by emitting them in order with an index that reflects
-                # the already-applied earlier inserts we exactly reproduce the
-                # new_text we built locally.
-                edit_ops = []
-                running_offset = 0
-                for mod in text_modifications:
-                    edit_ops.append({
-                        "type": "insert",
-                        "index": mod['position'] + running_offset,
-                        "value": mod['new_text'],
-                    })
-                    running_offset += len(mod['new_text'])
-                client.texts.update(text_id, edit_ops)
+                    # Build explicit insert ops rather than passing the full new_text
+                    # string. Passing a string would make the server run an editscript
+                    # diff that CAN synthesize replacement (:r) ops covering deletions;
+                    # if such a synthesized delete fully covered an existing sentence,
+                    # that sentence row would be gone by the time bulk_delete(sentence_ids)
+                    # ran (partitioning layers require deleting ALL or none), causing a
+                    # 400 and full batch rollback. ASR is insert-only by construction,
+                    # so emit explicit :insert directives — they cannot synthesize deletes.
+                    #
+                    # Edit ops MUST be applied left-to-right against the ORIGINAL text
+                    # (the server's apply-text-edits applies them in sequence and each
+                    # op's index is into the text as of that point). Our text_modifications
+                    # are sorted by 'position' (= insertion index in the original text),
+                    # and we tracked cumulative_offset against the previous original
+                    # positions, so by emitting them in order with an index that reflects
+                    # the already-applied earlier inserts we exactly reproduce the
+                    # new_text we built locally.
+                    edit_ops = []
+                    running_offset = 0
+                    for mod in text_modifications:
+                        edit_ops.append({
+                            "type": "insert",
+                            "index": mod['position'] + running_offset,
+                            "value": mod['new_text'],
+                        })
+                        running_offset += len(mod['new_text'])
+                    client.texts.update(text_id, edit_ops)
                 
-                # Create alignment tokens
-                if new_alignment_tokens:
-                    response_helper.progress(90, f"Creating {len(new_alignment_tokens)} alignment tokens...")
-                    client.tokens.bulk_create(new_alignment_tokens)
+                    # Create alignment tokens
+                    if new_alignment_tokens:
+                        response_helper.progress(90, f"Creating {len(new_alignment_tokens)} alignment tokens...")
+                        client.tokens.bulk_create(new_alignment_tokens)
 
-                # NOTE: Do NOT update existing alignment-token positions here. The
-                # server-side text-edit cascade (apply-text-edit + compensate-after-cascade)
-                # already shifts/reindexes those tokens when texts.update runs. Applying
-                # our own shifts in the same batch would double-shift them
-                # (original + 2 * delta). The text-edit cascade is sufficient.
+                    # NOTE: Do NOT update existing alignment-token positions here. The
+                    # server-side text-edit cascade (apply-text-edit + compensate-after-cascade)
+                    # already shifts/reindexes those tokens when texts.update runs. Applying
+                    # our own shifts in the same batch would double-shift them
+                    # (original + 2 * delta). The text-edit cascade is sufficient.
 
-                # Update sentence partitioning
-                if sentence_token_layer_id:
-                    response_helper.progress(92, "Updating sentence partitioning...")
-                    self._update_sentence_partitioning(
-                        client, document, text_id, sentence_token_layer_id,
-                        existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
-                        overwrite=overwrite
-                    )
+                    # Update sentence partitioning
+                    if sentence_token_layer_id:
+                        response_helper.progress(92, "Updating sentence partitioning...")
+                        self._update_sentence_partitioning(
+                            client, document, text_id, sentence_token_layer_id,
+                            existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
+                            overwrite=overwrite
+                        )
                 
-                # Submit all changes atomically
-                response_helper.progress(95, "Submitting batch...")
-                client.submit_batch()
-                
+                    # All queued ops are submitted atomically when this
+                    # `with client.batched()` block exits.
+                    response_helper.progress(95, "Submitting batch...")
+
                 # Validate temporal ordering invariant - need to get updated tokens from database
                 response_helper.progress(98, "Validating temporal ordering...")
                 # Re-fetch the document to get updated token positions for validation
