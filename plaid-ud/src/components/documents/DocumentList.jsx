@@ -1,15 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader,
-  ActionIcon, Tooltip, Breadcrumbs, Anchor,
+  ActionIcon, Tooltip,
 } from '@mantine/core';
-import { IconPlus, IconTrash, IconPencil, IconUpload, IconSettings, IconSearch } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconPencil } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
-import { ImportModal } from './ImportModal';
+import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
-import { canEditProject, canManageProject } from '../../utils/permissions.js';
+import { canEditProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
 import { SortButton } from '../common/SortHeader.jsx';
@@ -30,7 +30,6 @@ export const DocumentList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
   // documentId -> word count. Docs with a word layer but no tokens are absent
   // (rendered as 0); `hasWordLayer` false means the project isn't UD-configured.
   const [wordCounts, setWordCounts] = useState({});
@@ -125,11 +124,6 @@ export const DocumentList = () => {
     });
   };
 
-  const handleImportSuccess = () => {
-    setShowImportModal(false);
-    fetchProjectAndDocuments(); // Refresh the list
-  };
-
   // Opening a document lands on the Annotate tab by default; but a document with
   // no tokens yet has nothing to annotate (the tab would just say "tokenize
   // first"), so divert it to the Text Editor. Only do so once word counts have
@@ -159,18 +153,9 @@ export const DocumentList = () => {
     return <Alert color="red">Project not found</Alert>;
   }
 
-  // Maintainers configure the project; writers (and up) create/import/delete
-  // documents. Readers get a view-only list.
-  const canManage = canManageProject(project, user);
+  // Writers (and up) create/delete documents. Readers get a view-only list.
+  // (Search, Project Settings, and Import/Export now live in the ProjectTabs bar.)
   const canEdit = canEditProject(project, user);
-
-  // If the project's UD layers aren't set up yet, "Project Settings" should land
-  // on the standalone setup/repair page rather than the tabbed settings (which
-  // assume a configured project). Otherwise it opens the tabbed settings.
-  const projectConfigured = getUdLayerInfo(project).isConfigured;
-  const settingsTo = projectConfigured
-    ? `/projects/${projectId}/management`
-    : `/projects/${projectId}/configuration`;
 
   const renderWords = (documentId) => {
     if (wordsLoading) return <Loader size={12} />;
@@ -180,39 +165,11 @@ export const DocumentList = () => {
 
   return (
     <>
-      <Breadcrumbs mb="lg">
-        <Anchor component={Link} to="/projects" size="sm">Projects</Anchor>
-        <Text size="sm" c="dimmed">{project.name}</Text>
-      </Breadcrumbs>
+      <ProjectTabs projectId={projectId} project={project} />
 
       <Group justify="space-between" mb="lg">
         <Title order={2}>Documents in {project.name}</Title>
         <Group gap="sm">
-          {projectConfigured && (
-            <Button
-              component={Link}
-              to={`/projects/${projectId}/search`}
-              variant="default"
-              leftSection={<IconSearch size={16} />}
-            >
-              Search
-            </Button>
-          )}
-          {canManage && (
-            <Button
-              component={Link}
-              to={settingsTo}
-              color="grape"
-              leftSection={<IconSettings size={16} />}
-            >
-              Project Settings
-            </Button>
-          )}
-          {canEdit && (
-            <Button variant="default" leftSection={<IconUpload size={16} />} onClick={() => setShowImportModal(true)}>
-              Import
-            </Button>
-          )}
           {canEdit && (
             <Button color="dark" leftSection={<IconPlus size={16} />} onClick={() => setShowCreateForm(true)}>
               New Document
@@ -227,13 +184,6 @@ export const DocumentList = () => {
         projectId={projectId}
         isOpen={showCreateForm}
         onClose={() => setShowCreateForm(false)}
-      />
-
-      <ImportModal
-        projectId={projectId}
-        isOpen={showImportModal}
-        onClose={() => setShowImportModal(false)}
-        onSuccess={handleImportSuccess}
       />
 
       {documents.length === 0 ? (

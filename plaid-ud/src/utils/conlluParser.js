@@ -7,6 +7,27 @@
 // (cpIndexOf / cpLength), not the UTF-16 indexOf / .length.
 import { cpLength, cpIndexOf } from '@larc-iu/plaid-client';
 
+// Split a CoNLL-U file into one chunk per `# newdoc[ id = X]` block, so a single
+// uploaded file containing multiple documents becomes multiple Plaid documents.
+// The marker line itself is dropped (its `id` becomes the document name; `parseCoNLLU`
+// ignores `# newdoc id` anyway, and a bare `# newdoc` would otherwise leak into
+// sentence metadata). A file with no marker yields a single `{ id: null }` chunk.
+// Returns: [{ id: string|null, text: string }] with empty chunks removed.
+export function splitConlluByNewdoc(text) {
+  const re = /^#\s*newdoc(?:\s+id\s*=\s*(.+?))?\s*$/;
+  const docs = [];
+  let cur = null;
+  for (const line of text.split('\n')) {
+    const m = line.match(re);
+    if (m) { cur = { id: m[1] ? m[1].trim() : null, lines: [] }; docs.push(cur); continue; }
+    if (!cur) { cur = { id: null, lines: [] }; docs.push(cur); }
+    cur.lines.push(line);
+  }
+  return docs
+    .map(d => ({ id: d.id, text: d.lines.join('\n').trim() }))
+    .filter(d => d.text.length > 0);
+}
+
 export function parseCoNLLU(text) {
   const lines = text.split('\n');
   const sentences = [];

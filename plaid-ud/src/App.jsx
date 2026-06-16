@@ -10,6 +10,7 @@ import { ProjectSettings } from './components/projects/ProjectSettings.jsx';
 import { ProjectConfiguration } from './components/projects/ProjectConfiguration.jsx';
 import { DocumentList } from './components/documents/DocumentList';
 import { SearchPage } from './components/search/SearchPage.jsx';
+import { ProjectImportExport } from './components/projects/ProjectImportExport.jsx';
 import { TextEditor } from './components/editor/TextEditor.jsx';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
 import { ExportEditor } from './components/editor/ExportEditor.jsx';
@@ -48,6 +49,9 @@ function App() {
 
             {/* Grew-match search over the project's sentences */}
             <Route path="projects/:projectId/search" element={<SearchPage />} />
+
+            {/* Bulk CoNLL-U import + project-wide ZIP export */}
+            <Route path="projects/:projectId/import-export" element={<ProjectImportExport />} />
             
             {/* Project settings (tabbed: users & permissions, UD customization,
                 services, access tokens, general). All paths render the same

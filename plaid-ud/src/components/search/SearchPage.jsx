@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  Title, Breadcrumbs, Anchor, Text, Stack, Center, Loader, Alert,
+  Title, Anchor, Stack, Center, Loader, Alert,
 } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
+import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { parseAndCompile, GrewError } from '../../grew/index.js';
 import { groupResults } from './grewToHighlight.js';
 import { GrewQueryInput } from './GrewQueryInput.jsx';
@@ -98,35 +99,33 @@ export const SearchPage = () => {
   if (loadError) return <Alert color="red">{loadError}</Alert>;
 
   return (
-    <Stack gap="lg">
-      <Breadcrumbs>
-        <Anchor component={Link} to="/projects" size="sm">Projects</Anchor>
-        <Anchor component={Link} to={`/projects/${projectId}/documents`} size="sm">{project?.name}</Anchor>
-        <Text size="sm" c="dimmed">Search</Text>
-      </Breadcrumbs>
+    <>
+      <ProjectTabs projectId={projectId} project={project} />
 
-      <Title order={2}>Search {project?.name}</Title>
+      <Stack gap="lg">
+        <Title order={2}>Search {project?.name}</Title>
 
-      {!layerInfo.isConfigured ? (
-        <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Not available">
-          This project isn’t configured for UD annotation yet, so dependency search isn’t available.{' '}
-          <Anchor component={Link} to={`/projects/${projectId}/configuration`}>Set up its layers</Anchor> first.
-        </Alert>
-      ) : (
-        <>
-          <GrewHelp onPick={(q) => setQueryText(q)} />
-          <GrewQueryInput value={queryText} onChange={setQueryText} onRun={run} running={running} error={error} />
-          <SearchResults
-            groups={groups}
-            count={count}
-            truncated={truncated}
-            warnings={warnings}
-            searched={searched}
-            docName={docName}
-            onOpen={openSentence}
-          />
-        </>
-      )}
-    </Stack>
+        {!layerInfo.isConfigured ? (
+          <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Not available">
+            This project isn’t configured for UD annotation yet, so dependency search isn’t available.{' '}
+            <Anchor component={Link} to={`/projects/${projectId}/configuration`}>Set up its layers</Anchor> first.
+          </Alert>
+        ) : (
+          <>
+            <GrewHelp onPick={(q) => setQueryText(q)} />
+            <GrewQueryInput value={queryText} onChange={setQueryText} onRun={run} running={running} error={error} />
+            <SearchResults
+              groups={groups}
+              count={count}
+              truncated={truncated}
+              warnings={warnings}
+              searched={searched}
+              docName={docName}
+              onOpen={openSentence}
+            />
+          </>
+        )}
+      </Stack>
+    </>
   );
 };
