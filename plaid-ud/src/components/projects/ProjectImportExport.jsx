@@ -236,12 +236,6 @@ export const ProjectImportExport = () => {
       {canEdit && (
         <Paper withBorder p="lg" radius="md" mb="xl">
           <Title order={4} mb="xs">Import CoNLL-U files</Title>
-          <Text size="sm" c="dimmed" mb="md">
-            Each file becomes a document — or several, if it contains multiple{' '}
-            <Code>{'# newdoc id'}</Code> blocks. Files that fail to parse are rejected
-            and reported below; the rest are imported.
-          </Text>
-
           {!configured ? (
             <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Project not configured">
               This project’s UD layers aren’t set up yet, so documents can’t be imported.{' '}
@@ -260,7 +254,6 @@ export const ProjectImportExport = () => {
                   <Dropzone.Idle><IconFileText size={42} color="var(--mantine-color-dimmed)" /></Dropzone.Idle>
                   <div>
                     <Text size="lg" inline>Drag <Code>.conllu</Code> files here, or click to select</Text>
-                    <Text size="sm" c="dimmed" inline mt={7}>You can drop as many files as you like.</Text>
                   </div>
                 </Group>
               </Dropzone>
