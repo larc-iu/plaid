@@ -97,6 +97,7 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
         if (batch) batch.push(result);
         return result;
       },
+      bulkCreate: (body) => record('vocabLinks.bulkCreate', [body], { ids: body.map(() => fresh('link')) }),
     },
     beginBatch: () => { batch = []; },
     submitBatch: async () => { const out = batch; batch = null; return out; },
@@ -256,14 +257,14 @@ describe('runNativeImport (full archive)', () => {
 
   it('recreates vocab links (inline + extras) with mapped item and token ids', async () => {
     const { client, result } = await run();
-    const links = callsOf(client, 'vocabLinks.create');
+    const links = callsOf(client, 'vocabLinks.bulkCreate').flatMap((c) => c[1]);
     // l1 inline on m1, l2 extra on m1, l3 extra multi-token on w1+w2.
     expect(links).toHaveLength(3);
-    const multi = links.find((l) => l[2].length === 2);
-    expect(multi[1]).toMatch(/^item-/);                 // mapped item id
-    expect(multi[2].every((t) => t.startsWith('tok-'))).toBe(true); // mapped tokens
-    expect(multi[3]).toEqual({ note: 'multi' });
-    const inline = links.find((l) => l[3]?.provSource === 'flex-import');
+    const multi = links.find((l) => l.tokens.length === 2);
+    expect(multi.vocabItem).toMatch(/^item-/);                       // mapped item id
+    expect(multi.tokens.every((t) => t.startsWith('tok-'))).toBe(true); // mapped tokens
+    expect(multi.metadata).toEqual({ note: 'multi' });
+    const inline = links.find((l) => l.metadata?.provSource === 'flex-import');
     expect(inline).toBeTruthy();
     expect(result.warnings).toEqual([]);
   });

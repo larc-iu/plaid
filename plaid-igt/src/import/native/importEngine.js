@@ -20,7 +20,7 @@ import {
   findWordTokenLayer, findMorphemeTokenLayer, findAlignmentTokenLayer, readScope,
 } from '../../domain/igtConfig.js';
 
-const CHUNK = 500; // vocab items + links have no bulk endpoint — chunked batches
+const CHUNK = 500; // vocab items have no bulk endpoint — chunked batches
 const DONE_KEY = 'nativeImported';
 const ITEM_SOURCE_KEY = 'nativeImportId';
 
@@ -348,13 +348,11 @@ export async function importNativeDocument({
     for (const extra of docData.extraVocabLinks || []) {
       addLink(extra, extra.tokens || [], extra.id);
     }
-    for (let i = 0; i < linkSpecs.length; i += CHUNK) {
+    for (let i = 0; i < linkSpecs.length; i += 1000) {
       check();
-      await client.batched(async () => {
-        for (const l of linkSpecs.slice(i, i + CHUNK)) {
-          client.vocabLinks.create(l.itemId, l.tokenIds, l.metadata);
-        }
-      });
+      await client.vocabLinks.bulkCreate(
+        linkSpecs.slice(i, i + 1000).map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
+      );
     }
   }
 

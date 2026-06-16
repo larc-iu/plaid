@@ -148,6 +148,7 @@ function makeFakeClient({ existingDocs = [], existingItems = [] } = {}) {
     },
     vocabLinks: {
       create: (itemId, tokens, metadata) => record('vocabLinks.create', { itemId, tokens, metadata }, { id: id('link') }),
+      bulkCreate: (body) => record('vocabLinks.bulkCreate', { body }, { ids: body.map(() => id('link')) }),
     },
   };
 }
@@ -307,10 +308,10 @@ describe('runImport', () => {
 
     // vocab links on analyzed morphemes; FLEx human approval drives
     // provConfirmed (parser-only guesses import as unconfirmed-inferred)
-    const links = client.calls.filter((c) => c.kind === 'vocabLinks.create');
+    const links = client.calls.filter((c) => c.kind === 'vocabLinks.bulkCreate').flatMap((c) => c.args.body);
     expect(links).toHaveLength(2);
-    expect(links[0].args.metadata).toEqual({ prov: 'inferred', provSource: 'flex-import', provConfirmed: true });
-    expect(links[1].args.metadata).toEqual({ prov: 'inferred', provSource: 'flex-import' });
+    expect(links[0].metadata).toEqual({ prov: 'inferred', provSource: 'flex-import', provConfirmed: true });
+    expect(links[1].metadata).toEqual({ prov: 'inferred', provSource: 'flex-import' });
 
     // document done-marker written last, with FLEx metadata preserved
     const last = client.calls[client.calls.length - 1];

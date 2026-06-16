@@ -15,7 +15,7 @@ import { stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
 import { IGT_NAMESPACE, findBaselineTextLayer, findSentenceTokenLayer, findWordTokenLayer, findMorphemeTokenLayer, readScope } from '../../domain/igtConfig.js';
 import { pickEn } from './fwdataParser.js';
 
-const LINK_CHUNK = 500; // vocab links have no bulk endpoint — chunked batches
+const LINK_CHUNK = 1000; // chunk size for the vocab-link bulk endpoint (bounds tx size)
 const DONE_KEY = 'flexImported';
 
 /** Display name for an analysis writing system: primary ws gets the bare field name. */
@@ -346,12 +346,13 @@ export async function importDocument({ client, projectId, targets, config, doc, 
     });
     for (let i = 0; i < linkSpecs.length; i += LINK_CHUNK) {
       check();
-      await client.batched(async () => {
-        for (const l of linkSpecs.slice(i, i + LINK_CHUNK)) {
-          client.vocabLinks.create(l.itemId, [l.tokenId],
-            l.approved ? confirmedInferred('flex-import') : stampInferred('flex-import'));
-        }
-      });
+      await client.vocabLinks.bulkCreate(
+        linkSpecs.slice(i, i + LINK_CHUNK).map((l) => ({
+          vocabItem: l.itemId,
+          tokens: [l.tokenId],
+          metadata: l.approved ? confirmedInferred('flex-import') : stampInferred('flex-import'),
+        })),
+      );
     }
   }
 
