@@ -196,13 +196,10 @@
 /* ---- sentence block ---- */
 .igt-sentence {
   position: relative;
-  padding: 12px 12px 12px 34px;
-  border: 1px solid #edf0f4;
-  border-radius: 8px;
-  margin-bottom: 14px;
+  padding: 20px 12px 20px 34px;
 }
 .igt-sentence:nth-child(odd) { background: #ffffff; }
-.igt-sentence:nth-child(even) { background: #fbfcfe; }
+.igt-sentence:nth-child(even) { background: #effcff; }
 
 /* Search click-through: flash the focused sentence. */
 @keyframes igt-flash {
@@ -221,27 +218,6 @@
   font-weight: 700;
   color: #6b7280;
 }
-
-/* Right-edge fade shown only when the grid can scroll further right, so a
-   half-glossed sentence never silently looks complete. Toggled in JS by
-   _updateScrollCues via .is-clipped-right on the sentence. Since word columns
-   WRAP (below), this only triggers in the pathological case of a single
-   column wider than the viewport — kept as a safety net. */
-.igt-sentence::after {
-  content: '';
-  position: absolute;
-  top: 1px;
-  bottom: 1px;
-  right: 1px;
-  width: 36px;
-  border-radius: 0 8px 8px 0;
-  background: linear-gradient(to right, rgba(255, 255, 255, 0), #ffffff 78%);
-  opacity: 0;
-  transition: opacity 0.15s;
-  pointer-events: none;
-}
-.igt-sentence:nth-child(even)::after { background: linear-gradient(to right, rgba(251, 252, 254, 0), #fbfcfe 78%); }
-.igt-sentence.is-clipped-right::after { opacity: 1; }
 
 /* ---- "Copy as IGT" (per sentence, hover-revealed top-right) ---- */
 .igt-copy {

@@ -134,11 +134,6 @@ export class IgtEditor {
     this._onWinChange = () => this._repositionPopover();
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
-    // Right-edge "more content" fade: recompute when any grid scrolls (capture —
-    // scroll doesn't bubble) or the window resizes. Cheap; a handful of grids.
-    this._onScrollResize = () => this._updateScrollCues();
-    window.addEventListener('scroll', this._onScrollResize, true);
-    window.addEventListener('resize', this._onScrollResize);
     this._render(true);
     this._consumeFocusRequest();
   }
@@ -172,17 +167,6 @@ export class IgtEditor {
     });
   }
 
-  // Toggle .is-clipped-right on each sentence whose grid can still scroll right,
-  // so a half-glossed sentence never silently looks complete.
-  _updateScrollCues() {
-    this.container.querySelectorAll('.igt-grid').forEach((grid) => {
-      const sentence = grid.closest('.igt-sentence');
-      if (!sentence) return;
-      const canRight = grid.scrollWidth - grid.clientWidth - grid.scrollLeft > 2;
-      sentence.classList.toggle('is-clipped-right', canRight);
-    });
-  }
-
   setReadOnly(ro) {
     if (ro === this.readOnly) return;
     // Flush a focused field's pending blur-commit BEFORE flipping the flag — the
@@ -204,8 +188,6 @@ export class IgtEditor {
     document.removeEventListener('click', this._onDocClick);
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
-    window.removeEventListener('scroll', this._onScrollResize, true);
-    window.removeEventListener('resize', this._onScrollResize);
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
     clearTimeout(this._savedTimer);
     clearTimeout(this._copiedTimer);
@@ -380,7 +362,6 @@ export class IgtEditor {
       Object.keys(this.doc.vocabularies || {}).length > 0);
     render(this._template(), this.container);
     this._restorePendingFocus();
-    this._updateScrollCues();
     // Size sentence textareas to their content (uncontrolledValue may have just
     // written a programmatic value, e.g. on load / reload).
     this.container.querySelectorAll('textarea.igt-field--sentence').forEach((el) => this._autoGrow(el));
