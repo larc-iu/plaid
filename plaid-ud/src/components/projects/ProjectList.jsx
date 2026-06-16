@@ -12,6 +12,7 @@ import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
 import { SortButton } from '../common/SortHeader.jsx';
 import { nextSort, sortBy } from '../../utils/sorting.js';
 import classes from '../common/listRow.module.css';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 // Fixed metric-column widths, shared by the header and every row so they align.
 const W_DOCS = 64;
@@ -19,6 +20,7 @@ const W_WORDS = 84;
 const W_UPDATED = 124;
 
 export const ProjectList = () => {
+  useDocumentTitle('Projects');
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

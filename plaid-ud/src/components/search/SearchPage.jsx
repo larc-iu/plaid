@@ -12,6 +12,7 @@ import { groupResults } from './grewToHighlight.js';
 import { GrewQueryInput } from './GrewQueryInput.jsx';
 import { GrewHelp } from './GrewHelp.jsx';
 import { SearchResults } from './SearchResults.jsx';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 // Ask for everything the query API will return. The server hard-caps an
 // entities query at 100k rows and has no offset/cursor, so this is effectively
@@ -24,6 +25,7 @@ export const SearchPage = () => {
 
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
+  useDocumentTitle('Search', project?.name);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 

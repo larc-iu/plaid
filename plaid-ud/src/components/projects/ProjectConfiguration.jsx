@@ -11,6 +11,7 @@ import {
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES, findByRole } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import {
   Container, Title, Text, Button, Group, Stack, Paper, Radio, Select, TextInput, List, Center, Loader,
 } from '@mantine/core';
@@ -37,6 +38,7 @@ export const ProjectConfiguration = ({ embedded = false }) => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  useDocumentTitle('Configuration', project?.name);
 
   const [formData, setFormData] = useState({
     textLayerType: 'existing',

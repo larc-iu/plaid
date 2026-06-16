@@ -8,6 +8,7 @@ import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import classes from '../common/listRow.module.css';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 const PAGE_SIZE = 100;
 const EMPTY_USER_FORM = { username: '', password: '', confirmPassword: '', isAdmin: false };
@@ -18,6 +19,7 @@ const EMPTY_USER_FORM = { username: '', password: '', confirmPassword: '', isAdm
 // reactivate. Deactivation is a soft-delete (client.users.delete); the user
 // stays in listings with a `deactivatedAt` timestamp and is reversible.
 export const AdminUsers = () => {
+  useDocumentTitle('User Administration');
   const { user, getClient } = useAuth();
   const isAdmin = user?.isAdmin || false;
 

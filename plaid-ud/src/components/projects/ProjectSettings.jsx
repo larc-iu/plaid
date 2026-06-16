@@ -8,6 +8,16 @@ import { ProjectAccessTokens } from './ProjectAccessTokens.jsx';
 import { ProjectGeneral } from './ProjectGeneral.jsx';
 import { ProjectServicesSettings } from './ProjectServicesSettings.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+
+// Title-bar labels for the settings tabs (match the Tabs below).
+const SECTION_TITLES = {
+  management: 'Users & Permissions',
+  customization: 'UD Customization',
+  services: 'Services',
+  tokens: 'Access Tokens',
+  general: 'General',
+};
 
 // Single settings view with tabs: user/permission management, UD customization
 // (vocab/colors), services (registry + defaults), API access tokens, and
@@ -28,6 +38,8 @@ export const ProjectSettings = () => {
       : location.pathname.endsWith('/tokens') ? 'tokens'
         : location.pathname.endsWith('/general') ? 'general'
           : 'management';
+
+  useDocumentTitle(SECTION_TITLES[active], project?.name);
 
   // The full project drives ProjectTabs (breadcrumb + permission gating); the
   // active tab's child fetches whatever else it needs.

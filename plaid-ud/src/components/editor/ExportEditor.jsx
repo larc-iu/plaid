@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const ExportEditor = () => {
   const { projectId, documentId } = useParams();
@@ -16,6 +17,7 @@ export const ExportEditor = () => {
   const { getClient, logout } = useAuth();
 
   useConlluDocument(doc);
+  useDocumentTitle('Export', doc?.name, project?.name);
 
   useEffect(() => {
     let cancelled = false;

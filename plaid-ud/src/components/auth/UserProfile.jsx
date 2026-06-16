@@ -6,8 +6,10 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess } from '../../utils/feedback.jsx';
 import { timeAgo } from '../../utils/formatTime.js';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const UserProfile = () => {
+  useDocumentTitle('Profile');
   const { user, getClient, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({

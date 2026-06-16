@@ -14,6 +14,7 @@ import { canEditProject } from '../../utils/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { DocumentTabs } from './DocumentTabs.jsx';
 import { NlpServiceControls } from './NlpServiceControls.jsx';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const TextEditor = () => {
   const { projectId, documentId } = useParams();
@@ -31,6 +32,7 @@ export const TextEditor = () => {
   // (sentences/words/morphemes/spans/relations + isSaving + error) triggers
   // a re-render.
   useConlluDocument(doc);
+  useDocumentTitle('Text Editor', doc?.name, project?.name);
 
   const fetchData = async (initial) => {
     const client = getClient();

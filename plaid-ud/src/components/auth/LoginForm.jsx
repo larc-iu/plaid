@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Center, Stack, Paper, Title, Text, TextInput, PasswordInput, Button, Alert } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const LoginForm = () => {
+  useDocumentTitle('Sign In');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

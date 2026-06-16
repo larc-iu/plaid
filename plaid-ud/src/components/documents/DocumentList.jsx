@@ -15,6 +15,7 @@ import { SortButton } from '../common/SortHeader.jsx';
 import { nextSort, sortBy } from '../../utils/sorting.js';
 import classes from '../common/listRow.module.css';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 // Fixed metric-column widths, shared by the header and every row so they align.
 const W_WORDS = 84;
@@ -25,6 +26,7 @@ export const DocumentList = () => {
   const { projectId } = useParams();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
+  useDocumentTitle(project?.name);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);

@@ -17,6 +17,7 @@ import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { canEditProject } from '../../utils/permissions.js';
 import { notifySuccess, notifyError, notifyWarning } from '../../utils/feedback.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 // ---- helpers --------------------------------------------------------------
 
@@ -86,6 +87,7 @@ export const ProjectImportExport = () => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  useDocumentTitle('Import / Export', project?.name);
 
   // Import state
   const [files, setFiles] = useState([]);

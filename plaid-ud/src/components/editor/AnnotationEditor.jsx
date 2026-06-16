@@ -16,6 +16,7 @@ import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
 import { notifyWarning, notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 const DRAWER_WIDTH = 384;
 
@@ -106,6 +107,7 @@ export const AnnotationEditor = () => {
   }, []);
 
   useConlluDocument(doc);
+  useDocumentTitle('Annotate', doc?.name, project?.name);
 
   const fetchData = async (initial, doReconcile = initial) => {
     if (!projectId || !documentId) return;
