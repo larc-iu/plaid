@@ -1,8 +1,13 @@
-/* Clickable list row: the whole row navigates; secondary actions inside it
-   stop propagation. Shared by ProjectList and DocumentList. */
+/* Clickable list row. Shared by ProjectList and DocumentList. DocumentList
+   renders the row as a real <a> (react-router Link) so middle-click / "open in
+   new tab" work — the resets below keep it looking like the surrounding text
+   rather than a default browser link. */
 .row {
   cursor: pointer;
   transition: background-color 100ms ease;
+  display: block;
+  color: inherit;
+  text-decoration: none;
 }
 
 .row:hover {

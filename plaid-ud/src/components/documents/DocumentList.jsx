@@ -1,14 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader,
-  ActionIcon, Tooltip, Pagination, TextInput, CloseButton,
+  Tooltip, Pagination, TextInput, CloseButton,
 } from '@mantine/core';
-import { IconPlus, IconTrash, IconPencil, IconSearch } from '@tabler/icons-react';
+import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
-import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canEditProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
@@ -20,12 +19,10 @@ import { EntityAvatar } from '../common/EntityAvatar.jsx';
 // Fixed metric-column widths, shared by the header and every row so they align.
 const W_WORDS = 84;
 const W_UPDATED = 124;
-const W_ACTION = 72; // edit + delete icons
 const PAGE_SIZE = 100; // documents shown per page (the full list is paged client-side)
 
 export const DocumentList = () => {
   const { projectId } = useParams();
-  const navigate = useNavigate();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -110,31 +107,15 @@ export const DocumentList = () => {
     return () => { cancelled = true; };
   }, [project, getClient]);
 
-  const handleDelete = (documentId, documentName) => {
-    confirmDelete({
-      title: 'Delete document',
-      message: `Are you sure you want to delete document "${documentName}"? This action cannot be undone.`,
-      onConfirm: async () => {
-        try {
-          await getClient().documents.delete(documentId);
-          notifySuccess(`Deleted "${documentName}"`);
-          await fetchProjectAndDocuments(); // Refresh the list
-        } catch (err) {
-          notifyError(err.message || 'Unknown error', 'Failed to delete document');
-          console.error('Error deleting document:', err);
-        }
-      },
-    });
-  };
-
-  // Opening a document lands on the Annotate tab by default; but a document with
-  // no tokens yet has nothing to annotate (the tab would just say "tokenize
-  // first"), so divert it to the Text Editor. Only do so once word counts have
-  // loaded and confirm zero tokens — while they're still loading we keep the
-  // default so a tokenized doc clicked early doesn't get mis-routed.
-  const openDocument = (documentId) => {
+  // A row links to the Annotate tab by default; but a document with no tokens
+  // yet has nothing to annotate (the tab would just say "tokenize first"), so
+  // point it at the Text Editor. Only divert once word counts have loaded and
+  // confirm zero tokens — while they're still loading we keep the default so a
+  // tokenized doc clicked early isn't mis-routed. (Deleting a document now lives
+  // on a "Delete Document" button at the bottom of the Text Editor.)
+  const rowHref = (documentId) => {
     const knownEmpty = hasWordLayer && !wordsLoading && (wordCounts[documentId] ?? 0) === 0;
-    navigate(`/projects/${projectId}/documents/${documentId}/${knownEmpty ? 'edit' : 'annotate'}`);
+    return `/projects/${projectId}/documents/${documentId}/${knownEmpty ? 'edit' : 'annotate'}`;
   };
 
   const onSort = (key) => { setSort(nextSort(key)); setPage(1); };
@@ -229,15 +210,15 @@ export const DocumentList = () => {
             <SortButton field="name" sort={sort} onSort={onSort} align="left">Document</SortButton>
             <SortButton field="words" sort={sort} onSort={onSort} width={W_WORDS}>Words</SortButton>
             <SortButton field="updated" sort={sort} onSort={onSort} width={W_UPDATED}>Updated</SortButton>
-            <Box w={W_ACTION} />
           </Group>
 
           <Stack gap={0}>
             {pageDocuments.map((document) => (
               <Box
                 key={document.id}
+                component={Link}
+                to={rowHref(document.id)}
                 className={classes.row}
-                onClick={() => openDocument(document.id)}
                 p="md"
               >
                 <Group gap="sm" wrap="nowrap">
@@ -253,32 +234,6 @@ export const DocumentList = () => {
                   <Tooltip label={fullTimestamp(document.timeModified)} disabled={!document.timeModified} withinPortal>
                     <Text size="sm" c="dimmed" ta="right" w={W_UPDATED}>{timeAgo(document.timeModified) || '—'}</Text>
                   </Tooltip>
-
-                  <Group gap="xs" wrap="nowrap" w={W_ACTION} justify="flex-end">
-                    <Tooltip label={canEdit ? 'Edit text' : 'View text'}>
-                      <ActionIcon
-                        variant="subtle"
-                        color="gray"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/projects/${projectId}/documents/${document.id}/edit`);
-                        }}
-                      >
-                        <IconPencil size={18} />
-                      </ActionIcon>
-                    </Tooltip>
-                    {canEdit && (
-                      <Tooltip label="Delete document">
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(document.id, document.name); }}
-                        >
-                          <IconTrash size={18} />
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
-                  </Group>
                 </Group>
               </Box>
             ))}

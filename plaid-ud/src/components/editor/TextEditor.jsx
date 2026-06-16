@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   SimpleGrid, Stack, Title, Textarea, Button, Group, Text, Alert, Paper, Center, Loader,
 } from '@mantine/core';
+import { IconTrash } from '@tabler/icons-react';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { missingUdLayerLabels, hasForeignSubstrateParticipants, foreignAnnotationLossForWord } from '../../utils/udLayerUtils.js';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
-import { confirmDelete } from '../../utils/feedback.jsx';
+import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canEditProject } from '../../utils/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { DocumentTabs } from './DocumentTabs.jsx';
@@ -16,6 +17,7 @@ import { NlpServiceControls } from './NlpServiceControls.jsx';
 
 export const TextEditor = () => {
   const { projectId, documentId } = useParams();
+  const navigate = useNavigate();
   const [doc, setDoc] = useState(null);
   const [project, setProject] = useState(null);
   const [textContent, setTextContent] = useState('');
@@ -162,6 +164,28 @@ export const TextEditor = () => {
   };
   const handleSentenceBoundaryToggle = (charPos) => doc?.toggleSentenceBoundary(charPos);
   const handleSetWordMorphemes = (word, forms) => doc?.setWordMorphemes(word, forms);
+
+  // Delete the whole document. Lives here (rather than as a per-row action in the
+  // document list) so it's an explicit, inside-the-document action; returns to
+  // the list afterwards.
+  const handleDeleteDocument = () => {
+    const name = doc?.name || 'this document';
+    confirmDelete({
+      title: 'Delete document',
+      message: `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      onConfirm: async () => {
+        try {
+          await getClient().documents.delete(documentId);
+          notifySuccess(`Deleted "${name}"`);
+          navigate(`/projects/${projectId}/documents`);
+        } catch (err) {
+          notifyError(err.message || 'Unknown error', 'Failed to delete document');
+          console.error('Error deleting document:', err);
+        }
+      },
+    });
+  };
 
   if (loading) {
     return <Center py={48}><Loader /></Center>;
@@ -330,6 +354,19 @@ This is a second sentence for testing.`}
           />
         </Paper>
       </SimpleGrid>
+
+      {!readOnly && (
+        <Group
+          justify="flex-end"
+          mt="xl"
+          pt="md"
+          style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
+        >
+          <Button color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={handleDeleteDocument}>
+            Delete Document
+          </Button>
+        </Group>
+      )}
     </>
   );
 };
