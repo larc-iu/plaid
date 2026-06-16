@@ -1,7 +1,7 @@
 (ns plaid.sql.set-tokens-audit-smoke-test
   "Smoke test for the span/set-tokens audit fix: verifies that update-span-tokens
-  produces an audit_writes row against :spans whose pre/post JSON images carry
-  the ordered token-id vector under :tokens."
+  produces an audit_writes row against :spans whose post-image JSON carries the
+  new ordered token-id vector under :tokens (the log is post-image-only)."
   (:require [clojure.test :refer :all]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
@@ -42,27 +42,23 @@
       (println :--smoke-write-count (count writes))
       (is (= 1 (count writes)) "exactly one span audit row scoped to this span id")
       (let [w (first writes)
-            pre  (psc/read-json (:pre_image w))
             post (psc/read-json (:post_image w))]
         (println :--smoke-target-table (:target_table w))
         (println :--smoke-change-type (:change_type w))
-        (println :--smoke-pre-tokens  (:tokens pre))
         (println :--smoke-post-tokens (:tokens post))
-        (println :--smoke-pre-value   (:value pre))
         (println :--smoke-post-value  (:value post))
         (is (= "spans" (:target_table w))            "audit row targets :spans")
         (is (= "update" (:change_type w))            "change_type = update")
-        (is (= [(str t1) (str t2)] (:tokens pre))    "pre-image carries old token list")
+        (is (nil? (:pre_image w))                    "pre-image is not persisted (post-image-only log)")
         (is (= [(str t2) (str t3)] (:tokens post))   "post-image carries new token list")
-        ;; The span row state is preserved too — useful for replay.
-        (is (some? (:value pre)) "pre-image carries the span row's :value column")
+        ;; The full span row state rides the post-image too.
         (is (some? (:value post)) "post-image carries the span row's :value column")))))
 
 (deftest token-delete-span-trim-audit
   ;; A token delete that leaves a span with SOME tokens used to trim the
   ;; span via FK CASCADE only — no audit row — so the audit log was not
-  ;; row-complete and the history replica kept the stale :tokens vector
-  ;; forever. multi-delete! now emits a synthetic :update audit row on
+  ;; row-complete and as-of reconstruction would see the stale :tokens
+  ;; vector. multi-delete! now emits a synthetic :update audit row on
   ;; :spans (trim-span-tokens!), same shape as span/set-tokens'.
   (let [proj (create-test-project admin-request "SpanTrimAuditProj")
         doc (create-test-document admin-request proj "SpanTrimAuditDoc")
@@ -94,9 +90,8 @@
                                     [:= :aw.target_id (str sid)]]})]
       (is (= 1 (count writes)) "exactly one span audit row for the trim")
       (let [w (first writes)
-            pre  (psc/read-json (:pre_image w))
             post (psc/read-json (:post_image w))]
-        (is (= "update" (:change_type w))         "change_type = update")
-        (is (= [(str t1) (str t2)] (:tokens pre)) "pre-image carries old token list")
-        (is (= [(str t2)] (:tokens post))         "post-image carries trimmed token list")
-        (is (some? (:value pre)) "pre-image carries the span row's :value column")))))
+        (is (= "update" (:change_type w))     "change_type = update")
+        (is (nil? (:pre_image w))             "pre-image is not persisted (post-image-only log)")
+        (is (= [(str t2)] (:tokens post))     "post-image carries trimmed token list")
+        (is (some? (:value post)) "post-image carries the span row's :value column")))))

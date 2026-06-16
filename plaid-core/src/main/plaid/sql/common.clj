@@ -727,40 +727,40 @@
   :doc-version-bump)
 
 ;; ----------------------------------------------------------------
-;; Synthetic-parent-row audit pattern + the :insert/:update vs
-;; :delete asymmetry (tasks #28 / #34 / #58)
+;; Post-image-only audit log + the synthetic-parent-row pattern
+;; (tasks #28 / #34 / #58)
 ;;
-;; Several mutations don't live as a single row write on the parent
-;; table but conceptually belong to one parent entity — e.g. the
-;; `span_tokens` junction (a span's ordered token list lives in a
-;; separate join table) or `entity_metadata` (wide-narrow KV rows
-;; live keyed on entity_type+entity_id). For ETL replay to
-;; reconstruct the parent entity after a junction mutation we emit
-;; ONE synthetic audit_writes row against the parent table whose
-;; pre/post images carry the parent row PLUS the junction state
-;; folded under a well-known key (`:tokens`, `:metadata`,
-;; `:readers`, `:maintainers`, ...).
+;; POST-IMAGE ONLY: an audit row stores the full post-image of the
+;; touched row and NOT a pre-image. The prior post-image of the same
+;; entity IS its pre-image, so storing both was pure redundancy — it
+;; only existed for the (since-removed) XTDB ETL replica. `pre_image`
+;; is therefore left NULL on every row written after this change
+;; (the column is retained for back-compat / forensic spelunking of
+;; old rows; new rows don't populate it). The as-of reader uses only
+;; post-images (`plaid.history.read`). A `:delete` row consequently
+;; carries NO image at all (post is nil): the as-of fold treats a
+;; delete as "entity absent at T", which needs no image. Callers
+;; still compute the pre-image transiently — for no-op detection
+;; (skip the audit when pre == post) and to stamp `document_id` on
+;; delete rows.
 ;;
-;; ASYMMETRY: the synthetic-parent-row pattern is applied
-;; consistently for `:insert` and `:update` audit rows — both fold
-;; junction state into the parent's pre/post image. For `:delete`
-;; audit rows the asymmetry kicks in: the parent's `:delete` row
-;; carries ONLY the bare parent-row columns. The junction state
-;; that was on the entity at delete time (its `:tokens`,
-;; `:metadata`, ACL membership, ...) is IMPLIED by the parent's
-;; deletion and is NOT re-folded into the `:delete` pre-image.
-;; This trades a bit more state in the ETL replayer (which must
-;; track the running junction state per entity anyway, to fold
-;; `:update` audit rows back into a queryable shape) for cheaper
-;; `:delete` audit rows (no re-fetch of the junction tables at
-;; delete time).
+;; SYNTHETIC-PARENT-ROW: several mutations don't live as a single row
+;; write on the parent table but conceptually belong to one parent
+;; entity — e.g. the `span_tokens` junction (a span's ordered token
+;; list) or `entity_metadata` (wide-narrow KV rows keyed on
+;; entity_type+entity_id). To reconstruct the parent after a junction
+;; mutation we emit ONE synthetic audit_writes row against the parent
+;; table whose POST-image carries the parent row PLUS the junction
+;; state folded under a well-known key (`:tokens`, `:metadata`,
+;; `:readers`, `:maintainers`, ...). A `:delete` of the parent needs
+;; no fold — the deletion implies the junction state is gone.
 ;; ----------------------------------------------------------------
 
-;; audit_writes has 10 columns, so each batched row contributes 10
-;; placeholders to a multi-row INSERT. Chunk at 3000 rows (30000 params)
-;; to stay under SQLite's SQLITE_MAX_VARIABLE_NUMBER (32766). (The general
-;; `bulk-chunk-size` of 4000 is sized for ~7-column rows and would blow
-;; the ceiling for this wider shape; it is also defined later in the file.)
+;; The batched INSERT specifies 9 columns per row (every audit column
+;; except the never-written `pre_image`), so each row contributes 9
+;; placeholders. Chunk at 3000 rows (27000 params) to stay under SQLite's
+;; SQLITE_MAX_VARIABLE_NUMBER (32766). (The general `bulk-chunk-size` of
+;; 4000 is sized for ~7-column rows; it is also defined later in the file.)
 (def ^:private audit-bulk-chunk-size 3000)
 
 (defn- reserve-seqs!
@@ -781,7 +781,13 @@
 (defn- audit-row-values
   "Build the column-keyed value map for one audit_writes row. Shared by the
   single-row (`record-audit-write!`) and batched (`record-audit-writes!`)
-  entry points so the two stay identical except for how the INSERT is issued."
+  entry points so the two stay identical except for how the INSERT is issued.
+
+  `pre-image` is NOT persisted — the audit log is post-image-only (see the
+  comment block above). It is still passed in because callers compute it for
+  no-op detection (skip when pre == post) and because it supplies the
+  `document_id` stamp for `:delete` rows (whose post-image is nil). The
+  `pre_image` table column is left to default NULL."
   [op seq-n target-table target-id change-type pre-image post-image]
   {:id (new-uuid)
    :op_id (:id op)
@@ -789,14 +795,14 @@
    :target_table (name target-table)
    :target_id target-id
    :change_type (name change-type)
-   :pre_image (some-> pre-image write-json)
    :post_image (some-> post-image write-json)
    ;; Per-row document attribution, from the row's OWN image — not the
    ;; op's :document, which is nil for multi-document cascade ops
    ;; (project/delete, vocab/delete) and was even once plain wrong
    ;; (pre-guard cross-document bulk-delete). This column is what as-of
    ;; reconstruction scopes by, so a missing stamp = a row invisible to
-   ;; time travel.
+   ;; time travel. For `:delete` rows post is nil, so the stamp comes from
+   ;; the pre-image — the one remaining reason we still take it as an arg.
    :document_id (or (:document_id post-image)
                     (:document_id pre-image)
                     (when (= (name target-table) "documents")
@@ -805,19 +811,21 @@
 
 (defn record-audit-write!
   "Emit an audit_writes row for `target-table`/`target-id` with the given
-  change-type and pre/post images. Requires *op* to be bound (or ::skip).
+  change-type and post-image. `pre-image` is taken but NOT persisted (used
+  only for no-op detection upstream and the delete-row `document_id` stamp —
+  see `audit-row-values`). Requires *op* to be bound (or ::skip).
 
   Most callers should go through the higher-level `insert!`/`update-by-id!`/
-  `delete-by-id!`/`merge*` helpers — those capture pre/post automatically
+  `delete-by-id!`/`merge*` helpers — those capture the post-image automatically
   from the row state. This raw entry point exists for the handful of writes
   whose meaningful change isn't a single row (e.g. span/set-tokens, where
   the change lives in the `span_tokens` junction table but conceptually
   belongs on the parent span's audit row). See the comment block above for
-  the full :insert/:update vs :delete asymmetry contract.
+  the post-image-only log + synthetic-parent-row pattern.
 
   The per-op `:seq` ordinal is pulled from the counter atom in *op* so that
   every audit_writes row in the same op has a unique (op_id, seq) tuple.
-  This is load-bearing for ETL replay: all rows in one op share the same
+  This is load-bearing for as-of ordering: all rows in one op share the same
   `:ts` (taken once in submit-operation*), so `seq` is what disambiguates
   the order of multiple writes to the same target row inside one op
   (e.g. bump-document-version! plus a body update on the same document).

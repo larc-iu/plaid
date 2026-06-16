@@ -20,7 +20,7 @@
   lives under a SIBLING span_layer — a configuration that bypasses the
   application-level invariants checked by `plaid.sql.relation/create`
   but is allowed by the SQL schema. The audit log must capture that
-  relation's deletion with a non-nil pre_image."
+  relation's deletion (as a :delete row under this op)."
   (:require [clojure.test :refer :all]
             [next.jdbc :as jdbc]
             [plaid.sql.common :as psc]
@@ -124,17 +124,15 @@
           "RL_Y is under sibling SL_Y; must not be touched")
       ;; SL_X itself audited.
       (is (contains? delete-ids (str sl-x)) "SL_X audit-deleted")
-      ;; Pre-image present on EVERY delete (ETL replay requirement).
-      ;; Spot-check the two relations specifically since they're the
-      ;; bug-prone rows.
-      (let [by-id (->> deletes
-                       (map (fn [d] [(str (:target_id d)) d]))
-                       (into {}))]
-        (is (some? (:pre_image (by-id (str rel-in-rlx))))
-            "nested-RL relation delete carries pre_image")
-        (is (some? (:pre_image (by-id (str cross-rel-id))))
-            "cross-layer relation delete carries pre_image")
-        (doseq [d deletes]
-          (is (some? (:pre_image d))
-              (str "delete audit for " (:target_table d) "/"
-                   (:target_id d) " carries a pre_image")))))))
+      ;; Post-image-only log: a :delete row carries NO image at all (post is
+      ;; nil for deletes; pre_image is no longer persisted). The point of
+      ;; this test — that every cascaded deletion IS audited — is covered by
+      ;; the delete-ids checks above; the as-of fold treats a :delete as
+      ;; "entity absent" and needs no image.
+      (doseq [d deletes]
+        (is (nil? (:pre_image d))
+            (str "delete audit for " (:target_table d) "/"
+                 (:target_id d) " has no pre_image (post-image-only log)"))
+        (is (nil? (:post_image d))
+            (str "delete audit for " (:target_table d) "/"
+                 (:target_id d) " has no post_image"))))))

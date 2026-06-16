@@ -121,8 +121,8 @@
 
 (deftest patch-emits-single-folded-update-audit-row
   (testing "a patch that changes metadata emits exactly ONE :documents audit
-            row, change_type :update, with old metadata in pre and merged
-            metadata in post"
+            row, change_type :update, carrying the merged metadata in its
+            post-image (the log is post-image-only)"
     (let [proj (create-test-project admin-request "PatchAuditProj")
           doc (create-test-document admin-request proj "Doc")
           _ (assert-ok (update-document-metadata admin-request doc {"a" "1" "b" "2"}))
@@ -135,11 +135,9 @@
                (count rows)))
       (let [w (first rows)
             norm (fn [m] (into {} (map (fn [[k v]] [(name k) v])) m))
-            pre (psc/read-json (:pre_image w))
             post (psc/read-json (:post_image w))]
         (is (= "update" (:change_type w)) "metadata patch is audited as an :update")
-        (is (= {"a" "1" "b" "2"} (norm (:metadata pre)))
-            "pre-image carries the metadata as it was before the patch")
+        (is (nil? (:pre_image w)) "pre-image is not persisted (post-image-only log)")
         (is (= {"a" "9" "b" "2" "c" "3"} (norm (:metadata post)))
             "post-image carries the shallow-merged result")))))
 

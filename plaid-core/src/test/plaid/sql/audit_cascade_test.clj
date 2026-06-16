@@ -68,8 +68,9 @@
       (is (= "projects" (:target_table (first deletes)))
           "the audited delete targets the project")
       (is (= proj (:target_id (first deletes))))
-      (is (some? (:pre_image (first deletes)))
-          "the project delete row carries a pre_image (ETL can reconstruct it)")
+      ;; Post-image-only log: a :delete row carries no image at all.
+      (is (nil? (:pre_image (first deletes))) "pre-image is not persisted")
+      (is (nil? (:post_image (first deletes))) "delete rows have no post-image")
       ;; FK ON DELETE CASCADE actually removed the whole subtree from OLTP.
       (doseq [[table where] [[:documents       [:= :project_id proj]]
                              [:text_layers     [:= :project_id proj]]

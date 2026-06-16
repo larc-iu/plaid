@@ -60,17 +60,14 @@
                " (change_types: " change-types ")"))
       (is (= ["doc-version-bump"] change-types)
           "the sole documents audit row carries the sentinel change_type, not 'update'")
-      ;; The audit row still carries pre/post images so ETL replay can
-      ;; reproduce the version + modified_at transition.
+      ;; Post-image-only log: the sole row carries a post-image reflecting
+      ;; the bumped version + modified_at; pre_image is no longer persisted.
       (let [w (first doc-writes)
-            pre  (psc/read-json (:pre_image w))
             post (psc/read-json (:post_image w))]
-        (is (some? pre)  "pre-image present")
+        (is (nil? (:pre_image w)) "pre-image is not persisted")
         (is (some? post) "post-image present")
-        (is (= (inc (:version pre)) (:version post))
-            "post-image version = pre-image version + 1")
-        (is (not= (:modified_at pre) (:modified_at post))
-            "modified_at advanced")))))
+        (is (integer? (:version post)) "post-image carries the bumped version")
+        (is (some? (:modified_at post)) "post-image carries modified_at")))))
 
 ;; ============================================================
 ;; #33 — user/deactivate walks project_users + vocab_maintainers
@@ -139,18 +136,17 @@
             (str "expected 1 :projects audit row for the project the user was a reader on, got "
                  (count proj-writes)))
         (let [w (first proj-writes)
-              pre  (psc/read-json (:pre_image w))
               post (psc/read-json (:post_image w))
               ;; `clojure.data.json/write-str` strips namespaces from
               ;; keyword keys (verified at the REPL: `:project/readers`
               ;; → `"readers"`), so the round-tripped keys are
-              ;; unqualified.
-              pre-readers  (set (:readers pre))
+              ;; unqualified. Post-image-only log: the row's existence (it's
+              ;; emitted only when pre != post) plus the post-image showing
+              ;; the victim gone is the recorded transition.
               post-readers (set (:readers post))]
           (is (= "update" (:change_type w))
               "synthetic ACL change is a :projects :update")
-          (is (contains? pre-readers (str victim))
-              (str "pre-image readers contains the victim id (was: " pre-readers ")"))
+          (is (nil? (:pre_image w)) "pre-image is not persisted (post-image-only log)")
           (is (not (contains? post-readers (str victim)))
               (str "post-image readers no longer contains the victim id (was: " post-readers ")"))))
       ;; The synthetic :vocab_layers audit (vocab row + maintainers).
@@ -161,15 +157,12 @@
             (str "expected 1 :vocab_layers audit row for the vocab the user maintained, got "
                  (count vocab-writes)))
         (let [w (first vocab-writes)
-              pre  (psc/read-json (:pre_image w))
               post (psc/read-json (:post_image w))
               ;; Same namespace-stripping caveat as the :projects audit.
-              pre-maints  (set (:maintainers pre))
               post-maints (set (:maintainers post))]
           (is (= "update" (:change_type w))
               "synthetic maintainers change is a :vocab_layers :update")
-          (is (contains? pre-maints (str victim))
-              (str "pre-image maintainers contains the victim id (was: " pre-maints ")"))
+          (is (nil? (:pre_image w)) "pre-image is not persisted (post-image-only log)")
           (is (not (contains? post-maints (str victim)))
               (str "post-image maintainers no longer contains the victim id (was: "
                    post-maints ")"))))
