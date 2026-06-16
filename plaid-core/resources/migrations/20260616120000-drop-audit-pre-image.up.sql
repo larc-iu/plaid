@@ -1,0 +1,12 @@
+-- Drop audit_writes.pre_image. The log is post-image-only: the prior
+-- post-image of an entity IS its pre-image, and as-of reconstruction
+-- (plaid.history.read) reads only post-images. pre_image was written for the
+-- since-removed XTDB ETL replica and stopped being populated in code; this
+-- removes the column for good. Code keeps computing a transient pre-image
+-- (no-op detection + delete-row document_id stamp) but never persists it.
+--
+-- NOTE: SQLite DROP COLUMN (>= 3.35; sqlite-jdbc 3.50.x ships well past this)
+-- rewrites the table — slow on a large audit_writes — and does NOT shrink the
+-- file (freed pages go to the freelist; auto_vacuum is NONE). Run a manual
+-- VACUUM afterward to return the space to the OS.
+ALTER TABLE audit_writes DROP COLUMN pre_image;
