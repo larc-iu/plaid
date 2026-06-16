@@ -14,9 +14,7 @@ import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { useServiceParams } from '../hooks/useServiceParams.js';
 import { ServiceSummary } from '../services/ServiceSummary.jsx';
 import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
-import {
-  AUTO_LINK_SOURCE, precedentQueries, buildPrecedentTable, computeAutoLinkProposals,
-} from '@/domain/autoLink';
+import { runBuiltinAnalysis } from '@/domain/autoPass';
 import {
   BUILTIN_LINK_PRECEDENT, encodeServiceSelection, encodeBuiltinSelection,
   readSpotDefault, resolveInitialSelection,
@@ -29,17 +27,16 @@ const PARAMS_PREFIX = 'plaid_igt_link_vocab_params_';
 
 // Auto-link modal: pick an algorithm — the built-in precedent-or-unique rule
 // or any registered service advertising the link-vocab task — and run it over
-// the current document. Same service-selection idiom as the Media/Tokenize
-// tabs (discovery, summary, declared parameter form, progress; initial choice
-// resolves localStorage -> project default -> built-in). Opened by the
-// island's toolbar button via the igt:auto-link-open window event.
+// the current document on demand. Same service-selection idiom as the
+// Media/Tokenize tabs (discovery, summary, declared parameter form, progress;
+// initial choice resolves localStorage -> project default -> built-in). Opened
+// by the island's toolbar button via the igt:auto-link-open window event.
 //
-// When the project's automatic analysis pass already runs the built-in rule
-// (config.igt.autoAnalysis enabled + autoLink), the built-in option is
-// REDUNDANT and dropped from the method list — the dialog is then purely the
-// "run a linking service on demand" entry, with a pointer at Services
-// settings for the automatic behavior. Disabling the pass (or its link
-// phase) brings the built-in option back so manual linking is never stranded.
+// The built-in rule is ALWAYS offered (these helpers no longer run
+// automatically — they're explicitly run here). When the built-in is selected,
+// an extra opt-in copies prior whole-word analyses onto identical unanalyzed
+// words; its default and contents come from the project's built-in-analysis
+// settings (config.igt.autoAnalysis).
 export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
   const project = doc?.project;
   const {
@@ -49,10 +46,17 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
   const [algorithm, setAlgorithm] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  // (Re)discover services each time the dialog opens.
+  const autoCfg = resolveAutoAnalysis(project?.config);
+  const [copyAnalyses, setCopyAnalyses] = useState(autoCfg.copyAnalyses);
+
+  // (Re)discover services each time the dialog opens; reset the copy opt-in to
+  // the project default so each run starts from policy.
   useEffect(() => {
     if (open && project?.id) discoverServices(project.id);
   }, [open, project?.id, discoverServices]);
+  useEffect(() => {
+    if (open) setCopyAnalyses(autoCfg.copyAnalyses);
+  }, [open, autoCfg.copyAnalyses]);
 
   // Only ONLINE services can take work (discovery also returns
   // previously-seen offline services).
@@ -60,21 +64,18 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
     .filter((s) => s.online !== false);
   const serviceOptions = onlineServices
     .map((s) => ({ value: encodeServiceSelection(s.serviceId), label: s.serviceName, service: s }));
-  // Built-in is offered only when the automatic pass ISN'T already running it.
-  const autoCfg = resolveAutoAnalysis(project?.config);
-  const autoLinkOn = autoCfg.enabled && autoCfg.autoLink;
   const options = [
-    ...(autoLinkOn ? [] : [{ value: BUILTIN, label: 'Built-in — follow precedent & unique matches' }]),
+    { value: BUILTIN, label: 'Built-in — follow precedent & unique matches' },
     ...serviceOptions,
   ];
   // Resolve until the user explicitly picks: cached -> project default ->
   // built-in. Also covers a cached service that has vanished.
   const resolved = resolveInitialSelection({
     services: onlineServices,
-    builtins: autoLinkOn ? [] : [BUILTIN_LINK_PRECEDENT],
+    builtins: [BUILTIN_LINK_PRECEDENT],
     cached: localStorage.getItem(STORAGE_KEY),
     projectDefault: readSpotDefault(project, TASKS.LINK_VOCAB),
-  }) || (autoLinkOn ? null : BUILTIN);
+  }) || BUILTIN;
   const chosen = algorithm ?? resolved;
   const effective = options.some((o) => o.value === chosen) ? chosen : (options[0]?.value ?? null);
   const selectedService = serviceOptions.find((o) => o.value === effective)?.service ?? null;
@@ -95,21 +96,23 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
     setBusy(true);
     try {
       if (effective === BUILTIN) {
-        const vocabIds = Object.keys(doc.vocabularies || {});
-        const results = await Promise.all(
-          precedentQueries(vocabIds).map((q) => doc._client.query(q)));
-        const precedentTable = buildPrecedentTable(results);
-        const proposals = computeAutoLinkProposals({
-          sentences: doc.sentences,
-          vocabularies: doc.vocabularies,
-          precedentTable,
+        const { copied, linked, ok } = await runBuiltinAnalysis(doc, {
+          link: true,
+          copy: copyAnalyses,
+          copyContents: {
+            segmentation: autoCfg.copySegmentation,
+            links: autoCfg.copyLinks,
+            fields: autoCfg.copyFields,
+          },
         });
-        const n = proposals.length ? await doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE) : 0;
-        if (n === false) return; // the domain layer toasted the failure
-        notifySuccess(
-          n > 0 ? `Linked ${n} word${n === 1 ? '' : 's'}/morpheme${n === 1 ? '' : 's'} — shown in violet until confirmed.` : 'Nothing new to link.',
-          'Auto-link'
-        );
+        if (!ok) return; // the domain layer toasted the failure
+        const parts = [];
+        if (linked) parts.push(`linked ${linked} word${linked === 1 ? '' : 's'}/morpheme${linked === 1 ? '' : 's'}`);
+        if (copied) parts.push(`copied analyses onto ${copied} word${copied === 1 ? '' : 's'}`);
+        const msg = parts.length
+          ? `${parts.join(' and ')} — shown in violet until confirmed.`
+          : 'Nothing new to apply.';
+        notifySuccess(msg.charAt(0).toUpperCase() + msg.slice(1), 'Auto-link');
         onOpenChange(false);
       } else {
         const missing = Object.values(paramErrors || {});
@@ -159,19 +162,10 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          {autoLinkOn && (
-            <p className="text-sm text-muted-foreground">
-              Automatic linking is on for this project — the built-in rule
-              already runs as you edit (configure under project settings →
-              Services). Use this dialog to run a linking <em>service</em> on
-              demand.
-            </p>
-          )}
-
           {options.length > 0 ? (
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-1.5">
-                <Label>{autoLinkOn ? 'Service' : 'Method'}</Label>
+                <Label>Method</Label>
                 {selectedService && <ServiceSummary service={selectedService} />}
                 {isDiscovering && <span className="text-xs text-muted-foreground">discovering services…</span>}
               </div>
@@ -186,19 +180,37 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              {isDiscovering
-                ? 'Discovering services…'
-                : 'No linking service is currently online. Start one and reopen this dialog.'}
+              {isDiscovering ? 'Discovering services…' : 'No linking method available.'}
             </p>
           )}
 
           {effective === BUILTIN ? (
-            <p className="text-sm text-muted-foreground">
-              Links every unlinked word and morpheme whose form follows the
-              project's existing links (strict majority) or matches exactly one
-              lexicon entry. Ambiguous forms are skipped. New links show in
-              violet until you confirm them.
-            </p>
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Links every word and morpheme whose form follows the project's
+                existing links (strict majority) or matches exactly one lexicon
+                entry. Ambiguous forms are skipped. Earlier machine suggestions
+                are refreshed; links you made or confirmed are left untouched.
+                New links show in violet until you confirm them.
+              </p>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-primary"
+                  checked={copyAnalyses}
+                  disabled={running}
+                  onChange={(e) => setCopyAnalyses(e.target.checked)}
+                />
+                <span>
+                  Also copy previous analyses onto identical unanalyzed words
+                  <span className="block text-xs text-muted-foreground">
+                    When a word form was fully analyzed before (uncontested
+                    majority project-wide), copy that analysis. Only words with
+                    no analysis at all are touched.
+                  </span>
+                </span>
+              </label>
+            </div>
           ) : (
             paramSchema?.length > 0 && (
               <ServiceParamForm

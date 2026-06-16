@@ -4,9 +4,8 @@ import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
-import { AutoAnalysisRunner } from '../../domain/autoPass.js';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
-import { notifyError, notifyWarning, notifyInfo, toast } from '@/utils/feedback';
+import { notifyError, notifyWarning, toast } from '@/utils/feedback';
 import { History, FileText, Type, Mic, Play, Table, Download } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -168,28 +167,9 @@ const DocumentEditor = () => {
     return () => { cancelled = true; };
   }, [doc, asOf, permissions?.canWrite]);
 
-  // Automatic analysis pass (config.igt.autoAnalysis, on by default): copy
-  // prior whole-word analyses + auto-link by precedent, debounced as the
-  // document changes. Same gating as reconcile-on-open: write access, live
-  // (not time-travel). The first productive pass gets a one-time toast;
-  // afterwards the violet "unverified" styling is the signal.
-  useEffect(() => {
-    if (!doc || asOf || !permissions?.canWrite) return undefined;
-    const runner = new AutoAnalysisRunner(doc, {
-      onApplied: ({ copied, linked, firstPass }) => {
-        if (!firstPass) return;
-        const parts = [];
-        if (copied) parts.push(`copied previous analyses onto ${copied} word${copied === 1 ? '' : 's'}`);
-        if (linked) parts.push(`linked ${linked} word${linked === 1 ? '' : 's'}/morpheme${linked === 1 ? '' : 's'} to the lexicon`);
-        notifyInfo(
-          `${parts.join(' and ')} — shown in violet until you confirm or edit them.`,
-          'Automatic analysis'
-        );
-      },
-    });
-    runner.start();
-    return () => runner.stop();
-  }, [doc, asOf, permissions?.canWrite]);
+  // The built-in analysis helpers (copy prior analyses + auto-link) no longer
+  // run automatically — they were disruptive mid-editing. They run on demand
+  // from the interlinear Auto-link dialog (see AutoLinkDialog + autoPass.js).
 
   // The interlinear island is framework-agnostic; its empty-state CTA asks to
   // switch tabs via a DOM event rather than reaching into the router.

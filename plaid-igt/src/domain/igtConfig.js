@@ -68,22 +68,21 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
 /** A vocab layer's custom field schema: {field: {inline}}, or null. */
 export const readVocabFields = (config) => readIgt(config, 'fields') ?? null;
 
-// --- Automatic analysis (the auto-pass: see domain/autoPass.js) -------------
+// --- Built-in analysis defaults (run on demand: see domain/autoPass.js) -----
 
 /**
- * Project defaults for the automatic analysis pass. Everything ON by default —
- * machine output is stamped with provenance and rendered as unverified, so
- * the safety story is the visual distinction + verify-on-edit, not opt-in.
- *   enabled          — master switch for the whole automatic pass
- *   autoLink         — link unlinked words/morphemes by precedent/unique match
- *   copyAnalyses     — copy a prior full analysis onto identical unanalyzed words
+ * Project defaults for the on-demand built-in analysis helpers, run from the
+ * Auto-link dialog (they no longer run automatically). Machine output is
+ * stamped with provenance and rendered as unverified, so the safety story is
+ * the visual distinction + verify-on-edit.
+ *   copyAnalyses     — pre-check the dialog's "copy previous analyses" opt-in
  *   copySegmentation — include the morpheme breakdown (forms + types) in copies
  *   copyLinks        — include vocab links in copies
  *   copyFields       — include annotation values (glosses etc.) in copies
+ * (The auto-linker itself always runs when the built-in method is chosen; its
+ * method/default lives in the Auto-link-vocabulary spot, not here.)
  */
 export const AUTO_ANALYSIS_DEFAULTS = Object.freeze({
-  enabled: true,
-  autoLink: true,
   copyAnalyses: true,
   copySegmentation: true,
   copyLinks: true,

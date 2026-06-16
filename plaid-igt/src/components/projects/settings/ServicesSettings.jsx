@@ -94,47 +94,30 @@ function CheckRow({ id, label, hint, checked, disabled, onChange, indent = false
   );
 }
 
-// The automatic analysis pass (domain/autoPass.js): runs the BUILT-IN helpers
-// over open documents as editing happens. What belongs here is project-level
-// behavior policy — whether the pass runs at all, and which kinds of material
-// it may write. Per-use algorithm choice (including services) stays in the
-// Auto-link dialog and its defaults above; the automatic pass never calls a
-// service.
+// Defaults for the on-demand built-in analysis helpers (domain/autoPass.js),
+// run from the interlinear Auto-link dialog. These helpers never run on their
+// own — someone runs them. The linking method/default lives in the Auto-link-
+// vocabulary spot below; what belongs here is the copy-previous-analyses
+// opt-in's default and which kinds of material a copy may write.
 function AutoAnalysisCard({ draft, onChange }) {
   const set = (key) => (v) => onChange({ ...draft, [key]: v });
-  const copyOn = draft.enabled && draft.copyAnalyses;
+  const copyOn = draft.copyAnalyses;
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Automatic analysis</CardTitle>
+        <CardTitle className="text-base">Built-in analysis</CardTitle>
         <CardDescription>
-          While a document is being edited, apply the built-in helpers automatically.
-          Everything they write is marked as unverified (violet) until a person confirms or edits it.
+          Defaults for the built-in helpers run from the Auto-link dialog (on the
+          interlinear tab). They never run on their own. Everything they write is
+          marked unverified (violet) until a person confirms or edits it.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2.5">
         <CheckRow
-          id="auto-analysis-enabled"
-          label="Run automatic analysis while editing"
-          checked={draft.enabled}
-          onChange={set('enabled')}
-        />
-        <CheckRow
-          id="auto-analysis-link"
-          indent
-          label="Link words and morphemes to the lexicon"
-          hint="Follows the project's existing links (strict majority) or a unique matching entry; ambiguity is skipped."
-          checked={draft.autoLink}
-          disabled={!draft.enabled}
-          onChange={set('autoLink')}
-        />
-        <CheckRow
           id="auto-analysis-copy"
-          indent
-          label="Copy previous analyses onto identical unanalyzed words"
-          hint="When a word form was fully analyzed before (uncontested majority project-wide), copy that analysis. Only words with no analysis at all are touched."
+          label="Offer “copy previous analyses” by default"
+          hint="Pre-checks the Auto-link dialog's option to copy a word's prior full analysis (uncontested majority project-wide) onto identical unanalyzed words. Only words with no analysis at all are touched."
           checked={draft.copyAnalyses}
-          disabled={!draft.enabled}
           onChange={set('copyAnalyses')}
         />
         <div className="ml-6 space-y-1.5">

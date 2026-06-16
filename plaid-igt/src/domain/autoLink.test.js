@@ -47,12 +47,12 @@ const word = (id, content, vocabItem = null, morphemes = []) => ({ id, content, 
 const morph = (id, form, vocabItem = null) => ({ id, metadata: { form }, vocabItem });
 
 describe('computeAutoLinkProposals', () => {
-  it('links via precedent, unique item, and casefold — skipping ambiguity and already-linked', () => {
+  it('links via precedent, unique item, and casefold — skipping ambiguity and human-linked', () => {
     const precedentTable = buildPrecedentTable([res([['i-prec', null, 'nac', 2]])]);
     const sentences = sentence([
       word('w1', 'Todos'),                       // casefold unique item -> i-all
       word('w2', 'se'),                           // two items share the form -> skip
-      word('w3', 'todos', { id: 'x' }),           // already linked -> skip
+      word('w3', 'todos', { id: 'x' }),           // human link (no prov) -> protected, skip
       word('w4', 'unknown'),                      // nothing matches -> skip
       word('w5', 'whole', null, [
         morph('m1', 'nac'),                       // precedent -> i-prec
@@ -64,6 +64,19 @@ describe('computeAutoLinkProposals', () => {
       { tokenId: 'w1', vocabItemId: 'i-all', form: 'Todos', kind: 'word' },
       { tokenId: 'm1', vocabItemId: 'i-prec', form: 'nac', kind: 'morpheme' },
       { tokenId: 'm2', vocabItemId: 'i-all', form: 'todos', kind: 'morpheme' },
+    ]);
+  });
+
+  it('replaces a machine-unverified link when the rule resolves a different item; leaves same-item and protected links', () => {
+    const precedentTable = buildPrecedentTable([res([['i-all', null, 'todos', 5]])]);
+    const sentences = sentence([
+      word('w1', 'todos', { id: 'i-se1', inferred: true }),   // machine, rule says i-all -> replace
+      word('w2', 'todos', { id: 'i-all', inferred: true }),   // machine, already i-all -> no-op
+      word('w3', 'todos', { id: 'i-se1', inferred: false }),  // human/verified -> protected, skip
+    ]);
+    const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedentTable });
+    expect(proposals).toEqual([
+      { tokenId: 'w1', vocabItemId: 'i-all', form: 'todos', kind: 'word' },
     ]);
   });
 
