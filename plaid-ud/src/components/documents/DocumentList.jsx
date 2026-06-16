@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader,
-  ActionIcon, Tooltip,
+  ActionIcon, Tooltip, Pagination,
 } from '@mantine/core';
 import { IconPlus, IconTrash, IconPencil } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,6 +21,7 @@ import { EntityAvatar } from '../common/EntityAvatar.jsx';
 const W_WORDS = 84;
 const W_UPDATED = 124;
 const W_ACTION = 72; // edit + delete icons
+const PAGE_SIZE = 100; // documents shown per page (the full list is paged client-side)
 
 export const DocumentList = () => {
   const { projectId } = useParams();
@@ -36,6 +37,7 @@ export const DocumentList = () => {
   const [hasWordLayer, setHasWordLayer] = useState(true);
   const [wordsLoading, setWordsLoading] = useState(true);
   const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
+  const [page, setPage] = useState(1);
   const { user, getClient, logout } = useAuth();
 
   const fetchProjectAndDocuments = async () => {
@@ -134,7 +136,7 @@ export const DocumentList = () => {
     navigate(`/projects/${projectId}/documents/${documentId}/${knownEmpty ? 'edit' : 'annotate'}`);
   };
 
-  const onSort = (key) => setSort(nextSort(key));
+  const onSort = (key) => { setSort(nextSort(key)); setPage(1); };
 
   const sortedDocuments = useMemo(() => {
     const extract = {
@@ -144,6 +146,12 @@ export const DocumentList = () => {
     }[sort.key];
     return sortBy(documents, extract, sort.dir);
   }, [documents, wordCounts, hasWordLayer, sort]);
+
+  // Page the sorted list at PAGE_SIZE. `currentPage` is clamped so deleting
+  // documents off the last page falls back into range instead of showing blank.
+  const totalPages = Math.max(1, Math.ceil(sortedDocuments.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageDocuments = sortedDocuments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   if (loading) {
     return <Center py={48}><Loader /></Center>;
@@ -207,7 +215,7 @@ export const DocumentList = () => {
           </Group>
 
           <Stack gap={0}>
-            {sortedDocuments.map((document) => (
+            {pageDocuments.map((document) => (
               <Box
                 key={document.id}
                 className={classes.row}
@@ -258,6 +266,12 @@ export const DocumentList = () => {
             ))}
           </Stack>
         </Paper>
+      )}
+
+      {totalPages > 1 && (
+        <Group justify="center" mt="lg">
+          <Pagination total={totalPages} value={currentPage} onChange={setPage} />
+        </Group>
       )}
     </>
   );
