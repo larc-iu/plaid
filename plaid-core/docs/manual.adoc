@@ -158,6 +158,18 @@ with c.audit_message("Approve span {spanId}"):
 # logged as: Approve span 35424d64-a077-4a29-8006-5a0c3b76aedb
 ----
 
+For a single write you can skip the scope and pass the message as the last argument to any write method instead:
+
+[,python]
+----
+c.spans.set_metadata(span_id, {"approved": True}, audit_message="Approve span {spanId}")
+----
+
+[,javascript]
+----
+await c.spans.setMetadata(spanId, { approved: true }, "Approve span {spanId}");
+----
+
 A placeholder that names no parameter of the request is left as-is. The message is stored verbatim, so do not template a parameter that may carry a secret (e.g. a password) into the log. Custom messages only affect this human-readable description; the structured forensic record (the operation type and the per-row before/after images) is unchanged.
 
 == Real-time Messaging

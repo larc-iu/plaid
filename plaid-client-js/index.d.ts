@@ -79,127 +79,128 @@ interface SSEConnection {
 }
 
 interface VocabLinksBundle {
-  create(vocabItem: string, tokens: any[], metadata?: any): Promise<any>;
-  setMetadata(id: string, body: any): Promise<any>;
-  deleteMetadata(id: string): Promise<any>;
-  patchMetadata(id: string, body: any): Promise<any>;
+  create(vocabItem: string, tokens: any[], metadata?: any, auditMessage?: string): Promise<any>;
+  setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
+  deleteMetadata(id: string, auditMessage?: string): Promise<any>;
+  patchMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
   get(id: string, asOf?: string): Promise<any>;
-  delete(id: string): Promise<any>;
+  delete(id: string, auditMessage?: string): Promise<any>;
 }
 
 interface VocabLayersBundle {
   get(id: string, includeItems?: boolean, asOf?: string): Promise<any>;
-  delete(id: string): Promise<any>;
-  update(id: string, name: string): Promise<any>;
-  setConfig(id: string, namespace: string, configKey: string, configValue: any): Promise<any>;
-  deleteConfig(id: string, namespace: string, configKey: string): Promise<any>;
+  delete(id: string, auditMessage?: string): Promise<any>;
+  update(id: string, name: string, auditMessage?: string): Promise<any>;
+  setConfig(id: string, namespace: string, configKey: string, configValue: any, auditMessage?: string): Promise<any>;
+  deleteConfig(id: string, namespace: string, configKey: string, auditMessage?: string): Promise<any>;
   list(asOf?: string): Promise<any[]>;
   listPage(opts?: { limit?: number; cursor?: string; asOf?: string }): Promise<Page>;
   iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
-  create(name: string): Promise<any>;
-  addMaintainer(id: string, userId: string): Promise<any>;
-  removeMaintainer(id: string, userId: string): Promise<any>;
+  create(name: string, auditMessage?: string): Promise<any>;
+  addMaintainer(id: string, userId: string, auditMessage?: string): Promise<any>;
+  removeMaintainer(id: string, userId: string, auditMessage?: string): Promise<any>;
 }
 
 interface RelationsBundle {
-  setMetadata(relationId: string, body: any): Promise<any>;
-  deleteMetadata(relationId: string): Promise<any>;
-  patchMetadata(relationId: string, body: any): Promise<any>;
-  setTarget(relationId: string, spanId: string): Promise<any>;
+  setMetadata(relationId: string, body: any, auditMessage?: string): Promise<any>;
+  deleteMetadata(relationId: string, auditMessage?: string): Promise<any>;
+  patchMetadata(relationId: string, body: any, auditMessage?: string): Promise<any>;
+  setTarget(relationId: string, spanId: string, auditMessage?: string): Promise<any>;
   get(relationId: string, asOf?: string): Promise<any>;
-  delete(relationId: string): Promise<any>;
-  update(relationId: string, value: any): Promise<any>;
-  setSource(relationId: string, spanId: string): Promise<any>;
-  create(layerId: string, sourceId: string, targetId: string, value: any, metadata?: any): Promise<any>;
-  bulkCreate(body: any[]): Promise<any>;
-  bulkDelete(body: any[]): Promise<any>;
+  delete(relationId: string, auditMessage?: string): Promise<any>;
+  update(relationId: string, value: any, auditMessage?: string): Promise<any>;
+  setSource(relationId: string, spanId: string, auditMessage?: string): Promise<any>;
+  create(layerId: string, sourceId: string, targetId: string, value: any, metadata?: any, auditMessage?: string): Promise<any>;
+  bulkCreate(body: any[], auditMessage?: string): Promise<any>;
+  bulkDelete(body: any[], auditMessage?: string): Promise<any>;
 }
 
 interface SpanLayersBundle {
-  setConfig(spanLayerId: string, namespace: string, configKey: string, configValue: any): Promise<any>;
-  deleteConfig(spanLayerId: string, namespace: string, configKey: string): Promise<any>;
+  setConfig(spanLayerId: string, namespace: string, configKey: string, configValue: any, auditMessage?: string): Promise<any>;
+  deleteConfig(spanLayerId: string, namespace: string, configKey: string, auditMessage?: string): Promise<any>;
   get(spanLayerId: string, asOf?: string): Promise<any>;
-  delete(spanLayerId: string): Promise<any>;
-  update(spanLayerId: string, name: string): Promise<any>;
-  create(tokenLayerId: string, name: string): Promise<any>;
-  shift(spanLayerId: string, direction: string): Promise<any>;
+  delete(spanLayerId: string, auditMessage?: string): Promise<any>;
+  update(spanLayerId: string, name: string, auditMessage?: string): Promise<any>;
+  create(tokenLayerId: string, name: string, auditMessage?: string): Promise<any>;
+  shift(spanLayerId: string, direction: string, auditMessage?: string): Promise<any>;
 }
 
 interface SpansBundle {
-  setTokens(spanId: string, tokens: any[]): Promise<any>;
-  create(spanLayerId: string, tokens: any[], value: any, metadata?: any): Promise<any>;
+  setTokens(spanId: string, tokens: any[], auditMessage?: string): Promise<any>;
+  create(spanLayerId: string, tokens: any[], value: any, metadata?: any, auditMessage?: string): Promise<any>;
   get(spanId: string, asOf?: string): Promise<any>;
-  delete(spanId: string): Promise<any>;
-  update(spanId: string, value: any): Promise<any>;
-  bulkCreate(body: any[]): Promise<any>;
-  bulkDelete(body: any[]): Promise<any>;
-  setMetadata(spanId: string, body: any): Promise<any>;
-  deleteMetadata(spanId: string): Promise<any>;
-  patchMetadata(spanId: string, body: any): Promise<any>;
+  delete(spanId: string, auditMessage?: string): Promise<any>;
+  update(spanId: string, value: any, auditMessage?: string): Promise<any>;
+  bulkCreate(body: any[], auditMessage?: string): Promise<any>;
+  bulkDelete(body: any[], auditMessage?: string): Promise<any>;
+  setMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
+  deleteMetadata(spanId: string, auditMessage?: string): Promise<any>;
+  patchMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
 }
 
 interface BatchBundle {
-  submit(body: any[]): Promise<any>;
+  submit(body: any[], auditMessage?: string): Promise<any>;
 }
 
 interface TextsBundle {
-  setMetadata(textId: string, body: any): Promise<any>;
-  deleteMetadata(textId: string): Promise<any>;
-  patchMetadata(textId: string, body: any): Promise<any>;
-  create(textLayerId: string, documentId: string, body: string, metadata?: any): Promise<any>;
+  setMetadata(textId: string, body: any, auditMessage?: string): Promise<any>;
+  deleteMetadata(textId: string, auditMessage?: string): Promise<any>;
+  patchMetadata(textId: string, body: any, auditMessage?: string): Promise<any>;
+  create(textLayerId: string, documentId: string, body: string, metadata?: any, auditMessage?: string): Promise<any>;
   get(textId: string, asOf?: string): Promise<any>;
-  delete(textId: string): Promise<any>;
-  update(textId: string, body: any): Promise<any>;
+  delete(textId: string, auditMessage?: string): Promise<any>;
+  update(textId: string, body: any, auditMessage?: string): Promise<any>;
 }
 
 interface UsersBundle {
   list(asOf?: string): Promise<any[]>;
   listPage(opts?: { limit?: number; cursor?: string; asOf?: string }): Promise<Page>;
   iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
-  create(username: string, password: string, isAdmin: boolean): Promise<any>;
+  create(username: string, password: string, isAdmin: boolean, auditMessage?: string): Promise<any>;
   audit(userId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any[]>;
   get(id: string, asOf?: string): Promise<any>;
-  delete(id: string): Promise<any>;
-  update(id: string, password?: string, username?: string, isAdmin?: boolean): Promise<any>;
+  delete(id: string, auditMessage?: string): Promise<any>;
+  activate(id: string, auditMessage?: string): Promise<any>;
+  update(id: string, password?: string, username?: string, isAdmin?: boolean, auditMessage?: string): Promise<any>;
 }
 
 interface ApiTokensBundle {
   list(userId: string): Promise<any[]>;
   listPage(userId: string, opts?: { limit?: number; cursor?: string }): Promise<Page>;
   iterPages(userId: string, opts?: { pageSize?: number }): AsyncGenerator<any[]>;
-  create(userId: string, name: string): Promise<{ id: string; name: string; token: string }>;
-  revoke(userId: string, tokenId: string): Promise<any>;
+  create(userId: string, name: string, auditMessage?: string): Promise<{ id: string; name: string; token: string }>;
+  revoke(userId: string, tokenId: string, auditMessage?: string): Promise<any>;
 }
 
 interface TokenLayersBundle {
-  shift(tokenLayerId: string, direction: string): Promise<any>;
-  create(textLayerId: string, name: string, overlapMode?: string, parentTokenLayerId?: string): Promise<any>;
-  setConfig(tokenLayerId: string, namespace: string, configKey: string, configValue: any): Promise<any>;
-  deleteConfig(tokenLayerId: string, namespace: string, configKey: string): Promise<any>;
+  shift(tokenLayerId: string, direction: string, auditMessage?: string): Promise<any>;
+  create(textLayerId: string, name: string, overlapMode?: string, parentTokenLayerId?: string, auditMessage?: string): Promise<any>;
+  setConfig(tokenLayerId: string, namespace: string, configKey: string, configValue: any, auditMessage?: string): Promise<any>;
+  deleteConfig(tokenLayerId: string, namespace: string, configKey: string, auditMessage?: string): Promise<any>;
   get(tokenLayerId: string, asOf?: string): Promise<any>;
-  delete(tokenLayerId: string): Promise<any>;
-  update(tokenLayerId: string, name: string): Promise<any>;
+  delete(tokenLayerId: string, auditMessage?: string): Promise<any>;
+  update(tokenLayerId: string, name: string, auditMessage?: string): Promise<any>;
 }
 
 interface DocumentsBundle {
   checkLock(documentId: string, asOf?: string): Promise<any>;
-  acquireLock(documentId: string): Promise<any>;
-  releaseLock(documentId: string): Promise<any>;
+  acquireLock(documentId: string, auditMessage?: string): Promise<any>;
+  releaseLock(documentId: string, auditMessage?: string): Promise<any>;
   getMedia(documentId: string, asOf?: string): Promise<ArrayBuffer>;
-  uploadMedia(documentId: string, file: File): Promise<any>;
-  deleteMedia(documentId: string): Promise<any>;
-  setMetadata(documentId: string, body: any): Promise<any>;
-  deleteMetadata(documentId: string): Promise<any>;
-  patchMetadata(documentId: string, body: any): Promise<any>;
+  uploadMedia(documentId: string, file: File, auditMessage?: string): Promise<any>;
+  deleteMedia(documentId: string, auditMessage?: string): Promise<any>;
+  setMetadata(documentId: string, body: any, auditMessage?: string): Promise<any>;
+  deleteMetadata(documentId: string, auditMessage?: string): Promise<any>;
+  patchMetadata(documentId: string, body: any, auditMessage?: string): Promise<any>;
   audit(documentId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any[]>;
   get(documentId: string, includeBody?: boolean, asOf?: string): Promise<any>;
-  delete(documentId: string): Promise<any>;
-  update(documentId: string, name: string): Promise<any>;
-  create(projectId: string, name: string, metadata?: any): Promise<any>;
+  delete(documentId: string, auditMessage?: string): Promise<any>;
+  update(documentId: string, name: string, auditMessage?: string): Promise<any>;
+  create(projectId: string, name: string, metadata?: any, auditMessage?: string): Promise<any>;
 }
 
 interface MessagesBundle {
-  sendMessage(projectId: string, data: any): Promise<any>;
+  sendMessage(projectId: string, data: any, auditMessage?: string): Promise<any>;
   listen(projectId: string, onEvent: (eventType: string, data: any) => void | boolean, path?: string): SSEConnection;
   /** Discover the services seen on a project: online ones plus previously-seen offline ones (check `online`). */
   discoverServices(projectId: string): Promise<DiscoveredService[]>;
@@ -211,72 +212,72 @@ interface MessagesBundle {
 }
 
 interface ProjectsBundle {
-  addWriter(id: string, userId: string): Promise<any>;
-  removeWriter(id: string, userId: string): Promise<any>;
-  addReader(id: string, userId: string): Promise<any>;
-  removeReader(id: string, userId: string): Promise<any>;
-  setConfig(id: string, namespace: string, configKey: string, configValue: any): Promise<any>;
-  deleteConfig(id: string, namespace: string, configKey: string): Promise<any>;
-  addMaintainer(id: string, userId: string): Promise<any>;
-  removeMaintainer(id: string, userId: string): Promise<any>;
+  addWriter(id: string, userId: string, auditMessage?: string): Promise<any>;
+  removeWriter(id: string, userId: string, auditMessage?: string): Promise<any>;
+  addReader(id: string, userId: string, auditMessage?: string): Promise<any>;
+  removeReader(id: string, userId: string, auditMessage?: string): Promise<any>;
+  setConfig(id: string, namespace: string, configKey: string, configValue: any, auditMessage?: string): Promise<any>;
+  deleteConfig(id: string, namespace: string, configKey: string, auditMessage?: string): Promise<any>;
+  addMaintainer(id: string, userId: string, auditMessage?: string): Promise<any>;
+  removeMaintainer(id: string, userId: string, auditMessage?: string): Promise<any>;
   audit(projectId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any[]>;
-  linkVocab(id: string, vocabId: string): Promise<any>;
-  unlinkVocab(id: string, vocabId: string): Promise<any>;
+  linkVocab(id: string, vocabId: string, auditMessage?: string): Promise<any>;
+  unlinkVocab(id: string, vocabId: string, auditMessage?: string): Promise<any>;
   get(id: string, asOf?: string): Promise<any>;
   listDocuments(id: string): Promise<any[]>;
   listDocumentsPage(id: string, opts?: { limit?: number; cursor?: string }): Promise<Page>;
   iterDocuments(id: string, opts?: { pageSize?: number }): AsyncGenerator<any[]>;
-  delete(id: string): Promise<any>;
-  update(id: string, name: string): Promise<any>;
+  delete(id: string, auditMessage?: string): Promise<any>;
+  update(id: string, name: string, auditMessage?: string): Promise<any>;
   list(asOf?: string): Promise<any[]>;
   listPage(opts?: { limit?: number; cursor?: string; asOf?: string }): Promise<Page>;
   iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
-  create(name: string): Promise<any>;
+  create(name: string, auditMessage?: string): Promise<any>;
 }
 
 interface TextLayersBundle {
-  setConfig(textLayerId: string, namespace: string, configKey: string, configValue: any): Promise<any>;
-  deleteConfig(textLayerId: string, namespace: string, configKey: string): Promise<any>;
+  setConfig(textLayerId: string, namespace: string, configKey: string, configValue: any, auditMessage?: string): Promise<any>;
+  deleteConfig(textLayerId: string, namespace: string, configKey: string, auditMessage?: string): Promise<any>;
   get(textLayerId: string, asOf?: string): Promise<any>;
-  delete(textLayerId: string): Promise<any>;
-  update(textLayerId: string, name: string): Promise<any>;
-  shift(textLayerId: string, direction: string): Promise<any>;
-  create(projectId: string, name: string): Promise<any>;
+  delete(textLayerId: string, auditMessage?: string): Promise<any>;
+  update(textLayerId: string, name: string, auditMessage?: string): Promise<any>;
+  shift(textLayerId: string, direction: string, auditMessage?: string): Promise<any>;
+  create(projectId: string, name: string, auditMessage?: string): Promise<any>;
 }
 
 interface VocabItemsBundle {
-  setMetadata(id: string, body: any): Promise<any>;
-  deleteMetadata(id: string): Promise<any>;
-  patchMetadata(id: string, body: any): Promise<any>;
-  create(vocabLayerId: string, form: string, metadata?: any): Promise<any>;
+  setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
+  deleteMetadata(id: string, auditMessage?: string): Promise<any>;
+  patchMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
+  create(vocabLayerId: string, form: string, metadata?: any, auditMessage?: string): Promise<any>;
   get(id: string, asOf?: string): Promise<any>;
-  delete(id: string): Promise<any>;
-  update(id: string, form: string): Promise<any>;
+  delete(id: string, auditMessage?: string): Promise<any>;
+  update(id: string, form: string, auditMessage?: string): Promise<any>;
 }
 
 interface RelationLayersBundle {
-  shift(relationLayerId: string, direction: string): Promise<any>;
-  create(spanLayerId: string, name: string): Promise<any>;
-  setConfig(relationLayerId: string, namespace: string, configKey: string, configValue: any): Promise<any>;
-  deleteConfig(relationLayerId: string, namespace: string, configKey: string): Promise<any>;
+  shift(relationLayerId: string, direction: string, auditMessage?: string): Promise<any>;
+  create(spanLayerId: string, name: string, auditMessage?: string): Promise<any>;
+  setConfig(relationLayerId: string, namespace: string, configKey: string, configValue: any, auditMessage?: string): Promise<any>;
+  deleteConfig(relationLayerId: string, namespace: string, configKey: string, auditMessage?: string): Promise<any>;
   get(relationLayerId: string, asOf?: string): Promise<any>;
-  delete(relationLayerId: string): Promise<any>;
-  update(relationLayerId: string, name: string): Promise<any>;
+  delete(relationLayerId: string, auditMessage?: string): Promise<any>;
+  update(relationLayerId: string, name: string, auditMessage?: string): Promise<any>;
 }
 
 interface TokensBundle {
-  create(tokenLayerId: string, text: string, begin: number, end: number, precedence?: number | null, metadata?: any): Promise<any>;
+  create(tokenLayerId: string, text: string, begin: number, end: number, precedence?: number | null, metadata?: any, auditMessage?: string): Promise<any>;
   get(tokenId: string, asOf?: string): Promise<any>;
-  delete(tokenId: string): Promise<any>;
-  update(tokenId: string, begin?: number, end?: number, precedence?: number | null): Promise<any>;
-  bulkCreate(body: any[]): Promise<any>;
-  bulkDelete(body: any[]): Promise<any>;
-  split(tokenId: string, position: number): Promise<any>;
-  merge(tokenId: string, otherTokenId: string): Promise<any>;
-  shift(tokenId: string, begin?: number, end?: number): Promise<any>;
-  setMetadata(tokenId: string, body: any): Promise<any>;
-  deleteMetadata(tokenId: string): Promise<any>;
-  patchMetadata(tokenId: string, body: any): Promise<any>;
+  delete(tokenId: string, auditMessage?: string): Promise<any>;
+  update(tokenId: string, begin?: number, end?: number, precedence?: number | null, auditMessage?: string): Promise<any>;
+  bulkCreate(body: any[], auditMessage?: string): Promise<any>;
+  bulkDelete(body: any[], auditMessage?: string): Promise<any>;
+  split(tokenId: string, position: number, auditMessage?: string): Promise<any>;
+  merge(tokenId: string, otherTokenId: string, auditMessage?: string): Promise<any>;
+  shift(tokenId: string, begin?: number, end?: number, auditMessage?: string): Promise<any>;
+  setMetadata(tokenId: string, body: any, auditMessage?: string): Promise<any>;
+  deleteMetadata(tokenId: string, auditMessage?: string): Promise<any>;
+  patchMetadata(tokenId: string, body: any, auditMessage?: string): Promise<any>;
 }
 
 interface PlaidClientOptions {
@@ -307,7 +308,7 @@ export declare class PlaidClient {
   withAuditMessage<T>(message: string, fn: () => Promise<T> | T): Promise<T>;
 
   // Query
-  query(body: any): Promise<any>;
+  query(body: any, auditMessage?: string): Promise<any>;
 
   vocabLinks: VocabLinksBundle;
   vocabLayers: VocabLayersBundle;

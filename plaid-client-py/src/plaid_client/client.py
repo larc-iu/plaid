@@ -53,7 +53,7 @@ class _Resource:
 
 
 class VocabLinksResource(_Resource):
-    def create(self, vocab_item: str, tokens: list, metadata: Any = _UNSET) -> Any:
+    def create(self, vocab_item: str, tokens: list, metadata: Any = _UNSET, audit_message=None) -> Any:
         """Create a new vocab link between tokens and a vocab item.
 
         Args:
@@ -63,9 +63,9 @@ class VocabLinksResource(_Resource):
                 to send JSON null.
         """
         return self._request('POST', '/api/v1/vocab-links',
-                             body=_body_of(vocab_item=vocab_item, tokens=tokens, metadata=metadata))
+                             body=_body_of(vocab_item=vocab_item, tokens=tokens, metadata=metadata), audit_message=audit_message)
 
-    def set_metadata(self, id: str, body: Any) -> Any:
+    def set_metadata(self, id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a vocab link.
 
         The entire metadata map is replaced - existing metadata keys not
@@ -76,18 +76,18 @@ class VocabLinksResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/vocab-links/{id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_metadata(self, id: str) -> Any:
+    def delete_metadata(self, id: str, audit_message=None) -> Any:
         """Remove all metadata from a vocab link.
 
         Args:
             id: The resource ID
         """
         return self._request('DELETE', f'/api/v1/vocab-links/{id}/metadata',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def patch_metadata(self, id: str, body: Any) -> Any:
+    def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
         """Patch (shallow-merge) metadata for a vocab link.
 
         Keys present in the body are set or overwritten; keys not present are
@@ -101,7 +101,7 @@ class VocabLinksResource(_Resource):
             body: The metadata patch
         """
         return self._request('PATCH', f'/api/v1/vocab-links/{id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
     def get(self, id: str, *, as_of: str | None = None) -> Any:
         """Get a vocab link by ID.
@@ -113,13 +113,13 @@ class VocabLinksResource(_Resource):
         return self._request('GET', f'/api/v1/vocab-links/{id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, id: str) -> Any:
+    def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab link.
 
         Args:
             id: The resource ID
         """
-        return self._request('DELETE', f'/api/v1/vocab-links/{id}')
+        return self._request('DELETE', f'/api/v1/vocab-links/{id}', audit_message=audit_message)
 
 
 class VocabLayersResource(_Resource):
@@ -134,15 +134,15 @@ class VocabLayersResource(_Resource):
         return self._request('GET', f'/api/v1/vocab-layers/{id}',
                              query_params={'include-items': include_items, 'as-of': as_of})
 
-    def delete(self, id: str) -> Any:
+    def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab layer.
 
         Args:
             id: The resource ID
         """
-        return self._request('DELETE', f'/api/v1/vocab-layers/{id}')
+        return self._request('DELETE', f'/api/v1/vocab-layers/{id}', audit_message=audit_message)
 
-    def update(self, id: str, name: str) -> Any:
+    def update(self, id: str, name: str, audit_message=None) -> Any:
         """Update a vocab layer's name.
 
         Args:
@@ -150,9 +150,9 @@ class VocabLayersResource(_Resource):
             name: The name
         """
         return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
         """Set a configuration value for a vocab layer in an editor namespace.
 
         Args:
@@ -162,9 +162,9 @@ class VocabLayersResource(_Resource):
             config_value: Configuration value to set
         """
         return self._request('PUT', f'/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True)
+                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_config(self, id: str, namespace: str, config_key: str) -> Any:
+    def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None) -> Any:
         """Remove a configuration value for a vocab layer.
 
         Args:
@@ -173,7 +173,7 @@ class VocabLayersResource(_Resource):
             config_key: The config key
         """
         return self._request('DELETE', f'/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
     def list(self, *, as_of: str | None = None) -> Any:
         """List all vocab layers accessible to the current user.
@@ -213,7 +213,7 @@ class VocabLayersResource(_Resource):
         return iter_pages(self._client, '/api/v1/vocab-layers',
                           page_size=page_size, query={'as-of': as_of})
 
-    def create(self, name: str) -> Any:
+    def create(self, name: str, audit_message=None) -> Any:
         """Create a new vocab layer.
 
         Also registers the current user as a maintainer.
@@ -222,29 +222,29 @@ class VocabLayersResource(_Resource):
             name: The name
         """
         return self._request('POST', '/api/v1/vocab-layers',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
-    def add_maintainer(self, id: str, user_id: str) -> Any:
+    def add_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Assign a user as a maintainer for this vocab layer.
 
         Args:
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('POST', f'/api/v1/vocab-layers/{id}/maintainers/{user_id}')
+        return self._request('POST', f'/api/v1/vocab-layers/{id}/maintainers/{user_id}', audit_message=audit_message)
 
-    def remove_maintainer(self, id: str, user_id: str) -> Any:
+    def remove_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Remove a user's maintainer privileges for this vocab layer.
 
         Args:
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('DELETE', f'/api/v1/vocab-layers/{id}/maintainers/{user_id}')
+        return self._request('DELETE', f'/api/v1/vocab-layers/{id}/maintainers/{user_id}', audit_message=audit_message)
 
 
 class RelationsResource(_Resource):
-    def set_metadata(self, relation_id: str, body: Any) -> Any:
+    def set_metadata(self, relation_id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a relation.
 
         Args:
@@ -252,18 +252,18 @@ class RelationsResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/relations/{relation_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_metadata(self, relation_id: str) -> Any:
+    def delete_metadata(self, relation_id: str, audit_message=None) -> Any:
         """Remove all metadata from a relation.
 
         Args:
             relation_id: The relation ID
         """
         return self._request('DELETE', f'/api/v1/relations/{relation_id}/metadata',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def patch_metadata(self, relation_id: str, body: Any) -> Any:
+    def patch_metadata(self, relation_id: str, body: Any, audit_message=None) -> Any:
         """Patch (shallow-merge) metadata for a relation.
 
         Keys present in the body are set or overwritten; keys not present are
@@ -277,9 +277,9 @@ class RelationsResource(_Resource):
             body: The metadata patch
         """
         return self._request('PATCH', f'/api/v1/relations/{relation_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
-    def set_target(self, relation_id: str, span_id: str) -> Any:
+    def set_target(self, relation_id: str, span_id: str, audit_message=None) -> Any:
         """Update the target span of a relation.
 
         Args:
@@ -287,9 +287,9 @@ class RelationsResource(_Resource):
             span_id: The span ID
         """
         return self._request('PUT', f'/api/v1/relations/{relation_id}/target',
-                             body=_body_of(span_id=span_id))
+                             body=_body_of(span_id=span_id), audit_message=audit_message)
 
-    def set_source(self, relation_id: str, span_id: str) -> Any:
+    def set_source(self, relation_id: str, span_id: str, audit_message=None) -> Any:
         """Update the source span of a relation.
 
         Args:
@@ -297,7 +297,7 @@ class RelationsResource(_Resource):
             span_id: The span ID
         """
         return self._request('PUT', f'/api/v1/relations/{relation_id}/source',
-                             body=_body_of(span_id=span_id))
+                             body=_body_of(span_id=span_id), audit_message=audit_message)
 
     def get(self, relation_id: str, *, as_of: str | None = None) -> Any:
         """Get a relation by ID.
@@ -309,15 +309,15 @@ class RelationsResource(_Resource):
         return self._request('GET', f'/api/v1/relations/{relation_id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, relation_id: str) -> Any:
+    def delete(self, relation_id: str, audit_message=None) -> Any:
         """Delete a relation.
 
         Args:
             relation_id: The relation ID
         """
-        return self._request('DELETE', f'/api/v1/relations/{relation_id}')
+        return self._request('DELETE', f'/api/v1/relations/{relation_id}', audit_message=audit_message)
 
-    def update(self, relation_id: str, value: Any) -> Any:
+    def update(self, relation_id: str, value: Any, audit_message=None) -> Any:
         """Update a relation's value.
 
         Args:
@@ -325,10 +325,10 @@ class RelationsResource(_Resource):
             value: The value
         """
         return self._request('PATCH', f'/api/v1/relations/{relation_id}',
-                             body=_body_of(value=value))
+                             body=_body_of(value=value), audit_message=audit_message)
 
     def create(self, layer_id: str, source_id: str, target_id: str, value: Any,
-               metadata: Any = _UNSET) -> Any:
+               metadata: Any = _UNSET, audit_message=None) -> Any:
         """Create a new relation.
 
         A relation is a directed edge between two spans with a value, useful
@@ -344,23 +344,23 @@ class RelationsResource(_Resource):
         """
         return self._request('POST', '/api/v1/relations',
                              body=_body_of(layer_id=layer_id, source_id=source_id,
-                                           target_id=target_id, value=value, metadata=metadata))
+                                           target_id=target_id, value=value, metadata=metadata), audit_message=audit_message)
 
-    def bulk_create(self, body: list) -> Any:
+    def bulk_create(self, body: list, audit_message=None) -> Any:
         """Create multiple relations in a single operation.
 
         Args:
             body: The request body
         """
-        return self._request('POST', '/api/v1/relations/bulk', body=body)
+        return self._request('POST', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
 
-    def bulk_delete(self, body: list) -> Any:
+    def bulk_delete(self, body: list, audit_message=None) -> Any:
         """Delete multiple relations in a single operation. Provide a list of IDs.
 
         Args:
             body: The request body
         """
-        return self._request('DELETE', '/api/v1/relations/bulk', body=body)
+        return self._request('DELETE', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
 
 
 class SpanLayersResource(_Resource):
@@ -374,15 +374,15 @@ class SpanLayersResource(_Resource):
         return self._request('GET', f'/api/v1/span-layers/{span_layer_id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, span_layer_id: str) -> Any:
+    def delete(self, span_layer_id: str, audit_message=None) -> Any:
         """Delete a span layer.
 
         Args:
             span_layer_id: The span layer ID
         """
-        return self._request('DELETE', f'/api/v1/span-layers/{span_layer_id}')
+        return self._request('DELETE', f'/api/v1/span-layers/{span_layer_id}', audit_message=audit_message)
 
-    def update(self, span_layer_id: str, name: str) -> Any:
+    def update(self, span_layer_id: str, name: str, audit_message=None) -> Any:
         """Update a span layer's name.
 
         Args:
@@ -390,9 +390,9 @@ class SpanLayersResource(_Resource):
             name: The name
         """
         return self._request('PATCH', f'/api/v1/span-layers/{span_layer_id}',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, span_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+    def set_config(self, span_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
         """Set a configuration value for a span layer in an editor namespace.
 
         Args:
@@ -402,9 +402,9 @@ class SpanLayersResource(_Resource):
             config_value: Configuration value to set
         """
         return self._request('PUT', f'/api/v1/span-layers/{span_layer_id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True)
+                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_config(self, span_layer_id: str, namespace: str, config_key: str) -> Any:
+    def delete_config(self, span_layer_id: str, namespace: str, config_key: str, audit_message=None) -> Any:
         """Remove a configuration value for a span layer.
 
         Args:
@@ -413,9 +413,9 @@ class SpanLayersResource(_Resource):
             config_key: The config key
         """
         return self._request('DELETE', f'/api/v1/span-layers/{span_layer_id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def shift(self, span_layer_id: str, direction: str) -> Any:
+    def shift(self, span_layer_id: str, direction: str, audit_message=None) -> Any:
         """Shift a span layer's display order.
 
         Args:
@@ -423,9 +423,9 @@ class SpanLayersResource(_Resource):
             direction: The direction ("up" or "down")
         """
         return self._request('POST', f'/api/v1/span-layers/{span_layer_id}/shift',
-                             body=_body_of(direction=direction))
+                             body=_body_of(direction=direction), audit_message=audit_message)
 
-    def create(self, token_layer_id: str, name: str) -> Any:
+    def create(self, token_layer_id: str, name: str, audit_message=None) -> Any:
         """Create a new span layer.
 
         Args:
@@ -433,11 +433,11 @@ class SpanLayersResource(_Resource):
             name: The name
         """
         return self._request('POST', '/api/v1/span-layers',
-                             body=_body_of(token_layer_id=token_layer_id, name=name))
+                             body=_body_of(token_layer_id=token_layer_id, name=name), audit_message=audit_message)
 
 
 class SpansResource(_Resource):
-    def set_metadata(self, span_id: str, body: Any) -> Any:
+    def set_metadata(self, span_id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a span.
 
         Args:
@@ -445,18 +445,18 @@ class SpansResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/spans/{span_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_metadata(self, span_id: str) -> Any:
+    def delete_metadata(self, span_id: str, audit_message=None) -> Any:
         """Remove all metadata from a span.
 
         Args:
             span_id: The span ID
         """
         return self._request('DELETE', f'/api/v1/spans/{span_id}/metadata',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def patch_metadata(self, span_id: str, body: Any) -> Any:
+    def patch_metadata(self, span_id: str, body: Any, audit_message=None) -> Any:
         """Patch (shallow-merge) metadata for a span.
 
         Keys present in the body are set or overwritten; keys not present are
@@ -470,9 +470,9 @@ class SpansResource(_Resource):
             body: The metadata patch
         """
         return self._request('PATCH', f'/api/v1/spans/{span_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
-    def set_tokens(self, span_id: str, tokens: list) -> Any:
+    def set_tokens(self, span_id: str, tokens: list, audit_message=None) -> Any:
         """Replace the tokens associated with a span.
 
         Args:
@@ -480,7 +480,7 @@ class SpansResource(_Resource):
             tokens: The tokens
         """
         return self._request('PUT', f'/api/v1/spans/{span_id}/tokens',
-                             body=_body_of(tokens=tokens))
+                             body=_body_of(tokens=tokens), audit_message=audit_message)
 
     def get(self, span_id: str, *, as_of: str | None = None) -> Any:
         """Get a span by ID.
@@ -492,15 +492,15 @@ class SpansResource(_Resource):
         return self._request('GET', f'/api/v1/spans/{span_id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, span_id: str) -> Any:
+    def delete(self, span_id: str, audit_message=None) -> Any:
         """Delete a span.
 
         Args:
             span_id: The span ID
         """
-        return self._request('DELETE', f'/api/v1/spans/{span_id}')
+        return self._request('DELETE', f'/api/v1/spans/{span_id}', audit_message=audit_message)
 
-    def update(self, span_id: str, value: Any) -> Any:
+    def update(self, span_id: str, value: Any, audit_message=None) -> Any:
         """Update a span's value.
 
         Args:
@@ -508,9 +508,9 @@ class SpansResource(_Resource):
             value: The value
         """
         return self._request('PATCH', f'/api/v1/spans/{span_id}',
-                             body=_body_of(value=value))
+                             body=_body_of(value=value), audit_message=audit_message)
 
-    def create(self, span_layer_id: str, tokens: list, value: Any, metadata: Any = _UNSET) -> Any:
+    def create(self, span_layer_id: str, tokens: list, value: Any, metadata: Any = _UNSET, audit_message=None) -> Any:
         """Create a new span.
 
         A span holds a primary atomic value and optional metadata, and must
@@ -525,28 +525,28 @@ class SpansResource(_Resource):
         """
         return self._request('POST', '/api/v1/spans',
                              body=_body_of(span_layer_id=span_layer_id, tokens=tokens,
-                                           value=value, metadata=metadata))
+                                           value=value, metadata=metadata), audit_message=audit_message)
 
-    def bulk_create(self, body: list) -> Any:
+    def bulk_create(self, body: list, audit_message=None) -> Any:
         """Create multiple spans in a single operation.
 
         Args:
             body: The request body
         """
-        return self._request('POST', '/api/v1/spans/bulk', body=body)
+        return self._request('POST', '/api/v1/spans/bulk', body=body, audit_message=audit_message)
 
-    def bulk_delete(self, body: list) -> Any:
+    def bulk_delete(self, body: list, audit_message=None) -> Any:
         """Delete multiple spans in a single operation. Provide a list of IDs.
 
         Args:
             body: The request body
         """
-        return self._request('DELETE', '/api/v1/spans/bulk', body=body)
+        return self._request('DELETE', '/api/v1/spans/bulk', body=body, audit_message=audit_message)
 
 
 class TextsResource(_Resource):
     def create(self, text_layer_id: str, document_id: str, body: str,
-               metadata: Any = _UNSET) -> Any:
+               metadata: Any = _UNSET, audit_message=None) -> Any:
         """Create a new text in a document's text layer.
 
         A text is a container for one long string in ``body`` for a given layer.
@@ -560,7 +560,7 @@ class TextsResource(_Resource):
         """
         return self._request('POST', '/api/v1/texts',
                              body=_body_of(text_layer_id=text_layer_id, document_id=document_id,
-                                           body=body, metadata=metadata))
+                                           body=body, metadata=metadata), audit_message=audit_message)
 
     def get(self, text_id: str, *, as_of: str | None = None) -> Any:
         """Get a text.
@@ -572,15 +572,15 @@ class TextsResource(_Resource):
         return self._request('GET', f'/api/v1/texts/{text_id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, text_id: str) -> Any:
+    def delete(self, text_id: str, audit_message=None) -> Any:
         """Delete a text and all dependent data.
 
         Args:
             text_id: The text ID
         """
-        return self._request('DELETE', f'/api/v1/texts/{text_id}')
+        return self._request('DELETE', f'/api/v1/texts/{text_id}', audit_message=audit_message)
 
-    def update(self, text_id: str, body: Any) -> Any:
+    def update(self, text_id: str, body: Any, audit_message=None) -> Any:
         """Update a text's ``body``.
 
         A diff is computed and token indices are updated so that tokens
@@ -592,9 +592,9 @@ class TextsResource(_Resource):
             body: The request body
         """
         return self._request('PATCH', f'/api/v1/texts/{text_id}',
-                             body=_body_of(body=body))
+                             body=_body_of(body=body), audit_message=audit_message)
 
-    def set_metadata(self, text_id: str, body: Any) -> Any:
+    def set_metadata(self, text_id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a text.
 
         Args:
@@ -602,18 +602,18 @@ class TextsResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/texts/{text_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_metadata(self, text_id: str) -> Any:
+    def delete_metadata(self, text_id: str, audit_message=None) -> Any:
         """Remove all metadata from a text.
 
         Args:
             text_id: The text ID
         """
         return self._request('DELETE', f'/api/v1/texts/{text_id}/metadata',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def patch_metadata(self, text_id: str, body: Any) -> Any:
+    def patch_metadata(self, text_id: str, body: Any, audit_message=None) -> Any:
         """Patch (shallow-merge) metadata for a text.
 
         Keys present in the body are set or overwritten; keys not present are
@@ -627,7 +627,7 @@ class TextsResource(_Resource):
             body: The metadata patch
         """
         return self._request('PATCH', f'/api/v1/texts/{text_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
 
 class UsersResource(_Resource):
@@ -673,7 +673,7 @@ class UsersResource(_Resource):
         return iter_pages(self._client, '/api/v1/users',
                           page_size=page_size, query={'q': q, 'as-of': as_of})
 
-    def create(self, username: str, password: str, is_admin: bool) -> Any:
+    def create(self, username: str, password: str, is_admin: bool, audit_message=None) -> Any:
         """Create a new user.
 
         Args:
@@ -682,7 +682,7 @@ class UsersResource(_Resource):
             is_admin: Whether the user is an admin
         """
         return self._request('POST', '/api/v1/users',
-                             body=_body_of(username=username, password=password, is_admin=is_admin))
+                             body=_body_of(username=username, password=password, is_admin=is_admin), audit_message=audit_message)
 
     def get(self, id: str, *, as_of: str | None = None) -> Any:
         """Get a user by ID.
@@ -694,7 +694,7 @@ class UsersResource(_Resource):
         return self._request('GET', f'/api/v1/users/{id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, id: str) -> Any:
+    def delete(self, id: str, audit_message=None) -> Any:
         """Deactivate a user.
 
         Users are never hard-deleted: deactivation rejects their logins and
@@ -706,9 +706,9 @@ class UsersResource(_Resource):
         Args:
             id: The resource ID
         """
-        return self._request('DELETE', f'/api/v1/users/{id}')
+        return self._request('DELETE', f'/api/v1/users/{id}', audit_message=audit_message)
 
-    def activate(self, id: str) -> Any:
+    def activate(self, id: str, audit_message=None) -> Any:
         """Reactivate a deactivated user, restoring their ability to log in.
 
         Project memberships, vocab maintainerships, and API tokens removed at
@@ -717,10 +717,10 @@ class UsersResource(_Resource):
         Args:
             id: The resource ID
         """
-        return self._request('POST', f'/api/v1/users/{id}/activate')
+        return self._request('POST', f'/api/v1/users/{id}/activate', audit_message=audit_message)
 
     def update(self, id: str, *, password: Any = _UNSET, username: Any = _UNSET,
-               is_admin: Any = _UNSET) -> Any:
+               is_admin: Any = _UNSET, audit_message=None) -> Any:
         """Modify a user.
 
         Admins may change the username, password, and admin status of any
@@ -736,7 +736,7 @@ class UsersResource(_Resource):
                 to send JSON null.
         """
         return self._request('PATCH', f'/api/v1/users/{id}',
-                             body=_body_of(password=password, username=username, is_admin=is_admin))
+                             body=_body_of(password=password, username=username, is_admin=is_admin), audit_message=audit_message)
 
     def audit(self, user_id: str, *, start_time: str | None = None, end_time: str | None = None,
               as_of: str | None = None) -> Any:
@@ -796,7 +796,7 @@ class ApiTokensResource(_Resource):
         return iter_pages(self._client, f'/api/v1/users/{user_id}/tokens',
                           page_size=page_size)
 
-    def create(self, user_id: str, name: str) -> Any:
+    def create(self, user_id: str, name: str, audit_message=None) -> Any:
         """Mint a named API token for a user.
 
         The returned ``token`` is the signed credential and is shown ONLY
@@ -812,16 +812,16 @@ class ApiTokensResource(_Resource):
             A dict with ``id``, ``name`` and ``token``.
         """
         return self._request('POST', f'/api/v1/users/{user_id}/tokens',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
-    def revoke(self, user_id: str, token_id: str) -> Any:
+    def revoke(self, user_id: str, token_id: str, audit_message=None) -> Any:
         """Revoke a named API token (soft-revoke; idempotent).
 
         Args:
             user_id: The user ID who owns the token
             token_id: The token ID to revoke
         """
-        return self._request('DELETE', f'/api/v1/users/{user_id}/tokens/{token_id}')
+        return self._request('DELETE', f'/api/v1/users/{user_id}/tokens/{token_id}', audit_message=audit_message)
 
 
 class TokenLayersResource(_Resource):
@@ -835,15 +835,15 @@ class TokenLayersResource(_Resource):
         return self._request('GET', f'/api/v1/token-layers/{token_layer_id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, token_layer_id: str) -> Any:
+    def delete(self, token_layer_id: str, audit_message=None) -> Any:
         """Delete a token layer.
 
         Args:
             token_layer_id: The token layer ID
         """
-        return self._request('DELETE', f'/api/v1/token-layers/{token_layer_id}')
+        return self._request('DELETE', f'/api/v1/token-layers/{token_layer_id}', audit_message=audit_message)
 
-    def update(self, token_layer_id: str, name: str) -> Any:
+    def update(self, token_layer_id: str, name: str, audit_message=None) -> Any:
         """Update a token layer's name.
 
         Args:
@@ -851,9 +851,9 @@ class TokenLayersResource(_Resource):
             name: The name
         """
         return self._request('PATCH', f'/api/v1/token-layers/{token_layer_id}',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, token_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+    def set_config(self, token_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
         """Set a configuration value for a token layer in an editor namespace.
 
         Args:
@@ -863,9 +863,9 @@ class TokenLayersResource(_Resource):
             config_value: Configuration value to set
         """
         return self._request('PUT', f'/api/v1/token-layers/{token_layer_id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True)
+                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_config(self, token_layer_id: str, namespace: str, config_key: str) -> Any:
+    def delete_config(self, token_layer_id: str, namespace: str, config_key: str, audit_message=None) -> Any:
         """Remove a configuration value for a token layer.
 
         Args:
@@ -874,9 +874,9 @@ class TokenLayersResource(_Resource):
             config_key: The config key
         """
         return self._request('DELETE', f'/api/v1/token-layers/{token_layer_id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def shift(self, token_layer_id: str, direction: str) -> Any:
+    def shift(self, token_layer_id: str, direction: str, audit_message=None) -> Any:
         """Shift a token layer's display order.
 
         Args:
@@ -884,10 +884,10 @@ class TokenLayersResource(_Resource):
             direction: The direction ("up" or "down")
         """
         return self._request('POST', f'/api/v1/token-layers/{token_layer_id}/shift',
-                             body=_body_of(direction=direction))
+                             body=_body_of(direction=direction), audit_message=audit_message)
 
     def create(self, text_layer_id: str, name: str, *, overlap_mode: Any = _UNSET,
-               parent_token_layer_id: Any = _UNSET) -> Any:
+               parent_token_layer_id: Any = _UNSET, audit_message=None) -> Any:
         """Create a new token layer.
 
         ``overlap_mode`` sets a per-layer, immutable invariant on the layer's
@@ -917,7 +917,7 @@ class TokenLayersResource(_Resource):
         return self._request('POST', '/api/v1/token-layers',
                              body=_body_of(text_layer_id=text_layer_id, name=name,
                                            overlap_mode=overlap_mode,
-                                           parent_token_layer_id=parent_token_layer_id))
+                                           parent_token_layer_id=parent_token_layer_id), audit_message=audit_message)
 
 
 class DocumentsResource(_Resource):
@@ -931,21 +931,21 @@ class DocumentsResource(_Resource):
         return self._request('GET', f'/api/v1/documents/{document_id}/lock',
                              query_params={'as-of': as_of})
 
-    def acquire_lock(self, document_id: str) -> Any:
+    def acquire_lock(self, document_id: str, audit_message=None) -> Any:
         """Acquire or refresh a document lock.
 
         Args:
             document_id: The document ID
         """
-        return self._request('POST', f'/api/v1/documents/{document_id}/lock')
+        return self._request('POST', f'/api/v1/documents/{document_id}/lock', audit_message=audit_message)
 
-    def release_lock(self, document_id: str) -> Any:
+    def release_lock(self, document_id: str, audit_message=None) -> Any:
         """Release a document lock.
 
         Args:
             document_id: The document ID
         """
-        return self._request('DELETE', f'/api/v1/documents/{document_id}/lock')
+        return self._request('DELETE', f'/api/v1/documents/{document_id}/lock', audit_message=audit_message)
 
     @contextmanager
     def locked(self, document_id: str):
@@ -1007,7 +1007,7 @@ class DocumentsResource(_Resource):
         return self._request('GET', f'/api/v1/documents/{document_id}/media',
                              query_params={'as-of': as_of}, no_batch=True, binary_response=True)
 
-    def upload_media(self, document_id: str, file) -> Any:
+    def upload_media(self, document_id: str, file, audit_message=None) -> Any:
         """Upload a media file for a document. Uses Apache Tika for content validation.
 
         Args:
@@ -1015,16 +1015,16 @@ class DocumentsResource(_Resource):
             file: The file to upload
         """
         return self._request('PUT', f'/api/v1/documents/{document_id}/media',
-                             body={'file': file}, form_data=True, no_batch=True)
+                             body={'file': file}, form_data=True, no_batch=True, audit_message=audit_message)
 
-    def delete_media(self, document_id: str) -> Any:
+    def delete_media(self, document_id: str, audit_message=None) -> Any:
         """Delete media file for a document.
 
         Args:
             document_id: The document ID
         """
         return self._request('DELETE', f'/api/v1/documents/{document_id}/media',
-                             no_batch=True)
+                             no_batch=True, audit_message=audit_message)
 
     def get(self, document_id: str, *, include_body: bool | None = None,
             as_of: str | None = None) -> Any:
@@ -1041,15 +1041,15 @@ class DocumentsResource(_Resource):
         return self._request('GET', f'/api/v1/documents/{document_id}',
                              query_params={'include-body': include_body, 'as-of': as_of})
 
-    def delete(self, document_id: str) -> Any:
+    def delete(self, document_id: str, audit_message=None) -> Any:
         """Delete a document and all data contained.
 
         Args:
             document_id: The document ID
         """
-        return self._request('DELETE', f'/api/v1/documents/{document_id}')
+        return self._request('DELETE', f'/api/v1/documents/{document_id}', audit_message=audit_message)
 
-    def update(self, document_id: str, name: str) -> Any:
+    def update(self, document_id: str, name: str, audit_message=None) -> Any:
         """Update a document's name.
 
         Args:
@@ -1057,9 +1057,9 @@ class DocumentsResource(_Resource):
             name: The name
         """
         return self._request('PATCH', f'/api/v1/documents/{document_id}',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
-    def create(self, project_id: str, name: str, metadata: Any = _UNSET) -> Any:
+    def create(self, project_id: str, name: str, metadata: Any = _UNSET, audit_message=None) -> Any:
         """Create a new document in a project.
 
         Args:
@@ -1069,9 +1069,9 @@ class DocumentsResource(_Resource):
                 JSON null.
         """
         return self._request('POST', '/api/v1/documents',
-                             body=_body_of(project_id=project_id, name=name, metadata=metadata))
+                             body=_body_of(project_id=project_id, name=name, metadata=metadata), audit_message=audit_message)
 
-    def set_metadata(self, document_id: str, body: Any) -> Any:
+    def set_metadata(self, document_id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a document.
 
         Args:
@@ -1079,18 +1079,18 @@ class DocumentsResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/documents/{document_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_metadata(self, document_id: str) -> Any:
+    def delete_metadata(self, document_id: str, audit_message=None) -> Any:
         """Remove all metadata from a document.
 
         Args:
             document_id: The document ID
         """
         return self._request('DELETE', f'/api/v1/documents/{document_id}/metadata',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def patch_metadata(self, document_id: str, body: Any) -> Any:
+    def patch_metadata(self, document_id: str, body: Any, audit_message=None) -> Any:
         """Patch (shallow-merge) metadata for a document.
 
         Keys present in the body are set or overwritten; keys not present are
@@ -1104,7 +1104,7 @@ class DocumentsResource(_Resource):
             body: The metadata patch
         """
         return self._request('PATCH', f'/api/v1/documents/{document_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
     def audit(self, document_id: str, *, start_time: str | None = None,
               end_time: str | None = None, as_of: str | None = None) -> Any:
@@ -1142,7 +1142,7 @@ class MessagesResource(_Resource):
         """
         return SSEConnection(self._client, project_id, on_event, path=path)
 
-    def send_message(self, project_id: str, data: Any) -> Any:
+    def send_message(self, project_id: str, data: Any, audit_message=None) -> Any:
         """Send a message to project listeners.
 
         Args:
@@ -1153,7 +1153,7 @@ class MessagesResource(_Resource):
             Response from the send operation
         """
         return self._request('POST', f'/api/v1/projects/{project_id}/message',
-                             body={'body': data})
+                             body={'body': data}, audit_message=audit_message)
 
     def discover_services(self, project_id: str) -> list:
         """Discover the services seen on a project.
@@ -1224,7 +1224,7 @@ class MessagesResource(_Resource):
 
 
 class ProjectsResource(_Resource):
-    def create(self, name: str) -> Any:
+    def create(self, name: str, audit_message=None) -> Any:
         """Create a new project.
 
         Also registers the current user as a maintainer.
@@ -1233,7 +1233,7 @@ class ProjectsResource(_Resource):
             name: The name
         """
         return self._request('POST', '/api/v1/projects',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
     def list(self, *, as_of: str | None = None) -> Any:
         """List all projects accessible to the current user.
@@ -1333,15 +1333,15 @@ class ProjectsResource(_Resource):
         return self._request('GET', f'/api/v1/projects/{id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, id: str) -> Any:
+    def delete(self, id: str, audit_message=None) -> Any:
         """Delete a project.
 
         Args:
             id: The resource ID
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}')
+        return self._request('DELETE', f'/api/v1/projects/{id}', audit_message=audit_message)
 
-    def update(self, id: str, name: str) -> Any:
+    def update(self, id: str, name: str, audit_message=None) -> Any:
         """Update a project's name.
 
         Args:
@@ -1349,63 +1349,63 @@ class ProjectsResource(_Resource):
             name: The name
         """
         return self._request('PATCH', f'/api/v1/projects/{id}',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
-    def add_writer(self, id: str, user_id: str) -> Any:
+    def add_writer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Set a user's access level to read and write for this project.
 
         Args:
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('POST', f'/api/v1/projects/{id}/writers/{user_id}')
+        return self._request('POST', f'/api/v1/projects/{id}/writers/{user_id}', audit_message=audit_message)
 
-    def remove_writer(self, id: str, user_id: str) -> Any:
+    def remove_writer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Remove a user's writer privileges for this project.
 
         Args:
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/writers/{user_id}')
+        return self._request('DELETE', f'/api/v1/projects/{id}/writers/{user_id}', audit_message=audit_message)
 
-    def add_reader(self, id: str, user_id: str) -> Any:
+    def add_reader(self, id: str, user_id: str, audit_message=None) -> Any:
         """Set a user's access level to read-only for this project.
 
         Args:
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('POST', f'/api/v1/projects/{id}/readers/{user_id}')
+        return self._request('POST', f'/api/v1/projects/{id}/readers/{user_id}', audit_message=audit_message)
 
-    def remove_reader(self, id: str, user_id: str) -> Any:
+    def remove_reader(self, id: str, user_id: str, audit_message=None) -> Any:
         """Remove a user's reader privileges for this project.
 
         Args:
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/readers/{user_id}')
+        return self._request('DELETE', f'/api/v1/projects/{id}/readers/{user_id}', audit_message=audit_message)
 
-    def add_maintainer(self, id: str, user_id: str) -> Any:
+    def add_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Assign a user as a maintainer for this project.
 
         Args:
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('POST', f'/api/v1/projects/{id}/maintainers/{user_id}')
+        return self._request('POST', f'/api/v1/projects/{id}/maintainers/{user_id}', audit_message=audit_message)
 
-    def remove_maintainer(self, id: str, user_id: str) -> Any:
+    def remove_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Remove a user's maintainer privileges for this project.
 
         Args:
             id: The resource ID
             user_id: The user ID
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/maintainers/{user_id}')
+        return self._request('DELETE', f'/api/v1/projects/{id}/maintainers/{user_id}', audit_message=audit_message)
 
-    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
         """Set a configuration value for a project in an editor namespace.
 
         Args:
@@ -1415,9 +1415,9 @@ class ProjectsResource(_Resource):
             config_value: Configuration value to set
         """
         return self._request('PUT', f'/api/v1/projects/{id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True)
+                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_config(self, id: str, namespace: str, config_key: str) -> Any:
+    def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None) -> Any:
         """Remove a configuration value for a project.
 
         Args:
@@ -1426,7 +1426,7 @@ class ProjectsResource(_Resource):
             config_key: The config key
         """
         return self._request('DELETE', f'/api/v1/projects/{id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
     def audit(self, project_id: str, *, start_time: str | None = None,
               end_time: str | None = None, as_of: str | None = None) -> Any:
@@ -1446,23 +1446,23 @@ class ProjectsResource(_Resource):
         return list_all(self._client, f'/api/v1/projects/{project_id}/audit',
                         query={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
 
-    def link_vocab(self, id: str, vocab_id: str) -> Any:
+    def link_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
         """Link a vocabulary to a project.
 
         Args:
             id: The resource ID
             vocab_id: The vocab layer ID
         """
-        return self._request('POST', f'/api/v1/projects/{id}/vocabs/{vocab_id}')
+        return self._request('POST', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message)
 
-    def unlink_vocab(self, id: str, vocab_id: str) -> Any:
+    def unlink_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
         """Unlink a vocabulary from a project.
 
         Args:
             id: The resource ID
             vocab_id: The vocab layer ID
         """
-        return self._request('DELETE', f'/api/v1/projects/{id}/vocabs/{vocab_id}')
+        return self._request('DELETE', f'/api/v1/projects/{id}/vocabs/{vocab_id}', audit_message=audit_message)
 
 
 class TextLayersResource(_Resource):
@@ -1476,15 +1476,15 @@ class TextLayersResource(_Resource):
         return self._request('GET', f'/api/v1/text-layers/{text_layer_id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, text_layer_id: str) -> Any:
+    def delete(self, text_layer_id: str, audit_message=None) -> Any:
         """Delete a text layer.
 
         Args:
             text_layer_id: The text layer ID
         """
-        return self._request('DELETE', f'/api/v1/text-layers/{text_layer_id}')
+        return self._request('DELETE', f'/api/v1/text-layers/{text_layer_id}', audit_message=audit_message)
 
-    def update(self, text_layer_id: str, name: str) -> Any:
+    def update(self, text_layer_id: str, name: str, audit_message=None) -> Any:
         """Update a text layer's name.
 
         Args:
@@ -1492,9 +1492,9 @@ class TextLayersResource(_Resource):
             name: The name
         """
         return self._request('PATCH', f'/api/v1/text-layers/{text_layer_id}',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, text_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+    def set_config(self, text_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
         """Set a configuration value for a text layer in an editor namespace.
 
         Args:
@@ -1504,9 +1504,9 @@ class TextLayersResource(_Resource):
             config_value: Configuration value to set
         """
         return self._request('PUT', f'/api/v1/text-layers/{text_layer_id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True)
+                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_config(self, text_layer_id: str, namespace: str, config_key: str) -> Any:
+    def delete_config(self, text_layer_id: str, namespace: str, config_key: str, audit_message=None) -> Any:
         """Remove a configuration value for a text layer.
 
         Args:
@@ -1515,9 +1515,9 @@ class TextLayersResource(_Resource):
             config_key: The config key
         """
         return self._request('DELETE', f'/api/v1/text-layers/{text_layer_id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def shift(self, text_layer_id: str, direction: str) -> Any:
+    def shift(self, text_layer_id: str, direction: str, audit_message=None) -> Any:
         """Shift a text layer's order within the project.
 
         Args:
@@ -1525,9 +1525,9 @@ class TextLayersResource(_Resource):
             direction: The direction ("up" or "down")
         """
         return self._request('POST', f'/api/v1/text-layers/{text_layer_id}/shift',
-                             body=_body_of(direction=direction))
+                             body=_body_of(direction=direction), audit_message=audit_message)
 
-    def create(self, project_id: str, name: str) -> Any:
+    def create(self, project_id: str, name: str, audit_message=None) -> Any:
         """Create a new text layer for a project.
 
         Args:
@@ -1535,11 +1535,11 @@ class TextLayersResource(_Resource):
             name: The name
         """
         return self._request('POST', '/api/v1/text-layers',
-                             body=_body_of(project_id=project_id, name=name))
+                             body=_body_of(project_id=project_id, name=name), audit_message=audit_message)
 
 
 class VocabItemsResource(_Resource):
-    def create(self, vocab_layer_id: str, form: str, metadata: Any = _UNSET) -> Any:
+    def create(self, vocab_layer_id: str, form: str, metadata: Any = _UNSET, audit_message=None) -> Any:
         """Create a new vocab item.
 
         Args:
@@ -1549,7 +1549,7 @@ class VocabItemsResource(_Resource):
                 JSON null.
         """
         return self._request('POST', '/api/v1/vocab-items',
-                             body=_body_of(vocab_layer_id=vocab_layer_id, form=form, metadata=metadata))
+                             body=_body_of(vocab_layer_id=vocab_layer_id, form=form, metadata=metadata), audit_message=audit_message)
 
     def get(self, id: str, *, as_of: str | None = None) -> Any:
         """Get a vocab item by ID.
@@ -1561,15 +1561,15 @@ class VocabItemsResource(_Resource):
         return self._request('GET', f'/api/v1/vocab-items/{id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, id: str) -> Any:
+    def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab item.
 
         Args:
             id: The resource ID
         """
-        return self._request('DELETE', f'/api/v1/vocab-items/{id}')
+        return self._request('DELETE', f'/api/v1/vocab-items/{id}', audit_message=audit_message)
 
-    def update(self, id: str, form: str) -> Any:
+    def update(self, id: str, form: str, audit_message=None) -> Any:
         """Update a vocab item's form.
 
         Args:
@@ -1577,9 +1577,9 @@ class VocabItemsResource(_Resource):
             form: The vocab item form
         """
         return self._request('PATCH', f'/api/v1/vocab-items/{id}',
-                             body=_body_of(form=form))
+                             body=_body_of(form=form), audit_message=audit_message)
 
-    def set_metadata(self, id: str, body: Any) -> Any:
+    def set_metadata(self, id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a vocab item.
 
         Args:
@@ -1587,18 +1587,18 @@ class VocabItemsResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/vocab-items/{id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_metadata(self, id: str) -> Any:
+    def delete_metadata(self, id: str, audit_message=None) -> Any:
         """Remove all metadata from a vocab item.
 
         Args:
             id: The resource ID
         """
         return self._request('DELETE', f'/api/v1/vocab-items/{id}/metadata',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def patch_metadata(self, id: str, body: Any) -> Any:
+    def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
         """Patch (shallow-merge) metadata for a vocab item.
 
         Keys present in the body are set or overwritten; keys not present are
@@ -1612,7 +1612,7 @@ class VocabItemsResource(_Resource):
             body: The metadata patch
         """
         return self._request('PATCH', f'/api/v1/vocab-items/{id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
 
 class RelationLayersResource(_Resource):
@@ -1626,15 +1626,15 @@ class RelationLayersResource(_Resource):
         return self._request('GET', f'/api/v1/relation-layers/{relation_layer_id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, relation_layer_id: str) -> Any:
+    def delete(self, relation_layer_id: str, audit_message=None) -> Any:
         """Delete a relation layer.
 
         Args:
             relation_layer_id: The relation layer ID
         """
-        return self._request('DELETE', f'/api/v1/relation-layers/{relation_layer_id}')
+        return self._request('DELETE', f'/api/v1/relation-layers/{relation_layer_id}', audit_message=audit_message)
 
-    def update(self, relation_layer_id: str, name: str) -> Any:
+    def update(self, relation_layer_id: str, name: str, audit_message=None) -> Any:
         """Update a relation layer's name.
 
         Args:
@@ -1642,9 +1642,9 @@ class RelationLayersResource(_Resource):
             name: The name
         """
         return self._request('PATCH', f'/api/v1/relation-layers/{relation_layer_id}',
-                             body=_body_of(name=name))
+                             body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, relation_layer_id: str, namespace: str, config_key: str, config_value: Any) -> Any:
+    def set_config(self, relation_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
         """Set a configuration value for a relation layer in an editor namespace.
 
         Args:
@@ -1654,9 +1654,9 @@ class RelationLayersResource(_Resource):
             config_value: Configuration value to set
         """
         return self._request('PUT', f'/api/v1/relation-layers/{relation_layer_id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True)
+                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_config(self, relation_layer_id: str, namespace: str, config_key: str) -> Any:
+    def delete_config(self, relation_layer_id: str, namespace: str, config_key: str, audit_message=None) -> Any:
         """Remove a configuration value for a relation layer.
 
         Args:
@@ -1665,9 +1665,9 @@ class RelationLayersResource(_Resource):
             config_key: The config key
         """
         return self._request('DELETE', f'/api/v1/relation-layers/{relation_layer_id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def shift(self, relation_layer_id: str, direction: str) -> Any:
+    def shift(self, relation_layer_id: str, direction: str, audit_message=None) -> Any:
         """Shift a relation layer's display order.
 
         Args:
@@ -1675,9 +1675,9 @@ class RelationLayersResource(_Resource):
             direction: The direction ("up" or "down")
         """
         return self._request('POST', f'/api/v1/relation-layers/{relation_layer_id}/shift',
-                             body=_body_of(direction=direction))
+                             body=_body_of(direction=direction), audit_message=audit_message)
 
-    def create(self, span_layer_id: str, name: str) -> Any:
+    def create(self, span_layer_id: str, name: str, audit_message=None) -> Any:
         """Create a new relation layer.
 
         Args:
@@ -1685,11 +1685,11 @@ class RelationLayersResource(_Resource):
             name: The name
         """
         return self._request('POST', '/api/v1/relation-layers',
-                             body=_body_of(span_layer_id=span_layer_id, name=name))
+                             body=_body_of(span_layer_id=span_layer_id, name=name), audit_message=audit_message)
 
 
 class TokensResource(_Resource):
-    def set_metadata(self, token_id: str, body: Any) -> Any:
+    def set_metadata(self, token_id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a token.
 
         Args:
@@ -1697,18 +1697,18 @@ class TokensResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/tokens/{token_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
-    def delete_metadata(self, token_id: str) -> Any:
+    def delete_metadata(self, token_id: str, audit_message=None) -> Any:
         """Remove all metadata from a token.
 
         Args:
             token_id: The token ID
         """
         return self._request('DELETE', f'/api/v1/tokens/{token_id}/metadata',
-                             skip_response_transform=True)
+                             skip_response_transform=True, audit_message=audit_message)
 
-    def patch_metadata(self, token_id: str, body: Any) -> Any:
+    def patch_metadata(self, token_id: str, body: Any, audit_message=None) -> Any:
         """Patch (shallow-merge) metadata for a token.
 
         Keys present in the body are set or overwritten; keys not present are
@@ -1722,7 +1722,7 @@ class TokensResource(_Resource):
             body: The metadata patch
         """
         return self._request('PATCH', f'/api/v1/tokens/{token_id}/metadata',
-                             raw_body=body, skip_response_transform=True)
+                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
     def get(self, token_id: str, *, as_of: str | None = None) -> Any:
         """Get a token.
@@ -1734,7 +1734,7 @@ class TokensResource(_Resource):
         return self._request('GET', f'/api/v1/tokens/{token_id}',
                              query_params={'as-of': as_of})
 
-    def delete(self, token_id: str) -> Any:
+    def delete(self, token_id: str, audit_message=None) -> Any:
         """Delete a token and remove it from any spans.
 
         If this causes a span to have no remaining tokens, the span will
@@ -1743,10 +1743,10 @@ class TokensResource(_Resource):
         Args:
             token_id: The token ID
         """
-        return self._request('DELETE', f'/api/v1/tokens/{token_id}')
+        return self._request('DELETE', f'/api/v1/tokens/{token_id}', audit_message=audit_message)
 
     def update(self, token_id: str, *, begin: Any = _UNSET, end: Any = _UNSET,
-               precedence: Any = _UNSET) -> Any:
+               precedence: Any = _UNSET, audit_message=None) -> Any:
         """Update a token's ``begin``, ``end``, or ``precedence``.
 
         ``precedence`` distinguishes three cases: omit it to leave the value
@@ -1764,10 +1764,10 @@ class TokensResource(_Resource):
                 explicit ordering).
         """
         return self._request('PATCH', f'/api/v1/tokens/{token_id}',
-                             body=_body_of(begin=begin, end=end, precedence=precedence))
+                             body=_body_of(begin=begin, end=end, precedence=precedence), audit_message=audit_message)
 
     def create(self, token_layer_id: str, text: str, begin: int, end: int, *,
-               precedence: Any = _UNSET, metadata: Any = _UNSET) -> Any:
+               precedence: Any = _UNSET, metadata: Any = _UNSET, audit_message=None) -> Any:
         """Create a new token in a token layer.
 
         Tokens define text substrings using ``begin`` and ``end`` offsets.
@@ -1792,25 +1792,25 @@ class TokensResource(_Resource):
         return self._request('POST', '/api/v1/tokens',
                              body=_body_of(token_layer_id=token_layer_id, text=text,
                                            begin=begin, end=end, precedence=precedence,
-                                           metadata=metadata))
+                                           metadata=metadata), audit_message=audit_message)
 
-    def bulk_create(self, body: list) -> Any:
+    def bulk_create(self, body: list, audit_message=None) -> Any:
         """Create multiple tokens in a single operation.
 
         Args:
             body: The request body
         """
-        return self._request('POST', '/api/v1/tokens/bulk', body=body)
+        return self._request('POST', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
 
-    def bulk_delete(self, body: list) -> Any:
+    def bulk_delete(self, body: list, audit_message=None) -> Any:
         """Delete multiple tokens in a single operation. Provide a list of IDs.
 
         Args:
             body: The request body
         """
-        return self._request('DELETE', '/api/v1/tokens/bulk', body=body)
+        return self._request('DELETE', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
 
-    def split(self, token_id: str, position: int) -> Any:
+    def split(self, token_id: str, position: int, audit_message=None) -> Any:
         """Split a token at a Unicode code-point offset.
 
         The original token becomes the left half (keeping its ID, spans, and
@@ -1822,9 +1822,9 @@ class TokensResource(_Resource):
             position: Code-point offset to split at (strictly between begin and end)
         """
         return self._request('POST', f'/api/v1/tokens/{token_id}/split',
-                             body=_body_of(position=position))
+                             body=_body_of(position=position), audit_message=audit_message)
 
-    def merge(self, token_id: str, other_token_id: str) -> Any:
+    def merge(self, token_id: str, other_token_id: str, audit_message=None) -> Any:
         """Merge two tokens.
 
         The left token (smaller ``begin``) survives with the combined extent;
@@ -1837,9 +1837,9 @@ class TokensResource(_Resource):
             other_token_id: The other token to merge in
         """
         return self._request('POST', f'/api/v1/tokens/{token_id}/merge',
-                             body=_body_of(other_token_id=other_token_id))
+                             body=_body_of(other_token_id=other_token_id), audit_message=audit_message)
 
-    def shift(self, token_id: str, *, begin: Any = _UNSET, end: Any = _UNSET) -> Any:
+    def shift(self, token_id: str, *, begin: Any = _UNSET, end: Any = _UNSET, audit_message=None) -> Any:
         """Shift a token's boundary.
 
         On partitioning layers the adjacent token is auto-adjusted to preserve
@@ -1852,11 +1852,11 @@ class TokensResource(_Resource):
             end: New end offset, exclusive (Unicode code points). Omit to leave unchanged.
         """
         return self._request('POST', f'/api/v1/tokens/{token_id}/shift',
-                             body=_body_of(begin=begin, end=end))
+                             body=_body_of(begin=begin, end=end), audit_message=audit_message)
 
 
 class BatchResource(_Resource):
-    def submit(self, body: list) -> Any:
+    def submit(self, body: list, audit_message=None) -> Any:
         """Execute multiple API operations atomically.
 
         If any operation fails, all changes are rolled back.
@@ -1864,7 +1864,7 @@ class BatchResource(_Resource):
         Args:
             body: The request body
         """
-        return self._request('POST', '/api/v1/batch', body=body, no_batch=True)
+        return self._request('POST', '/api/v1/batch', body=body, no_batch=True, audit_message=audit_message)
 
 
 class PlaidClient:

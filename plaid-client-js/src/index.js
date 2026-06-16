@@ -54,8 +54,8 @@ class PlaidClient {
        * @param {Array} tokens - The tokens to link
        * @param {any} [metadata] - Metadata for the link. Omit to leave unset; pass null to send JSON null.
        */
-      create: (vocabItem, tokens, metadata) =>
-        this._request('POST', '/api/v1/vocab-links', {
+      create: (vocabItem, tokens, metadata, auditMessage) =>
+        this._request('POST', '/api/v1/vocab-links', { auditMessage,
           body: bodyOf({ 'vocab-item': vocabItem, tokens, metadata }),
         }),
       /**
@@ -63,16 +63,16 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {any} body - The request body
        */
-      setMetadata: (id, body) =>
-        this._request('PUT', `/api/v1/vocab-links/${id}/metadata`, {
+      setMetadata: (id, body, auditMessage) =>
+        this._request('PUT', `/api/v1/vocab-links/${id}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a vocab link.
        * @param {string} id - The resource ID
        */
-      deleteMetadata: (id) =>
-        this._request('DELETE', `/api/v1/vocab-links/${id}/metadata`, {
+      deleteMetadata: (id, auditMessage) =>
+        this._request('DELETE', `/api/v1/vocab-links/${id}/metadata`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -80,8 +80,8 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {any} body - The metadata patch
        */
-      patchMetadata: (id, body) =>
-        this._request('PATCH', `/api/v1/vocab-links/${id}/metadata`, {
+      patchMetadata: (id, body, auditMessage) =>
+        this._request('PATCH', `/api/v1/vocab-links/${id}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
@@ -97,8 +97,8 @@ class PlaidClient {
        * Delete a vocab link
        * @param {string} id - The resource ID
        */
-      delete: (id) =>
-        this._request('DELETE', `/api/v1/vocab-links/${id}`),
+      delete: (id, auditMessage) =>
+        this._request('DELETE', `/api/v1/vocab-links/${id}`, { auditMessage }),
     };
 
     this.vocabLayers = {
@@ -116,15 +116,15 @@ class PlaidClient {
        * Delete a vocab layer.
        * @param {string} id - The resource ID
        */
-      delete: (id) =>
-        this._request('DELETE', `/api/v1/vocab-layers/${id}`),
+      delete: (id, auditMessage) =>
+        this._request('DELETE', `/api/v1/vocab-layers/${id}`, { auditMessage }),
       /**
        * Update a vocab layer's name.
        * @param {string} id - The resource ID
        * @param {string} name - The name
        */
-      update: (id, name) =>
-        this._request('PATCH', `/api/v1/vocab-layers/${id}`, {
+      update: (id, name, auditMessage) =>
+        this._request('PATCH', `/api/v1/vocab-layers/${id}`, { auditMessage,
           body: bodyOf({ name }),
         }),
       /**
@@ -134,8 +134,8 @@ class PlaidClient {
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
-      setConfig: (id, namespace, configKey, configValue) =>
-        this._request('PUT', `/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`, {
+      setConfig: (id, namespace, configKey, configValue, auditMessage) =>
+        this._request('PUT', `/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`, { auditMessage,
           rawBody: configValue, skipResponseTransform: true,
         }),
       /**
@@ -144,8 +144,8 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        */
-      deleteConfig: (id, namespace, configKey) =>
-        this._request('DELETE', `/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`, {
+      deleteConfig: (id, namespace, configKey, auditMessage) =>
+        this._request('DELETE', `/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -180,8 +180,8 @@ class PlaidClient {
        * Create a new vocab layer. Note: this also registers the user as a maintainer.
        * @param {string} name - The name
        */
-      create: (name) =>
-        this._request('POST', '/api/v1/vocab-layers', {
+      create: (name, auditMessage) =>
+        this._request('POST', '/api/v1/vocab-layers', { auditMessage,
           body: bodyOf({ name }),
         }),
       /**
@@ -189,15 +189,15 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        */
-      addMaintainer: (id, userId) =>
-        this._request('POST', `/api/v1/vocab-layers/${id}/maintainers/${userId}`),
+      addMaintainer: (id, userId, auditMessage) =>
+        this._request('POST', `/api/v1/vocab-layers/${id}/maintainers/${userId}`, { auditMessage }),
       /**
        * Remove a user's maintainer privileges for this vocab layer.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        */
-      removeMaintainer: (id, userId) =>
-        this._request('DELETE', `/api/v1/vocab-layers/${id}/maintainers/${userId}`),
+      removeMaintainer: (id, userId, auditMessage) =>
+        this._request('DELETE', `/api/v1/vocab-layers/${id}/maintainers/${userId}`, { auditMessage }),
     };
 
     this.relations = {
@@ -206,16 +206,16 @@ class PlaidClient {
        * @param {string} relationId - The relation ID
        * @param {any} body - The request body
        */
-      setMetadata: (relationId, body) =>
-        this._request('PUT', `/api/v1/relations/${relationId}/metadata`, {
+      setMetadata: (relationId, body, auditMessage) =>
+        this._request('PUT', `/api/v1/relations/${relationId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a relation.
        * @param {string} relationId - The relation ID
        */
-      deleteMetadata: (relationId) =>
-        this._request('DELETE', `/api/v1/relations/${relationId}/metadata`, {
+      deleteMetadata: (relationId, auditMessage) =>
+        this._request('DELETE', `/api/v1/relations/${relationId}/metadata`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -223,8 +223,8 @@ class PlaidClient {
        * @param {string} relationId - The relation ID
        * @param {any} body - The metadata patch
        */
-      patchMetadata: (relationId, body) =>
-        this._request('PATCH', `/api/v1/relations/${relationId}/metadata`, {
+      patchMetadata: (relationId, body, auditMessage) =>
+        this._request('PATCH', `/api/v1/relations/${relationId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
@@ -232,8 +232,8 @@ class PlaidClient {
        * @param {string} relationId - The relation ID
        * @param {string} spanId - The span ID
        */
-      setTarget: (relationId, spanId) =>
-        this._request('PUT', `/api/v1/relations/${relationId}/target`, {
+      setTarget: (relationId, spanId, auditMessage) =>
+        this._request('PUT', `/api/v1/relations/${relationId}/target`, { auditMessage,
           body: bodyOf({ 'span-id': spanId }),
         }),
       /**
@@ -249,15 +249,15 @@ class PlaidClient {
        * Delete a relation.
        * @param {string} relationId - The relation ID
        */
-      delete: (relationId) =>
-        this._request('DELETE', `/api/v1/relations/${relationId}`),
+      delete: (relationId, auditMessage) =>
+        this._request('DELETE', `/api/v1/relations/${relationId}`, { auditMessage }),
       /**
        * Update a relation's value.
        * @param {string} relationId - The relation ID
        * @param {any} value - The value
        */
-      update: (relationId, value) =>
-        this._request('PATCH', `/api/v1/relations/${relationId}`, {
+      update: (relationId, value, auditMessage) =>
+        this._request('PATCH', `/api/v1/relations/${relationId}`, { auditMessage,
           body: bodyOf({ value }),
         }),
       /**
@@ -265,8 +265,8 @@ class PlaidClient {
        * @param {string} relationId - The relation ID
        * @param {string} spanId - The span ID
        */
-      setSource: (relationId, spanId) =>
-        this._request('PUT', `/api/v1/relations/${relationId}/source`, {
+      setSource: (relationId, spanId, auditMessage) =>
+        this._request('PUT', `/api/v1/relations/${relationId}/source`, { auditMessage,
           body: bodyOf({ 'span-id': spanId }),
         }),
       /**
@@ -279,22 +279,22 @@ class PlaidClient {
        * @param {any} value - The value
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (layerId, sourceId, targetId, value, metadata) =>
-        this._request('POST', '/api/v1/relations', {
+      create: (layerId, sourceId, targetId, value, metadata, auditMessage) =>
+        this._request('POST', '/api/v1/relations', { auditMessage,
           body: bodyOf({ 'layer-id': layerId, 'source-id': sourceId, 'target-id': targetId, value, metadata }),
         }),
       /**
        * Create multiple relations in a single operation.
        * @param {Array} body - The request body
        */
-      bulkCreate: (body) =>
-        this._request('POST', '/api/v1/relations/bulk', { body }),
+      bulkCreate: (body, auditMessage) =>
+        this._request('POST', '/api/v1/relations/bulk', { auditMessage, body }),
       /**
        * Delete multiple relations in a single operation. Provide an array of IDs.
        * @param {Array} body - The request body
        */
-      bulkDelete: (body) =>
-        this._request('DELETE', '/api/v1/relations/bulk', { body }),
+      bulkDelete: (body, auditMessage) =>
+        this._request('DELETE', '/api/v1/relations/bulk', { auditMessage, body }),
     };
 
     this.spanLayers = {
@@ -305,8 +305,8 @@ class PlaidClient {
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
-      setConfig: (spanLayerId, namespace, configKey, configValue) =>
-        this._request('PUT', `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`, {
+      setConfig: (spanLayerId, namespace, configKey, configValue, auditMessage) =>
+        this._request('PUT', `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`, { auditMessage,
           rawBody: configValue, skipResponseTransform: true,
         }),
       /**
@@ -315,8 +315,8 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        */
-      deleteConfig: (spanLayerId, namespace, configKey) =>
-        this._request('DELETE', `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`, {
+      deleteConfig: (spanLayerId, namespace, configKey, auditMessage) =>
+        this._request('DELETE', `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -332,15 +332,15 @@ class PlaidClient {
        * Delete a span layer.
        * @param {string} spanLayerId - The span layer ID
        */
-      delete: (spanLayerId) =>
-        this._request('DELETE', `/api/v1/span-layers/${spanLayerId}`),
+      delete: (spanLayerId, auditMessage) =>
+        this._request('DELETE', `/api/v1/span-layers/${spanLayerId}`, { auditMessage }),
       /**
        * Update a span layer's name.
        * @param {string} spanLayerId - The span layer ID
        * @param {string} name - The name
        */
-      update: (spanLayerId, name) =>
-        this._request('PATCH', `/api/v1/span-layers/${spanLayerId}`, {
+      update: (spanLayerId, name, auditMessage) =>
+        this._request('PATCH', `/api/v1/span-layers/${spanLayerId}`, { auditMessage,
           body: bodyOf({ name }),
         }),
       /**
@@ -348,8 +348,8 @@ class PlaidClient {
        * @param {string} tokenLayerId - The token layer ID
        * @param {string} name - The name
        */
-      create: (tokenLayerId, name) =>
-        this._request('POST', '/api/v1/span-layers', {
+      create: (tokenLayerId, name, auditMessage) =>
+        this._request('POST', '/api/v1/span-layers', { auditMessage,
           body: bodyOf({ 'token-layer-id': tokenLayerId, name }),
         }),
       /**
@@ -357,8 +357,8 @@ class PlaidClient {
        * @param {string} spanLayerId - The span layer ID
        * @param {string} direction - The direction ("up" or "down")
        */
-      shift: (spanLayerId, direction) =>
-        this._request('POST', `/api/v1/span-layers/${spanLayerId}/shift`, {
+      shift: (spanLayerId, direction, auditMessage) =>
+        this._request('POST', `/api/v1/span-layers/${spanLayerId}/shift`, { auditMessage,
           body: bodyOf({ direction }),
         }),
     };
@@ -369,8 +369,8 @@ class PlaidClient {
        * @param {string} spanId - The span ID
        * @param {Array} tokens - The tokens
        */
-      setTokens: (spanId, tokens) =>
-        this._request('PUT', `/api/v1/spans/${spanId}/tokens`, {
+      setTokens: (spanId, tokens, auditMessage) =>
+        this._request('PUT', `/api/v1/spans/${spanId}/tokens`, { auditMessage,
           body: bodyOf({ tokens }),
         }),
       /**
@@ -381,8 +381,8 @@ class PlaidClient {
        * @param {any} value - The value
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (spanLayerId, tokens, value, metadata) =>
-        this._request('POST', '/api/v1/spans', {
+      create: (spanLayerId, tokens, value, metadata, auditMessage) =>
+        this._request('POST', '/api/v1/spans', { auditMessage,
           body: bodyOf({ 'span-layer-id': spanLayerId, tokens, value, metadata }),
         }),
       /**
@@ -398,44 +398,44 @@ class PlaidClient {
        * Delete a span.
        * @param {string} spanId - The span ID
        */
-      delete: (spanId) =>
-        this._request('DELETE', `/api/v1/spans/${spanId}`),
+      delete: (spanId, auditMessage) =>
+        this._request('DELETE', `/api/v1/spans/${spanId}`, { auditMessage }),
       /**
        * Update a span's value.
        * @param {string} spanId - The span ID
        * @param {any} value - The value
        */
-      update: (spanId, value) =>
-        this._request('PATCH', `/api/v1/spans/${spanId}`, {
+      update: (spanId, value, auditMessage) =>
+        this._request('PATCH', `/api/v1/spans/${spanId}`, { auditMessage,
           body: bodyOf({ value }),
         }),
       /**
        * Create multiple spans in a single operation.
        * @param {Array} body - The request body
        */
-      bulkCreate: (body) =>
-        this._request('POST', '/api/v1/spans/bulk', { body }),
+      bulkCreate: (body, auditMessage) =>
+        this._request('POST', '/api/v1/spans/bulk', { auditMessage, body }),
       /**
        * Delete multiple spans in a single operation. Provide an array of IDs.
        * @param {Array} body - The request body
        */
-      bulkDelete: (body) =>
-        this._request('DELETE', '/api/v1/spans/bulk', { body }),
+      bulkDelete: (body, auditMessage) =>
+        this._request('DELETE', '/api/v1/spans/bulk', { auditMessage, body }),
       /**
        * Replace all metadata for a span.
        * @param {string} spanId - The span ID
        * @param {any} body - The request body
        */
-      setMetadata: (spanId, body) =>
-        this._request('PUT', `/api/v1/spans/${spanId}/metadata`, {
+      setMetadata: (spanId, body, auditMessage) =>
+        this._request('PUT', `/api/v1/spans/${spanId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a span.
        * @param {string} spanId - The span ID
        */
-      deleteMetadata: (spanId) =>
-        this._request('DELETE', `/api/v1/spans/${spanId}/metadata`, {
+      deleteMetadata: (spanId, auditMessage) =>
+        this._request('DELETE', `/api/v1/spans/${spanId}/metadata`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -443,8 +443,8 @@ class PlaidClient {
        * @param {string} spanId - The span ID
        * @param {any} body - The metadata patch
        */
-      patchMetadata: (spanId, body) =>
-        this._request('PATCH', `/api/v1/spans/${spanId}/metadata`, {
+      patchMetadata: (spanId, body, auditMessage) =>
+        this._request('PATCH', `/api/v1/spans/${spanId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
     };
@@ -455,8 +455,8 @@ class PlaidClient {
        * changes are rolled back.
        * @param {Array} body - The request body
        */
-      submit: (body) =>
-        this._request('POST', '/api/v1/batch', {
+      submit: (body, auditMessage) =>
+        this._request('POST', '/api/v1/batch', { auditMessage,
           body, noBatch: true,
         }),
     };
@@ -467,16 +467,16 @@ class PlaidClient {
        * @param {string} textId - The text ID
        * @param {any} body - The request body
        */
-      setMetadata: (textId, body) =>
-        this._request('PUT', `/api/v1/texts/${textId}/metadata`, {
+      setMetadata: (textId, body, auditMessage) =>
+        this._request('PUT', `/api/v1/texts/${textId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a text.
        * @param {string} textId - The text ID
        */
-      deleteMetadata: (textId) =>
-        this._request('DELETE', `/api/v1/texts/${textId}/metadata`, {
+      deleteMetadata: (textId, auditMessage) =>
+        this._request('DELETE', `/api/v1/texts/${textId}/metadata`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -484,8 +484,8 @@ class PlaidClient {
        * @param {string} textId - The text ID
        * @param {any} body - The metadata patch
        */
-      patchMetadata: (textId, body) =>
-        this._request('PATCH', `/api/v1/texts/${textId}/metadata`, {
+      patchMetadata: (textId, body, auditMessage) =>
+        this._request('PATCH', `/api/v1/texts/${textId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
@@ -496,8 +496,8 @@ class PlaidClient {
        * @param {string} body - The request body
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (textLayerId, documentId, body, metadata) =>
-        this._request('POST', '/api/v1/texts', {
+      create: (textLayerId, documentId, body, metadata, auditMessage) =>
+        this._request('POST', '/api/v1/texts', { auditMessage,
           body: bodyOf({ 'text-layer-id': textLayerId, 'document-id': documentId, body, metadata }),
         }),
       /**
@@ -513,8 +513,8 @@ class PlaidClient {
        * Delete a text and all dependent data.
        * @param {string} textId - The text ID
        */
-      delete: (textId) =>
-        this._request('DELETE', `/api/v1/texts/${textId}`),
+      delete: (textId, auditMessage) =>
+        this._request('DELETE', `/api/v1/texts/${textId}`, { auditMessage }),
       /**
        * Update a text's body. A diff is computed and token indices are updated
        * so that tokens remain intact. Alternatively, `body` can be a list of
@@ -522,8 +522,8 @@ class PlaidClient {
        * @param {string} textId - The text ID
        * @param {any} body - The request body
        */
-      update: (textId, body) =>
-        this._request('PATCH', `/api/v1/texts/${textId}`, {
+      update: (textId, body, auditMessage) =>
+        this._request('PATCH', `/api/v1/texts/${textId}`, { auditMessage,
           body: bodyOf({ body }),
         }),
     };
@@ -567,8 +567,8 @@ class PlaidClient {
        * @param {string} password - The password
        * @param {boolean} isAdmin - Whether the user is an admin
        */
-      create: (username, password, isAdmin) =>
-        this._request('POST', '/api/v1/users', {
+      create: (username, password, isAdmin, auditMessage) =>
+        this._request('POST', '/api/v1/users', { auditMessage,
           body: bodyOf({ username, password, 'is-admin': isAdmin }),
         }),
       /**
@@ -601,16 +601,16 @@ class PlaidClient {
        * Reversible via activate(), which restores login only.
        * @param {string} id - The resource ID
        */
-      delete: (id) =>
-        this._request('DELETE', `/api/v1/users/${id}`),
+      delete: (id, auditMessage) =>
+        this._request('DELETE', `/api/v1/users/${id}`, { auditMessage }),
       /**
        * Reactivate a deactivated user, restoring their ability to log in.
        * Project memberships, vocab maintainerships, and API tokens removed
        * at deactivation are NOT restored — re-grant them deliberately.
        * @param {string} id - The resource ID
        */
-      activate: (id) =>
-        this._request('POST', `/api/v1/users/${id}/activate`),
+      activate: (id, auditMessage) =>
+        this._request('POST', `/api/v1/users/${id}/activate`, { auditMessage }),
       /**
        * Modify a user. Admins may change the username, password, and admin
        * status of any user. All other users may only modify their own username
@@ -620,8 +620,8 @@ class PlaidClient {
        * @param {string} [username] - New username
        * @param {boolean} [isAdmin] - New admin status
        */
-      update: (id, password, username, isAdmin) =>
-        this._request('PATCH', `/api/v1/users/${id}`, {
+      update: (id, password, username, isAdmin, auditMessage) =>
+        this._request('PATCH', `/api/v1/users/${id}`, { auditMessage,
           body: bodyOf({ password, username, 'is-admin': isAdmin }),
         }),
     };
@@ -665,8 +665,8 @@ class PlaidClient {
        * @param {string} name - A human label, e.g. "Stanza Parser"
        * @returns {Promise<{id: string, name: string, token: string}>}
        */
-      create: (userId, name) =>
-        this._request('POST', `/api/v1/users/${userId}/tokens`, {
+      create: (userId, name, auditMessage) =>
+        this._request('POST', `/api/v1/users/${userId}/tokens`, { auditMessage,
           body: bodyOf({ name }),
         }),
       /**
@@ -674,8 +674,8 @@ class PlaidClient {
        * @param {string} userId - The user ID who owns the token
        * @param {string} tokenId - The token ID to revoke
        */
-      revoke: (userId, tokenId) =>
-        this._request('DELETE', `/api/v1/users/${userId}/tokens/${tokenId}`),
+      revoke: (userId, tokenId, auditMessage) =>
+        this._request('DELETE', `/api/v1/users/${userId}/tokens/${tokenId}`, { auditMessage }),
     };
 
     this.tokenLayers = {
@@ -684,8 +684,8 @@ class PlaidClient {
        * @param {string} tokenLayerId - The token layer ID
        * @param {string} direction - The direction ("up" or "down")
        */
-      shift: (tokenLayerId, direction) =>
-        this._request('POST', `/api/v1/token-layers/${tokenLayerId}/shift`, {
+      shift: (tokenLayerId, direction, auditMessage) =>
+        this._request('POST', `/api/v1/token-layers/${tokenLayerId}/shift`, { auditMessage,
           body: bodyOf({ direction }),
         }),
       /**
@@ -695,8 +695,8 @@ class PlaidClient {
        * @param {string} [overlapMode] - Per-layer, immutable token invariant: "any" (default), "non-overlapping", or "partitioning". On partitioning layers, single token create/update/delete are rejected; use bulkCreate plus split/merge/shift.
        * @param {string} [parentTokenLayerId] - Optional immutable parent token layer. Tokens in this layer must nest within a parent-layer token; the parent layer must be in the same text layer and be "non-overlapping" or "partitioning" (an "any" parent is rejected). A nested layer may be "any" or "non-overlapping" but not "partitioning" (partitioning is only for root layers), e.g. words (non-overlapping, parent=sentences) within sentences (partitioning).
        */
-      create: (textLayerId, name, overlapMode, parentTokenLayerId) =>
-        this._request('POST', '/api/v1/token-layers', {
+      create: (textLayerId, name, overlapMode, parentTokenLayerId, auditMessage) =>
+        this._request('POST', '/api/v1/token-layers', { auditMessage,
           body: bodyOf({ 'text-layer-id': textLayerId, name, 'overlap-mode': overlapMode, 'parent-token-layer-id': parentTokenLayerId }),
         }),
       /**
@@ -706,8 +706,8 @@ class PlaidClient {
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
-      setConfig: (tokenLayerId, namespace, configKey, configValue) =>
-        this._request('PUT', `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`, {
+      setConfig: (tokenLayerId, namespace, configKey, configValue, auditMessage) =>
+        this._request('PUT', `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`, { auditMessage,
           rawBody: configValue, skipResponseTransform: true,
         }),
       /**
@@ -716,8 +716,8 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        */
-      deleteConfig: (tokenLayerId, namespace, configKey) =>
-        this._request('DELETE', `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`, {
+      deleteConfig: (tokenLayerId, namespace, configKey, auditMessage) =>
+        this._request('DELETE', `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -733,15 +733,15 @@ class PlaidClient {
        * Delete a token layer.
        * @param {string} tokenLayerId - The token layer ID
        */
-      delete: (tokenLayerId) =>
-        this._request('DELETE', `/api/v1/token-layers/${tokenLayerId}`),
+      delete: (tokenLayerId, auditMessage) =>
+        this._request('DELETE', `/api/v1/token-layers/${tokenLayerId}`, { auditMessage }),
       /**
        * Update a token layer's name.
        * @param {string} tokenLayerId - The token layer ID
        * @param {string} name - The name
        */
-      update: (tokenLayerId, name) =>
-        this._request('PATCH', `/api/v1/token-layers/${tokenLayerId}`, {
+      update: (tokenLayerId, name, auditMessage) =>
+        this._request('PATCH', `/api/v1/token-layers/${tokenLayerId}`, { auditMessage,
           body: bodyOf({ name }),
         }),
     };
@@ -760,14 +760,14 @@ class PlaidClient {
        * Acquire or refresh a document lock
        * @param {string} documentId - The document ID
        */
-      acquireLock: (documentId) =>
-        this._request('POST', `/api/v1/documents/${documentId}/lock`),
+      acquireLock: (documentId, auditMessage) =>
+        this._request('POST', `/api/v1/documents/${documentId}/lock`, { auditMessage }),
       /**
        * Release a document lock
        * @param {string} documentId - The document ID
        */
-      releaseLock: (documentId) =>
-        this._request('DELETE', `/api/v1/documents/${documentId}/lock`),
+      releaseLock: (documentId, auditMessage) =>
+        this._request('DELETE', `/api/v1/documents/${documentId}/lock`, { auditMessage }),
       /**
        * Get media file for a document
        * @param {string} documentId - The document ID
@@ -784,10 +784,10 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {File} file - The file to upload
        */
-      uploadMedia: (documentId, file) => {
+      uploadMedia: (documentId, file, auditMessage) => {
         const fd = new FormData();
         fd.append('file', file);
-        return this._request('PUT', `/api/v1/documents/${documentId}/media`, {
+        return this._request('PUT', `/api/v1/documents/${documentId}/media`, { auditMessage,
           body: fd, formData: true, noBatch: true,
         });
       },
@@ -795,8 +795,8 @@ class PlaidClient {
        * Delete media file for a document
        * @param {string} documentId - The document ID
        */
-      deleteMedia: (documentId) =>
-        this._request('DELETE', `/api/v1/documents/${documentId}/media`, {
+      deleteMedia: (documentId, auditMessage) =>
+        this._request('DELETE', `/api/v1/documents/${documentId}/media`, { auditMessage,
           noBatch: true,
         }),
       /**
@@ -804,16 +804,16 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {any} body - The request body
        */
-      setMetadata: (documentId, body) =>
-        this._request('PUT', `/api/v1/documents/${documentId}/metadata`, {
+      setMetadata: (documentId, body, auditMessage) =>
+        this._request('PUT', `/api/v1/documents/${documentId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a document.
        * @param {string} documentId - The document ID
        */
-      deleteMetadata: (documentId) =>
-        this._request('DELETE', `/api/v1/documents/${documentId}/metadata`, {
+      deleteMetadata: (documentId, auditMessage) =>
+        this._request('DELETE', `/api/v1/documents/${documentId}/metadata`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -821,8 +821,8 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {any} body - The metadata patch
        */
-      patchMetadata: (documentId, body) =>
-        this._request('PATCH', `/api/v1/documents/${documentId}/metadata`, {
+      patchMetadata: (documentId, body, auditMessage) =>
+        this._request('PATCH', `/api/v1/documents/${documentId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
@@ -852,15 +852,15 @@ class PlaidClient {
        * Delete a document and all data contained.
        * @param {string} documentId - The document ID
        */
-      delete: (documentId) =>
-        this._request('DELETE', `/api/v1/documents/${documentId}`),
+      delete: (documentId, auditMessage) =>
+        this._request('DELETE', `/api/v1/documents/${documentId}`, { auditMessage }),
       /**
        * Update a document's name.
        * @param {string} documentId - The document ID
        * @param {string} name - The name
        */
-      update: (documentId, name) =>
-        this._request('PATCH', `/api/v1/documents/${documentId}`, {
+      update: (documentId, name, auditMessage) =>
+        this._request('PATCH', `/api/v1/documents/${documentId}`, { auditMessage,
           body: bodyOf({ name }),
         }),
       /**
@@ -869,8 +869,8 @@ class PlaidClient {
        * @param {string} name - The name
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (projectId, name, metadata) =>
-        this._request('POST', '/api/v1/documents', {
+      create: (projectId, name, metadata, auditMessage) =>
+        this._request('POST', '/api/v1/documents', { auditMessage,
           body: bodyOf({ 'project-id': projectId, name, metadata }),
         }),
     };
@@ -881,29 +881,29 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        */
-      addWriter: (id, userId) =>
-        this._request('POST', `/api/v1/projects/${id}/writers/${userId}`),
+      addWriter: (id, userId, auditMessage) =>
+        this._request('POST', `/api/v1/projects/${id}/writers/${userId}`, { auditMessage }),
       /**
        * Remove a user's writer privileges for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        */
-      removeWriter: (id, userId) =>
-        this._request('DELETE', `/api/v1/projects/${id}/writers/${userId}`),
+      removeWriter: (id, userId, auditMessage) =>
+        this._request('DELETE', `/api/v1/projects/${id}/writers/${userId}`, { auditMessage }),
       /**
        * Set a user's access level to read-only for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        */
-      addReader: (id, userId) =>
-        this._request('POST', `/api/v1/projects/${id}/readers/${userId}`),
+      addReader: (id, userId, auditMessage) =>
+        this._request('POST', `/api/v1/projects/${id}/readers/${userId}`, { auditMessage }),
       /**
        * Remove a user's reader privileges for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        */
-      removeReader: (id, userId) =>
-        this._request('DELETE', `/api/v1/projects/${id}/readers/${userId}`),
+      removeReader: (id, userId, auditMessage) =>
+        this._request('DELETE', `/api/v1/projects/${id}/readers/${userId}`, { auditMessage }),
       /**
        * Set a configuration value for a project in an editor namespace.
        * @param {string} id - The resource ID
@@ -911,8 +911,8 @@ class PlaidClient {
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
-      setConfig: (id, namespace, configKey, configValue) =>
-        this._request('PUT', `/api/v1/projects/${id}/config/${namespace}/${configKey}`, {
+      setConfig: (id, namespace, configKey, configValue, auditMessage) =>
+        this._request('PUT', `/api/v1/projects/${id}/config/${namespace}/${configKey}`, { auditMessage,
           rawBody: configValue, skipResponseTransform: true,
         }),
       /**
@@ -921,8 +921,8 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        */
-      deleteConfig: (id, namespace, configKey) =>
-        this._request('DELETE', `/api/v1/projects/${id}/config/${namespace}/${configKey}`, {
+      deleteConfig: (id, namespace, configKey, auditMessage) =>
+        this._request('DELETE', `/api/v1/projects/${id}/config/${namespace}/${configKey}`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -930,15 +930,15 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        */
-      addMaintainer: (id, userId) =>
-        this._request('POST', `/api/v1/projects/${id}/maintainers/${userId}`),
+      addMaintainer: (id, userId, auditMessage) =>
+        this._request('POST', `/api/v1/projects/${id}/maintainers/${userId}`, { auditMessage }),
       /**
        * Remove a user's maintainer privileges for this project.
        * @param {string} id - The resource ID
        * @param {string} userId - The user ID
        */
-      removeMaintainer: (id, userId) =>
-        this._request('DELETE', `/api/v1/projects/${id}/maintainers/${userId}`),
+      removeMaintainer: (id, userId, auditMessage) =>
+        this._request('DELETE', `/api/v1/projects/${id}/maintainers/${userId}`, { auditMessage }),
       /**
        * Get audit log for a project. Transparently follows pagination cursors
        * and returns the full flat array.
@@ -957,15 +957,15 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {string} vocabId - The vocab layer ID
        */
-      linkVocab: (id, vocabId) =>
-        this._request('POST', `/api/v1/projects/${id}/vocabs/${vocabId}`),
+      linkVocab: (id, vocabId, auditMessage) =>
+        this._request('POST', `/api/v1/projects/${id}/vocabs/${vocabId}`, { auditMessage }),
       /**
        * Unlink a vocabulary from a project.
        * @param {string} id - The resource ID
        * @param {string} vocabId - The vocab layer ID
        */
-      unlinkVocab: (id, vocabId) =>
-        this._request('DELETE', `/api/v1/projects/${id}/vocabs/${vocabId}`),
+      unlinkVocab: (id, vocabId, auditMessage) =>
+        this._request('DELETE', `/api/v1/projects/${id}/vocabs/${vocabId}`, { auditMessage }),
       /**
        * Get a project by ID. To fetch the project's documents, use
        * listDocuments(id) — the include-documents flag has been removed.
@@ -1018,15 +1018,15 @@ class PlaidClient {
        * Delete a project.
        * @param {string} id - The resource ID
        */
-      delete: (id) =>
-        this._request('DELETE', `/api/v1/projects/${id}`),
+      delete: (id, auditMessage) =>
+        this._request('DELETE', `/api/v1/projects/${id}`, { auditMessage }),
       /**
        * Update a project's name.
        * @param {string} id - The resource ID
        * @param {string} name - The name
        */
-      update: (id, name) =>
-        this._request('PATCH', `/api/v1/projects/${id}`, {
+      update: (id, name, auditMessage) =>
+        this._request('PATCH', `/api/v1/projects/${id}`, { auditMessage,
           body: bodyOf({ name }),
         }),
       /**
@@ -1061,8 +1061,8 @@ class PlaidClient {
        * Create a new project. Note: this also registers the user as a maintainer.
        * @param {string} name - The name
        */
-      create: (name) =>
-        this._request('POST', '/api/v1/projects', {
+      create: (name, auditMessage) =>
+        this._request('POST', '/api/v1/projects', { auditMessage,
           body: bodyOf({ name }),
         }),
     };
@@ -1075,8 +1075,8 @@ class PlaidClient {
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
-      setConfig: (textLayerId, namespace, configKey, configValue) =>
-        this._request('PUT', `/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`, {
+      setConfig: (textLayerId, namespace, configKey, configValue, auditMessage) =>
+        this._request('PUT', `/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`, { auditMessage,
           rawBody: configValue, skipResponseTransform: true,
         }),
       /**
@@ -1085,8 +1085,8 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        */
-      deleteConfig: (textLayerId, namespace, configKey) =>
-        this._request('DELETE', `/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`, {
+      deleteConfig: (textLayerId, namespace, configKey, auditMessage) =>
+        this._request('DELETE', `/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -1102,15 +1102,15 @@ class PlaidClient {
        * Delete a text layer.
        * @param {string} textLayerId - The text layer ID
        */
-      delete: (textLayerId) =>
-        this._request('DELETE', `/api/v1/text-layers/${textLayerId}`),
+      delete: (textLayerId, auditMessage) =>
+        this._request('DELETE', `/api/v1/text-layers/${textLayerId}`, { auditMessage }),
       /**
        * Update a text layer's name.
        * @param {string} textLayerId - The text layer ID
        * @param {string} name - The name
        */
-      update: (textLayerId, name) =>
-        this._request('PATCH', `/api/v1/text-layers/${textLayerId}`, {
+      update: (textLayerId, name, auditMessage) =>
+        this._request('PATCH', `/api/v1/text-layers/${textLayerId}`, { auditMessage,
           body: bodyOf({ name }),
         }),
       /**
@@ -1118,8 +1118,8 @@ class PlaidClient {
        * @param {string} textLayerId - The text layer ID
        * @param {string} direction - The direction ("up" or "down")
        */
-      shift: (textLayerId, direction) =>
-        this._request('POST', `/api/v1/text-layers/${textLayerId}/shift`, {
+      shift: (textLayerId, direction, auditMessage) =>
+        this._request('POST', `/api/v1/text-layers/${textLayerId}/shift`, { auditMessage,
           body: bodyOf({ direction }),
         }),
       /**
@@ -1127,8 +1127,8 @@ class PlaidClient {
        * @param {string} projectId - The project ID
        * @param {string} name - The name
        */
-      create: (projectId, name) =>
-        this._request('POST', '/api/v1/text-layers', {
+      create: (projectId, name, auditMessage) =>
+        this._request('POST', '/api/v1/text-layers', { auditMessage,
           body: bodyOf({ 'project-id': projectId, name }),
         }),
     };
@@ -1139,16 +1139,16 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {any} body - The request body
        */
-      setMetadata: (id, body) =>
-        this._request('PUT', `/api/v1/vocab-items/${id}/metadata`, {
+      setMetadata: (id, body, auditMessage) =>
+        this._request('PUT', `/api/v1/vocab-items/${id}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a vocab item.
        * @param {string} id - The resource ID
        */
-      deleteMetadata: (id) =>
-        this._request('DELETE', `/api/v1/vocab-items/${id}/metadata`, {
+      deleteMetadata: (id, auditMessage) =>
+        this._request('DELETE', `/api/v1/vocab-items/${id}/metadata`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -1156,8 +1156,8 @@ class PlaidClient {
        * @param {string} id - The resource ID
        * @param {any} body - The metadata patch
        */
-      patchMetadata: (id, body) =>
-        this._request('PATCH', `/api/v1/vocab-items/${id}/metadata`, {
+      patchMetadata: (id, body, auditMessage) =>
+        this._request('PATCH', `/api/v1/vocab-items/${id}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
@@ -1166,8 +1166,8 @@ class PlaidClient {
        * @param {string} form - The vocab item form
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (vocabLayerId, form, metadata) =>
-        this._request('POST', '/api/v1/vocab-items', {
+      create: (vocabLayerId, form, metadata, auditMessage) =>
+        this._request('POST', '/api/v1/vocab-items', { auditMessage,
           body: bodyOf({ 'vocab-layer-id': vocabLayerId, form, metadata }),
         }),
       /**
@@ -1183,15 +1183,15 @@ class PlaidClient {
        * Delete a vocab item
        * @param {string} id - The resource ID
        */
-      delete: (id) =>
-        this._request('DELETE', `/api/v1/vocab-items/${id}`),
+      delete: (id, auditMessage) =>
+        this._request('DELETE', `/api/v1/vocab-items/${id}`, { auditMessage }),
       /**
        * Update a vocab item's form
        * @param {string} id - The resource ID
        * @param {string} form - The vocab item form
        */
-      update: (id, form) =>
-        this._request('PATCH', `/api/v1/vocab-items/${id}`, {
+      update: (id, form, auditMessage) =>
+        this._request('PATCH', `/api/v1/vocab-items/${id}`, { auditMessage,
           body: bodyOf({ form }),
         }),
     };
@@ -1202,8 +1202,8 @@ class PlaidClient {
        * @param {string} relationLayerId - The relation layer ID
        * @param {string} direction - The direction ("up" or "down")
        */
-      shift: (relationLayerId, direction) =>
-        this._request('POST', `/api/v1/relation-layers/${relationLayerId}/shift`, {
+      shift: (relationLayerId, direction, auditMessage) =>
+        this._request('POST', `/api/v1/relation-layers/${relationLayerId}/shift`, { auditMessage,
           body: bodyOf({ direction }),
         }),
       /**
@@ -1211,8 +1211,8 @@ class PlaidClient {
        * @param {string} spanLayerId - The span layer ID
        * @param {string} name - The name
        */
-      create: (spanLayerId, name) =>
-        this._request('POST', '/api/v1/relation-layers', {
+      create: (spanLayerId, name, auditMessage) =>
+        this._request('POST', '/api/v1/relation-layers', { auditMessage,
           body: bodyOf({ 'span-layer-id': spanLayerId, name }),
         }),
       /**
@@ -1222,8 +1222,8 @@ class PlaidClient {
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
        */
-      setConfig: (relationLayerId, namespace, configKey, configValue) =>
-        this._request('PUT', `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`, {
+      setConfig: (relationLayerId, namespace, configKey, configValue, auditMessage) =>
+        this._request('PUT', `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`, { auditMessage,
           rawBody: configValue, skipResponseTransform: true,
         }),
       /**
@@ -1232,8 +1232,8 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        */
-      deleteConfig: (relationLayerId, namespace, configKey) =>
-        this._request('DELETE', `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`, {
+      deleteConfig: (relationLayerId, namespace, configKey, auditMessage) =>
+        this._request('DELETE', `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -1249,15 +1249,15 @@ class PlaidClient {
        * Delete a relation layer.
        * @param {string} relationLayerId - The relation layer ID
        */
-      delete: (relationLayerId) =>
-        this._request('DELETE', `/api/v1/relation-layers/${relationLayerId}`),
+      delete: (relationLayerId, auditMessage) =>
+        this._request('DELETE', `/api/v1/relation-layers/${relationLayerId}`, { auditMessage }),
       /**
        * Update a relation layer's name.
        * @param {string} relationLayerId - The relation layer ID
        * @param {string} name - The name
        */
-      update: (relationLayerId, name) =>
-        this._request('PATCH', `/api/v1/relation-layers/${relationLayerId}`, {
+      update: (relationLayerId, name, auditMessage) =>
+        this._request('PATCH', `/api/v1/relation-layers/${relationLayerId}`, { auditMessage,
           body: bodyOf({ name }),
         }),
     };
@@ -1281,8 +1281,8 @@ class PlaidClient {
        * @param {number} [precedence] - Ordering precedence
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (tokenLayerId, text, begin, end, precedence, metadata) =>
-        this._request('POST', '/api/v1/tokens', {
+      create: (tokenLayerId, text, begin, end, precedence, metadata, auditMessage) =>
+        this._request('POST', '/api/v1/tokens', { auditMessage,
           body: bodyOf({ 'token-layer-id': tokenLayerId, text, begin, end, precedence, metadata }),
         }),
       /**
@@ -1299,8 +1299,8 @@ class PlaidClient {
        * have no remaining tokens, the span will also be deleted.
        * @param {string} tokenId - The token ID
        */
-      delete: (tokenId) =>
-        this._request('DELETE', `/api/v1/tokens/${tokenId}`),
+      delete: (tokenId, auditMessage) =>
+        this._request('DELETE', `/api/v1/tokens/${tokenId}`, { auditMessage }),
       /**
        * Update a token.
        * @param {string} tokenId - The token ID
@@ -1311,30 +1311,30 @@ class PlaidClient {
        *   CLEAR it (revert to no explicit ordering). bodyOf keeps null but
        *   drops undefined, so the three cases map correctly to the server.
        */
-      update: (tokenId, begin, end, precedence) =>
-        this._request('PATCH', `/api/v1/tokens/${tokenId}`, {
+      update: (tokenId, begin, end, precedence, auditMessage) =>
+        this._request('PATCH', `/api/v1/tokens/${tokenId}`, { auditMessage,
           body: bodyOf({ begin, end, precedence }),
         }),
       /**
        * Create multiple tokens in a single operation.
        * @param {Array} body - The request body
        */
-      bulkCreate: (body) =>
-        this._request('POST', '/api/v1/tokens/bulk', { body }),
+      bulkCreate: (body, auditMessage) =>
+        this._request('POST', '/api/v1/tokens/bulk', { auditMessage, body }),
       /**
        * Delete multiple tokens in a single operation. Provide an array of IDs.
        * @param {Array} body - The request body
        */
-      bulkDelete: (body) =>
-        this._request('DELETE', '/api/v1/tokens/bulk', { body }),
+      bulkDelete: (body, auditMessage) =>
+        this._request('DELETE', '/api/v1/tokens/bulk', { auditMessage, body }),
       /**
        * Split a token at a Unicode code-point offset. The original token becomes the
        * left half (keeps its ID, spans, vocab-links); the new right token's ID is returned.
        * @param {string} tokenId - The token ID
        * @param {number} position - Code-point offset to split at (strictly between begin and end)
        */
-      split: (tokenId, position) =>
-        this._request('POST', `/api/v1/tokens/${tokenId}/split`, {
+      split: (tokenId, position, auditMessage) =>
+        this._request('POST', `/api/v1/tokens/${tokenId}/split`, { auditMessage,
           body: bodyOf({ position }),
         }),
       /**
@@ -1345,8 +1345,8 @@ class PlaidClient {
        * @param {string} tokenId - The anchor token ID
        * @param {string} otherTokenId - The other token to merge in
        */
-      merge: (tokenId, otherTokenId) =>
-        this._request('POST', `/api/v1/tokens/${tokenId}/merge`, {
+      merge: (tokenId, otherTokenId, auditMessage) =>
+        this._request('POST', `/api/v1/tokens/${tokenId}/merge`, { auditMessage,
           body: bodyOf({ 'other-token-id': otherTokenId }),
         }),
       /**
@@ -1357,8 +1357,8 @@ class PlaidClient {
        * @param {number} [begin] - New start offset, inclusive (Unicode code points)
        * @param {number} [end] - New end offset, exclusive (Unicode code points)
        */
-      shift: (tokenId, begin, end) =>
-        this._request('POST', `/api/v1/tokens/${tokenId}/shift`, {
+      shift: (tokenId, begin, end, auditMessage) =>
+        this._request('POST', `/api/v1/tokens/${tokenId}/shift`, { auditMessage,
           body: bodyOf({ begin, end }),
         }),
       /**
@@ -1366,16 +1366,16 @@ class PlaidClient {
        * @param {string} tokenId - The token ID
        * @param {any} body - The request body
        */
-      setMetadata: (tokenId, body) =>
-        this._request('PUT', `/api/v1/tokens/${tokenId}/metadata`, {
+      setMetadata: (tokenId, body, auditMessage) =>
+        this._request('PUT', `/api/v1/tokens/${tokenId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a token.
        * @param {string} tokenId - The token ID
        */
-      deleteMetadata: (tokenId) =>
-        this._request('DELETE', `/api/v1/tokens/${tokenId}/metadata`, {
+      deleteMetadata: (tokenId, auditMessage) =>
+        this._request('DELETE', `/api/v1/tokens/${tokenId}/metadata`, { auditMessage,
           skipResponseTransform: true,
         }),
       /**
@@ -1383,8 +1383,8 @@ class PlaidClient {
        * @param {string} tokenId - The token ID
        * @param {any} body - The metadata patch
        */
-      patchMetadata: (tokenId, body) =>
-        this._request('PATCH', `/api/v1/tokens/${tokenId}/metadata`, {
+      patchMetadata: (tokenId, body, auditMessage) =>
+        this._request('PATCH', `/api/v1/tokens/${tokenId}/metadata`, { auditMessage,
           rawBody: body, skipResponseTransform: true,
         }),
     };
@@ -1406,8 +1406,8 @@ class PlaidClient {
        * @param {any} data - The message data to send
        * @returns {Promise<any>} Response from the send operation
        */
-      sendMessage: (projectId, data) =>
-        this._request('POST', `/api/v1/projects/${projectId}/message`, {
+      sendMessage: (projectId, data, auditMessage) =>
+        this._request('POST', `/api/v1/projects/${projectId}/message`, { auditMessage,
           body: { body: data },
         }),
 
@@ -1490,8 +1490,8 @@ class PlaidClient {
      *   For 'count': {return: 'count', count}. Entity cells are full entity objects
      *   (same shape as the GET endpoints).
      */
-    this.query = (body) =>
-      this._request('POST', '/api/v1/query', { body });
+    this.query = (body, auditMessage) =>
+      this._request('POST', '/api/v1/query', { auditMessage, body });
   }
 
   // --- Core methods ---
