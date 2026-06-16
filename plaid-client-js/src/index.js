@@ -59,6 +59,20 @@ class PlaidClient {
           body: bodyOf({ 'vocab-item': vocabItem, tokens, metadata }),
         }),
       /**
+       * Create multiple vocab links in a single operation. Entries may
+       * reference different vocab items, but all tokens across the call must
+       * belong to one document.
+       * @param {Array<{vocabItem: string, tokens: string[], metadata?: any}>} body - The vocab links to create
+       */
+      bulkCreate: (body, auditMessage) =>
+        this._request('POST', '/api/v1/vocab-links/bulk', { auditMessage, body }),
+      /**
+       * Delete multiple vocab links in a single operation. Provide an array of IDs.
+       * @param {string[]} body - The vocab link IDs to delete
+       */
+      bulkDelete: (body, auditMessage) =>
+        this._request('DELETE', '/api/v1/vocab-links/bulk', { auditMessage, body }),
+      /**
        * Replace all metadata for a vocab link. The entire metadata map is replaced - existing metadata keys not included in the request will be removed.
        * @param {string} id - The resource ID
        * @param {any} body - The request body

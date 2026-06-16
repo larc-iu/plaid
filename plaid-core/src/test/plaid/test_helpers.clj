@@ -456,6 +456,18 @@
                               :path "/api/v1/vocab-links"
                               :body {:vocab-item vocab-item-id :tokens tokens :metadata metadata}})))
 
+(defn bulk-create-vocab-links
+  "links is a vector of {:vocab-item <id> :tokens [<id> ...] :metadata? {...}}."
+  [user-request-fn links]
+  (api-call user-request-fn {:method :post
+                             :path "/api/v1/vocab-links/bulk"
+                             :body links}))
+
+(defn bulk-delete-vocab-links [user-request-fn link-ids]
+  (api-call user-request-fn {:method :delete
+                             :path "/api/v1/vocab-links/bulk"
+                             :body link-ids}))
+
 (defn get-vocab-link [user-request-fn link-id]
   (api-call user-request-fn {:method :get
                              :path (str "/api/v1/vocab-links/" link-id)}))

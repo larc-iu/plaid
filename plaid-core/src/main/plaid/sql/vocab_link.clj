@@ -249,6 +249,78 @@
         new-id)))))
 
 ;; ============================================================
+;; Bulk create
+;; ============================================================
+
+(defn bulk-create
+  "Bulk-create vocab links in a single operation. Each entry in
+  `attrs-vec` requires :vocab-link/vocab-item and :vocab-link/tokens
+  (non-empty vector) and optionally :metadata. Unlike `span/bulk-create`
+  (one layer per call), entries may reference DIFFERENT vocab items —
+  auto-linking links many tokens to many items at once. Every token across
+  the whole call must belong to a single document (mirrors the span/token
+  bulk contract).
+
+  Each entry is validated with the same `check-vocab-link-invariants!` the
+  single `create` uses (item exists, tokens resolve + no dups + share one
+  doc/text/token-layer, project linked to the vocab layer). The audit shape
+  mirrors single `create`: ONE synthetic :insert per link whose post_image
+  folds :tokens (and :metadata when present), so ETL replay reconstructs each
+  link from one record. Returns {:success true :extra [ids]}."
+  [db attrs-vec user-id]
+  (let [first-token-id (-> attrs-vec first :vocab-link/tokens first)
+        {:keys [doc-id project-id]} (project-and-doc-from-first-token db first-token-id)]
+    (submit-operation!
+     [tx db {:type :vocab-link/bulk-create
+             :project project-id
+             :document doc-id
+             :description (str "Bulk create " (count attrs-vec) " vocab mappings")
+             :user user-id}]
+     ;; Validation runs inside the tx so submit-operation* projects
+     ;; ExceptionInfo to a structured 4xx response.
+     (when (empty? attrs-vec)
+       (throw (ex-info "Bulk create requires at least one vocab link" {:code 400})))
+     (let [records (mapv
+                    (fn [a]
+                      (let [vocab-item (:vocab-link/vocab-item a)
+                            tokens (:vocab-link/tokens a)
+                            token-rows (fetch-tokens-by-ids tx tokens)
+                            {:keys [doc-id]} (check-vocab-link-invariants!
+                                              tx vocab-item tokens token-rows)]
+                        {:id (psc/new-uuid)
+                         :vocab-item vocab-item
+                         :tokens tokens
+                         :doc-id doc-id
+                         :metadata (:metadata a)}))
+                    attrs-vec)
+           ;; All links in the batch must belong to a single document.
+           doc-ids (->> records (map :doc-id) distinct)]
+       (when-not (= 1 (count doc-ids))
+         (throw (ex-info "Tokens in a bulk vocab-link create must all belong to the same document"
+                         {:document-ids doc-ids :code 400})))
+       ;; Manual insert (not psc/insert-many!) so the post-image folds the
+       ;; junction tokens — see single-`create` docstring (task #59).
+       (psc/execute! tx {:insert-into :vocab_links
+                         :values (mapv (fn [r]
+                                         {:id (:id r)
+                                          :vocab_item_id (:vocab-item r)
+                                          :document_id (:doc-id r)})
+                                       records)})
+       (doseq [r records]
+         (insert-vocab-link-tokens! tx (:id r) (:tokens r)))
+       (doseq [r records]
+         (when (seq (:metadata r))
+           (metadata/insert-metadata! tx "vocab-link" (:id r) (:metadata r)
+                                      {:skip-parent-audit? true})))
+       (doseq [r records]
+         (let [post-row (psc/fetch-by-id tx :vocab_links (:id r))
+               post-tokens (fetch-token-ids tx (:id r))
+               post-image (cond-> (assoc post-row :tokens post-tokens)
+                            (seq (:metadata r)) (assoc :metadata (:metadata r)))]
+           (psc/record-audit-write! tx :vocab_links (:id r) :insert nil post-image)))
+       (mapv :id records)))))
+
+;; ============================================================
 ;; (No `merge` fn — vocab_link has no mutable scalar fields beyond
 ;; the junction-table tokens, and the REST API does not expose a
 ;; PATCH endpoint for it. Token edits go through `set-tokens` /
@@ -287,6 +359,48 @@
                             [:= :entity_type "vocab-link"]
                             [:= :entity_id eid]]})
      eid)))
+
+;; ============================================================
+;; Bulk delete
+;; ============================================================
+
+(defn bulk-delete
+  "Bulk-delete vocab links in a single operation. Ids that don't resolve to
+  an existing row are silently dropped (mirrors `span/bulk-delete`) — without
+  the filter they'd reach `psc/delete-by-id!` and emit phantom :delete audit
+  rows with pre = nil. Each delete relies on the FK ON DELETE CASCADE to sweep
+  `vocab_link_tokens`; `entity_metadata` has no FK and is swept manually. All
+  links must belong to a single document (the doc-version OCC covers one doc).
+  Returns the vector of ids actually deleted."
+  [db eids user-id]
+  (let [eids (vec (distinct eids))
+        rows (psc/fetch-ids db :vocab_links eids)
+        first-row (first rows)
+        outer-doc-id (:document_id first-row)
+        outer-project (when first-row
+                        (:project_id (psc/fetch-by-id db :documents outer-doc-id)))]
+    (submit-operation!
+     [tx db {:type :vocab-link/bulk-delete
+             :project outer-project
+             :document outer-doc-id
+             :description (str "Bulk delete " (count rows) " vocab mappings")
+             :user user-id}]
+     ;; Re-fetch inside the tx so the existence check matches the rows we
+     ;; delete (a concurrent delete between the outer read and here is fine).
+     (let [rows-tx (psc/fetch-ids tx :vocab_links eids)
+           existing-ids (->> rows-tx (keep :id) vec)]
+       (when (seq existing-ids)
+         (let [doc-ids (->> rows-tx (map :document_id) distinct)]
+           (when (> (count doc-ids) 1)
+             (throw (ex-info "Tokens in a bulk vocab-link delete must all belong to the same document"
+                             {:document-ids doc-ids :code 400}))))
+         (doseq [eid existing-ids]
+           (psc/delete-by-id! tx :vocab_links eid))
+         (psc/execute! tx {:delete-from :entity_metadata
+                           :where [:and
+                                   [:= :entity_type "vocab-link"]
+                                   [:in :entity_id existing-ids]]}))
+       existing-ids))))
 
 ;; ============================================================
 ;; Metadata

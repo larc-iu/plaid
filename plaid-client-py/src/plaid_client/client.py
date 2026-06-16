@@ -65,6 +65,26 @@ class VocabLinksResource(_Resource):
         return self._request('POST', '/api/v1/vocab-links',
                              body=_body_of(vocab_item=vocab_item, tokens=tokens, metadata=metadata), audit_message=audit_message)
 
+    def bulk_create(self, body: list, audit_message=None) -> Any:
+        """Create multiple vocab links in a single operation.
+
+        Entries may reference different vocab items, but all tokens across the
+        call must belong to one document. Each entry is a dict with keys
+        ``vocab_item``, ``tokens``, and optional ``metadata``.
+
+        Args:
+            body: The vocab links to create
+        """
+        return self._request('POST', '/api/v1/vocab-links/bulk', body=body, audit_message=audit_message)
+
+    def bulk_delete(self, body: list, audit_message=None) -> Any:
+        """Delete multiple vocab links in a single operation. Provide a list of IDs.
+
+        Args:
+            body: The request body
+        """
+        return self._request('DELETE', '/api/v1/vocab-links/bulk', body=body, audit_message=audit_message)
+
     def set_metadata(self, id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a vocab link.
 

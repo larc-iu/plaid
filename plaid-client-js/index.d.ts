@@ -80,6 +80,8 @@ interface SSEConnection {
 
 interface VocabLinksBundle {
   create(vocabItem: string, tokens: any[], metadata?: any, auditMessage?: string): Promise<any>;
+  bulkCreate(body: any[], auditMessage?: string): Promise<any>;
+  bulkDelete(body: any[], auditMessage?: string): Promise<any>;
   setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(id: string, auditMessage?: string): Promise<any>;
   patchMetadata(id: string, body: any, auditMessage?: string): Promise<any>;

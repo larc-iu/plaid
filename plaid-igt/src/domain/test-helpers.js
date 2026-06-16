@@ -144,6 +144,8 @@ export function makeFakeClient(opts = {}) {
     },
     vocabLinks: {
       create: op('vocabLinks.create', () => ({ id: nextId('link') })),
+      bulkCreate: op('vocabLinks.bulkCreate', (body) => ({ ids: (body || []).map(() => nextId('link')) })),
+      bulkDelete: op('vocabLinks.bulkDelete', () => ({})),
       delete: op('vocabLinks.delete', () => ({})),
       patchMetadata: op('vocabLinks.patchMetadata', () => ({})),
     },

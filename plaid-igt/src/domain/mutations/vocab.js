@@ -8,9 +8,9 @@
 
 import { stampInferred, provState, PROV, PROV_STATES } from '@larc-iu/plaid-client';
 
-// The server caps a single atomic batch at 1000 ops (plaid-core
-// rest_api/v1/batch.clj). Keep a margin so a chunk never trips the cap.
-const LINK_BATCH_CHUNK = 500;
+// Link replacements emit 2 ops apiece (delete + create); 400 per batch keeps
+// each atomic batch comfortably under plaid-core's 1000-op cap.
+const REPLACE_CHUNK = 400;
 
 // Locate the existing single-token vocab link for `tokenId` across all
 // vocabularies. By convention there is at most one.
@@ -34,54 +34,54 @@ const findVocabForItem = (vocabularies, vocabItemId) => {
 };
 
 export const vocabMutations = {
-  // Bulk-create inferred vocab links (auto-linking). `proposals` is
-  // [{ tokenId, vocabItemId }]; every link is stamped with provenance
-  // ({ prov: 'inferred', provSource }, NO provConfirmed — a human confirms by
-  // touching the link). One atomic batch; tokens that already have a link are
-  // skipped defensively. Returns the number created (false on failure).
+  // Apply auto-link proposals (the built-in rule or any proposal provider).
+  // `proposals` is [{ tokenId, vocabItemId }]. Provenance write contract: a
+  // token with no link gets one; a token whose only link is machine-unverified
+  // is RE-linked when the proposal differs; human and human-confirmed links are
+  // left untouched (and a same-item proposal is a no-op). Every new link is
+  // stamped { prov: 'inferred', provSource } (NO provConfirmed — a human
+  // confirms by touching it). Creates go through the uncapped bulk endpoint
+  // (so an arbitrarily large first run is one tx); the rarer replacements run
+  // as chunked atomic delete+create batches. Ends with one _reload(). Returns
+  // the number of links written (false on failure).
   async bulkLinkVocab(proposals, provSource) {
-    const todo = (proposals || []).filter(p => {
-      const { link } = findPriorLink(this._vocabularies, p.tokenId);
-      if (link) return false;
+    const creates = [];  // { tokenId, item }
+    const replaces = []; // { tokenId, item, priorLinkId }
+    for (const p of proposals || []) {
       const { item } = findVocabForItem(this._vocabularies, p.vocabItemId);
-      return !!item;
-    });
-    if (todo.length === 0) return 0;
+      if (!item) continue;
+      const { link } = findPriorLink(this._vocabularies, p.tokenId);
+      if (!link) { creates.push({ tokenId: p.tokenId, item }); continue; }
+      // Replace only machine-unverified links, and only when the item changes.
+      if (provState(link.metadata) !== PROV_STATES.MACHINE) continue;
+      if (link.vocabItem?.id === item.id) continue;
+      replaces.push({ tokenId: p.tokenId, item, priorLinkId: link.id });
+    }
+    if (!creates.length && !replaces.length) return 0;
     const metadata = stampInferred(provSource);
 
     const ok = await this._withSaving('Failed to auto-link', async () => {
-      // A large document can have far more unlinked tokens than fit in one
-      // batch (this runs unattended from the auto-analysis pass). Split into
-      // chunks under the server cap; each chunk is its own atomic batch. Links
-      // are independent, so partial progress across chunks is fine — and it's
-      // what stops a too-big batch from failing forever and re-triggering the
-      // pass on every reload.
-      const results = [];
-      for (let i = 0; i < todo.length; i += LINK_BATCH_CHUNK) {
-        const chunk = todo.slice(i, i + LINK_BATCH_CHUNK);
-        const chunkResults = await this._client.batched(async () => {
-          chunk.forEach(p => this._client.vocabLinks.create(p.vocabItemId, [p.tokenId], metadata));
-        });
-        results.push(...chunkResults);
+      if (creates.length) {
+        // The dedicated endpoint has no per-batch op cap, so even a document
+        // with thousands of unlinked tokens links in a single tx.
+        await this._client.vocabLinks.bulkCreate(
+          creates.map(c => ({ vocabItem: c.item.id, tokens: [c.tokenId], metadata }))
+        );
       }
-
-      this._applyRawPatch((next, info, vocabs) => {
-        todo.forEach((p, i) => {
-          const newLinkId = results[i]?.body?.id;
-          if (!newLinkId) return;
-          const { vocab, item } = findVocabForItem(vocabs, p.vocabItemId);
-          if (!vocab) return;
-          if (!Array.isArray(vocab.vocabLinks)) vocab.vocabLinks = [];
-          vocab.vocabLinks.push({
-            id: newLinkId,
-            tokens: [p.tokenId],
-            vocabItem: { id: item.id, form: item.form, metadata: item.metadata || {} },
-            metadata
-          });
+      // Replacements (2 ops each: delete stale link + create new) packed into
+      // atomic batches under the server's 1000-op cap.
+      for (let i = 0; i < replaces.length; i += REPLACE_CHUNK) {
+        const chunk = replaces.slice(i, i + REPLACE_CHUNK);
+        await this._client.batched(async () => {
+          for (const r of chunk) {
+            this._client.vocabLinks.delete(r.priorLinkId);
+            this._client.vocabLinks.create(r.item.id, [r.tokenId], metadata);
+          }
         });
-      });
+      }
+      await this._reload();
     });
-    return ok ? todo.length : false;
+    return ok ? creates.length + replaces.length : false;
   },
 
   // Confirm-on-touch for an inferred link: flip provConfirmed so it renders
