@@ -528,6 +528,54 @@
                        (psc/delete-by-id! tx :projects eid)
                        eid)))
 
+(def ^:private purge-batch-size 5000)
+
+(defn purge-deleted-project-history!
+  "Reclaim the `operations` + `audit_writes` a project accumulated over its
+  lifetime. Project delete is intentionally cheap — it does NOT audit its
+  descendants and leaves the project's whole op/audit history in place. A
+  deleted project is not time-travelable (`plaid.history.read/project-live?`),
+  so that history is unreadable dead weight; this purges it.
+
+  Best-effort GC, meant to run in the BACKGROUND after a project delete (see
+  the `:delete` REST handler). Deletes in capped batches — each batch is its
+  own auto-commit statement on `datasource`, so the single SQLite writer lock
+  is released between batches and concurrent user writes can interleave (a
+  single unbounded DELETE would hold the lock for the whole multi-million-row
+  sweep and stall every other write). Phase 1 clears the project's audit_writes
+  (the bulk), phase 2 the now-childless operations rows.
+
+  Raw + unaudited: operations/audit_writes ARE the audit infrastructure, not
+  audited entities, so this does not go through `submit-operation!`.
+
+  Caller is responsible for only invoking this once the project row is gone
+  (UUIDv7 ids are never reused, so there's no risk of clobbering a live
+  project's history). A crash mid-sweep leaves some orphaned rows — a periodic
+  sweep (`project_id NOT IN (SELECT id FROM projects)`) is the backstop.
+  Returns `{:audit-rows n :operations n}`."
+  [datasource project-id]
+  (let [drain! (fn [query-fn]
+                 (loop [total 0]
+                   (let [n (psc/execute! datasource (query-fn))]
+                     (if (pos? n) (recur (+ total n)) total))))
+        audit-rows (drain!
+                    (fn []
+                      {:delete-from :audit_writes
+                       :where [:in :id
+                               {:select [:id] :from [:audit_writes]
+                                :where [:in :op_id
+                                        {:select [:id] :from [:operations]
+                                         :where [:= :project_id project-id]}]
+                                :limit purge-batch-size}]}))
+        operations (drain!
+                    (fn []
+                      {:delete-from :operations
+                       :where [:in :id
+                               {:select [:id] :from [:operations]
+                                :where [:= :project_id project-id]
+                                :limit purge-batch-size}]}))]
+    {:audit-rows audit-rows :operations operations}))
+
 ;; ============================================================
 ;; Access privileges (project_users join table)
 ;; ============================================================

@@ -3,7 +3,16 @@
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
+            [taoensso.timbre :as log]
             [plaid.sql.project :as prj]))
+
+(defonce ^{:doc "When true, a project delete fires a background sweep to purge
+  the (now-deleted, un-time-travelable) project's operations + audit_writes —
+  see `prj/purge-deleted-project-history!`. DISABLED by default so the test
+  suite, which deletes projects via REST and then asserts on their audit rows,
+  never races a sweep. The HTTP server flips it true at startup
+  (`plaid.server.http-server`), a path tests never run."}
+  purge-deleted-projects? (atom false))
 
 (defn get-project-id [{params :parameters}]
   (-> params :path :id))
@@ -58,7 +67,18 @@
               :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id :as req}]
                          (let [{:keys [success code error]} (prj/delete db id user-id)]
                            (if success
-                             {:status 204}
+                             (do
+                               ;; Delete stays fast (it doesn't audit descendants).
+                               ;; Reclaim the project's op/audit history in the
+                               ;; background. Best-effort; gated so tests don't race.
+                               (when @purge-deleted-projects?
+                                 (future
+                                   (try
+                                     (log/info "Purged history for deleted project" id
+                                               (prj/purge-deleted-project-history! db id))
+                                     (catch Throwable t
+                                       (log/warn t "Background purge failed for deleted project" id)))))
+                               {:status 204})
                              {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
 
    ;; Documents (keyset-paginated)

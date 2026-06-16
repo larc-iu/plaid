@@ -21,6 +21,7 @@
   policy — here they simply ride FK CASCADE."
   (:require [clojure.test :refer :all]
             [plaid.sql.common :as psc]
+            [plaid.sql.project :as prj]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin assert-created assert-ok
                                     assert-no-content with-clean-db]]
@@ -87,6 +88,46 @@
       (is (empty? (psc/q db {:select [:*] :from [:entity_metadata]
                              :where [:in :entity_id [doc t1 s1]]}))
           "entity_metadata for the project's entities was swept (no orphans)"))))
+
+;; ---------------------------------------------------------------------------
+;; Background GC: purge-deleted-project-history!
+;; ---------------------------------------------------------------------------
+;; Project delete leaves the project's lifetime of operations + audit_writes
+;; behind (a deleted project is not time-travelable, so it's dead weight). The
+;; running server purges it in the background; here we exercise the purge fn
+;; directly (synchronously) — including isolation from a surviving project.
+
+(deftest purge-deleted-project-history-reclaims-ops-and-audit
+  (let [count-ops (fn [pid] (:n (psc/q1 db {:select [[[:count :*] :n]] :from [:operations]
+                                            :where [:= :project_id pid]})))
+        count-audit (fn [pid] (:n (psc/q1 db {:select [[[:count :*] :n]]
+                                              :from [[:audit_writes :a]]
+                                              :join [[:operations :o] [:= :o.id :a.op_id]]
+                                              :where [:= :o.project_id pid]})))
+        ;; proj-A: build some history, then delete (delete leaves it behind).
+        a (create-test-project admin-request "PurgeA")
+        _ (create-test-document admin-request a "Adoc")
+        atl (-> (create-text-layer admin-request a "ATL") :body :id)
+        _ (create-token-layer admin-request atl "ATKL")
+        ;; proj-B: a survivor whose history must be untouched by A's purge.
+        b (create-test-project admin-request "PurgeB")
+        _ (create-test-document admin-request b "Bdoc")
+        _ (create-text-layer admin-request b "BTL")]
+    (assert-no-content (delete-test-project admin-request a))
+    ;; Delete does NOT purge — the history is still there (tests don't run the
+    ;; server, so the background sweep never fires; flag is off by default).
+    (is (pos? (count-ops a)) "A's operations survive the delete itself")
+    (is (pos? (count-audit a)) "A's audit_writes survive the delete itself")
+    (let [b-ops (count-ops b)
+          b-audit (count-audit b)
+          {:keys [audit-rows operations]} (prj/purge-deleted-project-history! db a)]
+      (is (pos? operations) "purge reports operations deleted")
+      (is (pos? audit-rows) "purge reports audit rows deleted")
+      (is (zero? (count-ops a)) "A's operations are purged")
+      (is (zero? (count-audit a)) "A's audit_writes are purged")
+      ;; Surviving project B is untouched.
+      (is (= b-ops (count-ops b)) "survivor B's operations untouched")
+      (is (= b-audit (count-audit b)) "survivor B's audit_writes untouched"))))
 
 ;; ---------------------------------------------------------------------------
 ;; Junction tables MUST NOT appear in audit_writes
