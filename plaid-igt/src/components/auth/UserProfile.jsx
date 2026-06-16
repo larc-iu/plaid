@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ArrowLeft, Copy, Check } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,7 @@ const timeAgo = (iso) => {
 const EMPTY = (username = '') => ({ username, currentPassword: '', newPassword: '', confirmPassword: '' });
 
 export const UserProfile = () => {
+  useDocumentTitle('Profile');
   const navigate = useNavigate();
   const { user, client, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);

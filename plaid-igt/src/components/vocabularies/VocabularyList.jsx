@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { notifyWarning } from '@/utils/feedback';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // Sortable column header button (renders an arrow for the active column).
 const SortHeader = ({ field, label, sort, onSort, className }) => {
@@ -28,6 +29,7 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
 };
 
 export const VocabularyList = () => {
+  useDocumentTitle('Vocabularies');
   const navigate = useNavigate();
   const [vocabularies, setVocabularies] = useState([]);
   const [loading, setLoading] = useState(true);

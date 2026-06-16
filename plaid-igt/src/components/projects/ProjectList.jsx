@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { notifyWarning } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // Sortable column header button (renders an arrow for the active column).
 const SortHeader = ({ field, label, sort, onSort, className }) => {
@@ -31,6 +32,7 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
 };
 
 export const ProjectList = () => {
+  useDocumentTitle('Projects');
   const navigate = useNavigate();
   const { client, logout } = useAuth();
   const [projects, setProjects] = useState([]);

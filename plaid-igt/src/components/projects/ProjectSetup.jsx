@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Info, Layers, FileText, Languages, List, BookOpen, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // Step components
 import { BasicInfoStep } from './setup/BasicInfoStep';
@@ -15,6 +16,7 @@ import { VocabularyStep } from './setup/VocabularyStep';
 import { ConfirmationStep } from './setup/ConfirmationStep';
 
 export const ProjectSetup = () => {
+  useDocumentTitle('Project Setup');
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { user, client } = useAuth();

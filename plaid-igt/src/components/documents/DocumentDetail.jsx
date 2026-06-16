@@ -19,6 +19,7 @@ import { DocumentMedia } from './media/DocumentMedia.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // Renders only the active tab's panel (others stay unmounted).
 const Panel = ({ active, children }) => (active ? children : null);
@@ -86,6 +87,8 @@ const DocumentEditor = () => {
 
   const permissions = useDocumentPermissions(doc?.project);
   const history = useDocumentHistory(documentId, client);
+
+  useDocumentTitle(doc?.document?.name, doc?.project?.name);
 
   useEffect(() => {
     if (!client) {

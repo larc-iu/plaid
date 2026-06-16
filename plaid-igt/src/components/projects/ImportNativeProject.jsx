@@ -18,8 +18,10 @@ import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 export const ImportNativeProject = () => {
+  useDocumentTitle('Import Archive');
   const navigate = useNavigate();
   const { client } = useAuth();
   const fileInputRef = useRef(null);

@@ -24,6 +24,7 @@ import {
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
@@ -32,6 +33,8 @@ export const VocabularyDetail = () => {
   const isNewVocabulary = !vocabularyId;
 
   const [vocabulary, setVocabulary] = useState(null);
+  // New vocab: a fixed label; existing: the loaded name (null while loading).
+  useDocumentTitle(isNewVocabulary ? 'New Vocabulary' : vocabulary?.name);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState(isNewVocabulary ? 'settings' : 'items');

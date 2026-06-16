@@ -4,6 +4,7 @@
 
 import { Link, useNavigate } from 'react-router-dom';
 import { PenLine, FileUp, Archive, ChevronRight } from 'lucide-react';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const OPTIONS = [
   {
@@ -27,6 +28,7 @@ const OPTIONS = [
 ];
 
 export const NewProjectChooser = () => {
+  useDocumentTitle('New Project');
   const navigate = useNavigate();
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">

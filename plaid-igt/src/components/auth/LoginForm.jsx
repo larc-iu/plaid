@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { notifySuccess } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 // First screen migrated from Mantine to shadcn/Tailwind. The `.tw` wrapper opts
 // this subtree into the scoped preflight subset (see src/index.css).
 export const LoginForm = () => {
+  useDocumentTitle('Sign In');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

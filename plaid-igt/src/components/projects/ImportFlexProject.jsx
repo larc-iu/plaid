@@ -22,6 +22,7 @@ import { parseFwdata } from '../../import/flex/fwdataParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const SCOPE_BADGE = {
   Word: 'border-transparent bg-blue-100 text-blue-700',
@@ -30,6 +31,7 @@ const SCOPE_BADGE = {
 };
 
 export const ImportFlexProject = () => {
+  useDocumentTitle('Import FLEx Project');
   const navigate = useNavigate();
   const { client } = useAuth();
   const fileInputRef = useRef(null);

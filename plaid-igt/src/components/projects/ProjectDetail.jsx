@@ -7,10 +7,19 @@ import { DocumentList } from './DocumentList';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { readInitialized } from '@/domain/igtConfig';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
 const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'settings'];
+
+// Title-bar labels for the settings sections (match ProjectSettingsPanel).
+const SECTION_TITLES = {
+  access: 'Access Management',
+  tokens: 'Access Tokens',
+  services: 'Services',
+  settings: 'Settings',
+};
 
 // Default project view: the document list, a query-engine-powered Search tab,
 // and (for maintainers) a Settings tab. Settings is a real panel in this tab
@@ -61,6 +70,10 @@ export const ProjectDetail = () => {
   // Settings tab is reflected in the path so its sections are deep-linkable.
   const pathSection = SETTINGS_SECTIONS.find((s) => location.pathname.endsWith(`/${s}`)) || null;
   const onSettings = pathSection !== null;
+
+  // Tab title: "<Section> · <Project> · Plaid IGT" on a settings section, else
+  // "<Project> · Plaid IGT". Both segments are dropped while still loading.
+  useDocumentTitle(onSettings ? SECTION_TITLES[pathSection] : null, project?.name);
   const [contentTab, setContentTab] = useState('documents');
   const activeTab = onSettings && canManage ? 'settings' : contentTab;
 
