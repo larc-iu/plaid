@@ -190,9 +190,9 @@ export async function importLexicon({ client, vocabId, lexicon, baselineWs, onPr
   for (let i = 0; i < pending.length; i += LINK_CHUNK) {
     if (shouldStop?.()) throw new Error('Import cancelled');
     const chunk = pending.slice(i, i + LINK_CHUNK);
-    client.beginBatch();
-    for (const p of chunk) client.vocabItems.create(vocabId, p.form, p.metadata);
-    const results = await client.submitBatch();
+    const results = await client.batched(async () => {
+      for (const p of chunk) client.vocabItems.create(vocabId, p.form, p.metadata);
+    });
     chunk.forEach((p, j) => {
       const id = results[j]?.body?.id ?? results[j]?.id;
       if (id) senseToItem.set(p.senseGuid, id);
@@ -346,12 +346,12 @@ export async function importDocument({ client, projectId, targets, config, doc, 
     });
     for (let i = 0; i < linkSpecs.length; i += LINK_CHUNK) {
       check();
-      client.beginBatch();
-      for (const l of linkSpecs.slice(i, i + LINK_CHUNK)) {
-        client.vocabLinks.create(l.itemId, [l.tokenId],
-          l.approved ? confirmedInferred('flex-import') : stampInferred('flex-import'));
-      }
-      await client.submitBatch();
+      await client.batched(async () => {
+        for (const l of linkSpecs.slice(i, i + LINK_CHUNK)) {
+          client.vocabLinks.create(l.itemId, [l.tokenId],
+            l.approved ? confirmedInferred('flex-import') : stampInferred('flex-import'));
+        }
+      });
     }
   }
 

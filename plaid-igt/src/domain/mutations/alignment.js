@@ -153,28 +153,28 @@ export const alignmentMutations = {
     const hasExistingSentences = (sentenceTokenLayer.tokens || []).length > 0;
 
     return this._withSaving('Failed to create alignment', async () => {
-      this._client.beginBatch();
-      this._client.texts.update(textId, [{ type: 'insert', index: insertBegin, value: insertedText }]);
-      this._client.tokens.create(
-        alignmentTokenLayer.id,
-        textId,
-        tokenBegin,
-        tokenEnd,
-        undefined,
-        { timeBegin, timeEnd }
-      );
-      // Empty partitioning layer: compensate-after-cascade skips it, so we
-      // must seed the partition. Otherwise the cascade reindexes surviving
-      // sentences to cover the inserted text.
-      if (!hasExistingSentences && newTextLength > 0) {
-        this._client.tokens.bulkCreate([{
-          tokenLayerId: sentenceTokenLayer.id,
-          text: textId,
-          begin: 0,
-          end: newTextLength
-        }]);
-      }
-      await this._client.submitBatch();
+      await this._client.batched(async () => {
+        this._client.texts.update(textId, [{ type: 'insert', index: insertBegin, value: insertedText }]);
+        this._client.tokens.create(
+          alignmentTokenLayer.id,
+          textId,
+          tokenBegin,
+          tokenEnd,
+          undefined,
+          { timeBegin, timeEnd }
+        );
+        // Empty partitioning layer: compensate-after-cascade skips it, so we
+        // must seed the partition. Otherwise the cascade reindexes surviving
+        // sentences to cover the inserted text.
+        if (!hasExistingSentences && newTextLength > 0) {
+          this._client.tokens.bulkCreate([{
+            tokenLayerId: sentenceTokenLayer.id,
+            text: textId,
+            begin: 0,
+            end: newTextLength
+          }]);
+        }
+      });
       await this._reload();
     });
   },
@@ -258,25 +258,25 @@ export const alignmentMutations = {
       || sentences.every(s => s.begin >= tokenBegin && s.end <= tokenEnd);
 
     return this._withSaving('Failed to edit alignment', async () => {
-      this._client.beginBatch();
-      this._client.texts.update(textId, textOps);
-      this._client.tokens.create(
-        alignmentTokenLayer.id,
-        textId,
-        tokenBegin,
-        newAlignmentEnd,
-        undefined,
-        { timeBegin, timeEnd }
-      );
-      if (cascadeWipesAllSentences && newTextLength > 0) {
-        this._client.tokens.bulkCreate([{
-          tokenLayerId: sentenceTokenLayer.id,
-          text: textId,
-          begin: 0,
-          end: newTextLength
-        }]);
-      }
-      await this._client.submitBatch();
+      await this._client.batched(async () => {
+        this._client.texts.update(textId, textOps);
+        this._client.tokens.create(
+          alignmentTokenLayer.id,
+          textId,
+          tokenBegin,
+          newAlignmentEnd,
+          undefined,
+          { timeBegin, timeEnd }
+        );
+        if (cascadeWipesAllSentences && newTextLength > 0) {
+          this._client.tokens.bulkCreate([{
+            tokenLayerId: sentenceTokenLayer.id,
+            text: textId,
+            begin: 0,
+            end: newTextLength
+          }]);
+        }
+      });
       await this._reload();
     });
   },

@@ -113,6 +113,13 @@ function makeFakeClient({ existingDocs = [], existingItems = [] } = {}) {
       batch = null;
       return Promise.resolve(out);
     },
+    batched: async (fn) => {
+      batch = [];
+      await fn();
+      const out = batch.map((op) => ({ body: op.result }));
+      batch = null;
+      return out;
+    },
     projects: {
       get: () => Promise.resolve(project),
       listDocuments: () => Promise.resolve(existingDocs),

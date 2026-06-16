@@ -91,17 +91,17 @@ export const sentenceMutations = {
     const sentenceIds = sentenceTokens.map(s => s.id);
 
     return this._withSaving('Failed to clear sentences', async () => {
-      this._client.beginBatch();
-      this._client.tokens.bulkDelete(sentenceIds);
-      if (bodyLen > 0) {
-        this._client.tokens.bulkCreate([{
-          tokenLayerId: sentenceLayer.id,
-          text: textId,
-          begin: 0,
-          end: bodyLen
-        }]);
-      }
-      await this._client.submitBatch();
+      await this._client.batched(async () => {
+        this._client.tokens.bulkDelete(sentenceIds);
+        if (bodyLen > 0) {
+          this._client.tokens.bulkCreate([{
+            tokenLayerId: sentenceLayer.id,
+            text: textId,
+            begin: 0,
+            end: bodyLen
+          }]);
+        }
+      });
       await this._reload();
     });
   }

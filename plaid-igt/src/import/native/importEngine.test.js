@@ -100,6 +100,7 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
     },
     beginBatch: () => { batch = []; },
     submitBatch: async () => { const out = batch; batch = null; return out; },
+    batched: async (fn) => { batch = []; await fn(); const out = batch; batch = null; return out; },
     documents: {
       create: async (projectId, name, metadata) => record('documents.create', [projectId, name, metadata], { id: fresh('doc') }),
       get: async (id) => record('documents.get', [id], existingDocs.find((d) => d.id === id) ?? { id, metadata: {} }),

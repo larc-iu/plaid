@@ -383,9 +383,9 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     if (!rows.length) return;
     setBulkBusy(true);
     try {
-      client.beginBatch();
-      rows.forEach((r) => client.vocabItems.create(vocabularyId, r.form, r.metadata));
-      await client.submitBatch();
+      await client.batched(async () => {
+        rows.forEach((r) => client.vocabItems.create(vocabularyId, r.form, r.metadata));
+      });
       setBulkOpen(false);
       setBulkText('');
       await fetchItems();

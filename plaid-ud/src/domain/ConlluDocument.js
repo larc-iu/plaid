@@ -160,15 +160,15 @@ export class ConlluDocument {
       });
 
       // Token batch: sentences -> words -> morphemes, atomic.
-      client.beginBatch();
-      client.tokens.bulkCreate(sentenceOps);
-      let morphemeResultIndex = -1;
-      if (wordOps.length > 0) client.tokens.bulkCreate(wordOps);
-      if (morphemeOps.length > 0) {
-        client.tokens.bulkCreate(morphemeOps);
-        morphemeResultIndex = (wordOps.length > 0) ? 2 : 1;
-      }
-      const tokenResults = await client.submitBatch();
+      const tokenResults = await client.batched(async () => {
+        client.tokens.bulkCreate(sentenceOps);
+        let morphemeResultIndex = -1;
+        if (wordOps.length > 0) client.tokens.bulkCreate(wordOps);
+        if (morphemeOps.length > 0) {
+          client.tokens.bulkCreate(morphemeOps);
+          morphemeResultIndex = (wordOps.length > 0) ? 2 : 1;
+        }
+      });
       const morphemeIds = morphemeResultIndex >= 0
         ? (tokenResults[morphemeResultIndex]?.body?.ids || [])
         : [];
@@ -206,15 +206,16 @@ export class ConlluDocument {
         }
       });
 
-      client.beginBatch();
       const spanOpsInOrder = [];
-      if (formOps.length) { client.spans.bulkCreate(formOps); spanOpsInOrder.push('form'); }
-      if (lemmaOps.length) { client.spans.bulkCreate(lemmaOps); spanOpsInOrder.push('lemma'); }
-      if (uposOps.length) { client.spans.bulkCreate(uposOps); spanOpsInOrder.push('upos'); }
-      if (xposOps.length) { client.spans.bulkCreate(xposOps); spanOpsInOrder.push('xpos'); }
-      if (featOps.length) { client.spans.bulkCreate(featOps); spanOpsInOrder.push('feat'); }
-      let spanResults = [];
-      if (spanOpsInOrder.length > 0) spanResults = await client.submitBatch();
+      // batched() submits an empty batch as a no-op ([]), so the old
+      // "submit only if something was queued" guard is unnecessary.
+      const spanResults = await client.batched(async () => {
+        if (formOps.length) { client.spans.bulkCreate(formOps); spanOpsInOrder.push('form'); }
+        if (lemmaOps.length) { client.spans.bulkCreate(lemmaOps); spanOpsInOrder.push('lemma'); }
+        if (uposOps.length) { client.spans.bulkCreate(uposOps); spanOpsInOrder.push('upos'); }
+        if (xposOps.length) { client.spans.bulkCreate(xposOps); spanOpsInOrder.push('xpos'); }
+        if (featOps.length) { client.spans.bulkCreate(featOps); spanOpsInOrder.push('feat'); }
+      });
       const lemmaResultIdx = spanOpsInOrder.indexOf('lemma');
       if (lemmaResultIdx >= 0) {
         const ids = spanResults[lemmaResultIdx]?.body?.ids || [];
@@ -241,9 +242,9 @@ export class ConlluDocument {
           });
         });
         if (relationOps.length > 0) {
-          client.beginBatch();
-          client.relations.bulkCreate(relationOps);
-          await client.submitBatch();
+          await client.batched(async () => {
+            client.relations.bulkCreate(relationOps);
+          });
         }
       }
 
@@ -592,21 +593,21 @@ export class ConlluDocument {
       const tokenizerLocale = this.layerInfo.textLayer?.config?.ud?.tokenizerLocale || 'und';
       const wordRanges = basicTokenize(body, tokenizerLocale);
 
-      this._client.beginBatch();
-      this._client.tokens.bulkCreate(sentenceRanges.map(([begin, end]) => ({
-        tokenLayerId: sentenceTokenLayer.id, text: text.id, begin, end
-      })));
-      let morphemeResultIndex = -1;
-      if (wordRanges.length > 0) {
-        this._client.tokens.bulkCreate(wordRanges.map(([begin, end]) => ({
-          tokenLayerId: wordTokenLayer.id, text: text.id, begin, end
+      const batchResults = await this._client.batched(async () => {
+        this._client.tokens.bulkCreate(sentenceRanges.map(([begin, end]) => ({
+          tokenLayerId: sentenceTokenLayer.id, text: text.id, begin, end
         })));
-        this._client.tokens.bulkCreate(wordRanges.map(([begin, end]) => ({
-          tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end
-        })));
-        morphemeResultIndex = 2;
-      }
-      const batchResults = await this._client.submitBatch();
+        let morphemeResultIndex = -1;
+        if (wordRanges.length > 0) {
+          this._client.tokens.bulkCreate(wordRanges.map(([begin, end]) => ({
+            tokenLayerId: wordTokenLayer.id, text: text.id, begin, end
+          })));
+          this._client.tokens.bulkCreate(wordRanges.map(([begin, end]) => ({
+            tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end
+          })));
+          morphemeResultIndex = 2;
+        }
+      });
       const morphemeIds = morphemeResultIndex >= 0
         ? (batchResults[morphemeResultIndex]?.body?.ids || [])
         : [];
@@ -695,10 +696,10 @@ export class ConlluDocument {
         return (s < charPos) !== (t < charPos);
       });
 
-      this._client.beginBatch();
-      this._client.tokens.split(containing.id, charPos);
-      crossing.forEach(rel => this._client.relations.delete(rel.id));
-      const res = await this._client.submitBatch();
+      const res = await this._client.batched(async () => {
+        this._client.tokens.split(containing.id, charPos);
+        crossing.forEach(rel => this._client.relations.delete(rel.id));
+      });
       const newRightSentId = res[0]?.body?.id;
       const removedRelIds = new Set(crossing.map(r => r.id));
 
@@ -769,22 +770,22 @@ export class ConlluDocument {
       // Batch A (atomic): seed bare words + delete orphan syntactic-words +
       // lossless span dedup. Disjoint targets, all expected to succeed.
       if (seedExtents.length || orphans.ids.length || dedupPlans.length) {
-        this._client.beginBatch();
-        if (seedExtents.length) {
-          this._client.tokens.bulkCreate(seedExtents.map(e => ({
-            tokenLayerId: morphemeTokenLayer.id,
-            text: textId,
-            begin: e.begin,
-            end: e.end,
-            precedence: 0
-          })));
-        }
-        if (orphans.ids.length) this._client.tokens.bulkDelete(orphans.ids);
-        dedupPlans.forEach(p => {
-          if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
-          p.deleteSpanIds.forEach(id => this._client.spans.delete(id));
+        await this._client.batched(async () => {
+          if (seedExtents.length) {
+            this._client.tokens.bulkCreate(seedExtents.map(e => ({
+              tokenLayerId: morphemeTokenLayer.id,
+              text: textId,
+              begin: e.begin,
+              end: e.end,
+              precedence: 0
+            })));
+          }
+          if (orphans.ids.length) this._client.tokens.bulkDelete(orphans.ids);
+          dedupPlans.forEach(p => {
+            if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
+            p.deleteSpanIds.forEach(id => this._client.spans.delete(id));
+          });
         });
-        await this._client.submitBatch();
         createdSyntacticWords = seedExtents.length;
         deletedOrphans = orphans.ids.length;
         dedupedSpans = dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0);
@@ -795,9 +796,9 @@ export class ConlluDocument {
       // above may have cascaded them — treat not-found as success.
       if (relIds.length) {
         try {
-          this._client.beginBatch();
-          relIds.forEach(id => this._client.relations.delete(id));
-          await this._client.submitBatch();
+          await this._client.batched(async () => {
+            relIds.forEach(id => this._client.relations.delete(id));
+          });
         } catch (err) {
           if (err?.status !== 404) throw err;
         }
@@ -866,19 +867,19 @@ export class ConlluDocument {
       // (so the server commits or rolls them back together; no window where
       // morphemes exist with stale or missing `metadata.form`).
       const existing = morphemeTokens.filter(m => containsToken(word, m));
-      this._client.beginBatch();
-      if (existing.length) this._client.tokens.bulkDelete(existing.map(m => m.id));
-      this._client.tokens.bulkCreate(cleanForms.map((_, i) => ({
-        tokenLayerId: morphemeTokenLayer.id,
-        text: text.id,
-        begin: word.begin,
-        end: word.end,
-        precedence: i
-      })));
-      if (nextWordMetadata !== null) {
-        this._client.tokens.setMetadata(word.id, nextWordMetadata);
-      }
-      const setResults = await this._client.submitBatch();
+      const setResults = await this._client.batched(async () => {
+        if (existing.length) this._client.tokens.bulkDelete(existing.map(m => m.id));
+        this._client.tokens.bulkCreate(cleanForms.map((_, i) => ({
+          tokenLayerId: morphemeTokenLayer.id,
+          text: text.id,
+          begin: word.begin,
+          end: word.end,
+          precedence: i
+        })));
+        if (nextWordMetadata !== null) {
+          this._client.tokens.setMetadata(word.id, nextWordMetadata);
+        }
+      });
       // bulkCreate sits at index 1 when we issued a bulkDelete, else index 0;
       // setMetadata (if any) is the final op and we don't need its result.
       const createIndex = existing.length ? 1 : 0;
@@ -898,10 +899,10 @@ export class ConlluDocument {
         }
       });
       if (formOps.length || lemmaOps.length) {
-        this._client.beginBatch();
-        if (formOps.length) this._client.spans.bulkCreate(formOps);
-        if (lemmaOps.length) this._client.spans.bulkCreate(lemmaOps);
-        await this._client.submitBatch();
+        await this._client.batched(async () => {
+          if (formOps.length) this._client.spans.bulkCreate(formOps);
+          if (lemmaOps.length) this._client.spans.bulkCreate(lemmaOps);
+        });
       }
 
       await this._reload();
@@ -974,13 +975,13 @@ export class ConlluDocument {
       // Token offsets are code points; .length is UTF-16 units and overshoots
       // on astral characters.
       const fullLen = cpLength(textContent);
-      this._client.beginBatch();
-      if (sentenceTokens.length === 0) {
-        this._client.tokens.bulkCreate([{ tokenLayerId: sentenceTokenLayer.id, text: text.id, begin: 0, end: fullLen }]);
-      }
-      this._client.tokens.bulkCreate([{ tokenLayerId: wordTokenLayer.id, text: text.id, begin, end }]);
-      this._client.tokens.bulkCreate([{ tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end }]);
-      const res = await this._client.submitBatch();
+      const res = await this._client.batched(async () => {
+        if (sentenceTokens.length === 0) {
+          this._client.tokens.bulkCreate([{ tokenLayerId: sentenceTokenLayer.id, text: text.id, begin: 0, end: fullLen }]);
+        }
+        this._client.tokens.bulkCreate([{ tokenLayerId: wordTokenLayer.id, text: text.id, begin, end }]);
+        this._client.tokens.bulkCreate([{ tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end }]);
+      });
       const sentenceId = sentenceTokens.length === 0 ? res[0]?.body?.ids?.[0] : null;
       const wordId = res[res.length - 2]?.body?.ids?.[0];
       const morphemeId = res[res.length - 1]?.body?.ids?.[0];
@@ -1072,10 +1073,10 @@ export class ConlluDocument {
             }
           });
           if (verifyFeat) {
-            this._client.beginBatch();
-            this._client.spans.update(existingFeat.id, value);
-            this._client.spans.patchMetadata(existingFeat.id, verifyFeat);
-            await this._client.submitBatch();
+            await this._client.batched(async () => {
+              this._client.spans.update(existingFeat.id, value);
+              this._client.spans.patchMetadata(existingFeat.id, verifyFeat);
+            });
           } else {
             await this._client.spans.update(existingFeat.id, value);
           }
@@ -1126,10 +1127,10 @@ export class ConlluDocument {
           }
         });
         if (verify) {
-          this._client.beginBatch();
-          this._client.spans.update(existingSpan.id, value);
-          this._client.spans.patchMetadata(existingSpan.id, verify);
-          await this._client.submitBatch();
+          await this._client.batched(async () => {
+            this._client.spans.update(existingSpan.id, value);
+            this._client.spans.patchMetadata(existingSpan.id, verify);
+          });
         } else {
           await this._client.spans.update(existingSpan.id, value);
         }
@@ -1235,10 +1236,10 @@ export class ConlluDocument {
       // create didn't) or double-headed (delete failed, create landed).
       const incomingRelations = (info.relationLayer.relations || []).filter(rel => rel.target === resolvedTargetId);
       const finalDeprel = deprel || (resolvedSourceId === resolvedTargetId ? 'root' : 'dep');
-      this._client.beginBatch();
-      incomingRelations.forEach(rel => this._client.relations.delete(rel.id));
-      this._client.relations.create(info.relationLayer.id, resolvedSourceId, resolvedTargetId, finalDeprel);
-      const batchResults = await this._client.submitBatch();
+      const batchResults = await this._client.batched(async () => {
+        incomingRelations.forEach(rel => this._client.relations.delete(rel.id));
+        this._client.relations.create(info.relationLayer.id, resolvedSourceId, resolvedTargetId, finalDeprel);
+      });
       const newRelationId = batchResults[batchResults.length - 1]?.body?.id;
       this._applyRawPatch((next, infoNext) => {
         const relLayer = infoNext.relationLayer;
@@ -1275,10 +1276,10 @@ export class ConlluDocument {
         }
       });
       if (verify) {
-        this._client.beginBatch();
-        this._client.relations.update(relationId, deprel);
-        this._client.relations.patchMetadata(relationId, verify);
-        await this._client.submitBatch();
+        await this._client.batched(async () => {
+          this._client.relations.update(relationId, deprel);
+          this._client.relations.patchMetadata(relationId, verify);
+        });
       } else {
         await this._client.relations.update(relationId, deprel);
       }
@@ -1354,10 +1355,10 @@ export class ConlluDocument {
       await this._client.withAuditMessage(
         `Confirm ${count} predicted annotation${count === 1 ? '' : 's'}`,
         async () => {
-          this._client.beginBatch();
-          for (const [id, patch] of spanPatchById) this._client.spans.patchMetadata(id, patch);
-          for (const [id, patch] of relPatchById) this._client.relations.patchMetadata(id, patch);
-          await this._client.submitBatch();
+          await this._client.batched(async () => {
+            for (const [id, patch] of spanPatchById) this._client.spans.patchMetadata(id, patch);
+            for (const [id, patch] of relPatchById) this._client.relations.patchMetadata(id, patch);
+          });
         });
     });
   }

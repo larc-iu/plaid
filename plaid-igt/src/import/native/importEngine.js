@@ -131,11 +131,11 @@ export async function importVocabulary({ client, vocabId, vocabData, onProgress,
   for (let i = 0; i < pending.length; i += CHUNK) {
     check();
     const chunk = pending.slice(i, i + CHUNK);
-    client.beginBatch();
-    for (const it of chunk) {
-      client.vocabItems.create(vocabId, it.form, { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id });
-    }
-    const results = await client.submitBatch();
+    const results = await client.batched(async () => {
+      for (const it of chunk) {
+        client.vocabItems.create(vocabId, it.form, { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id });
+      }
+    });
     chunk.forEach((it, j) => {
       const id = results[j]?.body?.id ?? results[j]?.id;
       if (id) itemIdMap.set(it.id, id);
@@ -350,11 +350,11 @@ export async function importNativeDocument({
     }
     for (let i = 0; i < linkSpecs.length; i += CHUNK) {
       check();
-      client.beginBatch();
-      for (const l of linkSpecs.slice(i, i + CHUNK)) {
-        client.vocabLinks.create(l.itemId, l.tokenIds, l.metadata);
-      }
-      await client.submitBatch();
+      await client.batched(async () => {
+        for (const l of linkSpecs.slice(i, i + CHUNK)) {
+          client.vocabLinks.create(l.itemId, l.tokenIds, l.metadata);
+        }
+      });
     }
   }
 

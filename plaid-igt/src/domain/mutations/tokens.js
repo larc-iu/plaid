@@ -42,14 +42,14 @@ export const tokenMutations = {
       const lastToken = toMerge[toMerge.length - 1];
       const coincident = findCoincidentMorphemeIds(info.morphemeTokenLayer?.tokens || [], toMerge);
 
-      this._client.beginBatch();
-      if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
-      // Sequential merges into firstToken in begin-order. The server processes
-      // batch ops sequentially, so each merge sees firstToken's widened extent.
-      for (let i = 1; i < toMerge.length; i++) {
-        this._client.tokens.merge(firstToken.id, toMerge[i].id);
-      }
-      await this._client.submitBatch();
+      await this._client.batched(async () => {
+        if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
+        // Sequential merges into firstToken in begin-order. The server processes
+        // batch ops sequentially, so each merge sees firstToken's widened extent.
+        for (let i = 1; i < toMerge.length; i++) {
+          this._client.tokens.merge(firstToken.id, toMerge[i].id);
+        }
+      });
 
       const removedWordIds = new Set(toMerge.slice(1).map(t => t.id));
       const removedMorphIds = new Set(coincident);

@@ -46,9 +46,9 @@ export const vocabMutations = {
     const metadata = stampInferred(provSource);
 
     const ok = await this._withSaving('Failed to auto-link', async () => {
-      this._client.beginBatch();
-      todo.forEach(p => this._client.vocabLinks.create(p.vocabItemId, [p.tokenId], metadata));
-      const results = await this._client.submitBatch();
+      const results = await this._client.batched(async () => {
+        todo.forEach(p => this._client.vocabLinks.create(p.vocabItemId, [p.tokenId], metadata));
+      });
 
       this._applyRawPatch((next, info, vocabs) => {
         todo.forEach((p, i) => {
@@ -101,10 +101,10 @@ export const vocabMutations = {
     return this._withSaving('Failed to link vocab item', async () => {
       let newLinkId;
       if (priorLink) {
-        this._client.beginBatch();
-        this._client.vocabLinks.delete(priorLink.id);
-        this._client.vocabLinks.create(vocabItemId, [tokenId], metadata || undefined);
-        const results = await this._client.submitBatch();
+        const results = await this._client.batched(async () => {
+          this._client.vocabLinks.delete(priorLink.id);
+          this._client.vocabLinks.create(vocabItemId, [tokenId], metadata || undefined);
+        });
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
         const result = await this._client.vocabLinks.create(vocabItemId, [tokenId], metadata || undefined);
@@ -169,10 +169,10 @@ export const vocabMutations = {
 
       let newLinkId;
       if (priorLink) {
-        this._client.beginBatch();
-        this._client.vocabLinks.delete(priorLink.id);
-        this._client.vocabLinks.create(newItemId, [tokenId]);
-        const results = await this._client.submitBatch();
+        const results = await this._client.batched(async () => {
+          this._client.vocabLinks.delete(priorLink.id);
+          this._client.vocabLinks.create(newItemId, [tokenId]);
+        });
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
         const linkResult = await this._client.vocabLinks.create(newItemId, [tokenId]);

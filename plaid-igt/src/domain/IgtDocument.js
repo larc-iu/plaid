@@ -280,19 +280,19 @@ export class IgtDocument {
         && (wordsNeedingMorpheme.length || orphanMorphemeIds.length));
 
       if (morphemeWork || dedupPlans.length) {
-        this._client.beginBatch();
-        if (morphemeWork && orphanMorphemeIds.length) this._client.tokens.bulkDelete(orphanMorphemeIds);
-        if (morphemeWork) {
-          wordsNeedingMorpheme.forEach(w => {
-            this._client.tokens.create(morphemeLayer.id, textId, w.begin, w.end, 1);
+        const results = await this._client.batched(async () => {
+          if (morphemeWork && orphanMorphemeIds.length) this._client.tokens.bulkDelete(orphanMorphemeIds);
+          if (morphemeWork) {
+            wordsNeedingMorpheme.forEach(w => {
+              this._client.tokens.create(morphemeLayer.id, textId, w.begin, w.end, 1);
+            });
+          }
+          // Dedup ops LAST so the morpheme-create result slicing below stays simple.
+          dedupPlans.forEach(p => {
+            if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
+            p.deleteSpanIds.forEach(id => this._client.spans.delete(id));
           });
-        }
-        // Dedup ops LAST so the morpheme-create result slicing below stays simple.
-        dedupPlans.forEach(p => {
-          if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
-          p.deleteSpanIds.forEach(id => this._client.spans.delete(id));
         });
-        const results = await this._client.submitBatch();
         // Op order: the optional bulkDelete first, then one create per bare word.
         const createOffset = (morphemeWork && orphanMorphemeIds.length) ? 1 : 0;
         const createCount = morphemeWork ? wordsNeedingMorpheme.length : 0;
@@ -412,10 +412,10 @@ export class IgtDocument {
         .filter(m => m.begin === token.begin && m.end === token.end)
         .map(m => m.id);
 
-      this._client.beginBatch();
-      if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
-      this._client.tokens.split(tokenId, leftEnd);
-      const results = await this._client.submitBatch();
+      const results = await this._client.batched(async () => {
+        if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
+        this._client.tokens.split(tokenId, leftEnd);
+      });
       // `tokens.split` is the last queued op; its body is `{ id: <new right id> }`.
       const newRightTokenId = results[results.length - 1]?.body?.id;
 

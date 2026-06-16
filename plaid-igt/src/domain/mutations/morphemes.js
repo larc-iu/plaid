@@ -101,18 +101,18 @@ export const morphemeMutations = {
       const existing = morphemesInWord(morphemeLayer.tokens, word);
       const basePrecedence = existing.length + 1;
 
-      this._client.beginBatch();
-      forms.forEach((form, i) => {
-        this._client.tokens.create(
-          morphemeLayer.id,
-          textId,
-          word.begin,
-          word.end,
-          basePrecedence + i,
-          form ? { form } : undefined
-        );
+      const results = await this._client.batched(async () => {
+        forms.forEach((form, i) => {
+          this._client.tokens.create(
+            morphemeLayer.id,
+            textId,
+            word.begin,
+            word.end,
+            basePrecedence + i,
+            form ? { form } : undefined
+          );
+        });
       });
-      const results = await this._client.submitBatch();
       const newIds = forms.map((_, i) => results[i]?.body?.id);
 
       this._applyRawPatch((next, infoNext) => {
@@ -177,24 +177,24 @@ export const morphemeMutations = {
       const subsequents = siblings.filter(m => (m.precedence ?? 0) > currentPrecedence);
       const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
 
-      this._client.beginBatch();
-      // patch, not set: form edits must not clobber other metadata keys
-      // (morphType from the FLEx import, in particular)
-      this._client.tokens.patchMetadata(morphemeId, verified(target, { form: firstForm }));
-      shifted.forEach(m => {
-        this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + restForms.length);
+      const results = await this._client.batched(async () => {
+        // patch, not set: form edits must not clobber other metadata keys
+        // (morphType from the FLEx import, in particular)
+        this._client.tokens.patchMetadata(morphemeId, verified(target, { form: firstForm }));
+        shifted.forEach(m => {
+          this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + restForms.length);
+        });
+        restForms.forEach((form, i) => {
+          this._client.tokens.create(
+            morphemeLayer.id,
+            textId,
+            target.begin,
+            target.end,
+            currentPrecedence + 1 + i,
+            form ? { form } : undefined
+          );
+        });
       });
-      restForms.forEach((form, i) => {
-        this._client.tokens.create(
-          morphemeLayer.id,
-          textId,
-          target.begin,
-          target.end,
-          currentPrecedence + 1 + i,
-          form ? { form } : undefined
-        );
-      });
-      const results = await this._client.submitBatch();
       // setMetadata is 0; shifts are 1..S (S = shifted.length); creates follow.
       const newIds = restForms.map((_, i) => results[shifted.length + 1 + i]?.body?.id);
 
@@ -251,13 +251,13 @@ export const morphemeMutations = {
       const mergedForm = previousForm + currentForm;
       const subsequents = siblings.slice(idx + 1);
 
-      this._client.beginBatch();
-      this._client.tokens.patchMetadata(previous.id, verified(previous, { form: mergedForm }));
-      this._client.tokens.delete(morphemeId);
-      subsequents.forEach(m => {
-        this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
+      await this._client.batched(async () => {
+        this._client.tokens.patchMetadata(previous.id, verified(previous, { form: mergedForm }));
+        this._client.tokens.delete(morphemeId);
+        subsequents.forEach(m => {
+          this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
+        });
       });
-      await this._client.submitBatch();
 
       this._applyRawPatch((next, infoNext) => {
         const layer = infoNext.morphemeTokenLayer;
@@ -295,12 +295,12 @@ export const morphemeMutations = {
     return this._withSaving('Failed to delete morpheme', async () => {
       const subsequents = siblings.filter(m => (m.precedence ?? 0) > (target.precedence ?? 0));
 
-      this._client.beginBatch();
-      this._client.tokens.delete(morphemeId);
-      subsequents.forEach(m => {
-        this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
+      await this._client.batched(async () => {
+        this._client.tokens.delete(morphemeId);
+        subsequents.forEach(m => {
+          this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
+        });
       });
-      await this._client.submitBatch();
 
       this._applyRawPatch((next, infoNext) => {
         const layer = infoNext.morphemeTokenLayer;

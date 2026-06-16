@@ -57,7 +57,6 @@ export const analysisCopyMutations = {
 
     return (await this._withSaving('Failed to copy previous analyses', async () => {
       // ---- batch 1: structure + everything addressable now ----
-      this._client.beginBatch();
       let opIdx = 0;
       const pendingMorphs = []; // { slot, opIdx } — created morphemes needing batch-2 links/spans
       const queueLinkAndSpans = (tokenId, slot) => {
@@ -74,69 +73,70 @@ export const analysisCopyMutations = {
         }
       };
 
-      for (const p of todo) {
-        const { token, m0, analysis } = p;
-        const slots = analysis.morphemes || [];
-        const s0 = slots[0] || null;
+      const results = await this._client.batched(async () => {
+        for (const p of todo) {
+          const { token, m0, analysis } = p;
+          const slots = analysis.morphemes || [];
+          const s0 = slots[0] || null;
 
-        // First slot reuses the existing default morpheme. Only stamp the
-        // token when the copy actually changes its segmentation-tier data
-        // (form/morphType) — links/spans carry their own provenance.
-        if (s0) {
-          const patch = {};
-          if (s0.form != null && s0.form !== token.content) patch.form = s0.form;
-          if (s0.morphType != null) patch.morphType = s0.morphType;
-          if (Object.keys(patch).length || slots.length > 1) {
-            this._client.tokens.patchMetadata(m0.id, { ...patch, ...stamp });
+          // First slot reuses the existing default morpheme. Only stamp the
+          // token when the copy actually changes its segmentation-tier data
+          // (form/morphType) — links/spans carry their own provenance.
+          if (s0) {
+            const patch = {};
+            if (s0.form != null && s0.form !== token.content) patch.form = s0.form;
+            if (s0.morphType != null) patch.morphType = s0.morphType;
+            if (Object.keys(patch).length || slots.length > 1) {
+              this._client.tokens.patchMetadata(m0.id, { ...patch, ...stamp });
+              opIdx++;
+            }
+            queueLinkAndSpans(m0.id, s0);
+          }
+          // Remaining slots: create stamped morpheme tokens; their links/spans
+          // wait for batch 2 (ids unknown until this batch lands).
+          slots.slice(1).forEach((slot, j) => {
+            this._client.tokens.create(
+              morphemeLayer.id, textId, token.begin, token.end, j + 2,
+              {
+                ...(slot.form != null ? { form: slot.form } : {}),
+                ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
+                ...stamp,
+              }
+            );
+            pendingMorphs.push({ slot, opIdx });
+            opIdx++;
+          });
+          // Word-level link + fields.
+          const wordItem = findVocabItem(this._vocabularies, analysis.word?.vocabItemId);
+          if (wordItem) {
+            this._client.vocabLinks.create(wordItem.id, [token.id], stamp);
             opIdx++;
           }
-          queueLinkAndSpans(m0.id, s0);
+          for (const [name, value] of Object.entries(analysis.word?.fields || {})) {
+            const layer = wordLayersByName.get(name);
+            if (!layer) continue;
+            this._client.spans.create(layer.id, [token.id], value, stamp);
+            opIdx++;
+          }
         }
-        // Remaining slots: create stamped morpheme tokens; their links/spans
-        // wait for batch 2 (ids unknown until this batch lands).
-        slots.slice(1).forEach((slot, j) => {
-          this._client.tokens.create(
-            morphemeLayer.id, textId, token.begin, token.end, j + 2,
-            {
-              ...(slot.form != null ? { form: slot.form } : {}),
-              ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
-              ...stamp,
-            }
-          );
-          pendingMorphs.push({ slot, opIdx });
-          opIdx++;
-        });
-        // Word-level link + fields.
-        const wordItem = findVocabItem(this._vocabularies, analysis.word?.vocabItemId);
-        if (wordItem) {
-          this._client.vocabLinks.create(wordItem.id, [token.id], stamp);
-          opIdx++;
-        }
-        for (const [name, value] of Object.entries(analysis.word?.fields || {})) {
-          const layer = wordLayersByName.get(name);
-          if (!layer) continue;
-          this._client.spans.create(layer.id, [token.id], value, stamp);
-          opIdx++;
-        }
-      }
-      const results = await this._client.submitBatch();
+      });
 
       // ---- batch 2: links/spans for the created morphemes ----
       const second = pendingMorphs
         .map(({ slot, opIdx: i }) => ({ slot, id: results[i]?.body?.id }))
         .filter(({ slot, id }) => id && (slot.vocabItemId || Object.keys(slot.fields || {}).length));
       if (second.length) {
-        this._client.beginBatch();
-        for (const { slot, id } of second) {
-          const item = findVocabItem(this._vocabularies, slot.vocabItemId);
-          if (item) this._client.vocabLinks.create(item.id, [id], stamp);
-          for (const [name, value] of Object.entries(slot.fields || {})) {
-            const layer = morphLayersByName.get(name);
-            if (!layer) continue;
-            this._client.spans.create(layer.id, [id], value, stamp);
+        await this._client.batched(async () => {
+          for (const { slot, id } of second) {
+            const item = findVocabItem(this._vocabularies, slot.vocabItemId);
+            if (item) this._client.vocabLinks.create(item.id, [id], stamp);
+            for (const [name, value] of Object.entries(slot.fields || {})) {
+              const layer = morphLayersByName.get(name);
+              if (!layer) continue;
+              this._client.spans.create(layer.id, [id], value, stamp);
+            }
           }
-        }
-        await this._client.submitBatch();
+        });
       }
 
       await this._reload();
@@ -172,11 +172,11 @@ export const analysisCopyMutations = {
 
     return this._withSaving('Failed to confirm analysis', async () => {
       await this._client.withAuditMessage('Confirm word analysis', async () => {
-        this._client.beginBatch();
-        tokenIds.forEach((id) => this._client.tokens.patchMetadata(id, confirm));
-        linkIds.forEach((id) => this._client.vocabLinks.patchMetadata(id, confirm));
-        spanIds.forEach((id) => this._client.spans.patchMetadata(id, confirm));
-        await this._client.submitBatch();
+        await this._client.batched(async () => {
+          tokenIds.forEach((id) => this._client.tokens.patchMetadata(id, confirm));
+          linkIds.forEach((id) => this._client.vocabLinks.patchMetadata(id, confirm));
+          spanIds.forEach((id) => this._client.spans.patchMetadata(id, confirm));
+        });
       });
 
       const spanSet = new Set(spanIds);

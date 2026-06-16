@@ -43,62 +43,62 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
 
     try {
       // B2: textLayer (alone; setConfig + sentence create both need its id)
-      client.beginBatch();
-      client.textLayers.create(projectId, 'Text');
-      const b2 = await client.submitBatch();
+      const b2 = await client.batched(async () => {
+        client.textLayers.create(projectId, 'Text');
+      });
       const textLayerId = b2[0].body.id;
 
       // B3: textLayer.setConfig + sentenceLayer.create
       // Substrate layers are tagged with their shared ROLE (config.plaid.role)
       // so a project set up here is interoperable with other Plaid apps.
-      client.beginBatch();
-      client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-      client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
-      const b3 = await client.submitBatch();
+      const b3 = await client.batched(async () => {
+        client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+        client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
+      });
       const sentenceLayerId = b3[1].body.id;
 
       // B4: sentenceLayer.setConfig + wordLayer.create
-      client.beginBatch();
-      client.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
-      client.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
-      const b4 = await client.submitBatch();
+      const b4 = await client.batched(async () => {
+        client.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
+        client.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
+      });
       const wordLayerId = b4[1].body.id;
 
       // B5: wordLayer.setConfig + morphemeLayer.create
-      client.beginBatch();
-      client.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
-      client.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
-      const b5 = await client.submitBatch();
+      const b5 = await client.batched(async () => {
+        client.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
+        client.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
+      });
       const morphemeLayerId = b5[1].body.id;
 
       // B6: morphemeLayer.setConfig + all 5 span layer creates
-      client.beginBatch();
-      // UD's "Morphemes" layer holds SYNTACTIC WORDS (MWT splits), so its role is
-      // `syntactic-word`, NOT `morpheme`. IGT's true-morpheme layer is a sibling
-      // under the shared word layer. Getting this wrong corrupts segmentation.
-      client.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
-      for (const [name] of SPAN_LAYER_SPECS) {
-        client.spanLayers.create(morphemeLayerId, name);
-      }
-      const b6 = await client.submitBatch();
+      const b6 = await client.batched(async () => {
+        // UD's "Morphemes" layer holds SYNTACTIC WORDS (MWT splits), so its role is
+        // `syntactic-word`, NOT `morpheme`. IGT's true-morpheme layer is a sibling
+        // under the shared word layer. Getting this wrong corrupts segmentation.
+        client.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
+        for (const [name] of SPAN_LAYER_SPECS) {
+          client.spanLayers.create(morphemeLayerId, name);
+        }
+      });
       // b6: [setConfig, span0, span1, span2, span3, span4]
       const spanLayerIds = SPAN_LAYER_SPECS.map((_, i) => b6[1 + i].body.id);
       const lemmaIdx = SPAN_LAYER_SPECS.findIndex(([, key]) => key === UD_SPAN_CONFIG_KEYS.lemma);
       const lemmaLayerId = spanLayerIds[lemmaIdx];
 
       // B7: 5x spanLayer.setConfig + relationLayer.create (uses lemmaLayerId)
-      client.beginBatch();
-      SPAN_LAYER_SPECS.forEach(([, configKey], i) => {
-        client.spanLayers.setConfig(spanLayerIds[i], UD_NAMESPACE, configKey, true);
+      const b7 = await client.batched(async () => {
+        SPAN_LAYER_SPECS.forEach(([, configKey], i) => {
+          client.spanLayers.setConfig(spanLayerIds[i], UD_NAMESPACE, configKey, true);
+        });
+        client.relationLayers.create(lemmaLayerId, 'Dependency Relations');
       });
-      client.relationLayers.create(lemmaLayerId, 'Dependency Relations');
-      const b7 = await client.submitBatch();
       const relationLayerId = b7[b7.length - 1].body.id;
 
       // B8: relationLayer.setConfig
-      client.beginBatch();
-      client.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
-      await client.submitBatch();
+      await client.batched(async () => {
+        client.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+      });
 
       return project;
     } catch (err) {
