@@ -86,9 +86,10 @@ max_file_size_mb = 200
 # Path to the SQLite database file. Created (with its parent directory) on
 # first launch if absent.
 #
-# BACKUPS: the database runs in WAL mode, so a plain file copy of the .db
-# misses un-checkpointed writes in the -wal sidecar. Use the SQLite backup
-# API instead — safe with the server running:
+# BACKUPS: the server takes automatic nightly snapshots — see the [backup]
+# section below. For an ad-hoc manual backup while the server runs, note the
+# database is in WAL mode, so a plain file copy of the .db misses
+# un-checkpointed writes in the -wal sidecar; use the SQLite backup API instead:
 #   sqlite3 data/plaid.db ".backup /path/to/backup-$(date +%F).db"
 path = "data/plaid.db"
 
@@ -108,6 +109,24 @@ max_name_length = 500
 # busy_timeout_ms = 5000        # SQLite busy_timeout PRAGMA
 # journal_mode = "WAL"          # SQLite journal_mode PRAGMA
 # synchronous = "NORMAL"        # SQLite synchronous PRAGMA
+
+# -----------------------------------------------------------------------------
+# Nightly database backups
+# -----------------------------------------------------------------------------
+# Once a day the server writes a consistent, compacted snapshot of the SQLite
+# database (via `VACUUM INTO` — safe while the server runs, WAL and all), zips
+# it, and drops it in `directory` as plaid-backup-<timestamp>.zip. Only the
+# most recent `retention` zips are kept; older ones are pruned automatically.
+[backup]
+# Turn the nightly backup on or off.
+enabled = true
+# Directory the dated backup zips are written to. Created (with parents) on the
+# first run. Relative paths resolve against the server's working directory.
+directory = "data/backups"
+# How many of the most recent backups to keep.
+retention = 5
+# Wall-clock time of day to run the backup, 24-hour "HH:MM" (server local time).
+time = "03:00"
 
 # -----------------------------------------------------------------------------
 # CORS (cross-origin requests)

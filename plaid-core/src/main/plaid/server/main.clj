@@ -1,6 +1,10 @@
 (ns plaid.server.main
   (:require [mount.core :as mount]
             [plaid.server.http-server]
+            ;; Nightly database backup scheduler. Required here (not from
+            ;; http-server or tests) so test JVMs don't register the defstate
+            ;; and start spawning backup threads.
+            [plaid.server.backup]
             ;; First-run extraction of the bundled Python services. Required
             ;; ONLY here (never from http-server or tests) so test JVMs don't
             ;; register the defstate.

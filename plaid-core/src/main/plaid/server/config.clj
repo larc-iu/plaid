@@ -102,7 +102,12 @@
    [["locks" "expiration_ms"]             [:plaid.server.locks/config :expiration-ms]                        identity]
 
    [["events" "heartbeat_interval_ms"]    [:plaid.server.events/heartbeat :interval-ms]                      identity]
-   [["events" "heartbeat_max_misses"]     [:plaid.server.events/heartbeat :max-consecutive-misses]           identity]])
+   [["events" "heartbeat_max_misses"]     [:plaid.server.events/heartbeat :max-consecutive-misses]           identity]
+
+   [["backup" "enabled"]                  [:plaid.backup/config :enabled?]                                   identity]
+   [["backup" "directory"]                [:plaid.backup/config :directory]                                  identity]
+   [["backup" "retention"]                [:plaid.backup/config :retention]                                  identity]
+   [["backup" "time"]                     [:plaid.backup/config :time]                                       identity]])
 
 (defn- translate
   "Convert friendly TOML data (string-keyed nested map) into the internal
