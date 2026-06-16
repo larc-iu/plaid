@@ -1520,7 +1520,8 @@ class PlaidClient {
    * on span X"). The message may template the endpoint's own path/query/body
    * params with `{param}` placeholders, resolved server-side — e.g.
    * `"Approve span {spanId}"`. Placeholder names are case/separator-insensitive
-   * (`{spanId}` == `{span-id}` == `{span_id}`). Applies to GET-less requests
+   * (`{spanId}` == `{span-id}` == `{span_id}`), so use the camelCase names this
+   * client uses. Applies to GET-less requests
    * only, including every operation queued in a batch.
    * @param {string} message - The custom message (template).
    */

@@ -149,11 +149,11 @@ await c.withAuditMessage("Mark machine-provided annotation as approved", () =>
   c.spans.setMetadata(spanId, { approved: true }));
 ----
 
-The message may template any of the endpoint's own path, query, or body parameters with `{...}` placeholders, filled in by the server. Placeholder names are matched case- and separator-insensitively, so `{spanId}`, `{span-id}`, and `{span_id}` all refer to the same parameter:
+The message may template any of the endpoint's own path, query, or body parameters with `{...}` placeholders, filled in by the server. Placeholder names are matched case- and separator-insensitively, so `{spanId}`, `{span-id}`, and `{span_id}` all refer to the same parameter — just write the parameter the way your client spells it (snake_case in Python, camelCase in JavaScript):
 
 [,python]
 ----
-with c.audit_message("Approve span {spanId}"):
+with c.audit_message("Approve span {span_id}"):
     c.spans.set_metadata(span_id, {"approved": True})
 # logged as: Approve span 35424d64-a077-4a29-8006-5a0c3b76aedb
 ----
@@ -162,7 +162,7 @@ For a single write you can skip the scope and pass the message as the last argum
 
 [,python]
 ----
-c.spans.set_metadata(span_id, {"approved": True}, audit_message="Approve span {spanId}")
+c.spans.set_metadata(span_id, {"approved": True}, audit_message="Approve span {span_id}")
 ----
 
 [,javascript]

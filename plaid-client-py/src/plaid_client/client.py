@@ -1972,9 +1972,10 @@ class PlaidClient:
 
         The message may template the endpoint's own path/query/body params with
         ``{param}`` placeholders, resolved server-side — e.g.
-        ``"Approve span {spanId}"``. Placeholder names are case/separator-
-        insensitive (``{spanId}`` == ``{span-id}`` == ``{span_id}``). Applies to
-        non-GET requests only, including every operation queued in a batch.
+        ``"Approve span {span_id}"``. Placeholder names are case/separator-
+        insensitive (``{span_id}`` == ``{span-id}`` == ``{spanId}``), so use the
+        snake_case names this client uses. Applies to non-GET requests only,
+        including every operation queued in a batch.
 
         Prefer the ``audit_message`` context manager for scoped use; this setter
         is for manual ambient control. Pass ``None`` to clear.
@@ -1991,7 +1992,7 @@ class PlaidClient:
         the previous message afterward (supports nesting). Use it to scope ONE
         call (per-call precision) or MANY (a logical unit)::
 
-            with client.audit_message('Approve span {spanId}'):
+            with client.audit_message('Approve span {span_id}'):
                 client.spans.update(span_id, ...)
 
             with client.audit_message('Import sentence'):
