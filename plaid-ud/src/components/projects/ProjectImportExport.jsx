@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Title, Paper, Stack, Group, Button, Text, Alert, Progress, List, Code,
-  Center, Loader, Anchor, ScrollArea, ActionIcon, Tooltip,
+  Center, Loader, Anchor, ScrollArea, ActionIcon, Tooltip, Modal,
 } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import {
@@ -121,6 +121,15 @@ export const ProjectImportExport = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  // While an import is running, guard against losing it midway: warn on tab
+  // close / reload (the blocking modal below prevents clicking away in-app).
+  useEffect(() => {
+    if (!importing) return;
+    const onBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [importing]);
+
   const canEdit = canEditProject(project, user);
   const configured = getUdLayerInfo(project).isConfigured;
 
@@ -233,6 +242,32 @@ export const ProjectImportExport = () => {
 
   return (
     <>
+      {/* Non-dismissable while importing: the overlay blocks clicking the tabs /
+          links behind it, so the import can't be interrupted by navigating away. */}
+      <Modal
+        opened={importing}
+        onClose={() => {}}
+        withCloseButton={false}
+        closeOnClickOutside={false}
+        closeOnEscape={false}
+        centered
+        title="Importing documents"
+      >
+        <Stack gap="sm">
+          <Progress
+            value={importProgress.total ? (importProgress.done / importProgress.total) * 100 : 0}
+            animated
+          />
+          <Text size="sm" c="dimmed">
+            Importing {Math.min(importProgress.done + 1, importProgress.total)} / {importProgress.total}
+            {importProgress.current ? `: ${importProgress.current}` : ''}
+          </Text>
+          <Text size="xs" c="dimmed">
+            Please keep this tab open and don’t navigate away until the import finishes.
+          </Text>
+        </Stack>
+      </Modal>
+
       <ProjectTabs projectId={projectId} project={project} />
       <Title order={2} mb="lg">Import &amp; Export</Title>
 
@@ -291,19 +326,6 @@ export const ProjectImportExport = () => {
                     ))}
                   </Stack>
                 </Paper>
-              )}
-
-              {importing && (
-                <div>
-                  <Progress
-                    value={importProgress.total ? (importProgress.done / importProgress.total) * 100 : 0}
-                    animated
-                  />
-                  <Text size="xs" c="dimmed" mt={4}>
-                    Importing {Math.min(importProgress.done + 1, importProgress.total)} / {importProgress.total}
-                    {importProgress.current ? `: ${importProgress.current}` : ''}
-                  </Text>
-                </div>
               )}
 
               <Group>
