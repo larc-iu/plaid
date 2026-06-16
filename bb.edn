@@ -1,6 +1,30 @@
 {:min-bb-version "1.0.0"
+ ;; The build/test pipeline logic lives in bb/pipeline.clj (helpers can't be
+ ;; shared via :init — bb analyzes task bodies before :init runs).
+ :paths ["bb"]
  :tasks
- {release
+ {test
+  {:doc "Run the full Clojure test suite (plaid-core) — the same gate release.yml runs before building."
+   :requires ([pipeline :as pl])
+   :task (pl/run-tests!)}
+
+  build
+  {:doc "Build ALL release artifacts locally, like release.yml's build job (NO publishing). Usage: bb build [version] [--no-smoke] [--skip-clients]. version defaults to 0.0.0-alpha.0. Produces dist-artifacts/ (uberjar with the UD+IGT SPAs + services bundled, npm .tgz, Python sdist+wheel) and boot-smoke-tests the jar on :8080. Prereqs: Node >= 20 active (e.g. `nvm use 24.1.0`); for the Python client, the mamba base env active (`mamba activate base`) — or pass --skip-clients."
+   :requires ([pipeline :as pl])
+   :task (pl/build-artifacts! (pl/parse-build-args *command-line-args*))}
+
+  ci
+  {:doc "Run the whole non-publishing release pipeline locally: the test gate, then build all artifacts. Usage: bb ci [version] [--no-smoke] [--skip-clients]."
+   :requires ([pipeline :as pl])
+   :task (do (pl/run-tests!)
+             (pl/build-artifacts! (pl/parse-build-args *command-line-args*)))}
+
+  clean
+  {:doc "Remove local build outputs: dist-artifacts/, the bundled SPAs/services/version.edn under plaid-core/resources, built jars, and the SPA dist/ dirs."
+   :requires ([pipeline :as pl])
+   :task (pl/clean!)}
+
+  release
   {:doc "Cut a release. Usage: bb release 0.2.0-alpha.1  — validates a clean tree on master, tags vX.Y.Z, and pushes. The release.yml workflow then tests, builds, and publishes everything. The git tag is the sole source of truth for the version."
    :requires ([clojure.string :as str])
    :task

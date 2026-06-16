@@ -24,6 +24,8 @@ package-lock.json
 .shadow-cljs
 xtdb-store
 builds/
+# local `bb build` / `bb ci` release-artifact staging (mirrors release.yml)
+dist-artifacts/
 /plaid-core/data/
 /plaid-core/resources/
 # keep DB migrations tracked (schema lives here — must ship)
