@@ -1334,12 +1334,10 @@ class ProjectsResource(_Resource):
                              query_params={'as-of': as_of})
 
     def delete(self, id: str, audit_message=None, timeout=None) -> Any:
-        """Delete a project — and everything in it.
+        """Delete a project and everything in it. This is irrecoverable.
 
-        Deleting a large project (a whole treebank: millions of tokens/spans/
-        relations) is one long server-side transaction — tens of seconds — so
-        this DISABLES the per-request timeout by default (the server just runs
-        the FK cascade to completion). Pass ``timeout=<seconds>`` for a finite
+        For a large project this can take a long time, so the per-request
+        timeout is DISABLED by default. Pass ``timeout=<seconds>`` for a finite
         bound.
 
         Args:
