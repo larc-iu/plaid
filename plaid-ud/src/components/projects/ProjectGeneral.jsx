@@ -88,10 +88,17 @@ export const ProjectGeneral = ({ embedded = false }) => {
       <Paper withBorder p="lg" radius="md">
         <Title order={2} size="h4" mb="xs">Tokenizer locale</Title>
         <Text size="sm" c="dimmed" mb="md">
-          Language tag used for whitespace/word tokenization (<code>Intl.Segmenter</code>). Drives
-          script-specific segmentation — especially <code>ja</code>, <code>zh</code>, <code>th</code>, which
-          are segmented by dictionary lookup when given the locale. A BCP-47 tag (e.g. <code>en</code>,
-          <code> ja</code>, <code>zh-Hans</code>); leave empty for generic (<code>und</code>).
+          <p>
+            Language tag used for whitespace/word tokenization (<code>Intl.Segmenter</code>). Drives
+            script-specific segmentation — especially <code>ja</code>, <code>zh</code>, <code>th</code>, which
+            are segmented by dictionary lookup when given the locale. A BCP-47 tag (e.g. <code>en</code>,
+            <code> ja</code>, <code>zh-Hans</code>); leave empty for generic (<code>und</code>).
+          </p>
+          <p>
+            See <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Segmenter">
+              further information about <code>Intl.Segmenter</code>
+            </a>.
+          </p>
         </Text>
         {info.textLayer ? (
           <Group align="flex-end" gap="sm">
