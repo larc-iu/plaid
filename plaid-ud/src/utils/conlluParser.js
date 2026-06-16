@@ -145,10 +145,15 @@ export function parseCoNLLU(text) {
       throw new Error(`Invalid HEAD value: ${head}`);
     }
     
-    // Add token to current sentence
+    // Add token to current sentence.
+    // FORM is required for a regular token, so a literal `_` is the surface form
+    // (an underscore character — common in web text as an emphasis marker), NOT
+    // CoNLL-U's "empty value" placeholder. Blanking it would yield a zero-width
+    // token, which the nested word/morpheme layers reject. (The placeholder
+    // meaning DOES apply to the optional columns below, and to MWT-row FORM.)
     currentSentence.tokens.push({
       id: idNum,
-      form: form === '_' ? '' : form,
+      form: form,
       lemma: lemma === '_' ? null : lemma,
       upos: upos === '_' ? null : upos,
       xpos: xpos === '_' ? null : xpos,
