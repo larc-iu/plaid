@@ -66,7 +66,7 @@ export class ConlluDocument {
   // tokens + annotation spans + dependency relations, and returns the newly
   // created document id. On any failure, attempts to delete the partial
   // document so the project isn't left polluted.
-  static async importFromConllu(client, projectId, name, conlluText) {
+  static async importFromConllu(client, projectId, name, conlluText, precomputedLayerInfo = null) {
     if (!name || !name.trim()) throw new Error('Document name is required');
     if (!conlluText || !conlluText.trim()) throw new Error('No content to import');
 
@@ -96,8 +96,10 @@ export class ConlluDocument {
     try {
       const documentResponse = await client.documents.create(projectId, name);
       createdDocumentId = documentResponse.id;
-      const fullDocument = await client.documents.get(createdDocumentId, true);
-      const layerInfo = getUdLayerInfo(fullDocument);
+      // Layer config is project-level and identical for every document, so a
+      // bulk-import caller can pass it in to skip a per-document round trip.
+      const layerInfo = precomputedLayerInfo
+        || getUdLayerInfo(await client.documents.get(createdDocumentId, true));
 
       if (!layerInfo.isConfigured) {
         const missingLabels = missingUdLayerLabels(layerInfo.missingLayers).join(', ');

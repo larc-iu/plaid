@@ -129,6 +129,10 @@ export const ProjectImportExport = () => {
     setImporting(true);
     setResults([]);
     const client = getClient();
+    // Layer config is the same for every document, so read it once and pass it
+    // in — otherwise importFromConllu re-fetches it (a full includeBody read) per
+    // document, which roughly doubles import time on a big set.
+    const layerInfo = getUdLayerInfo(project);
     const acc = [];
     const push = (row) => { acc.push(row); setResults([...acc]); };
 
@@ -152,7 +156,7 @@ export const ProjectImportExport = () => {
         const chunk = chunks[c];
         const name = chunk.id || (chunks.length > 1 ? `${base} (${c + 1})` : base);
         try {
-          const { importWarnings } = await ConlluDocument.importFromConllu(client, projectId, name, chunk.text);
+          const { importWarnings } = await ConlluDocument.importFromConllu(client, projectId, name, chunk.text, layerInfo);
           push({ key: `${i}-${c}`, file: file.name, name, status: 'imported', warnings: importWarnings || [] });
         } catch (err) {
           push({ key: `${i}-${c}`, file: file.name, name, status: 'rejected', reason: err.message || 'Unknown error' });
