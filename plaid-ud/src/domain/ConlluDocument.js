@@ -159,10 +159,11 @@ export class ConlluDocument {
         });
       });
 
-      // Token batch: sentences -> words -> morphemes, atomic.
+      // Token batch: sentences -> words -> morphemes, atomic. `morphemeResultIndex`
+      // must live outside the batched() callback so it's readable after it returns.
+      let morphemeResultIndex = -1;
       const tokenResults = await client.batched(async () => {
         client.tokens.bulkCreate(sentenceOps);
-        let morphemeResultIndex = -1;
         if (wordOps.length > 0) client.tokens.bulkCreate(wordOps);
         if (morphemeOps.length > 0) {
           client.tokens.bulkCreate(morphemeOps);
@@ -593,11 +594,11 @@ export class ConlluDocument {
       const tokenizerLocale = this.layerInfo.textLayer?.config?.ud?.tokenizerLocale || 'und';
       const wordRanges = basicTokenize(body, tokenizerLocale);
 
+      let morphemeResultIndex = -1;
       const batchResults = await this._client.batched(async () => {
         this._client.tokens.bulkCreate(sentenceRanges.map(([begin, end]) => ({
           tokenLayerId: sentenceTokenLayer.id, text: text.id, begin, end
         })));
-        let morphemeResultIndex = -1;
         if (wordRanges.length > 0) {
           this._client.tokens.bulkCreate(wordRanges.map(([begin, end]) => ({
             tokenLayerId: wordTokenLayer.id, text: text.id, begin, end
