@@ -1338,10 +1338,15 @@ export class ConlluDocument {
         }
       });
 
-      this._client.beginBatch();
-      for (const [id, patch] of spanPatchById) this._client.spans.patchMetadata(id, patch);
-      for (const [id, patch] of relPatchById) this._client.relations.patchMetadata(id, patch);
-      await this._client.submitBatch();
+      const count = spanPatchById.size + relPatchById.size;
+      await this._client.withAuditMessage(
+        `Confirm ${count} predicted annotation${count === 1 ? '' : 's'}`,
+        async () => {
+          this._client.beginBatch();
+          for (const [id, patch] of spanPatchById) this._client.spans.patchMetadata(id, patch);
+          for (const [id, patch] of relPatchById) this._client.relations.patchMetadata(id, patch);
+          await this._client.submitBatch();
+        });
     });
   }
 

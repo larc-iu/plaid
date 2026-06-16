@@ -177,12 +177,15 @@ class NLTKTokenizerService(BaseService):
             # Process tokens using the token processor. Created tokens are
             # stamped machine-made (provenance convention); the processor
             # refuses to destroy protected annotations unless `overwrite`.
-            results = self.token_processor.process_tokens(
-                self.client, document_id, sentences, words,
-                primary_token_layer_id, sentence_layer_id, response_helper,
-                prov_source=service_source(self.service_id),
-                overwrite=overwrite,
-            )
+            # Label every write in the audit log (the processor acquires the
+            # document lock and does the batched token writes inside this scope).
+            with self.client.audit_message(f"NLTK Punkt tokenization ({language})"):
+                results = self.token_processor.process_tokens(
+                    self.client, document_id, sentences, words,
+                    primary_token_layer_id, sentence_layer_id, response_helper,
+                    prov_source=service_source(self.service_id),
+                    overwrite=overwrite,
+                )
             
             response_helper.progress(100, "Tokenization completed successfully")
             response_helper.complete({
