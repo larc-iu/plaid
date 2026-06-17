@@ -341,6 +341,28 @@ export function DocumentTokenize() {
           here. Word-level annotations are kept. This cannot be undone.
         </p>
       </ConfirmDeleteDialog>
+
+      {/* Destructive re-tokenize confirm: a tokenizer service run on a
+          single-sentence document resets the sentence partition, discarding the
+          existing analysis. Only opens when there's something to lose. */}
+      <ConfirmDeleteDialog
+        open={!!ops.pendingTokenize}
+        onOpenChange={(o) => { if (!o) ops.cancelPendingTokenize(); }}
+        title="Re-tokenize document"
+        confirmLabel="Re-tokenize anyway"
+        onConfirm={() => ops.confirmPendingTokenize()}
+      >
+        <p className="font-medium text-destructive">Warning</p>
+        <p className="mt-1 text-muted-foreground">
+          Re-tokenizing re-segments this document, discarding{' '}
+          <strong>
+            {ops.pendingTokenize?.annotations || 0} existing annotation{ops.pendingTokenize?.annotations === 1 ? '' : 's'}
+            {ops.pendingTokenize?.links ? ` and ${ops.pendingTokenize.links} vocabulary link${ops.pendingTokenize.links === 1 ? '' : 's'}` : ''}
+          </strong>{' '}
+          (word, morpheme, and sentence level) — including any from other apps on this project that
+          aren’t visible here. This cannot be undone.
+        </p>
+      </ConfirmDeleteDialog>
     </TooltipProvider>
   );
 }

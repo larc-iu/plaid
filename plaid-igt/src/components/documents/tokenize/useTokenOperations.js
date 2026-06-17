@@ -4,7 +4,7 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { useServiceParams } from '../hooks/useServiceParams.js';
-import { countAnnotationLossForWord, countSubWordAnnotationLoss } from '../../../domain/annotationLoss.js';
+import { countAnnotationLossForWord, countSubWordAnnotationLoss, countReTokenizeLoss } from '../../../domain/annotationLoss.js';
 import {
   BUILTIN_TOKENIZE_RULE_BASED, encodeServiceSelection, encodeBuiltinSelection,
   decodeSelection, readSpotDefault, resolveInitialSelection,
@@ -213,47 +213,75 @@ export const useTokenOperations = () => {
   };
 
   // --- Tokenization (built-in delegates to doc; NLP service stays here) ---
+  // Run an NLP tokenization service. `overwrite` is granted only after the user
+  // confirms a destructive re-tokenize (see handleTokenize / pendingTokenize).
+  const runServiceTokenize = async (serviceId, { overwrite = false } = {}) => {
+    setIsTokenizing(true);
+    setTokenizationProgress(0);
+    try {
+      const layers = doc.layerInfo;
+      updateProgress(10, 'Requesting tokenization from NLP service...');
+      await requestService(
+        project.id,
+        doc.document.id,
+        serviceId,
+        {
+          // User-controlled arguments declared by the service, spread FIRST so
+          // the fixed layer/doc params below always win over any same-named arg.
+          ...coerceParams(),
+          // Granted by the user's confirm — lets the run discard the existing
+          // annotations the sentence-partition reset cascade-deletes.
+          ...(overwrite ? { overwrite: true } : {}),
+          documentId: doc.document.id,
+          textLayerId: layers.primaryTextLayer?.id,
+          primaryTokenLayerId: layers.primaryTokenLayer.id,
+          sentenceLayerId: layers.sentenceTokenLayer?.id,
+        },
+        {
+          successTitle: 'Tokenization Complete',
+          successMessage: 'Document has been tokenized successfully',
+          errorTitle: 'Tokenization Failed',
+          errorMessage: 'An error occurred during tokenization',
+        },
+      );
+      updateProgress(100, 'Tokenization complete!');
+      await doc._reload();
+    } catch (error) {
+      console.error('Tokenization failed:', error);
+      notifyError(error.message || 'An error occurred during tokenization', 'Tokenization Failed');
+    } finally {
+      setIsTokenizing(false);
+      setTokenizationProgress(0);
+      setCurrentOperation('');
+    }
+  };
+
+  // A service re-tokenize of a single-sentence doc resets the sentence partition,
+  // cascade-deleting existing word/morpheme/sentence annotations. Surface that as
+  // a confirm (pendingTokenize drives the dialog in DocumentTokenize); on approval
+  // we re-run granting overwrite. null = nothing destructive / not pending.
+  const [pendingTokenize, setPendingTokenize] = useState(null); // {serviceId, annotations, links}
   const handleTokenize = async () => {
-    // Block on unmet required service arguments before doing any work.
     if (algorithm.startsWith('service:')) {
+      // Block on unmet required service arguments before doing any work.
       const missing = Object.values(paramErrors);
       if (missing.length) {
         notifyError(missing[0], 'Missing required option');
         return;
       }
+      const serviceId = algorithm.substring(8);
+      const loss = countReTokenizeLoss(doc.layerInfo, doc.vocabularies);
+      if (loss.annotations + loss.links > 0) {
+        setPendingTokenize({ serviceId, ...loss });
+        return; // the dialog decides
+      }
+      return runServiceTokenize(serviceId, { overwrite: false });
     }
+
+    // Built-in rule-based tokenizer fills untokenized ranges only — non-destructive.
     setIsTokenizing(true);
     setTokenizationProgress(0);
     try {
-      if (algorithm.startsWith('service:')) {
-        const serviceId = algorithm.substring(8);
-        const layers = doc.layerInfo;
-        updateProgress(10, 'Requesting tokenization from NLP service...');
-        await requestService(
-          project.id,
-          doc.document.id,
-          serviceId,
-          {
-            // User-controlled arguments declared by the service, spread FIRST so
-            // the fixed layer/doc params below always win over any same-named arg.
-            ...coerceParams(),
-            documentId: doc.document.id,
-            textLayerId: layers.primaryTextLayer?.id,
-            primaryTokenLayerId: layers.primaryTokenLayer.id,
-            sentenceLayerId: layers.sentenceTokenLayer?.id,
-          },
-          {
-            successTitle: 'Tokenization Complete',
-            successMessage: 'Document has been tokenized successfully',
-            errorTitle: 'Tokenization Failed',
-            errorMessage: 'An error occurred during tokenization',
-          },
-        );
-        updateProgress(100, 'Tokenization complete!');
-        await doc._reload();
-        return;
-      }
-
       updateProgress(50, 'Tokenizing…');
       const created = await doc.tokenize(); // built-in rule-based; reloads internally
       updateProgress(100, 'Tokenization complete!');
@@ -271,6 +299,13 @@ export const useTokenOperations = () => {
       setCurrentOperation('');
     }
   };
+  const confirmPendingTokenize = async () => {
+    if (!pendingTokenize) return;
+    const { serviceId } = pendingTokenize;
+    setPendingTokenize(null);
+    return runServiceTokenize(serviceId, { overwrite: true });
+  };
+  const cancelPendingTokenize = () => setPendingTokenize(null);
 
   const handleClearTokens = async () => {
     setIsTokenizing(true);
@@ -305,6 +340,9 @@ export const useTokenOperations = () => {
     pendingStructural,
     confirmPendingStructural,
     cancelPendingStructural,
+    pendingTokenize,
+    confirmPendingTokenize,
+    cancelPendingTokenize,
     mergeSentence,
     splitSentence,
     createTokenFromSelection,

@@ -84,6 +84,46 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
 };
 
 /**
+ * Count annotations a destructive *service* re-tokenize would discard. A
+ * tokenizer service resets the sentence partition ONLY when a single sentence
+ * covers the whole text; that cascade-deletes every word + morpheme token and
+ * every span / relation / vocab-link on them, plus the sentence's own spans.
+ * With zero or >1 sentences the service takes the non-destructive word-only
+ * path, so nothing here is lost. Used to surface a confirm before running.
+ *
+ * @returns {{annotations: number, links: number}}
+ */
+export const countReTokenizeLoss = (layerInfo, vocabularies) => {
+  const result = { annotations: 0, links: 0 };
+  const sentenceTokens = layerInfo?.sentenceTokenLayer?.tokens || [];
+  if (sentenceTokens.length !== 1) return result; // non-destructive path
+
+  const spanLayers = layerInfo.spanLayers || {};
+  for (const group of ['sentence', 'word', 'morpheme']) {
+    for (const sl of spanLayers[group] || []) {
+      result.annotations += (sl.spans || []).length;
+      for (const rl of sl.relationLayers || []) {
+        result.annotations += (rl.relations || []).length;
+      }
+    }
+  }
+
+  // Vocab links on any of the doc's (about-to-be-deleted) tokens.
+  const docTokenIds = new Set();
+  for (const key of ['sentenceTokenLayer', 'primaryTokenLayer', 'morphemeTokenLayer']) {
+    for (const t of layerInfo[key]?.tokens || []) docTokenIds.add(t.id);
+  }
+  for (const vocab of Object.values(vocabularies || {})) {
+    for (const link of vocab.vocabLinks || []) {
+      if (Array.isArray(link.tokens) && link.tokens.some(t => docTokenIds.has(t))) {
+        result.links += 1;
+      }
+    }
+  }
+  return result;
+};
+
+/**
  * Count the annotation loss a SPLIT or MERGE of the given word token(s) causes.
  *
  * Split/merge delete the words' coincident morphemes (and anything nested under
