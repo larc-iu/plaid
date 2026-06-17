@@ -214,9 +214,45 @@
      :smoke?   (not (contains? flags "--no-smoke"))
      :clients? (not (contains? flags "--skip-clients"))}))
 
+;; Hand-written doc pages and their Asciidoctor sources, kept in lock-step with
+;; .github/workflows/docs.yml. [output-file source-adoc].
+(def doc-pages
+  [["index.html"     "plaid-core/docs/index.adoc"]
+   ["manual.html"    "plaid-core/docs/manual.adoc"]
+   ["query.html"     "plaid-core/docs/query.adoc"]
+   ["dev.html"       "plaid-core/docs/dev.adoc"]
+   ["ud-guide.html"  "plaid-ud/docs/ud-guide.adoc"]
+   ["igt-guide.html" "plaid-igt/docs/igt-guide.adoc"]])
+
+;; Build the documentation site into _site/ exactly the way docs.yml does, for a
+;; local preview (no publishing — that's GitHub Pages' job). _site/ is gitignored.
+;; The API references are generated from the JS/Py client source by a node
+;; script; it's best-effort here, since it isn't needed to preview the
+;; hand-written pages and only needs node, not the SPA toolchain.
+(defn build-docs! []
+  (ensure-repo-root!)
+  (when-not (fs/which "asciidoctor")
+    (fail "asciidoctor not found on PATH — install it with `gem install asciidoctor coderay`"))
+  (let [site (fs/absolutize "_site")]
+    (step (str "Build docs into " site " (mirrors .github/workflows/docs.yml)"))
+    (fs/create-dirs site)
+    (doseq [[out src] doc-pages]
+      (println "  •" out)
+      (p/shell "asciidoctor" "-o" (str (fs/path site out)) src))
+    (step "Generate JS/Py API references (best-effort, needs node)")
+    (if (fs/which "node")
+      (let [r (p/sh "node" "plaid-core/docs/extract-api-docs.js")]
+        (if (zero? (:exit r))
+          (println "  • api-js.html / api-py.html")
+          (println "  ⚠ skipped API docs — extract-api-docs.js failed:\n" (:err r))))
+      (println "  ⚠ skipped API docs — node not on PATH (the other pages still built)"))
+    (println (str "\n✓ docs built — open " (fs/path site "index.html") " in a browser"))
+    (println (str "  or serve: cd " site " && python3 -m http.server 8000"))))
+
 (defn clean! []
   (ensure-repo-root!)
   (doseq [pth ["dist-artifacts"
+               "_site"
                "plaid-core/resources/ud"
                "plaid-core/resources/igt"
                "plaid-core/resources/services"

@@ -19,8 +19,13 @@
    :task (do (pl/run-tests!)
              (pl/build-artifacts! (pl/parse-build-args *command-line-args*)))}
 
+  docs
+  {:doc "Build the documentation site locally into _site/ (mirrors .github/workflows/docs.yml — index/manual/query/dev + the UD & IGT guides via Asciidoctor, plus the JS/Py API references best-effort via node). No publishing; open _site/index.html to preview. Prereq: `gem install asciidoctor coderay`."
+   :requires ([pipeline :as pl])
+   :task (pl/build-docs!)}
+
   clean
-  {:doc "Remove local build outputs: dist-artifacts/, the bundled SPAs/services/version.edn under plaid-core/resources, built jars, and the SPA dist/ dirs."
+  {:doc "Remove local build outputs: dist-artifacts/, the _site/ docs preview, the bundled SPAs/services/version.edn under plaid-core/resources, built jars, and the SPA dist/ dirs."
    :requires ([pipeline :as pl])
    :task (pl/clean!)}
 
