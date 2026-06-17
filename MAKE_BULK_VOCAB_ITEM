@@ -1,0 +1,10 @@
+TODO: add vocab_items.bulk_create (the only core entity lacking a bulk path).
+
+- core:    plaid-core/src/main/plaid/rest_api/v1/vocab_item.clj  -> add a
+           ["/bulk" {:post ...}] handler mirroring tokens/spans bulk-create
+           (returns {:ids [...]}); SQL bulk insert in plaid.sql.vocab-item.
+- clients: vocab_items.bulk_create in plaid-client-py/.../client.py and
+           plaid-client-js (+ index.d.ts).
+- why:     FST/lexicon-building services create lemmas one-by-one in a loop
+           (services/igt_analyze_fst.py _apply step 2). Surfaced building the FST
+           demo service, 2026-06-16.

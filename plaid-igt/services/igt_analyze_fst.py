@@ -23,14 +23,14 @@ foma/pynini backend is just another ``analyze()`` away.
       python -c "from uralicNLP import uralicApi; uralicApi.download('fin')"
 
   Smoke test (no server needed):
-      python igt_link_fst.py --selftest                 # Finnish defaults
-      python igt_link_fst.py --selftest --lang sme       # North Sámi
-      python igt_link_fst.py --selftest --fst my.hfstol  # bring-your-own
+      python igt_analyze_fst.py --selftest                 # Finnish defaults
+      python igt_analyze_fst.py --selftest --lang sme       # North Sámi
+      python igt_analyze_fst.py --selftest --fst my.hfstol  # bring-your-own
 
   Run against Plaid (registers on every accessible project; first run prompts
   for an API token -> cached in ./.token):
-      python igt_link_fst.py --url http://localhost:8085
-      python igt_link_fst.py <projectId> --lang fin
+      python igt_analyze_fst.py --url http://localhost:8085
+      python igt_analyze_fst.py <projectId> --lang fin
 """
 
 import argparse
