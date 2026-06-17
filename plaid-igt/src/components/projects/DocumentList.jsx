@@ -34,7 +34,7 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
   );
 };
 
-export const DocumentList = ({ documents, project, projectId, client, canManage, onDocumentCreated }) => {
+export const DocumentList = ({ documents, project, projectId, client, canManage, canWrite = true, onDocumentCreated }) => {
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [documentName, setDocumentName] = useState('');
@@ -173,9 +173,11 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
               </button>
             )}
           </div>
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4" /> Create Document
-          </Button>
+          {canWrite && (
+            <Button onClick={() => setOpen(true)}>
+              <Plus className="h-4 w-4" /> Create Document
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setExportOpen(true)} disabled={!documents.length}>
             <Download className="h-4 w-4" /> Export
           </Button>

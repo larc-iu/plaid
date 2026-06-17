@@ -65,6 +65,10 @@ export const ProjectDetail = () => {
   }, [projectId]);
 
   const canManage = !!user && !!project && (user.isAdmin || project.maintainers?.includes(user.id));
+  // Creating/editing documents needs WRITE, which writers have but managing
+  // (settings/access) does not. Gate document-create on this so a reader isn't
+  // shown a button that 403s on submit.
+  const canWrite = canManage || (!!user && !!project && project.writers?.includes(user.id));
 
   // Which top-level tab is active. Documents/Search are local UI state; the
   // Settings tab is reflected in the path so its sections are deep-linkable.
@@ -168,6 +172,7 @@ export const ProjectDetail = () => {
             projectId={projectId}
             client={client}
             canManage={canManage}
+            canWrite={canWrite}
             onDocumentCreated={handleDocumentCreated}
           />
         </TabsContent>

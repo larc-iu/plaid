@@ -435,11 +435,16 @@ export const alignmentMutations = {
     }
 
     return this._withSaving('Failed to update alignment boundaries', async () => {
-      await this._client.tokens.setMetadata(alignmentId, { timeBegin, timeEnd });
+      // PATCH (shallow-merge), not setMetadata (full replace): a manual boundary
+      // drag must preserve the segment's provenance (prov/provSource/provDetail),
+      // and per the cross-app convention "any human edit verifies" we stamp
+      // provConfirmed. setMetadata would wipe prov, recording a machine-made
+      // segment as origin-less.
+      await this._client.tokens.patchMetadata(alignmentId, { timeBegin, timeEnd, provConfirmed: true });
       this._applyRawPatch((next, infoNext) => {
         const t = (infoNext.alignmentTokenLayer?.tokens || []).find(x => x.id === alignmentId);
         if (t) {
-          t.metadata = { ...(t.metadata || {}), timeBegin, timeEnd };
+          t.metadata = { ...(t.metadata || {}), timeBegin, timeEnd, provConfirmed: true };
         }
       });
     });

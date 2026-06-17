@@ -77,11 +77,16 @@ export class IgtDocument {
   // read-only viewing; omit/null for the live document.
   static async load(client, projectId, documentId, asOf = null) {
     const at = asOf || undefined;
+    // Time-travel (as-of) is supported ONLY on document GETs server-side; passing
+    // an as-of to the project or vocab GETs 400s ("not supported on this endpoint")
+    // and dead-ends the editor. Load the document AT the snapshot, but project
+    // config + vocab live (layer structure is immutable; live vocab is fine for a
+    // read-only historical view).
     const [raw, project] = await Promise.all([
       client.documents.get(documentId, true, at),
-      client.projects.get(projectId, at)
+      client.projects.get(projectId)
     ]);
-    const { vocabularies } = await loadProjectVocabularies(client, project, at);
+    const { vocabularies } = await loadProjectVocabularies(client, project);
     return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf });
   }
 
