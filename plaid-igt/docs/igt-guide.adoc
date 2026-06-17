@@ -240,25 +240,17 @@ To write such a program, see the link:api-py.html[Python client] and link:api-js
 
 = Future Work
 
-Plaid IGT is a demonstration app, and the directions below are things we are *exploring* rather than committed features.
-Nothing here is a promise, and the eventual shape of any of it (if we pursue it at all) may differ; we list them to give a sense of where the editor might grow.
+Plaid IGT is an alpha-quality app, with ongoing development.
+Here we note some future planned work which we expect to deliver at some point.
 
 == Richer linguistic representation
 
 Today each annotation field holds a single plain-text value in a left-to-right script, and the lexicon is a flat list of entries.
-This suits an English-metalanguage, Latin-script workflow well, but not every project's languages.
-We are exploring support for multiple analysis languages and writing systems per field — including right-to-left and complex-script shaping, and per-field fonts — and a deeper lexicon model (such as entry/sense structure and allomorphs) beyond the current flat entries.
+This suits many but not all languages.
+We are exploring support for multiple analysis languages and writing systems per field, including right-to-left and complex-script shaping, and per-field fonts.
+A more structured vocabulary model (allowing for first-class representation of sense structures and allomorphy) may arrive at some point in the future.
 
 == Audio and time alignment
 
 The current media support is deliberately lightweight: a single recording, one alignment tier, and segment-level (rather than word-level) transcription.
-We are exploring finer-grained alignment down to the word, multiple alignment tiers, and first-class handling of multiple speakers.
-Speaker diarization in particular is something we may add; for now, marking the speaker with a sentence-level annotation is the suggested workaround.
-
-== Tokenization and services
-
-We are looking at making the built-in tokenizer sentence-aware — it currently splits words but leaves sentence boundaries to you or to a tokenization service — and at letting you cancel a long-running service, such as a transcription, while it is still in progress.
-
-== Editor quality-of-life
-
-Several smaller refinements are under consideration, among them: annotating tokens that are symbols or emoji (today they can be created but not annotated), jumping directly between steps in the project setup wizard, a prompt before leaving a document with an uncommitted edit, and assorted keyboard-navigation polish in the Analyze grid.
+In the future, we may offer finer-grained alignment down to the level of the word and multiple alignment tiers.
