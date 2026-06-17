@@ -39,9 +39,14 @@ export const morphFormOf = (m) => {
 };
 
 /** Join per-morpheme strings with -/= joints from the morphemes' morphTypes
- * (texts and morphemes are parallel arrays). Shared with src/export/. */
+ * (texts and morphemes are parallel arrays). Shared with src/export/.
+ * When EVERY piece is blank (e.g. an unglossed multi-morpheme word) the result
+ * is empty rather than a bare run of joints ("-"/"--"), which read as a stray
+ * gloss in exports/copy. */
 export const joinMorphemeTexts = (morphemes, texts) =>
-  joinMorphemes(texts.map((t, i) => ({ text: t, morphType: morphemes[i]?.metadata?.morphType })));
+  texts.some((t) => (t ?? '').trim() !== '')
+    ? joinMorphemes(texts.map((t, i) => ({ text: t, morphType: morphemes[i]?.metadata?.morphType })))
+    : '';
 
 // Per-word cells: segmented form + one joined-gloss string per morph field +
 // one value per word field.
