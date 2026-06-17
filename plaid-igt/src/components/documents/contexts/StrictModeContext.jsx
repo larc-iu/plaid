@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom';
 
 import PlaidClient from '@larc-iu/plaid-client';
 
+import { authService } from '../../../services/auth';
+
 const StrictModeContext = createContext(null);
 
 /**
@@ -36,7 +38,9 @@ export const StrictModeProvider = ({ children }) => {
   // Per-document client. NOT in strict mode (see the note above).
   const documentClient = useMemo(() => {
     if (!token || !documentId) return null;
-    return new PlaidClient(baseUrl, token);
+    return new PlaidClient(baseUrl, token, {
+      onAuthError: () => authService.logout(),
+    });
   }, [baseUrl, token, documentId]);
 
   return (

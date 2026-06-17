@@ -44,6 +44,11 @@ class PlaidClient {
     // Ambient custom audit-log message applied to write requests; null = use
     // the server's auto-generated description. See setAuditMessage / withAuditMessage.
     this.auditMessage = null;
+    // Optional callback fired once (per client) when any request returns HTTP
+    // 401 — i.e. the token is missing/expired/invalid. Apps use it to discard
+    // the stored token and route back to login. See makeRequest in http.js.
+    this.onAuthError = options.onAuthError || null;
+    this._authErrorFired = false;
 
     // --- API Bundles ---
 
@@ -1194,6 +1199,20 @@ class PlaidClient {
         this._request('POST', '/api/v1/vocab-items', { auditMessage,
           body: bodyOf({ 'vocab-layer-id': vocabLayerId, form, metadata }),
         }),
+      /**
+       * Create multiple vocab items in a single operation. Entries may target
+       * different vocab layers; the user must have write access to each.
+       * @param {Array<{vocabLayerId: string, form: string, metadata?: any}>} body - The vocab items to create
+       */
+      bulkCreate: (body, auditMessage) =>
+        this._request('POST', '/api/v1/vocab-items/bulk', { auditMessage, body }),
+      /**
+       * Delete multiple vocab items in a single operation. Each item's
+       * descendant vocab links are deleted too. Provide an array of IDs.
+       * @param {string[]} body - The vocab item IDs to delete
+       */
+      bulkDelete: (body, auditMessage) =>
+        this._request('DELETE', '/api/v1/vocab-items/bulk', { auditMessage, body }),
       /**
        * Get a vocab item by ID
        * @param {string} id - The resource ID

@@ -252,6 +252,8 @@ interface VocabItemsBundle {
   deleteMetadata(id: string, auditMessage?: string): Promise<any>;
   patchMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
   create(vocabLayerId: string, form: string, metadata?: any, auditMessage?: string): Promise<any>;
+  bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
+  bulkDelete(body: any[], auditMessage?: string): Promise<void>;
   get(id: string, asOf?: string): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
   update(id: string, form: string, auditMessage?: string): Promise<any>;
@@ -285,12 +287,20 @@ interface TokensBundle {
 interface PlaidClientOptions {
   /** Per-request timeout in ms (default 30000; 0 or null disables it). */
   timeout?: number | null;
+  /**
+   * Fired once when a request returns HTTP 401 (missing/expired/invalid token).
+   * Use it to discard the stored token and route back to login. 403 (forbidden)
+   * does NOT trigger it.
+   */
+  onAuthError?: ((error: Error) => void) | null;
 }
 
 export declare class PlaidClient {
   constructor(baseUrl: string, token: string, options?: PlaidClientOptions);
   static login(baseUrl: string, userId: string, password: string, options?: PlaidClientOptions): Promise<PlaidClient>;
   timeout: number | null;
+  /** Fired once on HTTP 401 (see PlaidClientOptions.onAuthError). */
+  onAuthError: ((error: Error) => void) | null;
 
   // Batch control methods
   beginBatch(): void;

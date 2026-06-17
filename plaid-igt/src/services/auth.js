@@ -37,7 +37,9 @@ export const authService = {
   async login(username, password) {
     try {
       // Use PlaidClient's static login method
-      client = await PlaidClient.login(BASE_URL, username, password);
+      client = await PlaidClient.login(BASE_URL, username, password, {
+        onAuthError: () => authService.logout(),
+      });
       
       // Extract token from the client
       const token = client.token;
@@ -108,7 +110,9 @@ export const authService = {
     const token = localStorage.getItem('token');
     if (!client && token) {
       // Recreate client from stored token
-      client = new PlaidClient(BASE_URL, token);
+      client = new PlaidClient(BASE_URL, token, {
+        onAuthError: () => authService.logout(),
+      });
     }
     return client;
   }

@@ -205,7 +205,15 @@ export async function makeRequest(client, method, path, options = {}) {
     const response = await fetch(url, fetchOptions);
 
     if (!response.ok) {
-      throw makeHttpError(response, await parseErrorBody(response), url, method);
+      const error = makeHttpError(response, await parseErrorBody(response), url, method);
+      // 401 means the token is missing/expired/invalid. Fire the app's auth-error
+      // handler once (it discards the token and routes back to login). 403
+      // (forbidden — authenticated but not permitted) deliberately does NOT.
+      if (response.status === 401 && typeof client.onAuthError === 'function' && !client._authErrorFired) {
+        client._authErrorFired = true;
+        try { client.onAuthError(error); } catch (_) { /* handler must not mask the original error */ }
+      }
+      throw error;
     }
 
     // Binary response (getMedia)
