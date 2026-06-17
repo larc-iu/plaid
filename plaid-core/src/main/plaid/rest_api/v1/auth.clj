@@ -219,7 +219,9 @@
                                        api-token-id (assoc :api-token/id api-token-id))))]
               (cond
                 (instance? Exception token-data)
-                (do (log/warn token-data "JWT validation error")
+                ;; Log just the message — a rejected token is routine (expired,
+                ;; tampered, wrong secret) and not worth a full stack trace.
+                (do (log/warn "JWT validation failed:" (.getMessage ^Exception token-data))
                     {:status 401
                      :body {:error (str "Token invalid. Obtain a new token.")}})
 
