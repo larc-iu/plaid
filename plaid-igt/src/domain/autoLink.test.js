@@ -4,22 +4,22 @@ import { buildPrecedentTable, buildItemIndex, computeAutoLinkProposals, preceden
 const res = (rows) => ({ results: rows });
 
 describe('buildPrecedentTable', () => {
-  it('uses morphForm over token value and requires a strict majority', () => {
+  it('uses morphForm over token value and takes the majority item', () => {
     const t = buildPrecedentTable([res([
       ['item-a', 'perros', null, 3],   // word token: form = value
       ['item-a', 'whole', 's', 4],     // morpheme token: form = metadata.form
       ['item-b', 'whole', 's', 2],     // minority for "s"
     ])]);
-    expect(t.get('perros')).toEqual({ itemId: 'item-a', contested: false });
-    expect(t.get('s')).toEqual({ itemId: 'item-a', contested: false }); // 4 > 2
+    expect(t.get('perros')).toBe('item-a');
+    expect(t.get('s')).toBe('item-a'); // 4 > 2
   });
 
-  it('marks ties contested (and they never link)', () => {
+  it('breaks count ties to the lexicographically smaller id', () => {
     const t = buildPrecedentTable([res([
-      ['item-a', null, 'la', 2],
       ['item-b', null, 'la', 2],
+      ['item-a', null, 'la', 2],
     ])]);
-    expect(t.get('la')).toEqual({ itemId: null, contested: true });
+    expect(t.get('la')).toBe('item-a'); // tie -> 'item-a' < 'item-b'
   });
 
   it('merges counts across vocabs', () => {
@@ -27,7 +27,7 @@ describe('buildPrecedentTable', () => {
       res([['item-a', null, 'se', 1]]),
       res([['item-a', null, 'se', 2], ['item-b', null, 'se', 2]]),
     ]);
-    expect(t.get('se')).toEqual({ itemId: 'item-a', contested: false }); // 3 > 2
+    expect(t.get('se')).toBe('item-a'); // 3 > 2
   });
 });
 
@@ -47,21 +47,22 @@ const word = (id, content, vocabItem = null, morphemes = []) => ({ id, content, 
 const morph = (id, form, vocabItem = null) => ({ id, metadata: { form }, vocabItem });
 
 describe('computeAutoLinkProposals', () => {
-  it('links via precedent, unique item, and casefold — skipping ambiguity and human-linked', () => {
+  it('links via precedent, item match, and casefold — breaking ties to the smaller id, skipping human-linked', () => {
     const precedentTable = buildPrecedentTable([res([['i-prec', null, 'nac', 2]])]);
     const sentences = sentence([
-      word('w1', 'Todos'),                       // casefold unique item -> i-all
-      word('w2', 'se'),                           // two items share the form -> skip
+      word('w1', 'Todos'),                       // casefold item match -> i-all
+      word('w2', 'se'),                           // two items share 'se' -> smaller id i-se1
       word('w3', 'todos', { id: 'x' }),           // human link (no prov) -> protected, skip
       word('w4', 'unknown'),                      // nothing matches -> skip
       word('w5', 'whole', null, [
         morph('m1', 'nac'),                       // precedent -> i-prec
-        morph('m2', 'todos'),                     // exact unique item -> i-all
+        morph('m2', 'todos'),                     // exact item match -> i-all
       ]),
     ]);
     const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedentTable });
     expect(proposals).toEqual([
       { tokenId: 'w1', vocabItemId: 'i-all', form: 'Todos', kind: 'word' },
+      { tokenId: 'w2', vocabItemId: 'i-se1', form: 'se', kind: 'word' },
       { tokenId: 'm1', vocabItemId: 'i-prec', form: 'nac', kind: 'morpheme' },
       { tokenId: 'm2', vocabItemId: 'i-all', form: 'todos', kind: 'morpheme' },
     ]);
@@ -80,17 +81,19 @@ describe('computeAutoLinkProposals', () => {
     ]);
   });
 
-  it('a contested precedent skips even when an item would match uniquely', () => {
+  it('a precedent tie breaks to the lexicographically smaller item id', () => {
     const precedentTable = buildPrecedentTable([res([
-      ['i-all', null, 'todos', 1],
       ['i-se1', null, 'todos', 1],
+      ['i-all', null, 'todos', 1],
     ])]);
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'todos')]),
       vocabularies: VOCABS,
       precedentTable,
     });
-    expect(proposals).toEqual([]);
+    expect(proposals).toEqual([
+      { tokenId: 'w1', vocabItemId: 'i-all', form: 'todos', kind: 'word' }, // 'i-all' < 'i-se1'
+    ]);
   });
 });
 

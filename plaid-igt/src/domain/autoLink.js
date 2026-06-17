@@ -1,8 +1,11 @@
 // Built-in vocab linking (run ON DEMAND from the Auto-link dialog — not
 // automatically; see [[plaid-igt-provenance]] and the roadmap's P6). Policy:
-//   PRECEDENT FIRST — follow the majority of existing same-form links across
-//   the project (ties/contested = skip); with no precedent, link only when the
-//   form matches exactly ONE vocab item; ambiguity always skips.
+//   PRECEDENT FIRST — follow the most-linked same-form item across the project;
+//   a tie on count breaks to the lexicographically smallest item id. With no
+//   precedent, link to a matching vocab item; if several share the form, again
+//   the lexicographically smallest id wins. Ties are rare, and the result is
+//   stamped unverified for review, so an arbitrary-but-deterministic pick beats
+//   refusing to link.
 //   Case: exact form first, then a casefolded fallback (sentence-initial
 //   capitals are everywhere in word tokens).
 // Links are created with { prov: 'inferred', provSource } and NO provConfirmed
@@ -39,10 +42,9 @@ export function precedentQueries(vocabIds) {
   }));
 }
 
-// Merge precedent rows into form -> { itemId, contested }. Majority must be
-// STRICT (top count > every other candidate's count); ties mark the form
-// contested, which always skips (a precedent conflict signals ambiguity louder
-// than no precedent at all).
+// Merge precedent rows into form -> itemId: the most-linked (form, item)
+// pairing across the project. A tie on count breaks to the lexicographically
+// smallest item id — ties are rare; pick one deterministically rather than skip.
 export function buildPrecedentTable(resultsPerVocab) {
   const tally = new Map(); // form -> Map<itemId, n>
   for (const res of resultsPerVocab) {
@@ -58,13 +60,12 @@ export function buildPrecedentTable(resultsPerVocab) {
   const table = new Map();
   for (const [form, m] of tally) {
     let best = null;
-    let bestN = 0;
-    let second = 0;
+    let bestN = -1;
     for (const [id, n] of m) {
-      if (n > bestN) { second = bestN; best = id; bestN = n; }
-      else if (n > second) second = n;
+      // Higher count wins; equal count breaks to the lexicographically smaller id.
+      if (n > bestN || (n === bestN && id < best)) { best = id; bestN = n; }
     }
-    table.set(form, bestN > second ? { itemId: best, contested: false } : { itemId: null, contested: true });
+    if (best != null) table.set(form, best);
   }
   return table;
 }
@@ -89,21 +90,20 @@ export function buildItemIndex(vocabularies) {
   return { exact, folded };
 }
 
-// Resolution tiers: exact precedent > exact unique item > casefolded
-// precedent > casefolded unique item. A contested precedent or a multi-item
-// match at the consulted tier SKIPS (returns null) rather than falling
-// through — ambiguity never auto-links.
+// Resolution tiers, first hit wins: exact precedent > exact item > casefolded
+// precedent > casefolded item. Among multiple items sharing a form, the
+// lexicographically smallest id is taken (precedent ties are already broken in
+// buildPrecedentTable). Returns null only when nothing matches at any tier.
+const smallestId = (ids) => (ids && ids.length ? ids.reduce((a, b) => (b < a ? b : a)) : null);
 function resolveForm(form, precedent, items) {
   const p = precedent.get(form);
-  if (p) return p.contested ? null : p.itemId;
-  const exact = items.exact.get(form);
-  if (exact) return exact.length === 1 ? exact[0] : null;
+  if (p) return p;
+  const exact = smallestId(items.exact.get(form));
+  if (exact) return exact;
   const lower = form.toLowerCase();
   const pf = precedent.get(lower);
-  if (pf) return pf.contested ? null : pf.itemId;
-  const folded = items.folded.get(lower);
-  if (folded) return folded.length === 1 ? folded[0] : null;
-  return null;
+  if (pf) return pf;
+  return smallestId(items.folded.get(lower));
 }
 
 // Is a word/morpheme open to (re)linking, and what does it currently point at?
