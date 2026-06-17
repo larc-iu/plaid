@@ -37,6 +37,9 @@ export const useMediaOperations = () => {
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.8);
+  // Always-current mirror of `volume` so the (deps-`[]`) media-element
+  // registration callback can apply the latest value without a stale closure.
+  const volumeRef = useRef(0.8);
   const [selection, setSelection] = useState(null);
   const [playingSelection, setPlayingSelection] = useState(null);
   const [popoverOpened, setPopoverOpened] = useState(false);
@@ -85,6 +88,10 @@ export const useMediaOperations = () => {
   // Media playback operations
   const setMediaElement = useCallback((element) => {
     mediaElementRef.current = element;
+    // Apply the current volume to a freshly-registered element. This covers the
+    // element mounting after the initial 0.8 (or a later value) was set, since
+    // the `[volume]` effect below won't re-run just because the ref changed.
+    if (element) element.volume = volumeRef.current;
   }, []);
 
   const setAutoScrollToTime = useCallback((fn) => {
@@ -105,6 +112,8 @@ export const useMediaOperations = () => {
 
   const handleVolumeChange = useCallback((v) => {
     setVolume(v);
+    // Apply immediately to the DOM media element (state alone never reaches it).
+    if (mediaElementRef.current) mediaElementRef.current.volume = v;
   }, []);
 
   const handleSeek = useCallback((time) => {
@@ -283,6 +292,13 @@ export const useMediaOperations = () => {
       localStorage.removeItem(SERVICE_KEY);
     }
   }, []);
+
+  // Keep the DOM media element's volume in sync with `volume`. Covers the
+  // initial 0.8, any volume set before the element mounted, and element swaps.
+  useEffect(() => {
+    volumeRef.current = volume;
+    if (mediaElementRef.current) mediaElementRef.current.volume = volume;
+  }, [volume]);
 
   // Setup hotkeys (replaces Mantine useHotkeys; ignores events from form fields).
   useEffect(() => {

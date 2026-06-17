@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, RotateCcw, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
@@ -243,11 +243,12 @@ export const DocumentMetadataManager = ({
                         </Button>
                         <Button
                           size="icon"
-                          variant="destructive"
+                          variant={record.isCustom ? 'destructive' : 'secondary'}
+                          title={record.isCustom ? 'Delete field' : 'Reset to default'}
                           className="h-7 w-7 transition-opacity"
                           style={{ opacity: hoveredField === record.name ? 1 : 0 }}
                           onClick={(event) => {
-                            event.stopPropagation(); // Prevent row click when clicking delete
+                            event.stopPropagation(); // Prevent row click when clicking the action
                             if (record.isCustom) {
                               handleDeleteCustomField(record.name);
                             } else {
@@ -257,7 +258,9 @@ export const DocumentMetadataManager = ({
                             }
                           }}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          {record.isCustom
+                            ? <Trash2 className="h-3.5 w-3.5" />
+                            : <RotateCcw className="h-3.5 w-3.5" />}
                         </Button>
                       </div>
                     </div>

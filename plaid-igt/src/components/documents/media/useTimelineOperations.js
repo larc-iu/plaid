@@ -588,17 +588,14 @@ export const useTimelineOperations = (mediaOps) => {
         // Scale context for high DPI
         ctx.scale(pixelRatio, pixelRatio);
         
+        // Decoding failed, so we have no real amplitude data. Draw a single flat
+        // centerline instead of randomized bars (which would read as a genuine
+        // signal) to honestly signal "no waveform available".
         ctx.fillStyle = '#90caf9';
         ctx.globalAlpha = 0.3;
-        
-        const effectiveTimelineWidth = timelineWidth;
-        const samples = timelineWidth * 2;
-        for (let i = 0; i < samples; i++) {
-          const height = Math.random() * 40 + 5;
-          const x = (i / samples) * effectiveTimelineWidth;
-          const barWidth = effectiveTimelineWidth / samples;
-          ctx.fillRect(x, (TIMELINE_HEIGHT / 2) - height/2, Math.max(0.5, barWidth), height);
-        }
+
+        const centerlineHeight = 1;
+        ctx.fillRect(0, (TIMELINE_HEIGHT / 2) - centerlineHeight / 2, timelineWidth, centerlineHeight);
         
         canvas.toBlob((blob) => {
           if (blob) {
