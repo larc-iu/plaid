@@ -85,7 +85,8 @@ class AlignmentProcessor:
             # Create time alignment tokens (preserve existing ones)
             tokens_created = self._create_time_alignment_tokens(
                 client, document_id, transcriptions, text_layer_id,
-                alignment_token_layer_id, sentence_token_layer_id, response_helper
+                alignment_token_layer_id, sentence_token_layer_id, response_helper,
+                prov_source=prov_source, overwrite=overwrite
             )
 
             return tokens_created
@@ -125,7 +126,8 @@ class AlignmentProcessor:
     
     def _create_time_alignment_tokens(self, client, document_id: str, transcriptions: List[Dict],
                                      text_layer_id: str, alignment_token_layer_id: str,
-                                     sentence_token_layer_id: Optional[str], response_helper) -> int:
+                                     sentence_token_layer_id: Optional[str], response_helper,
+                                     prov_source: Optional[str] = None, overwrite: bool = False) -> int:
         """Create time alignment tokens from transcription results, preserving existing work"""
         try:
             # Get document with full token information
