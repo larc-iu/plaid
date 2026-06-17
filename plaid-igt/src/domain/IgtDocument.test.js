@@ -594,9 +594,12 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(doc.alignmentTokens[0].metadata.timeBegin).toBe(0);
     const ok = await doc.updateAlignmentBounds('a-1', { timeBegin: 5, timeEnd: 6 });
     expect(ok).toBe(true);
-    expect(kinds(doc.client)).toContain('tokens.setMetadata');
+    // PATCH (merge), not setMetadata (replace) — preserves prov; a human boundary
+    // edit also stamps provConfirmed per the cross-app provenance convention.
+    expect(kinds(doc.client)).toContain('tokens.patchMetadata');
     expect(doc.alignmentTokens[0].metadata.timeBegin).toBe(5);
     expect(doc.alignmentTokens[0].metadata.timeEnd).toBe(6);
+    expect(doc.alignmentTokens[0].metadata.provConfirmed).toBe(true);
   });
 
   it('deleteAlignment removes the alignment text range', async () => {
