@@ -25,7 +25,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
 import { FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
@@ -163,7 +163,9 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     } catch (err) {
       console.error('Usage-count query failed:', err);
       setUsageCounts(null);
-      notifyWarning('Usage counts could not be loaded.', 'Usage counts unavailable');
+      if (!isPermissionError(err)) {
+        notifyWarning('Usage counts could not be loaded.', 'Usage counts unavailable');
+      }
     }
   };
 

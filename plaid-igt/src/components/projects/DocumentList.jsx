@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Plus, ArrowUp, ArrowDown, Download, Search, X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -103,7 +103,7 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
       if (onDocumentCreated) onDocumentCreated({ ...newDocument, name: documentName.trim() });
     } catch (error) {
       console.error('Failed to create document:', error);
-      notifyError(`Failed to create document: ${error.message}`, 'Error');
+      notifyError(humanizeError(error, 'Could not create the document.'), 'Error');
     } finally {
       setIsCreating(false);
     }

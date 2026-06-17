@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
-import { notifyError, notifyWarning, toast } from '@/utils/feedback';
+import { notifyError, notifyWarning, toast, humanizeError } from '@/utils/feedback';
 import { History, FileText, Type, Mic, Play, Table, Download } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -101,7 +101,7 @@ const DocumentEditor = () => {
       try {
         const d = await IgtDocument.load(client, projectId, documentId, asOf);
         if (cancelled) return;
-        d.onError = (msg) => notifyError(msg);
+        d.onError = (msg) => notifyError(humanizeError(msg, msg));
         setDoc(d);
       } catch (e) {
         if (cancelled) return;
@@ -110,7 +110,7 @@ const DocumentEditor = () => {
           return;
         }
         console.error('Failed to load document:', e);
-        setLoadError(e.message || 'Failed to load document');
+        setLoadError(humanizeError(e, 'This document could not be loaded.'));
       }
     })();
     return () => { cancelled = true; };

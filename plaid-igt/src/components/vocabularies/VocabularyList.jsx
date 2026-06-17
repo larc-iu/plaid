@@ -5,7 +5,7 @@ import { Plus, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { notifyWarning } from '@/utils/feedback';
+import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // Sortable column header button (renders an arrow for the active column).
@@ -86,7 +86,11 @@ export const VocabularyList = () => {
         console.error('Vocab item-count query failed:', err);
         if (!cancelled) {
           setItemCounts({}); // leave counts unknown -> "—"
-          notifyWarning('Item counts could not be loaded for the vocabulary list.', 'Item counts unavailable');
+          // A user with no project access (e.g. a vocab-only maintainer) can't run
+          // the count query — that's expected, not an error worth a toast.
+          if (!isPermissionError(err)) {
+            notifyWarning('Item counts could not be loaded for the vocabulary list.', 'Item counts unavailable');
+          }
         }
       } finally {
         if (!cancelled) setCountsLoading(false);
