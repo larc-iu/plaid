@@ -224,12 +224,32 @@ export const useMediaOperations = () => {
       return;
     }
 
+    // Re-transcribe is destructive: the ASR workflow APPENDS to existing text
+    // rather than replacing it, and interleaved ASR is not supported — so a
+    // re-run must start from a clean slate. If the document already has a
+    // transcript, confirm, then wipe the baseline before transcribing fresh.
+    const hasExistingTranscript = !!(doc.body && doc.body.trim());
+    if (hasExistingTranscript && !confirm(
+      'This document already has a transcript. Transcribing again will REPLACE it — '
+      + 'discarding the existing text, tokens, time alignments, and any annotations on '
+      + 'them. This cannot be undone. Continue?'
+    )) {
+      return;
+    }
+
     // Find text, alignment token, and sentence token layers
     const primaryTextLayer = doc.layerInfo.primaryTextLayer;
     const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
     const sentenceTokenLayer = doc.layerInfo.sentenceTokenLayer;
 
     try {
+      // Start from a clean slate: setting the body to '' cascade-deletes its
+      // tokens, sentences, alignments, and every annotation on them, so ASR
+      // builds a fresh document instead of appending a second transcript.
+      if (hasExistingTranscript) {
+        updateProgress(5, 'Clearing the previous transcript...');
+        await doc.saveBaselineText('');
+      }
       updateProgress(10, 'Starting transcription...');
 
       await requestService(
