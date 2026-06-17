@@ -247,8 +247,9 @@ export const useTokenOperations = () => {
       updateProgress(100, 'Tokenization complete!');
       await doc._reload();
     } catch (error) {
+      // useServiceRequest already shows an error toast (errorTitle/errorMessage);
+      // just log here so a failed run doesn't double-toast.
       console.error('Tokenization failed:', error);
-      notifyError(error.message || 'An error occurred during tokenization', 'Tokenization Failed');
     } finally {
       setIsTokenizing(false);
       setTokenizationProgress(0);

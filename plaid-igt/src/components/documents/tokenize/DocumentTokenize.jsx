@@ -135,8 +135,9 @@ export function DocumentTokenize() {
                   <div>
                     <p className="text-sm font-medium">No sentence partition</p>
                     <p className="text-sm text-muted-foreground">
-                      Save baseline text first to enable tokenization. Word-level tokens must live
-                      inside a sentence partition, which is created when you save baseline text.
+                      {text?.body
+                        ? 'This document has baseline text but no sentence partition yet. Re-save the text on the Baseline tab to create one — word tokens must live inside a sentence.'
+                        : 'Add baseline text on the Baseline tab first. Saving it creates the sentence partition that word tokens live inside.'}
                     </p>
                   </div>
                 </div>

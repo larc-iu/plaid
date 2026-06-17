@@ -147,10 +147,12 @@ const DocumentEditor = () => {
           );
           return;
         }
-        // Loud "repaired after another app" toast only for genuinely surprising
-        // repairs (orphan-morpheme deletes / duplicate-span merges). Adding a
-        // default morpheme per bare word is routine scaffolding — e.g. right
-        // after tokenizing — so it stays silent.
+        // Surface genuinely surprising repairs (orphan-morpheme deletes /
+        // duplicate-span merges). Adding a default morpheme per bare word is
+        // routine scaffolding (e.g. right after tokenizing), so it stays silent.
+        // Don't assert "another app" — the most common trigger is IGT's own
+        // word merge (which reparents both words' spans onto the survivor); only
+        // make the toast sticky when real annotation data was dropped.
         if (deleted + dedupedSpans > 0) {
           const parts = [];
           if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
@@ -162,12 +164,13 @@ const DocumentEditor = () => {
             parts.push(s);
           }
           if (dedupedSpans) {
-            parts.push(`merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} left by a merge in another app (values joined with ' | ' — review them)`);
+            parts.push(`merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} from a token merge (values joined with ' | ' — review them)`);
           }
+          const droppedData = deletedAnnotatedOrphans > 0;
           notifyWarning(
-            `Repaired this document after an edit in another app: ${parts.join('; ')}. Please review.`,
+            `Repaired this document on open: ${parts.join('; ')}.${droppedData ? ' Please review.' : ''}`,
             'Document repaired',
-            { duration: Infinity }
+            droppedData ? { duration: Infinity } : undefined
           );
         }
         // Integrity findings (things we could NOT auto-repair) — console + toast.
