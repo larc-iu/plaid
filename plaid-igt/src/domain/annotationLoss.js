@@ -82,3 +82,79 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
   }
   return result;
 };
+
+/**
+ * Count the annotation loss a SPLIT or MERGE of the given word token(s) causes.
+ *
+ * Split/merge delete the words' coincident morphemes (and anything nested under
+ * them) in the same batch, cascade-deleting their morpheme-scope spans /
+ * relations / vocab links. Word-scope spans are NOT lost — split resizes the
+ * word in place, merge reparents word spans onto the survivor — so unlike
+ * countAnnotationLossForWord this counts ONLY sub-word (morpheme and deeper)
+ * material, the work that actually disappears with no warning.
+ *
+ * @param {object} layerInfo  getIgtLayerInfo result
+ * @param {object} vocabularies  the doc's vocabularies map
+ * @param {object[]} words  the affected word token(s) [{id, begin, end}, …]
+ * @returns {{annotations: number, links: number}}
+ */
+export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
+  const result = { annotations: 0, links: 0 };
+  const wordLayer = layerInfo?.primaryTokenLayer;
+  const list = (words || []).filter(Boolean);
+  if (!wordLayer || list.length === 0) return result;
+  const tokenLayers = layerInfo.primaryTextLayer?.tokenLayers || [];
+
+  // Token layers nested (transitively) UNDER the word layer (morpheme + deeper);
+  // the word layer itself is excluded — its spans survive split/merge.
+  const childrenOf = new Map();
+  tokenLayers.forEach(tl => {
+    if (tl.parentTokenLayer) {
+      if (!childrenOf.has(tl.parentTokenLayer)) childrenOf.set(tl.parentTokenLayer, []);
+      childrenOf.get(tl.parentTokenLayer).push(tl);
+    }
+  });
+  const cascading = [];
+  const queue = [wordLayer.id];
+  while (queue.length) {
+    const id = queue.shift();
+    for (const child of childrenOf.get(id) || []) {
+      cascading.push(child);
+      queue.push(child.id);
+    }
+  }
+
+  // Sub-word tokens contained in any of the affected words (their morphemes etc.).
+  const dyingTokens = new Set();
+  for (const tl of cascading) {
+    (tl.tokens || []).forEach(t => {
+      if (list.some(w => containsToken(w, t))) dyingTokens.add(t.id);
+    });
+  }
+  if (dyingTokens.size === 0) return result;
+
+  const dyingSpans = new Set();
+  for (const tl of cascading) {
+    for (const sl of tl.spanLayers || []) {
+      for (const s of sl.spans || []) {
+        if (Array.isArray(s.tokens) && s.tokens.some(t => dyingTokens.has(t))) {
+          result.annotations += 1;
+          dyingSpans.add(s.id);
+        }
+      }
+      for (const rl of sl.relationLayers || []) {
+        for (const r of rl.relations || []) {
+          if (dyingSpans.has(r.source) || dyingSpans.has(r.target)) result.annotations += 1;
+        }
+      }
+    }
+  }
+  for (const vocab of Object.values(vocabularies || {})) {
+    for (const link of vocab.vocabLinks || []) {
+      if (Array.isArray(link.tokens) && link.tokens.some(t => dyingTokens.has(t))) {
+        result.links += 1;
+      }
+    }
+  }
+  return result;
+};

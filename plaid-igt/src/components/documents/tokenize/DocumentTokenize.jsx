@@ -318,6 +318,29 @@ export function DocumentTokenize() {
           that are not visible here. This cannot be undone.
         </p>
       </ConfirmDeleteDialog>
+
+      {/* Split/merge annotation-loss confirm: only opens when the affected
+          word(s) carry morpheme-scope annotations the op would destroy
+          (split/merge delete the words' morphemes). Word-scope spans survive. */}
+      <ConfirmDeleteDialog
+        open={!!ops.pendingStructural}
+        onOpenChange={(o) => { if (!o) ops.cancelPendingStructural(); }}
+        title={ops.pendingStructural?.kind === 'merge' ? 'Merge Words' : 'Split Word'}
+        confirmLabel={ops.pendingStructural?.kind === 'merge' ? 'Merge anyway' : 'Split anyway'}
+        onConfirm={() => ops.confirmPendingStructural()}
+      >
+        <p className="font-medium text-destructive">Warning</p>
+        <p className="mt-1 text-muted-foreground">
+          {ops.pendingStructural?.kind === 'merge' ? 'Merging' : 'Splitting'}{' '}
+          <strong>“{ops.pendingStructural?.label}”</strong> discards the morpheme analysis, deleting{' '}
+          <strong>
+            {ops.pendingStructural?.annotations || 0} annotation{ops.pendingStructural?.annotations === 1 ? '' : 's'}
+            {ops.pendingStructural?.links ? ` and ${ops.pendingStructural.links} vocabulary link${ops.pendingStructural.links === 1 ? '' : 's'}` : ''}
+          </strong>{' '}
+          at the morpheme level — including any from other apps on this project that aren’t visible
+          here. Word-level annotations are kept. This cannot be undone.
+        </p>
+      </ConfirmDeleteDialog>
     </TooltipProvider>
   );
 }

@@ -4,7 +4,7 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { useServiceParams } from '../hooks/useServiceParams.js';
-import { countAnnotationLossForWord } from '../../../domain/annotationLoss.js';
+import { countAnnotationLossForWord, countSubWordAnnotationLoss } from '../../../domain/annotationLoss.js';
 import {
   BUILTIN_TOKENIZE_RULE_BASED, encodeServiceSelection, encodeBuiltinSelection,
   decodeSelection, readSpotDefault, resolveInitialSelection,
@@ -106,7 +106,8 @@ export const useTokenOperations = () => {
   };
 
   // --- Structural ops (delegate to the domain model) ---
-  const splitToken = (tokenId, splitOffset) => doc.splitToken(tokenId, splitOffset);
+  // splitToken / mergeTokens are defined below — both gated by an annotation-loss
+  // confirm, since they delete the affected words' morphemes (and their glosses).
 
   // Token deletion: "delete or don't" — deletion is FINAL. (The old Undo
   // toast restored only IGT's own layers, silently losing other apps'
@@ -134,7 +135,48 @@ export const useTokenOperations = () => {
     return doc.deleteToken(tokenId);
   };
   const cancelPendingDelete = () => setPendingDelete(null);
-  const mergeTokens = (tokenIds) => doc.mergeTokens(tokenIds);
+
+  // Split and merge cascade-delete the affected words' (full-width) morphemes
+  // and their morpheme-scope glosses — silent data loss unless we warn, exactly
+  // as deleteToken does. Word-scope spans survive (split resizes, merge
+  // reparents), so only sub-word loss is counted. pendingStructural drives a
+  // confirm dialog in DocumentTokenize; null means the op already ran (nothing
+  // to lose).
+  const [pendingStructural, setPendingStructural] = useState(null); // {kind, payload, label, annotations, links}
+  const splitToken = async (tokenId, splitOffset) => {
+    const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
+    const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, word ? [word] : []);
+    if (loss.annotations + loss.links === 0) return doc.splitToken(tokenId, splitOffset);
+    setPendingStructural({
+      kind: 'split',
+      payload: { tokenId, splitOffset },
+      label: word ? cpSlice(doc.body || '', word.begin, word.end) : 'this word',
+      ...loss,
+    });
+    return false; // nothing changed yet — the dialog decides
+  };
+  const mergeTokens = async (tokenIds) => {
+    const ids = tokenIds instanceof Set ? Array.from(tokenIds) : Array.from(tokenIds || []);
+    const words = (doc.layerInfo.primaryTokenLayer?.tokens || []).filter((t) => ids.includes(t.id));
+    const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, words);
+    if (loss.annotations + loss.links === 0) return doc.mergeTokens(ids);
+    setPendingStructural({
+      kind: 'merge',
+      payload: { ids },
+      label: words.map((w) => cpSlice(doc.body || '', w.begin, w.end)).join(' + ') || 'these words',
+      ...loss,
+    });
+    return false;
+  };
+  const confirmPendingStructural = async () => {
+    if (!pendingStructural) return false;
+    const p = pendingStructural;
+    setPendingStructural(null);
+    return p.kind === 'split'
+      ? doc.splitToken(p.payload.tokenId, p.payload.splitOffset)
+      : doc.mergeTokens(p.payload.ids);
+  };
+  const cancelPendingStructural = () => setPendingStructural(null);
   const mergeSentence = (sentenceId) => doc.mergeSentence(sentenceId);
   const splitSentence = (charPos) => doc.splitSentence(charPos);
 
@@ -260,6 +302,9 @@ export const useTokenOperations = () => {
     confirmPendingDelete,
     cancelPendingDelete,
     mergeTokens,
+    pendingStructural,
+    confirmPendingStructural,
+    cancelPendingStructural,
     mergeSentence,
     splitSentence,
     createTokenFromSelection,
