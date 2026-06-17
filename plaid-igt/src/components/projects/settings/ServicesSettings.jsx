@@ -94,74 +94,50 @@ function CheckRow({ id, label, hint, checked, disabled, onChange, indent = false
   );
 }
 
-// Defaults for the on-demand built-in analysis helpers (domain/autoPass.js),
-// run from the interlinear Auto-link dialog. These helpers never run on their
-// own — someone runs them. The linking method/default lives in the Auto-link-
-// vocabulary spot below; what belongs here is the copy-previous-analyses
-// opt-in's default and which kinds of material a copy may write.
-function AutoAnalysisCard({ draft, onChange }) {
+// The built-in link rule's own options, shown inline when it's the selected
+// default in the Auto-link spot — the built-in is just another method in that
+// list, so its options live with it rather than in a card of their own. These
+// seed the Auto-link dialog's "copy previous analyses" opt-in
+// (config.igt.autoAnalysis); the built-in never runs on its own, and everything
+// a copy writes is marked unverified (violet) until a person confirms or edits it.
+function BuiltinLinkOptions({ draft, onChange }) {
   const set = (key) => (v) => onChange({ ...draft, [key]: v });
   const copyOn = draft.copyAnalyses;
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Built-in analysis</CardTitle>
-        <CardDescription>
-          Defaults for the built-in helpers run from the Auto-link dialog (on the
-          interlinear tab). They never run on their own. Everything they write is
-          marked unverified (violet) until a person confirms or edits it.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2.5">
-        <CheckRow
-          id="auto-analysis-copy"
-          label="Offer “copy previous analyses” by default"
-          hint="Pre-checks the Auto-link dialog's option to copy a word's prior full analysis (uncontested majority project-wide) onto identical unanalyzed words. Only words with no analysis at all are touched."
-          checked={draft.copyAnalyses}
-          onChange={set('copyAnalyses')}
-        />
-        <div className="ml-6 space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">What a copy includes:</p>
-          <CheckRow
-            id="auto-analysis-copy-seg"
-            indent
-            label="Morpheme segmentation (forms and types)"
-            checked={draft.copySegmentation}
-            disabled={!copyOn}
-            onChange={set('copySegmentation')}
-          />
-          <CheckRow
-            id="auto-analysis-copy-links"
-            indent
-            label="Lexicon links"
-            checked={draft.copyLinks}
-            disabled={!copyOn}
-            onChange={set('copyLinks')}
-          />
-          <CheckRow
-            id="auto-analysis-copy-fields"
-            indent
-            label="Annotation values (glosses, POS, …)"
-            checked={draft.copyFields}
-            disabled={!copyOn}
-            onChange={set('copyFields')}
-          />
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-2.5">
+      <CheckRow
+        id="auto-analysis-copy"
+        label="Also copy analyses by default"
+        hint="Pre-checks the Auto-link dialog's option to copy a word's prior full analysis (uncontested project-wide majority) onto identical unanalyzed words. Only words with no analysis at all are touched."
+        checked={draft.copyAnalyses}
+        onChange={set('copyAnalyses')}
+      />
+      <div className="ml-6 space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground">What a copy includes:</p>
+        <CheckRow id="auto-analysis-copy-seg" indent label="Morpheme segmentation (forms and types)"
+          checked={draft.copySegmentation} disabled={!copyOn} onChange={set('copySegmentation')} />
+        <CheckRow id="auto-analysis-copy-links" indent label="Lexicon links"
+          checked={draft.copyLinks} disabled={!copyOn} onChange={set('copyLinks')} />
+        <CheckRow id="auto-analysis-copy-fields" indent label="Annotation values (glosses, POS, …)"
+          checked={draft.copyFields} disabled={!copyOn} onChange={set('copyFields')} />
+      </div>
+    </div>
   );
 }
 
 // One spot's card: every service ever seen for its task (online or not) plus
 // any app built-ins, a default selection, and default parameter values for the
 // selected default service.
-function SpotCard({ spot, services, draftEntry, onChange, onDiscard }) {
+function SpotCard({ spot, services, draftEntry, onChange, onDiscard, renderBuiltinOptions }) {
   const spotServices = useMemo(() => filterServicesByTask(services, spot.key), [services, spot.key]);
   const selection = selectionFromConfig(draftEntry) || 'none';
   const decoded = decodeSelection(selection);
   const selectedService = decoded?.kind === 'service'
     ? spotServices.find((s) => s.serviceId === decoded.id) || null
     : null;
+  // A selected built-in may carry its own options (e.g. the link rule's copy
+  // policy), shown in the same inline slot a service's params use.
+  const builtinOpts = decoded?.kind === 'builtin' ? renderBuiltinOptions?.(decoded.id) : null;
   const paramSchema = getParamSchema(selectedService);
   const paramValues = useMemo(
     () => ({ ...buildDefaultValues(paramSchema), ...(draftEntry?.params || {}) }),
@@ -237,9 +213,12 @@ function SpotCard({ spot, services, draftEntry, onChange, onDiscard }) {
           </div>
         )}
 
+        {builtinOpts && (
+          <div className="mt-3 border-t pt-3">{builtinOpts}</div>
+        )}
         {selectedService && paramSchema.length > 0 && (
-          <div className="mt-3 rounded-md border bg-muted/40 p-3">
-            <p className="mb-2 text-sm font-medium">
+          <div className="mt-3 border-t pt-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
               Default options for {selectedService.serviceName || selectedService.serviceId}
             </p>
             <ServiceParamForm schema={paramSchema} values={paramValues} onChange={setParam} />
@@ -361,8 +340,6 @@ export const ServicesSettings = ({ projectId, client }) => {
         </Button>
       </div>
 
-      <AutoAnalysisCard draft={autoDraft} onChange={setAutoAnalysis} />
-
       {SPOTS.map((spot) => (
         <SpotCard
           key={spot.key}
@@ -371,6 +348,11 @@ export const ServicesSettings = ({ projectId, client }) => {
           draftEntry={draft[spot.key] || null}
           onChange={(entry) => setSpotEntry(spot.key, entry)}
           onDiscard={discard}
+          renderBuiltinOptions={spot.key === TASKS.LINK_VOCAB
+            ? (name) => (name === BUILTIN_LINK_PRECEDENT
+              ? <BuiltinLinkOptions draft={autoDraft} onChange={setAutoAnalysis} />
+              : null)
+            : undefined}
         />
       ))}
 
