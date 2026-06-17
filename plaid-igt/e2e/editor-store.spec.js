@@ -12,7 +12,9 @@ test('reactive store drives tab switching + metadata edit toggle', async ({ page
   await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
   await page.waitForLoadState('networkidle');
 
-  // Default tab = metadata.
+  // Tokenized docs auto-open on the Analyze tab, so Metadata isn't necessarily
+  // the default — click into it explicitly, then exercise tab switching from there.
+  await page.getByRole('tab', { name: 'Metadata' }).click();
   await expect(page.getByRole('heading', { name: 'Document Information' })).toBeVisible();
 
   // Switch to Baseline — proves docProxy.ui.activeTab mutation triggers a re-render.
