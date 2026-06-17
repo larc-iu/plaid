@@ -1588,6 +1588,32 @@ class VocabItemsResource(_Resource):
         return self._request('POST', '/api/v1/vocab-items',
                              body=_body_of(vocab_layer_id=vocab_layer_id, form=form, metadata=metadata), audit_message=audit_message)
 
+    def bulk_create(self, body: list, audit_message=None) -> dict:
+        """Create multiple vocab items in a single operation.
+
+        Entries may target different vocab layers; the user must have write
+        access to each. Each entry is a dict with keys ``vocab_layer_id``,
+        ``form``, and optional ``metadata``.
+
+        Args:
+            body: The vocab items to create
+
+        Returns:
+            ``{"ids": [...]}`` — the created item IDs, in input order. (All
+            bulk_create endpoints share this shape; bulk_delete returns no body.)
+        """
+        return self._request('POST', '/api/v1/vocab-items/bulk', body=body, audit_message=audit_message)
+
+    def bulk_delete(self, body: list, audit_message=None) -> Any:
+        """Delete multiple vocab items in a single operation. Provide a list of IDs.
+
+        Each item's descendant vocab links are deleted too.
+
+        Args:
+            body: The vocab item IDs to delete
+        """
+        return self._request('DELETE', '/api/v1/vocab-items/bulk', body=body, audit_message=audit_message)
+
     def get(self, id: str, *, as_of: str | None = None) -> Any:
         """Get a vocab item by ID.
 

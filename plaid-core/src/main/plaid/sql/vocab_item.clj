@@ -153,6 +153,122 @@
                        eid)))
 
 ;; ============================================================
+;; Bulk create / delete
+;;
+;; The sibling of plaid.sql.vocab-link's bulk pair (commit b8ec4af).
+;; Vocab items differ in one structural way: they hang off a vocab LAYER,
+;; not a document, so there is no document/OCC version and no
+;; single-parent constraint — entries may target DIFFERENT vocab layers
+;; in one call (the REST handler gates write access per distinct layer).
+;; ============================================================
+
+(defn get-layer-ids
+  "Distinct vocab-layer ids for the given item ids (existing items only;
+  unknown ids contribute nothing). Used by the bulk endpoint's per-layer
+  write-access gate, keeping column-name knowledge inside this namespace."
+  [db ids]
+  (->> (psc/fetch-ids db :vocab_items (vec (distinct ids)))
+       (map :vocab_layer_id)
+       distinct
+       vec))
+
+(defn bulk-create
+  "Bulk-create vocab items in a single operation. Each entry in `attrs-vec`
+  requires :vocab-item/layer and :vocab-item/form and optionally :metadata.
+  Entries may reference DIFFERENT vocab layers.
+
+  The audit shape mirrors single `create`: ONE synthetic :insert per item
+  whose post_image folds :metadata when present, so history replay
+  reconstructs each item from one record (task #59). Returns
+  {:success true :extra [ids]} with ids in input order."
+  [db attrs-vec user-id]
+  (submit-operation! [tx db {:type :vocab-item/bulk-create
+                             :project nil
+                             :document nil
+                             :description (str "Bulk create " (count attrs-vec) " vocab items")
+                             :user user-id}]
+                     ;; Validation runs inside the tx so submit-operation* projects
+                     ;; ExceptionInfo to a structured 4xx response.
+                     (when (empty? attrs-vec)
+                       (throw (ex-info "Bulk create requires at least one vocab item" {:code 400})))
+                     (let [layer-ids (->> attrs-vec (map :vocab-item/layer) distinct vec)
+                           existing-layers (set (->> (psc/fetch-ids tx :vocab_layers layer-ids)
+                                                     (map :id)))]
+                       (doseq [lid layer-ids]
+                         (when-not (contains? existing-layers lid)
+                           (throw (ex-info (psc/err-msg-not-found "Vocab layer" lid)
+                                           {:code 400 :id lid}))))
+                       (let [records (mapv (fn [a]
+                                             {:id (psc/new-uuid)
+                                              :layer (:vocab-item/layer a)
+                                              :form (:vocab-item/form a)
+                                              :metadata (:metadata a)})
+                                           attrs-vec)]
+                         ;; Parent rows in one (chunked) multi-row INSERT — unaudited;
+                         ;; the synthetic :insert per item below carries the real audit
+                         ;; image. Chunked because a lexicon import can exceed SQLite's
+                         ;; statement parameter ceiling (SQLITE_MAX_VARIABLE_NUMBER).
+                         (doseq [chunk (partition-all 4000 records)]
+                           (psc/execute! tx {:insert-into :vocab_items
+                                             :values (mapv (fn [r]
+                                                             {:id (:id r)
+                                                              :form (:form r)
+                                                              :vocab_layer_id (:layer r)})
+                                                           chunk)}))
+                         ;; Metadata with skip-parent-audit? so no separate :update row
+                         ;; fires; it is folded into the synthetic :insert below.
+                         (doseq [r records]
+                           (when (seq (:metadata r))
+                             (metadata/insert-metadata! tx "vocab-item" (:id r) (:metadata r)
+                                                        {:skip-parent-audit? true})))
+                         ;; One synthetic :insert per item with the full image.
+                         (let [row-by-id (psc/fetch-ids-as-map tx :vocab_items (mapv :id records))]
+                           (doseq [r records]
+                             (let [post-image (cond-> (clojure.core/get row-by-id (:id r))
+                                                (seq (:metadata r)) (assoc :metadata (:metadata r)))]
+                               (psc/record-audit-write! tx :vocab_items (:id r) :insert nil post-image))))
+                         (mapv :id records)))))
+
+(defn bulk-delete
+  "Bulk-delete vocab items in a single operation. For each existing item the
+  descendant vocab_links (and their metadata) are deleted first, then the
+  item's own metadata, then the item itself — mirroring single `delete`,
+  audited so audit_writes captures every change (FK ON DELETE CASCADE would
+  otherwise sweep the links silently).
+
+  Ids that don't resolve to an existing row are silently dropped (mirrors
+  span/vocab-link bulk-delete) — without the filter they'd reach
+  `delete-where!` and emit phantom :delete audit rows with pre = nil.
+  Returns the vector of ids actually deleted."
+  [db eids user-id]
+  (let [eids (vec (distinct eids))]
+    (submit-operation! [tx db {:type :vocab-item/bulk-delete
+                               :project nil
+                               :document nil
+                               :description (str "Bulk delete " (count eids) " vocab items")
+                               :user user-id}]
+                       (let [existing-ids (->> (psc/fetch-ids tx :vocab_items eids)
+                                               (keep :id) vec)]
+                         (when (seq existing-ids)
+                           ;; Descendant vocab_links (audited per row), then their
+                           ;; metadata (unaudited sweep, no FK on entity_metadata).
+                           (let [link-ids (->> (psc/delete-where! tx :vocab_links
+                                                                  [:in :vocab_item_id existing-ids])
+                                               (mapv :id))]
+                             (when (seq link-ids)
+                               (psc/execute! tx {:delete-from :entity_metadata
+                                                 :where [:and
+                                                         [:= :entity_type "vocab-link"]
+                                                         [:in :entity_id link-ids]]})))
+                           ;; The items' own metadata, then the items (audited per row).
+                           (psc/execute! tx {:delete-from :entity_metadata
+                                             :where [:and
+                                                     [:= :entity_type "vocab-item"]
+                                                     [:in :entity_id existing-ids]]})
+                           (psc/delete-where! tx :vocab_items [:in :id existing-ids]))
+                         existing-ids))))
+
+;; ============================================================
 ;; Metadata
 ;; ============================================================
 

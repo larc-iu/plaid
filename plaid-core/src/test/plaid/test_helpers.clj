@@ -445,6 +445,18 @@
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/vocab-items/" item-id)}))
 
+(defn bulk-create-vocab-items
+  "items is a vector of {:vocab-layer-id <id> :form <str> :metadata? {...}}."
+  [user-request-fn items]
+  (api-call user-request-fn {:method :post
+                             :path "/api/v1/vocab-items/bulk"
+                             :body items}))
+
+(defn bulk-delete-vocab-items [user-request-fn item-ids]
+  (api-call user-request-fn {:method :delete
+                             :path "/api/v1/vocab-items/bulk"
+                             :body item-ids}))
+
 ;; Vocab link helpers
 (defn create-vocab-link
   ([user-request-fn vocab-item-id tokens]
