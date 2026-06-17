@@ -181,8 +181,8 @@ class BaseService(ABC):
         parser.add_argument('--all', action='store_true',
                             help='Serve every project the token can access (the '
                                  'default when no project ID is given).')
-        parser.add_argument('--url', default='http://localhost:8085',
-                            help='Plaid API URL (default: http://localhost:8085)')
+        parser.add_argument('--url', default='http://localhost:8080',
+                            help='Plaid API URL (default: http://localhost:8080)')
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Override to add service-specific CLI (operator) arguments."""

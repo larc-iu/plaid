@@ -758,5 +758,5 @@ if __name__ == '__main__':
     #   python ud_parse_stanza.py                → serve ALL accessible projects
     #   python ud_parse_stanza.py --all          → serve ALL accessible projects
     #   python ud_parse_stanza.py PROJECT_ID     → serve one project
-    #   --url URL                                → Plaid API URL (default :8085)
+    #   --url URL                                → Plaid API URL (default :8080)
     StanzaParserService().run()

@@ -28,6 +28,7 @@ builds/
 dist-artifacts/
 /plaid-core/data/
 /plaid-core/resources/
+/plaid-core/services/
 # keep DB migrations tracked (schema lives here — must ship)
 !/plaid-core/resources/
 /plaid-core/resources/*
