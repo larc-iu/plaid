@@ -280,11 +280,18 @@ export function buildConlluHierarchy(parsedData) {
         searchPos = idx + cpLength(form);
       }
     }
-    return positions;
+    // `warnedSyntheticOffsets` is set the first (and only) time a unit needs a
+    // synthetic placement, so it doubles as "this sentence used synthetic
+    // offsets" — surfaced to the caller so the lossy event isn't silent.
+    return { positions, usedSynthetic: warnedSyntheticOffsets };
   };
 
   let text = '';
   const sentences = [];
+  // Number of sentences in which at least one unit needed a synthetic offset
+  // (its form couldn't be located in the sentence text). Surfaced via `dropped`
+  // so the import UI can warn the user that offsets won't match the original.
+  let syntheticOffsetSentences = 0;
 
   parsedData.sentences.forEach((sentence, sentIdx) => {
     const units = surfaceUnitsForSentence(sentence);
@@ -292,7 +299,8 @@ export function buildConlluHierarchy(parsedData) {
       ? sentence.metadata.text
       : units.map(u => u.surfaceForm).join(' ');
 
-    const unitPositions = locateUnits(rawSentenceText, units);
+    const { positions: unitPositions, usedSynthetic } = locateUnits(rawSentenceText, units);
+    if (usedSynthetic) syntheticOffsetSentences += 1;
     // The synthetic-offset fallback can place a unit past
     // `rawSentenceText.length` when cumulative form lengths exceed the
     // metadata text. Pad the body with spaces so the words still tile inside
@@ -341,5 +349,5 @@ export function buildConlluHierarchy(parsedData) {
     });
   });
 
-  return { text, sentences };
+  return { text, sentences, dropped: { syntheticOffsetSentences } };
 }

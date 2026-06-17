@@ -123,6 +123,19 @@ export class ConlluDocument {
 
       const hierarchy = buildConlluHierarchy(parsedData);
 
+      // Synthetic-offset fallback (no-space/CJK scripts, or a missing `# text`):
+      // when a token's surface form can't be located in the sentence text, the
+      // hierarchy builder places it gap-free, so its offsets won't match the
+      // original. Surface that fidelity loss like the other dropped categories
+      // instead of leaving it a silent console.warn.
+      const { syntheticOffsetSentences = 0 } = hierarchy.dropped || {};
+      if (syntheticOffsetSentences > 0) {
+        importWarnings.push(
+          `${syntheticOffsetSentences} sentence${syntheticOffsetSentences === 1 ? '' : 's'} used synthetic offsets ` +
+          "(their tokens couldn't be located in the sentence text, so positions won't match the original)."
+        );
+      }
+
       const textResponse = await client.texts.create(textLayer.id, createdDocumentId, hierarchy.text);
       const textId = textResponse.id;
 
