@@ -9,6 +9,7 @@ import {
   validateTokenization
 } from '../../utils/tokenizationUtils.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
+import { planSpanDedup } from '../igtReconcile.js';
 
 const findCoincidentMorphemeIds = (morphemeTokens, targets) => {
   if (!Array.isArray(morphemeTokens) || morphemeTokens.length === 0) return [];
@@ -71,6 +72,33 @@ export const tokenMutations = {
         reparentSpans(infoNext.spanLayers?.word, removedWordIds, firstToken.id);
         reparentVocabLinks(vocabs, removedWordIds, firstToken.id);
       });
+
+      // The reparent above can leave the survivor with >1 span in the same layer
+      // (each merged word's word-scope span now points at it). Dedup immediately
+      // — lossless join, identical to reconcile-on-open — so the duplicate never
+      // persists: it was invisible in the editor and silently dropped by a
+      // list-level export until the next Analyze open healed it (and it was what
+      // triggered the "Document repaired" toast on reopen).
+      const dedup = planSpanDedup(this.layerInfo).filter((p) => p.deleteSpanIds.length > 0);
+      if (dedup.length > 0) {
+        await this._client.batched(() => {
+          for (const p of dedup) {
+            if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
+            p.deleteSpanIds.forEach((id) => this._client.spans.delete(id));
+          }
+        });
+        this._applyRawPatch((next, infoNext) => {
+          for (const p of dedup) {
+            for (const sl of (infoNext.spanLayers?.[p.scope] || [])) {
+              if (sl.id !== p.layerId || !Array.isArray(sl.spans)) continue;
+              const dead = new Set(p.deleteSpanIds);
+              sl.spans = sl.spans.filter((s) => !dead.has(s.id));
+              const keep = sl.spans.find((s) => s.id === p.keepSpanId);
+              if (keep && p.needsUpdate) keep.value = p.mergedValue;
+            }
+          }
+        });
+      }
     });
   },
 
