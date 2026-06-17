@@ -48,7 +48,7 @@ test('file picker uploads media and reveals the timeline', async ({ page }) => {
   await expect(page.getByText('Upload Media File')).toHaveCount(0);
 
   // The media PUT round-tripped (mediaUrl now set on the document).
-  const putMedia = diag.apiCalls.find((c) => c.method === 'PUT' && /\/media$/.test(c.url));
+  const putMedia = diag.apiCalls.find((c) => c.method === 'PUT' && /\/media(\?|$)/.test(c.url));
   expect(putMedia, 'a PUT .../media call was made').toBeTruthy();
   expect(putMedia.status, 'media upload succeeded').toBeLessThan(400);
 
