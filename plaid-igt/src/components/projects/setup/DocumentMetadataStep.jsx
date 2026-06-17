@@ -21,6 +21,7 @@ export const DocumentMetadataStep = ({ data, onDataChange, setupData, isNewProje
         initialData={data}
         onSaveChanges={handleSaveChanges}
         showTitle={true}
+        autoSaveDefaults={true}
       />
     </div>
   );

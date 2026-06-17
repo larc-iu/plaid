@@ -20,7 +20,8 @@ export const DocumentMetadataManager = ({
   onSaveChanges,
   onError,
   isLoading = false,
-  showTitle = true
+  showTitle = true,
+  autoSaveDefaults = false // Only auto-save defaults in setup mode
 }) => {
   const [enabledFields, setEnabledFields] = useState([]);
   const [newFieldName, setNewFieldName] = useState('');
@@ -39,6 +40,7 @@ export const DocumentMetadataManager = ({
         }
 
         // If still no data, use predefined fields as default
+        let usedDefaults = false;
         if (!fieldsData?.enabledFields) {
           fieldsData = {
             enabledFields: Object.entries(PREDEFINED_FIELDS).map(([name, enabled]) => ({
@@ -47,10 +49,19 @@ export const DocumentMetadataManager = ({
               isCustom: false
             }))
           };
+          usedDefaults = true;
         }
 
         setEnabledFields(fieldsData.enabledFields);
         setIsInitialized(true);
+
+        // In setup mode, persist the defaults into the wizard so the Confirmation
+        // review reflects what will actually be created — these predefined fields
+        // ARE created at setup even if the user never toggles them. Without this
+        // the review silently omits the whole Document Metadata category.
+        if (usedDefaults && autoSaveDefaults && onSaveChanges) {
+          await onSaveChanges(fieldsData);
+        }
       } catch (error) {
         console.error('Failed to load metadata configuration:', error);
         // Still set as initialized even on error, so we show the default fields
