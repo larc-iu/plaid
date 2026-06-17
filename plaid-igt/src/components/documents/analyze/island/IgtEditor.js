@@ -864,7 +864,7 @@ export class IgtEditor {
     `;
   }
 
-  static PAGE_SIZE = 10;
+  static PAGE_SIZE = 25;
 
   _setPage(page, scrollToTop = false) {
     if (page === this._page) return;
