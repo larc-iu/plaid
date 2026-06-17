@@ -1,0 +1,261 @@
+= Plaid UD Guide
+:lang: en
+:encoding: UTF-8
+:doctype: book
+:toc: left
+:toclevels: 3
+:sectlinks:
+:sectanchors:
+:leveloffset: 1
+:sectnums:
+:hide-uri-scheme: 1
+:source-highlighter: coderay
+
+// Mobile-friendliness: shrink code blocks and let them wrap instead of
+// scrolling horizontally on narrow screens. (The default Asciidoctor
+// stylesheet already makes the left TOC responsive on small screens.)
+++++
+<style>
+.listingblock pre, .literalblock pre { font-size: 0.8em; }
+@media screen and (max-width: 640px) {
+  .listingblock pre, .literalblock pre {
+    font-size: 0.72em;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+</style>
+++++
+
+= Introduction
+
+**Plaid UD** is a web-based editor for building https://universaldependencies.org/[Universal Dependencies] treebanks.
+This guide is written for **annotators** who will use the editor to do annotation work.
+It walks through the everyday loop (create or import a document, tokenize it, annotate it, and export it as CoNLL-U), and then points you to the more advanced features.
+
+Plaid UD is one of the example apps built on the Plaid platform.
+You don't need to know anything about Plaid itself to use the editor, but if you're curious about the underlying platform, or you want to script against your data, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
+
+[NOTE]
+====
+Plaid UD is a *demonstration app*.
+It covers the core treebank-annotation workflow well, but it deliberately leaves some UD features out of scope (for example enhanced dependencies and empty nodes).
+Those are noted where they come up.
+====
+
+= Getting Started
+
+Plaid UD is served by your Plaid server. There is nothing to install.
+Open the editor in your browser at the `/ud/` path on that server.
+If you are running Plaid locally with the default settings, that is:
+
+----
+http://localhost:8080/ud/
+----
+
+Sign in with the username and password your project administrator gave you.
+Your session stays signed in until the token expires or you log out.
+
+The editor has three levels you move between:
+
+* **Projects**: the list of all projects you can access (your home screen after login).
+* **Documents**: the texts inside one project.
+* **A document's editing views**: `Text Editor`, `Annotate`, and `Export`, switched with the tabs at the top of an open document.
+
+Project-wide actions (Search, Import / Export, Settings) live alongside the document list inside each project.
+
+= Projects
+
+A project in Plaid UD holds a collection of documents that share one annotation scheme.
+Universal Dependencies describes a text at three levels, and the editor follows the same model:
+
+[cols="1,3"]
+|===
+| Level | What it is
+
+| **Sentences**
+| Spans that tile the whole text, one per sentence.
+
+| **Tokens**
+| The orthographic words you see in the text, the UD _tokens_. A token may be a **multi-word token** (MWT), e.g. Spanish _del_ standing for _de_ + _el_.
+
+| **Words**
+| The UD _syntactic words_, the numbered rows of a CoNLL-U file. **All annotation lives here**: part-of-speech, lemma, features, and the dependency relation. An ordinary token is a single word. A multi-word token contains several.
+|===
+
+For most tokens there is exactly one word, so the two coincide and you can ignore the distinction.
+The split only matters for multi-word tokens, where one written token expands into several annotated words.
+
+== Creating and Opening Projects
+
+From the Projects screen you can sort and search the list, and create a new project with the **New Project** button.
+A new project is ready for Universal Dependencies annotation right away. Just click it to open its documents.
+
+= Documents
+
+Open a project to see its documents.
+As with projects, you can sort and search the list and create new documents.
+A new document starts empty. You give it a name, then add text in the Text Editor (next section) or by importing.
+
+== Importing CoNLL-U
+
+If you already have annotated data, you can import it instead of typing it in.
+
+* **A single document**: use the **Import** action on the document list to upload one `.conllu` file as a new document.
+* **Many documents at once**: open the project's **Import / Export** screen to upload several `.conllu` files (or a ZIP of them) in one go. Each file with a `# newdoc` boundary becomes its own document.
+
+[WARNING]
+====
+Import brings in tokens, sentence metadata, and the dependency tree, but a few CoNLL-U features are *not* stored and will be dropped on import: **empty nodes**, **enhanced dependencies**, and the **MISC** column.
+If you need those preserved, Plaid UD is not the right tool for that file.
+====
+
+= Tokenizing Text (Text Editor)
+
+The **Text Editor** tab is where raw text becomes tokens.
+
+== Entering and Tokenizing Text
+
+Paste or type your text into the editor.
+We encourage the convention of using newlines to separate sentences.
+There are two ways to turn that text into tokens:
+
+* **Basic Tokenize** segments the text into sentences and tokens using your project's tokenizer locale (a language tag such as `en` or `ar`, set in <<_customization,project settings>>, defaulting to language-agnostic). It produces tokens only. You add the annotations and dependency tree yourself in the Annotate tab.
+* **Parsing with a service** does the whole job at once. If your project has an NLP service connected (for example the bundled Stanza parser, see <<_automation_and_scripting>>), pick it, set any options it offers, and run it to fill in the *entire* document: sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand, and is the fastest way to get started.
+
+Use **Save Text** to save edits to the raw text without re-tokenizing.
+Tokenizing replaces the existing tokens for the document, so it is normally a one-time step per document.
+
+== Working with Tokens
+
+After tokenizing, the text is shown with each token as a clickable chip:
+
+* A **green** left border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries.
+* An **orange** chip marks a **multi-word token** (a token that contains more than one word).
+
+Hover over a token to open its panel, where you can:
+
+* toggle **Start of sentence**
+* edit the token's **words**, splitting it into several to make a **multi-word token** or merging them back into one
+* **delete** the token
+
+You can also select a span of text directly to create a new token from it.
+
+= Annotation
+
+The **Annotate** tab is where the real work happens.
+It shows each sentence as a row of editable cells above an interactive dependency tree.
+
+== Tag and Lemma Editing
+
+Each word has cells for:
+
+[cols="1,3"]
+|===
+| Column | Meaning
+
+| **UPOS** | Universal part-of-speech tag.
+| **XPOS** | Language-specific part-of-speech tag.
+| **Lemma** | The word's dictionary form.
+| **Features** | Morphological features, as `Key=Value` pairs (e.g. `Case=Nom`, `Number=Sing`).
+|===
+
+Click a cell to edit it.
+The UPOS, XPOS, and Features cells (and the dependency-relation labels in the tree) offer **autocomplete** from your project's controlled vocabularies, but they are _suggestions only_. You can always type a value that isn't on the list.
+
+Move around the grid with the keyboard:
+
+* **Tab** / **Shift+Tab**: next / previous cell.
+* **Enter**: commit the cell.
+* **Escape**: discard your change.
+* **Arrow keys**: move between cells. Pressing **Arrow Up** out of the top row jumps into the dependency tree.
+
+== Tree Editing
+
+Below the grid, each sentence's dependency tree is drawn as arcs between words.
+
+* **Draw an arc**: press and drag from one word to another. The word you start on becomes the **head**, and the word you release on becomes its **dependent**.
+* **Mark the root**: drag from the **ROOT** bar to a word.
+* **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
+* **Keyboard**: from the grid, **Ctrl+D** jumps focus into the tree's labels. **Arrow Left/Right** or **Tab** move between labels. **Enter** opens the label for editing, and **Arrow Down** drops back into the grid. While editing a label, **Shift+Delete** removes the relation.
+
+== Machine vs. Human Annotations
+
+When annotations come from an automatic parser rather than a person, they are shown in a distinct **violet, dashed** style so you can see what still needs review.
+Any edit you make to a cell or relation confirms it as human-checked and clears the styling.
+
+If a prediction is already correct, you don't have to retype it:
+
+* press **Ctrl+Enter** (or **Cmd+Enter**) on a word to accept that word's prediction as-is (it gets a ✓), or
+* use **Accept predictions** to confirm the whole sentence at once.
+
+= Export
+
+The **Export** tab shows the current document as CoNLL-U.
+You can **Copy to Clipboard** or **Download .conllu**.
+
+To export an entire project, use its **Import / Export** screen, which packages every document into a single ZIP of `.conllu` files.
+
+= Additional Features
+
+== Search
+
+Each project has a **Search** screen that finds structures across all its documents using https://grew.fr/doc/request/[Grew]-style patterns.
+For example, this finds verbs with a nominal subject:
+
+----
+pattern { V [upos=VERB]; S [upos=NOUN|PROPN]; V -[nsubj]-> S }
+----
+
+Type a pattern and run it with the **Search** button or **Ctrl/Cmd+Enter**.
+Results are grouped by document. Click a match to jump straight to that sentence in the Annotate view.
+A built-in syntax reference with more examples is available on the search screen.
+
+== History
+
+Every change is recorded.
+From a document's Annotate tab, you can open its **history** and select an earlier point to view the document exactly as it was then.
+Historical views are **read-only**. Return to the latest state to resume editing.
+
+== Sharing and Permissions
+
+Projects are shared by adding members with a role:
+
+* **Reader**: can view everything but make no edits.
+* **Writer**: can edit documents and annotations.
+* **Maintainer**: can also change project settings, manage members, and delete the project.
+
+Add members from the project's **Users & Permissions** settings by searching for a username.
+When you only have Reader access, the editor shows everything but its controls are inert.
+
+== Customization
+
+A project's maintainers can tailor the annotation scheme from the project's settings tabs:
+
+* **UD Customization**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, and the **feature inventory** offered in the Features column. All vocabularies start from the standard universal sets and can be extended or replaced.
+* **General**: the **tokenizer locale** used by Basic Tokenize, and project deletion.
+
+== Automation and Scripting
+
+Plaid UD can be driven by external programs as well as by hand:
+
+* **Parser services**: a Python service (such as the bundled Stanza parser) can register itself with a project and become available as a parsing option in the Text Editor (see <<_entering_and_tokenizing_text>>). Running such a service is an administrator/power-user task.
+* **API tokens**: from the project's **Access Tokens** settings (and your user profile) you can create named tokens for scripts and services. Actions taken with a named token are attributed to it in the history.
+
+For writing your own scripts against a project, see the link:api-py.html[Python client] and link:api-js.html[JavaScript client] references.
+
+= Keyboard Shortcuts
+
+[cols="1,3"]
+|===
+| Shortcut | Action
+
+| **Tab** / **Shift+Tab** | Move to the next / previous cell in the annotation grid.
+| **Enter** | Commit the current cell.
+| **Escape** | Discard a cell edit, or close a panel / popover.
+| **Ctrl/Cmd+Enter** | Accept the predicted annotations for the current word.
+| **Ctrl+D** | Jump focus from the grid into the dependency tree.
+| **Arrow keys** | Move between grid cells, and into / out of the dependency tree.
+| **Shift+Delete** | Delete the dependency relation whose label you are editing.
+| **Ctrl/Cmd+Enter** | Run the query on the Search screen.
+|===

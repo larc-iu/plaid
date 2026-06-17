@@ -3,7 +3,7 @@ name: Build and Deploy Docs
 on:
   push:
     branches: [ master ]
-    paths: [ 'plaid-core/docs/**', 'plaid-client-js/src/**', 'plaid-client-py/src/**' ]
+    paths: [ 'plaid-core/docs/**', 'plaid-ud/docs/**', 'plaid-igt/docs/**', 'plaid-client-js/src/**', 'plaid-client-py/src/**' ]
   workflow_dispatch:
 
 permissions:
@@ -41,6 +41,8 @@ jobs:
         asciidoctor -o _site/manual.html plaid-core/docs/manual.adoc
         asciidoctor -o _site/query.html plaid-core/docs/query.adoc
         asciidoctor -o _site/dev.html plaid-core/docs/dev.adoc
+        asciidoctor -o _site/ud-guide.html plaid-ud/docs/ud-guide.adoc
+        asciidoctor -o _site/igt-guide.html plaid-igt/docs/igt-guide.adoc
         node plaid-core/docs/extract-api-docs.js
         
     - name: Upload artifact

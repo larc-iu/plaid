@@ -1,0 +1,239 @@
+= Plaid IGT Guide
+:lang: en
+:encoding: UTF-8
+:doctype: book
+:toc: left
+:toclevels: 3
+:sectlinks:
+:sectanchors:
+:leveloffset: 1
+:sectnums:
+:hide-uri-scheme: 1
+:source-highlighter: coderay
+
+// Mobile-friendliness: shrink code blocks and let them wrap instead of
+// scrolling horizontally on narrow screens. (The default Asciidoctor
+// stylesheet already makes the left TOC responsive on small screens.)
+++++
+<style>
+.listingblock pre, .literalblock pre { font-size: 0.8em; }
+@media screen and (max-width: 640px) {
+  .listingblock pre, .literalblock pre {
+    font-size: 0.72em;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+</style>
+++++
+
+= Introduction
+
+**Plaid IGT** is a web-based editor for building interlinear glossed text (IGT).
+All documents are grounded in a single baseline text.
+This text is segmented into words and morphemes, which then receive customized annotations, such as glosses or parts of speech.
+
+Plaid IGT is one of many apps built on the Plaid platform.
+You don't need to know anything about Plaid itself to use the editor, but if you're curious about the underlying platform, or you want to script against your data, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
+
+[NOTE]
+====
+Plaid IGT is a *demonstration app*.
+It covers the core interlinear-glossing workflow, and summarizes the heavier surfaces (audio media, FieldWorks import) in their own sections below.
+====
+
+= Getting Started
+
+Plaid IGT is served by your Plaid server. There is nothing to install.
+Open the editor in your browser at the `/igt/` path on that server.
+If you are running Plaid locally with the default settings, that is:
+
+----
+http://localhost:8080/igt/
+----
+
+Sign in with the username and password your project administrator gave you.
+Your session stays signed in until the token expires or you log out.
+
+The editor has a few levels you move between:
+
+* **Projects**: the list of all projects you can access (your home screen after login).
+* **Documents**: the texts inside one project.
+* **A document's editing tabs**: `Metadata`, `Baseline`, `Media`, `Tokenize`, and `Analyze`, plus an **Export** action, switched with the tabs at the top of an open document.
+
+Project-wide actions (Search, and Settings for maintainers) live alongside the document list inside each project.
+
+= Projects
+
+A project holds a collection of documents along with the settings they share: the metadata and annotation fields, the orthographies, the vocabularies it draws on, and its members.
+Create a project from the Projects screen, starting blank (a short wizard walks you through those settings) or from imported data (see <<_import_and_export>>).
+Click any project to open its documents.
+
+Each document is built up through a handful of activities, one per tab in the document editor: **Metadata**, **Baseline**, **Media**, **Tokenize**, and **Analyze**.
+Much of what these activities offer is configured per project, so two projects can present very different fields and orthographies on the same underlying editor.
+The rest of this section walks through each activity.
+
+Interlinear glossed text is organized at three scopes, which the annotation fields and the Analyze grid are built around:
+
+[cols="1,3"]
+|===
+| Scope | What it is
+
+| **Sentences**
+| Spans of the baseline text. They carry sentence fields such as the free translation, the speaker, and notes.
+
+| **Words**
+| The tokens within each sentence.
+
+| **Morphemes**
+| The sub-word pieces of each word. Glosses and the other morpheme fields live here.
+|===
+
+A word is divided into one or more morphemes.
+A simple word is a single morpheme. A word like English _cats_ is two, _cat_ and _-s_.
+
+== Metadata
+
+The **Metadata** tab holds document-level fields such as the title, speaker, date, and notes.
+Which fields appear is configured per project, so a project records exactly the information its corpus needs.
+
+== Baseline
+
+The **Baseline** tab holds the raw text you are analyzing, in whatever orthography you work in.
+Paste or type it and save.
+Editing the baseline later reconciles the change with any segmentation you have already done, keeping annotations where it can.
+A project can also define additional **orthographies**, alternate representations of each word such as a phonetic transcription, which appear alongside the baseline form.
+
+== Media
+
+The **Media** tab allows you to associate an audio or video file with the document and transcribe speech.
+The text of this transcribed speech is added to the baseline text for the document.
+With a transcription service connected, this transcription can also be performed automatically for you by a model (see <<_services>>).
+Media is optional, useful for phonetic reference and for checking your segmentation against the recording.
+Diarization is not yet fully supported, but a workaround for the moment is to indicate the speaker with a sentence-level annotation.
+
+== Tokenize
+
+The **Tokenize** tab segments the baseline into sentences and words.
+You can segment by hand, clicking between characters to split and dragging across words to merge, or run a tokenizer, either the built-in rule-based splitter or a tokenization service (see <<_services>>).
+A project can mark certain tokens as **ignored**, usually punctuation, so they carry no word-level annotation and do not host morphemes.
+
+== Analyze
+
+The **Analyze** tab is the workspace where interlinearization happens.
+It shows each sentence with its words, the morphemes under each word, and a row for every annotation field.
+What you can do here:
+
+* **Segment morphemes**: break each word into morphemes and edit their forms.
+* **Gloss and annotate**: fill the gloss and any other word-scope or morpheme-scope fields your project defines. The editor offers faint guesses, for example a gloss it has seen before for the same form, that you can accept or override.
+* **Link vocabulary**: connect a word or morpheme to a shared lexicon entry for consistency, by hand or in bulk (see <<_vocabularies>>).
+* **Fill sentence fields**: record the free translation, the speaker, and other sentence-scope values on each sentence's row.
+* **Copy as IGT**: copy a formatted version of a sentence to the clipboard for pasting into a paper or a message, as aligned plain text, tab-separated text, LaTeX (gb4e or ExPex), or leipzig.js HTML.
+
+Plaid IGT also tracks where each value came from.
+A machine-made value, such as an unconfirmed guess or an auto-made vocabulary link, shows in **violet italic** to mark it unverified.
+Anything you type shows plain, and editing a machine value confirms it.
+Hover over an annotation to reveal text indicating its provenance.
+The exact editing gestures are collected under <<_keyboard_shortcuts>>.
+
+
+= Vocabularies
+
+A **vocabulary** is a shared lexicon, a list of entries (words or morphemes) that carry their own fields, such as a gloss or a part of speech.
+A vocabulary lives outside any single project.
+A project links to one or more of them, and while you analyze you connect a word or morpheme to an entry, by hand with **+ link** or in bulk with **Auto-link**.
+
+Linking keeps the same item analyzed the same way everywhere it appears, and an entry can fill in its gloss for you.
+Because a vocabulary is shared, editing an entry updates every document linked to it.
+Vocabularies have their own area in the app, where you browse and edit entries, define the fields an entry carries, and manage who maintains them.
+Which vocabularies a project draws on is part of the project's settings.
+
+== Entry Fields
+
+Every entry has a **Form**, its reference form (the headword), which is required.
+Beyond the form, an entry carries a set of fields, and a new vocabulary starts with a few built in:
+
+* **Morph Type**: whether the entry is a stem, a prefix, a suffix, and so on. The editor uses it to render affixes, such as the joining hyphens on the form and gloss lines. Required.
+* **Gloss**: the entry's gloss, which can fill in the gloss for you when you link to it. Required.
+* **POS**: the entry's part of speech.
+* **Definition**: a fuller definition or note.
+
+You can add your own fields, reorder them, and remove any except Form, Morph Type, and Gloss.
+Each field can be marked **inline**, which shows it both as a column in the vocabulary table and in the interlinear view when an entry is linked.
+Other fields stay available on the entry's own edit form.
+
+= Services
+
+Plaid IGT can call external **services** for certain tasks.
+A service is a small program, often a Python script, that registers itself with your project and advertises which task it handles.
+Maintainers connect services under the project's **Settings**, and some tasks ship with a built-in option that needs no service at all.
+There are three integration points:
+
+* **Tokenization**: splits the baseline into sentences and words, on the **Tokenize** tab. A built-in rule-based splitter is always available, and a service can replace it with smarter segmentation (the bundled example uses Punkt).
+* **Transcription (ASR)**: transcribes and time-aligns audio, on the **Media** tab. There is no built-in, so this needs a connected service (the bundled example uses Whisper).
+* **Auto-link vocabulary**: proposes vocabulary links for unlinked words and morphemes, from the **Auto-link** dialog on the Analyze tab. A built-in rule follows your project's own precedent and unique matches, and a service can propose links its own way.
+
+Whatever a service produces is stamped unverified, the same violet-italic state as any other machine value, so you stay in control of what gets confirmed.
+
+= Import and Export
+
+== Importing
+
+Start a project from existing data on the **New Project** screen.
+Currently supported formats include:
+
+* **FieldWorks (FLEx)**: a project backup (`.fwbackup`) or a single interlinear file (`.flextext`), bringing in its words, morphemes, glosses, and lexicon. Some FLEx detail that Plaid does not model is dropped on import.
+* **Native Plaid IGT archive** (`.zip`): restores a project exactly, including its vocabularies and media.
+
+== Exporting
+
+The **Export** button on a document opens a dialog where you choose a preset and a scope (a single document, several documents, or the whole project), then save the result.
+Currently supported formats include:
+
+* **Plain text**: an aligned, human-readable interlinear rendering.
+* **FLEx interlinear** (`.flextext`): for round-tripping with FieldWorks.
+* **Native Plaid IGT archive** (`.zip`): a lossless export you can import again later.
+
+Maintainers can save reusable export presets on the project.
+To grab a single sentence instead, use **Copy as IGT** in the Analyze tab.
+
+= Search
+
+A project's **Search** tab finds words and morphemes across all its documents by form, gloss, or linked vocabulary entry.
+Click a result to jump straight to that word in the Analyze tab.
+
+= History
+
+In Plaid IGT, all changes are recorded with a meaningful message and the identity of the user that performed the change.
+Additionally, past states of any document are viewable on a read-only basis.
+Open a document's **history** from the rail at the left edge and pick an earlier point to view the document as it was then.
+
+= Sharing and Permissions
+
+Projects are shared by adding members, each with a role:
+
+* **Reader**: can view everything but make no edits.
+* **Writer**: can edit documents and link vocabulary.
+* **Maintainer**: can also change project settings, manage members, and delete the project.
+
+Add and manage members from the project's **Settings**.
+When you only have Reader access, the editor shows everything but its controls are inert.
+
+For scripted access, maintainers can issue named **API tokens** under Settings, which let an external program or a service act on the project.
+To write such a program, see the link:api-py.html[Python client] and link:api-js.html[JavaScript client] references.
+
+= Keyboard Shortcuts
+
+[cols="1,3"]
+|===
+| Shortcut | Action
+
+| **Tab** / **Shift+Tab** | Move to the next or previous cell in the Analyze grid.
+| **Enter** / **Tab** | Accept the faint guess shown in an empty cell.
+| **-** | In a morpheme form, split the morpheme at the cursor.
+| **Backspace** | At the start of a morpheme form, merge it into the previous one.
+| **Alt** + **-** | Enter a literal hyphen in a morpheme form.
+| **Ctrl/Cmd+Enter** | Confirm the current word's whole analysis and jump to the next.
+| **Ctrl/Cmd** + arrow | Move between auto-made vocabulary-link suggestions.
+| **Escape** | Close an open popover or menu.
+|===
