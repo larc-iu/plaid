@@ -80,8 +80,8 @@ interface SSEConnection {
 
 interface VocabLinksBundle {
   create(vocabItem: string, tokens: any[], metadata?: any, auditMessage?: string): Promise<any>;
-  bulkCreate(body: any[], auditMessage?: string): Promise<any>;
-  bulkDelete(body: any[], auditMessage?: string): Promise<any>;
+  bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
+  bulkDelete(body: any[], auditMessage?: string): Promise<void>;
   setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(id: string, auditMessage?: string): Promise<any>;
   patchMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
@@ -113,8 +113,8 @@ interface RelationsBundle {
   update(relationId: string, value: any, auditMessage?: string): Promise<any>;
   setSource(relationId: string, spanId: string, auditMessage?: string): Promise<any>;
   create(layerId: string, sourceId: string, targetId: string, value: any, metadata?: any, auditMessage?: string): Promise<any>;
-  bulkCreate(body: any[], auditMessage?: string): Promise<any>;
-  bulkDelete(body: any[], auditMessage?: string): Promise<any>;
+  bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
+  bulkDelete(body: any[], auditMessage?: string): Promise<void>;
 }
 
 interface SpanLayersBundle {
@@ -133,8 +133,8 @@ interface SpansBundle {
   get(spanId: string, asOf?: string): Promise<any>;
   delete(spanId: string, auditMessage?: string): Promise<any>;
   update(spanId: string, value: any, auditMessage?: string): Promise<any>;
-  bulkCreate(body: any[], auditMessage?: string): Promise<any>;
-  bulkDelete(body: any[], auditMessage?: string): Promise<any>;
+  bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
+  bulkDelete(body: any[], auditMessage?: string): Promise<void>;
   setMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(spanId: string, auditMessage?: string): Promise<any>;
   patchMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
@@ -272,8 +272,8 @@ interface TokensBundle {
   get(tokenId: string, asOf?: string): Promise<any>;
   delete(tokenId: string, auditMessage?: string): Promise<any>;
   update(tokenId: string, begin?: number, end?: number, precedence?: number | null, auditMessage?: string): Promise<any>;
-  bulkCreate(body: any[], auditMessage?: string): Promise<any>;
-  bulkDelete(body: any[], auditMessage?: string): Promise<any>;
+  bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
+  bulkDelete(body: any[], auditMessage?: string): Promise<void>;
   split(tokenId: string, position: number, auditMessage?: string): Promise<any>;
   merge(tokenId: string, otherTokenId: string, auditMessage?: string): Promise<any>;
   shift(tokenId: string, begin?: number, end?: number, auditMessage?: string): Promise<any>;

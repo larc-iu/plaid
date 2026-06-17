@@ -65,7 +65,7 @@ class VocabLinksResource(_Resource):
         return self._request('POST', '/api/v1/vocab-links',
                              body=_body_of(vocab_item=vocab_item, tokens=tokens, metadata=metadata), audit_message=audit_message)
 
-    def bulk_create(self, body: list, audit_message=None) -> Any:
+    def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple vocab links in a single operation.
 
         Entries may reference different vocab items, but all tokens across the
@@ -74,6 +74,10 @@ class VocabLinksResource(_Resource):
 
         Args:
             body: The vocab links to create
+
+        Returns:
+            ``{"ids": [...]}`` — the created link IDs, in input order. (All
+            bulk_create endpoints share this shape; bulk_delete returns no body.)
         """
         return self._request('POST', '/api/v1/vocab-links/bulk', body=body, audit_message=audit_message)
 
@@ -366,11 +370,14 @@ class RelationsResource(_Resource):
                              body=_body_of(layer_id=layer_id, source_id=source_id,
                                            target_id=target_id, value=value, metadata=metadata), audit_message=audit_message)
 
-    def bulk_create(self, body: list, audit_message=None) -> Any:
+    def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple relations in a single operation.
 
         Args:
             body: The request body
+
+        Returns:
+            ``{"ids": [...]}`` — the created relation IDs, in input order.
         """
         return self._request('POST', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
 
@@ -547,11 +554,14 @@ class SpansResource(_Resource):
                              body=_body_of(span_layer_id=span_layer_id, tokens=tokens,
                                            value=value, metadata=metadata), audit_message=audit_message)
 
-    def bulk_create(self, body: list, audit_message=None) -> Any:
+    def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple spans in a single operation.
 
         Args:
             body: The request body
+
+        Returns:
+            ``{"ids": [...]}`` — the created span IDs, in input order.
         """
         return self._request('POST', '/api/v1/spans/bulk', body=body, audit_message=audit_message)
 
@@ -1821,11 +1831,14 @@ class TokensResource(_Resource):
                                            begin=begin, end=end, precedence=precedence,
                                            metadata=metadata), audit_message=audit_message)
 
-    def bulk_create(self, body: list, audit_message=None) -> Any:
+    def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple tokens in a single operation.
 
         Args:
             body: The request body
+
+        Returns:
+            ``{"ids": [...]}`` — the created token IDs, in input order.
         """
         return self._request('POST', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
 

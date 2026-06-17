@@ -63,6 +63,7 @@ class PlaidClient {
        * reference different vocab items, but all tokens across the call must
        * belong to one document.
        * @param {Array<{vocabItem: string, tokens: string[], metadata?: any}>} body - The vocab links to create
+       * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
        */
       bulkCreate: (body, auditMessage) =>
         this._request('POST', '/api/v1/vocab-links/bulk', { auditMessage, body }),
@@ -300,6 +301,7 @@ class PlaidClient {
       /**
        * Create multiple relations in a single operation.
        * @param {Array} body - The request body
+       * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
        */
       bulkCreate: (body, auditMessage) =>
         this._request('POST', '/api/v1/relations/bulk', { auditMessage, body }),
@@ -426,6 +428,7 @@ class PlaidClient {
       /**
        * Create multiple spans in a single operation.
        * @param {Array} body - The request body
+       * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
        */
       bulkCreate: (body, auditMessage) =>
         this._request('POST', '/api/v1/spans/bulk', { auditMessage, body }),
@@ -1339,6 +1342,7 @@ class PlaidClient {
       /**
        * Create multiple tokens in a single operation.
        * @param {Array} body - The request body
+       * @returns {Promise<{ids: string[]}>} The created entity IDs, in input order. (bulkDelete resolves to no value.)
        */
       bulkCreate: (body, auditMessage) =>
         this._request('POST', '/api/v1/tokens/bulk', { auditMessage, body }),
