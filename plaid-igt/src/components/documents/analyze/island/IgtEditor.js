@@ -790,6 +790,20 @@ export class IgtEditor {
     this._run(() => this.doc.updateMorphemeForm(morphId, next));
   }
 
+  // The gloss-guess source scans the WHOLE document (doc-frequency), so build
+  // it once per data version and reuse across the many non-data re-renders
+  // (popover open/keystroke, paging, help toggle…). Mirrors _homonymIndexFor.
+  // Rebuilds if the pluggable factory is swapped (e.g. a service-backed source).
+  _guessSource(sentences, wordFields, morphFields) {
+    const dv = this.doc.dataVersion;
+    if (this._guessCacheVersion !== dv || this._guessCacheFactory !== this.guessSourceFactory) {
+      this._guessCacheVersion = dv;
+      this._guessCacheFactory = this.guessSourceFactory;
+      this._guessCache = this.guessSourceFactory(sentences, { wordFields, morphFields });
+    }
+    return this._guessCache;
+  }
+
   // ---- templates ----
   _template() {
     const doc = this.doc;
@@ -829,7 +843,7 @@ export class IgtEditor {
     // this.guessSourceFactory to swap the algorithm). Rebuilt per data render;
     // null in read-only mode so historical views never show suggestions.
     const guess = this.readOnly ? null
-      : this.guessSourceFactory(sentences, { wordFields, morphFields });
+      : this._guessSource(sentences, wordFields, morphFields);
 
     const ctx = { orthographies, wordFields, morphFields, sentFields, hasMorphemes, ignoredCfg, guess };
 
@@ -899,7 +913,8 @@ export class IgtEditor {
   static SHOW_GLOSS_PROGRESS = false;
 
   _toolbar(sentences, ctx, pageCount = 1) {
-    const stats = this._glossStats(sentences, ctx);
+    // Only pay for the whole-document stats pass when the bar is actually shown.
+    const stats = IgtEditor.SHOW_GLOSS_PROGRESS ? this._glossStats(sentences, ctx) : null;
     const nSent = sentences.length;
     return html`
       <div class="igt-toolbar">
