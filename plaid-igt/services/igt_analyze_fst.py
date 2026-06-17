@@ -191,6 +191,8 @@ interlinear structure. With *Segment* on, every word is split into morphemes
 - **Analyzer language** — a Giellatekno code (`fin`, `sme`, `myv`, …) downloaded
   on demand; or set a local transducer at launch with `--fst`.
 - **Tag format** — `giella` (`lemma+N+Pl`) or `apertium` (`lemma<n><pl>`).
+- **Add missing lemmas to lexicon** — on by default; off links only lemmas that
+  already exist, keeping the lexicon human-curated.
 - **Overwrite human-edited material** — off by default: words a person has
   already analyzed or whose links/glosses they confirmed are left untouched.
   Machine-made, unverified output is always refreshed.
@@ -219,6 +221,10 @@ class FstLinkerService(BaseService):
                 Param.boolean("link", "Link stem to lexicon", default=True,
                               description="Link the stem (or the whole word, when not "
                                           "segmenting) to a lexicon vocab item."),
+                Param.boolean("create_items", "Add missing lemmas to lexicon", default=True,
+                              description="Create a lexicon item for any lemma not already "
+                                          "present. Off = link only lemmas that already exist "
+                                          "(keeps the lexicon human-curated)."),
                 Param.string("lang", "Analyzer language code", default="fin",
                              description="Giellatekno code (fin, sme, myv, …). Ignored if a "
                                          "transducer file was set with --fst at launch."),
@@ -301,6 +307,7 @@ class FstLinkerService(BaseService):
         segment = bool(request_data.get("segment", True))
         do_gloss = bool(request_data.get("gloss", True))
         do_link = bool(request_data.get("link", True))
+        create_items = bool(request_data.get("create_items", True))
         lang = request_data.get("lang") or self._default_lang
         tag_format = request_data.get("tag_format", "giella")
         vocab_id = request_data.get("vocab_id") or (vocab_ids[0] if vocab_ids else None)
@@ -397,7 +404,7 @@ class FstLinkerService(BaseService):
                     segment=segment, do_gloss=do_gloss, do_link=do_link,
                     morpheme_layer_id=morpheme_layer_id, gloss_layer_id=gloss_layer_id,
                     word_layer_id=word_layer_id, vocab_id=vocab_id, lexicon=lexicon,
-                    response_helper=response_helper,
+                    create_items=create_items, response_helper=response_helper,
                 )
 
         response_helper.progress(100, "Done.")
@@ -509,10 +516,10 @@ class FstLinkerService(BaseService):
 
     def _apply(self, *, plans, text_id, prov_src, segment, do_gloss, do_link,
                morpheme_layer_id, gloss_layer_id, word_layer_id, vocab_id,
-               lexicon, response_helper) -> Dict[str, int]:
+               lexicon, create_items, response_helper) -> Dict[str, int]:
         client = self.client
-        stats = {"morphemes_created": 0, "glosses_created": 0,
-                 "links_created": 0, "lexicon_items_created": 0, "removed": 0}
+        stats = {"morphemes_created": 0, "glosses_created": 0, "links_created": 0,
+                 "lexicon_items_created": 0, "links_skipped_no_item": 0, "removed": 0}
 
         def meta(extra=None, analysis=None, alts=None):
             detail = {}
@@ -549,12 +556,13 @@ class FstLinkerService(BaseService):
             client.tokens.bulk_delete(_uniq(tok_dels))
         stats["removed"] = len(set(span_dels)) + len(set(link_dels)) + len(set(tok_dels))
 
-        # 2) Find-or-create lexicon items for the lemmas we'll link.
+        # 2) Reconcile lexicon items for the lemmas we'll link. With create_items
+        #    off, leave unknown lemmas alone — link only what's already curated.
         if do_link:
             response_helper.progress(60, "Reconciling lexicon…")
             for p in plans:
                 fold = p["lemma"].casefold()
-                if fold in lexicon:
+                if fold in lexicon or not create_items:
                     continue
                 item_meta = {}
                 if p["pos"]:
@@ -615,6 +623,9 @@ class FstLinkerService(BaseService):
                         "vocab_item": item_id, "tokens": [link_target],
                         "metadata": meta(analysis=p["analysis"], alts=p["alternatives"]),
                     })
+                else:
+                    # create_items off and this lemma isn't in the curated lexicon.
+                    stats["links_skipped_no_item"] += 1
         if span_body:
             client.spans.bulk_create(span_body)
             stats["glosses_created"] = len(span_body)
