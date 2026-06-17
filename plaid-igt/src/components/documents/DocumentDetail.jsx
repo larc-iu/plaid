@@ -116,14 +116,23 @@ const DocumentEditor = () => {
     return () => { cancelled = true; };
   }, [client, projectId, documentId, asOf, navigate]);
 
-  // Reconcile-on-open: once the document and the user's permissions are known,
-  // heal IGT invariants another app may have broken in the shared substrate
-  // (e.g. a word UD created that has no morpheme, or an orphaned morpheme left
-  // by a word edit). Edit permission only, and not while time-travelling (asOf
-  // is a read-only snapshot). Loud + recoverable. Idempotent, so it is safe to
-  // re-run; it no-ops when there is nothing to repair.
+  // Reconcile: heal IGT invariants in the shared substrate — every word token
+  // must have a full-width morpheme, and no morpheme may be orphaned. This runs
+  // (a) once when the document loads (to repair what another app, e.g. UD, may
+  // have left), and (b) every time the user enters the Analyze tab. The
+  // analyze-entry re-run is essential: word tokens created in the Tokenize tab
+  // this session have no morpheme yet, and tokenization never creates one — only
+  // reconcile does. Without it, freshly-tokenized words show empty "Morphemes"
+  // rows until a full page reload. Edit permission only, not while time-travelling
+  // (asOf is a read-only snapshot). Idempotent + single-flighted, so re-entry is
+  // a cheap no-op when nothing needs healing.
+  const reconciledDocRef = useRef(null);
   useEffect(() => {
     if (!doc || asOf || !permissions?.canWrite) return undefined;
+    const isInitial = reconciledDocRef.current !== doc;
+    // After the initial pass, only re-reconcile on Analyze entry.
+    if (!isInitial && activeTab !== 'analyze') return undefined;
+    reconciledDocRef.current = doc;
     let cancelled = false;
     (async () => {
       try {
@@ -138,8 +147,11 @@ const DocumentEditor = () => {
           );
           return;
         }
-        // Repair summary (things we DID auto-fix) — one warning toast.
-        if (created + deleted + dedupedSpans > 0) {
+        // Loud "repaired after another app" toast only for genuinely surprising
+        // repairs (orphan-morpheme deletes / duplicate-span merges). Adding a
+        // default morpheme per bare word is routine scaffolding — e.g. right
+        // after tokenizing — so it stays silent.
+        if (deleted + dedupedSpans > 0) {
           const parts = [];
           if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
           if (deleted) {
@@ -159,13 +171,15 @@ const DocumentEditor = () => {
           );
         }
         // Integrity findings (things we could NOT auto-repair) — console + toast.
-        reportIntegrityFindings(findings, doc.id);
+        // Only on the initial pass per doc, so re-entering Analyze doesn't
+        // re-toast the same pre-existing, un-healable issues.
+        if (isInitial) reportIntegrityFindings(findings, doc.id);
       } catch (e) {
-        console.error('Reconcile-on-open failed:', e);
+        console.error('Reconcile failed:', e);
       }
     })();
     return () => { cancelled = true; };
-  }, [doc, asOf, permissions?.canWrite]);
+  }, [doc, asOf, permissions?.canWrite, activeTab]);
 
   // The built-in analysis helpers (copy prior analyses + auto-link) no longer
   // run automatically — they were disruptive mid-editing. They run on demand

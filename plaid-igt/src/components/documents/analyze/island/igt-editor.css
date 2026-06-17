@@ -324,9 +324,19 @@
   font-size: 12px;
   color: #374151;
   white-space: nowrap;
+  overflow: hidden;
   padding-right: 8px;
   padding-left: 8px;
   border-left: 3px solid transparent;
+}
+/* Long field/orthography names (e.g. "lez-Qaaa-AZ-x-Tran-lat") must not spill
+   into the token grid — truncate with an ellipsis; the row's title attr keeps
+   the full name on hover. min-width:0 lets the flex item shrink below its text. */
+.igt-row-label__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Scope accents: orthography (slate), word (blue), morpheme (violet). The
    sentence-scoped Translation label is styled separately below. */
@@ -617,6 +627,12 @@
   color: var(--igt-violet);
   text-decoration-color: currentColor;
 }
+/* Active target of the Ctrl+Arrow link-review sweep: a soft violet fill (on top
+   of the opener's blue focus outline) so the suggestion under review is obvious. */
+.igt-vocab__hint--inferred:focus-visible {
+  background: #ede9fe;
+  border-radius: 3px;
+}
 /* Auto-made links a person has confirmed: quiet — normal gray text, same light
    dotted purple underline as the unconfirmed state (inherited from the base).
    The purple-tinted underline keeps machine origin visible vs the gray-dotted
@@ -784,6 +800,9 @@
   color: var(--igt-green);
   border-left: 3px solid var(--igt-green);
   padding-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .igt-field--sentence {
   field-sizing: auto; /* width/height are controlled by flex + _autoGrow */

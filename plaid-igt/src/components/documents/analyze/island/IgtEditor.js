@@ -134,6 +134,10 @@ export class IgtEditor {
     this._onWinChange = () => this._repositionPopover();
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
+    // Keyboard review of auto-linker suggestions: Ctrl/Cmd+Arrow hops between
+    // inferred vocab-link chips; Enter/Backspace confirm/remove the focused one
+    // (see _predictionKeydown). Container-level so it works from any cell or chip.
+    this.container.addEventListener('keydown', this._predictionKeydown);
     this._render(true);
     this._consumeFocusRequest();
   }
@@ -188,6 +192,7 @@ export class IgtEditor {
     document.removeEventListener('click', this._onDocClick);
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
+    this.container.removeEventListener('keydown', this._predictionKeydown);
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
     clearTimeout(this._savedTimer);
     clearTimeout(this._copiedTimer);
@@ -378,6 +383,13 @@ export class IgtEditor {
         && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
       return;
     }
+    // Vocab-link review sweep: land focus on the next suggested chip after a
+    // confirm/remove re-render (same data-vocab-opener idiom as _closePopover).
+    if (pf.vocabOpener != null) {
+      const chip = this.container.querySelector(`[data-vocab-opener="${pf.vocabOpener}"]`);
+      if (chip) chip.focus();
+      return;
+    }
     let el = null;
     if (pf.wordId != null && pf.precedence != null) {
       el = this.container.querySelector(`.igt-morph-field[data-word="${pf.wordId}"][data-prec="${pf.precedence}"]`);
@@ -456,6 +468,78 @@ export class IgtEditor {
       }
     }
     return false;
+  }
+
+  // ---- vocab-link prediction review ----
+  // The auto-linker leaves its suggestions as machine-unverified ("inferred")
+  // violet chips. These turn reviewing them into a keyboard sweep, independent
+  // of the cell grid (chips are buttons, not .igt-field cells, so _navMove never
+  // reaches them): Ctrl/Cmd+Arrow hops chip-to-chip, Enter confirms, Backspace/
+  // Delete removes, each advancing to the next — Space/click still opens the
+  // popover to change the link.
+
+  // Inferred, actionable chips in DOM (= reading) order.
+  _inferredChips() {
+    return [...this.container.querySelectorAll('button.igt-vocab__hint--inferred:not([disabled])')];
+  }
+
+  // The inferred chip after ('next') / before ('prev') the current focus, or
+  // null at the ends (no wrap). Anchored on document.activeElement so it works
+  // from a field cell or a chip; falls back to the first/last when focus is
+  // outside the grid.
+  _adjacentChip(dir) {
+    const chips = this._inferredChips();
+    if (!chips.length) return null;
+    const anchor = document.activeElement;
+    if (!anchor || !this.container.contains(anchor)) {
+      return dir === 'prev' ? chips[chips.length - 1] : chips[0];
+    }
+    if (dir === 'next') {
+      return chips.find((c) => c !== anchor
+        && (anchor.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING)) || null;
+    }
+    let prev = null;
+    for (const c of chips) {
+      if (c !== anchor && (anchor.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_PRECEDING)) prev = c;
+    }
+    return prev;
+  }
+
+  _predictionKeydown = (e) => {
+    if (this.readOnly) return;
+    // Navigate between suggestions from anywhere in the grid. Only claim the
+    // chord when suggestions exist (else leave Cmd+Arrow's default scroll alone).
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      if (!this._inferredChips().length) return;
+      e.preventDefault();
+      const chip = this._adjacentChip(e.key === 'ArrowDown' ? 'next' : 'prev');
+      if (chip) chip.focus();
+      return;
+    }
+    // Accept/reject the focused suggestion (Space/click still opens the popover
+    // to change it). Only an inferred chip is actionable here.
+    const el = document.activeElement;
+    if (!el?.classList?.contains('igt-vocab__hint--inferred')) return;
+    const tokenId = el.dataset.vocabOpener;
+    if (!tokenId) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this._reviewLink(() => this.doc.confirmVocabLink(tokenId));
+    } else if (e.key === 'Backspace' || e.key === 'Delete') {
+      e.preventDefault();
+      this._reviewLink(() => this.doc.unlinkVocab(tokenId));
+    }
+  };
+
+  // Confirm/remove the focused suggestion, then advance to the next one —
+  // captured BEFORE the mutation so the re-render lands focus on it. Confirming/
+  // removing one token doesn't touch sibling chips, so the synchronous focus
+  // usually survives lit's re-render; _restorePendingFocus re-affirms it.
+  _reviewLink(mutate) {
+    const next = this._adjacentChip('next');
+    if (next) this._pendingFocus = { vocabOpener: next.dataset.vocabOpener };
+    this._run(mutate);
+    if (next) next.focus();
   }
 
   _basicKeydown = (e) => {
@@ -979,6 +1063,10 @@ export class IgtEditor {
           <strong>Lexicon</strong>
           <span>hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry · <em>Auto-link</em> links everything that follows project precedent or matches one entry — violet links are auto-made; open one and click it (or <em>confirm</em>) to approve</span>
         </div>
+        <div class="igt-legend__row">
+          <strong>Review links</strong>
+          <span><kbd>Ctrl</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between suggested (violet) links · on one: <kbd>↵</kbd> confirm · <kbd>⌫</kbd> remove · <kbd>Space</kbd> change — each jumps to the next</span>
+        </div>
       </div>
     `;
   }
@@ -1095,13 +1183,20 @@ export class IgtEditor {
   }
 
   _labels(ctx) {
+    // Each label is truncated with an ellipsis (see .igt-row-label__text) so a
+    // long field/orthography name can't spill into the token grid; the row's
+    // title attr keeps the full name available on hover.
+    const lbl = (cls, name, scope) => html`
+      <div class="igt-row-label ${cls}" title=${`${name} (${scope})`}>
+        <span class="igt-row-label__text">${name}</span>
+      </div>`;
     return html`
       <div class="igt-labels">
         <div class="igt-row-label igt-row-label--spacer"></div>
-        ${ctx.orthographies.map((n) => html`<div class="igt-row-label igt-row-label--orth" title=${`${n} (orthography)`}>${n}</div>`)}
-        ${ctx.wordFields.map((n) => html`<div class="igt-row-label igt-row-label--word" title=${`${n} (word)`}>${n}</div>`)}
-        ${ctx.hasMorphemes ? html`<div class="igt-row-label igt-row-label--morph igt-row-label--morphform">Morphemes</div>` : nothing}
-        ${ctx.hasMorphemes ? ctx.morphFields.map((n) => html`<div class="igt-row-label igt-row-label--morph" title=${`${n} (morpheme)`}>${n}</div>`) : nothing}
+        ${ctx.orthographies.map((n) => lbl('igt-row-label--orth', n, 'orthography'))}
+        ${ctx.wordFields.map((n) => lbl('igt-row-label--word', n, 'word'))}
+        ${ctx.hasMorphemes ? html`<div class="igt-row-label igt-row-label--morph igt-row-label--morphform" title="Morphemes"><span class="igt-row-label__text">Morphemes</span></div>` : nothing}
+        ${ctx.hasMorphemes ? ctx.morphFields.map((n) => lbl('igt-row-label--morph', n, 'morpheme')) : nothing}
       </div>
     `;
   }
@@ -1248,7 +1343,7 @@ export class IgtEditor {
       <div class="igt-sentence-annos">
         ${ctx.sentFields.map((name) => html`
           <div class="igt-sentence-anno">
-            <span class="igt-sentence-anno__label">${name}</span>
+            <span class="igt-sentence-anno__label" title=${name}>${name}</span>
             ${this._field({
               key: `sa:${sentence.id}:${name}`,
               value: sentence.annotations?.[name]?.value ?? '',
