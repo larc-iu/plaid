@@ -200,10 +200,10 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
                   onChange={(e) => setCopyAnalyses(e.target.checked)}
                 />
                 <span>
-                  Also copy previous analyses onto identical unanalyzed words
+                  Also copy analyses
                   <span className="block text-xs text-muted-foreground">
-                    When a word form was fully analyzed before (uncontested
-                    majority project-wide), copy that analysis. Only words with
+                    Any match proposed by the auto-linker will also come with
+                    analysis for other annotation layers. Only words with
                     no analysis at all are touched.
                   </span>
                 </span>
