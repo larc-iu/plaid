@@ -62,18 +62,28 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   }, [getAvailableText]);
 
   // Create new alignment
-  const createAlignment = useCallback(async (text) => {
-    const ok = await doc.createAlignment({ text, timeBegin: selection.start, timeEnd: selection.end });
+  const createAlignment = useCallback(async (text, speaker) => {
+    const ok = await doc.createAlignment({ text, timeBegin: selection.start, timeEnd: selection.end, speaker });
     if (ok && onAlignmentCreated) {
       onAlignmentCreated();
     }
     return ok;
   }, [doc, selection, onAlignmentCreated]);
 
-  // Edit existing alignment
-  const editAlignment = useCallback(async (text, existingAlignment) => {
+  // Edit existing alignment. Relabeling the speaker alone takes the cheap
+  // metadata-only path (no baseline rewrite / token churn); a text change goes
+  // through the full delete+insert cascade, carrying the speaker along.
+  const editAlignment = useCallback(async (text, existingAlignment, speaker) => {
     if (!existingAlignment) return false;
-    const ok = await doc.editAlignment(existingAlignment.id, { text, timeBegin: selection.start, timeEnd: selection.end });
+    const originalText = cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || '';
+    const textChanged = text !== originalText;
+    const speakerChanged = (speaker || '').trim() !== (existingAlignment.metadata?.speaker || '');
+    let ok = true;
+    if (!textChanged && speakerChanged) {
+      ok = await doc.updateAlignmentSpeaker(existingAlignment.id, speaker);
+    } else if (textChanged) {
+      ok = await doc.editAlignment(existingAlignment.id, { text, timeBegin: selection.start, timeEnd: selection.end, speaker });
+    }
     if (ok && onAlignmentCreated) {
       onAlignmentCreated();
     }
@@ -81,8 +91,8 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   }, [doc, selection, onAlignmentCreated]);
 
   // Align existing baseline text
-  const alignBaseline = useCallback(async (text) => {
-    const ok = await doc.alignBaseline({ text, timeBegin: selection.start, timeEnd: selection.end });
+  const alignBaseline = useCallback(async (text, speaker) => {
+    const ok = await doc.alignBaseline({ text, timeBegin: selection.start, timeEnd: selection.end, speaker });
     if (ok && onAlignmentCreated) {
       onAlignmentCreated();
     }

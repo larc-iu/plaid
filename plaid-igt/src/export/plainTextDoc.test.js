@@ -73,4 +73,22 @@ describe('serializeDocumentPlain', () => {
     const out = serializeDocumentPlain({ document: { name: 'Empty' }, body: '', sortedSentences: [] }, FULL_SELECTION);
     expect(out).toBe('Empty\n');
   });
+
+  it('prefixes a sentence with the covering alignment speaker (transcript style)', () => {
+    const doc = makeFixtureDoc({
+      alignmentTokens: [{ id: 'a1', begin: 0, end: 14, metadata: { speaker: 'Speaker 1' } }],
+    });
+    const out = serializeDocumentPlain(doc, { ...FULL_SELECTION, includeHeader: false });
+    expect(out.startsWith('(1) Speaker 1\n')).toBe(true);
+  });
+
+  it('omits the speaker when none resolves or when speakers are disabled', () => {
+    const doc = makeFixtureDoc({
+      alignmentTokens: [{ id: 'a1', begin: 0, end: 14, metadata: { speaker: 'Speaker 1' } }],
+    });
+    expect(serializeDocumentPlain(makeFixtureDoc(), { ...FULL_SELECTION, includeHeader: false })
+      .startsWith('(1)\n')).toBe(true);
+    expect(serializeDocumentPlain(doc, { ...FULL_SELECTION, includeHeader: false, speakers: false })
+      .startsWith('(1)\n')).toBe(true);
+  });
 });

@@ -7,6 +7,10 @@
 // Pure functions — no DOM, no client.
 
 import { morphFormOf, joinMorphemeTexts } from '../domain/igtExport.js';
+// Shared strict alignment→sentence speaker projection (unique exact-or-contains
+// match, else none) — the same one the .flextext export uses, so a sentence
+// gets a speaker prefix in exactly the cases it gets a FLEx phrase speaker.
+import { phraseSpeakerFor } from './flextext.js';
 
 const cpLen = (s) => [...(s ?? '')].length;
 
@@ -95,9 +99,14 @@ export function serializeDocumentPlain(igtDoc, selection) {
     parts.push(header.filter((l) => l !== '').join('\n'));
   }
   const number = selection?.numberSentences !== false;
+  const showSpeakers = selection?.speakers !== false;
+  const alignmentTokens = igtDoc.alignmentTokens || [];
   (igtDoc.sortedSentences || []).forEach((sentence, i) => {
     const body = formatSentencePlain(sentence, selection);
-    parts.push(number ? `(${i + 1})\n${body}` : body);
+    const speaker = showSpeakers ? phraseSpeakerFor(sentence, alignmentTokens) : null;
+    // Transcript-style prefix: "(n) Speaker" — either half is optional.
+    const prefix = [number ? `(${i + 1})` : '', speaker || ''].filter((s) => s !== '').join(' ');
+    parts.push(prefix ? `${prefix}\n${body}` : body);
   });
   return `${parts.join('\n\n')}\n`;
 }

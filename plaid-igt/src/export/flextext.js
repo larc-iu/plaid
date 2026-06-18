@@ -5,7 +5,7 @@
 //     <interlinear-text>                          (1..n per document)
 //       <item type="title|source|comment">
 //       <paragraphs><paragraph><phrases>
-//         <phrase media-file? begin-time-offset? end-time-offset?>
+//         <phrase media-file? begin-time-offset? end-time-offset? speaker?>
 //           <item type="segnum">
 //           <words>
 //             <word><item type="txt">…<morphemes><morph type="…"><item …/></morph></morphemes></word>
@@ -118,23 +118,45 @@ const hasValidTimes = (t) => {
   return Number.isFinite(timeBegin) && Number.isFinite(timeEnd) && timeEnd >= timeBegin;
 };
 
-/** {beginMs, endMs} for a sentence, or null when no unique truthful match. */
-export function phraseTimingFor(sentence, validTokens) {
-  const exact = validTokens.filter((t) => t.begin === sentence.begin && t.end === sentence.end);
+// The single alignment token an analysis phrase inherits from: an exact extent
+// match, else a unique token whose extent contains the sentence. Null when
+// there's no unique match (partial overlap, ambiguity) — we never invent
+// alignment. Shared by the timing and speaker projections so both stay
+// truthful in exactly the same cases.
+function coveringAlignment(sentence, tokens) {
+  const exact = tokens.filter((t) => t.begin === sentence.begin && t.end === sentence.end);
   const candidates = exact.length
     ? exact
-    : validTokens.filter((t) => t.begin <= sentence.begin && t.end >= sentence.end);
-  if (candidates.length !== 1) return null;
-  const { timeBegin, timeEnd } = candidates[0].metadata;
+    : tokens.filter((t) => t.begin <= sentence.begin && t.end >= sentence.end);
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+/** {beginMs, endMs} for a sentence, or null when no unique truthful match. */
+export function phraseTimingFor(sentence, validTokens) {
+  const t = coveringAlignment(sentence, validTokens);
+  if (!t) return null;
+  const { timeBegin, timeEnd } = t.metadata;
   return { beginMs: Math.round(timeBegin * 1000), endMs: Math.round(timeEnd * 1000) };
 }
 
-function phraseXml(indent, sentence, segnum, options, timing = null, mediaGuid = null) {
-  const attrs = timing
+// Speaker (diarization) for a sentence, or null. Same strict unique-match rule
+// as timing, but resolved over ALL alignment tokens (a speaker is independent
+// of whether the segment carries valid times). FLEx has no per-phrase speaker
+// in its glossing model proper — `speaker` is an ELAN-interop phrase attribute
+// alongside the time offsets — so a phrase that straddles a speaker change just
+// gets no speaker rather than a wrong one.
+export function phraseSpeakerFor(sentence, tokens) {
+  const s = coveringAlignment(sentence, tokens)?.metadata?.speaker;
+  return (typeof s === 'string' && s.trim() !== '') ? s.trim() : null;
+}
+
+function phraseXml(indent, sentence, segnum, options, timing = null, mediaGuid = null, speaker = null) {
+  const timeAttrs = timing
     ? `${mediaGuid ? ` media-file="${xmlEscape(mediaGuid)}"` : ''}`
       + ` begin-time-offset="${timing.beginMs}" end-time-offset="${timing.endMs}"`
     : '';
-  const lines = [`${indent}<phrase${attrs}>`];
+  const speakerAttr = speaker ? ` speaker="${xmlEscape(speaker)}"` : '';
+  const lines = [`${indent}<phrase${timeAttrs}${speakerAttr}>`];
   lines.push(...item(`${indent}  `, 'segnum', analysisLang(options), String(segnum)));
   lines.push(`${indent}  <words>`);
   const pieces = sentence.pieces
@@ -216,7 +238,8 @@ export function interlinearTextXml(igtDoc, options, indent = '  ') {
       segnum += 1;
       const timing = validAlignment.length ? phraseTimingFor(sentence, validAlignment) : null;
       if (timing) anyTimed = true;
-      lines.push(...phraseXml(`${indent}        `, sentence, segnum, options, timing, mediaGuid));
+      const speaker = phraseSpeakerFor(sentence, igtDoc.alignmentTokens || []);
+      lines.push(...phraseXml(`${indent}        `, sentence, segnum, options, timing, mediaGuid, speaker));
     }
     lines.push(`${indent}      </phrases>`, `${indent}    </paragraph>`);
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFlextextDocument, phraseTimingFor } from './flextext.js';
+import { buildFlextextDocument, phraseTimingFor, phraseSpeakerFor } from './flextext.js';
 import {
   makeFixtureDoc, makeSentence, makeAlignmentToken, FLEXTEXT_OPTIONS,
 } from './testFixtures.js';
@@ -162,6 +162,56 @@ describe('phraseTimingFor', () => {
     ])).toBeNull();
     expect(phraseTimingFor(sentence, [makeAlignmentToken('a', 5, 14, 0, 5)])).toBeNull();
     expect(phraseTimingFor(sentence, [])).toBeNull();
+  });
+});
+
+describe('phraseSpeakerFor', () => {
+  const sentence = { begin: 0, end: 14 };
+  const tok = (begin, end, speaker) => ({ id: `${begin}-${end}`, begin, end, metadata: { speaker } });
+
+  it('returns the speaker of a unique exact-or-containing alignment', () => {
+    expect(phraseSpeakerFor(sentence, [tok(0, 14, 'Ana')])).toBe('Ana');
+    expect(phraseSpeakerFor(sentence, [tok(0, 30, 'Ben')])).toBe('Ben'); // containing
+  });
+
+  it('trims, and treats blank/absent speakers as none', () => {
+    expect(phraseSpeakerFor(sentence, [tok(0, 14, '  Ana  ')])).toBe('Ana');
+    expect(phraseSpeakerFor(sentence, [tok(0, 14, '   ')])).toBeNull();
+    expect(phraseSpeakerFor(sentence, [{ id: 'a', begin: 0, end: 14, metadata: {} }])).toBeNull();
+  });
+
+  it('returns null on ambiguity or partial overlap (never guesses)', () => {
+    // Two containing tokens, no exact match → ambiguous.
+    expect(phraseSpeakerFor(sentence, [tok(0, 20, 'Ana'), tok(0, 30, 'Ben')])).toBeNull();
+    expect(phraseSpeakerFor(sentence, [tok(5, 14, 'Ana')])).toBeNull(); // partial
+    expect(phraseSpeakerFor(sentence, [])).toBeNull();
+  });
+});
+
+describe('flextext speaker (diarization)', () => {
+  const withSpeaker = (speaker, metaExtra = {}) => makeFixtureDoc({
+    alignmentTokens: [{ id: 'a1', begin: 0, end: 14, metadata: { speaker, ...metaExtra } }],
+  });
+
+  it('emits a phrase speaker attribute from the covering alignment', () => {
+    const dom = parse(buildFlextextDocument([withSpeaker('Speaker 1', { timeBegin: 1, timeEnd: 3 })], FLEXTEXT_OPTIONS));
+    expect(dom.querySelector('phrase').getAttribute('speaker')).toBe('Speaker 1');
+  });
+
+  it('omits the attribute when no covering alignment carries a speaker', () => {
+    const dom = parse(buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS));
+    expect(dom.querySelector('phrase').hasAttribute('speaker')).toBe(false);
+  });
+
+  it('escapes XML specials in the speaker', () => {
+    const xml = buildFlextextDocument([withSpeaker('A & B')], FLEXTEXT_OPTIONS);
+    expect(xml).toContain('speaker="A &amp; B"');
+  });
+
+  it('resolves a speaker independently of timing (segment with no valid times)', () => {
+    const phrase = parse(buildFlextextDocument([withSpeaker('Ana')], FLEXTEXT_OPTIONS)).querySelector('phrase');
+    expect(phrase.getAttribute('speaker')).toBe('Ana');
+    expect(phrase.hasAttribute('begin-time-offset')).toBe(false);
   });
 });
 

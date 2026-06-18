@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { cpSlice } from '@larc-iu/plaid-client';
@@ -11,6 +12,12 @@ import { useAlignmentEditor } from './useAlignmentEditor.js';
 
 // Matches Mantine useHotkeys default: ignore key events originating from form fields.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
+
+// Sticky speaker for fast diarization: a new segment defaults to the speaker of
+// the previously-saved one, so labeling a run of same-speaker turns is one
+// keystroke (just save). Session-scoped; the persisted truth is the token
+// metadata + the project speaker cache.
+let lastSpeaker = '';
 
 export const TimeAlignmentPopover = ({
   opened,
@@ -23,6 +30,7 @@ export const TimeAlignmentPopover = ({
   const { doc } = useDocumentCtx();
   const [mode, setMode] = useState('new'); // 'new', 'edit', or 'align'
   const [text, setText] = useState('');
+  const [speaker, setSpeaker] = useState('');
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef(null);
 
@@ -49,10 +57,12 @@ export const TimeAlignmentPopover = ({
         // Extract text using token positions from primary text layer
         const tokenText = cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || '';
         setText(tokenText);
+        setSpeaker(existingAlignment.metadata?.speaker || '');
       } else {
         // Default to 'new' mode, let user choose
         setMode('new');
         setText('');
+        setSpeaker(lastSpeaker);
       }
     }
   }, [opened, existingAlignment]);
@@ -92,18 +102,21 @@ export const TimeAlignmentPopover = ({
     setSaving(true);
     try {
       let ok;
+      const sp = speaker.trim();
       if (mode === 'edit' && existingAlignment) {
         // Edit existing alignment
-        ok = await editAlignment(text, existingAlignment);
+        ok = await editAlignment(text, existingAlignment, sp);
       } else if (mode === 'align') {
         // Align existing baseline text
-        ok = await alignBaseline(text);
+        ok = await alignBaseline(text, sp);
       } else {
         // Create new alignment
-        ok = await createAlignment(text);
+        ok = await createAlignment(text, sp);
       }
 
       if (!ok) return; // Domain method toasted the error via doc.onError
+
+      lastSpeaker = sp; // sticky default for the next new segment
 
       notifySuccess(
         mode === 'edit' ? 'Alignment updated successfully' :
@@ -160,7 +173,7 @@ export const TimeAlignmentPopover = ({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened, readOnly, mode, text, saving, isProcessing, existingAlignment]);
+  }, [opened, readOnly, mode, text, speaker, saving, isProcessing, existingAlignment]);
 
   const formatTime = (seconds) => {
     const minutes = Math.floor(seconds / 60);
@@ -231,6 +244,11 @@ export const TimeAlignmentPopover = ({
                   'No alignment data for this time range'
                 }
               </p>
+              {existingAlignment?.metadata?.speaker && (
+                <p className="mt-2 text-sm">
+                  <span className="font-medium">Speaker:</span> {existingAlignment.metadata.speaker}
+                </p>
+              )}
             </div>
           ) : mode === 'align' && !canAlign() ? (
             <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3">
@@ -240,26 +258,42 @@ export const TimeAlignmentPopover = ({
               </p>
             </div>
           ) : (mode === 'new' || mode === 'edit' || mode === 'align') && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="alignment-text">
-                {mode === 'align' ? 'Baseline Text to Align' : 'Transcription'} <span className="text-destructive">*</span>
-              </Label>
-              <Textarea
-                id="alignment-text"
-                ref={textareaRef}
-                placeholder={mode === 'align' ? 'Select portion of text to align...' : 'Enter the text for this time segment...'}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={3}
-                className="max-h-48"
-                required
-              />
-              {mode === 'align' && (
-                <p className="text-xs text-muted-foreground">
-                  Edit this text to select the portion you want to align with the time selection.
-                </p>
-              )}
-            </div>
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="alignment-text">
+                  {mode === 'align' ? 'Baseline Text to Align' : 'Transcription'} <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="alignment-text"
+                  ref={textareaRef}
+                  placeholder={mode === 'align' ? 'Select portion of text to align...' : 'Enter the text for this time segment...'}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  rows={3}
+                  className="max-h-48"
+                  required
+                />
+                {mode === 'align' && (
+                  <p className="text-xs text-muted-foreground">
+                    Edit this text to select the portion you want to align with the time selection.
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="alignment-speaker">Speaker</Label>
+                <Input
+                  id="alignment-speaker"
+                  list="alignment-speaker-options"
+                  placeholder="e.g. Speaker 1 (optional)"
+                  value={speaker}
+                  onChange={(e) => setSpeaker(e.target.value)}
+                  autoComplete="off"
+                />
+                <datalist id="alignment-speaker-options">
+                  {doc.knownSpeakers.map((s) => <option key={s} value={s} />)}
+                </datalist>
+              </div>
+            </>
           )}
 
           {readOnly ? (

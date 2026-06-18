@@ -14,6 +14,28 @@ const formatTime = (seconds) => {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
+// Stable hue per speaker label, so a diarized timeline is readable at a glance
+// (same speaker → same color across segments). Unlabeled segments keep the
+// default blue.
+const speakerHue = (name) => {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return h;
+};
+const segmentColors = (speaker, resizing) => {
+  if (!speaker) {
+    return {
+      fill: resizing ? 'rgba(25, 118, 210, 0.25)' : 'rgba(25, 118, 210, 0.15)',
+      stroke: '#1976d2',
+    };
+  }
+  const hue = speakerHue(speaker);
+  return {
+    fill: `hsla(${hue}, 65%, 45%, ${resizing ? 0.35 : 0.2})`,
+    stroke: `hsl(${hue}, 60%, 40%)`,
+  };
+};
+
 export const Timeline = ({
   mediaOps,
   readOnly = false
@@ -302,7 +324,9 @@ export const Timeline = ({
               const displayStart = isBeingResized ? tempTokenBounds.start : tokenStart;
               const displayEnd = isBeingResized ? tempTokenBounds.end : tokenEnd;
               const displayWidth = (displayEnd - displayStart) * pixelsPerSecond;
-              
+              const speaker = token.metadata?.speaker || '';
+              const colors = segmentColors(speaker, isBeingResized);
+
               return (
                 <div
                   key={token.id || index}
@@ -312,8 +336,8 @@ export const Timeline = ({
                     width: `${displayWidth}px`,
                     top: 0,
                     bottom: 0,
-                    backgroundColor: isBeingResized ? 'rgba(25, 118, 210, 0.25)' : 'rgba(25, 118, 210, 0.15)',
-                    border: '1px solid #1976d2',
+                    backgroundColor: colors.fill,
+                    border: `1px solid ${colors.stroke}`,
                     borderRadius: '0px',
                     padding: '4px 4px',
                     lineHeight: '14px',
@@ -330,8 +354,37 @@ export const Timeline = ({
                     // Create selection from alignment token
                     handleSelectionCreate(displayStart, displayEnd);
                   }}
-                  title={`${cpSlice(doc.body || '', token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
+                  title={`${speaker ? speaker + ': ' : ''}${cpSlice(doc.body || '', token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
                 >
+                  {/* Speaker label (diarization) — sits in the corner over the
+                      transcription; hidden on very narrow segments where there's
+                      no room (the title tooltip still carries it). */}
+                  {speaker && tokenWidth > 24 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        maxWidth: '100%',
+                        padding: '0 4px',
+                        fontSize: '9px',
+                        lineHeight: '13px',
+                        fontWeight: 700,
+                        color: '#fff',
+                        backgroundColor: colors.stroke,
+                        borderBottomRightRadius: '3px',
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis',
+                        pointerEvents: 'none',
+                        zIndex: 4
+                      }}
+                      title={speaker}
+                    >
+                      {speaker}
+                    </div>
+                  )}
+
                   {/* Left resize handle */}
                   {!readOnly && (
                     <div
@@ -342,7 +395,7 @@ export const Timeline = ({
                         top: 0,
                         bottom: 0,
                         width: '4px',
-                        backgroundColor: '#1976d2',
+                        backgroundColor: colors.stroke,
                         cursor: 'ew-resize',
                         zIndex: 5,
                         opacity: tokenWidth > 20 ? 1 : 0 // Hide on very small tokens
@@ -371,7 +424,7 @@ export const Timeline = ({
                         top: 0,
                         bottom: 0,
                         width: '4px',
-                        backgroundColor: '#1976d2',
+                        backgroundColor: colors.stroke,
                         cursor: 'ew-resize',
                         zIndex: 5,
                         opacity: tokenWidth > 20 ? 1 : 0 // Hide on very small tokens

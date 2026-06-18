@@ -22,6 +22,15 @@ const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
 
 const sortByBegin = (a, b) => a.begin - b.begin;
 
+// Alignment-token metadata: the time bounds plus an optional speaker label
+// (diarization). A blank speaker is omitted so we never persist an empty key.
+const alignmentMeta = (timeBegin, timeEnd, speaker) => {
+  const meta = { timeBegin, timeEnd };
+  const s = (speaker || '').trim();
+  if (s) meta.speaker = s;
+  return meta;
+};
+
 // A token at text position `posBegin` with the given `timeBegin` inverts
 // temporal order if it would sit earlier in time than its left positional
 // neighbor, or later in time than its right one (temporal order must track
@@ -42,7 +51,7 @@ export const alignmentMutations = {
   // Create a new alignment by inserting `text` into the body at a position
   // chosen to preserve temporal ordering, then creating the alignment token
   // over the inserted range with `{timeBegin, timeEnd}` metadata.
-  async createAlignment({ text, timeBegin, timeEnd }) {
+  async createAlignment({ text, timeBegin, timeEnd, speaker }) {
     const trimmed = (text || '').trim();
     if (!trimmed) {
       this.setError('Alignment text is required');
@@ -161,7 +170,7 @@ export const alignmentMutations = {
           tokenBegin,
           tokenEnd,
           undefined,
-          { timeBegin, timeEnd }
+          alignmentMeta(timeBegin, timeEnd, speaker)
         );
         // Empty partitioning layer: compensate-after-cascade skips it, so we
         // must seed the partition. Otherwise the cascade reindexes surviving
@@ -176,13 +185,14 @@ export const alignmentMutations = {
         }
       });
       await this._reload();
+      await this._rememberSpeaker(speaker);
     });
   },
 
   // Replace an existing alignment's text and time range. The cascade deletes
   // the old alignment token (it's fully contained in the deletion range), so
   // we recreate it alongside the text update.
-  async editAlignment(existingAlignmentId, { text, timeBegin, timeEnd }) {
+  async editAlignment(existingAlignmentId, { text, timeBegin, timeEnd, speaker }) {
     const trimmed = (text || '').trim();
     if (!trimmed) {
       this.setError('Alignment text is required');
@@ -266,7 +276,7 @@ export const alignmentMutations = {
           tokenBegin,
           newAlignmentEnd,
           undefined,
-          { timeBegin, timeEnd }
+          alignmentMeta(timeBegin, timeEnd, speaker)
         );
         if (cascadeWipesAllSentences && newTextLength > 0) {
           this._client.tokens.bulkCreate([{
@@ -278,13 +288,14 @@ export const alignmentMutations = {
         }
       });
       await this._reload();
+      await this._rememberSpeaker(speaker);
     });
   },
 
   // Create an alignment over EXISTING body text without inserting any
   // characters. Locates `text` inside the available substring between
   // neighbor alignments and pins the new token to those absolute offsets.
-  async alignBaseline({ text, timeBegin, timeEnd }) {
+  async alignBaseline({ text, timeBegin, timeEnd, speaker }) {
     const trimmed = (text || '').trim();
     if (!trimmed) {
       this.setError('Alignment text is required');
@@ -354,7 +365,7 @@ export const alignmentMutations = {
         actualBegin,
         actualEnd,
         undefined,
-        { timeBegin, timeEnd }
+        alignmentMeta(timeBegin, timeEnd, speaker)
       );
       const newId = result?.id || result;
       this._applyRawPatch((next, infoNext) => {
@@ -367,10 +378,11 @@ export const alignmentMutations = {
           text: textId,
           begin: actualBegin,
           end: actualEnd,
-          metadata: { timeBegin, timeEnd }
+          metadata: alignmentMeta(timeBegin, timeEnd, speaker)
         });
         infoNext.alignmentTokenLayer.tokens.sort(sortByBegin);
       });
+      await this._rememberSpeaker(speaker);
     });
   },
 
@@ -447,6 +459,33 @@ export const alignmentMutations = {
           t.metadata = { ...(t.metadata || {}), timeBegin, timeEnd, provConfirmed: true };
         }
       });
+    });
+  },
+
+  // Speaker-only edit (diarization): patch just the `speaker` label on an
+  // alignment token. No text edit, no cascade, no token churn — so relabeling a
+  // segment's speaker never rewrites the baseline or the sentence partition and
+  // never changes the token id. A blank value clears the label (patchMetadata
+  // deletes a key whose value is null).
+  async updateAlignmentSpeaker(alignmentId, speaker) {
+    const info = this.layerInfo;
+    const token = (info.alignmentTokenLayer?.tokens || []).find(t => t.id === alignmentId);
+    if (!token) {
+      this.setError('Alignment not found');
+      return false;
+    }
+    const value = (speaker || '').trim();
+    return this._withSaving('Failed to update speaker', async () => {
+      await this._client.tokens.patchMetadata(alignmentId, { speaker: value || null });
+      this._applyRawPatch((next, infoNext) => {
+        const t = (infoNext.alignmentTokenLayer?.tokens || []).find(x => x.id === alignmentId);
+        if (t) {
+          t.metadata = { ...(t.metadata || {}) };
+          if (value) t.metadata.speaker = value;
+          else delete t.metadata.speaker;
+        }
+      });
+      await this._rememberSpeaker(value);
     });
   },
 

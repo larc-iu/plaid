@@ -1,4 +1,5 @@
 import { getIgtLayerInfo } from './layerInfo.js';
+import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import { planMorphemeReconcile, planSpanDedup } from './igtReconcile.js';
 import { validateIgtDocument } from './validate.js';
 import {
@@ -129,6 +130,45 @@ export class IgtDocument {
       this._alignmentTokensCacheVersion = this._dataVersion;
     }
     return this._alignmentTokensCache;
+  }
+
+  // Speaker-label suggestions for the diarization autocomplete: every speaker
+  // actually in use on this document's alignment tokens (live, always fresh)
+  // unioned with the project-level `config.igt.speakers` cache (names used in
+  // OTHER documents — see `_rememberSpeaker`). Sorted, de-duped, blanks dropped.
+  get knownSpeakers() {
+    const set = new Set(readSpeakers(this._project?.config));
+    for (const t of this.alignmentTokens) {
+      const s = t.metadata?.speaker;
+      if (s) set.add(s);
+    }
+    return [...set].filter((s) => typeof s === 'string' && s.trim() !== '').sort();
+  }
+
+  // Best-effort append of a newly-used speaker to the project's suggestion
+  // cache so it surfaces in other documents. Never throws and never fails the
+  // alignment write that triggered it: the live source of truth is the token
+  // metadata, this is only autocomplete sugar. A no-op when the name is blank,
+  // already cached, or the user lacks project-config write access.
+  async _rememberSpeaker(name) {
+    const speaker = (name || '').trim();
+    if (!speaker || !this._client || !this._projectId) return;
+    const known = readSpeakers(this._project?.config);
+    if (known.includes(speaker)) return;
+    const next = [...known, speaker];
+    try {
+      await this._client.projects.setConfig(this._projectId, IGT_NAMESPACE, 'speakers', next);
+      if (this._project) {
+        this._project.config = this._project.config || {};
+        this._project.config[IGT_NAMESPACE] = {
+          ...(this._project.config[IGT_NAMESPACE] || {}),
+          speakers: next,
+        };
+        this._emit();
+      }
+    } catch (err) {
+      console.warn('Could not record speaker in project config:', err);
+    }
   }
 
   // Sentences + lookup maps share one derivation; expose individually for

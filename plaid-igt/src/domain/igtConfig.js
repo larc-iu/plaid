@@ -62,6 +62,15 @@ export const isTokenIgnored = (content, cfg) => {
 /** A project's enabled document-metadata fields: [{name}], or null. */
 export const readDocumentMetadata = (config) => readIgt(config, 'documentMetadata') ?? null;
 
+/**
+ * A project's known speaker labels (diarization) — a de-duped suggestion cache
+ * appended to whenever a new speaker is set on an alignment token, so the
+ * speaker autocomplete can surface names used in OTHER documents. It is a plain
+ * `[string]` (speakers are opaque strings, no relationality); the live source of
+ * truth is always the `speaker` metadata on alignment tokens. Returns [].
+ */
+export const readSpeakers = (config) => readIgt(config, 'speakers') ?? [];
+
 /** Whether a project has been set up by plaid-igt. */
 export const readInitialized = (config) => readIgt(config, 'initialized') === true;
 
