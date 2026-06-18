@@ -202,8 +202,6 @@ jobs:
           \`\`\`
           java -jar plaid-$VER.jar
           \`\`\`
-          The jar re-execs itself with the required \`--add-opens\` /
-          \`--enable-native-access\` JVM flags, so a bare \`java -jar\` works.
           Listens on \`:8080\` by default.
 
           ## Config
