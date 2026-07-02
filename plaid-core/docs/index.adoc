@@ -7,6 +7,18 @@
 
 +++<style>.sect1+.sect1{border-top: none !important;} #preamble{padding-bottom:2em;}</style>+++
 
+// TEMPORARY: release announcement banner — remove once the announcement is stale.
++++
+<style>
+.plaid-announce{display:flex;align-items:center;gap:.75rem;margin:0 0 2em;padding:.9rem 1.4rem;border-radius:12px;background:#eaf2fb;border:1px solid #b9d2ec;font-size:1.02rem;line-height:1.4}
+.plaid-announce a{font-weight:600;white-space:nowrap}
+</style>
+<div class="plaid-announce">
+  <span>📣</span>
+  <span><b>Plaid alpha v0.2.0a0 has been released!</b>&ensp;<a href="https://www.langdoc.net/t/plaid-alpha-v0-2-0a0/1284">Read the announcement →</a></span>
+</div>
++++
+
 **Plaid** is a platform for developers of linguistic annotation apps.
 It provides many foundational backend systems, including a user system and a modular data model.
 Plaid provides this common functionality so that you can focus on developing your app front-end in JavaScript or any other programming language of your choosing.
