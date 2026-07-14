@@ -45,6 +45,11 @@ Gemfile.lock
 .aider*
 .lsp
 .clj-kondo
+!/plaid-core/.clj-kondo/
+/plaid-core/.clj-kondo/*
+!/plaid-core/.clj-kondo/config.edn
+!/plaid-core/.clj-kondo/hooks/
+!/plaid-core/.clj-kondo/hooks/**
 __pycache__/
 .token*
 dist/

@@ -3,10 +3,7 @@
 
   Connection management, transaction helpers, JSON ser/de, name validation,
   read/write primitives, and the audit-capture machinery that hooks into
-  the per-row write helpers via the *op* dynamic var.
-
-  See /home/luke/.claude/plans/sigh-makes-me-sad-drifting-island.md for the
-  port's design rationale."
+  the per-row write helpers via the *op* dynamic var."
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
             [honey.sql :as sql]

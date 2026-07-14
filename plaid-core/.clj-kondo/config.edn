@@ -1,0 +1,11 @@
+{:hooks
+ {:analyze-call
+  {plaid.sql.common/with-tx hooks.plaid.sql/bind-first
+   plaid.sql.operation/submit-operation! hooks.plaid.sql/bind-first}}
+
+ ;; The development image currently carries an older clj-kondo that predates
+ ;; these Clojure core functions. Keep them explicit so that version mismatch
+ ;; does not bury real unresolved-symbol findings.
+ :linters
+ {:unresolved-symbol
+  {:exclude [random-uuid update-keys]}}}

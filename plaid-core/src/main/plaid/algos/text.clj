@@ -2,31 +2,6 @@
   (:require [editscript.core :as e]
             [plaid.util.codepoint :as cp]))
 
-(comment
-  (def x1 "hello world " #_"The ice-cream melted")
-  (def x2 "hi world " #_"The ice cream meted!")
-
-  ;; editscript format
-  [7 [:r " "] 8 [:- 1] 3 [:+ "!"]]
-
-  ;; fast-diff js format
-  [0 "The ice"]
-  [-1 "-"]
-  [1 " "]
-  [0 "cream me"]
-  [-1 "l"]
-  [0 "ted"]
-  [1 "!"]
-
-  (e/diff x1 x2 {:str-diff :character :str-change-limit 0.9999999})
-
-  (editscript-diff x1 x2)
-
-  (diff x1 x2)
-  (let [ops (diff x1 x2)]
-    (prn ops)
-    (apply-text-edits ops {:text/body x1} [])))
-
 (defn- editscript-diff
   "Use editscript to get a character-level diff and convert it into the same format used
   by the fast-diff javascript library, which `diff` below is expecting. (We originally used

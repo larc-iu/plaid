@@ -22,7 +22,6 @@
   (:require [clojure.core.async :as async]
             [mount.core :refer [defstate] :as mount]
             [taoensso.timbre :as log]
-            [clojure.instant :as instant]
             [clojure.string :as str]
             [plaid.server.config :refer [config]]
             [org.httpkit.server :as http-kit]))
@@ -31,8 +30,9 @@
 ;; Configuration
 ;; =============================================================================
 
-(defn heartbeat-config []
-  "Get heartbeat configuration from global config"
+(defn heartbeat-config
+  "Get heartbeat configuration from global config."
+  []
   (get config :plaid.server.events/heartbeat
        {:interval-ms            30000
         :max-consecutive-misses 2}))
