@@ -19,11 +19,11 @@
   deployment; if/when we scale horizontally this needs to move to
   SQLite or Redis.
 
-  Eviction: every recorded attempt sweeps any bucket whose newest
-  timestamp is older than the window. Additionally each atom is hard-
-  capped at `max-bucket-entries` (50K) — on overflow we evict the
-  bucket with the OLDEST newest-timestamp, which is the closest cheap
-  approximation of LRU we can run inside a swap! function."
+  Eviction: the bucket being written is pruned on every attempt, while
+  a process-wide sweep removes expired inactive buckets at most once a
+  minute. Additionally each atom is hard-capped at
+  `max-bucket-entries` (50K) — on overflow we evict the bucket with the
+  OLDEST newest-timestamp."
   (:require [mount.core :as mount :refer [defstate]]))
 
 (def ^:private window-ms (* 15 60 1000))
@@ -37,6 +37,8 @@
   "Hard cap on the size of each bucket map. Prevents an attacker who
   rotates BOTH IP and username from growing the maps without bound."
   50000)
+
+(def ^:private global-prune-interval-ms 60000)
 
 (defstate ^{:doc "Map of [ip user] -> vector of failure timestamps (ms)."}
   attempt-buckets
@@ -59,6 +61,10 @@
 (defonce ^{:private true
            :doc "Fallback atom for `ip-buckets` (#111)."}
   fallback-ip-atom (atom {}))
+
+(defonce ^{:private true
+           :doc "Timestamp of the last global inactive-bucket sweep."}
+  last-global-prune-at (atom nil))
 
 (defn- buckets-atom
   "Return whichever atom is live for this caller — the mount-started
@@ -86,8 +92,8 @@
     (when (seq kept) kept)))
 
 (defn- prune-all!
-  "Walk every bucket once and drop empties. Cheap when the map is
-  small; if it grows we can switch to a periodic timer."
+  "Walk every bucket once and drop empties. Called by a rate-limited
+  opportunistic sweep, never once per login attempt."
   [m now]
   (reduce-kv (fn [acc k v]
                (if-let [pruned (prune-bucket now v)]
@@ -95,6 +101,23 @@
                  acc))
              {}
              m))
+
+(defn- claim-global-prune!
+  "Atomically let at most one caller run the periodic global sweep."
+  [now]
+  (loop []
+    (let [previous @last-global-prune-at]
+      (if (and previous
+               (<= 0 (- now previous) (dec global-prune-interval-ms)))
+        false
+        (if (compare-and-set! last-global-prune-at previous now)
+          true
+          (recur))))))
+
+(defn- maybe-prune-all! [now]
+  (when (claim-global-prune! now)
+    (swap! (buckets-atom) prune-all! now)
+    (swap! (ip-buckets-atom) prune-all! now)))
 
 (defn- enforce-size-cap
   "If `m` is over the entry cap, evict the bucket whose newest timestamp
@@ -148,25 +171,24 @@
 
 (defn record-failure!
   "Record one failed login attempt against BOTH the per-(ip, username)
-  bucket and the per-ip bucket. Also opportunistically prunes both
-  global maps so they don't grow without bound, and applies the hard
-  size cap on overflow."
+  bucket and the per-ip bucket. The two active buckets are pruned on
+  every write; a rate-limited global sweep cleans up inactive buckets.
+  The hard size cap remains a final bound on memory use."
   ([request username]
    (record-failure! request username (System/currentTimeMillis)))
   ([request username now]
    (let [k (bucket-key request username)
          ip (client-ip request)]
+     (maybe-prune-all! now)
      (swap! (buckets-atom)
             (fn [m]
-              (let [pruned (prune-all! m now)
-                    bucket (clojure.core/get pruned k [])
-                    next-m (assoc pruned k (conj bucket now))]
+              (let [bucket (or (prune-bucket now (clojure.core/get m k [])) [])
+                    next-m (assoc m k (conj bucket now))]
                 (enforce-size-cap next-m k))))
      (swap! (ip-buckets-atom)
             (fn [m]
-              (let [pruned (prune-all! m now)
-                    bucket (clojure.core/get pruned ip [])
-                    next-m (assoc pruned ip (conj bucket now))]
+              (let [bucket (or (prune-bucket now (clojure.core/get m ip [])) [])
+                    next-m (assoc m ip (conj bucket now))]
                 (enforce-size-cap next-m ip)))))))
 
 (defn clear!
@@ -187,7 +209,8 @@
   fallback atoms."
   []
   (reset! (buckets-atom) {})
-  (reset! (ip-buckets-atom) {}))
+  (reset! (ip-buckets-atom) {})
+  (reset! last-global-prune-at nil))
 
 (defn wrap-login-rate-limit
   "Reitit middleware: short-circuit with 429 once EITHER the per-(IP,
