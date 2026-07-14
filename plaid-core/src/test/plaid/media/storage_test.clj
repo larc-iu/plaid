@@ -1,5 +1,6 @@
 (ns plaid.media.storage-test
-  (:require [clojure.test :refer [deftest is use-fixtures]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is use-fixtures]]
             [plaid.fixtures :refer [db with-clean-db with-db]]
             [plaid.media.storage :as media]
             [plaid.server.config :as config]
@@ -47,5 +48,39 @@
           (is (Files/exists live-file (make-array java.nio.file.LinkOption 0)))
           (is (not (Files/exists orphan-file (make-array java.nio.file.LinkOption 0))))
           (is (Files/exists unrelated-file (make-array java.nio.file.LinkOption 0)))))
+      (finally
+        (delete-tree! tmp)))))
+
+(deftest concurrent-uploads-cannot-overwrite-one-another
+  (let [tmp (Files/createTempDirectory "plaid-media-upload-" (make-array FileAttribute 0))
+        source-a (.resolve tmp "a.tmp")
+        source-b (.resolve tmp "b.tmp")
+        doc-id (psc/new-uuid)
+        cfg {:plaid.server.sql/config {:main-db-path (str (.resolve tmp "plaid.db"))}
+             :plaid.media/config {:max-file-size-mb 200}}]
+    (try
+      (Files/writeString source-a "first" (make-array java.nio.file.OpenOption 0))
+      (Files/writeString source-b "second" (make-array java.nio.file.OpenOption 0))
+      (with-redefs [config/config cfg
+                    media/validate-media-file (fn [_ _]
+                                                {:valid? true
+                                                 :content-type "audio/mpeg"
+                                                 :method :test})]
+        (let [start (promise)
+              upload (fn [source]
+                       (future
+                         @start
+                         (media/store-media-file! doc-id (.toFile source) "audio.mp3")))
+              first-upload (upload source-a)
+              second-upload (upload source-b)]
+          (deliver start true)
+          (let [results [@first-upload @second-upload]
+                media-files (->> (.listFiles (java.io.File. (media/get-media-dir)))
+                                 (filter #(.isFile %))
+                                 vec)]
+            (is (= 1 (count (filter :success results))))
+            (is (= 1 (count (remove :success results))))
+            (is (= 1 (count media-files)))
+            (is (not (str/ends-with? (.getName (first media-files)) ".upload"))))))
       (finally
         (delete-tree! tmp)))))

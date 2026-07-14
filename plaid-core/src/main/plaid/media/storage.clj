@@ -5,7 +5,7 @@
             [plaid.sql.common :as psc]
             [taoensso.timbre :as log])
   (:import [java.io File]
-           [java.nio.file Files Paths StandardCopyOption]
+           [java.nio.file Files StandardCopyOption]
            [java.util UUID]
            [org.apache.tika Tika]))
 
@@ -166,42 +166,62 @@
        :detected detected-type
        :filename-ext filename-ext})))
 
+(def ^:private upload-locks
+  "A small striped lock table. Plaid enforces one server process per database,
+  so process-local serialization is sufficient for the upload check+move."
+  (vec (repeatedly 256 #(Object.))))
+
+(defn- upload-lock-for [doc-id]
+  (nth upload-locks (mod (hash doc-id) (count upload-locks))))
+
 (defn store-media-file!
   "Store a media file for a document. Returns {:success true} or {:success false :error msg}"
   [doc-id temp-file filename]
-  (try
-    (cond
-      (media-exists? doc-id)
-      {:success false :error "Media file already exists. Delete existing file first."}
+  (locking (upload-lock-for doc-id)
+    (let [staged-path (volatile! nil)]
+      (try
+        (cond
+          (media-exists? doc-id)
+          {:success false :error "Media file already exists. Delete existing file first."}
 
-      (> (.length temp-file) (get-max-file-size))
-      {:success false :error "File too large"}
+          (> (.length temp-file) (get-max-file-size))
+          {:success false :error "File too large"}
 
-      :else
-      (let [validation (validate-media-file temp-file filename)]
-        (if (:valid? validation)
-          (let [content-type (:content-type validation)
-                extension (get-extension-from-content-type content-type)]
-            (if extension
-              (do
-                (ensure-media-dir!)
-                (let [file-path (get-media-file-path doc-id extension)
-                      temp-path (str file-path ".tmp")]
-                  ;; Copy to temporary file first
-                  (Files/copy (.toPath temp-file)
-                              (Paths/get temp-path (into-array String []))
-                              (into-array java.nio.file.StandardCopyOption []))
-                  ;; Atomically move to final location
-                  (Files/move (Paths/get temp-path (into-array String []))
-                              (Paths/get file-path (into-array String []))
-                              (into-array StandardCopyOption [StandardCopyOption/REPLACE_EXISTING]))
-                  (log/info "Stored media file:" file-path "method:" (:method validation))
-                  {:success true :file-path file-path :extension extension :content-type content-type}))
-              {:success false :error "Could not determine file extension"}))
-          {:success false :error (:error validation)})))
-    (catch Exception e
-      (log/error e "Failed to store media file for document" doc-id)
-      {:success false :error (.getMessage e)})))
+          :else
+          (let [validation (validate-media-file temp-file filename)]
+            (if (:valid? validation)
+              (let [content-type (:content-type validation)
+                    extension (get-extension-from-content-type content-type)]
+                (if extension
+                  (let [media-dir (ensure-media-dir!)
+                        file-path (get-media-file-path doc-id extension)
+                        final-path (.toPath (io/file file-path))
+                        temp-path (Files/createTempFile
+                                   (.toPath (io/file media-dir))
+                                   (str doc-id ".")
+                                   ".upload"
+                                   (make-array java.nio.file.attribute.FileAttribute 0))]
+                    (vreset! staged-path temp-path)
+                    (Files/copy (.toPath temp-file)
+                                temp-path
+                                (into-array StandardCopyOption [StandardCopyOption/REPLACE_EXISTING]))
+                    ;; No REPLACE_EXISTING: even if an unexpected external
+                    ;; writer creates the target, this upload cannot overwrite it.
+                    (Files/move temp-path final-path (make-array StandardCopyOption 0))
+                    (vreset! staged-path nil)
+                    (log/info "Stored media file:" file-path "method:" (:method validation))
+                    {:success true :file-path file-path :extension extension :content-type content-type})
+                  {:success false :error "Could not determine file extension"}))
+              {:success false :error (:error validation)})))
+        (catch Exception e
+          (log/error e "Failed to store media file for document" doc-id)
+          {:success false :error (.getMessage e)})
+        (finally
+          (when-let [path @staged-path]
+            (try
+              (Files/deleteIfExists path)
+              (catch Exception cleanup-error
+                (log/warn cleanup-error "Failed to remove staged media upload" path)))))))))
 
 (defn delete-media-file!
   "Delete a media file for a document. Returns {:success true} or {:success false :error msg}"
