@@ -170,12 +170,16 @@
                                   (str/ends-with? file-path "/"))
                             (str file-path "index.html")
                             file-path)
-              file (io/file resources-path actual-path)]
+              file (io/file resources-path actual-path)
+              root-path (.toPath (.getCanonicalFile (io/file resources-path)))
+              file-path (.toPath (.getCanonicalFile file))]
           (if (and (.exists file)
                    (.isFile file)
-                   ;; Security: ensure the file is within our resources directory
-                   (str/starts-with? (.getCanonicalPath file)
-                                     (.getCanonicalPath (io/file resources-path))))
+                   ;; Path-aware containment is required here: a string prefix
+                   ;; would incorrectly treat a sibling such as `www-secret`
+                   ;; as a child of `www`. Canonicalization also resolves `..`
+                   ;; and existing symlinks before the segment comparison.
+                   (.startsWith file-path root-path))
             (-> (response/file-response (.getPath file))
                 (response/content-type (mime/ext-mime-type (.getName file))))
             (handler request)))
