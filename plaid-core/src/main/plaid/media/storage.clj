@@ -1,11 +1,12 @@
 (ns plaid.media.storage
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.set :as set]
             [plaid.server.config :refer [config]]
+            [plaid.sql.common :as psc]
             [taoensso.timbre :as log])
-  (:import [java.io File FileInputStream FileOutputStream]
+  (:import [java.io File]
            [java.nio.file Files Paths StandardCopyOption]
+           [java.util UUID]
            [org.apache.tika Tika]))
 
 (def special-extension-cases
@@ -217,6 +218,67 @@
     (catch Exception e
       (log/error e "Failed to delete media file for document" doc-id)
       {:success false :error (.getMessage e)})))
+
+(defn delete-media-files!
+  "Best-effort deletion for a collection of document media files. Returns
+  counts so callers can surface partial cleanup without failing a committed DB
+  transaction. Missing files are ignored."
+  [doc-ids]
+  (reduce (fn [{:keys [deleted failed] :as result} doc-id]
+            (if (media-exists? doc-id)
+              (if (:success (delete-media-file! doc-id))
+                (assoc result :deleted (inc deleted))
+                (assoc result :failed (inc failed)))
+              result))
+          {:deleted 0 :failed 0}
+          doc-ids))
+
+(defn- filename-document-id [^File file]
+  (let [filename (.getName file)
+        dot (.indexOf filename ".")]
+    (when (pos? dot)
+      (try
+        (UUID/fromString (subs filename 0 dot))
+        (catch IllegalArgumentException _
+          nil)))))
+
+(defn sweep-orphaned-media!
+  "Delete media-directory files whose UUID filename prefix has no documents
+  row. Intended for quiet lifecycle boundaries (startup and shutdown), not a
+  periodic hot-path job. Logs prominently only when it finds actual orphans."
+  [db phase]
+  (let [dir (io/file (get-media-dir))
+        live-docs (into #{} (map :id) (psc/q db {:select [:id] :from :documents}))
+        files (if (.isDirectory dir)
+                (or (seq (.listFiles dir)) [])
+                [])
+        orphans (->> files
+                     (filter #(.isFile ^File %))
+                     (keep (fn [^File file]
+                             (when-let [doc-id (filename-document-id file)]
+                               (when-not (contains? live-docs doc-id)
+                                 file))))
+                     vec)]
+    (if (empty? orphans)
+      {:found 0 :deleted 0 :failed 0}
+      (do
+        (log/warn "Found orphaned media files; starting lifecycle sweep"
+                  {:phase phase :directory (.getAbsolutePath dir) :count (count orphans)})
+        (let [result (reduce (fn [{:keys [deleted failed] :as acc} ^File file]
+                               (if (.delete file)
+                                 (do
+                                   (log/info "Deleted orphaned media file"
+                                             {:phase phase :file (.getName file)})
+                                   (assoc acc :deleted (inc deleted)))
+                                 (do
+                                   (log/warn "Could not delete orphaned media file"
+                                             {:phase phase :file (.getAbsolutePath file)})
+                                   (assoc acc :failed (inc failed)))))
+                             {:found (count orphans) :deleted 0 :failed 0}
+                             orphans)]
+          (log/info "Orphaned media lifecycle sweep complete"
+                    (assoc result :phase phase :directory (.getAbsolutePath dir)))
+          result)))))
 
 (defn get-media-file
   "Get a media file for streaming. Returns {:success true :file file :content-type ct} or error"

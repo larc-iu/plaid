@@ -3,6 +3,7 @@
             [mount.core :refer [defstate]]
             [org.httpkit.server :as http-kit]
             [plaid.server.config :refer [config]]
+            [plaid.server.media-maintenance :as media-maintenance]
             [plaid.server.middleware :refer [middleware]]
             [plaid.server.events] ; Start the events system
             [plaid.rest-api.v1.project :as project]
@@ -15,7 +16,8 @@
 
 (defstate http-server
   :start
-  (let [http-kit-config (::http-kit/config config)
+  (let [_ media-maintenance/media-maintenance
+        http-kit-config (::http-kit/config config)
         media-config (:plaid.media/config config)
         max-file-size-mb (:max-file-size-mb media-config)
         ;; http-kit's `:max-body` is a per-CONNECTION cap (one number
@@ -39,4 +41,3 @@
 
   :stop
   (http-server))
-

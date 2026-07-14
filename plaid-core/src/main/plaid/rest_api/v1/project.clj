@@ -2,6 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [plaid.rest-api.v1.pagination :as pagination]
+            [plaid.media.storage :as media]
             [reitit.coercion.malli]
             [taoensso.timbre :as log]
             [plaid.sql.project :as prj]))
@@ -65,9 +66,18 @@
      :delete {:summary "Delete a project."
               :middleware [[pra/wrap-maintainer-required get-project-id]]
               :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id :as req}]
-                         (let [{:keys [success code error]} (prj/delete db id user-id)]
+                         (let [{:keys [success code error deleted-document-ids]}
+                               (prj/delete db id user-id)]
                            (if success
                              (do
+                               (let [{:keys [deleted failed]}
+                                     (media/delete-media-files! deleted-document-ids)]
+                                 (when (pos? deleted)
+                                   (log/info "Deleted project media files"
+                                             {:project-id id :deleted deleted}))
+                                 (when (pos? failed)
+                                   (log/warn "Some project media files could not be deleted"
+                                             {:project-id id :failed failed})))
                                ;; Delete stays fast (it doesn't audit descendants).
                                ;; Reclaim the project's op/audit history in the
                                ;; background. Best-effort; gated so tests don't race.

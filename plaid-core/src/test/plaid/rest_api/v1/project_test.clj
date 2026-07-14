@@ -31,10 +31,20 @@
                                         create-text-layer create-token-layer
                                         create-span-layer create-relation-layer]]
             [plaid.fixtures :as fix]
-            [plaid.sql.project :as prj]))
+            [plaid.media.storage :as media]
+            [plaid.server.config :as config]
+            [plaid.sql.project :as prj])
+  (:import [java.nio.file FileVisitOption Files]
+           [java.nio.file.attribute FileAttribute]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
+
+(defn- delete-tree! [root]
+  (when (Files/exists root (make-array java.nio.file.LinkOption 0))
+    (with-open [paths (Files/walk root (make-array FileVisitOption 0))]
+      (doseq [path (reverse (vec (.toList paths)))]
+        (Files/deleteIfExists path)))))
 
 ;; Project API Endpoint Functions
 (defn create-project
@@ -552,3 +562,21 @@
           result (prj/merge db pid {:project/name ""} "admin@example.com")]
       (is (= false (:success result)))
       (is (= 400 (:code result))))))
+
+(deftest deleting-project-removes-its-document-media
+  (let [tmp (Files/createTempDirectory "plaid-project-media-" (make-array FileAttribute 0))
+        cfg {:plaid.server.sql/config {:main-db-path (str (.resolve tmp "plaid.db"))}
+             :plaid.media/config {:max-file-size-mb 200}}]
+    (try
+      (with-redefs [config/config cfg]
+        (let [project-id (create-test-project admin-request "Media cleanup project")
+              document-id (create-test-document admin-request project-id "Media document")
+              media-dir (Files/createDirectories
+                         (.toPath (java.io.File. (media/get-media-dir)))
+                         (make-array FileAttribute 0))
+              media-file (.resolve media-dir (str document-id ".mp3"))]
+          (Files/writeString media-file "media" (make-array java.nio.file.OpenOption 0))
+          (assert-no-content (delete-project admin-request project-id))
+          (is (not (Files/exists media-file (make-array java.nio.file.LinkOption 0))))))
+      (finally
+        (delete-tree! tmp)))))
