@@ -70,86 +70,63 @@
                     (bit-and lo 0x3FFFFFFFFFFFFFFF))]
     (UUID. msb lsb)))
 
-(def ^:private uuid-shape-pattern
-  "Canonical 8-4-4-4-12 hex with hyphens (lowercase or uppercase).
-  Tight enough to avoid coercing arbitrary text that happens to be 36
-  chars long."
-  #"(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+(def ^:private uuid-result-columns
+  "SQL result keys whose schema meaning is always a UUID. Ambiguous string
+  identifiers (`user_id`, `service_id`) are deliberately absent. Generated
+  aliases must be declared through q's `:uuid-cols` option."
+  #{:batch_id :document_id :entity_id :op_id :parent_token_layer_id
+    :project_id :relation_layer_id :source_span_id :span_id :span_layer_id
+    :target_span_id :text_id :text_layer_id :token_id :token_layer_id
+    :vocab_item_id :vocab_layer_id :vocab_link_id})
 
-(defn- uuid-shaped-string?
-  "True iff `s` is a String matching the canonical UUID lexical form
-  (8-4-4-4-12 hex with hyphens)."
-  [s]
-  (and (string? s)
-       (= 36 (.length ^String s))
-       (boolean (re-matches uuid-shape-pattern s))))
+(def ^:private string-id-columns
+  "Schema columns that end in `_id` but intentionally contain application
+  strings rather than UUIDs."
+  #{:owner_user_id :service_id :user_id})
 
-(def ^:private known-string-columns
-  "Columns that ALWAYS carry user-supplied free text and must NEVER be
-  coerced to UUID by `coerce-id-cols`, even when a value happens to
-  match the canonical UUID lexical form (36-char hex-with-hyphens).
-  Rationale: the slow-path regex check in `coerce-id-cols` is keyed off
-  value shape, not column name; without this allowlist a `:username`
-  whose chars line up could come back as a UUID, breaking equality
-  against the original string. The set covers the free-text columns
-  currently present in the schema:
-    - :username, :name, :form    — user-chosen identifiers / labels
-    - :body                      — text body (could be any 36 chars)
-    - :value                     — JSON-encoded span value
-    - :password_hash             — bcrypt output (variable length but
-                                   keep it on the allowlist as a guard)
-  Add new free-text columns here if/when the schema grows them."
-  #{:username :name :form :body :value :password_hash})
+(defn- source-table [query]
+  (letfn [(table-key [source]
+            (cond
+              (keyword? source) (keyword (name source))
+              (sequential? source) (table-key (first source))
+              :else nil))]
+    (when (map? query)
+      (or (table-key (:insert-into query))
+          (table-key (:update query))
+          (table-key (:delete-from query))
+          (table-key (:from query))))))
+
+(defn- uuid-result-column?
+  [table row explicit-uuid-cols explicit-string-cols k]
+  (and (not (contains? string-id-columns k))
+       (not (contains? explicit-string-cols k))
+       (or (contains? explicit-uuid-cols k)
+           (contains? uuid-result-columns k)
+           ;; Most entity tables use UUID primary keys; users.id is the one
+           ;; intentionally string-valued primary key.
+           (and (= k :id) (not= table :users))
+           ;; audit_writes.target_id follows target_table's identity type.
+           (and (= k :target_id)
+                (not= "users" (:target_table row))))))
 
 (defn- coerce-id-cols
-  "Convert TEXT-encoded UUID columns back to java.util.UUID, since the
-  SQL schema stores UUIDs as TEXT.
-
-  Strategy: a string value is coerced when EITHER (a) its key is `:id`
-  or ends with `_id` (fast path — covers the common case and column
-  aliases that follow the naming convention), OR (b) the value itself
-  matches the canonical UUID lexical form (slow path — needed because
-  HoneySQL aliases like `[:pv.project_id :pid]` come back keyed as
-  `:pid`, losing the `_id` suffix).
-
-  Non-string values pass through unchanged; strings that don't match
-  on either path pass through too.
-
-  Safety review: the regex is tight (8-4-4-4-12 hex with hyphens, 36
-  chars exactly), so it won't false-positive on the intentionally-
-  string columns currently in the schema: users.password_hash (long),
-  entity_metadata.value (JSON), span.value (JSON), documents.name,
-  projects.name, text.body, vocab_items.form. If a future free-text
-  column could plausibly contain a 36-char hex-with-hyphens string,
-  callers should rename the column away from `_id` AND wrap reads so
-  the coercion doesn't bite."
-  [row]
+  "Convert only explicitly UUID-bearing SQL result columns back to UUID.
+  Free text is never converted based on its lexical shape."
+  [query opts row]
   (when row
-    (persistent!
-     (reduce-kv
-      (fn [acc k v]
-        (assoc! acc k
-                (if (string? v)
-                  (cond
-                    ;; Fast path: key shape says \"this is an id column\".
-                    (or (= k :id)
-                        (.endsWith ^String (name k) "_id"))
+    (let [table (source-table query)
+          explicit-uuid-cols (set (:uuid-cols opts))
+          explicit-string-cols (set (:string-cols opts))]
+      (persistent!
+       (reduce-kv
+        (fn [acc k v]
+          (assoc! acc k
+                  (if (and (string? v)
+                           (uuid-result-column? table row explicit-uuid-cols explicit-string-cols k))
                     (try (UUID/fromString v) (catch IllegalArgumentException _ v))
-                    ;; Opt-out: columns known to carry free-text values
-                    ;; never get UUID-coerced even on a regex match,
-                    ;; because a user-supplied 36-char hex-with-hyphens
-                    ;; would otherwise come back as a UUID and break
-                    ;; equality / serialization downstream.
-                    (contains? known-string-columns k)
-                    v
-                    ;; Slow path: aliased column whose key dropped the
-                    ;; `_id` suffix. Regex-gate before UUID/fromString.
-                    (uuid-shaped-string? v)
-                    (try (UUID/fromString v) (catch IllegalArgumentException _ v))
-                    :else v)
-                  v)))
-      (transient {})
-      row))))
+                    v)))
+        (transient {})
+        row)))))
 
 ;; ============================================================
 ;; JSON helpers (config blobs, JSON-encoded scalar values, audit images)
@@ -578,15 +555,18 @@
 (defn q
   "Run a read query. `db` may be a DataSource or a Connection (inside a tx).
   `query` may be a HoneySQL map or a [sql & params] vector.
-  Returned rows have TEXT `:id` / `*_id` columns coerced back to UUID.
-  `opts` is merged into the next.jdbc options — notably `:timeout` (seconds),
-  which sets a JDBC statement timeout to bound a runaway query."
+  Returned rows have explicitly UUID-bearing schema columns coerced back to
+  UUID. Generated aliases can be declared with `opts :uuid-cols`; ambiguous
+  identifiers can be protected with `:string-cols`. Remaining opts are merged
+  into next.jdbc options — notably `:timeout` (seconds)."
   ([db query] (q db query nil))
   ([db query opts]
-   (let [sql-vec (if (map? query) (format-sql query) query)]
+   (let [sql-vec (if (map? query) (format-sql query) query)
+         jdbc-query-opts (dissoc opts :uuid-cols :string-cols)]
      (with-slow-query-warn
        sql-vec
-       (fn [] (mapv coerce-id-cols (jdbc/execute! db sql-vec (merge jdbc-opts opts))))))))
+       (fn [] (mapv #(coerce-id-cols query opts %)
+                    (jdbc/execute! db sql-vec (merge jdbc-opts jdbc-query-opts))))))))
 
 (defn q1
   "Run a read query and return the first row (coerced), or nil."
@@ -614,7 +594,7 @@
   (let [sql-vec (if (map? query) (format-sql query) query)]
     (with-slow-query-warn
       sql-vec
-      (fn [] (coerce-id-cols (jdbc/execute-one! db sql-vec jdbc-opts))))))
+      (fn [] (coerce-id-cols query nil (jdbc/execute-one! db sql-vec jdbc-opts))))))
 
 (defn execute-returning!
   "Run an INSERT/UPDATE/DELETE that uses `RETURNING *` and return a vector of
@@ -624,7 +604,8 @@
   (let [sql-vec (if (map? query) (format-sql query) query)]
     (with-slow-query-warn
       sql-vec
-      (fn [] (mapv coerce-id-cols (jdbc/execute! db sql-vec jdbc-opts))))))
+      (fn [] (mapv #(coerce-id-cols query nil %)
+                   (jdbc/execute! db sql-vec jdbc-opts))))))
 
 (defn with-tx*
   "Run `f` inside a JDBC transaction. `f` is called with a Connection.

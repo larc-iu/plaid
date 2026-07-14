@@ -284,7 +284,10 @@
       (let [lim (effective-limit (:limit head))
             order (qc/order-directive (first hqs))
             ;; fetch one extra row to detect truncation, then trim
-            rows (run-bounded db (fn [conn] (psc/q conn (assemble hqs (inc lim) order))))
+            rows (run-bounded db (fn [conn]
+                                   (psc/q conn
+                                          (assemble hqs (inc lim) order)
+                                          {:uuid-cols (set col-kws)})))
             truncated? (> (count rows) lim)
             rows (vec (take lim rows))
             id-results (mapv (fn [row] (mapv #(get row %) col-kws)) rows)

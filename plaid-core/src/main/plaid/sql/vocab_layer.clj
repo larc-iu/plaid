@@ -107,7 +107,8 @@
                      :where [:and
                              [:= :pv.vocab_layer_id vocab-id]
                              [:= :pu.user_id user-id]]
-                     :limit 1})))
+                     :limit 1}
+                 {:uuid-cols #{:pid}})))
 
 (defn write-accessible-through-project?
   "True iff `user-id` has writer or maintainer role on any project whose
@@ -121,7 +122,8 @@
                              [:= :pv.vocab_layer_id vocab-id]
                              [:= :pu.user_id user-id]
                              [:in :pu.role ["writer" "maintainer"]]]
-                     :limit 1})))
+                     :limit 1}
+                 {:uuid-cols #{:pid}})))
 
 (defn get-accessible-ids
   "Vocab IDs the user can see: union of vocabs they directly maintain
