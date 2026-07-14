@@ -16,3 +16,11 @@
       (finally
         (async/close! bus)
         (reset! events/event-bus-drop-count 0)))))
+
+(deftest unregister-client-updates-and-prunes-atomically
+  (let [registry (atom {:project #{:first :second}})]
+    (with-redefs [events/client-registry registry]
+      (events/unregister-client! :project :first)
+      (is (= #{:second} (events/get-project-clients :project)))
+      (events/unregister-client! :project :second)
+      (is (not (contains? @registry :project))))))

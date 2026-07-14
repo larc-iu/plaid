@@ -92,9 +92,12 @@
   "Remove a client channel from receiving events for a project.
    Called during channel cleanup when SSE connection closes."
   [project-id client-chan]
-  (swap! client-registry update project-id disj client-chan)
-  (when (empty? (get @client-registry project-id))
-    (swap! client-registry dissoc project-id))
+  (swap! client-registry
+         (fn [registry]
+           (let [remaining (disj (get registry project-id #{}) client-chan)]
+             (if (empty? remaining)
+               (dissoc registry project-id)
+               (assoc registry project-id remaining)))))
   (log/debug "Unregistered client for project" project-id))
 
 (defn get-project-clients
