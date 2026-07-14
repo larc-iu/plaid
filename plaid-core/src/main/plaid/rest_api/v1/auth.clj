@@ -20,6 +20,12 @@
   `:plaid.auth :jwt-ttl-seconds` in config (#117)."
   (* 60 60 24 30))
 
+(def ^:private dummy-password-hash
+  "A valid bcrypt+sha512 hash used when a login names no existing user.
+  Checking it keeps the missing-user path computationally comparable to the
+  real-user path, so response timing does not disclose account existence."
+  "bcrypt+sha512$9c3cd2a5ac65c3f01d2b83d66efdd574$12$8908f8fa4e503e77625eb8101a2d2b9d95b2fe7f9124eb37")
+
 (defn jwt-ttl-seconds
   "Lookup the configured JWT TTL (#117). Read at call time rather than
   captured at load so tests/operators can swap config without a
@@ -88,9 +94,16 @@
                       ;; leaking which usernames exist (user-enumeration via
                       ;; login) — including the deactivated case, which must be
                       ;; indistinguishable from a wrong password.
-                      (if-let [{:user/keys [id password-changes password-hash deactivated-at]} (user/get-internal db user-id)]
-                        (if (and (hashers/check password password-hash)
-                                 (nil? deactivated-at))
+                      (let [{:user/keys [id password-changes password-hash deactivated-at]
+                             :as account} (user/get-internal db user-id)
+                            ;; Always do one bcrypt check. Missing users use a
+                            ;; fixed valid hash so they take the same expensive
+                            ;; path as existing users with a wrong password.
+                            password-valid? (hashers/check password
+                                                           (if account
+                                                             password-hash
+                                                             dummy-password-hash))]
+                        (if (and account password-valid? (nil? deactivated-at))
                           (let [token (sign-user-token secret-key id password-changes)]
                             ;; Successful login clears the rate-limit
                             ;; bucket — an occasional typo shouldn't lock
@@ -101,10 +114,7 @@
                              :body {:token token}})
                           (do (rl/record-failure! request user-id)
                               {:status 401
-                               :body {:error "Invalid credentials"}}))
-                        (do (rl/record-failure! request user-id)
-                            {:status 401
-                             :body {:error "Invalid credentials"}})))}}])
+                               :body {:error "Invalid credentials"}}))))}}])
 
 (defn ->user-id [request]
   (-> request :jwt-data :user/id))
@@ -376,5 +386,4 @@
         {:status 403
          :body {:error (str "User " user-id " lacks write access to vocab layer " vocab-id)}}
         (handler request)))))
-
 

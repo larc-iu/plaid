@@ -2,7 +2,8 @@
   "Tests for the auth surface owned by `rest_api.v1.auth` and friends:
   /login redaction, JWT exp claim, /logout, login rate limiting, and
   batch op cap."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [buddy.hashers :as hashers]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.string :as str]
             [buddy.sign.jwt :as jwt]
             [ring.mock.request :as mock]
@@ -24,6 +25,23 @@
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db with-clean-rate-limit)
+
+(deftest missing-user-still-checks-a-password-hash
+  (let [checks (atom [])
+        response (with-redefs [hashers/check (fn [password password-hash]
+                                               (swap! checks conj [password password-hash])
+                                               false)]
+                   (rest-handler
+                    (-> (mock/request :post "/api/v1/login")
+                        (mock/header "accept" "application/edn")
+                        (mock/json-body {:user-id "missing@example.com"
+                                         :password "not-the-password"}))))]
+    (is (= 401 (:status response)))
+    (is (= 1 (count @checks))
+        "A missing account must still perform exactly one expensive hash check")
+    (is (= "not-the-password" (ffirst @checks)))
+    (is (string? (second (first @checks)))
+        "The missing-account check must use a valid dummy hash string")))
 
 ;; ----------------------------------------------------------------------------
 ;; #88 — password and JWT must not appear in logs
