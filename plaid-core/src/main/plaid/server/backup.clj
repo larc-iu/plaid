@@ -19,11 +19,12 @@
             [plaid.server.sql :refer [datasource]]
             [taoensso.timbre :as log])
   (:import [java.io File]
+           [java.nio.file AtomicMoveNotSupportedException CopyOption Files StandardCopyOption]
            [java.time LocalDateTime LocalTime]
            [java.time.format DateTimeFormatter]
            [java.time.temporal ChronoUnit]
            [java.util.concurrent Executors ScheduledExecutorService ThreadFactory TimeUnit]
-           [java.util.zip ZipEntry ZipOutputStream]))
+           [java.util.zip ZipEntry ZipFile ZipOutputStream]))
 
 (def ^:private defaults
   {:enabled?  true
@@ -58,6 +59,34 @@
     (io/copy src out)
     (.closeEntry out)))
 
+(defn- validate-zip!
+  "Open and fully read the one expected entry so truncated output and CRC
+  failures are detected before a backup becomes visible under its final name."
+  [^File zip ^String expected-entry]
+  (with-open [archive (ZipFile. zip)]
+    (let [entry (.getEntry archive expected-entry)]
+      (when (or (nil? entry) (.isDirectory entry))
+        (throw (ex-info "Backup zip does not contain its database snapshot"
+                        {:entry expected-entry})))
+      (with-open [in (.getInputStream archive entry)
+                  out (java.io.OutputStream/nullOutputStream)]
+        (io/copy in out)))))
+
+(defn- publish-zip!
+  "Atomically replace the final backup only after its temporary zip validates.
+  Fall back to a normal same-filesystem replacement where atomic moves are not
+  supported by the configured filesystem."
+  [^File temporary ^File final]
+  (let [source (.toPath temporary)
+        target (.toPath final)
+        replace-options (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING])]
+    (try
+      (Files/move source target
+                  (into-array CopyOption [StandardCopyOption/ATOMIC_MOVE
+                                          StandardCopyOption/REPLACE_EXISTING]))
+      (catch AtomicMoveNotSupportedException _
+        (Files/move source target replace-options)))))
+
 (defn- prune!
   "Delete all but the `retention` newest backup zips in `dir`. Filenames embed
    a sortable timestamp, so lexicographic order is chronological."
@@ -76,7 +105,9 @@
   [ds dir retention]
   (let [dir-file (io/file dir)
         stamp    (.format (LocalDateTime/now) ts-formatter)
-        snapshot (io/file dir-file (str file-prefix stamp ".db"))
+        nonce    (random-uuid)
+        snapshot (io/file dir-file (str "." file-prefix stamp "-" nonce ".db.tmp"))
+        temp-zip (io/file dir-file (str "." file-prefix stamp "-" nonce ".zip.tmp"))
         zip      (io/file dir-file (str file-prefix stamp ".zip"))]
     (try
       (.mkdirs dir-file)
@@ -84,16 +115,23 @@
       ;; copy. It only reads the source, so it's safe with writers active and
       ;; captures committed WAL frames without an explicit checkpoint.
       (jdbc/execute-one! ds [(str "VACUUM INTO " (sqlite-quote (.getAbsolutePath snapshot)))])
-      (zip-file! snapshot zip)
-      (.delete snapshot)
-      (prune! dir-file retention)
+      (zip-file! snapshot temp-zip)
+      (validate-zip! temp-zip (.getName snapshot))
+      (publish-zip! temp-zip zip)
+      (try
+        (prune! dir-file retention)
+        (catch Exception e
+          (log/warn e "Database backup succeeded, but retention pruning failed")))
       (log/info (format "Database backup written: %s (%d KB)"
                         (.getName zip) (quot (.length zip) 1024)))
       zip
       (catch Exception e
         (log/error e "Database backup failed")
-        (when (.exists snapshot) (.delete snapshot))
-        nil))))
+        nil)
+      (finally
+        (doseq [^File temporary [snapshot temp-zip]]
+          (when (and (.exists temporary) (not (.delete temporary)))
+            (log/warn "Could not remove temporary backup file:" (.getName temporary))))))))
 
 (defn- parse-time ^LocalTime [s]
   (try
@@ -137,4 +175,6 @@
                exec)))
   :stop (when backup-scheduler
           (.shutdownNow ^ScheduledExecutorService backup-scheduler)
+          (when-not (.awaitTermination ^ScheduledExecutorService backup-scheduler 10 TimeUnit/SECONDS)
+            (log/warn "Database backup scheduler did not stop within 10 seconds"))
           nil))
