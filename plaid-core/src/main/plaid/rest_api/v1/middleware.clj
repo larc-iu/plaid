@@ -365,8 +365,9 @@
         (and parsed-version (not= parsed-version ::parse-error) (not= method :get))
         (if-let [doc-id (->document-id request)]
           (let [validated-versions psc/*batch-validated-document-versions*
-                already-validated (when validated-versions
-                                    (get @validated-versions doc-id ::not-validated))
+                already-validated (if validated-versions
+                                    (get @validated-versions doc-id ::not-validated)
+                                    ::not-validated)
                 latest-version (:document/version (doc/get (:db request) doc-id))]
             ;; Fast-fail pre-flight: bail with 409 if the visible version
             ;; is ALREADY ahead of the client. Not authoritative — a
