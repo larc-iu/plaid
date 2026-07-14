@@ -1,10 +1,11 @@
 (ns plaid.rest-api.v1.media
-  (:require [plaid.rest-api.v1.auth :as pra]
+  (:require [clojure.string :as str]
+            [plaid.rest-api.v1.auth :as pra]
             [plaid.media.storage :as media]
             [plaid.sql.document :as doc]
             [ring.util.response :as response]
             [taoensso.timbre :as log])
-  (:import [java.io FileInputStream]))
+  (:import [java.io FileInputStream InputStream]))
 
 (defn get-project-id-from-document
   "Get project ID from document ID for auth middleware"
@@ -21,32 +22,84 @@
   (or (-> params :path :document-id)
       (-> request :path-params (get "document-id"))))
 
+(defn- parse-byte-range [range-header size]
+  (when-let [[_ start-str end-str]
+             (and (not (str/includes? range-header ","))
+                  (re-matches #"bytes=(\d*)-(\d*)" range-header))]
+    (try
+      (cond
+        (zero? size) nil
+
+        ;; Suffix range: bytes=-N means the final N bytes.
+        (empty? start-str)
+        (let [suffix (Long/parseLong end-str)]
+          (when (pos? suffix)
+            {:start (max 0 (- size suffix))
+             :end (dec size)}))
+
+        :else
+        (let [start (Long/parseLong start-str)
+              end (if (empty? end-str)
+                    (dec size)
+                    (min (Long/parseLong end-str) (dec size)))]
+          (when (and (< start size) (<= start end))
+            {:start start :end end})))
+      (catch NumberFormatException _
+        nil))))
+
+(defn- bounded-input-stream
+  "Expose at most `length` bytes from `input`, closing the underlying stream."
+  ^InputStream [^InputStream input length]
+  (let [remaining (atom (long length))]
+    (proxy [InputStream] []
+      (read
+        ([]
+         (if (zero? @remaining)
+           -1
+           (let [value (.read input)]
+             (when-not (= -1 value) (swap! remaining dec))
+             value)))
+        ([buffer offset requested]
+         (if (zero? @remaining)
+           -1
+           (let [allowed (int (min (long requested) @remaining))
+                 n (.read input buffer offset allowed)]
+             (when (pos? n) (swap! remaining - n))
+             n))))
+      (available []
+        (int (min (long (.available input)) @remaining Integer/MAX_VALUE)))
+      (skip [requested]
+        (let [n (.skip input (min (long requested) @remaining))]
+          (swap! remaining - n)
+          n))
+      (close [] (.close input)))))
+
 (defn stream-file-response
-  "Create a streaming response for a file with optional range support"
+  "Create a streaming response for a file with RFC-style single-range support."
   [file content-type size range-header]
   (if range-header
-    ;; Handle range request
-    (let [[_ start-str end-str] (re-find #"bytes=(\d+)-(\d*)" range-header)
-          start (Long/parseLong start-str)
-          end (if (empty? end-str)
-                (dec size)
-                (min (Long/parseLong end-str) (dec size)))
-          length (inc (- end start))
-          input-stream (doto (FileInputStream. file)
-                         (.skip start))]
-      (-> (response/response input-stream)
-          (response/status 206)
-          (response/header "Content-Type" content-type)
-          (response/header "Content-Length" (str length))
-          (response/header "Content-Range" (str "bytes " start "-" end "/" size))
-          (response/header "Accept-Ranges" "bytes")
-          (response/header "Cache-Control" "public, max-age=3600")))
-    ;; Normal full file response
+    (if-let [{:keys [start end]} (parse-byte-range range-header size)]
+      (let [length (inc (- end start))
+            file-stream (FileInputStream. file)
+            _ (.position (.getChannel file-stream) start)
+            input-stream (bounded-input-stream file-stream length)]
+        (-> (response/response input-stream)
+            (response/status 206)
+            (response/header "Content-Type" content-type)
+            (response/header "Content-Length" (str length))
+            (response/header "Content-Range" (str "bytes " start "-" end "/" size))
+            (response/header "Accept-Ranges" "bytes")
+            (response/header "Cache-Control" "private, max-age=3600")))
+      {:status 416
+       :headers {"Content-Range" (str "bytes */" size)
+                 "Accept-Ranges" "bytes"
+                 "Cache-Control" "private, max-age=3600"}
+       :body ""})
     (-> (response/response (FileInputStream. file))
         (response/header "Content-Type" content-type)
         (response/header "Content-Length" (str size))
         (response/header "Accept-Ranges" "bytes")
-        (response/header "Cache-Control" "public, max-age=3600"))))
+        (response/header "Cache-Control" "private, max-age=3600"))))
 
 (def media-routes
   ["/media"
