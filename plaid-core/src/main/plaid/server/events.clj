@@ -336,15 +336,14 @@
 
 ;; Global event bus that receives all audit log events.
 ;;
-;; Uses a `dropping-buffer` (not `sliding-buffer`) so that overflow is
-;; explicitly visible to publishers: `>!!`/`offer!` returns false when
-;; the buffer is full, letting `publish-*!` log a warning + bump the
-;; drop counter. Sliding-buffer would silently evict the oldest event
-;; on overflow — easier on memory, harder to diagnose.
+;; Uses a fixed buffer so overflow is explicitly visible to publishers:
+;; `offer!` returns false when the buffer is full, letting `publish-*!`
+;; log a warning + bump the drop counter. Dropping/sliding buffers accept
+;; the put while silently discarding an event, defeating that observability.
 (defstate event-bus
   :start
-  (let [ch (async/chan (async/dropping-buffer 1000))]
-    (log/info "Started audit event bus (dropping-buffer 1000)")
+  (let [ch (async/chan 1000)]
+    (log/info "Started audit event bus (fixed buffer 1000)")
     ;; Start the event distribution loop
     (log/info "Starting event distributor")
     (async/go-loop []
