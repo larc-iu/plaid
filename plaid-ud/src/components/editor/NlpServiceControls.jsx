@@ -4,7 +4,7 @@ import { IconBolt, IconAdjustments } from '@tabler/icons-react';
 import { ServiceSummary } from './ServiceSummary.jsx';
 import { ServiceParamForm } from './ServiceParamForm.jsx';
 import { useNlpService } from './hooks/useNlpService.js';
-import { notifySuccess } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyWarning } from '../../utils/feedback.jsx';
 
 // The shared NLP "Auto Parse" cluster used by both the Text Editor and the
 // Annotate tab: discover parse-capable services, pick one, fill its declared
@@ -18,6 +18,7 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
     isDiscovering,
     hasServices,
     parseStatus,
+    parseSummary,
     discoverServices,
     requestParse,
     clearParseStatus,
@@ -34,16 +35,45 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
 
   const onParsedRef = useRef(onParsed);
   onParsedRef.current = onParsed;
+  // Read the summary through a ref so the effect stays keyed only on the status
+  // transition (it's set atomically with parseStatus, so it's current here).
+  const parseSummaryRef = useRef(parseSummary);
+  parseSummaryRef.current = parseSummary;
 
-  // On parse success: refresh the host's data, toast, then clear status after a
-  // beat. Keyed only on the status transition so it fires exactly once.
+  // On parse success: refresh the host's data, then toast what the parse
+  // ACTUALLY did, then clear status after a beat. Keyed only on the status
+  // transition so it fires exactly once.
   useEffect(() => {
-    if (parseStatus === 'success') {
-      onParsedRef.current?.();
-      notifySuccess('Document parsed successfully!');
-      const timer = setTimeout(() => clearParseStatus(), 3000);
-      return () => clearTimeout(timer);
+    if (parseStatus !== 'success') return;
+    onParsedRef.current?.();
+
+    // The service reports {parsedSentences, skippedSentences}. A parse that
+    // skipped every sentence (their annotations are treated as human-made or
+    // verified) did nothing — say so, and point at the Overwrite option —
+    // rather than claiming success and leaving the user staring at an
+    // unchanged document.
+    const summary = parseSummaryRef.current;
+    const parsed = summary?.parsedSentences;
+    const skipped = summary?.skippedSentences ?? 0;
+    if (typeof parsed !== 'number') {
+      notifySuccess('Document parsed successfully!'); // older service: no summary
+    } else if (parsed > 0) {
+      const kept = skipped > 0 ? `, kept ${skipped} with existing annotations` : '';
+      notifySuccess(`Parsed ${parsed} sentence${parsed === 1 ? '' : 's'}${kept}.`);
+    } else if (skipped > 0) {
+      notifyWarning(
+        `${skipped} sentence${skipped === 1 ? '' : 's'} already carry annotations Plaid treats `
+        + `as human-made or verified, so ${skipped === 1 ? 'it was' : 'they were'} left `
+        + `untouched. Turn on the service's "Overwrite human-edited annotations" option to `
+        + `re-parse them.`,
+        'Nothing to parse',
+      );
+    } else {
+      notifyWarning('The parser found nothing to parse in this document.', 'Nothing to parse');
     }
+
+    const timer = setTimeout(() => clearParseStatus(), 3000);
+    return () => clearTimeout(timer);
   }, [parseStatus, clearParseStatus]);
 
   if (!enabled) return null;

@@ -27,6 +27,12 @@ export const useNlpService = (projectId, documentId, project) => {
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [parseStatus, setParseStatus] = useState(null); // 'started', 'success', 'error'
+  // The service's result summary from the last successful parse:
+  // { mode, parsedSentences, skippedSentences }. Lets the caller report what
+  // the parse ACTUALLY did instead of an unconditional "success" — a parse
+  // that touched nothing (every sentence skipped as human-annotated) otherwise
+  // looks identical to a real one.
+  const [parseSummary, setParseSummary] = useState(null);
   const [selectedServiceId, setSelectedServiceIdState] = useState(null);
   const [paramValues, setParamValues] = useState({});
 
@@ -152,7 +158,7 @@ export const useNlpService = (projectId, documentId, project) => {
       setParseStatus('started');
       setIsParsing(true);
 
-      await client.messages.requestService(
+      const summary = await client.messages.requestService(
         projectId,
         selectedService.serviceId,
         // User args spread first so the fixed `documentId` always wins.
@@ -160,6 +166,7 @@ export const useNlpService = (projectId, documentId, project) => {
         300000, // parses can be slow (model load + neural pipeline)
       );
 
+      setParseSummary(summary || null);
       setParseStatus('success');
       setIsParsing(false);
     } catch (error) {
@@ -188,6 +195,7 @@ export const useNlpService = (projectId, documentId, project) => {
     isDiscovering,
     isParsing,
     parseStatus,
+    parseSummary,
 
     // Actions
     discoverServices,
