@@ -80,7 +80,14 @@ export const authService = {
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
     localStorage.removeItem('isAdmin');
-    window.location.href = '/login';
+    // HashRouter + the production '/igt/' base mean the login route lives in the
+    // URL fragment; navigating to an absolute '/login' path misses the SPA (the
+    // server has nothing there under /igt/). Set the fragment off the current
+    // path so the base is preserved in both dev ('/') and prod ('/igt/'), then
+    // hard-reload to clear in-memory React state — the onAuthError path calls
+    // logout() outside the AuthContext, so the user state won't reset itself.
+    window.location.hash = '#/login';
+    window.location.reload();
   },
 
   getCurrentUser() {
