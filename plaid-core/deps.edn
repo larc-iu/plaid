@@ -40,6 +40,12 @@
         buddy/buddy-hashers {:mvn/version "2.0.167"}
         buddy/buddy-sign {:mvn/version "3.6.1-359"}
         buddy/buddy-auth {:mvn/version "3.0.323"}
+        ;; buddy-core 1.12.0-430 still requests Bouncy Castle 1.78.1.
+        ;; Override the suite together so all three provider artifacts stay
+        ;; version-aligned and receive the security fixes released since then.
+        org.bouncycastle/bcpkix-jdk18on {:mvn/version "1.84"}
+        org.bouncycastle/bcprov-jdk18on {:mvn/version "1.84"}
+        org.bouncycastle/bcutil-jdk18on {:mvn/version "1.84"}
 
         ;; misc
         camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
