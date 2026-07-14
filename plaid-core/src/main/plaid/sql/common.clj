@@ -664,6 +664,14 @@
   directly)."
   nil)
 
+(def ^:dynamic *batch-validated-document-versions*
+  "Per-atomic-batch map of document id to the client version already
+  validated for that document. Batch sub-requests run sequentially in one
+  transaction, so subsequent writes for the same document intentionally
+  skip repeating the original OCC check after earlier sub-requests have
+  advanced its version. nil outside the batch endpoint."
+  nil)
+
 (defn- ensure-op-bound!
   "Fail-fast guard for the audited write helpers. Throws ex-info with
   :code 500 BEFORE any SQL executes if *op* is nil — without this,

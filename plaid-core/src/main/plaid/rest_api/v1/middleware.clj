@@ -364,7 +364,10 @@
 
         (and parsed-version (not= parsed-version ::parse-error) (not= method :get))
         (if-let [doc-id (->document-id request)]
-          (let [latest-version (:document/version (doc/get (:db request) doc-id))]
+          (let [validated-versions psc/*batch-validated-document-versions*
+                already-validated (when validated-versions
+                                    (get @validated-versions doc-id ::not-validated))
+                latest-version (:document/version (doc/get (:db request) doc-id))]
             ;; Fast-fail pre-flight: bail with 409 if the visible version
             ;; is ALREADY ahead of the client. Not authoritative — a
             ;; racing writer can bump between this read and the in-tx
@@ -372,12 +375,24 @@
             ;; without opening a transaction. The authoritative check
             ;; runs in `submit-operation*` against the in-tx snapshot.
             (cond
+              (and (not= already-validated ::not-validated)
+                   (not= already-validated parsed-version))
+              {:status 409
+               :body {:error "Inconsistent document versions were supplied for the same document in one batch."}}
+
+              (= already-validated parsed-version)
+              (binding [psc/*expected-document-version* nil]
+                (handler request))
+
               (and latest-version (not= latest-version parsed-version))
               {:status 409
                :body {:error "Document version mismatch. The document has been modified since you last fetched it."}}
               :else
-              (binding [psc/*expected-document-version* parsed-version]
-                (handler request))))
+              (do
+                (when validated-versions
+                  (swap! validated-versions assoc doc-id parsed-version))
+                (binding [psc/*expected-document-version* parsed-version]
+                  (handler request)))))
           {:status 400 :body {:error "document-version was provided but no document was found with the provided version."}})
 
         :else

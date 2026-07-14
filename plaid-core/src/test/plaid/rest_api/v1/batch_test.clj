@@ -4,9 +4,7 @@
   semantics now come from JDBC tx scoping, exercised here through the
   /api/v1/batch endpoint."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [clojure.string]
             [ring.mock.request :as mock]
-            [plaid.rest-api.v1.batch :as batch]
             [plaid.server.events :as events]
             [plaid.sql.common :as psc]
             [plaid.fixtures :as fixtures
@@ -255,60 +253,32 @@
       (let [ids (-> response :body :ids)]
         (is (= 5000 (count ids)) "all 5000 ids returned")))))
 
-(deftest test-preprocess-batch-keyed-by-doc-id-and-version
-  ;; #109 regression: before the fix, `preprocess-batch-operations` dedupes
-  ;; document-version values by the bare version string, so two ops
-  ;; touching different documents with the same numeric version (e.g.
-  ;; the very-common case of two docs both at version 1) would have the
-  ;; second op silently stripped of its `?document-version=` param,
-  ;; bypassing OCC entirely. The fix keys the dedupe map by
-  ;; [doc-id, version] instead. This test exercises the real entity-
-  ;; resolution path via the live DB and asserts both sub-ops retain
-  ;; their version param.
-  (testing "Two ops touching different docs with the same version both keep their version param"
-    (let [proj  (h/create-test-project admin-request "BatchOccDedupeProj")
-          doc-a (h/create-test-document admin-request proj "DocA")
-          doc-b (h/create-test-document admin-request proj "DocB")
-          tl    (-> (h/create-text-layer admin-request proj "TL") :body :id)
-          text-a (-> (h/create-text admin-request tl doc-a "a") :body :id)
-          text-b (-> (h/create-text admin-request tl doc-b "b") :body :id)
-          ;; Both docs are at version 1 (or whatever their post-create
-          ;; version is); the original implementation would dedupe by the
-          ;; raw "1" string and drop op-2's version param.
-          ops  [{:path (str "/api/v1/texts/" text-a "?document-version=1")
-                 :method "patch" :body {:body "x"}}
-                {:path (str "/api/v1/texts/" text-b "?document-version=1")
-                 :method "patch" :body {:body "y"}}]
-          processed (batch/preprocess-batch-operations ops fixtures/db)
-          paths (mapv :path processed)]
-      (is (clojure.string/includes? (nth paths 0) "document-version=1")
-          "First sub-op keeps its document-version")
-      (is (clojure.string/includes? (nth paths 1) "document-version=1")
-          "Second sub-op (different doc) MUST also keep its document-version
-          — otherwise OCC silently bypasses for doc-b"))))
-
-(deftest test-preprocess-batch-still-dedupes-same-doc-same-version
-  ;; The fix must preserve the original good behavior of suppressing a
-  ;; duplicate (same-doc, same-version) sibling. Otherwise two writes
-  ;; to the same doc inside one batch would both carry the same version
-  ;; → the second OCC check trivially fires (version already bumped by
-  ;; the first sub-op) → spurious 409. We assert that only the FIRST op
-  ;; keeps the param when the (doc-id, version) key collides.
-  (testing "Two ops touching the SAME doc with the same version still dedupe"
-    (let [proj  (h/create-test-project admin-request "BatchOccDedupeSameDocProj")
-          doc   (h/create-test-document admin-request proj "Doc")
-          tl    (-> (h/create-text-layer admin-request proj "TL") :body :id)
-          text  (-> (h/create-text admin-request tl doc "hello world") :body :id)
-          ops  [{:path (str "/api/v1/texts/" text "?document-version=1")
-                 :method "patch" :body {:body "x"}}
-                {:path (str "/api/v1/texts/" text "?document-version=1")
-                 :method "patch" :body {:body "y"}}]
-          processed (batch/preprocess-batch-operations ops fixtures/db)
-          paths (mapv :path processed)]
-      (is (clojure.string/includes? (nth paths 0) "document-version=1")
-          "First sub-op keeps its document-version")
-      (is (not (clojure.string/includes? (nth paths 1) "document-version="))
-          "Second sub-op (same doc, same version) has document-version stripped"))))
+(deftest test-batch-validates-occ-once-after-resolving-create-body
+  (testing "Two bare creates for one document share the original OCC version"
+    (let [proj (h/create-test-project admin-request "BatchOccCreateProj")
+          doc (h/create-test-document admin-request proj "Doc")
+          tl (-> (h/create-text-layer admin-request proj "TL") :body :id)
+          text-id (-> (h/create-text admin-request tl doc "ab") :body :id)
+          token-layer-id (-> (h/create-token-layer admin-request tl "Tokens") :body :id)
+          version (-> (h/get-document admin-request doc) :body :document/version)
+          operations [{:path (str "/api/v1/tokens?document-version=" version)
+                       :method "post"
+                       :body {:token-layer-id token-layer-id
+                              :text text-id
+                              :begin 0
+                              :end 1}}
+                      {:path (str "/api/v1/tokens?document-version=" version)
+                       :method "post"
+                       :body {:token-layer-id token-layer-id
+                              :text text-id
+                              :begin 1
+                              :end 2}}]
+          response (make-batch-request operations admin-token)
+          responses (parse-response-body response)
+          final-version (-> (h/get-document admin-request doc) :body :document/version)]
+      (is (= 200 (:status response)))
+      (is (= [201 201] (mapv :status responses)))
+      (is (= (+ version 2) final-version)))))
 
 (deftest test-batch-rollback-when-body-throws-ex-info
   ;; Fix-3 regression test: when a sub-op's body throws ExceptionInfo,
