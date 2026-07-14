@@ -298,30 +298,44 @@
     (and (not (str/blank? ct))
          (not (str/starts-with? (str/lower-case ct) "multipart/")))))
 
+(defn- chunked-transfer? [headers]
+  (let [encoding (or (get headers "transfer-encoding")
+                     (get headers "Transfer-Encoding")
+                     "")]
+    (some #(= "chunked" (str/lower-case (str/trim %)))
+          (str/split encoding #","))))
+
 (defn wrap-json-body-cap
   "Reject non-multipart requests whose declared body size exceeds the
   configured JSON cap with a 413. The cap is the SMALLER of the two
   limits — see the task #118 note in http-server.clj for why http-kit's
   connection-level cap is sized for multipart instead.
 
-  Only the Content-Length header is checked — chunked encodings without
-  a declared length pass through and are still bounded by http-kit's
-  outer cap. That's a deliberate trade-off: enforcing chunked-body caps
-  would require consuming and counting bytes here, which would either
-  duplicate the downstream body-reader work or break streaming
-  handlers."
+  Chunked non-multipart bodies are rejected with 411 because their size cannot
+  be checked without consuming the stream. Multipart uploads remain governed
+  by http-kit's larger connection-level media cap."
   [handler max-json-body-bytes]
   (fn [{:keys [headers] :as req}]
     (let [ct (or (get headers "content-type") (get headers "Content-Type"))
           cl (parse-long-header (or (get headers "content-length")
                                     (get headers "Content-Length")))]
-      (if (and cl
-               (json-content-type? ct)
-               (> cl max-json-body-bytes))
+      (cond
+        (and (json-content-type? ct)
+             (nil? cl)
+             (chunked-transfer? headers))
+        {:status 411
+         :headers {"Content-Type" "application/json"}
+         :body "{\"error\":\"Content-Length is required for non-multipart request bodies\"}"}
+
+        (and cl
+             (json-content-type? ct)
+             (> cl max-json-body-bytes))
         {:status 413
          :headers {"Content-Type" "application/json"}
          :body (str "{\"error\":\"Request body exceeds JSON cap of "
                     max-json-body-bytes " bytes\"}")}
+
+        :else
         (handler req)))))
 
 (defn- cors-origin-has-regex-meta?

@@ -33,3 +33,15 @@
               "A canonical sibling must not pass the static-root containment check")))
       (finally
         (delete-tree! tmp)))))
+
+(deftest chunked-structured-bodies-require-content-length
+  (let [handler (middleware/wrap-json-body-cap
+                 (constantly {:status 204})
+                 1024)]
+    (is (= 411 (:status (handler {:headers {"content-type" "application/json"
+                                            "transfer-encoding" "chunked"}}))))
+    (is (= 204 (:status (handler {:headers {"content-type" "multipart/form-data; boundary=x"
+                                            "transfer-encoding" "chunked"}})))
+        "Multipart uploads continue to use the outer media-size cap")
+    (is (= 204 (:status (handler {:headers {"content-type" "application/json"
+                                            "content-length" "12"}}))))))
