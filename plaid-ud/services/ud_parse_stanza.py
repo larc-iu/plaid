@@ -187,6 +187,45 @@ def format_protected_error(total, breakdown, scope):
     )
 
 
+def build_parse_notice(parsed, skipped):
+    """Author the toast the editor shows when a parse finishes. The service owns
+    ALL of this wording; the editor only maps `level` ('success' | 'warning') to
+    a colour. Headline (`title`) states the outcome; the body (`message`) stays
+    terse. Three cases:
+
+    - parsed > 0: work happened (a from-scratch parse, or a selective re-parse
+      of the machine-only sentences); note any human-annotated sentences kept.
+    - parsed == 0, skipped > 0: nothing changed because every sentence with
+      tokens already carries human-made/verified annotations (unstamped ones
+      included). Point at the Overwrite lever.
+    - parsed == 0, skipped == 0: nothing to work on at all.
+    """
+    def s(n):
+        return "" if n == 1 else "s"
+
+    if parsed > 0:
+        return {
+            "level": "success",
+            "title": f"Parsed {parsed} sentence{s(parsed)}",
+            "message": (f"Kept {skipped} sentence{s(skipped)} with existing annotations."
+                        if skipped else ""),
+        }
+    if skipped > 0:
+        subject = ("1 sentence already carries" if skipped == 1
+                   else f"All {skipped} sentences already carry")
+        return {
+            "level": "warning",
+            "title": "Document not modified",
+            "message": (f"{subject} human-made or verified annotations. Enable 'Overwrite "
+                        f"human-edited annotations' to re-parse."),
+        }
+    return {
+        "level": "warning",
+        "title": "Nothing to parse",
+        "message": "The parser found no sentences to parse in this document.",
+    }
+
+
 def _token_id(tok):
     """span/link `tokens` and relation endpoints come back as id strings;
     tolerate the occasional {id: ...} object shape too."""
@@ -740,17 +779,18 @@ class StanzaParserService(BaseService):
                 summary = parse_document(self.pipeline_provider, self.client, document_id,
                                          language=language, overwrite=overwrite)
 
-        # parse_document returns a summary dict; report what it actually did.
-        parsed = summary.get("parsed_sentences", 0)
-        skipped = summary.get("skipped_sentences", 0)
-        msg = f"Parsed {parsed} sentence(s)"
-        if skipped:
-            msg += f"; kept {skipped} sentence(s) with human annotations"
-        response_helper.progress(100, msg)
+        # parse_document returns a summary dict; author the user-facing notice
+        # here (the service owns ALL the wording — the editor only maps `level`
+        # to a colour) and report what it actually did.
+        notice = build_parse_notice(summary.get("parsed_sentences", 0),
+                                    summary.get("skipped_sentences", 0))
+        response_helper.progress(100, notice["title"])
         # Outbound keys are snake_case (already so in `summary`): the client's
         # snake→kebab transform on send + the JS client's kebab→camel on receive
-        # deliver them to the UI as camelCase.
-        response_helper.complete({"document_id": document_id, "status": "success", **summary})
+        # deliver them to the UI as camelCase. `notice` rides along so the editor
+        # shows the service's wording verbatim.
+        response_helper.complete({"document_id": document_id, "status": "success",
+                                  "notice": notice, **summary})
 
 
 if __name__ == '__main__':

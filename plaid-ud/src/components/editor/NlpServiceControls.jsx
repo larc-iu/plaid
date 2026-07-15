@@ -40,36 +40,28 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
   const parseSummaryRef = useRef(parseSummary);
   parseSummaryRef.current = parseSummary;
 
-  // On parse success: refresh the host's data, then toast what the parse
-  // ACTUALLY did, then clear status after a beat. Keyed only on the status
-  // transition so it fires exactly once.
+  // On parse success: refresh the host's data, toast the service's own notice,
+  // then clear status after a beat. Keyed only on the status transition so it
+  // fires exactly once.
   useEffect(() => {
     if (parseStatus !== 'success') return;
     onParsedRef.current?.();
 
-    // The service reports {parsedSentences, skippedSentences}. A parse that
-    // skipped every sentence (their annotations are treated as human-made or
-    // verified) did nothing — say so, and point at the Overwrite option —
-    // rather than claiming success and leaving the user staring at an
-    // unchanged document.
+    // The service authors the toast text (headline + body) and picks its
+    // severity via `notice.level`; we only map that to a colour. This keeps a
+    // no-op parse (every sentence skipped as human-annotated) from claiming
+    // success. Fall back to the counts for a service predating the notice
+    // contract, so we still never claim more than we know.
     const summary = parseSummaryRef.current;
-    const parsed = summary?.parsedSentences;
-    const skipped = summary?.skippedSentences ?? 0;
-    if (typeof parsed !== 'number') {
-      notifySuccess('Document parsed successfully!'); // older service: no summary
-    } else if (parsed > 0) {
-      const kept = skipped > 0 ? `, kept ${skipped} with existing annotations` : '';
-      notifySuccess(`Parsed ${parsed} sentence${parsed === 1 ? '' : 's'}${kept}.`);
-    } else if (skipped > 0) {
-      notifyWarning(
-        `${skipped} sentence${skipped === 1 ? '' : 's'} already carry annotations Plaid treats `
-        + `as human-made or verified, so ${skipped === 1 ? 'it was' : 'they were'} left `
-        + `untouched. Turn on the service's "Overwrite human-edited annotations" option to `
-        + `re-parse them.`,
-        'Nothing to parse',
-      );
+    const notice = summary?.notice;
+    if (notice) {
+      const show = notice.level === 'success' ? notifySuccess : notifyWarning;
+      show(notice.message || undefined, notice.title);
+    } else if (summary?.parsedSentences > 0) {
+      const n = summary.parsedSentences;
+      notifySuccess(`Parsed ${n} sentence${n === 1 ? '' : 's'}.`);
     } else {
-      notifyWarning('The parser found nothing to parse in this document.', 'Nothing to parse');
+      notifyWarning('The parser reported no changes to this document.', 'Nothing to parse');
     }
 
     const timer = setTimeout(() => clearParseStatus(), 3000);
