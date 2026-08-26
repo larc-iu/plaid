@@ -2,11 +2,7 @@ import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import { planMorphemeReconcile, planSpanDedup } from './igtReconcile.js';
 import { validateIgtDocument } from './validate.js';
-import {
-  deriveDocumentData,
-  deriveSentences,
-  deriveAlignmentTokens
-} from './derive.js';
+import { deriveDocumentData, deriveSentences, deriveAlignmentTokens } from './derive.js';
 
 import { spanMutations } from './mutations/spans.js';
 import { tokenMutations } from './mutations/tokens.js';
@@ -34,7 +30,14 @@ const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
 // also holds the project's loaded vocabularies (`_vocabularies`) and applies
 // link/unlink patches to that table in `_applyRawPatch`.
 export class IgtDocument {
-  constructor({ raw, project = null, vocabularies = {}, client = null, projectId = null, asOf = null }) {
+  constructor({
+    raw,
+    project = null,
+    vocabularies = {},
+    client = null,
+    projectId = null,
+    asOf = null,
+  }) {
     this._raw = raw;
     this._project = project;
     // Fold the document-embedded vocab-links (under raw's token layers) into the
@@ -85,24 +88,46 @@ export class IgtDocument {
     // read-only historical view).
     const [raw, project] = await Promise.all([
       client.documents.get(documentId, true, at),
-      client.projects.get(projectId)
+      client.projects.get(projectId),
     ]);
     const { vocabularies } = await loadProjectVocabularies(client, project);
     return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf });
   }
 
   // ----- read API -----
-  get version() { return this._version; }
-  get dataVersion() { return this._dataVersion; }
-  get raw() { return this._raw; }
-  get id() { return this._raw?.id; }
-  get name() { return this._raw?.name; }
-  get client() { return this._client; }
-  get projectId() { return this._projectId; }
-  get project() { return this._project; }
-  get vocabularies() { return this._vocabularies; }
-  get isSaving() { return this._isSaving; }
-  get error() { return this._error; }
+  get version() {
+    return this._version;
+  }
+  get dataVersion() {
+    return this._dataVersion;
+  }
+  get raw() {
+    return this._raw;
+  }
+  get id() {
+    return this._raw?.id;
+  }
+  get name() {
+    return this._raw?.name;
+  }
+  get client() {
+    return this._client;
+  }
+  get projectId() {
+    return this._projectId;
+  }
+  get project() {
+    return this._project;
+  }
+  get vocabularies() {
+    return this._vocabularies;
+  }
+  get isSaving() {
+    return this._isSaving;
+  }
+  get error() {
+    return this._error;
+  }
 
   get layerInfo() {
     if (this._layerInfoCacheVersion !== this._dataVersion) {
@@ -180,27 +205,43 @@ export class IgtDocument {
     }
     return this._sentencesBundleCache;
   }
-  get sentences() { return this._sentencesBundle().sentences; }
-  get sortedSentences() { return this._sentencesBundle().sortedSentences; }
-  get tokenLookup() { return this._sentencesBundle().tokenLookup; }
-  get sentenceLookup() { return this._sentencesBundle().sentenceLookup; }
-  get tokenPositionMaps() { return this._sentencesBundle().tokenPositionMaps; }
-  get sentenceIndexLookup() { return this._sentencesBundle().sentenceIndexLookup; }
-  get findSentenceForToken() { return this._sentencesBundle().findSentenceForToken; }
+  get sentences() {
+    return this._sentencesBundle().sentences;
+  }
+  get sortedSentences() {
+    return this._sentencesBundle().sortedSentences;
+  }
+  get tokenLookup() {
+    return this._sentencesBundle().tokenLookup;
+  }
+  get sentenceLookup() {
+    return this._sentencesBundle().sentenceLookup;
+  }
+  get tokenPositionMaps() {
+    return this._sentencesBundle().tokenPositionMaps;
+  }
+  get sentenceIndexLookup() {
+    return this._sentencesBundle().sentenceIndexLookup;
+  }
+  get findSentenceForToken() {
+    return this._sentencesBundle().findSentenceForToken;
+  }
 
   // ----- subscription bridge (useSyncExternalStore-compatible) -----
   // Arrow-field properties so identities stay stable across renders of the
   // same doc instance.
   subscribe = (listener) => {
     this._listeners.add(listener);
-    return () => { this._listeners.delete(listener); };
+    return () => {
+      this._listeners.delete(listener);
+    };
   };
 
   getSnapshot = () => this._version;
 
   _emit() {
     this._version++;
-    this._listeners.forEach(fn => fn());
+    this._listeners.forEach((fn) => fn());
   }
 
   setError(msg) {
@@ -235,7 +276,9 @@ export class IgtDocument {
       console.error(`${label}:`, err);
       this._error = `${label}: ${err.message || 'Unknown error'}`;
       if (this.onError) this.onError(this._error);
-      try { await this._reload(); } catch (reloadErr) {
+      try {
+        await this._reload();
+      } catch (reloadErr) {
         console.error('Reload after failure also failed:', reloadErr);
       }
       return false;
@@ -275,16 +318,25 @@ export class IgtDocument {
     this._raw = updated;
     if (this._project) {
       try {
-        const { vocabularies: reloaded, failedCount } = await loadProjectVocabularies(this._client, this._project, at);
+        const { vocabularies: reloaded, failedCount } = await loadProjectVocabularies(
+          this._client,
+          this._project,
+          at,
+        );
         this._vocabularies = mergeRawVocabLinks(updated, reloaded);
         if (failedCount > 0 && this.onError) {
-          this.onError(`${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed — vocab links may display stale values. Reload the page if they look wrong.`);
+          this.onError(
+            `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed — vocab links may display stale values. Reload the page if they look wrong.`,
+          );
         }
       } catch (err) {
         // The document itself reloaded fine — keep it, but tell the user the
         // vocab table is stale rather than silently rendering old links.
         console.warn('Vocab reload failed:', err);
-        if (this.onError) this.onError('Vocabulary data could not be refreshed — vocab links may display stale values. Reload the page if they look wrong.');
+        if (this.onError)
+          this.onError(
+            'Vocabulary data could not be refreshed — vocab links may display stale values. Reload the page if they look wrong.',
+          );
       }
     }
     this._dataVersion++;
@@ -309,40 +361,49 @@ export class IgtDocument {
   // caller to log + toast. Loud + recoverable. Deliberately NOT via _withSaving
   // (a heal failure must not reload-and-revert the freshly loaded document).
   async reconcileOnOpen() {
-    const ZERO = { created: 0, deleted: 0, deletedAnnotatedOrphans: 0, dedupedSpans: 0, findings: [] };
+    const ZERO = {
+      created: 0,
+      deleted: 0,
+      deletedAnnotatedOrphans: 0,
+      dedupedSpans: 0,
+      findings: [],
+    };
     // Single-flight: a concurrent re-entry (StrictMode double-invoke, a rapid
     // re-open) must not double-create morphemes.
     if (this._reconciling) return ZERO;
     this._reconciling = true;
     try {
       const info = this.layerInfo;
-      const { wordsNeedingMorpheme, orphanMorphemeIds, deletedAnnotatedOrphans } = planMorphemeReconcile(info);
+      const { wordsNeedingMorpheme, orphanMorphemeIds, deletedAnnotatedOrphans } =
+        planMorphemeReconcile(info);
       const dedupPlans = planSpanDedup(info);
 
       const morphemeLayer = info.morphemeTokenLayer;
       const textId = info.primaryTextLayer?.text?.id;
-      const morphemeWork = Boolean(morphemeLayer?.id && textId
-        && (wordsNeedingMorpheme.length || orphanMorphemeIds.length));
+      const morphemeWork = Boolean(
+        morphemeLayer?.id && textId && (wordsNeedingMorpheme.length || orphanMorphemeIds.length),
+      );
 
       if (morphemeWork || dedupPlans.length) {
         const results = await this._client.batched(async () => {
-          if (morphemeWork && orphanMorphemeIds.length) this._client.tokens.bulkDelete(orphanMorphemeIds);
+          if (morphemeWork && orphanMorphemeIds.length)
+            this._client.tokens.bulkDelete(orphanMorphemeIds);
           if (morphemeWork) {
-            wordsNeedingMorpheme.forEach(w => {
+            wordsNeedingMorpheme.forEach((w) => {
               this._client.tokens.create(morphemeLayer.id, textId, w.begin, w.end, 1);
             });
           }
           // Dedup ops LAST so the morpheme-create result slicing below stays simple.
-          dedupPlans.forEach(p => {
+          dedupPlans.forEach((p) => {
             if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
-            p.deleteSpanIds.forEach(id => this._client.spans.delete(id));
+            p.deleteSpanIds.forEach((id) => this._client.spans.delete(id));
           });
         });
         // Op order: the optional bulkDelete first, then one create per bare word.
-        const createOffset = (morphemeWork && orphanMorphemeIds.length) ? 1 : 0;
+        const createOffset = morphemeWork && orphanMorphemeIds.length ? 1 : 0;
         const createCount = morphemeWork ? wordsNeedingMorpheme.length : 0;
         const createResults = results.slice(createOffset, createOffset + createCount);
-        const newIds = createResults.map(r => r?.body?.id ?? r?.id);
+        const newIds = createResults.map((r) => r?.body?.id ?? r?.id);
         const removed = new Set(orphanMorphemeIds);
 
         this._applyRawPatch((next, infoNext) => {
@@ -350,26 +411,36 @@ export class IgtDocument {
             const layer = infoNext.morphemeTokenLayer;
             if (layer) {
               if (!Array.isArray(layer.tokens)) layer.tokens = [];
-              if (removed.size) layer.tokens = layer.tokens.filter(m => !removed.has(m.id));
+              if (removed.size) layer.tokens = layer.tokens.filter((m) => !removed.has(m.id));
               wordsNeedingMorpheme.forEach((w, i) => {
                 const id = newIds[i];
-                if (id) layer.tokens.push({ id, text: textId, begin: w.begin, end: w.end, precedence: 1, metadata: {} });
+                if (id)
+                  layer.tokens.push({
+                    id,
+                    text: textId,
+                    begin: w.begin,
+                    end: w.end,
+                    precedence: 1,
+                    metadata: {},
+                  });
               });
             }
           }
           if (dedupPlans.length) {
             // Dedup can happen at any scope, so index every span layer by id.
-            const byId = new Map([
-              ...(infoNext.spanLayers?.word || []),
-              ...(infoNext.spanLayers?.morpheme || []),
-              ...(infoNext.spanLayers?.sentence || []),
-            ].map(sl => [sl.id, sl]));
-            dedupPlans.forEach(p => {
+            const byId = new Map(
+              [
+                ...(infoNext.spanLayers?.word || []),
+                ...(infoNext.spanLayers?.morpheme || []),
+                ...(infoNext.spanLayers?.sentence || []),
+              ].map((sl) => [sl.id, sl]),
+            );
+            dedupPlans.forEach((p) => {
               const sl = byId.get(p.layerId);
               if (!sl || !Array.isArray(sl.spans)) return;
               const dead = new Set(p.deleteSpanIds);
-              sl.spans = sl.spans.filter(s => !dead.has(s.id));
-              const keep = sl.spans.find(s => s.id === p.keepSpanId);
+              sl.spans = sl.spans.filter((s) => !dead.has(s.id));
+              const keep = sl.spans.find((s) => s.id === p.keepSpanId);
               if (keep && p.needsUpdate) keep.value = p.mergedValue;
             });
           }
@@ -424,7 +495,7 @@ export class IgtDocument {
   // orthographies derive from the token's metadata at render time.
   async updateOrthography(tokenId, orthographyName, value) {
     const info = this.layerInfo;
-    const token = (info.primaryTokenLayer?.tokens || []).find(t => t.id === tokenId);
+    const token = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     if (!token) {
       this.setError(`Token ${tokenId} not found`);
       return false;
@@ -433,7 +504,7 @@ export class IgtDocument {
     return this._withSaving(`Failed to update ${orthographyName}`, async () => {
       await this._client.tokens.setMetadata(tokenId, nextMetadata);
       this._applyRawPatch((next, infoNext) => {
-        const t = (infoNext.primaryTokenLayer?.tokens || []).find(x => x.id === tokenId);
+        const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
         if (t) t.metadata = nextMetadata;
       });
     });
@@ -446,7 +517,7 @@ export class IgtDocument {
   // Returns true on success / false on guard failure or server error.
   async splitToken(tokenId, splitOffset) {
     const info = this.layerInfo;
-    const token = (info.primaryTokenLayer?.tokens || []).find(t => t.id === tokenId);
+    const token = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     if (!token) {
       this.setError(`Token ${tokenId} not found`);
       return false;
@@ -454,8 +525,8 @@ export class IgtDocument {
     return this._withSaving('Failed to split token', async () => {
       const leftEnd = token.begin + splitOffset + 1;
       const coincident = (info.morphemeTokenLayer?.tokens || [])
-        .filter(m => m.begin === token.begin && m.end === token.end)
-        .map(m => m.id);
+        .filter((m) => m.begin === token.begin && m.end === token.end)
+        .map((m) => m.id);
 
       const results = await this._client.batched(async () => {
         if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
@@ -465,22 +536,25 @@ export class IgtDocument {
       const newRightTokenId = results[results.length - 1]?.body?.id;
 
       this._applyRawPatch((next, infoNext) => {
-        const t = (infoNext.primaryTokenLayer?.tokens || []).find(x => x.id === tokenId);
+        const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
         const originalEnd = token.end;
         if (t) t.end = leftEnd;
         if (newRightTokenId && infoNext.primaryTokenLayer) {
-          if (!Array.isArray(infoNext.primaryTokenLayer.tokens)) infoNext.primaryTokenLayer.tokens = [];
+          if (!Array.isArray(infoNext.primaryTokenLayer.tokens))
+            infoNext.primaryTokenLayer.tokens = [];
           infoNext.primaryTokenLayer.tokens.push({
             id: newRightTokenId,
             text: token.text,
             begin: leftEnd,
             end: originalEnd,
-            metadata: {}
+            metadata: {},
           });
         }
         if (coincident.length > 0 && infoNext.morphemeTokenLayer?.tokens) {
           const removed = new Set(coincident);
-          infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(m => !removed.has(m.id));
+          infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(
+            (m) => !removed.has(m.id),
+          );
         }
       });
     });
@@ -494,15 +568,24 @@ export class IgtDocument {
 // { vocabularies, failedCount }. Exported for callers that construct
 // IgtDocuments from pre-fetched parts (e.g. export/runExport.js).
 export async function loadProjectVocabularies(client, project, asOf) {
-  const vocabIds = (project?.vocabs || []).map(v => v.id);
+  const vocabIds = (project?.vocabs || []).map((v) => v.id);
   if (vocabIds.length === 0) return { vocabularies: {}, failedCount: 0 };
-  const results = await Promise.all(vocabIds.map(async id => {
-    try { return await client.vocabLayers.get(id, true, asOf || undefined); }
-    catch (err) { console.warn(`Error fetching vocab ${id}:`, err); return null; }
-  }));
+  const results = await Promise.all(
+    vocabIds.map(async (id) => {
+      try {
+        return await client.vocabLayers.get(id, true, asOf || undefined);
+      } catch (err) {
+        console.warn(`Error fetching vocab ${id}:`, err);
+        return null;
+      }
+    }),
+  );
   const vocabularies = {};
   let failedCount = 0;
-  results.forEach(v => { if (v) vocabularies[v.id] = v; else failedCount++; });
+  results.forEach((v) => {
+    if (v) vocabularies[v.id] = v;
+    else failedCount++;
+  });
   return { vocabularies, failedCount };
 }
 
@@ -520,19 +603,19 @@ export async function loadProjectVocabularies(client, project, asOf) {
 function mergeRawVocabLinks(raw, vocabularies) {
   const vocabs = vocabularies || {};
   const seenByVocab = new Map(); // vocabId -> Set<linkId>
-  (raw?.textLayers || []).forEach(textLayer => {
-    (textLayer.tokenLayers || []).forEach(tokenLayer => {
-      (tokenLayer.vocabs || []).forEach(v => {
+  (raw?.textLayers || []).forEach((textLayer) => {
+    (textLayer.tokenLayers || []).forEach((tokenLayer) => {
+      (tokenLayer.vocabs || []).forEach((v) => {
         if (!v?.id) return;
         let entry = vocabs[v.id];
         if (!entry) entry = vocabs[v.id] = { id: v.id, name: v.name, items: [], vocabLinks: [] };
         if (!Array.isArray(entry.vocabLinks)) entry.vocabLinks = [];
         let seen = seenByVocab.get(v.id);
         if (!seen) {
-          seen = new Set(entry.vocabLinks.map(l => l.id));
+          seen = new Set(entry.vocabLinks.map((l) => l.id));
           seenByVocab.set(v.id, seen);
         }
-        (v.vocabLinks || []).forEach(link => {
+        (v.vocabLinks || []).forEach((link) => {
           if (link && link.id != null && !seen.has(link.id)) {
             seen.add(link.id);
             entry.vocabLinks.push(link);
@@ -558,5 +641,5 @@ Object.assign(
   vocabMutations,
   documentMutations,
   alignmentMutations,
-  analysisCopyMutations
+  analysisCopyMutations,
 );

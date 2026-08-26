@@ -43,11 +43,7 @@ export const StrictModeProvider = ({ children }) => {
     return c;
   }, [baseUrl, token, documentId]);
 
-  return (
-    <StrictModeContext.Provider value={documentClient}>
-      {children}
-    </StrictModeContext.Provider>
-  );
+  return <StrictModeContext.Provider value={documentClient}>{children}</StrictModeContext.Provider>;
 };
 
 /**

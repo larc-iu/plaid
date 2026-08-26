@@ -8,8 +8,12 @@
 // never undefined.
 
 import {
-  findBaselineTextLayer, findWordTokenLayer, findSentenceTokenLayer,
-  findMorphemeTokenLayer, readScope, readOrthographies,
+  findBaselineTextLayer,
+  findWordTokenLayer,
+  findSentenceTokenLayer,
+  findMorphemeTokenLayer,
+  readScope,
+  readOrthographies,
 } from '../domain/igtConfig.js';
 
 /**
@@ -23,9 +27,10 @@ export function discoverExportLayers(project) {
   const sentenceLayer = findSentenceTokenLayer(tokenLayers);
   const morphemeLayer = findMorphemeTokenLayer(tokenLayers);
 
-  const names = (layer, scopes) => (layer?.spanLayers || [])
-    .filter((sl) => scopes.includes(readScope(sl.config)))
-    .map((sl) => sl.name);
+  const names = (layer, scopes) =>
+    (layer?.spanLayers || [])
+      .filter((sl) => scopes.includes(readScope(sl.config)))
+      .map((sl) => sl.name);
 
   return {
     orthographies: (readOrthographies(wordLayer?.config) || [])

@@ -31,7 +31,7 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
 
   // Token layers nested (transitively) under the word layer — these cascade.
   const childrenOf = new Map();
-  tokenLayers.forEach(tl => {
+  tokenLayers.forEach((tl) => {
     if (tl.parentTokenLayer) {
       if (!childrenOf.has(tl.parentTokenLayer)) childrenOf.set(tl.parentTokenLayer, []);
       childrenOf.get(tl.parentTokenLayer).push(tl);
@@ -50,7 +50,9 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
   // Every token the cascade deletes.
   const dyingTokens = new Set([word.id]);
   for (const tl of cascading) {
-    (tl.tokens || []).forEach(t => { if (containsToken(word, t)) dyingTokens.add(t.id); });
+    (tl.tokens || []).forEach((t) => {
+      if (containsToken(word, t)) dyingTokens.add(t.id);
+    });
   }
 
   // Spans on dying tokens (any app's), then relations grounded on dying spans
@@ -59,7 +61,7 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
   for (const tl of [wordLayer, ...cascading]) {
     for (const sl of tl.spanLayers || []) {
       for (const s of sl.spans || []) {
-        if (Array.isArray(s.tokens) && s.tokens.some(t => dyingTokens.has(t))) {
+        if (Array.isArray(s.tokens) && s.tokens.some((t) => dyingTokens.has(t))) {
           result.annotations += 1;
           dyingSpans.add(s.id);
         }
@@ -75,7 +77,7 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
   // Vocab links (IGT keeps them on the vocab table, not the document).
   for (const vocab of Object.values(vocabularies || {})) {
     for (const link of vocab.vocabLinks || []) {
-      if (Array.isArray(link.tokens) && link.tokens.some(t => dyingTokens.has(t))) {
+      if (Array.isArray(link.tokens) && link.tokens.some((t) => dyingTokens.has(t))) {
         result.links += 1;
       }
     }
@@ -115,7 +117,7 @@ export const countReTokenizeLoss = (layerInfo, vocabularies) => {
   }
   for (const vocab of Object.values(vocabularies || {})) {
     for (const link of vocab.vocabLinks || []) {
-      if (Array.isArray(link.tokens) && link.tokens.some(t => docTokenIds.has(t))) {
+      if (Array.isArray(link.tokens) && link.tokens.some((t) => docTokenIds.has(t))) {
         result.links += 1;
       }
     }
@@ -148,7 +150,7 @@ export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
   // Token layers nested (transitively) UNDER the word layer (morpheme + deeper);
   // the word layer itself is excluded — its spans survive split/merge.
   const childrenOf = new Map();
-  tokenLayers.forEach(tl => {
+  tokenLayers.forEach((tl) => {
     if (tl.parentTokenLayer) {
       if (!childrenOf.has(tl.parentTokenLayer)) childrenOf.set(tl.parentTokenLayer, []);
       childrenOf.get(tl.parentTokenLayer).push(tl);
@@ -167,8 +169,8 @@ export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
   // Sub-word tokens contained in any of the affected words (their morphemes etc.).
   const dyingTokens = new Set();
   for (const tl of cascading) {
-    (tl.tokens || []).forEach(t => {
-      if (list.some(w => containsToken(w, t))) dyingTokens.add(t.id);
+    (tl.tokens || []).forEach((t) => {
+      if (list.some((w) => containsToken(w, t))) dyingTokens.add(t.id);
     });
   }
   if (dyingTokens.size === 0) return result;
@@ -177,7 +179,7 @@ export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
   for (const tl of cascading) {
     for (const sl of tl.spanLayers || []) {
       for (const s of sl.spans || []) {
-        if (Array.isArray(s.tokens) && s.tokens.some(t => dyingTokens.has(t))) {
+        if (Array.isArray(s.tokens) && s.tokens.some((t) => dyingTokens.has(t))) {
           result.annotations += 1;
           dyingSpans.add(s.id);
         }
@@ -191,7 +193,7 @@ export const countSubWordAnnotationLoss = (layerInfo, vocabularies, words) => {
   }
   for (const vocab of Object.values(vocabularies || {})) {
     for (const link of vocab.vocabLinks || []) {
-      if (Array.isArray(link.tokens) && link.tokens.some(t => dyingTokens.has(t))) {
+      if (Array.isArray(link.tokens) && link.tokens.some((t) => dyingTokens.has(t))) {
         result.links += 1;
       }
     }

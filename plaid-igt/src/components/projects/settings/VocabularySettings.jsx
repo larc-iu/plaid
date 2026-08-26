@@ -22,14 +22,14 @@ export const VocabularySettings = ({ projectId, client }) => {
 
       // Get the project to see which vocabularies are linked
       const project = await client.projects.get(projectId);
-      const linkedVocabIds = (project.vocabs || []).map(v => v.id);
+      const linkedVocabIds = (project.vocabs || []).map((v) => v.id);
 
       // Transform to component format
-      const vocabularies = allVocabs.map(vocab => ({
+      const vocabularies = allVocabs.map((vocab) => ({
         name: vocab.name || vocab.id,
         id: vocab.id,
         enabled: linkedVocabIds.includes(vocab.id),
-        isCustom: false // All existing vocabs from API are not custom
+        isCustom: false, // All existing vocabs from API are not custom
       }));
 
       return { vocabularies };
@@ -54,15 +54,15 @@ export const VocabularySettings = ({ projectId, client }) => {
 
       // Get current project state
       const project = await client.projects.get(projectId);
-      const currentLinkedVocabIds = (project.vocabs || []).map(v => v.id);
+      const currentLinkedVocabIds = (project.vocabs || []).map((v) => v.id);
 
       // Determine which vocabularies should be linked
       const targetLinkedVocabIds = data.vocabularies
-        .filter(vocab => vocab.enabled && !vocab.isCustom) // Only link existing, enabled vocabs
-        .map(vocab => vocab.id);
+        .filter((vocab) => vocab.enabled && !vocab.isCustom) // Only link existing, enabled vocabs
+        .map((vocab) => vocab.id);
 
       // Create new custom vocabularies first
-      const customVocabs = data.vocabularies.filter(vocab => vocab.isCustom && vocab.enabled);
+      const customVocabs = data.vocabularies.filter((vocab) => vocab.isCustom && vocab.enabled);
       for (const customVocab of customVocabs) {
         if (customVocab.id.startsWith('new-')) {
           // Create new vocabulary
@@ -115,7 +115,8 @@ export const VocabularySettings = ({ projectId, client }) => {
           <div>
             <p className="text-sm font-medium text-destructive">Configuration Error</p>
             <p className="text-sm text-muted-foreground">
-              Failed to load or save vocabularies configuration. Please refresh the page and try again.
+              Failed to load or save vocabularies configuration. Please refresh the page and try
+              again.
             </p>
           </div>
         </div>
@@ -128,8 +129,8 @@ export const VocabularySettings = ({ projectId, client }) => {
       <p className="text-lg font-medium">Vocabularies</p>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Link vocabularies to your project. Vocabularies allow you to link tokens to
-        document-independent vocabulary entries, allowing you to track constructs such as
-        morphemes, words, or multi-word expressions.
+        document-independent vocabulary entries, allowing you to track constructs such as morphemes,
+        words, or multi-word expressions.
       </p>
 
       <VocabularyManager

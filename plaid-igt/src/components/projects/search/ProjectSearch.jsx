@@ -4,7 +4,13 @@ import { Search as SearchIcon, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  SelectGroup,
+  SelectLabel,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { notifyError } from '@/utils/feedback';
@@ -23,7 +29,11 @@ const MarkedText = ({ text, marks }) => {
     const b = Math.max(pos, Math.min(m.begin, chars.length));
     const e = Math.max(b, Math.min(m.end, chars.length));
     if (b > pos) out.push(chars.slice(pos, b).join(''));
-    out.push(<mark key={i} className="rounded bg-yellow-200 px-0.5">{chars.slice(b, e).join('')}</mark>);
+    out.push(
+      <mark key={i} className="rounded bg-yellow-200 px-0.5">
+        {chars.slice(b, e).join('')}
+      </mark>,
+    );
     pos = e;
   });
   if (pos < chars.length) out.push(chars.slice(pos).join(''));
@@ -33,7 +43,10 @@ const MarkedText = ({ text, marks }) => {
 export const ProjectSearch = ({ project, projectId, client }) => {
   const navigate = useNavigate();
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
-  const domains = useMemo(() => searchDomains(layerInfo, project.vocabs), [layerInfo, project.vocabs]);
+  const domains = useMemo(
+    () => searchDomains(layerInfo, project.vocabs),
+    [layerInfo, project.vocabs],
+  );
 
   const [queryText, setQueryText] = useState('');
   const [matchType, setMatchType] = useState('contains');
@@ -48,9 +61,10 @@ export const ProjectSearch = ({ project, projectId, client }) => {
     if (!queryText.trim() || !domain || busy) return;
     setBusy(true);
     try {
-      const r = nextMode === 'freq'
-        ? await runFreqSearch(client, domain, queryText.trim(), matchType)
-        : await runHitsSearch(client, project, layerInfo, domain, queryText.trim(), matchType);
+      const r =
+        nextMode === 'freq'
+          ? await runFreqSearch(client, domain, queryText.trim(), matchType)
+          : await runHitsSearch(client, project, layerInfo, domain, queryText.trim(), matchType);
       setResult(r);
     } catch (err) {
       console.error('Search failed:', err);
@@ -58,7 +72,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
         matchType === 'regex' && err?.status === 400
           ? `Search failed — check your regex: ${err.message}`
           : 'Search failed. Try again or simplify the query.',
-        'Search Error'
+        'Search Error',
       );
     } finally {
       setBusy(false);
@@ -100,23 +114,37 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               placeholder="Search this project…"
               value={queryText}
               onChange={(e) => setQueryText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') runSearch();
+              }}
               className="pl-8"
             />
           </div>
           <Select value={matchType} onValueChange={setMatchType}>
-            <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
-              {MATCH_TYPES.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
+              {MATCH_TYPES.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={domainId} onValueChange={setDomainId}>
-            <SelectTrigger className="w-[210px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[210px]">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {grouped.map((g) => (
                 <SelectGroup key={g.label}>
                   <SelectLabel>{g.label}</SelectLabel>
-                  {g.items.map((d) => <SelectItem key={d.id} value={d.id}>{d.label}</SelectItem>)}
+                  {g.items.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.label}
+                    </SelectItem>
+                  ))}
                 </SelectGroup>
               ))}
             </SelectContent>
@@ -126,14 +154,19 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           </Button>
         </div>
         <div className="mt-3 flex items-center gap-1 text-sm">
-          {[['hits', 'Hits'], ['freq', 'Frequencies']].map(([m, label]) => (
+          {[
+            ['hits', 'Hits'],
+            ['freq', 'Frequencies'],
+          ].map(([m, label]) => (
             <button
               key={m}
               type="button"
               onClick={() => switchMode(m)}
               className={cn(
                 'rounded px-3 py-1 transition-colors',
-                mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                mode === m
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {label}
@@ -155,7 +188,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">{g.docName}</span>
-                <span className="text-xs text-muted-foreground">{g.docHits} hit{g.docHits === 1 ? '' : 's'}</span>
+                <span className="text-xs text-muted-foreground">
+                  {g.docHits} hit{g.docHits === 1 ? '' : 's'}
+                </span>
               </div>
               <div className="divide-y">
                 {g.rows.map((row) => (
@@ -167,20 +202,27 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                     title="Open in Analyze"
                   >
                     <p className="text-sm">
-                      <span className="mr-2 text-xs text-muted-foreground">#{row.sentenceIndex + 1}</span>
+                      <span className="mr-2 text-xs text-muted-foreground">
+                        #{row.sentenceIndex + 1}
+                      </span>
                       <MarkedText text={row.text} marks={row.marks} />
                     </p>
                     {row.notes.length > 0 && (
-                      <p className="mt-0.5 text-xs text-violet-700">{[...new Set(row.notes)].join(' · ')}</p>
+                      <p className="mt-0.5 text-xs text-violet-700">
+                        {[...new Set(row.notes)].join(' · ')}
+                      </p>
                     )}
                     {row.translation && (
-                      <p className="mt-0.5 text-xs italic text-muted-foreground">‘{row.translation}’</p>
+                      <p className="mt-0.5 text-xs italic text-muted-foreground">
+                        ‘{row.translation}’
+                      </p>
                     )}
                   </button>
                 ))}
                 {g.rows.length === 0 && (
                   <p className="px-4 py-2 text-xs text-muted-foreground">
-                    Hits in this document could not be located (it may have changed since the search) — open it to look.
+                    Hits in this document could not be located (it may have changed since the
+                    search) — open it to look.
                   </p>
                 )}
               </div>
@@ -188,8 +230,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           ))}
           {result.remainingDocs > 0 && (
             <p className="text-sm text-muted-foreground">
-              … plus {result.remainingHits.toLocaleString()} more hit{result.remainingHits === 1 ? '' : 's'} in{' '}
-              {result.remainingDocs} more document{result.remainingDocs === 1 ? '' : 's'} — refine your search to see them.
+              … plus {result.remainingHits.toLocaleString()} more hit
+              {result.remainingHits === 1 ? '' : 's'} in {result.remainingDocs} more document
+              {result.remainingDocs === 1 ? '' : 's'} — refine your search to see them.
             </p>
           )}
           {result.totalHits === 0 && (
@@ -201,8 +244,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       {result?.mode === 'freq' && (
         <div className="rounded-lg border bg-card p-4">
           <p className="mb-3 text-sm text-muted-foreground">
-            {result.totalValues.toLocaleString()} distinct value{result.totalValues === 1 ? '' : 's'} ·{' '}
-            {result.totalHits.toLocaleString()} total occurrence{result.totalHits === 1 ? '' : 's'}
+            {result.totalValues.toLocaleString()} distinct value
+            {result.totalValues === 1 ? '' : 's'} · {result.totalHits.toLocaleString()} total
+            occurrence{result.totalHits === 1 ? '' : 's'}
             {result.totalValues > result.rows.length ? ` (showing top ${result.rows.length})` : ''}
           </p>
           {result.rows.length === 0 ? (
@@ -220,7 +264,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                   {result.rows.map(([value, n]) => (
                     <tr key={value} className="border-t hover:bg-muted/50">
                       <td className="px-3 py-1.5">{value}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{n.toLocaleString()}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
+                        {n.toLocaleString()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -232,7 +278,8 @@ export const ProjectSearch = ({ project, projectId, client }) => {
 
       {!result && (
         <p className="py-10 text-center text-sm text-muted-foreground">
-          Search word forms, morphemes, annotations, or lexicon links across every document in this project.
+          Search word forms, morphemes, annotations, or lexicon links across every document in this
+          project.
         </p>
       )}
     </div>

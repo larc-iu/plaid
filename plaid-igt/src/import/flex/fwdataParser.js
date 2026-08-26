@@ -17,13 +17,31 @@ import { SaxesParser } from 'saxes';
 /** rt classes retained during the streaming pass. */
 const KEEP_CLASSES = new Set([
   'LangProject',
-  'Text', 'StText', 'StTxtPara', 'Segment', 'Note',
-  'WfiWordform', 'WfiAnalysis', 'WfiGloss', 'WfiMorphBundle', 'PunctuationForm',
-  'LexEntry', 'LexSense', 'LexExampleSentence', 'CmTranslation',
-  'MoStemAllomorph', 'MoAffixAllomorph',
-  'MoStemMsa', 'MoInflAffMsa', 'MoDerivAffMsa', 'MoUnclassifiedAffixMsa',
-  'PartOfSpeech', 'MoMorphType', 'CmPossibility',
-  'CmAgent', 'CmAgentEvaluation',
+  'Text',
+  'StText',
+  'StTxtPara',
+  'Segment',
+  'Note',
+  'WfiWordform',
+  'WfiAnalysis',
+  'WfiGloss',
+  'WfiMorphBundle',
+  'PunctuationForm',
+  'LexEntry',
+  'LexSense',
+  'LexExampleSentence',
+  'CmTranslation',
+  'MoStemAllomorph',
+  'MoAffixAllomorph',
+  'MoStemMsa',
+  'MoInflAffMsa',
+  'MoDerivAffMsa',
+  'MoUnclassifiedAffixMsa',
+  'PartOfSpeech',
+  'MoMorphType',
+  'CmPossibility',
+  'CmAgent',
+  'CmAgentEvaluation',
 ]);
 
 const nfc = (s) => (s == null ? s : s.normalize('NFC'));
@@ -32,7 +50,9 @@ const nfc = (s) => (s == null ? s : s.normalize('NFC'));
 
 const child = (n, tag) => n?.children.find((c) => c.tag === tag) ?? null;
 const refGuids = (n, tag) =>
-  child(n, tag)?.children.filter((c) => c.tag === 'objsur').map((c) => c.attrs.guid) ?? [];
+  child(n, tag)
+    ?.children.filter((c) => c.tag === 'objsur')
+    .map((c) => c.attrs.guid) ?? [];
 const refGuid = (n, tag) => refGuids(n, tag)[0] ?? null;
 const valAttr = (n, tag) => child(n, tag)?.attrs.val ?? null;
 
@@ -48,7 +68,10 @@ function multiUni(n, tag) {
 }
 
 const runText = (el) =>
-  el.children.filter((c) => c.tag === 'Run').map((c) => c.text).join('');
+  el.children
+    .filter((c) => c.tag === 'Run')
+    .map((c) => c.text)
+    .join('');
 
 /** <X><AStr ws="en"><Run …>text</Run>…</AStr>…</X> → {en: 'text', …} (NFC), or null. */
 function multiStr(n, tag) {
@@ -164,7 +187,7 @@ function streamCollect(xml) {
 // --- IR assembly -------------------------------------------------------------
 
 /** Pick the English value of a multilingual map, else the first value. */
-export const pickEn = (m) => (m == null ? null : m.en ?? Object.values(m)[0] ?? null);
+export const pickEn = (m) => (m == null ? null : (m.en ?? Object.values(m)[0] ?? null));
 
 /**
  * Parse a .fwdata XML string into the neutral FLEx IR.
@@ -210,7 +233,9 @@ export function parseFwdata(xml) {
     const msa = guid == null ? null : byGuid.get(guid);
     if (!msa) return null;
     return posAbbrev(
-      refGuid(msa, 'PartOfSpeech') ?? refGuid(msa, 'ToPartOfSpeech') ?? refGuid(msa, 'FromPartOfSpeech'),
+      refGuid(msa, 'PartOfSpeech') ??
+        refGuid(msa, 'ToPartOfSpeech') ??
+        refGuid(msa, 'FromPartOfSpeech'),
     );
   };
   // Human approval: a WfiAnalysis is human-approved when its Evaluations
@@ -238,10 +263,16 @@ export function parseFwdata(xml) {
 
   // ws usage tracking (drives which fields/orthographies the import offers)
   const usage = {
-    wordForms: new Set(), wordGloss: new Set(), morphGloss: new Set(),
-    freeTranslation: new Set(), literalTranslation: new Set(), note: new Set(),
+    wordForms: new Set(),
+    wordGloss: new Set(),
+    morphGloss: new Set(),
+    freeTranslation: new Set(),
+    literalTranslation: new Set(),
+    note: new Set(),
   };
-  const track = (set, m) => { for (const ws of Object.keys(m ?? {})) set.add(ws); };
+  const track = (set, m) => {
+    for (const ws of Object.keys(m ?? {})) set.add(ws);
+  };
 
   // Senses (entries may own subsenses recursively)
   const exampleOf = (guid) => {
@@ -322,9 +353,7 @@ export function parseFwdata(xml) {
       // human-approved analysis vs a morphological-parser guess the user
       // never confirmed in FLEx — drives provConfirmed on imported links
       approved: analysis ? isHumanApproved(analysis) : false,
-      morphemes: analysis
-        ? refGuids(analysis, 'MorphBundles').map(bundleOf).filter(Boolean)
-        : null,
+      morphemes: analysis ? refGuids(analysis, 'MorphBundles').map(bundleOf).filter(Boolean) : null,
     };
   };
 

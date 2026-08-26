@@ -48,15 +48,17 @@ export async function planItemConcordance(client, vocabLayerId, itemId) {
 // locating `hitIds` inside each. `docEntries` is a slice of plan.docs.
 export async function loadConcordanceGroups(client, hitIds, docEntries) {
   const domain = { kind: 'lexicon' }; // marks both word- and morpheme-level link hits
-  return Promise.all(docEntries.map(async ([docId, count]) => {
-    const raw = await client.documents.get(docId, true);
-    const doc = new IgtDocument({ raw, vocabularies: {}, client });
-    return {
-      docId,
-      projectId: doc.raw?.project,
-      docName: doc.document?.name || '(untitled)',
-      docHits: count,
-      rows: buildContextRows(doc, domain, hitIds),
-    };
-  }));
+  return Promise.all(
+    docEntries.map(async ([docId, count]) => {
+      const raw = await client.documents.get(docId, true);
+      const doc = new IgtDocument({ raw, vocabularies: {}, client });
+      return {
+        docId,
+        projectId: doc.raw?.project,
+        docName: doc.document?.name || '(untitled)',
+        docHits: count,
+        rows: buildContextRows(doc, domain, hitIds),
+      };
+    }),
+  );
 }

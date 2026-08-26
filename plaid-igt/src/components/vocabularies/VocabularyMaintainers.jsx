@@ -13,13 +13,7 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 // browse the directory.
 const SEARCH_LIMIT = 25;
 
-export const VocabularyMaintainers = ({
-  vocabulary,
-  user,
-  vocabularyId,
-  client,
-  onDataUpdate,
-}) => {
+export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, onDataUpdate }) => {
   const maintainerIds = useMemo(() => vocabulary?.maintainers ?? [], [vocabulary]);
 
   const [maintainers, setMaintainers] = useState([]); // [{id, username, isAdmin}]
@@ -33,8 +27,11 @@ export const VocabularyMaintainers = ({
     (async () => {
       setLoading(true);
       try {
-        const resolved = await Promise.all(maintainerIds.map((id) =>
-          client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))));
+        const resolved = await Promise.all(
+          maintainerIds.map((id) =>
+            client.users.get(id).catch(() => ({ id, username: id, isAdmin: false })),
+          ),
+        );
         if (!cancelled) {
           resolved.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
           setMaintainers(resolved);
@@ -43,7 +40,9 @@ export const VocabularyMaintainers = ({
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [maintainerIds, client]);
 
   // Search-to-add (server-side ?q=).
@@ -65,10 +64,16 @@ export const VocabularyMaintainers = ({
     (async () => {
       setSearchLoading(true);
       try {
-        const page = await client.users.listPage({ q: debouncedSearch || undefined, limit: SEARCH_LIMIT });
+        const page = await client.users.listPage({
+          q: debouncedSearch || undefined,
+          limit: SEARCH_LIMIT,
+        });
         const known = new Set(maintainerIds);
         const results = (page.entries || []).filter((u) => !known.has(u.id));
-        if (!cancelled) { setSearchResults(results); setSearchDenied(false); }
+        if (!cancelled) {
+          setSearchResults(results);
+          setSearchDenied(false);
+        }
       } catch (err) {
         if (!cancelled) {
           setSearchResults([]);
@@ -79,7 +84,9 @@ export const VocabularyMaintainers = ({
         if (!cancelled) setSearchLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [debouncedSearch, searchActive, maintainerIds, client]);
 
   const canManageVocabulary = () => {
@@ -104,7 +111,10 @@ export const VocabularyMaintainers = ({
 
   const handleRemoveMaintainer = async (userId) => {
     if (userId === user.id) {
-      notifyError('You cannot remove yourself as a maintainer of the vocabulary', 'Cannot remove own permissions');
+      notifyError(
+        'You cannot remove yourself as a maintainer of the vocabulary',
+        'Cannot remove own permissions',
+      );
       return;
     }
     try {
@@ -145,7 +155,8 @@ export const VocabularyMaintainers = ({
           <span className="text-sm text-muted-foreground">{maintainers.length}</span>
         </div>
         <p className="px-4 pt-3 text-sm text-muted-foreground">
-          Maintainers can edit vocabulary settings, manage vocabulary items, and control access to this vocabulary.
+          Maintainers can edit vocabulary settings, manage vocabulary items, and control access to
+          this vocabulary.
         </p>
         {loading ? (
           <div className="flex justify-center py-8 text-muted-foreground">
@@ -204,11 +215,12 @@ export const VocabularyMaintainers = ({
 
           {searchDenied ? (
             <p className="py-1 text-sm text-muted-foreground">
-              You don’t have permission to browse the user directory, so you can’t add
-              maintainers by search. Ask an administrator (or a project maintainer) to add them.
+              You don’t have permission to browse the user directory, so you can’t add maintainers
+              by search. Ask an administrator (or a project maintainer) to add them.
             </p>
-          ) : searchActive && (
-            searchLoading ? (
+          ) : (
+            searchActive &&
+            (searchLoading ? (
               <div className="flex justify-center py-4 text-muted-foreground">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
               </div>
@@ -219,7 +231,10 @@ export const VocabularyMaintainers = ({
             ) : (
               <div className="flex flex-col">
                 {searchResults.map((u, i) => (
-                  <div key={u.id} className={`flex items-center justify-between gap-2 py-2 ${i ? 'border-t' : ''}`}>
+                  <div
+                    key={u.id}
+                    className={`flex items-center justify-between gap-2 py-2 ${i ? 'border-t' : ''}`}
+                  >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="truncate font-medium">{u.username}</span>
@@ -238,7 +253,7 @@ export const VocabularyMaintainers = ({
                   </div>
                 ))}
               </div>
-            )
+            ))
           )}
         </div>
       </div>

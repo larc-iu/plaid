@@ -4,10 +4,18 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { useServiceParams } from '../hooks/useServiceParams.js';
-import { countAnnotationLossForWord, countSubWordAnnotationLoss, countReTokenizeLoss } from '../../../domain/annotationLoss.js';
 import {
-  BUILTIN_TOKENIZE_RULE_BASED, encodeServiceSelection, encodeBuiltinSelection,
-  decodeSelection, readSpotDefault, resolveInitialSelection,
+  countAnnotationLossForWord,
+  countSubWordAnnotationLoss,
+  countReTokenizeLoss,
+} from '../../../domain/annotationLoss.js';
+import {
+  BUILTIN_TOKENIZE_RULE_BASED,
+  encodeServiceSelection,
+  encodeBuiltinSelection,
+  decodeSelection,
+  readSpotDefault,
+  resolveInitialSelection,
 } from '../../../domain/serviceDefaults.js';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
@@ -54,11 +62,15 @@ export const useTokenOperations = () => {
   // Services are matched by their declared `tasks`; only ONLINE ones are
   // offered (discovery also returns previously-seen offline services).
   useEffect(() => {
-    const onlineServices = filterServicesByTask(availableServices, TASKS.TOKENIZE)
-      .filter((s) => s.online !== false);
+    const onlineServices = filterServicesByTask(availableServices, TASKS.TOKENIZE).filter(
+      (s) => s.online !== false,
+    );
     const options = [{ value: BUILTIN_VALUE, label: 'Rule-based Punctuation' }];
     onlineServices.forEach((service) => {
-      options.push({ value: encodeServiceSelection(service.serviceId), label: service.serviceName });
+      options.push({
+        value: encodeServiceSelection(service.serviceId),
+        label: service.serviceName,
+      });
     });
     setAlgorithmOptions(options);
     const has = (val) => options.some((opt) => opt.value === val);
@@ -78,8 +90,7 @@ export const useTokenOperations = () => {
     }
     // Every (re)discovery: if the selected service has vanished, fall back to the
     // built-in (mirrors the media tab; a no-op when the selection is still valid).
-    setAlgorithmState((cur) =>
-      cur.startsWith('service:') && !has(cur) ? BUILTIN_VALUE : cur);
+    setAlgorithmState((cur) => (cur.startsWith('service:') && !has(cur) ? BUILTIN_VALUE : cur));
   }, [availableServices, hasRestoredCache, project]);
 
   const setAlgorithm = (value) => {
@@ -90,15 +101,23 @@ export const useTokenOperations = () => {
 
   // The selected NLP service (null for the built-in rule-based option) and its
   // user-controllable arguments.
-  const selectedServiceId = decodeSelection(algorithm)?.kind === 'service'
-    ? decodeSelection(algorithm).id : null;
+  const selectedServiceId =
+    decodeSelection(algorithm)?.kind === 'service' ? decodeSelection(algorithm).id : null;
   const selectedService = selectedServiceId
     ? availableServices.find((s) => s.serviceId === selectedServiceId) || null
     : null;
   const tokenizeDefault = readSpotDefault(project, TASKS.TOKENIZE);
-  const { schema: paramSchema, values: paramValues, setParam: setParamValue, coerced: coerceParams, errors: paramErrors } =
-    useServiceParams(selectedService, PARAMS_PREFIX,
-      tokenizeDefault?.service?.serviceId === selectedServiceId ? tokenizeDefault?.params : null);
+  const {
+    schema: paramSchema,
+    values: paramValues,
+    setParam: setParamValue,
+    coerced: coerceParams,
+    errors: paramErrors,
+  } = useServiceParams(
+    selectedService,
+    PARAMS_PREFIX,
+    tokenizeDefault?.service?.serviceId === selectedServiceId ? tokenizeDefault?.params : null,
+  );
 
   const updateProgress = (percent, operation) => {
     setTokenizationProgress(percent);
@@ -199,7 +218,10 @@ export const useTokenOperations = () => {
       // DOM Range strings are UTF-16, so measure them in code points too.
       const selectionStart = cpLength(spanRange.toString());
       const selectionLength = cpLength(selectedText);
-      if (selectionStart < 0 || selectionStart + selectionLength > cpLength(spanElement.textContent)) {
+      if (
+        selectionStart < 0 ||
+        selectionStart + selectionLength > cpLength(spanElement.textContent)
+      ) {
         return;
       }
       const actualStart = piece.begin + selectionStart;

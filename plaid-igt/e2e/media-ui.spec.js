@@ -1,5 +1,11 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { makeClient, getFixtureProjectId, freshDoc, cleanupDoc, wavBytes } from './bugbash/harness.mjs';
+import {
+  makeClient,
+  getFixtureProjectId,
+  freshDoc,
+  cleanupDoc,
+  wavBytes,
+} from './bugbash/harness.mjs';
 
 // Browser-mediated media flow that the headless harness can't reach: the real
 // hidden <input type=file> -> onChange -> doc.uploadMedia() -> reload -> the
@@ -54,7 +60,11 @@ test('file picker uploads media and reveals the timeline', async ({ page }) => {
 
   // Whether headless Chromium decoded the audio (duration > 0). Informational:
   // the drag-select-to-create path needs this AND a registered ASR service.
-  const pxLabel = await page.getByText(/\d+px\/s/).first().textContent().catch(() => null);
+  const pxLabel = await page
+    .getByText(/\d+px\/s/)
+    .first()
+    .textContent()
+    .catch(() => null);
   console.log('timeline zoom label:', pxLabel);
 
   console.log('--- failed requests ---');
@@ -78,6 +88,8 @@ test('uploaded media can be deleted from the UI', async ({ page }) => {
     await delBtn.first().click();
     await expect(page.getByText('Upload Media File')).toBeVisible({ timeout: 15000 });
   } else {
-    test.info().annotations.push({ type: 'note', text: 'no explicit Delete Media button found; skipped' });
+    test
+      .info()
+      .annotations.push({ type: 'note', text: 'no explicit Delete Media button found; skipped' });
   }
 });

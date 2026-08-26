@@ -11,13 +11,13 @@ const DEFAULT_ORTHOGRAPHIES = [
   {
     name: 'Baseline',
     isBaseline: true, // Cannot be deleted
-    isCustom: false
+    isCustom: false,
   },
   {
     name: 'IPA',
     isBaseline: false,
-    isCustom: false
-  }
+    isCustom: false,
+  },
 ];
 
 export const OrthographiesManager = ({
@@ -30,7 +30,7 @@ export const OrthographiesManager = ({
   // with the count; when absent (setup mode), removal is immediate.
   onCountOrthographyUsage,
   showTitle = true,
-  autoSaveDefaults = false // Only auto-save defaults in setup mode
+  autoSaveDefaults = false, // Only auto-save defaults in setup mode
 }) => {
   const [orthographies, setOrthographies] = useState([]);
   const [newOrthographyName, setNewOrthographyName] = useState('');
@@ -52,7 +52,7 @@ export const OrthographiesManager = ({
         // If still no data, use default orthographies
         if (!orthographiesData?.orthographies) {
           orthographiesData = {
-            orthographies: DEFAULT_ORTHOGRAPHIES
+            orthographies: DEFAULT_ORTHOGRAPHIES,
           };
         }
 
@@ -116,8 +116,8 @@ export const OrthographiesManager = ({
     }
 
     // Check for duplicate names (case insensitive)
-    const isDuplicate = orthographies.some(orth =>
-      orth.name.toLowerCase() === trimmedName.toLowerCase()
+    const isDuplicate = orthographies.some(
+      (orth) => orth.name.toLowerCase() === trimmedName.toLowerCase(),
     );
 
     if (isDuplicate) {
@@ -128,7 +128,7 @@ export const OrthographiesManager = ({
     const newOrthography = {
       name: trimmedName,
       isBaseline: false,
-      isCustom: true
+      isCustom: true,
     };
 
     const updatedOrthographies = [...orthographies, newOrthography];
@@ -140,12 +140,12 @@ export const OrthographiesManager = ({
 
   const handleDeleteOrthography = async (orthographyName) => {
     // Cannot delete baseline orthography
-    const orthography = orthographies.find(o => o.name === orthographyName);
+    const orthography = orthographies.find((o) => o.name === orthographyName);
     if (orthography?.isBaseline) {
       return;
     }
 
-    const updatedOrthographies = orthographies.filter(orth => orth.name !== orthographyName);
+    const updatedOrthographies = orthographies.filter((orth) => orth.name !== orthographyName);
     await saveChanges(updatedOrthographies);
 
     notifyInfo(`"${orthographyName}" has been removed`, 'Orthography Removed');
@@ -154,7 +154,7 @@ export const OrthographiesManager = ({
   // Entry point for the trash button: in settings mode open the confirm
   // dialog right away and fill in the usage count as it resolves.
   const requestDeleteOrthography = (orthographyName) => {
-    const orthography = orthographies.find(o => o.name === orthographyName);
+    const orthography = orthographies.find((o) => o.name === orthographyName);
     if (orthography?.isBaseline) return;
     if (!onCountOrthographyUsage) {
       handleDeleteOrthography(orthographyName);
@@ -162,8 +162,16 @@ export const OrthographiesManager = ({
     }
     setPendingDelete({ name: orthographyName, count: undefined });
     Promise.resolve(onCountOrthographyUsage(orthographyName))
-      .then(n => setPendingDelete(p => (p?.name === orthographyName ? { name: orthographyName, count: n } : p)))
-      .catch(() => setPendingDelete(p => (p?.name === orthographyName ? { name: orthographyName, count: null } : p)));
+      .then((n) =>
+        setPendingDelete((p) =>
+          p?.name === orthographyName ? { name: orthographyName, count: n } : p,
+        ),
+      )
+      .catch(() =>
+        setPendingDelete((p) =>
+          p?.name === orthographyName ? { name: orthographyName, count: null } : p,
+        ),
+      );
   };
 
   const handleConfirmDelete = async () => {
@@ -182,19 +190,17 @@ export const OrthographiesManager = ({
   const wouldBeDuplicate = () => {
     const trimmedName = newOrthographyName.trim();
     if (!trimmedName) return false;
-    return orthographies.some(orth =>
-      orth.name.toLowerCase() === trimmedName.toLowerCase()
-    );
+    return orthographies.some((orth) => orth.name.toLowerCase() === trimmedName.toLowerCase());
   };
 
   const handleMoveOrthography = async (orthographyName, direction) => {
     // Cannot move baseline orthography (it must stay first)
-    const orthography = orthographies.find(o => o.name === orthographyName);
+    const orthography = orthographies.find((o) => o.name === orthographyName);
     if (orthography?.isBaseline) {
       return;
     }
 
-    const currentIndex = orthographies.findIndex(orth => orth.name === orthographyName);
+    const currentIndex = orthographies.findIndex((orth) => orth.name === orthographyName);
     if (currentIndex === -1) return;
 
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
@@ -232,7 +238,9 @@ export const OrthographiesManager = ({
             <div className="flex items-center gap-2">
               <span className="text-sm">{orth.name}</span>
               {orth.isBaseline && (
-                <Badge variant="secondary" className="text-[10px]">Required</Badge>
+                <Badge variant="secondary" className="text-[10px]">
+                  Required
+                </Badge>
               )}
             </div>
             {!orth.isBaseline && (
@@ -298,7 +306,9 @@ export const OrthographiesManager = ({
           re-added. */}
       <ConfirmDeleteDialog
         open={pendingDelete !== null}
-        onOpenChange={(o) => { if (!o) setPendingDelete(null); }}
+        onOpenChange={(o) => {
+          if (!o) setPendingDelete(null);
+        }}
         title="Remove Orthography"
         confirmLabel="Remove Orthography"
         confirmDisabled={pendingDelete?.count === undefined}
@@ -306,21 +316,29 @@ export const OrthographiesManager = ({
       >
         <p className="font-medium text-destructive">Warning</p>
         <p className="mt-1 text-muted-foreground">
-          You are about to remove the orthography <strong>"{pendingDelete?.name}"</strong>{' '}
-          from this project.
+          You are about to remove the orthography <strong>"{pendingDelete?.name}"</strong> from this
+          project.
         </p>
         <p className="mt-1 text-muted-foreground">
           {pendingDelete?.count === undefined && 'Counting existing transcriptions…'}
-          {pendingDelete?.count === null && 'The number of existing transcriptions could not be determined.'}
-          {typeof pendingDelete?.count === 'number' && (
-            pendingDelete.count === 0
-              ? 'No words have a transcription in this orthography yet.'
-              : <><strong>{pendingDelete.count.toLocaleString()} word{pendingDelete.count === 1 ? '' : 's'}</strong> currently {pendingDelete.count === 1 ? 'has' : 'have'} a transcription in this orthography.</>
-          )}
+          {pendingDelete?.count === null &&
+            'The number of existing transcriptions could not be determined.'}
+          {typeof pendingDelete?.count === 'number' &&
+            (pendingDelete.count === 0 ? (
+              'No words have a transcription in this orthography yet.'
+            ) : (
+              <>
+                <strong>
+                  {pendingDelete.count.toLocaleString()} word{pendingDelete.count === 1 ? '' : 's'}
+                </strong>{' '}
+                currently {pendingDelete.count === 1 ? 'has' : 'have'} a transcription in this
+                orthography.
+              </>
+            ))}
         </p>
         <p className="mt-1 text-muted-foreground">
-          Existing values are hidden, not deleted — re-adding an orthography with
-          the same name restores them.
+          Existing values are hidden, not deleted — re-adding an orthography with the same name
+          restores them.
         </p>
       </ConfirmDeleteDialog>
     </div>

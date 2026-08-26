@@ -9,7 +9,8 @@ import { buildDocuments } from './buildDocuments.js';
 const LEZGI = '/home/luke/local/plaid/Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
 const SENA = '/home/luke/Downloads/Sena 3 2018-09-11 1145.fwbackup';
 
-const load = (path) => buildDocuments(parseFwdata(readFwbackup(new Uint8Array(readFileSync(path))).xml));
+const load = (path) =>
+  buildDocuments(parseFwdata(readFwbackup(new Uint8Array(readFileSync(path))).xml));
 
 function expectInvariants(doc) {
   // Sentences tile the body exactly (partitioning layer requirement).
@@ -33,7 +34,9 @@ function expectInvariants(doc) {
 
 describe.skipIf(!existsSync(LEZGI))('buildDocuments — Lezgi sample', () => {
   let result;
-  beforeAll(() => { result = load(LEZGI); });
+  beforeAll(() => {
+    result = load(LEZGI);
+  });
 
   it('builds 21 documents with 1200 sentences', () => {
     expect(result.stats.documents).toBe(21);
@@ -64,8 +67,17 @@ describe.skipIf(!existsSync(LEZGI))('buildDocuments — Lezgi sample', () => {
     const doc = result.documents.find((d) => d.names?.en === 'The Sea Princess');
     expect(doc.body.startsWith('За квез са хъсан са мах ахъайин гьуьлуьн рушакай.')).toBe(true);
     const s0words = doc.words.filter((w) => w.begin < doc.sentences[0].end);
-    expect(s0words.map((w) => cpSlice(doc.body, w.begin, w.end))).toEqual(
-      ['За', 'квез', 'са', 'хъсан', 'са', 'мах', 'ахъайин', 'гьуьлуьн', 'рушакай']);
+    expect(s0words.map((w) => cpSlice(doc.body, w.begin, w.end))).toEqual([
+      'За',
+      'квез',
+      'са',
+      'хъсан',
+      'са',
+      'мах',
+      'ахъайин',
+      'гьуьлуьн',
+      'рушакай',
+    ]);
     expect(s0words[0].gloss.en).toBe('I-ERG');
     expect(doc.sentences[0].freeTranslation.en).toMatch(/Sea Princess/);
   });
@@ -77,15 +89,19 @@ describe.skipIf(!existsSync(LEZGI))('buildDocuments — Lezgi sample', () => {
 
   it('keeps morphemes with lexicon links on aligned words', () => {
     expect(result.stats.morphemes).toBe(15724);
-    const withSense = result.documents.flatMap((d) => d.words)
-      .flatMap((w) => w.morphemes ?? []).filter((m) => m.senseGuid);
+    const withSense = result.documents
+      .flatMap((d) => d.words)
+      .flatMap((w) => w.morphemes ?? [])
+      .filter((m) => m.senseGuid);
     expect(withSense.length).toBeGreaterThan(10000);
   });
 });
 
 describe.skipIf(!existsSync(SENA))('buildDocuments — Sena 3 sample', () => {
   let result;
-  beforeAll(() => { result = load(SENA); });
+  beforeAll(() => {
+    result = load(SENA);
+  });
 
   it('aligns the corpus completely', () => {
     expect(result.stats.documents).toBe(4);

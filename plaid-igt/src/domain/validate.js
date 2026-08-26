@@ -30,37 +30,52 @@ export function validateIgtDocument(layerInfo, alignmentTokens = []) {
   try {
     const { wordsNeedingMorpheme, orphanMorphemeIds } = planMorphemeReconcile(layerInfo);
     if (wordsNeedingMorpheme.length) {
-      add(SEVERITY.ERROR, 'morpheme-missing',
+      add(
+        SEVERITY.ERROR,
+        'morpheme-missing',
         `${wordsNeedingMorpheme.length} word(s) still lack a full-width morpheme after auto-repair.`,
-        { extents: wordsNeedingMorpheme.map(w => `${w.begin}:${w.end}`) });
+        { extents: wordsNeedingMorpheme.map((w) => `${w.begin}:${w.end}`) },
+      );
     }
     if (orphanMorphemeIds.length) {
-      add(SEVERITY.ERROR, 'morpheme-orphan',
+      add(
+        SEVERITY.ERROR,
+        'morpheme-orphan',
         `${orphanMorphemeIds.length} orphan morpheme(s) (matching no word) remain after auto-repair.`,
-        { ids: orphanMorphemeIds });
+        { ids: orphanMorphemeIds },
+      );
     }
     const dedup = planSpanDedup(layerInfo);
     if (dedup.length) {
-      add(SEVERITY.ERROR, 'span-duplicate',
+      add(
+        SEVERITY.ERROR,
+        'span-duplicate',
         `${dedup.length} token(s) still carry duplicate spans in a single layer after auto-repair.`,
-        { tokens: dedup.map(d => `${d.layerName || d.layerId}@${d.tokenId}`) });
+        { tokens: dedup.map((d) => `${d.layerName || d.layerId}@${d.tokenId}`) },
+      );
     }
   } catch (err) {
-    add(SEVERITY.ERROR, 'residue-check-failed',
-      `Invariant residue check threw: ${err?.message || err}`);
+    add(
+      SEVERITY.ERROR,
+      'residue-check-failed',
+      `Invariant residue check threw: ${err?.message || err}`,
+    );
   }
 
   // --- (2) Un-healable app contracts (warn; repair needs a human) ---
   // Alignment timing must be non-inverted (timeEnd >= timeBegin). It lives in
   // opaque token metadata the server does not validate, and the repair (swap
   // the bounds vs. clear them) is ambiguous, so we only report it.
-  (alignmentTokens || []).forEach(t => {
+  (alignmentTokens || []).forEach((t) => {
     const tb = t.metadata?.timeBegin;
     const te = t.metadata?.timeEnd;
     if (typeof tb === 'number' && typeof te === 'number' && te < tb) {
-      add(SEVERITY.WARNING, 'alignment-time-inverted',
+      add(
+        SEVERITY.WARNING,
+        'alignment-time-inverted',
         `An alignment has end time (${te}) before start time (${tb}).`,
-        { id: t.id, begin: t.begin, end: t.end, timeBegin: tb, timeEnd: te });
+        { id: t.id, begin: t.begin, end: t.end, timeBegin: tb, timeEnd: te },
+      );
     }
   });
 
@@ -70,8 +85,11 @@ export function validateIgtDocument(layerInfo, alignmentTokens = []) {
 // Format findings for the clipboard "Copy details" action: one line each,
 // machine-pasteable into a bug report.
 export function formatFindingsForClipboard(findings, { documentId } = {}) {
-  const header = documentId ? `Document integrity findings (document ${documentId})` : 'Document integrity findings';
-  const lines = (findings || []).map(f =>
-    `[${f.severity}] ${f.code}: ${f.message} ${JSON.stringify(f.context || {})}`);
+  const header = documentId
+    ? `Document integrity findings (document ${documentId})`
+    : 'Document integrity findings';
+  const lines = (findings || []).map(
+    (f) => `[${f.severity}] ${f.code}: ${f.message} ${JSON.stringify(f.context || {})}`,
+  );
   return [header, ...lines].join('\n');
 }

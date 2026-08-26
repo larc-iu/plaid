@@ -43,48 +43,56 @@ export const ProjectSetup = () => {
   const isNewProject = !projectId || projectId === 'new';
 
   const steps = [
-    ...(isNewProject ? [{
-      id: 'basic-info',
-      title: 'Basic Information',
-      icon: Info,
-      component: BasicInfoStep
-    }] : []),
-    ...(!isNewProject ? [{
-      id: 'layer-selection',
-      title: 'Layer Selection',
-      icon: Layers,
-      component: LayerSelectionStep
-    }] : []),
+    ...(isNewProject
+      ? [
+          {
+            id: 'basic-info',
+            title: 'Basic Information',
+            icon: Info,
+            component: BasicInfoStep,
+          },
+        ]
+      : []),
+    ...(!isNewProject
+      ? [
+          {
+            id: 'layer-selection',
+            title: 'Layer Selection',
+            icon: Layers,
+            component: LayerSelectionStep,
+          },
+        ]
+      : []),
     {
       id: 'document-metadata',
       title: 'Document Metadata',
       icon: FileText,
-      component: DocumentMetadataStep
+      component: DocumentMetadataStep,
     },
     {
       id: 'orthographies',
       title: 'Orthographies',
       icon: Languages,
-      component: OrthographiesStep
+      component: OrthographiesStep,
     },
     {
       id: 'fields',
       title: 'Fields',
       icon: List,
-      component: FieldsStep
+      component: FieldsStep,
     },
     {
       id: 'vocabulary',
       title: 'Vocabulary',
       icon: BookOpen,
-      component: VocabularyStep
+      component: VocabularyStep,
     },
     {
       id: 'confirmation',
       title: 'Confirmation',
       icon: Check,
-      component: ConfirmationStep
-    }
+      component: ConfirmationStep,
+    },
   ];
 
   const currentStepData = steps[currentStep];
@@ -107,9 +115,9 @@ export const ProjectSetup = () => {
   };
 
   const updateSetupData = (stepKey, data) => {
-    setSetupData(prev => ({
+    setSetupData((prev) => ({
       ...prev,
-      [stepKey]: data
+      [stepKey]: data,
     }));
   };
 
@@ -133,11 +141,15 @@ export const ProjectSetup = () => {
     <div className="tw mx-auto max-w-7xl px-4 py-8">
       <div className="flex flex-col gap-8">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">Projects</Link>
+          <Link to="/projects" className="hover:text-foreground hover:underline">
+            Projects
+          </Link>
           <span>/</span>
           {isNewProject ? (
             <>
-              <Link to="/projects/new" className="hover:text-foreground hover:underline">New Project</Link>
+              <Link to="/projects/new" className="hover:text-foreground hover:underline">
+                New Project
+              </Link>
               <span>/</span>
               <span>Start from scratch</span>
             </>
@@ -153,8 +165,7 @@ export const ProjectSetup = () => {
           <p className="text-sm text-muted-foreground">
             {isNewProject
               ? 'Set up a new Plaid IGT project.'
-              : 'Configure your existing project for annotation with Plaid IGT.'
-            }
+              : 'Configure your existing project for annotation with Plaid IGT.'}
           </p>
         </div>
 
@@ -169,7 +180,7 @@ export const ProjectSetup = () => {
                         'flex h-6 w-6 items-center justify-center rounded-full border text-xs',
                         index <= currentStep
                           ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-muted text-muted-foreground'
+                          : 'border-muted text-muted-foreground',
                       )}
                     >
                       <step.icon className="h-3.5 w-3.5" />
@@ -190,7 +201,9 @@ export const ProjectSetup = () => {
 
                 <StepComponent
                   data={setupData[stepIdToDataKey(currentStepData.id)]}
-                  onDataChange={(data) => updateSetupData(stepIdToDataKey(currentStepData.id), data)}
+                  onDataChange={(data) =>
+                    updateSetupData(stepIdToDataKey(currentStepData.id), data)
+                  }
                   setupData={setupData}
                   isNewProject={isNewProject}
                   projectId={projectId}
@@ -199,11 +212,7 @@ export const ProjectSetup = () => {
                 />
 
                 <div className="flex items-center justify-between gap-2 pt-4">
-                  <Button
-                    variant="outline"
-                    onClick={handlePrevious}
-                    disabled={currentStep === 0}
-                  >
+                  <Button variant="outline" onClick={handlePrevious} disabled={currentStep === 0}>
                     Previous
                   </Button>
 

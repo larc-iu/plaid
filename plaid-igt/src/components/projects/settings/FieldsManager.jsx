@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
   SelectContent,
-  SelectItem
+  SelectItem,
 } from '@/components/ui/select';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
@@ -18,20 +18,20 @@ const DEFAULT_FIELDS = [
   {
     name: 'Gloss',
     scope: 'Word',
-    isCustom: false
+    isCustom: false,
   },
   {
     name: 'Translation',
     scope: 'Sentence',
-    isCustom: false
-  }
+    isCustom: false,
+  },
 ];
 
 // Default ignored tokens configuration
 const DEFAULT_IGNORED_TOKENS = {
   mode: 'unicode-punctuation',
   unicodePunctuationExceptions: [],
-  explicitIgnoredTokens: []
+  explicitIgnoredTokens: [],
 };
 
 export const FieldsManager = ({
@@ -44,7 +44,7 @@ export const FieldsManager = ({
   // the count; when absent (setup mode — no layers exist yet), deletion is
   // immediate.
   onCountFieldUsage,
-  showTitle = true
+  showTitle = true,
 }) => {
   const [fields, setFields] = useState([]);
   const [ignoredTokens, setIgnoredTokens] = useState(DEFAULT_IGNORED_TOKENS);
@@ -59,7 +59,7 @@ export const FieldsManager = ({
   const scopeOptions = [
     { value: 'Word', label: 'Word' },
     { value: 'Morpheme', label: 'Morpheme' },
-    { value: 'Sentence', label: 'Sentence' }
+    { value: 'Sentence', label: 'Sentence' },
   ];
 
   // Initialize data on mount
@@ -77,7 +77,7 @@ export const FieldsManager = ({
         if (!fieldsData?.fields) {
           fieldsData = {
             fields: DEFAULT_FIELDS,
-            ignoredTokens: DEFAULT_IGNORED_TOKENS
+            ignoredTokens: DEFAULT_IGNORED_TOKENS,
           };
         }
 
@@ -107,7 +107,7 @@ export const FieldsManager = ({
       if (onSaveChanges) {
         await onSaveChanges({
           fields: newFields,
-          ignoredTokens: newIgnoredTokens
+          ignoredTokens: newIgnoredTokens,
         });
       }
       setFields(newFields);
@@ -131,8 +131,8 @@ export const FieldsManager = ({
     }
 
     // Check for duplicate names (case insensitive)
-    const isDuplicate = fields.some(field =>
-      field.name.toLowerCase() === trimmedName.toLowerCase()
+    const isDuplicate = fields.some(
+      (field) => field.name.toLowerCase() === trimmedName.toLowerCase(),
     );
 
     if (isDuplicate) {
@@ -143,7 +143,7 @@ export const FieldsManager = ({
     const newField = {
       name: trimmedName,
       scope: newFieldScope,
-      isCustom: true
+      isCustom: true,
     };
 
     const updatedFields = [...fields, newField];
@@ -155,7 +155,7 @@ export const FieldsManager = ({
   };
 
   const handleDeleteField = async (fieldName) => {
-    const updatedFields = fields.filter(field => field.name !== fieldName);
+    const updatedFields = fields.filter((field) => field.name !== fieldName);
     await saveChanges(updatedFields, ignoredTokens);
 
     notifyInfo(`"${fieldName}" has been removed`, 'Field Removed');
@@ -169,10 +169,14 @@ export const FieldsManager = ({
       return;
     }
     setPendingDelete({ name: fieldName, count: undefined });
-    const field = fields.find(f => f.name === fieldName);
+    const field = fields.find((f) => f.name === fieldName);
     Promise.resolve(onCountFieldUsage(field))
-      .then(n => setPendingDelete(p => (p?.name === fieldName ? { name: fieldName, count: n } : p)))
-      .catch(() => setPendingDelete(p => (p?.name === fieldName ? { name: fieldName, count: null } : p)));
+      .then((n) =>
+        setPendingDelete((p) => (p?.name === fieldName ? { name: fieldName, count: n } : p)),
+      )
+      .catch(() =>
+        setPendingDelete((p) => (p?.name === fieldName ? { name: fieldName, count: null } : p)),
+      );
   };
 
   const handleConfirmDelete = async () => {
@@ -182,7 +186,7 @@ export const FieldsManager = ({
   };
 
   const handleMoveField = async (fieldName, direction) => {
-    const currentIndex = fields.findIndex(field => field.name === fieldName);
+    const currentIndex = fields.findIndex((field) => field.name === fieldName);
     if (currentIndex === -1) return;
 
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
@@ -205,15 +209,13 @@ export const FieldsManager = ({
   const wouldBeDuplicate = () => {
     const trimmedName = newFieldName.trim();
     if (!trimmedName) return false;
-    return fields.some(field =>
-      field.name.toLowerCase() === trimmedName.toLowerCase()
-    );
+    return fields.some((field) => field.name.toLowerCase() === trimmedName.toLowerCase());
   };
 
   const handleIgnoredTokensModeChange = async (mode) => {
     const updatedIgnoredTokens = {
       ...ignoredTokens,
-      mode
+      mode,
     };
     await saveChanges(fields, updatedIgnoredTokens);
   };
@@ -221,7 +223,7 @@ export const FieldsManager = ({
   const handleExceptionsChange = async (exceptions) => {
     const updatedIgnoredTokens = {
       ...ignoredTokens,
-      unicodePunctuationExceptions: exceptions
+      unicodePunctuationExceptions: exceptions,
     };
     await saveChanges(fields, updatedIgnoredTokens);
   };
@@ -229,7 +231,7 @@ export const FieldsManager = ({
   const handleExplicitTokensChange = async (tokens) => {
     const updatedIgnoredTokens = {
       ...ignoredTokens,
-      explicitIgnoredTokens: tokens
+      explicitIgnoredTokens: tokens,
     };
     await saveChanges(fields, updatedIgnoredTokens);
   };
@@ -238,8 +240,8 @@ export const FieldsManager = ({
   const parseTags = (value) =>
     value
       .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => tag.length > 0);
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
 
   // Don't render until initialized
   if (!isInitialized) {
@@ -253,14 +255,14 @@ export const FieldsManager = ({
   // Prepare data for the table
   const tableData = fields.map((field, index) => ({
     ...field,
-    id: `${field.name}-${index}` // Unique ID for table
+    id: `${field.name}-${index}`, // Unique ID for table
   }));
 
   // Color classes for scope badges (Word=blue, Morpheme=violet, Sentence=green)
   const scopeBadgeClasses = {
-    'Word': 'border-transparent bg-blue-100 text-blue-700',
-    'Morpheme': 'border-transparent bg-violet-100 text-violet-700',
-    'Sentence': 'border-transparent bg-green-100 text-green-700'
+    Word: 'border-transparent bg-blue-100 text-blue-700',
+    Morpheme: 'border-transparent bg-violet-100 text-violet-700',
+    Sentence: 'border-transparent bg-green-100 text-green-700',
   };
 
   return (
@@ -276,7 +278,8 @@ export const FieldsManager = ({
             <p className="text-lg font-medium">Annotation Fields</p>
             <p className="mb-4 mt-1 text-sm text-muted-foreground">
               Configure annotation fields for your project. Word scope fields apply to words,
-              Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire sentences.
+              Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire
+              sentences.
             </p>
           </>
         )}
@@ -299,10 +302,7 @@ export const FieldsManager = ({
                   onMouseLeave={() => setHoveredField(null)}
                 >
                   <td className="border-t px-3 py-2 align-middle">
-                    <Badge
-                      variant="secondary"
-                      className={scopeBadgeClasses[record.scope]}
-                    >
+                    <Badge variant="secondary" className={scopeBadgeClasses[record.scope]}>
                       {record.scope}
                     </Badge>
                   </td>
@@ -318,7 +318,7 @@ export const FieldsManager = ({
                             event.stopPropagation();
                             handleMoveField(record.name, 'up');
                           }}
-                          disabled={tableData.findIndex(item => item.name === record.name) === 0}
+                          disabled={tableData.findIndex((item) => item.name === record.name) === 0}
                           title="Move up"
                         >
                           <ChevronUp className="h-3.5 w-3.5" />
@@ -331,7 +331,10 @@ export const FieldsManager = ({
                             event.stopPropagation();
                             handleMoveField(record.name, 'down');
                           }}
-                          disabled={tableData.findIndex(item => item.name === record.name) === tableData.length - 1}
+                          disabled={
+                            tableData.findIndex((item) => item.name === record.name) ===
+                            tableData.length - 1
+                          }
                           title="Move down"
                         >
                           <ChevronDown className="h-3.5 w-3.5" />
@@ -373,17 +376,14 @@ export const FieldsManager = ({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {scopeOptions.map(option => (
+                {scopeOptions.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button
-              onClick={handleAddField}
-              disabled={!newFieldName.trim() || wouldBeDuplicate()}
-            >
+            <Button onClick={handleAddField} disabled={!newFieldName.trim() || wouldBeDuplicate()}>
               <Plus className="h-4 w-4" /> Add Field
             </Button>
           </div>
@@ -393,10 +393,15 @@ export const FieldsManager = ({
       {/* Ignored Tokens Section — its own card, separated from Annotation Fields
           by the outer gap-8. */}
       <div className="rounded-lg border bg-card p-4">
-        <p className={showTitle ? 'mb-4 text-sm font-medium' : 'mb-1 text-lg font-medium'}>Ignored Tokens</p>
+        <p className={showTitle ? 'mb-4 text-sm font-medium' : 'mb-1 text-lg font-medium'}>
+          Ignored Tokens
+        </p>
         <div className="mb-6 text-sm text-muted-foreground">
           Configure which tokens should be ignored when applying{' '}
-          <Badge variant="secondary" className={scopeBadgeClasses['Word']}>Word</Badge> scope annotations.
+          <Badge variant="secondary" className={scopeBadgeClasses['Word']}>
+            Word
+          </Badge>{' '}
+          scope annotations.
         </div>
 
         <div className="flex flex-col gap-6">
@@ -419,15 +424,16 @@ export const FieldsManager = ({
 
           {ignoredTokens.mode === 'unicode-punctuation' && (
             <div className="ml-8 rounded-md border p-4">
-              <p className="mb-1 text-sm font-medium">
-                Punctuation Exceptions
-              </p>
+              <p className="mb-1 text-sm font-medium">Punctuation Exceptions</p>
               <div className="mb-4 text-xs text-muted-foreground">
                 These punctuation marks will NOT be ignored and can receive{' '}
-                <Badge variant="secondary" className={scopeBadgeClasses['Word']}>Word</Badge> scope annotations:
+                <Badge variant="secondary" className={scopeBadgeClasses['Word']}>
+                  Word
+                </Badge>{' '}
+                scope annotations:
               </div>
               <Input
-                placeholder={"Add punctuation to include (e.g. ', \", -)"}
+                placeholder={'Add punctuation to include (e.g. \', ", -)'}
                 value={(ignoredTokens.unicodePunctuationExceptions || []).join(', ')}
                 onChange={(event) => handleExceptionsChange(parseTags(event.currentTarget.value))}
               />
@@ -453,17 +459,20 @@ export const FieldsManager = ({
 
           {ignoredTokens.mode === 'explicit-list' && (
             <div className="ml-8 rounded-md border p-4">
-              <p className="mb-1 text-sm font-medium">
-                Ignored Tokens
-              </p>
+              <p className="mb-1 text-sm font-medium">Ignored Tokens</p>
               <div className="mb-4 text-xs text-muted-foreground">
                 These specific tokens will be ignored for{' '}
-                <Badge variant="secondary" className={scopeBadgeClasses['Word']}>Word</Badge> scope annotations:
+                <Badge variant="secondary" className={scopeBadgeClasses['Word']}>
+                  Word
+                </Badge>{' '}
+                scope annotations:
               </div>
               <Input
                 placeholder="Add tokens to ignore (e.g. . , ; !)"
                 value={(ignoredTokens.explicitIgnoredTokens || []).join(', ')}
-                onChange={(event) => handleExplicitTokensChange(parseTags(event.currentTarget.value))}
+                onChange={(event) =>
+                  handleExplicitTokensChange(parseTags(event.currentTarget.value))
+                }
               />
             </div>
           )}
@@ -474,7 +483,9 @@ export const FieldsManager = ({
           deletes its span layer and every annotation in it, project-wide. */}
       <ConfirmDeleteDialog
         open={pendingDelete !== null}
-        onOpenChange={(o) => { if (!o) setPendingDelete(null); }}
+        onOpenChange={(o) => {
+          if (!o) setPendingDelete(null);
+        }}
         title="Delete Annotation Field"
         confirmLabel="Delete Field"
         confirmDisabled={pendingDelete?.count === undefined}
@@ -482,17 +493,26 @@ export const FieldsManager = ({
       >
         <p className="font-medium text-destructive">Warning</p>
         <p className="mt-1 text-muted-foreground">
-          You are about to permanently delete the field <strong>"{pendingDelete?.name}"</strong>{' '}
-          and all of its annotations across every document in this project.
+          You are about to permanently delete the field <strong>"{pendingDelete?.name}"</strong> and
+          all of its annotations across every document in this project.
         </p>
         <p className="mt-1 text-muted-foreground">
           {pendingDelete?.count === undefined && 'Counting existing annotations…'}
-          {pendingDelete?.count === null && 'The number of existing annotations could not be determined — the field may still contain data.'}
-          {typeof pendingDelete?.count === 'number' && (
-            pendingDelete.count === 0
-              ? 'This field has no annotations yet.'
-              : <>This field currently has <strong>{pendingDelete.count.toLocaleString()} annotation{pendingDelete.count === 1 ? '' : 's'}</strong>. This cannot be undone.</>
-          )}
+          {pendingDelete?.count === null &&
+            'The number of existing annotations could not be determined — the field may still contain data.'}
+          {typeof pendingDelete?.count === 'number' &&
+            (pendingDelete.count === 0 ? (
+              'This field has no annotations yet.'
+            ) : (
+              <>
+                This field currently has{' '}
+                <strong>
+                  {pendingDelete.count.toLocaleString()} annotation
+                  {pendingDelete.count === 1 ? '' : 's'}
+                </strong>
+                . This cannot be undone.
+              </>
+            ))}
         </p>
       </ConfirmDeleteDialog>
     </div>

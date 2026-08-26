@@ -1,11 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import {
-  buildProjectFile, serializeVocabularyNative, serializeDocumentNative,
+  buildProjectFile,
+  serializeVocabularyNative,
+  serializeDocumentNative,
 } from '../../export/nativeJson.js';
 import { makeNativeRaw, makeNativeProject } from '../../export/testFixtures.js';
 import {
-  deriveSetupData, resolveNativeTargets, importVocabulary, runNativeImport,
+  deriveSetupData,
+  resolveNativeTargets,
+  importVocabulary,
+  runNativeImport,
 } from './importEngine.js';
 
 // ---- the archive under test: built by the REAL exporter --------------------
@@ -13,7 +18,8 @@ import {
 // the exporter↔importer contract itself.
 
 const VOCAB = {
-  id: 'vocab1', name: 'Lex',
+  id: 'vocab1',
+  name: 'Lex',
   config: { igt: { fields: { gloss: { inline: true } } } },
   items: [
     { id: 'item1', form: 'perro', metadata: { gloss: 'dog' } },
@@ -29,17 +35,35 @@ function buildArchive() {
   return {
     manifest: buildProjectFile({
       project,
-      documents: [{ id: 'doc1', name: 'Doc One', file: 'documents/Doc One.json', mediaFile: 'media/Doc One.wav' }],
+      documents: [
+        {
+          id: 'doc1',
+          name: 'Doc One',
+          file: 'documents/Doc One.json',
+          mediaFile: 'media/Doc One.wav',
+        },
+      ],
       vocabularies: [{ id: 'vocab1', name: 'Lex', file: 'vocabularies/Lex.json' }],
       exportedAt: '2026-06-12T00:00:00.000Z',
     }),
-    vocabularies: [{ id: 'vocab1', name: 'Lex', file: 'vocabularies/Lex.json', data: serializeVocabularyNative(VOCAB) }],
-    documents: [{
-      id: 'doc1', name: 'Doc One', file: 'documents/Doc One.json',
-      mediaFile: 'media/Doc One.wav',
-      data: serializeDocumentNative(igtDoc, { mediaFile: 'media/Doc One.wav' }),
-      mediaBytes: new Uint8Array([1, 2, 3]),
-    }],
+    vocabularies: [
+      {
+        id: 'vocab1',
+        name: 'Lex',
+        file: 'vocabularies/Lex.json',
+        data: serializeVocabularyNative(VOCAB),
+      },
+    ],
+    documents: [
+      {
+        id: 'doc1',
+        name: 'Doc One',
+        file: 'documents/Doc One.json',
+        mediaFile: 'media/Doc One.wav',
+        data: serializeDocumentNative(igtDoc, { mediaFile: 'media/Doc One.wav' }),
+        mediaBytes: new Uint8Array([1, 2, 3]),
+      },
+    ],
     docData,
   };
 }
@@ -52,15 +76,19 @@ function targetProject() {
   const p = JSON.parse(JSON.stringify(makeNativeProject()));
   p.id = 'newp';
   p.vocabs = [{ id: 'newvocab', name: 'Lex' }];
-  const walk = (layers) => layers.forEach((l) => {
-    l.id = `new-${l.id}`;
-    (l.tokenLayers || []).forEach((tl) => {
-      tl.id = `new-${tl.id}`;
-      tl.tokens = [];
-      tl.vocabs = [];
-      (tl.spanLayers || []).forEach((sl) => { sl.id = `new-${sl.id}`; sl.spans = []; });
+  const walk = (layers) =>
+    layers.forEach((l) => {
+      l.id = `new-${l.id}`;
+      (l.tokenLayers || []).forEach((tl) => {
+        tl.id = `new-${tl.id}`;
+        tl.tokens = [];
+        tl.vocabs = [];
+        (tl.spanLayers || []).forEach((sl) => {
+          sl.id = `new-${sl.id}`;
+          sl.spans = [];
+        });
+      });
     });
-  });
   walk(p.textLayers);
   return p;
 }
@@ -70,7 +98,10 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
   let batch = null;
   let nextId = 0;
   const fresh = (prefix) => `${prefix}-${nextId++}`;
-  const record = (name, args, result) => { calls.push([name, ...args]); return result; };
+  const record = (name, args, result) => {
+    calls.push([name, ...args]);
+    return result;
+  };
   return {
     calls,
     projects: {
@@ -97,14 +128,33 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
         if (batch) batch.push(result);
         return result;
       },
-      bulkCreate: (body) => record('vocabLinks.bulkCreate', [body], { ids: body.map(() => fresh('link')) }),
+      bulkCreate: (body) =>
+        record('vocabLinks.bulkCreate', [body], { ids: body.map(() => fresh('link')) }),
     },
-    beginBatch: () => { batch = []; },
-    submitBatch: async () => { const out = batch; batch = null; return out; },
-    batched: async (fn) => { batch = []; await fn(); const out = batch; batch = null; return out; },
+    beginBatch: () => {
+      batch = [];
+    },
+    submitBatch: async () => {
+      const out = batch;
+      batch = null;
+      return out;
+    },
+    batched: async (fn) => {
+      batch = [];
+      await fn();
+      const out = batch;
+      batch = null;
+      return out;
+    },
     documents: {
-      create: async (projectId, name, metadata) => record('documents.create', [projectId, name, metadata], { id: fresh('doc') }),
-      get: async (id) => record('documents.get', [id], existingDocs.find((d) => d.id === id) ?? { id, metadata: {} }),
+      create: async (projectId, name, metadata) =>
+        record('documents.create', [projectId, name, metadata], { id: fresh('doc') }),
+      get: async (id) =>
+        record(
+          'documents.get',
+          [id],
+          existingDocs.find((d) => d.id === id) ?? { id, metadata: {} },
+        ),
       delete: async (id) => record('documents.delete', [id]),
       setMetadata: async (...a) => record('documents.setMetadata', a),
       uploadMedia: async (id, file) => record('documents.uploadMedia', [id, file?.name]),
@@ -113,10 +163,12 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
       create: async (...a) => record('texts.create', a, { id: fresh('text') }),
     },
     tokens: {
-      bulkCreate: async (specs) => record('tokens.bulkCreate', [specs], { ids: specs.map(() => fresh('tok')) }),
+      bulkCreate: async (specs) =>
+        record('tokens.bulkCreate', [specs], { ids: specs.map(() => fresh('tok')) }),
     },
     spans: {
-      bulkCreate: async (specs) => record('spans.bulkCreate', [specs], { ids: specs.map(() => fresh('span')) }),
+      bulkCreate: async (specs) =>
+        record('spans.bulkCreate', [specs], { ids: specs.map(() => fresh('span')) }),
     },
   };
 }
@@ -129,14 +181,17 @@ describe('deriveSetupData', () => {
     const setup = deriveSetupData(manifest, 'Reimported');
     expect(setup.basicInfo).toEqual({ projectName: 'Reimported' });
     expect(setup.orthographies.orthographies).toEqual([
-      { name: 'Baseline', isBaseline: true }, { name: 'Translit' },
+      { name: 'Baseline', isBaseline: true },
+      { name: 'Translit' },
     ]);
-    expect(setup.fields.fields).toEqual(expect.arrayContaining([
-      { name: 'Translation', scope: 'Sentence', isCustom: true },
-      { name: 'POS', scope: 'Word', isCustom: true },
-      { name: 'Phrase', scope: 'Word', isCustom: true },
-      { name: 'Gloss', scope: 'Morpheme', isCustom: true },
-    ]));
+    expect(setup.fields.fields).toEqual(
+      expect.arrayContaining([
+        { name: 'Translation', scope: 'Sentence', isCustom: true },
+        { name: 'POS', scope: 'Word', isCustom: true },
+        { name: 'Phrase', scope: 'Word', isCustom: true },
+        { name: 'Gloss', scope: 'Morpheme', isCustom: true },
+      ]),
+    );
     expect(setup.fields.ignoredTokens).toBeUndefined(); // archive has null
     expect(setup.vocabulary.vocabularies).toEqual([
       { id: 'new-vocab1', name: 'Lex', enabled: true, isCustom: true },
@@ -148,12 +203,22 @@ describe('deriveSetupData', () => {
 
   it('maps both ignoredTokens shapes', () => {
     const base = buildArchive().manifest;
-    const withWl = { ...base, schema: { ...base.schema, ignoredTokens: { type: 'unicodePunctuation', whitelist: ['-'] } } };
-    expect(deriveSetupData(withWl, 'x').fields.ignoredTokens)
-      .toEqual({ mode: 'unicode-punctuation', unicodePunctuationExceptions: ['-'] });
-    const withBl = { ...base, schema: { ...base.schema, ignoredTokens: { type: 'blacklist', blacklist: ['.'] } } };
-    expect(deriveSetupData(withBl, 'x').fields.ignoredTokens)
-      .toEqual({ mode: 'explicit', explicitIgnoredTokens: ['.'] });
+    const withWl = {
+      ...base,
+      schema: { ...base.schema, ignoredTokens: { type: 'unicodePunctuation', whitelist: ['-'] } },
+    };
+    expect(deriveSetupData(withWl, 'x').fields.ignoredTokens).toEqual({
+      mode: 'unicode-punctuation',
+      unicodePunctuationExceptions: ['-'],
+    });
+    const withBl = {
+      ...base,
+      schema: { ...base.schema, ignoredTokens: { type: 'blacklist', blacklist: ['.'] } },
+    };
+    expect(deriveSetupData(withBl, 'x').fields.ignoredTokens).toEqual({
+      mode: 'explicit',
+      explicitIgnoredTokens: ['.'],
+    });
   });
 });
 
@@ -161,7 +226,9 @@ describe('importVocabulary', () => {
   it('creates items in array order, stamped with their archive id', async () => {
     const client = stubClient();
     const map = await importVocabulary({
-      client, vocabId: 'newvocab', vocabData: serializeVocabularyNative(VOCAB),
+      client,
+      vocabId: 'newvocab',
+      vocabData: serializeVocabularyNative(VOCAB),
     });
     const creates = callsOf(client, 'vocabItems.create');
     expect(creates.map((c) => c[2])).toEqual(['perro', 'perro', 'np']); // archive order
@@ -169,8 +236,12 @@ describe('importVocabulary', () => {
     expect(map.get('item1')).toMatch(/^item-/);
     expect(map.size).toBe(3);
     // field schema written
-    expect(callsOf(client, 'vocabLayers.setConfig')[0].slice(1))
-      .toEqual(['newvocab', 'igt', 'fields', expect.objectContaining({ gloss: { inline: true } })]);
+    expect(callsOf(client, 'vocabLayers.setConfig')[0].slice(1)).toEqual([
+      'newvocab',
+      'igt',
+      'fields',
+      expect.objectContaining({ gloss: { inline: true } }),
+    ]);
   });
 
   it('resumes by nativeImportId without duplicating', async () => {
@@ -178,7 +249,9 @@ describe('importVocabulary', () => {
       existingItems: [{ id: 'kept', form: 'perro', metadata: { nativeImportId: 'item1' } }],
     });
     const map = await importVocabulary({
-      client, vocabId: 'newvocab', vocabData: serializeVocabularyNative(VOCAB),
+      client,
+      vocabId: 'newvocab',
+      vocabData: serializeVocabularyNative(VOCAB),
     });
     expect(map.get('item1')).toBe('kept');
     expect(callsOf(client, 'vocabItems.create')).toHaveLength(2);
@@ -206,8 +279,12 @@ describe('runNativeImport (full archive)', () => {
     // Words: orthographies reconstituted as orthog:* keys; orphan included.
     const words = byLayer['new-wl'];
     expect(words).toHaveLength(3);
-    expect(words[0].metadata).toEqual({ 'orthog:Other': 'u', custom: 'x', 'orthog:Translit': 'pt' });
-    expect(words[1].metadata).toBeUndefined();          // w2 had no metadata
+    expect(words[0].metadata).toEqual({
+      'orthog:Other': 'u',
+      custom: 'x',
+      'orthog:Translit': 'pt',
+    });
+    expect(words[1].metadata).toBeUndefined(); // w2 had no metadata
     expect(words[2].metadata).toEqual({ stray: true }); // the orphan word
 
     // Morphemes: form/morphType folded back, present-vs-absent preserved.
@@ -261,7 +338,7 @@ describe('runNativeImport (full archive)', () => {
     // l1 inline on m1, l2 extra on m1, l3 extra multi-token on w1+w2.
     expect(links).toHaveLength(3);
     const multi = links.find((l) => l.tokens.length === 2);
-    expect(multi.vocabItem).toMatch(/^item-/);                       // mapped item id
+    expect(multi.vocabItem).toMatch(/^item-/); // mapped item id
     expect(multi.tokens.every((t) => t.startsWith('tok-'))).toBe(true); // mapped tokens
     expect(multi.metadata).toEqual({ note: 'multi' });
     const inline = links.find((l) => l.metadata?.provSource === 'flex-import');
@@ -279,8 +356,12 @@ describe('runNativeImport (full archive)', () => {
 
   it('writes autoAnalysis config from the schema', async () => {
     const { client } = await run();
-    expect(callsOf(client, 'projects.setConfig')[0].slice(1))
-      .toEqual(['newp', 'igt', 'autoAnalysis', { enabled: false }]);
+    expect(callsOf(client, 'projects.setConfig')[0].slice(1)).toEqual([
+      'newp',
+      'igt',
+      'autoAnalysis',
+      { enabled: false },
+    ]);
   });
 
   it('skips done documents and redoes half-imported ones on resume', async () => {

@@ -7,7 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
   SelectContent,
-  SelectItem
+  SelectItem,
 } from '@/components/ui/select';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
@@ -49,10 +49,7 @@ export function DocumentMedia() {
 
       {/* Timeline */}
       <div className="relative">
-        <Timeline
-          mediaOps={mediaOps}
-          readOnly={readOnly}
-        />
+        <Timeline mediaOps={mediaOps} readOnly={readOnly} />
       </div>
 
       {/* ASR Controls */}
@@ -73,19 +70,29 @@ export function DocumentMedia() {
                 disabled={readOnly || !asrAvailable}
               >
                 <SelectTrigger className="w-[280px]">
-                  <SelectValue placeholder={asrAvailable ? 'Choose a service' : 'No service registered'} />
+                  <SelectValue
+                    placeholder={asrAvailable ? 'Choose a service' : 'No service registered'}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {mediaOps.asrAlgorithmOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
             <Button
-                onClick={mediaOps.handleTranscribe}
-                disabled={!mediaOps.isUsingAsrService || mediaOps.isProcessing || mediaOps.isUploading || readOnly || Object.keys(mediaOps.paramErrors || {}).length > 0}
+              onClick={mediaOps.handleTranscribe}
+              disabled={
+                !mediaOps.isUsingAsrService ||
+                mediaOps.isProcessing ||
+                mediaOps.isUploading ||
+                readOnly ||
+                Object.keys(mediaOps.paramErrors || {}).length > 0
+              }
             >
               <Mic className="h-4 w-4" />
               {mediaOps.isProcessing ? 'Transcribing…' : 'Transcribe'}
@@ -93,9 +100,14 @@ export function DocumentMedia() {
           </div>
 
           <Button
-              variant="outline"
-              onClick={mediaOps.handleClearAlignments}
-              disabled={mediaOps.isProcessing || mediaOps.isUploading || !mediaOps.alignmentTokens.length || readOnly}
+            variant="outline"
+            onClick={mediaOps.handleClearAlignments}
+            disabled={
+              mediaOps.isProcessing ||
+              mediaOps.isUploading ||
+              !mediaOps.alignmentTokens.length ||
+              readOnly
+            }
           >
             Clear Alignments
           </Button>
@@ -116,7 +128,7 @@ export function DocumentMedia() {
 
         {/* Progress */}
         <div style={{ minHeight: '80px' }}>
-          {(mediaOps.isProcessing || mediaOps.isUploading) ? (
+          {mediaOps.isProcessing || mediaOps.isUploading ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <Mic className="h-4 w-4" />
@@ -125,18 +137,26 @@ export function DocumentMedia() {
               <div className="h-2 w-full rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${mediaOps.progressPercent || mediaOps.transcriptionProgress}%` }}
+                  style={{
+                    width: `${mediaOps.progressPercent || mediaOps.transcriptionProgress}%`,
+                  }}
                 />
               </div>
               <span className="text-sm text-muted-foreground">{mediaOps.currentOperation}</span>
             </div>
           ) : (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div
+              style={{
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
               <span className="text-sm text-muted-foreground">
                 {mediaOps.alignmentTokens.length > 0
                   ? `${mediaOps.alignmentTokens.length} time alignments`
-                  : 'No time alignments yet'
-                }
+                  : 'No time alignments yet'}
               </span>
             </div>
           )}
@@ -144,4 +164,4 @@ export function DocumentMedia() {
       </div>
     </div>
   );
-};
+}

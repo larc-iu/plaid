@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { buildFlextextDocument, phraseTimingFor, phraseSpeakerFor } from './flextext.js';
 import {
-  makeFixtureDoc, makeSentence, makeAlignmentToken, FLEXTEXT_OPTIONS,
+  makeFixtureDoc,
+  makeSentence,
+  makeAlignmentToken,
+  FLEXTEXT_OPTIONS,
 } from './testFixtures.js';
 
 const parse = (xml) => {
@@ -41,7 +44,9 @@ describe('buildFlextextDocument', () => {
     const dom = parse(buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS));
     const phrase = dom.querySelector('phrase');
     expect(phrase.querySelector('item[type="segnum"]').textContent).toBe('1');
-    expect(phrase.querySelector(':scope > item[type="gls"][lang="en"]').textContent).toBe('The dogs run.');
+    expect(phrase.querySelector(':scope > item[type="gls"][lang="en"]').textContent).toBe(
+      'The dogs run.',
+    );
     // Note maps to "note" but its value is empty → omitted.
     expect(phrase.querySelector(':scope > item[type="note"]')).toBeNull();
   });
@@ -98,7 +103,12 @@ describe('buildFlextextDocument', () => {
 
   it('splits paragraphs on baseline newlines', () => {
     const t = (begin, end, content) => ({
-      content, begin, end, annotations: {}, morphemes: [], orthographies: {},
+      content,
+      begin,
+      end,
+      annotations: {},
+      morphemes: [],
+      orthographies: {},
     });
     const doc = {
       document: { name: 'P' },
@@ -115,7 +125,9 @@ describe('buildFlextextDocument', () => {
   });
 
   it('wraps multiple documents as sibling interlinear-texts', () => {
-    const dom = parse(buildFlextextDocument([makeFixtureDoc(), makeFixtureDoc()], FLEXTEXT_OPTIONS));
+    const dom = parse(
+      buildFlextextDocument([makeFixtureDoc(), makeFixtureDoc()], FLEXTEXT_OPTIONS),
+    );
     expect(dom.querySelectorAll('document > interlinear-text').length).toBe(2);
   });
 
@@ -123,10 +135,14 @@ describe('buildFlextextDocument', () => {
     const doc = {
       document: {},
       body: '',
-      sortedSentences: [makeSentence({
-        begin: 0, end: 1, pieces: undefined,
-        tokens: [{ content: 'x', annotations: {}, morphemes: [] }],
-      })],
+      sortedSentences: [
+        makeSentence({
+          begin: 0,
+          end: 1,
+          pieces: undefined,
+          tokens: [{ content: 'x', annotations: {}, morphemes: [] }],
+        }),
+      ],
     };
     doc.sortedSentences[0].pieces = undefined;
     const dom = parse(buildFlextextDocument([doc], {}));
@@ -156,10 +172,12 @@ describe('phraseTimingFor', () => {
   });
 
   it('skips on ambiguity and on partial overlap', () => {
-    expect(phraseTimingFor(sentence, [
-      makeAlignmentToken('a', 0, 30, 0, 5),
-      makeAlignmentToken('b', 0, 20, 0, 5),
-    ])).toBeNull();
+    expect(
+      phraseTimingFor(sentence, [
+        makeAlignmentToken('a', 0, 30, 0, 5),
+        makeAlignmentToken('b', 0, 20, 0, 5),
+      ]),
+    ).toBeNull();
     expect(phraseTimingFor(sentence, [makeAlignmentToken('a', 5, 14, 0, 5)])).toBeNull();
     expect(phraseTimingFor(sentence, [])).toBeNull();
   });
@@ -167,7 +185,12 @@ describe('phraseTimingFor', () => {
 
 describe('phraseSpeakerFor', () => {
   const sentence = { begin: 0, end: 14 };
-  const tok = (begin, end, speaker) => ({ id: `${begin}-${end}`, begin, end, metadata: { speaker } });
+  const tok = (begin, end, speaker) => ({
+    id: `${begin}-${end}`,
+    begin,
+    end,
+    metadata: { speaker },
+  });
 
   it('returns the speaker of a unique exact-or-containing alignment', () => {
     expect(phraseSpeakerFor(sentence, [tok(0, 14, 'Ana')])).toBe('Ana');
@@ -189,12 +212,18 @@ describe('phraseSpeakerFor', () => {
 });
 
 describe('flextext speaker (diarization)', () => {
-  const withSpeaker = (speaker, metaExtra = {}) => makeFixtureDoc({
-    alignmentTokens: [{ id: 'a1', begin: 0, end: 14, metadata: { speaker, ...metaExtra } }],
-  });
+  const withSpeaker = (speaker, metaExtra = {}) =>
+    makeFixtureDoc({
+      alignmentTokens: [{ id: 'a1', begin: 0, end: 14, metadata: { speaker, ...metaExtra } }],
+    });
 
   it('emits a phrase speaker attribute from the covering alignment', () => {
-    const dom = parse(buildFlextextDocument([withSpeaker('Speaker 1', { timeBegin: 1, timeEnd: 3 })], FLEXTEXT_OPTIONS));
+    const dom = parse(
+      buildFlextextDocument(
+        [withSpeaker('Speaker 1', { timeBegin: 1, timeEnd: 3 })],
+        FLEXTEXT_OPTIONS,
+      ),
+    );
     expect(dom.querySelector('phrase').getAttribute('speaker')).toBe('Speaker 1');
   });
 
@@ -209,18 +238,21 @@ describe('flextext speaker (diarization)', () => {
   });
 
   it('resolves a speaker independently of timing (segment with no valid times)', () => {
-    const phrase = parse(buildFlextextDocument([withSpeaker('Ana')], FLEXTEXT_OPTIONS)).querySelector('phrase');
+    const phrase = parse(
+      buildFlextextDocument([withSpeaker('Ana')], FLEXTEXT_OPTIONS),
+    ).querySelector('phrase');
     expect(phrase.getAttribute('speaker')).toBe('Ana');
     expect(phrase.hasAttribute('begin-time-offset')).toBe(false);
   });
 });
 
 describe('flextext time alignment', () => {
-  const timed = (opts = {}) => makeFixtureDoc({
-    alignmentTokens: [makeAlignmentToken('a1', 0, 14, 1.25, 3.5)],
-    mediaUrl: '/media/d1/recording.wav',
-    ...opts,
-  });
+  const timed = (opts = {}) =>
+    makeFixtureDoc({
+      alignmentTokens: [makeAlignmentToken('a1', 0, 14, 1.25, 3.5)],
+      mediaUrl: '/media/d1/recording.wav',
+      ...opts,
+    });
 
   it('emits phrase offsets in ms, media-file, and the media-files element', () => {
     const dom = parse(buildFlextextDocument([timed()], FLEXTEXT_OPTIONS));
@@ -267,8 +299,9 @@ describe('flextext time alignment', () => {
   });
 
   it('is byte-identical to the untimed output when no alignment exists', () => {
-    expect(buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS))
-      .toBe(buildFlextextDocument([makeFixtureDoc({ alignmentTokens: undefined })], FLEXTEXT_OPTIONS));
+    expect(buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS)).toBe(
+      buildFlextextDocument([makeFixtureDoc({ alignmentTokens: undefined })], FLEXTEXT_OPTIONS),
+    );
     const dom = parse(buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS));
     expect(dom.querySelector('phrase').hasAttribute('begin-time-offset')).toBe(false);
   });

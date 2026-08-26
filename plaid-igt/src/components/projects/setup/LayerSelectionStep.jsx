@@ -16,7 +16,15 @@ import { findBaselineTextLayer } from '@/domain/igtConfig';
 // auto-named; they are purely internal (the app never surfaces their names to
 // the user, unlike span layers), so we never prompt for a name. See the
 // interoperability model in plaid-core/docs/manual.adoc.
-export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
+export const LayerSelectionStep = ({
+  data,
+  onDataChange,
+  setupData,
+  isNewProject,
+  projectId,
+  user,
+  client,
+}) => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -118,9 +126,9 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
             <div className="text-sm">
               <p className="font-medium">This project already has a compatible text layer</p>
               <p className="mt-1 text-muted-foreground">
-                Plaid IGT will reuse the existing baseline text layer and automatically
-                create any word, morpheme, sentence, and alignment layers it needs.
-                There's nothing to configure here — continue to the next step.
+                Plaid IGT will reuse the existing baseline text layer and automatically create any
+                word, morpheme, sentence, and alignment layers it needs. There's nothing to
+                configure here — continue to the next step.
               </p>
             </div>
           </div>
@@ -129,7 +137,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
     );
   }
 
-  const selectableTextLayers = textLayers.filter(layer => layer.id);
+  const selectableTextLayers = textLayers.filter((layer) => layer.id);
 
   return (
     <div className="tw flex flex-col gap-8">
@@ -137,9 +145,8 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
       <div>
         <p className="text-sm">
           Choose the text layer Plaid IGT should use as the baseline.
-          <strong> Text layers</strong> contain the baseline text content of your documents.
-          The word and morpheme token layers are created automatically — you don't need to
-          name them.
+          <strong> Text layers</strong> contain the baseline text content of your documents. The
+          word and morpheme token layers are created automatically — you don't need to name them.
         </p>
       </div>
 
@@ -170,7 +177,7 @@ export const LayerSelectionStep = ({ data, onDataChange, setupData, isNewProject
                   <SelectValue placeholder="Select a text layer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {selectableTextLayers.map(layer => (
+                  {selectableTextLayers.map((layer) => (
                     <SelectItem key={layer.id} value={layer.id}>
                       {layer.name || layer.id}
                     </SelectItem>

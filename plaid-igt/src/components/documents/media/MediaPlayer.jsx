@@ -1,12 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
   Play,
@@ -16,7 +11,7 @@ import {
   Rewind,
   FastForward,
   Volume2,
-  Trash2
+  Trash2,
 } from 'lucide-react';
 
 // Utility function for formatting time
@@ -42,7 +37,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
     handleSkipToEnd: onSkipToEnd,
     setMediaElement: onMediaElementReady,
     handleSeek: onSeek,
-    handleDeleteMedia: onDeleteMedia
+    handleDeleteMedia: onDeleteMedia,
   } = mediaOps;
 
   const mediaRef = useRef(null);
@@ -68,7 +63,9 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
         setMediaError(null);
       } catch (error) {
         console.error('Media playback error:', error);
-        setMediaError('Media format not supported by your browser. Please try MP4, WebM, MP3, or WAV files.');
+        setMediaError(
+          'Media format not supported by your browser. Please try MP4, WebM, MP3, or WAV files.',
+        );
       }
     }
   };
@@ -165,7 +162,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
               maxHeight: '400px',
               backgroundColor: '#000',
               borderRadius: '8px',
-              display: mediaType === 'audio' ? 'none' : 'block'
+              display: mediaType === 'audio' ? 'none' : 'block',
             }}
             onTimeUpdate={() => {}} // RAF handles time updates now
             onPlay={() => {
@@ -201,7 +198,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
           <div className="flex items-center justify-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={onSkipToBeginning}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10"
+                  onClick={onSkipToBeginning}
+                >
                   <SkipBack className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
@@ -210,7 +212,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => skipTime(-5)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10"
+                  onClick={() => skipTime(-5)}
+                >
                   <Rewind className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
@@ -223,12 +230,17 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
                   {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{isPlaying ? "Pause" : "Play"}</TooltipContent>
+              <TooltipContent>{isPlaying ? 'Pause' : 'Play'}</TooltipContent>
             </Tooltip>
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => skipTime(5)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10"
+                  onClick={() => skipTime(5)}
+                >
                   <FastForward className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>

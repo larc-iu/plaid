@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RefreshCw, Trash2 } from 'lucide-react';
 import {
-  TASKS, filterServicesByTask, servesTask, getParamSchema, buildDefaultValues,
+  TASKS,
+  filterServicesByTask,
+  servesTask,
+  getParamSchema,
+  buildDefaultValues,
 } from '@larc-iu/plaid-client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,9 +15,13 @@ import { ServiceSummary } from '../../documents/services/ServiceSummary';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import {
-  BUILTIN_TOKENIZE_RULE_BASED, BUILTIN_LINK_PRECEDENT,
-  encodeServiceSelection, encodeBuiltinSelection, decodeSelection,
-  selectionFromConfig, selectionToConfig,
+  BUILTIN_TOKENIZE_RULE_BASED,
+  BUILTIN_LINK_PRECEDENT,
+  encodeServiceSelection,
+  encodeBuiltinSelection,
+  decodeSelection,
+  selectionFromConfig,
+  selectionToConfig,
 } from '@/domain/serviceDefaults';
 
 // The app's service integration spots: each is a place in the UI where an
@@ -50,9 +58,16 @@ const lastSeenText = (svc) => {
   }
 };
 
-const OnlineBadge = ({ online }) => (online
-  ? <Badge variant="outline" className="border-green-300 bg-green-50 text-green-700">online</Badge>
-  : <Badge variant="outline" className="text-muted-foreground">offline</Badge>);
+const OnlineBadge = ({ online }) =>
+  online ? (
+    <Badge variant="outline" className="border-green-300 bg-green-50 text-green-700">
+      online
+    </Badge>
+  ) : (
+    <Badge variant="outline" className="text-muted-foreground">
+      offline
+    </Badge>
+  );
 
 // One selectable row (a built-in or a service) within a spot card.
 function OptionRow({ spotKey, value, label, checked, onSelect, badge, children }) {
@@ -67,7 +82,9 @@ function OptionRow({ spotKey, value, label, checked, onSelect, badge, children }
         checked={checked}
         onChange={() => onSelect(value)}
       />
-      <label htmlFor={id} className="text-sm cursor-pointer">{label}</label>
+      <label htmlFor={id} className="text-sm cursor-pointer">
+        {label}
+      </label>
       {badge}
       {children}
     </div>
@@ -86,7 +103,10 @@ function CheckRow({ id, label, hint, checked, disabled, onChange, indent = false
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
-      <label htmlFor={id} className={`text-sm ${disabled ? 'text-muted-foreground' : 'cursor-pointer'}`}>
+      <label
+        htmlFor={id}
+        className={`text-sm ${disabled ? 'text-muted-foreground' : 'cursor-pointer'}`}
+      >
         {label}
         {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
       </label>
@@ -114,12 +134,30 @@ function BuiltinLinkOptions({ draft, onChange }) {
       />
       <div className="ml-6 space-y-1.5">
         <p className="text-xs font-medium text-muted-foreground">What a copy includes:</p>
-        <CheckRow id="auto-analysis-copy-seg" indent label="Morpheme segmentation (forms and types)"
-          checked={draft.copySegmentation} disabled={!copyOn} onChange={set('copySegmentation')} />
-        <CheckRow id="auto-analysis-copy-links" indent label="Lexicon links"
-          checked={draft.copyLinks} disabled={!copyOn} onChange={set('copyLinks')} />
-        <CheckRow id="auto-analysis-copy-fields" indent label="Annotation values (glosses, POS, …)"
-          checked={draft.copyFields} disabled={!copyOn} onChange={set('copyFields')} />
+        <CheckRow
+          id="auto-analysis-copy-seg"
+          indent
+          label="Morpheme segmentation (forms and types)"
+          checked={draft.copySegmentation}
+          disabled={!copyOn}
+          onChange={set('copySegmentation')}
+        />
+        <CheckRow
+          id="auto-analysis-copy-links"
+          indent
+          label="Lexicon links"
+          checked={draft.copyLinks}
+          disabled={!copyOn}
+          onChange={set('copyLinks')}
+        />
+        <CheckRow
+          id="auto-analysis-copy-fields"
+          indent
+          label="Annotation values (glosses, POS, …)"
+          checked={draft.copyFields}
+          disabled={!copyOn}
+          onChange={set('copyFields')}
+        />
       </div>
     </div>
   );
@@ -129,12 +167,16 @@ function BuiltinLinkOptions({ draft, onChange }) {
 // any app built-ins, a default selection, and default parameter values for the
 // selected default service.
 function SpotCard({ spot, services, draftEntry, onChange, onDiscard, renderBuiltinOptions }) {
-  const spotServices = useMemo(() => filterServicesByTask(services, spot.key), [services, spot.key]);
+  const spotServices = useMemo(
+    () => filterServicesByTask(services, spot.key),
+    [services, spot.key],
+  );
   const selection = selectionFromConfig(draftEntry) || 'none';
   const decoded = decodeSelection(selection);
-  const selectedService = decoded?.kind === 'service'
-    ? spotServices.find((s) => s.serviceId === decoded.id) || null
-    : null;
+  const selectedService =
+    decoded?.kind === 'service'
+      ? spotServices.find((s) => s.serviceId === decoded.id) || null
+      : null;
   // A selected built-in may carry its own options (e.g. the link rule's copy
   // policy), shown in the same inline slot a service's params use.
   const builtinOpts = decoded?.kind === 'builtin' ? renderBuiltinOptions?.(decoded.id) : null;
@@ -161,7 +203,8 @@ function SpotCard({ spot, services, draftEntry, onChange, onDiscard, renderBuilt
       <CardContent className="space-y-2">
         {spot.builtins.length === 0 && spotServices.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No service for this spot has ever connected to this project. Start one and it will appear here.
+            No service for this spot has ever connected to this project. Start one and it will
+            appear here.
           </p>
         ) : (
           <div className="space-y-2">
@@ -213,9 +256,7 @@ function SpotCard({ spot, services, draftEntry, onChange, onDiscard, renderBuilt
           </div>
         )}
 
-        {builtinOpts && (
-          <div className="mt-3 border-t pt-3">{builtinOpts}</div>
-        )}
+        {builtinOpts && <div className="mt-3 border-t pt-3">{builtinOpts}</div>}
         {selectedService && paramSchema.length > 0 && (
           <div className="mt-3 border-t pt-3">
             <p className="mb-2 text-xs font-medium text-muted-foreground">
@@ -263,11 +304,15 @@ export const ServicesSettings = ({ projectId, client }) => {
     }
   }, [projectId, client]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // The online/offline picture goes stale while the tab is hidden; refresh on return.
   useEffect(() => {
-    const onVisibility = () => { if (!document.hidden) load(); };
+    const onVisibility = () => {
+      if (!document.hidden) load();
+    };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [load]);
@@ -331,8 +376,8 @@ export const ServicesSettings = ({ projectId, client }) => {
     <div className="tw space-y-4">
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-xl text-sm text-muted-foreground">
-          Services that have connected to this project are remembered here, online or not.
-          Set a default (and default options) for each spot; people can still switch per use.
+          Services that have connected to this project are remembered here, online or not. Set a
+          default (and default options) for each spot; people can still switch per use.
         </p>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -348,11 +393,14 @@ export const ServicesSettings = ({ projectId, client }) => {
           draftEntry={draft[spot.key] || null}
           onChange={(entry) => setSpotEntry(spot.key, entry)}
           onDiscard={discard}
-          renderBuiltinOptions={spot.key === TASKS.LINK_VOCAB
-            ? (name) => (name === BUILTIN_LINK_PRECEDENT
-              ? <BuiltinLinkOptions draft={autoDraft} onChange={setAutoAnalysis} />
-              : null)
-            : undefined}
+          renderBuiltinOptions={
+            spot.key === TASKS.LINK_VOCAB
+              ? (name) =>
+                  name === BUILTIN_LINK_PRECEDENT ? (
+                    <BuiltinLinkOptions draft={autoDraft} onChange={setAutoAnalysis} />
+                  ) : null
+              : undefined
+          }
         />
       ))}
 
@@ -360,14 +408,18 @@ export const ServicesSettings = ({ projectId, client }) => {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Other services</CardTitle>
-            <CardDescription>Seen on this project, but not used by any spot in this app.</CardDescription>
+            <CardDescription>
+              Seen on this project, but not used by any spot in this app.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {unmatched.map((svc) => (
               <div key={svc.serviceId} className="flex items-center gap-2">
                 <span className="text-sm">{svc.serviceName || svc.serviceId}</span>
                 <OnlineBadge online={svc.online} />
-                {!svc.online && <span className="text-xs text-muted-foreground">{lastSeenText(svc)}</span>}
+                {!svc.online && (
+                  <span className="text-xs text-muted-foreground">{lastSeenText(svc)}</span>
+                )}
                 <ServiceSummary service={svc} />
                 {!svc.online && (
                   <Button

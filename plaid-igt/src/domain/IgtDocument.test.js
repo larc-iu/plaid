@@ -101,8 +101,12 @@ describe('span (annotation) mutations', () => {
   it('a human edit of a machine-made span verifies it (provConfirmed merged)', async () => {
     const raw = buildRawDoc();
     raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
-      { id: 'sp-1', tokens: ['w-1'], value: 'DET',
-        metadata: { prov: 'inferred', provSource: 'service:stanza-parser' } },
+      {
+        id: 'sp-1',
+        tokens: ['w-1'],
+        value: 'DET',
+        metadata: { prov: 'inferred', provSource: 'service:stanza-parser' },
+      },
     ];
     const doc = makeDoc({ raw });
     const ok = await doc.updateTokenSpan('w-1', 'POS', 'NOUN'); // no metadata = human
@@ -110,7 +114,9 @@ describe('span (annotation) mutations', () => {
     const setMeta = doc.client.calls.find((c) => c.kind === 'spans.setMetadata');
     expect(setMeta).toBeTruthy();
     expect(setMeta.args[1]).toEqual({
-      prov: 'inferred', provSource: 'service:stanza-parser', provConfirmed: true,
+      prov: 'inferred',
+      provSource: 'service:stanza-parser',
+      provConfirmed: true,
     });
     // The optimistic patch carries the verified metadata too.
     expect(doc.sentences[0].tokens[0].annotations.POS.metadata.provConfirmed).toBe(true);
@@ -129,8 +135,12 @@ describe('span (annotation) mutations', () => {
   it('a human edit of an already-verified span stays a plain update', async () => {
     const raw = buildRawDoc();
     raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
-      { id: 'sp-1', tokens: ['w-1'], value: 'DET',
-        metadata: { prov: 'inferred', provSource: 'x', provConfirmed: true } },
+      {
+        id: 'sp-1',
+        tokens: ['w-1'],
+        value: 'DET',
+        metadata: { prov: 'inferred', provSource: 'x', provConfirmed: true },
+      },
     ];
     const doc = makeDoc({ raw });
     await doc.updateTokenSpan('w-1', 'POS', 'NOUN');
@@ -175,7 +185,9 @@ describe('orthography + morpheme form', () => {
   it('updateMorphemeForm PATCHES metadata — other keys (morphType) survive', async () => {
     const raw = buildRawDoc({
       words: [{ id: 'w-1', begin: 0, end: 3 }],
-      morphemes: [{ id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'ab', morphType: 'stem' } }],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'ab', morphType: 'stem' } },
+      ],
       body: 'abc',
     });
     const doc = makeDoc({ raw });
@@ -188,13 +200,22 @@ describe('orthography + morpheme form', () => {
 });
 
 describe('morpheme type', () => {
-  const typedDoc = () => makeDoc({
-    raw: buildRawDoc({
-      words: [{ id: 'w-1', begin: 0, end: 3 }],
-      morphemes: [{ id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'ab', morphType: 'stem' } }],
-      body: 'abc',
-    }),
-  });
+  const typedDoc = () =>
+    makeDoc({
+      raw: buildRawDoc({
+        words: [{ id: 'w-1', begin: 0, end: 3 }],
+        morphemes: [
+          {
+            id: 'm-1',
+            begin: 0,
+            end: 3,
+            precedence: 1,
+            metadata: { form: 'ab', morphType: 'stem' },
+          },
+        ],
+        body: 'abc',
+      }),
+    });
 
   it('setMorphemeType patches metadata.morphType from the FLEx inventory', async () => {
     const doc = typedDoc();
@@ -202,7 +223,10 @@ describe('morpheme type', () => {
     expect(ok).toBe(true);
     const call = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
     expect(call.args[1]).toEqual({ morphType: 'enclitic' });
-    expect(doc.sentences[0].tokens[0].morphemes[0].metadata).toEqual({ form: 'ab', morphType: 'enclitic' });
+    expect(doc.sentences[0].tokens[0].morphemes[0].metadata).toEqual({
+      form: 'ab',
+      morphType: 'enclitic',
+    });
   });
 
   it('setMorphemeType(null) clears the type (patch null deletes the key)', async () => {
@@ -269,7 +293,7 @@ describe('morpheme structural ops', () => {
     await doc.splitMorphemeMulti('m-1', ['a', 'bc', 'd']);
     const k = kinds(doc.client);
     // patchMetadata, shift (+2 for m-2), then BOTH creates after the shift.
-    expect(k.filter(x => x === 'tokens.create')).toHaveLength(2);
+    expect(k.filter((x) => x === 'tokens.create')).toHaveLength(2);
     expect(k.indexOf('tokens.update')).toBeGreaterThan(k.indexOf('tokens.patchMetadata'));
     expect(k.indexOf('tokens.create')).toBeGreaterThan(k.indexOf('tokens.update'));
     const ms = doc.sentences[0].tokens[0].morphemes;
@@ -329,7 +353,11 @@ describe('morpheme structural ops', () => {
 
 describe('word-token structural ops', () => {
   it('splitToken adjusts the left end and inserts a right token', async () => {
-    const raw = buildRawDoc({ words: [{ id: 'w-1', begin: 0, end: 7 }], morphemes: [], body: 'the cat' });
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 7 }],
+      morphemes: [],
+      body: 'the cat',
+    });
     const doc = makeDoc({ raw });
     await doc.splitToken('w-1', 2); // split after index 2 -> leftEnd = 0+2+1 = 3
     const toks = doc.sentences[0].tokens;
@@ -353,7 +381,10 @@ describe('word-token structural ops', () => {
 
   it('mergeTokens grows the first token and drops the rest', async () => {
     const raw = buildRawDoc({
-      words: [{ id: 'w-1', begin: 0, end: 3 }, { id: 'w-2', begin: 4, end: 7 }],
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+      ],
       morphemes: [],
       body: 'the cat',
     });
@@ -370,16 +401,26 @@ describe('word-token structural ops', () => {
     // off the merged-away token); the optimistic patch must too, or they'd
     // vanish from the UI until a reload.
     const raw = buildRawDoc({
-      words: [{ id: 'w-1', begin: 0, end: 3 }, { id: 'w-2', begin: 4, end: 7 }],
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+      ],
       morphemes: [],
       body: 'the cat',
       // Annotation + vocab link live on the SECOND (merged-away) word.
-      wordVocabs: [{
-        id: 'v1', name: 'Lexicon',
-        vocabLinks: [{ id: 'lk-1', tokens: ['w-2'], vocabItem: { id: 'vi-1', form: 'CAT', metadata: {} } }],
-      }],
+      wordVocabs: [
+        {
+          id: 'v1',
+          name: 'Lexicon',
+          vocabLinks: [
+            { id: 'lk-1', tokens: ['w-2'], vocabItem: { id: 'vi-1', form: 'CAT', metadata: {} } },
+          ],
+        },
+      ],
     });
-    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [{ id: 'sp-1', tokens: ['w-2'], value: 'N' }];
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-2'], value: 'N' },
+    ];
     const doc = makeDoc({
       raw,
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
@@ -396,11 +437,16 @@ describe('word-token structural ops', () => {
 
   it('deleteToken cascades to coincident morphemes and their spans', async () => {
     const raw = buildRawDoc({
-      words: [{ id: 'w-1', begin: 0, end: 3 }, { id: 'w-2', begin: 4, end: 7 }],
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+      ],
       morphemes: [{ id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: {} }],
       body: 'the cat',
     });
-    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [{ id: 'sp-1', tokens: ['w-1'], value: 'DET' }];
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-1'], value: 'DET' },
+    ];
     const doc = makeDoc({ raw });
     await doc.deleteToken('w-1');
     const toks = doc.sentences[0].tokens;
@@ -432,9 +478,14 @@ describe('sentence boundary ops', () => {
     // survivor — the optimistic patch must mirror it.
     const raw = buildRawDoc({
       body: 'the cat',
-      sentences: [{ id: 's-1', begin: 0, end: 4 }, { id: 's-2', begin: 4, end: 7 }],
+      sentences: [
+        { id: 's-1', begin: 0, end: 4 },
+        { id: 's-2', begin: 4, end: 7 },
+      ],
     });
-    raw.textLayers[0].tokenLayers[0].spanLayers[0].spans = [{ id: 'tr-2', tokens: ['s-2'], value: 'the cat (gloss)' }];
+    raw.textLayers[0].tokenLayers[0].spanLayers[0].spans = [
+      { id: 'tr-2', tokens: ['s-2'], value: 'the cat (gloss)' },
+    ];
     const doc = makeDoc({ raw });
     expect(doc.sentences).toHaveLength(2);
     await doc.mergeSentence('s-2');
@@ -471,7 +522,9 @@ describe('vocab links (read path must reflect optimistic write)', () => {
 
   it('unlinkVocab removes the vocab item from the token', async () => {
     const vocabs = vocabularies();
-    vocabs.v1.vocabLinks = [{ id: 'lk-1', tokens: ['w-2'], vocabItem: { id: 'vi-1', form: 'CAT', metadata: {} } }];
+    vocabs.v1.vocabLinks = [
+      { id: 'lk-1', tokens: ['w-2'], vocabItem: { id: 'vi-1', form: 'CAT', metadata: {} } },
+    ];
     const doc = makeDoc({
       project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
       vocabularies: vocabs,
@@ -488,14 +541,24 @@ describe('vocab links (read path must reflect optimistic write)', () => {
   // next load (looking deleted even though they're still on the server).
   it('surfaces vocab-links embedded in raw even when _vocabularies has none', () => {
     const raw = buildRawDoc({
-      morphVocabs: [{
-        id: 'v1', name: 'Lexicon',
-        vocabLinks: [{ id: 'lk-1', tokens: ['m-2'], vocabItem: { id: 'vi-1', form: 'DOG', metadata: {} } }],
-      }],
-      wordVocabs: [{
-        id: 'v1', name: 'Lexicon',
-        vocabLinks: [{ id: 'lk-2', tokens: ['w-1'], vocabItem: { id: 'vi-2', form: 'THE', metadata: {} } }],
-      }],
+      morphVocabs: [
+        {
+          id: 'v1',
+          name: 'Lexicon',
+          vocabLinks: [
+            { id: 'lk-1', tokens: ['m-2'], vocabItem: { id: 'vi-1', form: 'DOG', metadata: {} } },
+          ],
+        },
+      ],
+      wordVocabs: [
+        {
+          id: 'v1',
+          name: 'Lexicon',
+          vocabLinks: [
+            { id: 'lk-2', tokens: ['w-1'], vocabItem: { id: 'vi-2', form: 'THE', metadata: {} } },
+          ],
+        },
+      ],
     });
     // _vocabularies has the layer + items but NO links (mirrors vocabLayers.get).
     const doc = makeDoc({
@@ -511,7 +574,8 @@ describe('vocab links (read path must reflect optimistic write)', () => {
 
 describe('document-level + alignment mutations (tabs now depend on these)', () => {
   const metaProject = {
-    id: 'proj-1', vocabs: [],
+    id: 'proj-1',
+    vocabs: [],
     config: { igt: { documentMetadata: [{ name: 'Date' }, { name: 'Speakers' }] } },
   };
 

@@ -31,15 +31,17 @@ const Panel = ({ active, children }) => (active ? children : null);
 const reportIntegrityFindings = (findings, documentId) => {
   if (!findings?.length) return;
   console.group(`[plaid-igt] Document integrity findings (${findings.length})`);
-  findings.forEach(f =>
-    (f.severity === 'error' ? console.error : console.warn)(`[${f.code}] ${f.message}`, f.context));
+  findings.forEach((f) =>
+    (f.severity === 'error' ? console.error : console.warn)(`[${f.code}] ${f.message}`, f.context),
+  );
   console.groupEnd();
 
-  const errors = findings.filter(f => f.severity === 'error');
+  const errors = findings.filter((f) => f.severity === 'error');
   const headline = errors.length ? errors : findings;
-  const reason = headline.length === 1
-    ? headline[0].message
-    : `${headline.length} issues found — see the browser console for details.`;
+  const reason =
+    headline.length === 1
+      ? headline[0].message
+      : `${headline.length} issues found — see the browser console for details.`;
   const detail = formatFindingsForClipboard(findings, { documentId });
   toast.warning('Data integrity issue detected', {
     description: reason,
@@ -70,8 +72,13 @@ const DocumentEditor = () => {
   if (!focusSeededRef.current && focusParam) {
     focusSeededRef.current = true;
     try {
-      sessionStorage.setItem('igt:focus-sentence', JSON.stringify({ docId: documentId, sentenceId: focusParam }));
-    } catch { /* noop */ }
+      sessionStorage.setItem(
+        'igt:focus-sentence',
+        JSON.stringify({ docId: documentId, sentenceId: focusParam }),
+      );
+    } catch {
+      /* noop */
+    }
   }
 
   // The single shared IgtDocument for the whole editor. `asOf` drives time-travel:
@@ -113,7 +120,9 @@ const DocumentEditor = () => {
         setLoadError(humanizeError(e, 'This document could not be loaded.'));
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [client, projectId, documentId, asOf, navigate]);
 
   // Reconcile: heal IGT invariants in the shared substrate — every word token
@@ -137,13 +146,18 @@ const DocumentEditor = () => {
     (async () => {
       try {
         const {
-          created = 0, deleted = 0, deletedAnnotatedOrphans = 0, dedupedSpans = 0, findings = [], error,
+          created = 0,
+          deleted = 0,
+          deletedAnnotatedOrphans = 0,
+          dedupedSpans = 0,
+          findings = [],
+          error,
         } = await doc.reconcileOnOpen();
         if (cancelled) return;
         if (error) {
           notifyError(
             'Could not finish auto-repairing this document; some morphemes may be missing or out of sync. Try reloading.',
-            'Repair failed'
+            'Repair failed',
           );
           return;
         }
@@ -164,13 +178,15 @@ const DocumentEditor = () => {
             parts.push(s);
           }
           if (dedupedSpans) {
-            parts.push(`merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} from a token merge (values joined with ' | ' — review them)`);
+            parts.push(
+              `merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} from a token merge (values joined with ' | ' — review them)`,
+            );
           }
           const droppedData = deletedAnnotatedOrphans > 0;
           notifyWarning(
             `Repaired this document on open: ${parts.join('; ')}.${droppedData ? ' Please review.' : ''}`,
             'Document repaired',
-            droppedData ? { duration: Infinity } : undefined
+            droppedData ? { duration: Infinity } : undefined,
           );
         }
         // Integrity findings (things we could NOT auto-repair) — console + toast.
@@ -181,7 +197,9 @@ const DocumentEditor = () => {
         console.error('Reconcile failed:', e);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [doc, asOf, permissions?.canWrite, activeTab]);
 
   // The built-in analysis helpers (copy prior analyses + auto-link) no longer
@@ -191,7 +209,10 @@ const DocumentEditor = () => {
   // The interlinear island is framework-agnostic; its empty-state CTA asks to
   // switch tabs via a DOM event rather than reaching into the router.
   useEffect(() => {
-    const onNav = (e) => { const t = e.detail?.tab; if (t) setActiveTab(t); };
+    const onNav = (e) => {
+      const t = e.detail?.tab;
+      if (t) setActiveTab(t);
+    };
     window.addEventListener('igt:navigate-tab', onNav);
     return () => window.removeEventListener('igt:navigate-tab', onNav);
   }, []);
@@ -205,7 +226,9 @@ const DocumentEditor = () => {
     didAutoTabRef.current = true;
     try {
       if ((doc.sentences || []).some((s) => s.tokens.length > 0)) setActiveTab('analyze');
-    } catch { /* derivation not ready; leave default */ }
+    } catch {
+      /* derivation not ready; leave default */
+    }
   }, [doc, asOf]);
 
   const handleOpenHistory = () => {
@@ -226,7 +249,10 @@ const DocumentEditor = () => {
   if (loadError) {
     return (
       <div className="tw mx-auto max-w-5xl px-4 py-8">
-        <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
           {loadError}
         </div>
       </div>
@@ -272,10 +298,14 @@ const DocumentEditor = () => {
         className="transition-[margin] duration-200"
         style={{ marginLeft: history.open ? '400px' : '0', minHeight: '100vh' }}
       >
-        <div className={`mx-auto px-4 py-8 ${activeTab === 'analyze' ? 'max-w-[1700px]' : 'max-w-5xl'}`}>
+        <div
+          className={`mx-auto px-4 py-8 ${activeTab === 'analyze' ? 'max-w-[1700px]' : 'max-w-5xl'}`}
+        >
           <div className="tw">
             <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Link to="/projects" className="hover:text-foreground">Projects</Link>
+              <Link to="/projects" className="hover:text-foreground">
+                Projects
+              </Link>
               <span>/</span>
               <Link to={`/projects/${projectId}`} className="hover:text-foreground">
                 {doc.project?.name || 'Project'}
@@ -311,7 +341,9 @@ const DocumentEditor = () => {
             {!isViewingHistorical && permissions.isReadOnly && (
               <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <p className="font-medium">Read-only access</p>
-                <p className="text-xs">You have viewer access to this project, so changes are disabled.</p>
+                <p className="text-xs">
+                  You have viewer access to this project, so changes are disabled.
+                </p>
               </div>
             )}
           </div>
@@ -319,27 +351,47 @@ const DocumentEditor = () => {
           <DocumentProvider value={{ doc, client, readOnly, asOf }}>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="tw">
-                <TabsTrigger value="metadata"><FileText className="h-4 w-4" /> Metadata</TabsTrigger>
-                <TabsTrigger value="baseline"><Type className="h-4 w-4" /> Baseline</TabsTrigger>
-                <TabsTrigger value="media"><Mic className="h-4 w-4" /> Media</TabsTrigger>
-                <TabsTrigger value="tokenize"><Play className="h-4 w-4" /> Tokenize</TabsTrigger>
-                <TabsTrigger value="analyze"><Table className="h-4 w-4" /> Analyze</TabsTrigger>
+                <TabsTrigger value="metadata">
+                  <FileText className="h-4 w-4" /> Metadata
+                </TabsTrigger>
+                <TabsTrigger value="baseline">
+                  <Type className="h-4 w-4" /> Baseline
+                </TabsTrigger>
+                <TabsTrigger value="media">
+                  <Mic className="h-4 w-4" /> Media
+                </TabsTrigger>
+                <TabsTrigger value="tokenize">
+                  <Play className="h-4 w-4" /> Tokenize
+                </TabsTrigger>
+                <TabsTrigger value="analyze">
+                  <Table className="h-4 w-4" /> Analyze
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="metadata">
-                <Panel active={activeTab === 'metadata'}><DocumentMetadata /></Panel>
+                <Panel active={activeTab === 'metadata'}>
+                  <DocumentMetadata />
+                </Panel>
               </TabsContent>
               <TabsContent value="baseline">
-                <Panel active={activeTab === 'baseline'}><DocumentBaseline /></Panel>
+                <Panel active={activeTab === 'baseline'}>
+                  <DocumentBaseline />
+                </Panel>
               </TabsContent>
               <TabsContent value="media">
-                <Panel active={activeTab === 'media'}><DocumentMedia /></Panel>
+                <Panel active={activeTab === 'media'}>
+                  <DocumentMedia />
+                </Panel>
               </TabsContent>
               <TabsContent value="tokenize">
-                <Panel active={activeTab === 'tokenize'}><DocumentTokenize /></Panel>
+                <Panel active={activeTab === 'tokenize'}>
+                  <DocumentTokenize />
+                </Panel>
               </TabsContent>
               <TabsContent value="analyze">
-                <Panel active={activeTab === 'analyze'}><AnalyzeIsland /></Panel>
+                <Panel active={activeTab === 'analyze'}>
+                  <AnalyzeIsland />
+                </Panel>
               </TabsContent>
             </Tabs>
           </DocumentProvider>

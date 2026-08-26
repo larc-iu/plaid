@@ -54,13 +54,16 @@ export const planMorphemeReconcile = (layerInfo) => {
   // a kept orphan was invisible and immortal in the editor (matches no word, so
   // never rendered) and thus un-actionable; deleting is recoverable via history.
   const annotated = new Set();
-  (layerInfo.spanLayers?.morpheme || []).forEach(sl =>
-    (sl.spans || []).forEach(sp => (sp.tokens || []).forEach(t => annotated.add(t))));
+  (layerInfo.spanLayers?.morpheme || []).forEach((sl) =>
+    (sl.spans || []).forEach((sp) => (sp.tokens || []).forEach((t) => annotated.add(t))),
+  );
 
-  const wordsNeedingMorpheme = words.filter(w => !morphemeExtents.has(extentKey(w)) && !isIgnored(w));
-  const orphans = morphemes.filter(m => !wordExtents.has(extentKey(m)));
-  const orphanMorphemeIds = orphans.map(m => m.id);
-  const deletedAnnotatedOrphans = orphans.filter(m => annotated.has(m.id)).length;
+  const wordsNeedingMorpheme = words.filter(
+    (w) => !morphemeExtents.has(extentKey(w)) && !isIgnored(w),
+  );
+  const orphans = morphemes.filter((m) => !wordExtents.has(extentKey(m)));
+  const orphanMorphemeIds = orphans.map((m) => m.id);
+  const deletedAnnotatedOrphans = orphans.filter((m) => annotated.has(m.id)).length;
 
   return { wordsNeedingMorpheme, orphanMorphemeIds, deletedAnnotatedOrphans };
 };
@@ -98,7 +101,7 @@ const planLayerSpanDedup = (sl, scope) => {
       keepSpanId: spans[0].id,
       mergedValue,
       needsUpdate: mergedValue !== firstValue,
-      deleteSpanIds: spans.slice(1).map(s => s.id),
+      deleteSpanIds: spans.slice(1).map((s) => s.id),
     });
   });
   return plans;
@@ -117,8 +120,8 @@ const planLayerSpanDedup = (sl, scope) => {
 export const planSpanDedup = (layerInfo) => {
   const buckets = layerInfo?.spanLayers || {};
   return [
-    ...(buckets.word || []).flatMap(sl => planLayerSpanDedup(sl, 'word')),
-    ...(buckets.morpheme || []).flatMap(sl => planLayerSpanDedup(sl, 'morpheme')),
-    ...(buckets.sentence || []).flatMap(sl => planLayerSpanDedup(sl, 'sentence')),
+    ...(buckets.word || []).flatMap((sl) => planLayerSpanDedup(sl, 'word')),
+    ...(buckets.morpheme || []).flatMap((sl) => planLayerSpanDedup(sl, 'morpheme')),
+    ...(buckets.sentence || []).flatMap((sl) => planLayerSpanDedup(sl, 'sentence')),
   ];
 };

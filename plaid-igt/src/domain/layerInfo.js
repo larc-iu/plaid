@@ -10,8 +10,12 @@
 // the project setup conventions (see plaid-igt CLAUDE.md).
 
 import {
-  findBaselineTextLayer, findWordTokenLayer, findSentenceTokenLayer,
-  findAlignmentTokenLayer, findMorphemeTokenLayer, readScope
+  findBaselineTextLayer,
+  findWordTokenLayer,
+  findSentenceTokenLayer,
+  findAlignmentTokenLayer,
+  findMorphemeTokenLayer,
+  readScope,
 } from './igtConfig.js';
 
 export function getIgtLayerInfo(raw) {
@@ -27,14 +31,14 @@ export function getIgtLayerInfo(raw) {
   const morphemeTokenLayer = findMorphemeTokenLayer(tokenLayers);
 
   const spanLayers = { word: [], morpheme: [], sentence: [] };
-  (primaryTokenLayer?.spanLayers || []).forEach(sl => {
+  (primaryTokenLayer?.spanLayers || []).forEach((sl) => {
     const scope = readScope(sl.config);
     if (scope === 'Token' || scope === 'Word') spanLayers.word.push(sl);
   });
-  (morphemeTokenLayer?.spanLayers || []).forEach(sl => {
+  (morphemeTokenLayer?.spanLayers || []).forEach((sl) => {
     if (readScope(sl.config) === 'Morpheme') spanLayers.morpheme.push(sl);
   });
-  (sentenceTokenLayer?.spanLayers || []).forEach(sl => {
+  (sentenceTokenLayer?.spanLayers || []).forEach((sl) => {
     if (readScope(sl.config) === 'Sentence') spanLayers.sentence.push(sl);
   });
 
@@ -44,7 +48,7 @@ export function getIgtLayerInfo(raw) {
     sentenceTokenLayer,
     alignmentTokenLayer,
     morphemeTokenLayer,
-    spanLayers
+    spanLayers,
   };
 }
 

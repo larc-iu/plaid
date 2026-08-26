@@ -1,10 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { ROLES } from '@larc-iu/plaid-client';
 import {
-  findBaselineTextLayer, findWordTokenLayer, findSentenceTokenLayer,
-  findMorphemeTokenLayer, findAlignmentTokenLayer,
-  readScope, readOrthographies, readIgnoredTokens, readDocumentMetadata,
-  readInitialized, readVocabFields,
+  findBaselineTextLayer,
+  findWordTokenLayer,
+  findSentenceTokenLayer,
+  findMorphemeTokenLayer,
+  findAlignmentTokenLayer,
+  readScope,
+  readOrthographies,
+  readIgnoredTokens,
+  readDocumentMetadata,
+  readInitialized,
+  readVocabFields,
 } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { buildRawDoc } from './test-helpers.js';
@@ -35,11 +42,19 @@ describe('igtConfig substrate finders (by shared role)', () => {
 describe('igtConfig private readers (igt namespace only)', () => {
   it('reads its private config from the igt namespace', () => {
     expect(readScope({ igt: { scope: 'Word' } })).toBe('Word');
-    expect(readOrthographies({ igt: { orthographies: [{ name: 'IPA' }] } })).toEqual([{ name: 'IPA' }]);
-    expect(readIgnoredTokens({ igt: { ignoredTokens: { type: 'blacklist' } } })).toEqual({ type: 'blacklist' });
-    expect(readDocumentMetadata({ igt: { documentMetadata: [{ name: 'Date' }] } })).toEqual([{ name: 'Date' }]);
+    expect(readOrthographies({ igt: { orthographies: [{ name: 'IPA' }] } })).toEqual([
+      { name: 'IPA' },
+    ]);
+    expect(readIgnoredTokens({ igt: { ignoredTokens: { type: 'blacklist' } } })).toEqual({
+      type: 'blacklist',
+    });
+    expect(readDocumentMetadata({ igt: { documentMetadata: [{ name: 'Date' }] } })).toEqual([
+      { name: 'Date' },
+    ]);
     expect(readInitialized({ igt: { initialized: true } })).toBe(true);
-    expect(readVocabFields({ igt: { fields: { Gloss: { inline: true } } } })).toEqual({ Gloss: { inline: true } });
+    expect(readVocabFields({ igt: { fields: { Gloss: { inline: true } } } })).toEqual({
+      Gloss: { inline: true },
+    });
   });
 
   it('does NOT fall back to the legacy plaid namespace (clean break)', () => {
@@ -63,8 +78,8 @@ describe('getIgtLayerInfo binds the new shape', () => {
     expect(info.sentenceTokenLayer?.id).toBe('sentL');
     expect(info.morphemeTokenLayer?.id).toBe('morphL');
     expect(info.alignmentTokenLayer?.id).toBe('alignL');
-    expect(info.spanLayers.word.map(l => l.name)).toEqual(['POS']);
-    expect(info.spanLayers.morpheme.map(l => l.name)).toEqual(['Gloss']);
-    expect(info.spanLayers.sentence.map(l => l.name)).toEqual(['Translation']);
+    expect(info.spanLayers.word.map((l) => l.name)).toEqual(['POS']);
+    expect(info.spanLayers.morpheme.map((l) => l.name)).toEqual(['Gloss']);
+    expect(info.spanLayers.sentence.map((l) => l.name)).toEqual(['Translation']);
   });
 });

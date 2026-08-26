@@ -4,10 +4,12 @@
 
 const span = (v) => ({ value: v });
 
-export const makeSentence = ({
-  begin, end, tokens, annotations = {}, pieces = null,
-}) => ({
-  id: `s-${begin}`, begin, end, annotations, tokens,
+export const makeSentence = ({ begin, end, tokens, annotations = {}, pieces = null }) => ({
+  id: `s-${begin}`,
+  begin,
+  end,
+  annotations,
+  tokens,
   pieces: pieces ?? tokens.map((t) => ({ type: 'token', ...t })),
 });
 
@@ -18,20 +20,29 @@ export const makeSentence = ({
 export function makeFixtureDoc({ alignmentTokens = [], mediaUrl = null } = {}) {
   const tokens = [
     {
-      id: 'w1', begin: 0, end: 6, content: 'perros',
+      id: 'w1',
+      begin: 0,
+      end: 6,
+      content: 'perros',
       metadata: {},
       orthographies: { Translit: 'perros-translit' },
       annotations: { POS: span('NOUN') },
       vocabItem: null,
       morphemes: [
         {
-          id: 'm1', begin: 0, end: 5, content: 'perro',
+          id: 'm1',
+          begin: 0,
+          end: 5,
+          content: 'perro',
           metadata: { form: 'perro', morphType: 'stem' },
           annotations: { Gloss: span('dog') },
           vocabItem: { id: 'v1', form: 'perro', metadata: {} },
         },
         {
-          id: 'm2', begin: 5, end: 6, content: 's',
+          id: 'm2',
+          begin: 5,
+          end: 6,
+          content: 's',
           metadata: { form: 's', morphType: 'enclitic' },
           annotations: { Gloss: span('PL') },
           vocabItem: null,
@@ -39,7 +50,10 @@ export function makeFixtureDoc({ alignmentTokens = [], mediaUrl = null } = {}) {
       ],
     },
     {
-      id: 'w2', begin: 7, end: 13, content: 'corren',
+      id: 'w2',
+      begin: 7,
+      end: 13,
+      content: 'corren',
       metadata: {},
       orthographies: { Translit: '' },
       annotations: { POS: span('VERB') },
@@ -48,7 +62,9 @@ export function makeFixtureDoc({ alignmentTokens = [], mediaUrl = null } = {}) {
     },
   ];
   const sentence = makeSentence({
-    begin: 0, end: 14, tokens,
+    begin: 0,
+    end: 14,
+    tokens,
     annotations: { Translation: span('The dogs run.'), Note: span('') },
     pieces: [
       { type: 'token', ...tokens[0] },
@@ -58,7 +74,12 @@ export function makeFixtureDoc({ alignmentTokens = [], mediaUrl = null } = {}) {
     ],
   });
   return {
-    document: { id: 'd1', name: 'Test & Doc', mediaUrl, metadata: { Source: 'Field notes', Genre: 'narrative' } },
+    document: {
+      id: 'd1',
+      name: 'Test & Doc',
+      mediaUrl,
+      metadata: { Source: 'Field notes', Genre: 'narrative' },
+    },
     body: 'perros corren.',
     sortedSentences: [sentence],
     alignmentTokens,
@@ -66,8 +87,12 @@ export function makeFixtureDoc({ alignmentTokens = [], mediaUrl = null } = {}) {
 }
 
 /** A time-alignment token: char extent + {timeBegin, timeEnd} (seconds). */
-export const makeAlignmentToken = (id, begin, end, timeBegin, timeEnd) =>
-  ({ id, begin, end, metadata: { timeBegin, timeEnd } });
+export const makeAlignmentToken = (id, begin, end, timeBegin, timeEnd) => ({
+  id,
+  begin,
+  end,
+  metadata: { timeBegin, timeEnd },
+});
 
 export const FULL_SELECTION = {
   orthographies: ['Translit'],
@@ -102,77 +127,139 @@ const nativeRole = (r) => ({ plaid: { role: r } });
 // sentence covering [0,14) and 'extra' [15,20) outside it.
 export function makeNativeRaw() {
   return {
-    id: 'doc1', name: 'Doc One', version: 7,
+    id: 'doc1',
+    name: 'Doc One',
+    version: 7,
     metadata: { Source: 'notes', flexImported: true, custom: { k: 1 } }, // trap (a)
-    textLayers: [{
-      id: 'tl1', config: nativeRole('baseline'),
-      text: { id: 'text1', body: 'perros corren. extra', metadata: { lang: 'es' } },
-      tokenLayers: [
-        {
-          id: 'wl', config: { ...nativeRole('word'), igt: { orthographies: [{ name: 'Translit' }] } },
-          tokens: [
-            { id: 'w1', begin: 0, end: 6, metadata: { 'orthog:Translit': 'pt', 'orthog:Other': 'u', custom: 'x' } },
-            { id: 'w2', begin: 7, end: 13, metadata: {} },
-            { id: 'w3', begin: 15, end: 20, metadata: { stray: true } }, // outside the sentence — trap (f)
-          ],
-          spanLayers: [
-            {
-              id: 'slPOS', name: 'POS', config: { igt: { scope: 'Word' } },
-              spans: [{ id: 'sp1', tokens: ['w1'], value: 'NOUN', metadata: { prov: 'inferred', provConfirmed: true } }],
-            },
-            {
-              id: 'slPhrase', name: 'Phrase', config: { igt: { scope: 'Word' } },
-              spans: [{ id: 'sp2', tokens: ['w1', 'w2'], value: 'NP' }], // one span, two tokens — trap (h)
-            },
-            {
-              id: 'slMystery', name: 'Mystery', config: {}, // no scope: invisible to the derived view
-              spans: [{ id: 'sp3', tokens: ['w1'], value: '?' }],
-            },
-          ],
-          vocabs: [{
-            id: 'vocab1', name: 'Lex',
-            vocabLinks: [
-              { id: 'l1', tokens: ['m1'], vocabItem: { id: 'item1', form: 'perro' }, metadata: { prov: 'inferred', provSource: 'flex-import' } },
-              { id: 'l2', tokens: ['m1'], vocabItem: { id: 'item2' } },        // second link on m1 — trap (b)
-              { id: 'l3', tokens: ['w1', 'w2'], vocabItem: { id: 'item3' }, metadata: { note: 'multi' } }, // trap (b)
+    textLayers: [
+      {
+        id: 'tl1',
+        config: nativeRole('baseline'),
+        text: { id: 'text1', body: 'perros corren. extra', metadata: { lang: 'es' } },
+        tokenLayers: [
+          {
+            id: 'wl',
+            config: { ...nativeRole('word'), igt: { orthographies: [{ name: 'Translit' }] } },
+            tokens: [
+              {
+                id: 'w1',
+                begin: 0,
+                end: 6,
+                metadata: { 'orthog:Translit': 'pt', 'orthog:Other': 'u', custom: 'x' },
+              },
+              { id: 'w2', begin: 7, end: 13, metadata: {} },
+              { id: 'w3', begin: 15, end: 20, metadata: { stray: true } }, // outside the sentence — trap (f)
             ],
-          }],
-        },
-        {
-          id: 'sl', config: nativeRole('sentence'),
-          tokens: [{ id: 's1', begin: 0, end: 14, metadata: { speaker: 'A' } }],
-          spanLayers: [{
-            id: 'slTr', name: 'Translation', config: { igt: { scope: 'Sentence' } },
-            spans: [
-              { id: 'sp4', tokens: ['s1'], value: 'The dogs run.' },
-              { id: 'sp5', tokens: ['s1'], value: 'dup' }, // duplicate per layer+token — trap (g)
+            spanLayers: [
+              {
+                id: 'slPOS',
+                name: 'POS',
+                config: { igt: { scope: 'Word' } },
+                spans: [
+                  {
+                    id: 'sp1',
+                    tokens: ['w1'],
+                    value: 'NOUN',
+                    metadata: { prov: 'inferred', provConfirmed: true },
+                  },
+                ],
+              },
+              {
+                id: 'slPhrase',
+                name: 'Phrase',
+                config: { igt: { scope: 'Word' } },
+                spans: [{ id: 'sp2', tokens: ['w1', 'w2'], value: 'NP' }], // one span, two tokens — trap (h)
+              },
+              {
+                id: 'slMystery',
+                name: 'Mystery',
+                config: {}, // no scope: invisible to the derived view
+                spans: [{ id: 'sp3', tokens: ['w1'], value: '?' }],
+              },
             ],
-          }],
-        },
-        {
-          id: 'ml', config: nativeRole('morpheme'),
-          tokens: [
-            { id: 'm1', begin: 0, end: 6, precedence: 1, metadata: { form: 'perro', morphType: 'stem' } },
-            { id: 'm2', begin: 0, end: 6, precedence: 2, metadata: { form: '' } },  // '' is meaningful
-            { id: 'm3', begin: 7, end: 13, precedence: 1, metadata: {} },           // no form key at all
-            { id: 'mOrphan', begin: 15, end: 18, precedence: 1, metadata: { form: 'or' } }, // matches no word extent
-          ],
-          spanLayers: [{
-            id: 'slGloss', name: 'Gloss', config: { igt: { scope: 'Morpheme' } },
-            spans: [{ id: 'sp6', tokens: ['m1'], value: 'dog' }],
-          }],
-        },
-        {
-          id: 'al', config: nativeRole('time-alignment'),
-          tokens: [{ id: 'a1', begin: 0, end: 14, metadata: { timeBegin: 1.25, timeEnd: 3.5, note: 'x' } }],
-        },
-      ],
-    }],
+            vocabs: [
+              {
+                id: 'vocab1',
+                name: 'Lex',
+                vocabLinks: [
+                  {
+                    id: 'l1',
+                    tokens: ['m1'],
+                    vocabItem: { id: 'item1', form: 'perro' },
+                    metadata: { prov: 'inferred', provSource: 'flex-import' },
+                  },
+                  { id: 'l2', tokens: ['m1'], vocabItem: { id: 'item2' } }, // second link on m1 — trap (b)
+                  {
+                    id: 'l3',
+                    tokens: ['w1', 'w2'],
+                    vocabItem: { id: 'item3' },
+                    metadata: { note: 'multi' },
+                  }, // trap (b)
+                ],
+              },
+            ],
+          },
+          {
+            id: 'sl',
+            config: nativeRole('sentence'),
+            tokens: [{ id: 's1', begin: 0, end: 14, metadata: { speaker: 'A' } }],
+            spanLayers: [
+              {
+                id: 'slTr',
+                name: 'Translation',
+                config: { igt: { scope: 'Sentence' } },
+                spans: [
+                  { id: 'sp4', tokens: ['s1'], value: 'The dogs run.' },
+                  { id: 'sp5', tokens: ['s1'], value: 'dup' }, // duplicate per layer+token — trap (g)
+                ],
+              },
+            ],
+          },
+          {
+            id: 'ml',
+            config: nativeRole('morpheme'),
+            tokens: [
+              {
+                id: 'm1',
+                begin: 0,
+                end: 6,
+                precedence: 1,
+                metadata: { form: 'perro', morphType: 'stem' },
+              },
+              { id: 'm2', begin: 0, end: 6, precedence: 2, metadata: { form: '' } }, // '' is meaningful
+              { id: 'm3', begin: 7, end: 13, precedence: 1, metadata: {} }, // no form key at all
+              { id: 'mOrphan', begin: 15, end: 18, precedence: 1, metadata: { form: 'or' } }, // matches no word extent
+            ],
+            spanLayers: [
+              {
+                id: 'slGloss',
+                name: 'Gloss',
+                config: { igt: { scope: 'Morpheme' } },
+                spans: [{ id: 'sp6', tokens: ['m1'], value: 'dog' }],
+              },
+            ],
+          },
+          {
+            id: 'al',
+            config: nativeRole('time-alignment'),
+            tokens: [
+              {
+                id: 'a1',
+                begin: 0,
+                end: 14,
+                metadata: { timeBegin: 1.25, timeEnd: 3.5, note: 'x' },
+              },
+            ],
+          },
+        ],
+      },
+    ],
   };
 }
 
 export const makeNativeProject = () => ({
-  id: 'p1', name: 'Proj',
+  id: 'p1',
+  name: 'Proj',
   config: {
     igt: {
       documentMetadata: [{ name: 'Source' }],

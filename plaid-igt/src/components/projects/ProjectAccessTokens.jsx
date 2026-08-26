@@ -10,9 +10,10 @@ export const ProjectAccessTokens = () => {
       <div className="rounded-lg border bg-card p-4">
         <h2 className="mb-2 text-lg font-semibold">API Access</h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          To access the API programmatically from external services like parsers or scripts, create a
-          named API token. Unlike your login session, a named token can be revoked individually and its
-          name appears in the audit history, so machine-made changes are distinguishable from yours.
+          To access the API programmatically from external services like parsers or scripts, create
+          a named API token. Unlike your login session, a named token can be revoked individually
+          and its name appears in the audit history, so machine-made changes are distinguishable
+          from yours.
         </p>
         <Button asChild variant="outline">
           <Link to="/profile">Manage API Tokens</Link>

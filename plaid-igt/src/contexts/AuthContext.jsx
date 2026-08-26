@@ -30,9 +30,9 @@ export const AuthProvider = ({ children }) => {
       setUser(result.user);
       return { success: true };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error.message || 'Login failed' 
+      return {
+        success: false,
+        error: error.message || 'Login failed',
       };
     }
   };
@@ -57,7 +57,7 @@ export const AuthProvider = ({ children }) => {
 
   // Make available in console during dev
   if (import.meta.env.VITE_API_URL) {
-    window.__client = client
+    window.__client = client;
   }
 
   const value = {
@@ -67,7 +67,7 @@ export const AuthProvider = ({ children }) => {
     updateUser,
     isAuthenticated: !!user,
     loading,
-    client
+    client,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

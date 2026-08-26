@@ -1,15 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import {
-  isUnanalyzedWord, extractAnalysis, analysisSignature, tallyAnalyses,
-  mergeTallies, buildAnalysisTable, resolveAnalysisForForm, filterAnalysis,
-  computeAnalysisCopyProposals, rankSourceDocs,
+  isUnanalyzedWord,
+  extractAnalysis,
+  analysisSignature,
+  tallyAnalyses,
+  mergeTallies,
+  buildAnalysisTable,
+  resolveAnalysisForForm,
+  filterAnalysis,
+  computeAnalysisCopyProposals,
+  rankSourceDocs,
 } from './analysisMemory.js';
 
 const MACHINE = { prov: 'inferred', provSource: 'rule:test' };
 const VERIFIED = { ...MACHINE, provConfirmed: true };
 
 // Derived-token builders mirroring derive.js output shapes.
-const morph = ({ id = 'm', form, content = '', morphType = null, vocabItem = null, annotations = {}, prov = null } = {}) => ({
+const morph = ({
+  id = 'm',
+  form,
+  content = '',
+  morphType = null,
+  vocabItem = null,
+  annotations = {},
+  prov = null,
+} = {}) => ({
   id,
   content,
   metadata: {
@@ -20,14 +35,24 @@ const morph = ({ id = 'm', form, content = '', morphType = null, vocabItem = nul
   annotations,
   vocabItem,
 });
-const word = ({ id = 'w', content, vocabItem = null, annotations = {}, morphemes = null } = {}) => ({
+const word = ({
+  id = 'w',
+  content,
+  vocabItem = null,
+  annotations = {},
+  morphemes = null,
+} = {}) => ({
   id,
   content,
   vocabItem,
   annotations,
   morphemes: morphemes ?? [morph({ content })],
 });
-const span = (value, metadata = null) => ({ id: `s-${value}`, value, ...(metadata ? { metadata } : {}) });
+const span = (value, metadata = null) => ({
+  id: `s-${value}`,
+  value,
+  ...(metadata ? { metadata } : {}),
+});
 const link = (id, prov = 'human') => ({ id, linkId: `l-${id}`, prov });
 const sentences = (...tokens) => [{ tokens }];
 
@@ -35,16 +60,43 @@ describe('isUnanalyzedWord', () => {
   it('accepts the healed default state and rejects any sign of work', () => {
     expect(isUnanalyzedWord(word({ content: 'perro' }))).toBe(true);
     // form equal to the surface is still "default"
-    expect(isUnanalyzedWord(word({ content: 'perro', morphemes: [morph({ form: 'perro', content: 'perro' })] }))).toBe(true);
+    expect(
+      isUnanalyzedWord(
+        word({ content: 'perro', morphemes: [morph({ form: 'perro', content: 'perro' })] }),
+      ),
+    ).toBe(true);
 
     expect(isUnanalyzedWord(word({ content: 'perro', vocabItem: link('i1') }))).toBe(false);
-    expect(isUnanalyzedWord(word({ content: 'perro', annotations: { Gloss: span('dog') } }))).toBe(false);
-    expect(isUnanalyzedWord(word({ content: 'perro', morphemes: [morph({ form: 'perr' }), morph({ form: 'o' })] }))).toBe(false);
-    expect(isUnanalyzedWord(word({ content: 'perro', morphemes: [morph({ form: 'perr', content: 'perro' })] }))).toBe(false);
-    expect(isUnanalyzedWord(word({ content: 'perro', morphemes: [morph({ content: 'perro', morphType: 'stem' })] }))).toBe(false);
-    expect(isUnanalyzedWord(word({ content: 'perro', morphemes: [morph({ content: 'perro', annotations: { Gloss: span('dog') } })] }))).toBe(false);
+    expect(isUnanalyzedWord(word({ content: 'perro', annotations: { Gloss: span('dog') } }))).toBe(
+      false,
+    );
+    expect(
+      isUnanalyzedWord(
+        word({ content: 'perro', morphemes: [morph({ form: 'perr' }), morph({ form: 'o' })] }),
+      ),
+    ).toBe(false);
+    expect(
+      isUnanalyzedWord(
+        word({ content: 'perro', morphemes: [morph({ form: 'perr', content: 'perro' })] }),
+      ),
+    ).toBe(false);
+    expect(
+      isUnanalyzedWord(
+        word({ content: 'perro', morphemes: [morph({ content: 'perro', morphType: 'stem' })] }),
+      ),
+    ).toBe(false);
+    expect(
+      isUnanalyzedWord(
+        word({
+          content: 'perro',
+          morphemes: [morph({ content: 'perro', annotations: { Gloss: span('dog') } })],
+        }),
+      ),
+    ).toBe(false);
     // empty-value spans don't count as work
-    expect(isUnanalyzedWord(word({ content: 'perro', annotations: { Gloss: span('') } }))).toBe(true);
+    expect(isUnanalyzedWord(word({ content: 'perro', annotations: { Gloss: span('') } }))).toBe(
+      true,
+    );
   });
 
   it('never targets ignored tokens', () => {
@@ -54,19 +106,36 @@ describe('isUnanalyzedWord', () => {
 });
 
 describe('extractAnalysis', () => {
-  const analyzed = () => word({
-    content: 'perros',
-    morphemes: [
-      morph({ id: 'm1', form: 'perr', morphType: 'stem', vocabItem: link('i-perro'), annotations: { Gloss: span('dog') } }),
-      morph({ id: 'm2', form: 'os', morphType: 'suffix', annotations: { Gloss: span('PL') } }),
-    ],
-  });
+  const analyzed = () =>
+    word({
+      content: 'perros',
+      morphemes: [
+        morph({
+          id: 'm1',
+          form: 'perr',
+          morphType: 'stem',
+          vocabItem: link('i-perro'),
+          annotations: { Gloss: span('dog') },
+        }),
+        morph({ id: 'm2', form: 'os', morphType: 'suffix', annotations: { Gloss: span('PL') } }),
+      ],
+    });
 
   it('captures segmentation, links, and values', () => {
     const a = extractAnalysis(analyzed());
     expect(a.morphemes).toHaveLength(2);
-    expect(a.morphemes[0]).toEqual({ form: 'perr', morphType: 'stem', vocabItemId: 'i-perro', fields: { Gloss: 'dog' } });
-    expect(a.morphemes[1]).toEqual({ form: 'os', morphType: 'suffix', vocabItemId: null, fields: { Gloss: 'PL' } });
+    expect(a.morphemes[0]).toEqual({
+      form: 'perr',
+      morphType: 'stem',
+      vocabItemId: 'i-perro',
+      fields: { Gloss: 'dog' },
+    });
+    expect(a.morphemes[1]).toEqual({
+      form: 'os',
+      morphType: 'suffix',
+      vocabItemId: null,
+      fields: { Gloss: 'PL' },
+    });
   });
 
   it('returns null for unanalyzed words', () => {
@@ -77,7 +146,13 @@ describe('extractAnalysis', () => {
     const pureMachine = word({
       content: 'perros',
       morphemes: [
-        morph({ id: 'm1', form: 'perr', prov: MACHINE, vocabItem: link('i-perro', 'machine'), annotations: { Gloss: span('dog', MACHINE) } }),
+        morph({
+          id: 'm1',
+          form: 'perr',
+          prov: MACHINE,
+          vocabItem: link('i-perro', 'machine'),
+          annotations: { Gloss: span('dog', MACHINE) },
+        }),
         morph({ id: 'm2', form: 'os', prov: MACHINE, annotations: { Gloss: span('PL', MACHINE) } }),
       ],
     });
@@ -86,7 +161,13 @@ describe('extractAnalysis', () => {
     const oneVerified = word({
       content: 'perros',
       morphemes: [
-        morph({ id: 'm1', form: 'perr', prov: MACHINE, vocabItem: link('i-perro', 'machine'), annotations: { Gloss: span('dog', VERIFIED) } }),
+        morph({
+          id: 'm1',
+          form: 'perr',
+          prov: MACHINE,
+          vocabItem: link('i-perro', 'machine'),
+          annotations: { Gloss: span('dog', VERIFIED) },
+        }),
         morph({ id: 'm2', form: 'os', prov: MACHINE, annotations: { Gloss: span('PL', MACHINE) } }),
       ],
     });
@@ -102,23 +183,30 @@ describe('extractAnalysis', () => {
 
     const machineSegmented = word({
       content: 'perros',
-      morphemes: [morph({ id: 'm1', form: 'perr', prov: MACHINE }), morph({ id: 'm2', form: 'os', prov: MACHINE })],
+      morphemes: [
+        morph({ id: 'm1', form: 'perr', prov: MACHINE }),
+        morph({ id: 'm2', form: 'os', prov: MACHINE }),
+      ],
     });
     expect(extractAnalysis(machineSegmented)).toBe(null);
   });
 });
 
 describe('tally + majority + resolution', () => {
-  const seg = (g1, g2) => word({
-    content: 'perros',
-    morphemes: [
-      morph({ id: 'm1', form: 'perr', annotations: { Gloss: span(g1) } }),
-      morph({ id: 'm2', form: 'os', annotations: { Gloss: span(g2) } }),
-    ],
-  });
+  const seg = (g1, g2) =>
+    word({
+      content: 'perros',
+      morphemes: [
+        morph({ id: 'm1', form: 'perr', annotations: { Gloss: span(g1) } }),
+        morph({ id: 'm2', form: 'os', annotations: { Gloss: span(g2) } }),
+      ],
+    });
 
   it('strict majority wins; ties are contested and resolve to null', () => {
-    const tally = tallyAnalyses(new Map(), sentences(seg('dog', 'PL'), seg('dog', 'PL'), seg('hound', 'PL')));
+    const tally = tallyAnalyses(
+      new Map(),
+      sentences(seg('dog', 'PL'), seg('dog', 'PL'), seg('hound', 'PL')),
+    );
     const table = buildAnalysisTable(tally);
     expect(resolveAnalysisForForm('perros', table).morphemes[0].fields.Gloss).toBe('dog');
 
@@ -186,10 +274,17 @@ describe('filterAnalysis', () => {
   it('without segmentation, a single morpheme survives as a carrier without form/type', () => {
     const single = {
       word: { vocabItemId: null, fields: {} },
-      morphemes: [{ form: 'perro', morphType: 'stem', vocabItemId: 'i-perro', fields: { Gloss: 'dog' } }],
+      morphemes: [
+        { form: 'perro', morphType: 'stem', vocabItemId: 'i-perro', fields: { Gloss: 'dog' } },
+      ],
     };
     const f = filterAnalysis(single, { segmentation: false });
-    expect(f.morphemes[0]).toEqual({ form: null, morphType: null, vocabItemId: 'i-perro', fields: { Gloss: 'dog' } });
+    expect(f.morphemes[0]).toEqual({
+      form: null,
+      morphType: null,
+      vocabItemId: 'i-perro',
+      fields: { Gloss: 'dog' },
+    });
   });
 });
 
@@ -205,10 +300,10 @@ describe('computeAnalysisCopyProposals', () => {
     });
     const table = buildAnalysisTable(tallyAnalyses(new Map(), sentences(source)));
     const targets = sentences(
-      word({ id: 'w1', content: 'perros' }),               // eligible
-      word({ id: 'w2', content: 'Perros' }),               // casefold eligible
+      word({ id: 'w1', content: 'perros' }), // eligible
+      word({ id: 'w2', content: 'Perros' }), // casefold eligible
       word({ id: 'w3', content: 'perros', vocabItem: link('x') }), // already worked on
-      word({ id: 'w4', content: 'gatos' }),                // no precedent
+      word({ id: 'w4', content: 'gatos' }), // no precedent
     );
     const proposals = computeAnalysisCopyProposals({ sentences: targets, table });
     expect(proposals.map((p) => p.wordTokenId)).toEqual(['w1', 'w2']);
@@ -218,14 +313,19 @@ describe('computeAnalysisCopyProposals', () => {
 
 describe('rankSourceDocs', () => {
   it('filters to matching forms (casefolded too), excludes the open doc, ranks and caps', () => {
-    const result = { results: [
-      ['d1', 'perros', 5],
-      ['d1', 'gatos', 9],     // not a target form
-      ['d2', 'Perros', 2],    // casefold match
-      ['d3', 'perros', 3],
-      ['d-self', 'perros', 99],
-    ] };
-    const { docIds, truncated } = rankSourceDocs(result, new Set(['perros']), { excludeDocId: 'd-self', maxDocs: 2 });
+    const result = {
+      results: [
+        ['d1', 'perros', 5],
+        ['d1', 'gatos', 9], // not a target form
+        ['d2', 'Perros', 2], // casefold match
+        ['d3', 'perros', 3],
+        ['d-self', 'perros', 99],
+      ],
+    };
+    const { docIds, truncated } = rankSourceDocs(result, new Set(['perros']), {
+      excludeDocId: 'd-self',
+      maxDocs: 2,
+    });
     expect(docIds).toEqual(['d1', 'd3']);
     expect(truncated).toBe(true);
   });

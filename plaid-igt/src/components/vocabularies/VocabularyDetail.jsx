@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { BookText, Users, Settings, Trash2, Plus, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
+import {
+  BookText,
+  Users,
+  Settings,
+  Trash2,
+  Plus,
+  ChevronUp,
+  ChevronDown,
+  AlertTriangle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -53,7 +62,7 @@ export const VocabularyDetail = () => {
       setVocabulary({
         name: '',
         config: {},
-        maintainers: [user?.id].filter(Boolean)
+        maintainers: [user?.id].filter(Boolean),
       });
       setEditedName('');
       // Seed a new vocab with the full core inventory.
@@ -139,7 +148,12 @@ export const VocabularyDetail = () => {
         savedVocabulary = await client.vocabLayers.create(editedName.trim());
 
         // Persist the field inventory (always non-empty — morphType is core).
-        await client.vocabLayers.setConfig(savedVocabulary.id, IGT_NAMESPACE, 'fields', fieldsToConfig(fields));
+        await client.vocabLayers.setConfig(
+          savedVocabulary.id,
+          IGT_NAMESPACE,
+          'fields',
+          fieldsToConfig(fields),
+        );
 
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
         notifySuccess('Vocabulary created successfully', 'Success');
@@ -174,7 +188,7 @@ export const VocabularyDetail = () => {
     }
 
     // Check for duplicate names (case insensitive)
-    if (fields.some(f => f.name.toLowerCase() === trimmedName.toLowerCase())) {
+    if (fields.some((f) => f.name.toLowerCase() === trimmedName.toLowerCase())) {
       notifyError('A field with this name already exists', 'Duplicate Field Name');
       return;
     }
@@ -184,19 +198,19 @@ export const VocabularyDetail = () => {
   };
 
   const handleRemoveField = async (fieldName) => {
-    const field = fields.find(f => f.name === fieldName);
+    const field = fields.find((f) => f.name === fieldName);
     if (field?.immutable) return; // belt-and-suspenders; the UI hides the button
-    await saveFields(fields.filter(f => f.name !== fieldName));
+    await saveFields(fields.filter((f) => f.name !== fieldName));
   };
 
   const handleToggleInline = async (fieldName) => {
-    await saveFields(fields.map(f => (f.name === fieldName ? { ...f, inline: !f.inline } : f)));
+    await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, inline: !f.inline } : f)));
   };
 
   // Reorder a field by swapping with its neighbor. Immutable fields (morphType)
   // stay pinned first — we never swap into or out of an immutable slot.
   const handleMoveField = async (fieldName, dir) => {
-    const idx = fields.findIndex(f => f.name === fieldName);
+    const idx = fields.findIndex((f) => f.name === fieldName);
     const target = idx + dir;
     if (idx < 0 || target < 0 || target >= fields.length) return;
     if (fields[idx].immutable || fields[target].immutable) return;
@@ -211,7 +225,12 @@ export const VocabularyDetail = () => {
 
       // Save to server if not a new vocabulary
       if (!isNewVocabulary) {
-        await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'fields', fieldsToConfig(updatedFields));
+        await client.vocabLayers.setConfig(
+          vocabularyId,
+          IGT_NAMESPACE,
+          'fields',
+          fieldsToConfig(updatedFields),
+        );
         notifySuccess('Fields updated successfully', 'Success');
       }
     } catch (err) {
@@ -245,7 +264,10 @@ export const VocabularyDetail = () => {
             const canMoveUp = idx > 0 && !field.immutable && !fields[idx - 1].immutable;
             const canMoveDown = idx < fields.length - 1 && !field.immutable;
             return (
-              <div key={field.name} className="group flex items-center justify-between rounded-md px-1 py-1 hover:bg-muted/40">
+              <div
+                key={field.name}
+                className="group flex items-center justify-between rounded-md px-1 py-1 hover:bg-muted/40"
+              >
                 <div className="flex items-center gap-3">
                   <span className="text-sm">{humanizeFieldName(field.name)}</span>
                   {field.immutable && (
@@ -254,7 +276,12 @@ export const VocabularyDetail = () => {
                     </span>
                   )}
                   <div className="flex items-center gap-2">
-                    <Label htmlFor={`inline-${field.name}`} className="text-xs text-muted-foreground">Show inline</Label>
+                    <Label
+                      htmlFor={`inline-${field.name}`}
+                      className="text-xs text-muted-foreground"
+                    >
+                      Show inline
+                    </Label>
                     <Switch
                       id={`inline-${field.name}`}
                       checked={field.inline}
@@ -310,10 +337,7 @@ export const VocabularyDetail = () => {
             }
           }}
         />
-        <Button
-          onClick={handleAddField}
-          disabled={!newFieldName.trim()}
-        >
+        <Button onClick={handleAddField} disabled={!newFieldName.trim()}>
           <Plus className="h-4 w-4" /> Add Field
         </Button>
       </div>
@@ -355,7 +379,9 @@ export const VocabularyDetail = () => {
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
             <div className="text-sm">
               <p className="font-medium text-destructive">Vocabulary Not Found</p>
-              <p className="mt-1 text-muted-foreground">The requested vocabulary could not be found.</p>
+              <p className="mt-1 text-muted-foreground">
+                The requested vocabulary could not be found.
+              </p>
             </div>
           </div>
         </div>
@@ -367,9 +393,11 @@ export const VocabularyDetail = () => {
     <div className="tw mx-auto max-w-5xl px-4 py-8">
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/vocabularies" className="text-primary hover:underline">Vocabularies</Link>
+          <Link to="/vocabularies" className="text-primary hover:underline">
+            Vocabularies
+          </Link>
           <span>/</span>
-          <span>{isNewVocabulary ? 'New Vocabulary' : (vocabulary?.name || 'Loading...')}</span>
+          <span>{isNewVocabulary ? 'New Vocabulary' : vocabulary?.name || 'Loading...'}</span>
         </nav>
 
         {!isNewVocabulary && (
@@ -448,8 +476,9 @@ export const VocabularyDetail = () => {
                     <div className="flex flex-col gap-4">
                       <h3 className="text-base font-semibold">Fields</h3>
                       <p className="text-sm text-muted-foreground">
-                        Fields on every vocabulary item. Field names cannot be "form" or duplicate existing fields (case-insensitive).
-                        Fields set to <strong>Show inline</strong> also appear in the interlinear view.
+                        Fields on every vocabulary item. Field names cannot be "form" or duplicate
+                        existing fields (case-insensitive). Fields set to{' '}
+                        <strong>Show inline</strong> also appear in the interlinear view.
                       </p>
 
                       {renderCustomFieldsEditor()}
@@ -465,10 +494,7 @@ export const VocabularyDetail = () => {
                         Delete this vocabulary permanently. This action cannot be undone.
                       </p>
                       <div>
-                        <Button
-                          variant="destructive"
-                          onClick={openDeleteModal}
-                        >
+                        <Button variant="destructive" onClick={openDeleteModal}>
                           <Trash2 className="h-4 w-4" /> Delete Vocabulary
                         </Button>
                       </div>
@@ -486,14 +512,18 @@ export const VocabularyDetail = () => {
 
             <div className="rounded-lg border bg-card p-4">
               <div className="flex flex-col gap-1.5">
-                <Label>Vocabulary Name <span className="text-destructive">*</span></Label>
+                <Label>
+                  Vocabulary Name <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   placeholder="Enter vocabulary name"
                   value={editedName}
                   onChange={(event) => setEditedName(event.target.value)}
                   autoFocus
                 />
-                <p className="text-xs text-muted-foreground">Choose a descriptive name for your vocabulary</p>
+                <p className="text-xs text-muted-foreground">
+                  Choose a descriptive name for your vocabulary
+                </p>
                 {editedName && !editedName.trim() && (
                   <p className="text-xs text-destructive">Name cannot be empty</p>
                 )}
@@ -504,7 +534,8 @@ export const VocabularyDetail = () => {
               <div className="flex flex-col gap-4">
                 <h3 className="text-base font-semibold">Fields</h3>
                 <p className="text-sm text-muted-foreground">
-                  Fields on every vocabulary item. Field names cannot be "form" or duplicate existing fields (case-insensitive).
+                  Fields on every vocabulary item. Field names cannot be "form" or duplicate
+                  existing fields (case-insensitive).
                 </p>
 
                 {renderCustomFieldsEditor()}
@@ -512,16 +543,10 @@ export const VocabularyDetail = () => {
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => navigate('/vocabularies')}
-              >
+              <Button variant="secondary" onClick={() => navigate('/vocabularies')}>
                 Cancel
               </Button>
-              <Button
-                onClick={handleSave}
-                disabled={!editedName.trim()}
-              >
+              <Button onClick={handleSave} disabled={!editedName.trim()}>
                 Create Vocabulary
               </Button>
             </div>
@@ -530,7 +555,12 @@ export const VocabularyDetail = () => {
       </div>
 
       {/* Delete Confirmation Modal */}
-      <Dialog open={deleteModalOpened} onOpenChange={(o) => { if (!o) closeDeleteModal(); }}>
+      <Dialog
+        open={deleteModalOpened}
+        onOpenChange={(o) => {
+          if (!o) closeDeleteModal();
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Delete Vocabulary</DialogTitle>
@@ -543,10 +573,12 @@ export const VocabularyDetail = () => {
                 <div className="text-sm">
                   <p className="font-medium text-destructive">Warning</p>
                   <p className="mt-1 text-muted-foreground">
-                    You are about to permanently delete the vocabulary <strong>"{vocabulary?.name}"</strong>.
+                    You are about to permanently delete the vocabulary{' '}
+                    <strong>"{vocabulary?.name}"</strong>.
                   </p>
                   <p className="mt-1 text-muted-foreground">
-                    This action cannot be undone and will remove all vocabulary items and their links.
+                    This action cannot be undone and will remove all vocabulary items and their
+                    links.
                   </p>
                 </div>
               </div>

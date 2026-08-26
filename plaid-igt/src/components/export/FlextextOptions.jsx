@@ -2,7 +2,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
 } from '@/components/ui/select';
 
 const OMIT = '__omit__';
@@ -26,9 +30,13 @@ const ITEM_TYPES = {
 
 const LangInput = ({ id, label, value, onChange, placeholder }) => (
   <div className="flex items-center justify-between gap-2">
-    <Label htmlFor={id} className="text-sm font-normal">{label}</Label>
+    <Label htmlFor={id} className="text-sm font-normal">
+      {label}
+    </Label>
     <Input
-      id={id} value={value} placeholder={placeholder}
+      id={id}
+      value={value}
+      placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
       className="h-8 w-40 font-mono text-xs"
     />
@@ -47,14 +55,19 @@ const FieldMapGroup = ({ scope, title, fields, map, onChange }) => {
             value={map[f] ?? OMIT}
             onValueChange={(v) => {
               const next = { ...map };
-              if (v === OMIT) delete next[f]; else next[f] = v;
+              if (v === OMIT) delete next[f];
+              else next[f] = v;
               onChange(next);
             }}
           >
-            <SelectTrigger className="h-8 w-56"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 w-56">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {ITEM_TYPES[scope].map((t) => (
-                <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+                <SelectItem key={t.id} value={t.id}>
+                  {t.label}
+                </SelectItem>
               ))}
               <SelectItem value={OMIT}>Don’t export</SelectItem>
             </SelectContent>
@@ -79,39 +92,55 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
       <div className="flex flex-col gap-2">
         <Label>Language tags</Label>
         <p className="text-xs text-muted-foreground">
-          Writing-system codes FLEx will see (e.g. <code>lez</code>, <code>en</code>).
-          Unknown tags can be remapped in FLEx at import time.
+          Writing-system codes FLEx will see (e.g. <code>lez</code>, <code>en</code>). Unknown tags
+          can be remapped in FLEx at import time.
         </p>
         <LangInput
-          id="ft-lang-baseline" label="Baseline text"
-          value={langs.baseline ?? ''} placeholder="und"
+          id="ft-lang-baseline"
+          label="Baseline text"
+          value={langs.baseline ?? ''}
+          placeholder="und"
           onChange={(v) => setLangs({ baseline: v })}
         />
         {layers.orthographies.map((name) => (
           <LangInput
-            key={name} id={`ft-lang-orth-${name}`} label={`Orthography: ${name}`}
-            value={langs.orthographies?.[name] ?? ''} placeholder="und"
+            key={name}
+            id={`ft-lang-orth-${name}`}
+            label={`Orthography: ${name}`}
+            value={langs.orthographies?.[name] ?? ''}
+            placeholder="und"
             onChange={(v) => setLangs({ orthographies: { ...langs.orthographies, [name]: v } })}
           />
         ))}
         <LangInput
-          id="ft-lang-analysis" label="Glosses & translations"
-          value={langs.analysis ?? ''} placeholder="en"
+          id="ft-lang-analysis"
+          label="Glosses & translations"
+          value={langs.analysis ?? ''}
+          placeholder="en"
           onChange={(v) => setLangs({ analysis: v })}
         />
       </div>
 
       <FieldMapGroup
-        scope="sentence" title="Sentence fields" fields={layers.sentFields}
-        map={fieldMap.sentence || {}} onChange={(m) => setMap('sentence', m)}
+        scope="sentence"
+        title="Sentence fields"
+        fields={layers.sentFields}
+        map={fieldMap.sentence || {}}
+        onChange={(m) => setMap('sentence', m)}
       />
       <FieldMapGroup
-        scope="word" title="Word fields" fields={layers.wordFields}
-        map={fieldMap.word || {}} onChange={(m) => setMap('word', m)}
+        scope="word"
+        title="Word fields"
+        fields={layers.wordFields}
+        map={fieldMap.word || {}}
+        onChange={(m) => setMap('word', m)}
       />
       <FieldMapGroup
-        scope="morpheme" title="Morpheme fields" fields={layers.morphFields}
-        map={fieldMap.morpheme || {}} onChange={(m) => setMap('morpheme', m)}
+        scope="morpheme"
+        title="Morpheme fields"
+        fields={layers.morphFields}
+        map={fieldMap.morpheme || {}}
+        onChange={(m) => setMap('morpheme', m)}
       />
 
       <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">

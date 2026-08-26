@@ -14,12 +14,12 @@ export const sentenceMutations = {
   async mergeSentence(sentenceId) {
     const info = this.layerInfo;
     const sentenceTokens = info.sentenceTokenLayer?.tokens || [];
-    const sentence = sentenceTokens.find(s => s.id === sentenceId);
+    const sentence = sentenceTokens.find((s) => s.id === sentenceId);
     if (!sentence) {
       this.setError('Sentence not found');
       return false;
     }
-    const prev = sentenceTokens.find(s => s.end === sentence.begin);
+    const prev = sentenceTokens.find((s) => s.end === sentence.begin);
     if (!prev) {
       this.setError('Cannot merge: no previous sentence');
       return false;
@@ -30,9 +30,9 @@ export const sentenceMutations = {
       this._applyRawPatch((next, infoNext) => {
         const tokens = infoNext.sentenceTokenLayer?.tokens;
         if (!Array.isArray(tokens)) return;
-        const p = tokens.find(t => t.id === prev.id);
+        const p = tokens.find((t) => t.id === prev.id);
         if (p) p.end = sentence.end;
-        infoNext.sentenceTokenLayer.tokens = tokens.filter(t => t.id !== sentenceId);
+        infoNext.sentenceTokenLayer.tokens = tokens.filter((t) => t.id !== sentenceId);
         // Server reparents the merged-away sentence's spans (translation, notes,
         // …) onto prev (token.clj merge-tokens); mirror so they don't vanish
         // until the next reload.
@@ -44,7 +44,7 @@ export const sentenceMutations = {
   async splitSentence(charPos) {
     const info = this.layerInfo;
     const sentenceTokens = info.sentenceTokenLayer?.tokens || [];
-    const containing = sentenceTokens.find(s => s.begin <= charPos && charPos < s.end);
+    const containing = sentenceTokens.find((s) => s.begin <= charPos && charPos < s.end);
     if (!containing) {
       this.setError('No sentence contains the split position');
       return false;
@@ -62,14 +62,14 @@ export const sentenceMutations = {
       this._applyRawPatch((next, infoNext) => {
         const tokens = infoNext.sentenceTokenLayer?.tokens;
         if (!Array.isArray(tokens)) return;
-        const s = tokens.find(t => t.id === containing.id);
+        const s = tokens.find((t) => t.id === containing.id);
         if (s) s.end = charPos;
         if (newRightId) {
           tokens.push({
             id: newRightId,
             text: containing.text,
             begin: charPos,
-            end: originalEnd
+            end: originalEnd,
           });
         }
       });
@@ -88,21 +88,23 @@ export const sentenceMutations = {
     if (sentenceTokens.length === 0) return false;
 
     const bodyLen = cpLength(this.body);
-    const sentenceIds = sentenceTokens.map(s => s.id);
+    const sentenceIds = sentenceTokens.map((s) => s.id);
 
     return this._withSaving('Failed to clear sentences', async () => {
       await this._client.batched(async () => {
         this._client.tokens.bulkDelete(sentenceIds);
         if (bodyLen > 0) {
-          this._client.tokens.bulkCreate([{
-            tokenLayerId: sentenceLayer.id,
-            text: textId,
-            begin: 0,
-            end: bodyLen
-          }]);
+          this._client.tokens.bulkCreate([
+            {
+              tokenLayerId: sentenceLayer.id,
+              text: textId,
+              begin: 0,
+              end: bodyLen,
+            },
+          ]);
         }
       });
       await this._reload();
     });
-  }
+  },
 };

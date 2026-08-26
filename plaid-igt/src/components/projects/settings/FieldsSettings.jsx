@@ -3,8 +3,13 @@ import { AlertTriangle } from 'lucide-react';
 import { FieldsManager } from './FieldsManager';
 import { notifyError } from '@/utils/feedback';
 import {
-  findBaselineTextLayer, findWordTokenLayer, findSentenceTokenLayer,
-  findMorphemeTokenLayer, readScope, readIgnoredTokens, IGT_NAMESPACE
+  findBaselineTextLayer,
+  findWordTokenLayer,
+  findSentenceTokenLayer,
+  findMorphemeTokenLayer,
+  readScope,
+  readIgnoredTokens,
+  IGT_NAMESPACE,
 } from '@/domain/igtConfig';
 
 export const FieldsSettings = ({ projectId, client }) => {
@@ -65,15 +70,14 @@ export const FieldsSettings = ({ projectId, client }) => {
       const morphemeSpanLayers = morphemeTokenLayer?.spanLayers || [];
       const allSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers, ...morphemeSpanLayers];
 
-      const scopedSpanLayers = allSpanLayers.filter(spanLayer => readScope(spanLayer.config));
-      spanLayerIdsRef.current = Object.fromEntries(scopedSpanLayers.map(l => [l.name, l.id]));
+      const scopedSpanLayers = allSpanLayers.filter((spanLayer) => readScope(spanLayer.config));
+      spanLayerIdsRef.current = Object.fromEntries(scopedSpanLayers.map((l) => [l.name, l.id]));
 
-      const fieldsWithScope = scopedSpanLayers
-        .map(spanLayer => ({
-          name: spanLayer.name,
-          scope: readScope(spanLayer.config),
-          isCustom: !isPredefinedField(spanLayer.name)
-        }));
+      const fieldsWithScope = scopedSpanLayers.map((spanLayer) => ({
+        name: spanLayer.name,
+        scope: readScope(spanLayer.config),
+        isCustom: !isPredefinedField(spanLayer.name),
+      }));
 
       if (fieldsWithScope.length === 0 && !ignoredTokensConfig) {
         // No fields or ignored tokens config found, return null for defaults
@@ -87,20 +91,20 @@ export const FieldsSettings = ({ projectId, client }) => {
           ignoredTokens = {
             mode: 'unicode-punctuation',
             unicodePunctuationExceptions: ignoredTokensConfig.whitelist || [],
-            explicitIgnoredTokens: []
+            explicitIgnoredTokens: [],
           };
         } else {
           ignoredTokens = {
             mode: 'explicit-list',
             unicodePunctuationExceptions: [],
-            explicitIgnoredTokens: ignoredTokensConfig.blacklist || []
+            explicitIgnoredTokens: ignoredTokensConfig.blacklist || [],
           };
         }
       }
 
       return {
         fields: fieldsWithScope,
-        ignoredTokens: ignoredTokens
+        ignoredTokens: ignoredTokens,
       };
     } catch (error) {
       console.error('Failed to load fields configuration:', error);
@@ -147,7 +151,8 @@ export const FieldsSettings = ({ projectId, client }) => {
       // Save ignored tokens configuration to token layer
       if (data.ignoredTokens) {
         const ignoredTokensConfig = {
-          type: data.ignoredTokens.mode === 'unicode-punctuation' ? 'unicodePunctuation' : 'blacklist'
+          type:
+            data.ignoredTokens.mode === 'unicode-punctuation' ? 'unicodePunctuation' : 'blacklist',
         };
 
         if (ignoredTokensConfig.type === 'unicodePunctuation') {
@@ -156,7 +161,12 @@ export const FieldsSettings = ({ projectId, client }) => {
           ignoredTokensConfig.blacklist = data.ignoredTokens.explicitIgnoredTokens || [];
         }
 
-        await client.tokenLayers.setConfig(primaryTokenLayerId, IGT_NAMESPACE, "ignoredTokens", ignoredTokensConfig);
+        await client.tokenLayers.setConfig(
+          primaryTokenLayerId,
+          IGT_NAMESPACE,
+          'ignoredTokens',
+          ignoredTokensConfig,
+        );
       }
 
       // Handle span layers for fields (all three scopes — omitting morpheme
@@ -164,42 +174,55 @@ export const FieldsSettings = ({ projectId, client }) => {
       const primarySpanLayers = primaryTokenLayer.spanLayers || [];
       const sentenceSpanLayers = sentenceTokenLayer?.spanLayers || [];
       const morphemeSpanLayers = morphemeTokenLayer?.spanLayers || [];
-      const existingSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers, ...morphemeSpanLayers];
+      const existingSpanLayers = [
+        ...primarySpanLayers,
+        ...sentenceSpanLayers,
+        ...morphemeSpanLayers,
+      ];
       const currentFields = data.fields || [];
 
       // Find span layers that have plaid scope config (these are managed by us)
-      const managedSpanLayers = existingSpanLayers.filter(layer => readScope(layer.config));
+      const managedSpanLayers = existingSpanLayers.filter((layer) => readScope(layer.config));
 
       // Create new span layers for new fields
       for (const field of currentFields) {
-        const existingLayer = managedSpanLayers.find(layer => layer.name === field.name);
+        const existingLayer = managedSpanLayers.find((layer) => layer.name === field.name);
 
         if (!existingLayer) {
           // Choose parent layer based on field scope (Morpheme fields used to
           // be wrongly parented under the word layer, breaking annotation).
           const parentLayerId =
-            field.scope === 'Sentence' ? sentenceTokenLayer?.id :
-            field.scope === 'Morpheme' ? morphemeTokenLayer?.id :
-            primaryTokenLayerId;
+            field.scope === 'Sentence'
+              ? sentenceTokenLayer?.id
+              : field.scope === 'Morpheme'
+                ? morphemeTokenLayer?.id
+                : primaryTokenLayerId;
           if (!parentLayerId) {
-            throw new Error(`No ${field.scope.toLowerCase()} token layer found for field ${field.name}`);
+            throw new Error(
+              `No ${field.scope.toLowerCase()} token layer found for field ${field.name}`,
+            );
           }
 
           // Create new span layer
           const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
-          await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, "scope", field.scope);
+          await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
           spanLayerIdsRef.current[field.name] = spanLayer.id;
         } else {
           // Update existing span layer scope if changed
           if (readScope(existingLayer.config) !== field.scope) {
-            await client.spanLayers.setConfig(existingLayer.id, IGT_NAMESPACE, "scope", field.scope);
+            await client.spanLayers.setConfig(
+              existingLayer.id,
+              IGT_NAMESPACE,
+              'scope',
+              field.scope,
+            );
           }
         }
       }
 
       // Delete span layers for removed fields
       for (const existingLayer of managedSpanLayers) {
-        const stillExists = currentFields.find(field => field.name === existingLayer.name);
+        const stillExists = currentFields.find((field) => field.name === existingLayer.name);
         if (!stillExists) {
           await client.spanLayers.delete(existingLayer.id);
           delete spanLayerIdsRef.current[existingLayer.name];

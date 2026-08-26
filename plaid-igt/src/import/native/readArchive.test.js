@@ -3,11 +3,16 @@ import { zipSync } from 'fflate';
 import { readNativeArchive, ArchiveError } from './readArchive.js';
 
 const enc = new TextEncoder();
-const zipOf = (entries) => zipSync(Object.fromEntries(
-  Object.entries(entries).map(([p, v]) => [p, typeof v === 'string' ? enc.encode(v) : v])));
+const zipOf = (entries) =>
+  zipSync(
+    Object.fromEntries(
+      Object.entries(entries).map(([p, v]) => [p, typeof v === 'string' ? enc.encode(v) : v]),
+    ),
+  );
 
 const MANIFEST = {
-  format: 'plaid-igt', formatVersion: 1,
+  format: 'plaid-igt',
+  formatVersion: 1,
   vocabularies: [{ id: 'v1', name: 'Lex', file: 'vocabularies/Lex.json' }],
   documents: [{ id: 'd1', name: 'A', file: 'documents/A.json', mediaFile: 'media/A.wav' }],
 };
@@ -39,10 +44,14 @@ describe('readNativeArchive', () => {
   it('rejects non-zips, foreign zips, and unsupported versions', () => {
     expect(() => readNativeArchive(new Uint8Array([1, 2, 3]))).toThrow(ArchiveError);
     expect(() => readNativeArchive(zipOf({ 'x.txt': 'hi' }))).toThrow(/project\.json is missing/);
-    expect(() => readNativeArchive(zipOf({ 'project.json': '{"format":"other"}' }))).toThrow(/Unrecognized format/);
-    expect(() => readNativeArchive(zipOf({ 'project.json': '{"format":"plaid-igt","formatVersion":2}' })))
-      .toThrow(/Unsupported formatVersion 2/);
-    expect(() => readNativeArchive(zipOf({ 'project.json': JSON.stringify(MANIFEST) })))
-      .toThrow(/entry missing: vocabularies\/Lex\.json/);
+    expect(() => readNativeArchive(zipOf({ 'project.json': '{"format":"other"}' }))).toThrow(
+      /Unrecognized format/,
+    );
+    expect(() =>
+      readNativeArchive(zipOf({ 'project.json': '{"format":"plaid-igt","formatVersion":2}' })),
+    ).toThrow(/Unsupported formatVersion 2/);
+    expect(() => readNativeArchive(zipOf({ 'project.json': JSON.stringify(MANIFEST) }))).toThrow(
+      /entry missing: vocabularies\/Lex\.json/,
+    );
   });
 });

@@ -10,7 +10,14 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
 
   // Helper to check if a field is predefined
   const isPredefinedField = (fieldName) => {
-    const predefinedFields = ['Date', 'Speakers', 'Location', 'Genre', 'Recording Quality', 'Transcriber'];
+    const predefinedFields = [
+      'Date',
+      'Speakers',
+      'Location',
+      'Genre',
+      'Recording Quality',
+      'Transcriber',
+    ];
     return predefinedFields.includes(fieldName);
   };
 
@@ -31,11 +38,11 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
       if (currentConfig && Array.isArray(currentConfig)) {
         // Convert API format back to component format
         return {
-          enabledFields: currentConfig.map(field => ({
+          enabledFields: currentConfig.map((field) => ({
             name: field.name,
             enabled: true, // All fields in the config are enabled
-            isCustom: !isPredefinedField(field.name)
-          }))
+            isCustom: !isPredefinedField(field.name),
+          })),
         };
       }
 
@@ -61,12 +68,12 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
       }
 
       // Convert to API format (only store enabled fields with just name)
-      const enabledFields = data.enabledFields.filter(field => field.enabled);
-      const apiConfig = enabledFields.map(field => ({
-        name: field.name
+      const enabledFields = data.enabledFields.filter((field) => field.enabled);
+      const apiConfig = enabledFields.map((field) => ({
+        name: field.name,
       }));
 
-      await client.projects.setConfig(projectId, IGT_NAMESPACE, "documentMetadata", apiConfig);
+      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'documentMetadata', apiConfig);
 
       notifySuccess('Document metadata configuration has been updated', 'Settings Saved');
     } catch (error) {
@@ -92,7 +99,8 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
           <div>
             <p className="text-sm font-medium text-destructive">Configuration Error</p>
             <p className="text-sm text-muted-foreground">
-              Failed to load or save document metadata configuration. Please refresh the page and try again.
+              Failed to load or save document metadata configuration. Please refresh the page and
+              try again.
             </p>
           </div>
         </div>
@@ -104,7 +112,8 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
     <div className="tw rounded-lg border bg-card p-4">
       <p className="text-lg font-medium">Document Metadata</p>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Configure which metadata fields are available when creating or editing documents in this project.
+        Configure which metadata fields are available when creating or editing documents in this
+        project.
       </p>
 
       <DocumentMetadataManager

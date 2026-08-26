@@ -33,19 +33,63 @@ const build = {
       description: null,
       genres: ['Folktale'],
       body: 'За мах мах.\n',
-      sentences: [{
-        begin: 0, end: 12,
-        freeTranslation: { en: 'I, a tale.' }, literalTranslation: null,
-        notes: [{ en: 'a note' }],
-      }],
+      sentences: [
+        {
+          begin: 0,
+          end: 12,
+          freeTranslation: { en: 'I, a tale.' },
+          literalTranslation: null,
+          notes: [{ en: 'a note' }],
+        },
+      ],
       words: [
-        { begin: 0, end: 2, forms: { [BASE_WS]: 'за', [TRANS_WS]: 'za' }, gloss: { en: 'I-ERG' }, pos: 'pro', approved: true,
-          morphemes: [{ forms: { [BASE_WS]: 'за' }, gloss: { en: '1sg' }, pos: 'pers', morphType: 'stem', senseGuid: 's1', entryGuid: 'e1' }] },
+        {
+          begin: 0,
+          end: 2,
+          forms: { [BASE_WS]: 'за', [TRANS_WS]: 'za' },
+          gloss: { en: 'I-ERG' },
+          pos: 'pro',
+          approved: true,
+          morphemes: [
+            {
+              forms: { [BASE_WS]: 'за' },
+              gloss: { en: '1sg' },
+              pos: 'pers',
+              morphType: 'stem',
+              senseGuid: 's1',
+              entryGuid: 'e1',
+            },
+          ],
+        },
         // bare word: no analysis — should still get one default morpheme
-        { begin: 3, end: 6, forms: { [BASE_WS]: 'мах' }, gloss: null, pos: null, approved: false, morphemes: null },
+        {
+          begin: 3,
+          end: 6,
+          forms: { [BASE_WS]: 'мах' },
+          gloss: null,
+          pos: null,
+          approved: false,
+          morphemes: null,
+        },
         // parser-guessed analysis the FLEx user never approved
-        { begin: 7, end: 10, forms: { [BASE_WS]: 'мах' }, gloss: null, pos: null, approved: false,
-          morphemes: [{ forms: { [BASE_WS]: 'мах' }, gloss: null, pos: null, morphType: 'root', senseGuid: 's2', entryGuid: 'e2' }] },
+        {
+          begin: 7,
+          end: 10,
+          forms: { [BASE_WS]: 'мах' },
+          gloss: null,
+          pos: null,
+          approved: false,
+          morphemes: [
+            {
+              forms: { [BASE_WS]: 'мах' },
+              gloss: null,
+              pos: null,
+              morphType: 'root',
+              senseGuid: 's2',
+              entryGuid: 'e2',
+            },
+          ],
+        },
       ],
       warnings: [],
     },
@@ -53,43 +97,72 @@ const build = {
 };
 
 const lexicon = [
-  { guid: 'e1', forms: { [BASE_WS]: 'за' }, citationForm: null, morphType: 'stem', homograph: 0,
-    senses: [{ guid: 's1', gloss: { en: '1sg' }, definition: null, pos: 'pers' }] },
-  { guid: 'e2', forms: { [BASE_WS]: 'мах' }, citationForm: { [BASE_WS]: 'махъ' }, morphType: 'root', homograph: 0,
+  {
+    guid: 'e1',
+    forms: { [BASE_WS]: 'за' },
+    citationForm: null,
+    morphType: 'stem',
+    homograph: 0,
+    senses: [{ guid: 's1', gloss: { en: '1sg' }, definition: null, pos: 'pers' }],
+  },
+  {
+    guid: 'e2',
+    forms: { [BASE_WS]: 'мах' },
+    citationForm: { [BASE_WS]: 'махъ' },
+    morphType: 'root',
+    homograph: 0,
     custom: { Plural: 'махар' },
     senses: [
-      { guid: 's2', gloss: { en: 'tale' }, definition: { en: 'a traditional tale' }, pos: 'n',
+      {
+        guid: 's2',
+        gloss: { en: 'tale' },
+        definition: { en: 'a traditional tale' },
+        pos: 'n',
         custom: { 'Parsing Note': 'check' },
-        examples: [{ text: { [BASE_WS]: 'мах ава' }, translations: [{ en: 'there is a tale' }] }] },
+        examples: [{ text: { [BASE_WS]: 'мах ава' }, translations: [{ en: 'there is a tale' }] }],
+      },
       { guid: 's3', gloss: { en: 'story' }, pos: 'n' },
-    ] },
+    ],
+  },
 ];
 
 const role = (r) => ({ plaid: { role: r } });
 const scope = (s) => ({ igt: { scope: s } });
 const project = {
   id: 'p1',
-  textLayers: [{
-    id: 'tl1', config: role('baseline'),
-    tokenLayers: [
-      { id: 'sent1', config: role('sentence'),
-        spanLayers: [
-          { id: 'sl-tr', name: 'Translation', config: scope('Sentence') },
-          { id: 'sl-note', name: 'Note', config: scope('Sentence') },
-        ] },
-      { id: 'word1', config: role('word'),
-        spanLayers: [
-          { id: 'sl-wg', name: 'Gloss', config: scope('Word') },
-          { id: 'sl-wp', name: 'POS', config: scope('Word') },
-        ] },
-      { id: 'morph1', config: role('morpheme'),
-        spanLayers: [
-          { id: 'sl-mg', name: 'Gloss', config: scope('Morpheme') },
-          { id: 'sl-mg-ru', name: 'Gloss (ru)', config: scope('Morpheme') },
-          { id: 'sl-mp', name: 'POS', config: scope('Morpheme') },
-        ] },
-    ],
-  }],
+  textLayers: [
+    {
+      id: 'tl1',
+      config: role('baseline'),
+      tokenLayers: [
+        {
+          id: 'sent1',
+          config: role('sentence'),
+          spanLayers: [
+            { id: 'sl-tr', name: 'Translation', config: scope('Sentence') },
+            { id: 'sl-note', name: 'Note', config: scope('Sentence') },
+          ],
+        },
+        {
+          id: 'word1',
+          config: role('word'),
+          spanLayers: [
+            { id: 'sl-wg', name: 'Gloss', config: scope('Word') },
+            { id: 'sl-wp', name: 'POS', config: scope('Word') },
+          ],
+        },
+        {
+          id: 'morph1',
+          config: role('morpheme'),
+          spanLayers: [
+            { id: 'sl-mg', name: 'Gloss', config: scope('Morpheme') },
+            { id: 'sl-mg-ru', name: 'Gloss (ru)', config: scope('Morpheme') },
+            { id: 'sl-mp', name: 'POS', config: scope('Morpheme') },
+          ],
+        },
+      ],
+    },
+  ],
 };
 
 // --- fake client ---------------------------------------------------------------
@@ -101,13 +174,18 @@ function makeFakeClient({ existingDocs = [], existingItems = [] } = {}) {
   const id = (p) => `${p}-${(nextId += 1)}`;
   const record = (kind, args, result) => {
     calls.push({ kind, args, result });
-    if (batch) { batch.push({ result }); return undefined; }
+    if (batch) {
+      batch.push({ result });
+      return undefined;
+    }
     return Promise.resolve(result);
   };
   const docsById = new Map(existingDocs.map((d) => [d.id, d]));
   return {
     calls,
-    beginBatch: () => { batch = []; },
+    beginBatch: () => {
+      batch = [];
+    },
     submitBatch: () => {
       const out = batch.map((op) => ({ body: op.result }));
       batch = null;
@@ -125,13 +203,15 @@ function makeFakeClient({ existingDocs = [], existingItems = [] } = {}) {
       listDocuments: () => Promise.resolve(existingDocs),
     },
     documents: {
-      create: (projectId, name, metadata) => record('documents.create', { projectId, name, metadata }, { id: id('doc') }),
+      create: (projectId, name, metadata) =>
+        record('documents.create', { projectId, name, metadata }, { id: id('doc') }),
       get: (docId) => Promise.resolve(docsById.get(docId)),
       delete: (docId) => record('documents.delete', { docId }, {}),
       setMetadata: (docId, body) => record('documents.setMetadata', { docId, body }, {}),
     },
     texts: {
-      create: (layerId, docId, body) => record('texts.create', { layerId, docId, body }, { id: id('text') }),
+      create: (layerId, docId, body) =>
+        record('texts.create', { layerId, docId, body }, { id: id('text') }),
     },
     tokens: {
       bulkCreate: (body) => record('tokens.bulkCreate', body, { ids: body.map(() => id('tok')) }),
@@ -141,14 +221,18 @@ function makeFakeClient({ existingDocs = [], existingItems = [] } = {}) {
     },
     vocabLayers: {
       get: () => Promise.resolve({ id: 'v1', items: existingItems }),
-      setConfig: (vocabId, ns, key, value) => record('vocabLayers.setConfig', { vocabId, ns, key, value }, {}),
+      setConfig: (vocabId, ns, key, value) =>
+        record('vocabLayers.setConfig', { vocabId, ns, key, value }, {}),
     },
     vocabItems: {
-      create: (vocabId, form, metadata) => record('vocabItems.create', { vocabId, form, metadata }, { id: id('item') }),
+      create: (vocabId, form, metadata) =>
+        record('vocabItems.create', { vocabId, form, metadata }, { id: id('item') }),
     },
     vocabLinks: {
-      create: (itemId, tokens, metadata) => record('vocabLinks.create', { itemId, tokens, metadata }, { id: id('link') }),
-      bulkCreate: (body) => record('vocabLinks.bulkCreate', { body }, { ids: body.map(() => id('link')) }),
+      create: (itemId, tokens, metadata) =>
+        record('vocabLinks.create', { itemId, tokens, metadata }, { id: id('link') }),
+      bulkCreate: (body) =>
+        record('vocabLinks.bulkCreate', { body }, { ids: body.map(() => id('link')) }),
     },
   };
 }
@@ -170,7 +254,8 @@ describe('deriveImportConfig', () => {
     expect(config.orthographies).toEqual([{ ws: TRANS_WS, name: TRANS_WS }]);
     expect(config.baselineWs).toBe(BASE_WS);
     expect(config.documentMetadata.map((m) => m.name)).toEqual(
-      expect.arrayContaining(['Title (en)', 'Source', 'Genre']));
+      expect.arrayContaining(['Title (en)', 'Source', 'Genre']),
+    );
   });
 
   it('restricts fields to the selected analysis writing systems', () => {
@@ -189,7 +274,8 @@ describe('resolveTargets', () => {
     expect(targets.wordLayerId).toBe('word1');
     expect(targets.morphemeLayerId).toBe('morph1');
     expect([...targets.fieldLayers.values()]).toEqual(
-      expect.arrayContaining(['sl-wg', 'sl-mg', 'sl-mg-ru', 'sl-tr', 'sl-note', 'sl-wp', 'sl-mp']));
+      expect.arrayContaining(['sl-wg', 'sl-mg', 'sl-mg-ru', 'sl-tr', 'sl-note', 'sl-wp', 'sl-mp']),
+    );
   });
 
   it('throws on a missing field layer', () => {
@@ -209,8 +295,13 @@ describe('importLexicon', () => {
     const creates = client.calls.filter((c) => c.kind === 'vocabItems.create');
     expect(creates).toHaveLength(2); // s2 + s3; s1 already present
     expect(creates[0].args.metadata).toMatchObject({
-      flexEntry: 'e2', flexSense: 's2', gloss: 'tale', pos: 'n', morphType: 'root',
-      Plural: 'махар', 'Parsing Note': 'check',
+      flexEntry: 'e2',
+      flexSense: 's2',
+      gloss: 'tale',
+      pos: 'n',
+      morphType: 'root',
+      Plural: 'махар',
+      'Parsing Note': 'check',
     });
     // gloss first: the popover's no-config fallback shows the first value
     expect(Object.keys(creates[0].args.metadata)[0]).toBe('gloss');
@@ -233,7 +324,8 @@ describe('importLexicon', () => {
   it('imports definitions and example sentences as item metadata', async () => {
     const client = makeFakeClient();
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
-    const max = client.calls.filter((c) => c.kind === 'vocabItems.create')
+    const max = client.calls
+      .filter((c) => c.kind === 'vocabItems.create')
       .find((c) => c.args.metadata.flexSense === 's2');
     expect(max.args.metadata.definition).toBe('a traditional tale');
     expect(max.args.metadata.examples).toEqual([
@@ -266,14 +358,23 @@ describe('runImport', () => {
 
   it('imports a document with the right call shapes', async () => {
     client = makeFakeClient();
-    const results = await runImport({ client, projectId: 'p1', build, lexicon, config, vocabId: 'v1' });
+    const results = await runImport({
+      client,
+      projectId: 'p1',
+      build,
+      lexicon,
+      config,
+      vocabId: 'v1',
+    });
     expect(results).toMatchObject({ imported: 1, skipped: 0, redone: 0 });
 
     const bulks = client.calls.filter((c) => c.kind === 'tokens.bulkCreate');
     expect(bulks).toHaveLength(3); // sentences, words, morphemes
     const [sentences, words, morphemes] = bulks.map((b) => b.args);
 
-    expect(sentences).toEqual([{ tokenLayerId: 'sent1', text: expect.any(String), begin: 0, end: 12 }]);
+    expect(sentences).toEqual([
+      { tokenLayerId: 'sent1', text: expect.any(String), begin: 0, end: 12 },
+    ]);
 
     // word orthography metadata under orthog:<name>
     expect(words[0].metadata).toEqual({ [`orthog:${TRANS_WS}`]: 'za' });
@@ -283,12 +384,19 @@ describe('runImport', () => {
     // the bare word gets a default morpheme with no metadata
     expect(morphemes).toHaveLength(3);
     expect(morphemes[0]).toMatchObject({
-      tokenLayerId: 'morph1', begin: 0, end: 2, precedence: 1,
+      tokenLayerId: 'morph1',
+      begin: 0,
+      end: 2,
+      precedence: 1,
       metadata: { form: 'за', morphType: 'stem' },
     });
     expect(morphemes[1]).toMatchObject({ begin: 3, end: 6, precedence: 1 });
     expect(morphemes[1].metadata).toBeUndefined();
-    expect(morphemes[2]).toMatchObject({ begin: 7, end: 10, metadata: { form: 'мах', morphType: 'root' } });
+    expect(morphemes[2]).toMatchObject({
+      begin: 7,
+      end: 10,
+      metadata: { form: 'мах', morphType: 'root' },
+    });
 
     // spans: word gloss + word pos + morpheme gloss + morpheme pos +
     // sentence translation + note (no ru morph gloss — value absent).
@@ -297,7 +405,10 @@ describe('runImport', () => {
     for (const c of spanCalls) {
       expect(new Set(c.args.map((s) => s.spanLayerId)).size).toBe(1);
     }
-    const byLayer = Object.groupBy(spanCalls.flatMap((c) => c.args), (s) => s.spanLayerId);
+    const byLayer = Object.groupBy(
+      spanCalls.flatMap((c) => c.args),
+      (s) => s.spanLayerId,
+    );
     expect(byLayer['sl-wg'][0].value).toBe('I-ERG');
     expect(byLayer['sl-wp'][0].value).toBe('pro');
     expect(byLayer['sl-mg'][0].value).toBe('1sg');
@@ -308,29 +419,54 @@ describe('runImport', () => {
 
     // vocab links on analyzed morphemes; FLEx human approval drives
     // provConfirmed (parser-only guesses import as unconfirmed-inferred)
-    const links = client.calls.filter((c) => c.kind === 'vocabLinks.bulkCreate').flatMap((c) => c.args.body);
+    const links = client.calls
+      .filter((c) => c.kind === 'vocabLinks.bulkCreate')
+      .flatMap((c) => c.args.body);
     expect(links).toHaveLength(2);
-    expect(links[0].metadata).toEqual({ prov: 'inferred', provSource: 'flex-import', provConfirmed: true });
+    expect(links[0].metadata).toEqual({
+      prov: 'inferred',
+      provSource: 'flex-import',
+      provConfirmed: true,
+    });
     expect(links[1].metadata).toEqual({ prov: 'inferred', provSource: 'flex-import' });
 
     // document done-marker written last, with FLEx metadata preserved
     const last = client.calls[client.calls.length - 1];
     expect(last.kind).toBe('documents.setMetadata');
-    expect(last.args.body).toMatchObject({ flexImported: true, Source: 'Rosa', Genre: 'Folktale', 'Title (en)': 'The Tale' });
+    expect(last.args.body).toMatchObject({
+      flexImported: true,
+      Source: 'Rosa',
+      Genre: 'Folktale',
+      'Title (en)': 'The Tale',
+    });
   });
 
   it('skips done documents and redoes half-imported ones', async () => {
     client = makeFakeClient({
       existingDocs: [{ id: 'doc-old', name: '01 Мах', metadata: {} }], // no done marker
     });
-    const results = await runImport({ client, projectId: 'p1', build, lexicon, config, vocabId: 'v1' });
+    const results = await runImport({
+      client,
+      projectId: 'p1',
+      build,
+      lexicon,
+      config,
+      vocabId: 'v1',
+    });
     expect(results).toMatchObject({ imported: 1, redone: 1, skipped: 0 });
     expect(client.calls.some((c) => c.kind === 'documents.delete')).toBe(true);
 
     client = makeFakeClient({
       existingDocs: [{ id: 'doc-old', name: '01 Мах', metadata: { flexImported: true } }],
     });
-    const results2 = await runImport({ client, projectId: 'p1', build, lexicon, config, vocabId: 'v1' });
+    const results2 = await runImport({
+      client,
+      projectId: 'p1',
+      build,
+      lexicon,
+      config,
+      vocabId: 'v1',
+    });
     expect(results2).toMatchObject({ imported: 0, skipped: 1, redone: 0 });
     expect(client.calls.some((c) => c.kind === 'documents.create')).toBe(false);
   });

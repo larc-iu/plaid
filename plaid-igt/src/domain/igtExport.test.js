@@ -30,23 +30,30 @@ const SENT = {
 describe('formatPlain', () => {
   it('aligns segmented forms, gloss tiers, and word tiers in columns', () => {
     const out = formatPlain(SENT, FIELDS);
-    expect(out).toBe([
-      'perro-s  corr-en  .',
-      'dog-PL   run-3PL',
-      'NOUN     VERB',
-      '‘The dogs run.’',
-    ].join('\n'));
+    expect(out).toBe(
+      ['perro-s  corr-en  .', 'dog-PL   run-3PL', 'NOUN     VERB', '‘The dogs run.’'].join('\n'),
+    );
   });
 
   it('pads by code points so astral forms align', () => {
     const s = {
       annotations: {},
       tokens: [
-        { content: '𝕒𝕒', annotations: {}, morphemes: [{ metadata: { form: '𝕒𝕒' }, annotations: { Gloss: span('x') } }] },
-        { content: 'b', annotations: {}, morphemes: [{ metadata: { form: 'b' }, annotations: { Gloss: span('yy') } }] },
+        {
+          content: '𝕒𝕒',
+          annotations: {},
+          morphemes: [{ metadata: { form: '𝕒𝕒' }, annotations: { Gloss: span('x') } }],
+        },
+        {
+          content: 'b',
+          annotations: {},
+          morphemes: [{ metadata: { form: 'b' }, annotations: { Gloss: span('yy') } }],
+        },
       ],
     };
-    const lines = formatPlain(s, { morphFields: ['Gloss'], wordFields: [], sentFields: [] }).split('\n');
+    const lines = formatPlain(s, { morphFields: ['Gloss'], wordFields: [], sentFields: [] }).split(
+      '\n',
+    );
     // "𝕒𝕒" is 2 code points wide -> second column starts after width 2 + 2 spaces.
     expect(lines[0]).toBe('𝕒𝕒  b');
     expect(lines[1]).toBe('x   yy');
@@ -90,11 +97,13 @@ describe('formatLeipzig', () => {
   it('escapes HTML and holds multiword cells together with NBSP', () => {
     const s = {
       annotations: {},
-      tokens: [{
-        content: 'x',
-        annotations: { POS: span('a <b> & c') },
-        morphemes: [],
-      }],
+      tokens: [
+        {
+          content: 'x',
+          annotations: { POS: span('a <b> & c') },
+          morphemes: [],
+        },
+      ],
     };
     const out = formatLeipzig(s, { morphFields: [], wordFields: ['POS'], sentFields: [] });
     expect(out).toContain('<p>a\u00a0&lt;b&gt;\u00a0&amp;\u00a0c</p>');
@@ -114,7 +123,13 @@ describe('formatGb4e', () => {
   it('escapes LaTeX specials', () => {
     const s = {
       annotations: {},
-      tokens: [{ content: 'a_b', annotations: {}, morphemes: [{ metadata: { form: 'a_b' }, annotations: { Gloss: span('100%') } }] }],
+      tokens: [
+        {
+          content: 'a_b',
+          annotations: {},
+          morphemes: [{ metadata: { form: 'a_b' }, annotations: { Gloss: span('100%') } }],
+        },
+      ],
     };
     const out = formatGb4e(s, { morphFields: ['Gloss'], wordFields: [], sentFields: [] });
     expect(out).toContain('a\\_b');

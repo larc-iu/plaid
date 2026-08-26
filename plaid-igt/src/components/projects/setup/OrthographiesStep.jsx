@@ -1,7 +1,14 @@
 import { OrthographiesManager } from '../settings/OrthographiesManager.jsx';
 
-export const OrthographiesStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
-
+export const OrthographiesStep = ({
+  data,
+  onDataChange,
+  setupData,
+  isNewProject,
+  projectId,
+  user,
+  client,
+}) => {
   // Handle saving changes - interface with parent's onDataChange
   const handleSaveChanges = async (newData) => {
     onDataChange(newData);
@@ -12,9 +19,9 @@ export const OrthographiesStep = ({ data, onDataChange, setupData, isNewProject,
       {/* Explanatory header */}
       <div>
         <p className="text-sm">
-          Configure orthographic representations for your project. The <strong>Baseline</strong> orthography
-          represents your token layer and cannot be removed. You can add additional orthographies like IPA,
-          alternative writing systems, or normalized forms.
+          Configure orthographic representations for your project. The <strong>Baseline</strong>{' '}
+          orthography represents your token layer and cannot be removed. You can add additional
+          orthographies like IPA, alternative writing systems, or normalized forms.
         </p>
       </div>
 

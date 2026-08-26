@@ -79,18 +79,14 @@ export function DocumentBaseline() {
                   <Info className="mt-0.5 h-4 w-4 shrink-0" />
                   <p className="text-sm">
                     <strong>Note:</strong> Existing tokenization and annotations are kept and
-                    adjusted to match your edits. Words inside text you delete are removed
-                    along with their annotations.
+                    adjusted to match your edits. Words inside text you delete are removed along
+                    with their annotations.
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={ops.handleCancel}
-                  disabled={ops.saving}
-                >
+                <Button variant="outline" onClick={ops.handleCancel} disabled={ops.saving}>
                   <X className="h-4 w-4" /> Cancel
                 </Button>
                 <Button onClick={ops.handleSave} disabled={ops.saving}>
@@ -102,9 +98,7 @@ export function DocumentBaseline() {
             <div className="flex flex-col gap-4">
               <div>
                 <div className="rounded-md bg-muted p-4">
-                  <p className="whitespace-pre-wrap text-sm">
-                    {ops.body || ''}
-                  </p>
+                  <p className="whitespace-pre-wrap text-sm">{ops.body || ''}</p>
                 </div>
               </div>
 
@@ -124,4 +118,4 @@ export function DocumentBaseline() {
       </div>
     </div>
   );
-};
+}

@@ -14,11 +14,25 @@
  * stems/roots, affixes, clitics, other.
  */
 export const FLEX_MORPH_TYPES = [
-  'stem', 'bound stem', 'root', 'bound root',
-  'prefix', 'suffix', 'infix', 'circumfix', 'simulfix', 'suprafix',
-  'infixing interfix', 'prefixing interfix', 'suffixing interfix',
-  'clitic', 'enclitic', 'proclitic',
-  'particle', 'phrase', 'discontiguous phrase',
+  'stem',
+  'bound stem',
+  'root',
+  'bound root',
+  'prefix',
+  'suffix',
+  'infix',
+  'circumfix',
+  'simulfix',
+  'suprafix',
+  'infixing interfix',
+  'prefixing interfix',
+  'suffixing interfix',
+  'clitic',
+  'enclitic',
+  'proclitic',
+  'particle',
+  'phrase',
+  'discontiguous phrase',
 ];
 
 /** Is this a storable morph type? (null/undefined = "no type" is also valid) */
@@ -29,8 +43,8 @@ export const isClitic = (morphType) =>
 
 /** Is this morph type in the stem/root (lexical) group of the inventory? */
 export const isStemType = (morphType) =>
-  typeof morphType === 'string'
-  && ['stem', 'bound stem', 'root', 'bound root'].includes(morphType.toLowerCase());
+  typeof morphType === 'string' &&
+  ['stem', 'bound stem', 'root', 'bound root'].includes(morphType.toLowerCase());
 
 /**
  * The joint between two adjacent morphemes in a word, given their
@@ -41,4 +55,8 @@ export const morphemeJoiner = (prevMorphType, morphType) =>
 
 /** Join morpheme strings with per-pair joints. items: [{text, morphType}] */
 export const joinMorphemes = (items) =>
-  items.map((m, i) => (i === 0 ? m.text : morphemeJoiner(items[i - 1].morphType, m.morphType) + m.text)).join('');
+  items
+    .map((m, i) =>
+      i === 0 ? m.text : morphemeJoiner(items[i - 1].morphType, m.morphType) + m.text,
+    )
+    .join('');

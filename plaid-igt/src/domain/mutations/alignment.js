@@ -18,7 +18,7 @@ import { cpLength, cpSlice, cpIndexOf } from '@larc-iu/plaid-client';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
-  (tokens || []).find(t => t.id !== excludeId && t.begin < end && t.end > begin) || null;
+  (tokens || []).find((t) => t.id !== excludeId && t.begin < end && t.end > begin) || null;
 
 const sortByBegin = (a, b) => a.begin - b.begin;
 
@@ -36,11 +36,15 @@ const alignmentMeta = (timeBegin, timeEnd, speaker) => {
 // neighbor, or later in time than its right one (temporal order must track
 // text order). Returns 'previous' | 'next' | null.
 const findTemporalInversion = (tokens, posBegin, timeBegin, excludeId = null) => {
-  let left = null, right = null;
+  let left = null,
+    right = null;
   for (const t of tokens || []) {
     if (t.id === excludeId) continue;
-    if (t.begin < posBegin) { if (!left || t.begin > left.begin) left = t; }
-    else if (t.begin > posBegin) { if (!right || t.begin < right.begin) right = t; }
+    if (t.begin < posBegin) {
+      if (!left || t.begin > left.begin) left = t;
+    } else if (t.begin > posBegin) {
+      if (!right || t.begin < right.begin) right = t;
+    }
   }
   if (left && timeBegin < (left.metadata?.timeBegin ?? -Infinity)) return 'previous';
   if (right && timeBegin > (right.metadata?.timeBegin ?? Infinity)) return 'next';
@@ -78,7 +82,7 @@ export const alignmentMutations = {
     const existingText = this.body;
     const alignmentTokens = alignmentTokenLayer.tokens || [];
     const sortedTokens = [...alignmentTokens].sort(
-      (a, b) => (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0)
+      (a, b) => (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0),
     );
 
     // Find the temporal neighbors of [timeBegin, timeEnd) so we can choose an
@@ -140,7 +144,9 @@ export const alignmentMutations = {
     }
 
     if (temporalInversion) {
-      this.setError('Cannot insert alignment: temporal and positional ordering conflict. Delete the conflicting alignment first.');
+      this.setError(
+        'Cannot insert alignment: temporal and positional ordering conflict. Delete the conflicting alignment first.',
+      );
       return false;
     }
     // Overlap must be checked in POST-insert coordinates: the server's text-edit
@@ -149,8 +155,8 @@ export const alignmentMutations = {
     // temporal neighbor that the cascade moves clear (bug bash 2026-06-06: a
     // mid-insert between two single-space-separated alignments always tripped it).
     const shiftLen = cpLength(insertedText);
-    const projectedTokens = alignmentTokens.map(t =>
-      t.begin >= insertBegin ? { ...t, begin: t.begin + shiftLen, end: t.end + shiftLen } : t
+    const projectedTokens = alignmentTokens.map((t) =>
+      t.begin >= insertBegin ? { ...t, begin: t.begin + shiftLen, end: t.end + shiftLen } : t,
     );
     const overlap = findOverlappingAlignment(projectedTokens, tokenBegin, tokenEnd);
     if (overlap) {
@@ -163,25 +169,29 @@ export const alignmentMutations = {
 
     return this._withSaving('Failed to create alignment', async () => {
       await this._client.batched(async () => {
-        this._client.texts.update(textId, [{ type: 'insert', index: insertBegin, value: insertedText }]);
+        this._client.texts.update(textId, [
+          { type: 'insert', index: insertBegin, value: insertedText },
+        ]);
         this._client.tokens.create(
           alignmentTokenLayer.id,
           textId,
           tokenBegin,
           tokenEnd,
           undefined,
-          alignmentMeta(timeBegin, timeEnd, speaker)
+          alignmentMeta(timeBegin, timeEnd, speaker),
         );
         // Empty partitioning layer: compensate-after-cascade skips it, so we
         // must seed the partition. Otherwise the cascade reindexes surviving
         // sentences to cover the inserted text.
         if (!hasExistingSentences && newTextLength > 0) {
-          this._client.tokens.bulkCreate([{
-            tokenLayerId: sentenceTokenLayer.id,
-            text: textId,
-            begin: 0,
-            end: newTextLength
-          }]);
+          this._client.tokens.bulkCreate([
+            {
+              tokenLayerId: sentenceTokenLayer.id,
+              text: textId,
+              begin: 0,
+              end: newTextLength,
+            },
+          ]);
         }
       });
       await this._reload();
@@ -216,7 +226,7 @@ export const alignmentMutations = {
       return false;
     }
     const alignmentTokens = alignmentTokenLayer.tokens || [];
-    const existingAlignment = alignmentTokens.find(t => t.id === existingAlignmentId);
+    const existingAlignment = alignmentTokens.find((t) => t.id === existingAlignmentId);
     if (!existingAlignment) {
       this.setError('Alignment not found');
       return false;
@@ -228,9 +238,16 @@ export const alignmentMutations = {
     const newAlignmentEnd = tokenBegin + cpLength(trimmed);
     const newTextLength = cpLength(currentText) - (tokenEnd - tokenBegin) + cpLength(trimmed);
 
-    const inversion = findTemporalInversion(alignmentTokens, tokenBegin, timeBegin, existingAlignmentId);
+    const inversion = findTemporalInversion(
+      alignmentTokens,
+      tokenBegin,
+      timeBegin,
+      existingAlignmentId,
+    );
     if (inversion) {
-      this.setError(`The new time range would put this alignment out of temporal order with the ${inversion} alignment.`);
+      this.setError(
+        `The new time range would put this alignment out of temporal order with the ${inversion} alignment.`,
+      );
       return false;
     }
 
@@ -238,12 +255,17 @@ export const alignmentMutations = {
     // with `trimmed` shifts every later token by (newLen - oldLen). Without
     // projecting, growing the text past the next token reads as a false overlap.
     const editDelta = cpLength(trimmed) - (tokenEnd - tokenBegin);
-    const projectedTokens = alignmentTokens.map(t =>
-      (t.id !== existingAlignmentId && t.begin >= tokenEnd)
+    const projectedTokens = alignmentTokens.map((t) =>
+      t.id !== existingAlignmentId && t.begin >= tokenEnd
         ? { ...t, begin: t.begin + editDelta, end: t.end + editDelta }
-        : t
+        : t,
     );
-    const overlap = findOverlappingAlignment(projectedTokens, tokenBegin, newAlignmentEnd, existingAlignmentId);
+    const overlap = findOverlappingAlignment(
+      projectedTokens,
+      tokenBegin,
+      newAlignmentEnd,
+      existingAlignmentId,
+    );
     if (overlap) {
       this.setError('The updated alignment range would overlap an existing alignment.');
       return false;
@@ -255,7 +277,7 @@ export const alignmentMutations = {
     // exactly [tokenBegin, tokenEnd) guarantee the old token is cascaded out.
     const textOps = [
       { type: 'delete', index: tokenBegin, value: tokenEnd - tokenBegin },
-      { type: 'insert', index: tokenBegin, value: trimmed }
+      { type: 'insert', index: tokenBegin, value: trimmed },
     ];
 
     // Predict whether the cascade wipes the partition entirely (every
@@ -264,8 +286,8 @@ export const alignmentMutations = {
     // the new text — adding a bulkCreate would conflict with the
     // partition-establish ASSERT.
     const sentences = sentenceTokenLayer.tokens || [];
-    const cascadeWipesAllSentences = sentences.length === 0
-      || sentences.every(s => s.begin >= tokenBegin && s.end <= tokenEnd);
+    const cascadeWipesAllSentences =
+      sentences.length === 0 || sentences.every((s) => s.begin >= tokenBegin && s.end <= tokenEnd);
 
     return this._withSaving('Failed to edit alignment', async () => {
       await this._client.batched(async () => {
@@ -276,15 +298,17 @@ export const alignmentMutations = {
           tokenBegin,
           newAlignmentEnd,
           undefined,
-          alignmentMeta(timeBegin, timeEnd, speaker)
+          alignmentMeta(timeBegin, timeEnd, speaker),
         );
         if (cascadeWipesAllSentences && newTextLength > 0) {
-          this._client.tokens.bulkCreate([{
-            tokenLayerId: sentenceTokenLayer.id,
-            text: textId,
-            begin: 0,
-            end: newTextLength
-          }]);
+          this._client.tokens.bulkCreate([
+            {
+              tokenLayerId: sentenceTokenLayer.id,
+              text: textId,
+              begin: 0,
+              end: newTextLength,
+            },
+          ]);
         }
       });
       await this._reload();
@@ -322,7 +346,7 @@ export const alignmentMutations = {
     const alignmentTokens = alignmentTokenLayer.tokens || [];
     const fullText = this.body;
     const sortedTokens = [...alignmentTokens].sort(
-      (a, b) => (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0)
+      (a, b) => (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0),
     );
     let leftBoundary = 0;
     let rightBoundary = cpLength(fullText);
@@ -344,9 +368,11 @@ export const alignmentMutations = {
       // lies outside the time-ordered window between neighboring alignments"
       // (the latter would otherwise misleadingly read as 'not found').
       const existsAnywhere = cpIndexOf(fullText, trimmed) !== -1;
-      this.setError(existsAnywhere
-        ? 'The selected text lies outside the range available for this time slot — a neighboring alignment would be out of temporal order. Adjust the time range or the neighboring alignments.'
-        : 'Selected text not found in the baseline.');
+      this.setError(
+        existsAnywhere
+          ? 'The selected text lies outside the range available for this time slot — a neighboring alignment would be out of temporal order. Adjust the time range or the neighboring alignments.'
+          : 'Selected text not found in the baseline.',
+      );
       return false;
     }
     const actualBegin = leftBoundary + startInAvailable;
@@ -365,7 +391,7 @@ export const alignmentMutations = {
         actualBegin,
         actualEnd,
         undefined,
-        alignmentMeta(timeBegin, timeEnd, speaker)
+        alignmentMeta(timeBegin, timeEnd, speaker),
       );
       const newId = result?.id || result;
       this._applyRawPatch((next, infoNext) => {
@@ -378,7 +404,7 @@ export const alignmentMutations = {
           text: textId,
           begin: actualBegin,
           end: actualEnd,
-          metadata: alignmentMeta(timeBegin, timeEnd, speaker)
+          metadata: alignmentMeta(timeBegin, timeEnd, speaker),
         });
         infoNext.alignmentTokenLayer.tokens.sort(sortByBegin);
       });
@@ -402,7 +428,7 @@ export const alignmentMutations = {
       this.setError('Text layer not found');
       return false;
     }
-    const existingAlignment = (alignmentTokenLayer.tokens || []).find(t => t.id === alignmentId);
+    const existingAlignment = (alignmentTokenLayer.tokens || []).find((t) => t.id === alignmentId);
     if (!existingAlignment) {
       this.setError('Alignment not found');
       return false;
@@ -429,7 +455,7 @@ export const alignmentMutations = {
   async updateAlignmentBounds(alignmentId, { timeBegin, timeEnd }) {
     const info = this.layerInfo;
     const alignmentTokenLayer = info.alignmentTokenLayer;
-    const token = (alignmentTokenLayer?.tokens || []).find(t => t.id === alignmentId);
+    const token = (alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
     if (!token) {
       this.setError('Alignment not found');
       return false;
@@ -440,9 +466,16 @@ export const alignmentMutations = {
     }
     // Bounds are metadata-only with no _reload, so a temporal/positional
     // inversion here would persist silently. Guard it like createAlignment does.
-    const inversion = findTemporalInversion(alignmentTokenLayer?.tokens || [], token.begin, timeBegin, alignmentId);
+    const inversion = findTemporalInversion(
+      alignmentTokenLayer?.tokens || [],
+      token.begin,
+      timeBegin,
+      alignmentId,
+    );
     if (inversion) {
-      this.setError(`The new time range would put this alignment out of temporal order with the ${inversion} alignment.`);
+      this.setError(
+        `The new time range would put this alignment out of temporal order with the ${inversion} alignment.`,
+      );
       return false;
     }
 
@@ -452,9 +485,13 @@ export const alignmentMutations = {
       // and per the cross-app convention "any human edit verifies" we stamp
       // provConfirmed. setMetadata would wipe prov, recording a machine-made
       // segment as origin-less.
-      await this._client.tokens.patchMetadata(alignmentId, { timeBegin, timeEnd, provConfirmed: true });
+      await this._client.tokens.patchMetadata(alignmentId, {
+        timeBegin,
+        timeEnd,
+        provConfirmed: true,
+      });
       this._applyRawPatch((next, infoNext) => {
-        const t = (infoNext.alignmentTokenLayer?.tokens || []).find(x => x.id === alignmentId);
+        const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
         if (t) {
           t.metadata = { ...(t.metadata || {}), timeBegin, timeEnd, provConfirmed: true };
         }
@@ -469,7 +506,7 @@ export const alignmentMutations = {
   // deletes a key whose value is null).
   async updateAlignmentSpeaker(alignmentId, speaker) {
     const info = this.layerInfo;
-    const token = (info.alignmentTokenLayer?.tokens || []).find(t => t.id === alignmentId);
+    const token = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
     if (!token) {
       this.setError('Alignment not found');
       return false;
@@ -478,7 +515,7 @@ export const alignmentMutations = {
     return this._withSaving('Failed to update speaker', async () => {
       await this._client.tokens.patchMetadata(alignmentId, { speaker: value || null });
       this._applyRawPatch((next, infoNext) => {
-        const t = (infoNext.alignmentTokenLayer?.tokens || []).find(x => x.id === alignmentId);
+        const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
         if (t) {
           t.metadata = { ...(t.metadata || {}) };
           if (value) t.metadata.speaker = value;
@@ -496,11 +533,11 @@ export const alignmentMutations = {
     const info = this.layerInfo;
     const alignmentTokens = info.alignmentTokenLayer?.tokens || [];
     if (alignmentTokens.length === 0) return false;
-    const ids = alignmentTokens.map(t => t.id);
+    const ids = alignmentTokens.map((t) => t.id);
 
     return this._withSaving('Failed to clear alignments', async () => {
       await this._client.tokens.bulkDelete(ids);
       await this._reload();
     });
-  }
+  },
 };

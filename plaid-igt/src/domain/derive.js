@@ -25,7 +25,7 @@ export function deriveDocumentData(raw, layerInfo, project) {
   const configuredMetadata = {};
   const fields = readDocumentMetadata(project?.config);
   if (Array.isArray(fields) && raw?.metadata) {
-    fields.forEach(field => {
+    fields.forEach((field) => {
       if (field?.name && Object.prototype.hasOwnProperty.call(raw.metadata, field.name)) {
         configuredMetadata[field.name] = raw.metadata[field.name];
       }
@@ -38,7 +38,7 @@ export function deriveDocumentData(raw, layerInfo, project) {
     version: raw?.version,
     mediaUrl: raw?.mediaUrl,
     text: layerInfo.primaryTextLayer?.text,
-    metadata: configuredMetadata
+    metadata: configuredMetadata,
   };
 }
 
@@ -46,7 +46,7 @@ export function deriveAlignmentTokens(layerInfo) {
   const layer = layerInfo.alignmentTokenLayer;
   if (!layer || !Array.isArray(layer.tokens)) return [];
   return [...layer.tokens]
-    .map(t => ({ ...t, annotations: {} }))
+    .map((t) => ({ ...t, annotations: {} }))
     .sort((a, b) => a.begin - b.begin);
 }
 
@@ -71,7 +71,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   const vocabLinksByToken = collectSingleTokenVocabLinks(vocabularies);
 
   const sortedTokens = (primaryTokenLayer?.tokens || [])
-    .map(t => ({
+    .map((t) => ({
       id: t.id,
       text: t.text,
       begin: t.begin,
@@ -81,7 +81,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
       annotations: {},
       orthographies: collectOrthographies(t, primaryTokenLayer),
       vocabItem: vocabLinksByToken[t.id] || null,
-      morphemes: []
+      morphemes: [],
     }))
     .sort((a, b) => a.begin - b.begin);
 
@@ -89,14 +89,15 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   // (first span per token wins, matching the old `.find` order). Annotation
   // collection is then O(layers) per item; the previous scan-all-spans-per-item
   // approach was quadratic and took seconds on real (FLEx-imported) documents.
-  const buildSpanMaps = (layers) => (layers || []).map(sl => {
-    const map = new Map();
-    for (const s of sl.spans || []) {
-      if (!Array.isArray(s.tokens)) continue;
-      for (const tid of s.tokens) if (!map.has(tid)) map.set(tid, s);
-    }
-    return { name: sl.name, map };
-  });
+  const buildSpanMaps = (layers) =>
+    (layers || []).map((sl) => {
+      const map = new Map();
+      for (const s of sl.spans || []) {
+        if (!Array.isArray(s.tokens)) continue;
+        for (const tid of s.tokens) if (!map.has(tid)) map.set(tid, s);
+      }
+      return { name: sl.name, map };
+    });
   const wordSpanMaps = buildSpanMaps(spanLayers.word);
   const morphSpanMaps = buildSpanMaps(spanLayers.morpheme);
   const sentSpanMaps = buildSpanMaps(spanLayers.sentence);
@@ -110,8 +111,8 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   const morphemesByWord = new Map();
   if (morphemeTokenLayer) {
     const wordKey = new Map();
-    sortedTokens.forEach(w => wordKey.set(`${w.begin}-${w.end}`, w));
-    (morphemeTokenLayer.tokens || []).forEach(m => {
+    sortedTokens.forEach((w) => wordKey.set(`${w.begin}-${w.end}`, w));
+    (morphemeTokenLayer.tokens || []).forEach((m) => {
       const parent = wordKey.get(`${m.begin}-${m.end}`);
       if (!parent) return;
       const entry = {
@@ -123,30 +124,30 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         content: sliceBody(m.begin, m.end),
         metadata: m.metadata || {},
         annotations: annotationsFor(m.id, morphSpanMaps),
-        vocabItem: vocabLinksByToken[m.id] || null
+        vocabItem: vocabLinksByToken[m.id] || null,
       };
       if (!morphemesByWord.has(parent.id)) morphemesByWord.set(parent.id, []);
       morphemesByWord.get(parent.id).push(entry);
     });
-    morphemesByWord.forEach(arr => arr.sort((a, b) => a.precedence - b.precedence));
+    morphemesByWord.forEach((arr) => arr.sort((a, b) => a.precedence - b.precedence));
   }
 
   // Sentence bucketing.
   const sentenceTokens = [...(sentenceTokenLayer?.tokens || [])]
-    .map(s => ({
+    .map((s) => ({
       id: s.id,
       text: s.text || '',
       begin: s.begin,
       end: s.end,
       sentenceToken: s,
-      annotations: {}
+      annotations: {},
     }))
     .sort((a, b) => a.begin - b.begin);
 
   // Single sweep over the begin-sorted tokens (sentences are a begin-sorted
   // partition), instead of filtering the whole token list per sentence.
   let ti = 0;
-  const enrichedSentences = sentenceTokens.map(sentence => {
+  const enrichedSentences = sentenceTokens.map((sentence) => {
     while (ti < sortedTokens.length && sortedTokens[ti].begin < sentence.begin) ti++;
     const tokensInSentence = [];
     while (ti < sortedTokens.length && sortedTokens[ti].begin < sentence.end) {
@@ -155,7 +156,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         tokensInSentence.push({
           ...t,
           annotations: annotationsFor(t.id, wordSpanMaps),
-          morphemes: morphemesByWord.get(t.id) || []
+          morphemes: morphemesByWord.get(t.id) || [],
         });
       }
       ti++;
@@ -196,14 +197,14 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
     sentenceLookup,
     tokenPositionMaps,
     sentenceIndexLookup,
-    findSentenceForToken
+    findSentenceForToken,
   };
 }
 
 function collectOrthographies(token, primaryTokenLayer) {
   const out = {};
   const configs = readOrthographies(primaryTokenLayer?.config) || [];
-  configs.forEach(c => {
+  configs.forEach((c) => {
     const key = `orthog:${c.name}`;
     out[c.name] = token.metadata?.[key] || '';
   });
@@ -221,7 +222,7 @@ function computePieces(sentence, tokens, sliceBody) {
         content: sliceBody(lastEnd, t.begin),
         isToken: false,
         begin: lastEnd,
-        end: t.begin
+        end: t.begin,
       });
     }
     pieces.push({ type: 'token', ...t, isToken: true });
@@ -233,7 +234,7 @@ function computePieces(sentence, tokens, sliceBody) {
       content: sliceBody(lastEnd, sentence.end),
       isToken: false,
       begin: lastEnd,
-      end: sentence.end
+      end: sentence.end,
     });
   }
   return pieces;
@@ -242,7 +243,8 @@ function computePieces(sentence, tokens, sliceBody) {
 function makeBinarySearchSentenceLookup(sortedSentences) {
   return function findSentenceForToken(token) {
     if (!token || typeof token.begin !== 'number' || typeof token.end !== 'number') return null;
-    let lo = 0, hi = sortedSentences.length - 1;
+    let lo = 0,
+      hi = sortedSentences.length - 1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       const s = sortedSentences[mid];
@@ -262,8 +264,8 @@ function makeBinarySearchSentenceLookup(sortedSentences) {
 // without a long-lived client to schedule the cleanup against.
 function collectSingleTokenVocabLinks(vocabularies) {
   const out = {};
-  Object.values(vocabularies || {}).forEach(vocab => {
-    (vocab.vocabLinks || []).forEach(link => {
+  Object.values(vocabularies || {}).forEach((vocab) => {
+    (vocab.vocabLinks || []).forEach((link) => {
       if (!Array.isArray(link.tokens) || link.tokens.length !== 1 || !link.vocabItem) return;
       const tokenId = link.tokens[0];
       const linkMeta = link.metadata || {};
@@ -278,7 +280,7 @@ function collectSingleTokenVocabLinks(vocabularies) {
         // renders all three distinctly. `inferred` kept as the legacy boolean
         // (machine-made and not yet human-confirmed).
         prov: provState(linkMeta),
-        inferred: provState(linkMeta) === PROV_STATES.MACHINE
+        inferred: provState(linkMeta) === PROV_STATES.MACHINE,
       };
     });
   });

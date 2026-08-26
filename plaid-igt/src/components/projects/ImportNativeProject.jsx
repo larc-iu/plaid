@@ -67,7 +67,9 @@ export const ImportNativeProject = () => {
           resumeProjectId: projectIdRef.current,
           setupData: deriveSetupData(archive.manifest, projectName.trim()),
           onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.15 }),
-          onProjectCreated: (id) => { projectIdRef.current = id; },
+          onProjectCreated: (id) => {
+            projectIdRef.current = id;
+          },
         });
         if (setup.failures.length > 0) throw new Error(setup.failures.join(' — '));
         projectIdRef.current = setup.projectId;
@@ -98,9 +100,15 @@ export const ImportNativeProject = () => {
       setResults(res);
       setStage('done');
       if (res.warnings.length) {
-        notifyWarning(`Imported with ${res.warnings.length} warning${res.warnings.length === 1 ? '' : 's'}.`, 'Import finished');
+        notifyWarning(
+          `Imported with ${res.warnings.length} warning${res.warnings.length === 1 ? '' : 's'}.`,
+          'Import finished',
+        );
       } else {
-        notifySuccess(`Imported ${res.imported} document${res.imported === 1 ? '' : 's'}.`, 'Import Complete');
+        notifySuccess(
+          `Imported ${res.imported} document${res.imported === 1 ? '' : 's'}.`,
+          'Import Complete',
+        );
       }
     } catch (e) {
       console.error('Archive import failed:', e);
@@ -114,16 +122,23 @@ export const ImportNativeProject = () => {
   const itemCount = archive?.vocabularies.reduce((n, v) => n + (v.data.items?.length ?? 0), 0) ?? 0;
   const mediaCount = archive?.documents.filter((d) => d.mediaBytes).length ?? 0;
   const fieldCount = manifest
-    ? ['sentence', 'word', 'morpheme'].reduce((n, k) => n + (manifest.schema?.fields?.[k]?.length ?? 0), 0)
+    ? ['sentence', 'word', 'morpheme'].reduce(
+        (n, k) => n + (manifest.schema?.fields?.[k]?.length ?? 0),
+        0,
+      )
     : 0;
 
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">Projects</Link>
+          <Link to="/projects" className="hover:text-foreground hover:underline">
+            Projects
+          </Link>
           <span>/</span>
-          <Link to="/projects/new" className="hover:text-foreground hover:underline">New Project</Link>
+          <Link to="/projects/new" className="hover:text-foreground hover:underline">
+            New Project
+          </Link>
           <span>/</span>
           <span>Import archive</span>
         </nav>
@@ -131,8 +146,8 @@ export const ImportNativeProject = () => {
         <div>
           <h1 className="text-2xl font-bold">Import a Plaid IGT archive</h1>
           <p className="text-sm text-muted-foreground">
-            Recreate a project from a “Plaid IGT JSON” export — texts, analyses,
-            vocabularies, time alignment, media, and provenance.
+            Recreate a project from a “Plaid IGT JSON” export — texts, analyses, vocabularies, time
+            alignment, media, and provenance.
           </p>
         </div>
 
@@ -141,7 +156,10 @@ export const ImportNativeProject = () => {
             className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed p-12 text-center hover:bg-muted/50"
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleFile(e.dataTransfer.files?.[0]);
+            }}
           >
             <Upload className="h-8 w-8 text-muted-foreground" />
             <p className="font-medium">Drop an exported .zip archive here, or click to choose</p>
@@ -171,22 +189,30 @@ export const ImportNativeProject = () => {
               <p className="mb-2 font-medium">
                 Contents of “{manifest.project?.name ?? 'archive'}”
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
-                  exported {manifest.exportedAt ? new Date(manifest.exportedAt).toLocaleString() : 'unknown'}
+                  exported{' '}
+                  {manifest.exportedAt ? new Date(manifest.exportedAt).toLocaleString() : 'unknown'}
                   {manifest.asOf ? ` (as of ${new Date(manifest.asOf).toLocaleString()})` : ''}
                 </span>
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
                 <p>{archive.documents.length} documents</p>
-                <p>{archive.vocabularies.length} vocabular{archive.vocabularies.length === 1 ? 'y' : 'ies'}</p>
+                <p>
+                  {archive.vocabularies.length} vocabular
+                  {archive.vocabularies.length === 1 ? 'y' : 'ies'}
+                </p>
                 <p>{itemCount.toLocaleString()} vocabulary items</p>
                 <p>{fieldCount} annotation fields</p>
-                <p>{(manifest.schema?.orthographies?.length ?? 0)} orthographies</p>
-                <p>{mediaCount} media file{mediaCount === 1 ? '' : 's'}</p>
+                <p>{manifest.schema?.orthographies?.length ?? 0} orthographies</p>
+                <p>
+                  {mediaCount} media file{mediaCount === 1 ? '' : 's'}
+                </p>
               </div>
             </div>
 
             <div className="rounded-lg border bg-card p-4">
-              <label className="mb-1 block text-sm font-medium" htmlFor="native-project-name">Project name</label>
+              <label className="mb-1 block text-sm font-medium" htmlFor="native-project-name">
+                Project name
+              </label>
               <Input
                 id="native-project-name"
                 value={projectName}
@@ -218,14 +244,19 @@ export const ImportNativeProject = () => {
             {stage === 'done' && results && (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
                 <p className="flex items-center gap-2 font-medium">
-                  <Check className="h-4 w-4" /> Imported {results.imported} document{results.imported === 1 ? '' : 's'}
+                  <Check className="h-4 w-4" /> Imported {results.imported} document
+                  {results.imported === 1 ? '' : 's'}
                   {results.skipped ? ` (${results.skipped} already done)` : ''}
                   {results.redone ? ` (${results.redone} redone)` : ''}
                 </p>
                 {results.warnings.length > 0 && (
                   <ul className="mt-2 list-disc pl-5">
-                    {results.warnings.slice(0, 8).map((w, i) => <li key={i}>{w}</li>)}
-                    {results.warnings.length > 8 && <li>…and {results.warnings.length - 8} more</li>}
+                    {results.warnings.slice(0, 8).map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                    {results.warnings.length > 8 && (
+                      <li>…and {results.warnings.length - 8} more</li>
+                    )}
                   </ul>
                 )}
               </div>
@@ -234,11 +265,22 @@ export const ImportNativeProject = () => {
             <div className="flex justify-end gap-2">
               {stage === 'review' && (
                 <Button onClick={startImport} disabled={!projectName.trim()}>
-                  {runError ? <><RefreshCw className="h-4 w-4" /> Retry import</> : 'Create project & import'}
+                  {runError ? (
+                    <>
+                      <RefreshCw className="h-4 w-4" /> Retry import
+                    </>
+                  ) : (
+                    'Create project & import'
+                  )}
                 </Button>
               )}
               {stage === 'running' && (
-                <Button variant="outline" onClick={() => { stopRef.current = true; }}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    stopRef.current = true;
+                  }}
+                >
                   <Square className="h-4 w-4" /> Stop
                 </Button>
               )}

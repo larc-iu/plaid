@@ -31,18 +31,40 @@ export function buildMatchSpec(queryText, matchType) {
 export function searchDomains(layerInfo, vocabs) {
   const domains = [];
   if (layerInfo.primaryTokenLayer) {
-    domains.push({ id: 'words', label: 'Words', kind: 'token', layerId: layerInfo.primaryTokenLayer.id });
+    domains.push({
+      id: 'words',
+      label: 'Words',
+      kind: 'token',
+      layerId: layerInfo.primaryTokenLayer.id,
+    });
   }
   if (layerInfo.morphemeTokenLayer) {
-    domains.push({ id: 'morphemes', label: 'Morphemes', kind: 'morpheme', layerId: layerInfo.morphemeTokenLayer.id });
+    domains.push({
+      id: 'morphemes',
+      label: 'Morphemes',
+      kind: 'morpheme',
+      layerId: layerInfo.morphemeTokenLayer.id,
+    });
   }
   for (const scope of ['word', 'morpheme', 'sentence']) {
     for (const sl of layerInfo.spanLayers?.[scope] || []) {
-      domains.push({ id: `span:${sl.id}`, label: `${sl.name} (${scope})`, kind: 'span', layerId: sl.id, scope, field: sl.name });
+      domains.push({
+        id: `span:${sl.id}`,
+        label: `${sl.name} (${scope})`,
+        kind: 'span',
+        layerId: sl.id,
+        scope,
+        field: sl.name,
+      });
     }
   }
   if ((vocabs || []).length > 0) {
-    domains.push({ id: 'lexicon', label: 'Lexicon (linked items)', kind: 'lexicon', vocabIds: vocabs.map((v) => v.id) });
+    domains.push({
+      id: 'lexicon',
+      label: 'Lexicon (linked items)',
+      kind: 'lexicon',
+      vocabIds: vocabs.map((v) => v.id),
+    });
   }
   return domains;
 }
@@ -52,20 +74,41 @@ const HIT_LIMIT = 500;
 // Hit-id queries. Lexicon returns ONE QUERY PER VOCAB (merge results).
 export function hitsQueries(domain, spec) {
   if (domain.kind === 'token') {
-    return [{ find: ['?t'], where: [['token', '?t', { layer: domain.layerId, value: spec }]], limit: HIT_LIMIT }];
+    return [
+      {
+        find: ['?t'],
+        where: [['token', '?t', { layer: domain.layerId, value: spec }]],
+        limit: HIT_LIMIT,
+      },
+    ];
   }
   if (domain.kind === 'morpheme') {
     // Morpheme forms live in token metadata `form` (the token's own value is
     // the parent word's slice of the baseline).
-    return [{ find: ['?t'], where: [['token', '?t', { layer: domain.layerId, metadata: { form: spec } }]], limit: HIT_LIMIT }];
+    return [
+      {
+        find: ['?t'],
+        where: [['token', '?t', { layer: domain.layerId, metadata: { form: spec } }]],
+        limit: HIT_LIMIT,
+      },
+    ];
   }
   if (domain.kind === 'span') {
-    return [{ find: ['?s'], where: [['span', '?s', { layer: domain.layerId, value: spec }]], limit: HIT_LIMIT }];
+    return [
+      {
+        find: ['?s'],
+        where: [['span', '?s', { layer: domain.layerId, value: spec }]],
+        limit: HIT_LIMIT,
+      },
+    ];
   }
   // lexicon: tokens linked to matching items
   return domain.vocabIds.map((vid) => ({
     find: ['?t'],
-    where: [['vocab', '?v', { layer: vid, form: spec }], ['vocab-link', '?t', '?v']],
+    where: [
+      ['vocab', '?v', { layer: vid, form: spec }],
+      ['vocab-link', '?t', '?v'],
+    ],
     limit: HIT_LIMIT,
   }));
 }
@@ -73,13 +116,30 @@ export function hitsQueries(domain, spec) {
 export function hitsByDocQueries(domain, spec) {
   const agg = { group: ['?d'], aggregates: [['count']] };
   if (domain.kind === 'token') {
-    return [{ where: [['token', '?t', { layer: domain.layerId, value: spec, doc: { var: '?d' } }]], return: agg }];
+    return [
+      {
+        where: [['token', '?t', { layer: domain.layerId, value: spec, doc: { var: '?d' } }]],
+        return: agg,
+      },
+    ];
   }
   if (domain.kind === 'morpheme') {
-    return [{ where: [['token', '?t', { layer: domain.layerId, metadata: { form: spec }, doc: { var: '?d' } }]], return: agg }];
+    return [
+      {
+        where: [
+          ['token', '?t', { layer: domain.layerId, metadata: { form: spec }, doc: { var: '?d' } }],
+        ],
+        return: agg,
+      },
+    ];
   }
   if (domain.kind === 'span') {
-    return [{ where: [['span', '?s', { layer: domain.layerId, value: spec, doc: { var: '?d' } }]], return: agg }];
+    return [
+      {
+        where: [['span', '?s', { layer: domain.layerId, value: spec, doc: { var: '?d' } }]],
+        return: agg,
+      },
+    ];
   }
   return domain.vocabIds.map((vid) => ({
     where: [
@@ -99,31 +159,40 @@ export function hitsByDocQueries(domain, spec) {
 export function freqQueries(domain, spec) {
   const agg = { group: null, aggregates: [['count']] };
   if (domain.kind === 'token') {
-    return [{
-      where: [
-        ['token', '?t', { layer: domain.layerId, value: spec }],
-        ['token', '?t', { value: { var: '?val' } }],
-      ],
-      return: { ...agg, group: ['?val'] },
-    }];
+    return [
+      {
+        where: [
+          ['token', '?t', { layer: domain.layerId, value: spec }],
+          ['token', '?t', { value: { var: '?val' } }],
+        ],
+        return: { ...agg, group: ['?val'] },
+      },
+    ];
   }
   if (domain.kind === 'morpheme') {
-    return [{
-      where: [['token', '?t', { layer: domain.layerId, metadata: { form: spec } }]],
-      return: { ...agg, group: ['?t.metadata.form'] },
-    }];
+    return [
+      {
+        where: [['token', '?t', { layer: domain.layerId, metadata: { form: spec } }]],
+        return: { ...agg, group: ['?t.metadata.form'] },
+      },
+    ];
   }
   if (domain.kind === 'span') {
-    return [{
-      where: [
-        ['span', '?s', { layer: domain.layerId, value: spec }],
-        ['span', '?s', { value: { var: '?val' } }],
-      ],
-      return: { ...agg, group: ['?val'] },
-    }];
+    return [
+      {
+        where: [
+          ['span', '?s', { layer: domain.layerId, value: spec }],
+          ['span', '?s', { value: { var: '?val' } }],
+        ],
+        return: { ...agg, group: ['?val'] },
+      },
+    ];
   }
   return domain.vocabIds.map((vid) => ({
-    where: [['vocab', '?v', { layer: vid, form: spec }], ['vocab-link', '?t', '?v']],
+    where: [
+      ['vocab', '?v', { layer: vid, form: spec }],
+      ['vocab-link', '?t', '?v'],
+    ],
     return: { ...agg, group: ['?v'] },
   }));
 }

@@ -13,13 +13,13 @@ function parseJwtPayload(token) {
     if (parts.length !== 3) {
       throw new Error('Invalid JWT token format');
     }
-    
+
     // Decode the payload (second part)
     const payload = parts[1];
     // Add padding if needed for base64 decoding
-    const paddedPayload = payload + '='.repeat((4 - payload.length % 4) % 4);
+    const paddedPayload = payload + '='.repeat((4 - (payload.length % 4)) % 4);
     const decodedPayload = atob(paddedPayload);
-    
+
     return JSON.parse(decodedPayload);
   } catch (error) {
     console.error('Failed to parse JWT payload:', error);
@@ -30,7 +30,7 @@ function parseJwtPayload(token) {
 // Extract user ID from JWT token
 function getUserIdFromToken(token) {
   const payload = parseJwtPayload(token);
-  return payload?.['user/id'] || null;  // Note: Clojure namespaced keyword becomes "user/id"
+  return payload?.['user/id'] || null; // Note: Clojure namespaced keyword becomes "user/id"
 }
 
 export const authService = {
@@ -40,33 +40,33 @@ export const authService = {
       client = await PlaidClient.login(BASE_URL, username, password, {
         onAuthError: () => authService.logout(),
       });
-      
+
       // Extract token from the client
       const token = client.token;
-      
+
       // Extract user ID from JWT token
       const userId = getUserIdFromToken(token);
       if (!userId) {
         throw new Error('Could not extract user ID from token');
       }
-      
+
       // Fetch complete user profile from server
       const userProfile = await client.users.get(userId);
-      
+
       // Store token and user info
       localStorage.setItem('token', token);
       localStorage.setItem('userId', userId);
       localStorage.setItem('username', userProfile.username);
       // Note: PlaidClient transforms is-admin to isAdmin
       localStorage.setItem('isAdmin', (userProfile.isAdmin || false).toString());
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         user: {
           id: userId,
           username: userProfile.username,
-          isAdmin: userProfile.isAdmin || false
-        }
+          isAdmin: userProfile.isAdmin || false,
+        },
       };
     } catch (error) {
       console.error('Login failed:', error);
@@ -95,13 +95,13 @@ export const authService = {
     const userId = localStorage.getItem('userId');
     const token = localStorage.getItem('token');
     const isAdmin = localStorage.getItem('isAdmin') === 'true';
-    
+
     if (!username || !userId || !token) return null;
-    
-    return { 
+
+    return {
       id: userId,
       username: username,
-      isAdmin: isAdmin
+      isAdmin: isAdmin,
     };
   },
 
@@ -122,5 +122,5 @@ export const authService = {
       });
     }
     return client;
-  }
+  },
 };

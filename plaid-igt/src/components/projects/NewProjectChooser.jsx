@@ -17,13 +17,15 @@ const OPTIONS = [
     to: '/projects/import',
     icon: FileUp,
     title: 'Import from FieldWorks',
-    description: 'Create a project from a FLEx backup (.fwbackup) — texts, glosses, morpheme analyses, translations, and the full lexicon.',
+    description:
+      'Create a project from a FLEx backup (.fwbackup) — texts, glosses, morpheme analyses, translations, and the full lexicon.',
   },
   {
     to: '/projects/import-archive',
     icon: Archive,
     title: 'Import a Plaid IGT archive',
-    description: 'Recreate a project from a "Plaid IGT JSON" export (.zip) — texts, analyses, vocabularies, time alignment, media, and provenance.',
+    description:
+      'Recreate a project from a "Plaid IGT JSON" export (.zip) — texts, analyses, vocabularies, time alignment, media, and provenance.',
   },
 ];
 
@@ -34,7 +36,9 @@ export const NewProjectChooser = () => {
     <div className="tw mx-auto max-w-3xl px-4 py-8">
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">Projects</Link>
+          <Link to="/projects" className="hover:text-foreground hover:underline">
+            Projects
+          </Link>
           <span>/</span>
           <span>New Project</span>
         </nav>

@@ -40,15 +40,21 @@ export const isPermissionError = (error) => {
 // surface stack-trace-like internals (e.g. "… at http://localhost:8080/api/v1/…").
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
   switch (statusOf(error)) {
-    case 401: return 'Your session has expired — please sign in again.';
-    case 403: return "You don't have permission to do that.";
-    case 404: return 'That item could not be found.';
-    case 409: return 'This changed elsewhere since you loaded it — reload to get the latest, then try again.';
-    case 423: return 'This document is being edited right now (by another user or a service). Try again in a moment.';
-    default: break;
+    case 401:
+      return 'Your session has expired — please sign in again.';
+    case 403:
+      return "You don't have permission to do that.";
+    case 404:
+      return 'That item could not be found.';
+    case 409:
+      return 'This changed elsewhere since you loaded it — reload to get the latest, then try again.';
+    case 423:
+      return 'This document is being edited right now (by another user or a service). Try again in a moment.';
+    default:
+      break;
   }
   const msg = String((error && error.message) || error || '')
-    .replace(/\s*at\s+https?:\/\/\S+/gi, '')   // " at http://…/api/v1/…"
+    .replace(/\s*at\s+https?:\/\/\S+/gi, '') // " at http://…/api/v1/…"
     .replace(UUID_RE, 'this item')
     .replace(/^HTTP \d+\s*/i, '')
     .trim();

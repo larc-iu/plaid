@@ -15,12 +15,19 @@ import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
 import { buildFlextextDocument } from './flextext.js';
 import { serializeVocabTsv } from './vocabTsv.js';
-import { buildProjectFile, serializeVocabularyNative, serializeDocumentNative } from './nativeJson.js';
+import {
+  buildProjectFile,
+  serializeVocabularyNative,
+  serializeDocumentNative,
+} from './nativeJson.js';
 import { sanitizeFilename, dedupeFilenames, assembleZip } from './files.js';
 import { formatExt } from './presets.js';
 
 export class ExportCancelled extends Error {
-  constructor() { super('Export cancelled'); this.name = 'ExportCancelled'; }
+  constructor() {
+    super('Export cancelled');
+    this.name = 'ExportCancelled';
+  }
 }
 
 const toJson = (obj) => JSON.stringify(obj, null, 2);
@@ -38,16 +45,28 @@ function serializeDoc(igtDoc, preset, layers) {
 // extension comes from the response Content-Type. Extensions matter: media
 // re-upload on import is validated by filename extension server-side.
 const MEDIA_EXTS = {
-  'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/wave': '.wav',
+  'audio/wav': '.wav',
+  'audio/x-wav': '.wav',
+  'audio/wave': '.wav',
   'audio/vnd.wave': '.wav', // what the core serves for .wav uploads
-  'audio/mpeg': '.mp3', 'audio/mp4': '.m4a', 'audio/aac': '.aac',
-  'audio/ogg': '.ogg', 'audio/flac': '.flac', 'audio/x-flac': '.flac',
+  'audio/mpeg': '.mp3',
+  'audio/mp4': '.m4a',
+  'audio/aac': '.aac',
+  'audio/ogg': '.ogg',
+  'audio/flac': '.flac',
+  'audio/x-flac': '.flac',
   'audio/webm': '.weba',
-  'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
-  'video/x-msvideo': '.avi', 'video/mpeg': '.mpg',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/quicktime': '.mov',
+  'video/x-msvideo': '.avi',
+  'video/mpeg': '.mpg',
 };
 const extOfContentType = (contentType) => {
-  const mime = String(contentType ?? '').split(';')[0].trim().toLowerCase();
+  const mime = String(contentType ?? '')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
   if (MEDIA_EXTS[mime]) return MEDIA_EXTS[mime];
   // Generic fallback: subtype minus x-/vnd. decorations, when it looks like
   // a plausible extension token.
@@ -83,11 +102,18 @@ export async function fetchDocumentMedia(client, documentId, asOf) {
  * Returns { filename, blob, warnings: [string] }.
  */
 export async function runExport({
-  client, project, preset, scope, asOf = null,
-  onProgress = () => {}, shouldStop = () => false,
+  client,
+  project,
+  preset,
+  scope,
+  asOf = null,
+  onProgress = () => {},
+  shouldStop = () => false,
   fetchMedia = fetchDocumentMedia,
 }) {
-  const checkStop = () => { if (shouldStop()) throw new ExportCancelled(); };
+  const checkStop = () => {
+    if (shouldStop()) throw new ExportCancelled();
+  };
   const ext = formatExt(preset.format);
   const layers = discoverExportLayers(project);
   const warnings = [];
@@ -116,7 +142,9 @@ export async function runExport({
     const loaded = await loadProjectVocabularies(client, project, asOf);
     vocabs = Object.values(loaded.vocabularies);
     if (loaded.failedCount) {
-      warnings.push(`${loaded.failedCount} vocabular${loaded.failedCount === 1 ? 'y' : 'ies'} failed to load`);
+      warnings.push(
+        `${loaded.failedCount} vocabular${loaded.failedCount === 1 ? 'y' : 'ies'} failed to load`,
+      );
     }
   }
   checkStop();
@@ -180,12 +208,15 @@ export async function runExport({
   }
   onProgress({ done: docIds.length, total: docIds.length, name: null });
   if (!docFiles.length) {
-    throw new Error(warnings.length ? `Nothing exported — ${warnings.join('; ')}` : 'Nothing to export');
+    throw new Error(
+      warnings.length ? `Nothing exported — ${warnings.join('; ')}` : 'Nothing to export',
+    );
   }
 
   // Single document → the bare file.
   if (!wantZip) {
-    const mime = preset.format === 'flextext' ? 'text/xml;charset=utf-8' : 'text/plain;charset=utf-8';
+    const mime =
+      preset.format === 'flextext' ? 'text/xml;charset=utf-8' : 'text/plain;charset=utf-8';
     return {
       filename: docFiles[0].name,
       blob: new Blob([docFiles[0].data], { type: mime }),
@@ -194,33 +225,51 @@ export async function runExport({
   }
 
   const docNames = dedupeFilenames(docFiles.map((f) => f.name));
-  const entries = docNames.map((name, i) => ({ path: `documents/${name}`, data: docFiles[i].data }));
+  const entries = docNames.map((name, i) => ({
+    path: `documents/${name}`,
+    data: docFiles[i].data,
+  }));
 
   if (isNative) {
-    const vocabNames = dedupeFilenames(vocabs.map((v) => `${sanitizeFilename(v.name || v.id)}.json`));
+    const vocabNames = dedupeFilenames(
+      vocabs.map((v) => `${sanitizeFilename(v.name || v.id)}.json`),
+    );
     vocabs.forEach((vocab, i) => {
-      entries.push({ path: `vocabularies/${vocabNames[i]}`, data: toJson(serializeVocabularyNative(vocab)) });
+      entries.push({
+        path: `vocabularies/${vocabNames[i]}`,
+        data: toJson(serializeVocabularyNative(vocab)),
+      });
     });
     entries.push(...mediaEntries);
     entries.unshift({
       path: 'project.json',
-      data: toJson(buildProjectFile({
-        project,
-        documents: docFiles.map((f, i) => ({
-          id: f.id, name: f.docName, file: `documents/${docNames[i]}`, mediaFile: f.mediaFile,
-        })),
-        vocabularies: vocabs.map((v, i) => ({ id: v.id, name: v.name, file: `vocabularies/${vocabNames[i]}` })),
-        asOf,
-        exportedAt: new Date().toISOString(),
-      })),
+      data: toJson(
+        buildProjectFile({
+          project,
+          documents: docFiles.map((f, i) => ({
+            id: f.id,
+            name: f.docName,
+            file: `documents/${docNames[i]}`,
+            mediaFile: f.mediaFile,
+          })),
+          vocabularies: vocabs.map((v, i) => ({
+            id: v.id,
+            name: v.name,
+            file: `vocabularies/${vocabNames[i]}`,
+          })),
+          asOf,
+          exportedAt: new Date().toISOString(),
+        }),
+      ),
     });
   } else if (wantVocabTsvs) {
     // Vocab TSVs omit usage counts (the UI's counts are cross-project, which
     // would be misleading in a per-project archive).
     const names = dedupeFilenames(vocabs.map((v) => `${sanitizeFilename(v.name || v.id)}.tsv`));
     vocabs.forEach((vocab, i) => {
-      const fieldNames = Object.keys(readVocabFields(vocab.config) || {})
-        .filter((n) => n.toLowerCase() !== 'form');
+      const fieldNames = Object.keys(readVocabFields(vocab.config) || {}).filter(
+        (n) => n.toLowerCase() !== 'form',
+      );
       entries.push({
         path: `vocabularies/${names[i]}`,
         data: serializeVocabTsv({ items: vocab.items || [], fieldNames }),
@@ -228,9 +277,7 @@ export async function runExport({
     });
   }
   checkStop();
-  const zipStem = scope.type === 'document'
-    ? docFiles[0].docName
-    : (project.name || 'project');
+  const zipStem = scope.type === 'document' ? docFiles[0].docName : project.name || 'project';
   return {
     filename: `${sanitizeFilename(zipStem)}-export.zip`,
     blob: await assembleZip(entries),

@@ -21,10 +21,9 @@ import { isValidMorphType } from '../affixMarkers.js';
 const verified = (morpheme, patch) => ({ ...patch, ...(verifyOnEdit(morpheme?.metadata) || {}) });
 
 const morphemesInWord = (morphemeTokens, word) =>
-  (morphemeTokens || []).filter(m => m.begin === word.begin && m.end === word.end);
+  (morphemeTokens || []).filter((m) => m.begin === word.begin && m.end === word.end);
 
-const sortByPrecedence = (ms) =>
-  [...ms].sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
+const sortByPrecedence = (ms) => [...ms].sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
 
 const formOf = (morpheme, body) => {
   const meta = morpheme?.metadata;
@@ -42,7 +41,7 @@ export const morphemeMutations = {
       this.setError('Morpheme layer not configured');
       return false;
     }
-    const word = (info.primaryTokenLayer?.tokens || []).find(t => t.id === wordTokenId);
+    const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordTokenId);
     if (!word) {
       this.setError(`Word ${wordTokenId} not found`);
       return false;
@@ -59,7 +58,7 @@ export const morphemeMutations = {
         word.begin,
         word.end,
         precedence,
-        metadata
+        metadata,
       );
       const newId = result?.id || result;
 
@@ -73,7 +72,7 @@ export const morphemeMutations = {
           begin: word.begin,
           end: word.end,
           precedence,
-          metadata: form ? { form } : {}
+          metadata: form ? { form } : {},
         });
       });
     });
@@ -91,7 +90,7 @@ export const morphemeMutations = {
       this.setError('Morpheme layer not configured');
       return false;
     }
-    const word = (info.primaryTokenLayer?.tokens || []).find(t => t.id === wordTokenId);
+    const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordTokenId);
     if (!word) {
       this.setError(`Word ${wordTokenId} not found`);
       return false;
@@ -109,7 +108,7 @@ export const morphemeMutations = {
             word.begin,
             word.end,
             basePrecedence + i,
-            form ? { form } : undefined
+            form ? { form } : undefined,
           );
         });
       });
@@ -128,7 +127,7 @@ export const morphemeMutations = {
             begin: word.begin,
             end: word.end,
             precedence: basePrecedence + i,
-            metadata: form ? { form } : {}
+            metadata: form ? { form } : {},
           });
         });
       });
@@ -163,7 +162,7 @@ export const morphemeMutations = {
       this.setError('Morpheme layer not configured');
       return false;
     }
-    const target = (morphemeLayer.tokens || []).find(m => m.id === morphemeId);
+    const target = (morphemeLayer.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
       this.setError(`Morpheme ${morphemeId} not found`);
       return false;
@@ -173,16 +172,22 @@ export const morphemeMutations = {
       const firstForm = segments[0];
       const restForms = segments.slice(1);
       const siblings = sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
-      const currentPrecedence = target.precedence ?? siblings.findIndex(m => m.id === morphemeId) + 1;
-      const subsequents = siblings.filter(m => (m.precedence ?? 0) > currentPrecedence);
+      const currentPrecedence =
+        target.precedence ?? siblings.findIndex((m) => m.id === morphemeId) + 1;
+      const subsequents = siblings.filter((m) => (m.precedence ?? 0) > currentPrecedence);
       const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
 
       const results = await this._client.batched(async () => {
         // patch, not set: form edits must not clobber other metadata keys
         // (morphType from the FLEx import, in particular)
         this._client.tokens.patchMetadata(morphemeId, verified(target, { form: firstForm }));
-        shifted.forEach(m => {
-          this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + restForms.length);
+        shifted.forEach((m) => {
+          this._client.tokens.update(
+            m.id,
+            undefined,
+            undefined,
+            (m.precedence ?? 0) + restForms.length,
+          );
         });
         restForms.forEach((form, i) => {
           this._client.tokens.create(
@@ -191,7 +196,7 @@ export const morphemeMutations = {
             target.begin,
             target.end,
             currentPrecedence + 1 + i,
-            form ? { form } : undefined
+            form ? { form } : undefined,
           );
         });
       });
@@ -202,12 +207,16 @@ export const morphemeMutations = {
         const layer = infoNext.morphemeTokenLayer;
         if (!layer) return;
         const tokens = layer.tokens || [];
-        const t = tokens.find(m => m.id === morphemeId);
+        const t = tokens.find((m) => m.id === morphemeId);
         if (t) {
           t.metadata = { ...(t.metadata || {}), ...verified(target, { form: firstForm }) };
         }
-        tokens.forEach(m => {
-          if (m.begin === target.begin && m.end === target.end && (m.precedence ?? 0) > currentPrecedence) {
+        tokens.forEach((m) => {
+          if (
+            m.begin === target.begin &&
+            m.end === target.end &&
+            (m.precedence ?? 0) > currentPrecedence
+          ) {
             m.precedence = (m.precedence ?? 0) + restForms.length;
           }
         });
@@ -221,7 +230,7 @@ export const morphemeMutations = {
             begin: target.begin,
             end: target.end,
             precedence: currentPrecedence + 1 + i,
-            metadata: form ? { form } : {}
+            metadata: form ? { form } : {},
           });
         });
       });
@@ -234,13 +243,13 @@ export const morphemeMutations = {
   async mergeMorphemes(morphemeId) {
     const info = this.layerInfo;
     const morphemeLayer = info.morphemeTokenLayer;
-    const target = (morphemeLayer?.tokens || []).find(m => m.id === morphemeId);
+    const target = (morphemeLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
       this.setError(`Morpheme ${morphemeId} not found`);
       return false;
     }
     const siblings = sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
-    const idx = siblings.findIndex(m => m.id === morphemeId);
+    const idx = siblings.findIndex((m) => m.id === morphemeId);
     if (idx <= 0) return false;
     const previous = siblings[idx - 1];
 
@@ -254,7 +263,7 @@ export const morphemeMutations = {
       await this._client.batched(async () => {
         this._client.tokens.patchMetadata(previous.id, verified(previous, { form: mergedForm }));
         this._client.tokens.delete(morphemeId);
-        subsequents.forEach(m => {
+        subsequents.forEach((m) => {
           this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
         });
       });
@@ -262,11 +271,16 @@ export const morphemeMutations = {
       this._applyRawPatch((next, infoNext) => {
         const layer = infoNext.morphemeTokenLayer;
         if (!layer || !Array.isArray(layer.tokens)) return;
-        const prev = layer.tokens.find(m => m.id === previous.id);
-        if (prev) prev.metadata = { ...(prev.metadata || {}), ...verified(previous, { form: mergedForm }) };
-        layer.tokens = layer.tokens.filter(m => m.id !== morphemeId);
-        layer.tokens.forEach(m => {
-          if (m.begin === target.begin && m.end === target.end && (m.precedence ?? 0) > (target.precedence ?? 0)) {
+        const prev = layer.tokens.find((m) => m.id === previous.id);
+        if (prev)
+          prev.metadata = { ...(prev.metadata || {}), ...verified(previous, { form: mergedForm }) };
+        layer.tokens = layer.tokens.filter((m) => m.id !== morphemeId);
+        layer.tokens.forEach((m) => {
+          if (
+            m.begin === target.begin &&
+            m.end === target.end &&
+            (m.precedence ?? 0) > (target.precedence ?? 0)
+          ) {
             m.precedence = (m.precedence ?? 0) - 1;
           }
         });
@@ -281,7 +295,7 @@ export const morphemeMutations = {
   async deleteMorpheme(morphemeId) {
     const info = this.layerInfo;
     const morphemeLayer = info.morphemeTokenLayer;
-    const target = (morphemeLayer?.tokens || []).find(m => m.id === morphemeId);
+    const target = (morphemeLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
       this.setError(`Morpheme ${morphemeId} not found`);
       return false;
@@ -293,11 +307,11 @@ export const morphemeMutations = {
     }
 
     return this._withSaving('Failed to delete morpheme', async () => {
-      const subsequents = siblings.filter(m => (m.precedence ?? 0) > (target.precedence ?? 0));
+      const subsequents = siblings.filter((m) => (m.precedence ?? 0) > (target.precedence ?? 0));
 
       await this._client.batched(async () => {
         this._client.tokens.delete(morphemeId);
-        subsequents.forEach(m => {
+        subsequents.forEach((m) => {
           this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
         });
       });
@@ -305,9 +319,13 @@ export const morphemeMutations = {
       this._applyRawPatch((next, infoNext) => {
         const layer = infoNext.morphemeTokenLayer;
         if (!layer || !Array.isArray(layer.tokens)) return;
-        layer.tokens = layer.tokens.filter(m => m.id !== morphemeId);
-        layer.tokens.forEach(m => {
-          if (m.begin === target.begin && m.end === target.end && (m.precedence ?? 0) > (target.precedence ?? 0)) {
+        layer.tokens = layer.tokens.filter((m) => m.id !== morphemeId);
+        layer.tokens.forEach((m) => {
+          if (
+            m.begin === target.begin &&
+            m.end === target.end &&
+            (m.precedence ?? 0) > (target.precedence ?? 0)
+          ) {
             m.precedence = (m.precedence ?? 0) - 1;
           }
         });
@@ -318,7 +336,7 @@ export const morphemeMutations = {
   // Update a morpheme's form (single metadata patch — other keys survive).
   async updateMorphemeForm(morphemeId, form) {
     const info = this.layerInfo;
-    const target = (info.morphemeTokenLayer?.tokens || []).find(m => m.id === morphemeId);
+    const target = (info.morphemeTokenLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
       this.setError(`Morpheme ${morphemeId} not found`);
       return false;
@@ -329,7 +347,7 @@ export const morphemeMutations = {
       await this._client.tokens.patchMetadata(morphemeId, patch);
 
       this._applyRawPatch((next, infoNext) => {
-        const m = (infoNext.morphemeTokenLayer?.tokens || []).find(x => x.id === morphemeId);
+        const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === morphemeId);
         if (m) m.metadata = { ...(m.metadata || {}), ...patch };
       });
     });
@@ -345,7 +363,7 @@ export const morphemeMutations = {
       return false;
     }
     const info = this.layerInfo;
-    const target = (info.morphemeTokenLayer?.tokens || []).find(m => m.id === morphemeId);
+    const target = (info.morphemeTokenLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
       this.setError(`Morpheme ${morphemeId} not found`);
       return false;
@@ -354,10 +372,13 @@ export const morphemeMutations = {
     return this._withSaving('Failed to set morpheme type', async () => {
       // patch semantics: a null value deletes the key
       const confirm = verifyOnEdit(target.metadata) || {};
-      await this._client.tokens.patchMetadata(morphemeId, { morphType: morphType ?? null, ...confirm });
+      await this._client.tokens.patchMetadata(morphemeId, {
+        morphType: morphType ?? null,
+        ...confirm,
+      });
 
       this._applyRawPatch((next, infoNext) => {
-        const m = (infoNext.morphemeTokenLayer?.tokens || []).find(x => x.id === morphemeId);
+        const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === morphemeId);
         if (!m) return;
         const meta = { ...(m.metadata || {}), ...confirm };
         if (morphType == null) delete meta.morphType;
@@ -365,5 +386,5 @@ export const morphemeMutations = {
         m.metadata = meta;
       });
     });
-  }
+  },
 };

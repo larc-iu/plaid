@@ -1,10 +1,25 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, ArrowUp, ArrowDown, Download, Search, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Plus,
+  ArrowUp,
+  ArrowDown,
+  Download,
+  Search,
+  X,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
@@ -25,7 +40,7 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
       className={cn(
         'inline-flex items-center gap-1 font-medium text-muted-foreground transition-colors hover:text-foreground',
         active && 'text-foreground',
-        className
+        className,
       )}
     >
       {label}
@@ -34,7 +49,15 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
   );
 };
 
-export const DocumentList = ({ documents, project, projectId, client, canManage, canWrite = true, onDocumentCreated }) => {
+export const DocumentList = ({
+  documents,
+  project,
+  projectId,
+  client,
+  canManage,
+  canWrite = true,
+  onDocumentCreated,
+}) => {
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [documentName, setDocumentName] = useState('');
@@ -58,7 +81,11 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
       setWordsLoading(true);
       const wordLayerId = getIgtLayerInfo(project).primaryTokenLayer?.id;
       if (!wordLayerId || !client) {
-        if (!cancelled) { setHasWordLayer(false); setWordCounts({}); setWordsLoading(false); }
+        if (!cancelled) {
+          setHasWordLayer(false);
+          setWordCounts({});
+          setWordsLoading(false);
+        }
         return;
       }
       try {
@@ -67,20 +94,28 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
           return: { group: ['?d'], aggregates: [['count']] },
         });
         const byDoc = {};
-        for (const [docId, n] of (res?.results || [])) byDoc[docId] = n;
-        if (!cancelled) { setHasWordLayer(true); setWordCounts(byDoc); }
+        for (const [docId, n] of res?.results || []) byDoc[docId] = n;
+        if (!cancelled) {
+          setHasWordLayer(true);
+          setWordCounts(byDoc);
+        }
       } catch (err) {
         console.error('Word-count query failed:', err);
         if (!cancelled) {
           setHasWordLayer(false);
           setWordCounts({});
-          notifyWarning('Word counts could not be loaded for the document list.', 'Word counts unavailable');
+          notifyWarning(
+            'Word counts could not be loaded for the document list.',
+            'Word counts unavailable',
+          );
         }
       } finally {
         if (!cancelled) setWordsLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [project, client]);
 
   const handleCreateDocument = async () => {
@@ -110,11 +145,15 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
   };
 
   const onSort = (key) =>
-    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+    setSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
+    );
 
   const sortedDocuments = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    const matched = q ? documents.filter((d) => (d.name || '').toLowerCase().includes(q)) : documents;
+    const matched = q
+      ? documents.filter((d) => (d.name || '').toLowerCase().includes(q))
+      : documents;
     const extract = {
       name: (d) => d.name?.toLowerCase() ?? '',
       words: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : -1),
@@ -134,16 +173,23 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
   // deleting documents (or filtering) off the last page falls back into range.
   const pageCount = Math.max(1, Math.ceil(sortedDocuments.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
-  const pageDocuments = sortedDocuments.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const pageDocuments = sortedDocuments.slice(
+    currentPage * PAGE_SIZE,
+    (currentPage + 1) * PAGE_SIZE,
+  );
   const rangeStart = sortedDocuments.length === 0 ? 0 : currentPage * PAGE_SIZE + 1;
   const rangeEnd = Math.min((currentPage + 1) * PAGE_SIZE, sortedDocuments.length);
 
   // Jump back to the first page when the result set is re-scoped (filter or sort).
-  useEffect(() => { setPage(0); }, [filter, sort]);
+  useEffect(() => {
+    setPage(0);
+  }, [filter, sort]);
 
   const renderWords = (documentId) => {
     if (wordsLoading) {
-      return <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />;
+      return (
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />
+      );
     }
     if (!hasWordLayer) return '—';
     return (wordCounts[documentId] ?? 0).toLocaleString();
@@ -178,7 +224,11 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
               <Plus className="h-4 w-4" /> Create Document
             </Button>
           )}
-          <Button variant="outline" onClick={() => setExportOpen(true)} disabled={!documents.length}>
+          <Button
+            variant="outline"
+            onClick={() => setExportOpen(true)}
+            disabled={!documents.length}
+          >
             <Download className="h-4 w-4" /> Export
           </Button>
         </div>
@@ -203,10 +253,22 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
                     <SortHeader field="name" label="Document" sort={sort} onSort={onSort} />
                   </th>
                   <th className="px-4 py-2 text-right">
-                    <SortHeader field="words" label="Words" sort={sort} onSort={onSort} className="justify-end" />
+                    <SortHeader
+                      field="words"
+                      label="Words"
+                      sort={sort}
+                      onSort={onSort}
+                      className="justify-end"
+                    />
                   </th>
                   <th className="px-4 py-2 text-right">
-                    <SortHeader field="updated" label="Updated" sort={sort} onSort={onSort} className="justify-end" />
+                    <SortHeader
+                      field="updated"
+                      label="Updated"
+                      sort={sort}
+                      onSort={onSort}
+                      className="justify-end"
+                    />
                   </th>
                 </tr>
               </thead>
@@ -228,7 +290,10 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
                         </a>
                       </td>
                       <td className="p-0">
-                        <a href={href} className="block px-4 py-3 text-right tabular-nums text-muted-foreground">
+                        <a
+                          href={href}
+                          className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
+                        >
                           {renderWords(d.id)}
                         </a>
                       </td>
@@ -263,7 +328,9 @@ export const DocumentList = ({ documents, project, projectId, client, canManage,
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
-                <span className="tabular-nums">{rangeStart}–{rangeEnd} of {sortedDocuments.length}</span>
+                <span className="tabular-nums">
+                  {rangeStart}–{rangeEnd} of {sortedDocuments.length}
+                </span>
                 <Button
                   variant="ghost"
                   size="icon"

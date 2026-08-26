@@ -37,7 +37,10 @@ const morphFormOf = (m) => {
 // word's slice), tokenValue otherwise.
 export function precedentQueries(vocabIds) {
   return vocabIds.map((vid) => ({
-    where: [['vocab', '?v', { layer: vid }], ['vocab-link', '?t', '?v']],
+    where: [
+      ['vocab', '?v', { layer: vid }],
+      ['vocab-link', '?t', '?v'],
+    ],
     return: { group: ['?v', '?t.value', '?t.metadata.form'], aggregates: [['count']] },
   }));
 }
@@ -63,7 +66,10 @@ export function buildPrecedentTable(resultsPerVocab) {
     let bestN = -1;
     for (const [id, n] of m) {
       // Higher count wins; equal count breaks to the lexicographically smaller id.
-      if (n > bestN || (n === bestN && id < best)) { best = id; bestN = n; }
+      if (n > bestN || (n === bestN && id < best)) {
+        best = id;
+        bestN = n;
+      }
     }
     if (best != null) table.set(form, best);
   }
@@ -77,8 +83,9 @@ export function buildItemIndex(vocabularies) {
   const folded = new Map();
   const add = (map, key, id) => {
     const list = map.get(key);
-    if (list) { if (!list.includes(id)) list.push(id); }
-    else map.set(key, [id]);
+    if (list) {
+      if (!list.includes(id)) list.push(id);
+    } else map.set(key, [id]);
   };
   for (const vocab of Object.values(vocabularies || {})) {
     for (const it of vocab.items || []) {

@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  readExportPresets, writeExportPresets, newPreset, defaultFieldMap, formatExt,
+  readExportPresets,
+  writeExportPresets,
+  newPreset,
+  defaultFieldMap,
+  formatExt,
 } from './presets.js';
 
 const LAYERS = {

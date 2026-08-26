@@ -35,22 +35,26 @@ export const PlainTextOptions = ({ options, layers, onChange }) => {
   return (
     <div className="flex flex-col gap-4">
       <CheckGroup
-        title="Orthographies" names={layers.orthographies}
+        title="Orthographies"
+        names={layers.orthographies}
         selected={options.orthographies || []}
         onChange={(v) => set({ orthographies: v })}
       />
       <CheckGroup
-        title="Word fields" names={layers.wordFields}
+        title="Word fields"
+        names={layers.wordFields}
         selected={options.wordFields || []}
         onChange={(v) => set({ wordFields: v })}
       />
       <CheckGroup
-        title="Morpheme fields" names={layers.morphFields}
+        title="Morpheme fields"
+        names={layers.morphFields}
         selected={options.morphFields || []}
         onChange={(v) => set({ morphFields: v })}
       />
       <CheckGroup
-        title="Sentence fields" names={layers.sentFields}
+        title="Sentence fields"
+        names={layers.sentFields}
         selected={options.sentFields || []}
         onChange={(v) => set({ sentFields: v })}
       />

@@ -40,18 +40,26 @@ export const documentMutations = {
         const newTextObj = await this._client.texts.create(primaryTextLayer.id, this.id, newBody);
         if (newLen > 0) {
           try {
-            await this._client.tokens.bulkCreate([{
-              tokenLayerId: sentenceTokenLayer.id,
-              text: newTextObj.id,
-              begin: 0,
-              end: newLen
-            }]);
+            await this._client.tokens.bulkCreate([
+              {
+                tokenLayerId: sentenceTokenLayer.id,
+                text: newTextObj.id,
+                begin: 0,
+                end: newLen,
+              },
+            ]);
           } catch (bulkCreateError) {
-            console.error('Sentence partition create failed after text create; rolling back text:', bulkCreateError);
+            console.error(
+              'Sentence partition create failed after text create; rolling back text:',
+              bulkCreateError,
+            );
             try {
               await this._client.texts.delete(newTextObj.id);
             } catch (deleteError) {
-              console.error('Failed to roll back text after partition create failure:', deleteError);
+              console.error(
+                'Failed to roll back text after partition create failure:',
+                deleteError,
+              );
             }
             throw bulkCreateError;
           }
@@ -69,12 +77,14 @@ export const documentMutations = {
         const freshTextId = freshInfo.primaryTextLayer?.text?.id;
         const sentencesAfter = freshInfo.sentenceTokenLayer?.tokens || [];
         if (freshTextId && sentencesAfter.length === 0) {
-          await this._client.tokens.bulkCreate([{
-            tokenLayerId: sentenceTokenLayer.id,
-            text: freshTextId,
-            begin: 0,
-            end: newLen
-          }]);
+          await this._client.tokens.bulkCreate([
+            {
+              tokenLayerId: sentenceTokenLayer.id,
+              text: freshTextId,
+              begin: 0,
+              end: newLen,
+            },
+          ]);
           await this._reload();
         }
       }
@@ -140,5 +150,5 @@ export const documentMutations = {
       await this._client.documents.deleteMedia(this.id);
       await this._reload();
     });
-  }
+  },
 };

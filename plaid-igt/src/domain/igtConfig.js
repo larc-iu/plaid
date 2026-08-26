@@ -25,7 +25,8 @@ export const findBaselineTextLayer = (textLayers) => findByRole(textLayers, ROLE
 export const findSentenceTokenLayer = (tokenLayers) => findByRole(tokenLayers, ROLES.SENTENCE);
 export const findWordTokenLayer = (tokenLayers) => findByRole(tokenLayers, ROLES.WORD);
 export const findMorphemeTokenLayer = (tokenLayers) => findByRole(tokenLayers, ROLES.MORPHEME);
-export const findAlignmentTokenLayer = (tokenLayers) => findByRole(tokenLayers, ROLES.TIME_ALIGNMENT);
+export const findAlignmentTokenLayer = (tokenLayers) =>
+  findByRole(tokenLayers, ROLES.TIME_ALIGNMENT);
 
 // --- Private config (the `igt` namespace) ----------------------------------
 

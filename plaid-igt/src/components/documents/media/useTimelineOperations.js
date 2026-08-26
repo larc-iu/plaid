@@ -13,13 +13,13 @@ const generateAudioHash = async (arrayBuffer) => {
   // Create a simple hash from audio data
   const uint8Array = new Uint8Array(arrayBuffer);
   let hash = 0;
-  
+
   // Sample every nth byte to create a reasonable hash without processing entire file
   const step = Math.max(1, Math.floor(uint8Array.length / 10000));
   for (let i = 0; i < uint8Array.length; i += step) {
     hash = ((hash << 5) - hash + uint8Array[i]) & 0xffffffff;
   }
-  
+
   return hash.toString(36);
 };
 
@@ -48,7 +48,7 @@ const getCachedWaveform = (cacheKey) => {
 const setCachedWaveform = (cacheKey, imageData) => {
   const data = {
     imageData,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
   try {
     localStorage.setItem(cacheKey, JSON.stringify(data));
@@ -82,7 +82,7 @@ const clearOldWaveformCache = () => {
         }
       }
     }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
   } catch (error) {
     console.warn('Failed to clear old waveform cache:', error);
   }
@@ -100,7 +100,7 @@ export const useTimelineOperations = (mediaOps) => {
     if (!serverUrl) return serverUrl;
     return `${serverUrl}?token=${localStorage.getItem('token')}`;
   }, []);
-  
+
   // Local timeline state
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
@@ -108,13 +108,13 @@ export const useTimelineOperations = (mediaOps) => {
   const [tempSelection, setTempSelection] = useState(null);
   const [waveformImage, setWaveformImage] = useState(null);
   const [isLoadingWaveform, setIsLoadingWaveform] = useState(false);
-  
+
   // Resize state management
   const [isResizing, setIsResizing] = useState(false);
   const [resizingToken, setResizingToken] = useState(null);
   const [resizingHandle, setResizingHandle] = useState(null); // 'left' or 'right'
   const [tempTokenBounds, setTempTokenBounds] = useState(null);
-  
+
   // Virtualization state
   const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
 
@@ -131,9 +131,12 @@ export const useTimelineOperations = (mediaOps) => {
   // Zoom and timeline calculations
   const timelineWidth = mediaOps.duration * mediaOps.pixelsPerSecond;
 
-  const handlePixelsPerSecondChange = useCallback((newPixelsPerSecond) => {
-    mediaOps.setPixelsPerSecond(newPixelsPerSecond);
-  }, [mediaOps]);
+  const handlePixelsPerSecondChange = useCallback(
+    (newPixelsPerSecond) => {
+      mediaOps.setPixelsPerSecond(newPixelsPerSecond);
+    },
+    [mediaOps],
+  );
 
   // Calculate visible tokens for virtualization
   const getVisibleTokens = useCallback(() => {
@@ -147,56 +150,82 @@ export const useTimelineOperations = (mediaOps) => {
     // Calculate visible time range with buffer
     const bufferTime = 10; // seconds of buffer on each side
     const visibleTimeStart = Math.max(0, scrollLeft / mediaOps.pixelsPerSecond - bufferTime);
-    const visibleTimeEnd = Math.min(mediaOps.duration, (scrollLeft + containerWidth) / mediaOps.pixelsPerSecond + bufferTime);
+    const visibleTimeEnd = Math.min(
+      mediaOps.duration,
+      (scrollLeft + containerWidth) / mediaOps.pixelsPerSecond + bufferTime,
+    );
 
     // Filter tokens that intersect with visible range
-    return (doc.alignmentTokens || []).filter(token => {
+    return (doc.alignmentTokens || []).filter((token) => {
       const tokenStart = token.metadata?.timeBegin || 0;
       const tokenEnd = token.metadata?.timeEnd || token.metadata?.timeBegin || 1;
 
       // Check if token intersects with visible range
       return tokenEnd >= visibleTimeStart && tokenStart <= visibleTimeEnd;
     });
-  }, [timelineContainerRef, mediaOps.duration, mediaOps.pixelsPerSecond, timelineScrollLeft, doc.alignmentTokens]);
+  }, [
+    timelineContainerRef,
+    mediaOps.duration,
+    mediaOps.pixelsPerSecond,
+    timelineScrollLeft,
+    doc.alignmentTokens,
+  ]);
 
-  const getTimeFromPosition = useCallback((clientX) => {
-    if (!timelineRef.current) return 0;
-    const rect = timelineRef.current.getBoundingClientRect();
-    const clickX = clientX - rect.left;
-    const timeAtClick = clickX / mediaOps.pixelsPerSecond;
-    return Math.max(0, Math.min(mediaOps.duration, timeAtClick));
-  }, [mediaOps.pixelsPerSecond, mediaOps.duration]);
+  const getTimeFromPosition = useCallback(
+    (clientX) => {
+      if (!timelineRef.current) return 0;
+      const rect = timelineRef.current.getBoundingClientRect();
+      const clickX = clientX - rect.left;
+      const timeAtClick = clickX / mediaOps.pixelsPerSecond;
+      return Math.max(0, Math.min(mediaOps.duration, timeAtClick));
+    },
+    [mediaOps.pixelsPerSecond, mediaOps.duration],
+  );
 
   // Helper function to auto-scroll timeline to show current position
-  const autoScrollToTime = useCallback((time) => {
-    if (timelineContainerRef.current && mediaOps.pixelsPerSecond > 0) {
-      const position = time * mediaOps.pixelsPerSecond;
-      const containerWidth = timelineContainerRef.current.clientWidth;
-      const scrollLeft = position - containerWidth / 2; // Center the position
-      timelineContainerRef.current.scrollLeft = Math.max(0, scrollLeft);
-    }
-  }, [mediaOps.pixelsPerSecond]);
+  const autoScrollToTime = useCallback(
+    (time) => {
+      if (timelineContainerRef.current && mediaOps.pixelsPerSecond > 0) {
+        const position = time * mediaOps.pixelsPerSecond;
+        const containerWidth = timelineContainerRef.current.clientWidth;
+        const scrollLeft = position - containerWidth / 2; // Center the position
+        timelineContainerRef.current.scrollLeft = Math.max(0, scrollLeft);
+      }
+    },
+    [mediaOps.pixelsPerSecond],
+  );
 
   // Timeline interaction handlers
-  const handleTimelineClick = useCallback((time) => {
-    if (mediaElement) {
-      mediaElement.pause(); // Stop playback when clicking timeline
-      mediaElement.currentTime = time;
-      mediaOps.setCurrentTime(time); // Update state immediately
-      mediaOps.setPlayingSelection(null);
+  const handleTimelineClick = useCallback(
+    (time) => {
+      if (mediaElement) {
+        mediaElement.pause(); // Stop playback when clicking timeline
+        mediaElement.currentTime = time;
+        mediaOps.setCurrentTime(time); // Update state immediately
+        mediaOps.setPlayingSelection(null);
 
-      // If clicking inside existing selection, open popover (if not already open)
-      if (mediaOps.selection && time >= mediaOps.selection.start && time <= mediaOps.selection.end && !mediaOps.popoverOpened) {
-        mediaOps.setPopoverOpened(true);
+        // If clicking inside existing selection, open popover (if not already open)
+        if (
+          mediaOps.selection &&
+          time >= mediaOps.selection.start &&
+          time <= mediaOps.selection.end &&
+          !mediaOps.popoverOpened
+        ) {
+          mediaOps.setPopoverOpened(true);
+        }
       }
-    }
-  }, [mediaElement, mediaOps]);
+    },
+    [mediaElement, mediaOps],
+  );
 
-  const handleSelectionCreate = useCallback((startTime, endTime) => {
-    const newSelection = { start: startTime, end: endTime };
-    mediaOps.setSelection(newSelection);
-    mediaOps.setPopoverOpened(true); // Open popover immediately when selection is created
-  }, [mediaOps]);
+  const handleSelectionCreate = useCallback(
+    (startTime, endTime) => {
+      const newSelection = { start: startTime, end: endTime };
+      mediaOps.setSelection(newSelection);
+      mediaOps.setPopoverOpened(true); // Open popover immediately when selection is created
+    },
+    [mediaOps],
+  );
 
   const handleAlignmentCreated = useCallback(async () => {
     // Clear selection and trigger reload since we removed optimistic updates
@@ -208,122 +237,145 @@ export const useTimelineOperations = (mediaOps) => {
   }, [mediaOps, doc]);
 
   // Mouse event handlers for timeline
-  const handleMouseDown = useCallback((event) => {
-    if (event.button !== 0) return; // Only left mouse button
-    if (isResizing) return; // Don't start new drag while resizing
-    
-    const time = getTimeFromPosition(event.clientX);
-    
-    // Only close popover if clicking outside existing selection
-    if (!mediaOps.selection || time < mediaOps.selection.start || time > mediaOps.selection.end) {
-      mediaOps.setPopoverOpened(false);
-    }
+  const handleMouseDown = useCallback(
+    (event) => {
+      if (event.button !== 0) return; // Only left mouse button
+      if (isResizing) return; // Don't start new drag while resizing
 
-    setIsDragging(true);
-    setDragStart(time);
-    setDragEnd(time);
-    setTempSelection(null);
-  }, [isResizing, getTimeFromPosition, mediaOps]);
+      const time = getTimeFromPosition(event.clientX);
+
+      // Only close popover if clicking outside existing selection
+      if (!mediaOps.selection || time < mediaOps.selection.start || time > mediaOps.selection.end) {
+        mediaOps.setPopoverOpened(false);
+      }
+
+      setIsDragging(true);
+      setDragStart(time);
+      setDragEnd(time);
+      setTempSelection(null);
+    },
+    [isResizing, getTimeFromPosition, mediaOps],
+  );
 
   // Resize event handlers (defined first to avoid reference issues)
   const handleResizeStart = useCallback((event, token, handle) => {
     event.stopPropagation();
     event.preventDefault();
-    
+
     setIsResizing(true);
     setResizingToken(token);
     setResizingHandle(handle);
     setTempTokenBounds({
       start: token.metadata?.timeBegin || 0,
-      end: token.metadata?.timeEnd || 0
+      end: token.metadata?.timeEnd || 0,
     });
   }, []);
 
-  const handleResizeMove = useCallback((event) => {
-    if (!isResizing || !resizingToken) return;
-    
-    const currentTime = getTimeFromPosition(event.clientX);
-    
-    setTempTokenBounds(prevBounds => {
-      if (!prevBounds) return prevBounds;
-      
-      let newStart = prevBounds.start;
-      let newEnd = prevBounds.end;
-      
-      if (resizingHandle === 'left') {
-        newStart = Math.max(0, Math.min(currentTime, prevBounds.end - 0.1)); // Min 0.1s width
-      } else if (resizingHandle === 'right') {
-        newEnd = Math.min(mediaOps.duration, Math.max(currentTime, prevBounds.start + 0.1)); // Min 0.1s width
+  const handleResizeMove = useCallback(
+    (event) => {
+      if (!isResizing || !resizingToken) return;
+
+      const currentTime = getTimeFromPosition(event.clientX);
+
+      setTempTokenBounds((prevBounds) => {
+        if (!prevBounds) return prevBounds;
+
+        let newStart = prevBounds.start;
+        let newEnd = prevBounds.end;
+
+        if (resizingHandle === 'left') {
+          newStart = Math.max(0, Math.min(currentTime, prevBounds.end - 0.1)); // Min 0.1s width
+        } else if (resizingHandle === 'right') {
+          newEnd = Math.min(mediaOps.duration, Math.max(currentTime, prevBounds.start + 0.1)); // Min 0.1s width
+        }
+
+        return { start: newStart, end: newEnd };
+      });
+    },
+    [isResizing, resizingToken, resizingHandle, getTimeFromPosition, mediaOps.duration],
+  );
+
+  const handleResizeEnd = useCallback(
+    async (event) => {
+      if (!isResizing || !resizingToken || !tempTokenBounds) return;
+
+      try {
+        // The domain method does the optimistic patch + reload-on-error.
+        await doc.updateAlignmentBounds(resizingToken.id, {
+          timeBegin: tempTokenBounds.start,
+          timeEnd: tempTokenBounds.end,
+        });
+
+        // Clear selection state
+        handleAlignmentCreated();
+      } finally {
+        // Reset resize state
+        setIsResizing(false);
+        setResizingToken(null);
+        setResizingHandle(null);
+        setTempTokenBounds(null);
+      }
+    },
+    [isResizing, resizingToken, tempTokenBounds, doc, handleAlignmentCreated],
+  );
+
+  const handleMouseMove = useCallback(
+    (event) => {
+      if (isResizing) {
+        handleResizeMove(event);
+        return;
       }
 
-      return { start: newStart, end: newEnd };
-    });
-  }, [isResizing, resizingToken, resizingHandle, getTimeFromPosition, mediaOps.duration]);
+      if (!isDragging) return;
 
-  const handleResizeEnd = useCallback(async (event) => {
-    if (!isResizing || !resizingToken || !tempTokenBounds) return;
+      const time = getTimeFromPosition(event.clientX);
+      setDragEnd(time);
 
-    try {
-      // The domain method does the optimistic patch + reload-on-error.
-      await doc.updateAlignmentBounds(resizingToken.id, {
-        timeBegin: tempTokenBounds.start,
-        timeEnd: tempTokenBounds.end
-      });
+      // Create temporary selection for visual feedback
+      const start = Math.min(dragStart, time);
+      const end = Math.max(dragStart, time);
+      setTempSelection({ start, end });
+    },
+    [isResizing, isDragging, getTimeFromPosition, dragStart, handleResizeMove],
+  );
 
-      // Clear selection state
-      handleAlignmentCreated();
-    } finally {
-      // Reset resize state
-      setIsResizing(false);
-      setResizingToken(null);
-      setResizingHandle(null);
-      setTempTokenBounds(null);
-    }
-  }, [isResizing, resizingToken, tempTokenBounds, doc, handleAlignmentCreated]);
+  const handleMouseUp = useCallback(
+    (event) => {
+      // During resize, the global event handler handles mouseup to avoid double calls
+      if (isResizing) {
+        return;
+      }
 
-  const handleMouseMove = useCallback((event) => {
-    if (isResizing) {
-      handleResizeMove(event);
-      return;
-    }
-    
-    if (!isDragging) return;
-    
-    const time = getTimeFromPosition(event.clientX);
-    setDragEnd(time);
-    
-    // Create temporary selection for visual feedback
-    const start = Math.min(dragStart, time);
-    const end = Math.max(dragStart, time);
-    setTempSelection({ start, end });
-  }, [isResizing, isDragging, getTimeFromPosition, dragStart, handleResizeMove]);
+      if (!isDragging) return;
 
-  const handleMouseUp = useCallback((event) => {
-    // During resize, the global event handler handles mouseup to avoid double calls
-    if (isResizing) {
-      return;
-    }
-    
-    if (!isDragging) return;
-    
-    const time = getTimeFromPosition(event.clientX);
-    const start = Math.min(dragStart, time);
-    const end = Math.max(dragStart, time);
-    
-    setIsDragging(false);
-    setTempSelection(null);
-    
-    // If it's just a click (very small selection), seek to that time
-    if (Math.abs(end - start) < 0.1) {
-      handleTimelineClick(start);
-    } else {
-      // If it's a proper selection, create a time range for annotation
-      handleSelectionCreate(start, end);
-    }
-    
-    setDragStart(null);
-    setDragEnd(null);
-  }, [isResizing, isDragging, getTimeFromPosition, dragStart, handleTimelineClick, handleSelectionCreate, handleResizeEnd]);
+      const time = getTimeFromPosition(event.clientX);
+      const start = Math.min(dragStart, time);
+      const end = Math.max(dragStart, time);
+
+      setIsDragging(false);
+      setTempSelection(null);
+
+      // If it's just a click (very small selection), seek to that time
+      if (Math.abs(end - start) < 0.1) {
+        handleTimelineClick(start);
+      } else {
+        // If it's a proper selection, create a time range for annotation
+        handleSelectionCreate(start, end);
+      }
+
+      setDragStart(null);
+      setDragEnd(null);
+    },
+    [
+      isResizing,
+      isDragging,
+      getTimeFromPosition,
+      dragStart,
+      handleTimelineClick,
+      handleSelectionCreate,
+      handleResizeEnd,
+    ],
+  );
 
   // Global mouse event listeners for resize
   useEffect(() => {
@@ -361,9 +413,10 @@ export const useTimelineOperations = (mediaOps) => {
         const oldPixelsPerSecond = mediaOps.pixelsPerSecond;
         const delta = event.deltaY > 0 ? -1 : 1; // Reverse for natural zooming
         const zoomFactor = 1.1;
-        const newPixelsPerSecond = delta > 0
-          ? Math.min(100, oldPixelsPerSecond * zoomFactor)
-          : Math.max(4, oldPixelsPerSecond / zoomFactor);
+        const newPixelsPerSecond =
+          delta > 0
+            ? Math.min(100, oldPixelsPerSecond * zoomFactor)
+            : Math.max(4, oldPixelsPerSecond / zoomFactor);
         if (newPixelsPerSecond !== oldPixelsPerSecond) {
           // Zoom anchored at the pointer: remember the time step currently under
           // the cursor and its pixel offset inside the scroll viewport. The
@@ -373,7 +426,7 @@ export const useTimelineOperations = (mediaOps) => {
           const pointerX = event.clientX - rect.left;
           zoomAnchorRef.current = {
             timeAtPointer: (container.scrollLeft + pointerX) / oldPixelsPerSecond,
-            pointerX
+            pointerX,
           };
           handlePixelsPerSecondChange(newPixelsPerSecond);
         }
@@ -401,7 +454,10 @@ export const useTimelineOperations = (mediaOps) => {
     zoomAnchorRef.current = null;
     const container = timelineContainerRef.current;
     if (!container) return;
-    const nextScrollLeft = Math.max(0, anchor.timeAtPointer * mediaOps.pixelsPerSecond - anchor.pointerX);
+    const nextScrollLeft = Math.max(
+      0,
+      anchor.timeAtPointer * mediaOps.pixelsPerSecond - anchor.pointerX,
+    );
     container.scrollLeft = nextScrollLeft;
     setTimelineScrollLeft(nextScrollLeft);
   }, [mediaOps.pixelsPerSecond]);
@@ -409,32 +465,37 @@ export const useTimelineOperations = (mediaOps) => {
   // Smooth needle movement with auto-scroll
   useEffect(() => {
     const updateNeedle = () => {
-      if (needleRef.current && timelineRef.current && mediaElement && mediaOps.pixelsPerSecond > 0) {
+      if (
+        needleRef.current &&
+        timelineRef.current &&
+        mediaElement &&
+        mediaOps.pixelsPerSecond > 0
+      ) {
         const currentTime = mediaElement.currentTime;
         const position = currentTime * mediaOps.pixelsPerSecond;
         needleRef.current.style.left = `${position}px`;
-        
+
         // Auto-scroll to keep needle in view
         const timelineContainer = timelineContainerRef.current; // The scrollable Box
         if (timelineContainer) {
           const containerWidth = timelineContainer.clientWidth;
           const scrollLeft = timelineContainer.scrollLeft;
           const scrollRight = scrollLeft + containerWidth;
-          
+
           // Add some padding so needle doesn't stick to edge
           const padding = containerWidth * 0.1; // 10% padding
-          
+
           // Check if needle is off-screen and auto-scroll
           if (position < scrollLeft + padding) {
             // Needle going off left side
             timelineContainer.scrollLeft = Math.max(0, position - padding);
           } else if (position > scrollRight - padding) {
-            // Needle going off right side  
+            // Needle going off right side
             timelineContainer.scrollLeft = position - containerWidth + padding;
           }
         }
       }
-      
+
       if (mediaOps.isPlaying && mediaElement) {
         animationFrameRef.current = requestAnimationFrame(updateNeedle);
       }
@@ -454,7 +515,7 @@ export const useTimelineOperations = (mediaOps) => {
       }
     };
   }, [mediaOps.isPlaying, mediaElement, mediaOps.pixelsPerSecond]);
-  
+
   // Cleanup object URLs to prevent memory leaks
   useEffect(() => {
     return () => {
@@ -464,11 +525,11 @@ export const useTimelineOperations = (mediaOps) => {
     };
   }, [waveformImage]);
 
-
   // Generate canvas-based waveform image
   useEffect(() => {
     const generateWaveformImage = async () => {
-      if (!doc.document.mediaUrl || !mediaOps.duration || waveformImage || timelineWidth < 100) return;
+      if (!doc.document.mediaUrl || !mediaOps.duration || waveformImage || timelineWidth < 100)
+        return;
 
       setIsLoadingWaveform(true);
 
@@ -479,11 +540,11 @@ export const useTimelineOperations = (mediaOps) => {
         const authenticatedMediaUrl = getAuthenticatedMediaUrl(doc.document.mediaUrl);
         const response = await fetch(authenticatedMediaUrl);
         const arrayBuffer = await response.arrayBuffer();
-        
+
         // Generate hash from audio data for caching
         audioHash = await generateAudioHash(arrayBuffer);
         cacheKey = getCacheKey(audioHash, timelineWidth, mediaOps.duration);
-        
+
         // Check cache first
         const cachedWaveform = getCachedWaveform(cacheKey);
         if (cachedWaveform) {
@@ -492,91 +553,93 @@ export const useTimelineOperations = (mediaOps) => {
           setIsLoadingWaveform(false);
           return;
         }
-        
+
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        
+
         // Get channel data (use first channel)
         const channelData = audioBuffer.getChannelData(0);
-        
+
         // Create high-resolution canvas for waveform
         const pixelRatio = window.devicePixelRatio || 1;
         const canvas = window.document.createElement('canvas');
-        
+
         // Cap canvas width to prevent browser limits (most browsers limit to ~32k pixels)
         const maxCanvasWidth = 16384; // Conservative limit
         const idealCanvasWidth = timelineWidth * pixelRatio;
         const canvasWidth = Math.min(idealCanvasWidth, maxCanvasWidth);
         const canvasHeight = TIMELINE_HEIGHT * pixelRatio;
-        
+
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
         const ctx = canvas.getContext('2d');
-        
+
         // Scale context for high DPI
         ctx.scale(pixelRatio, pixelRatio);
-        
+
         // Clear canvas
         ctx.fillStyle = 'transparent';
         const effectiveTimelineWidth = canvasWidth / pixelRatio;
         ctx.fillRect(0, 0, effectiveTimelineWidth, TIMELINE_HEIGHT);
-        
+
         // Draw waveform
         ctx.fillStyle = '#90caf9';
         ctx.globalAlpha = 0.8;
-        
+
         // Use much higher sampling rate for better resolution
         const samples = Math.max(effectiveTimelineWidth * 2, 8000);
         const blockSize = Math.floor(channelData.length / samples);
-        
+
         // First pass: calculate all amplitudes and find the maximum
         const amplitudes = [];
         let maxAmplitude = 0;
-        
+
         for (let i = 0; i < samples; i++) {
           let sum = 0;
           const start = i * blockSize;
           const end = Math.min(start + blockSize, channelData.length);
-          
+
           for (let j = start; j < end; j++) {
             sum += Math.abs(channelData[j] || 0);
           }
-          
+
           const amplitude = sum / (end - start);
           amplitudes.push(amplitude);
           maxAmplitude = Math.max(maxAmplitude, amplitude);
         }
-        
+
         // Second pass: draw bars scaled to fill available height
         for (let i = 0; i < samples; i++) {
           const amplitude = amplitudes[i];
           // Scale amplitude to use full height, with minimum bar height
           const normalizedAmplitude = maxAmplitude > 0 ? amplitude / maxAmplitude : 0;
-          const barHeight = Math.max(MIN_BAR_HEIGHT, normalizedAmplitude * WAVEFORM_AVAILABLE_HEIGHT);
-          const y = (TIMELINE_HEIGHT / 2) - barHeight / 2;
-          
+          const barHeight = Math.max(
+            MIN_BAR_HEIGHT,
+            normalizedAmplitude * WAVEFORM_AVAILABLE_HEIGHT,
+          );
+          const y = TIMELINE_HEIGHT / 2 - barHeight / 2;
+
           const x = (i / samples) * effectiveTimelineWidth;
           const barWidth = effectiveTimelineWidth / samples;
           ctx.fillRect(x, y, Math.max(0.5, barWidth), barHeight);
         }
-        
+
         // Convert canvas to data URL for caching and blob for immediate use
         canvas.toBlob(async (blob) => {
           if (blob) {
             const imageUrl = URL.createObjectURL(blob);
             setWaveformImage(imageUrl);
-            
+
             // Cache the data URL version for persistence
             const dataUrl = canvas.toDataURL('image/png', 0.8);
             setCachedWaveform(cacheKey, dataUrl);
           }
         });
-        
       } catch (error) {
         console.error('Failed to generate waveform:', error);
         notifyWarning(
           'The audio waveform could not be generated, so the timeline shows a flat placeholder. Playback and time alignment still work.',
-          'Waveform unavailable'
+          'Waveform unavailable',
         );
         // Create fallback waveform
         const pixelRatio = window.devicePixelRatio || 1;
@@ -584,10 +647,10 @@ export const useTimelineOperations = (mediaOps) => {
         canvas.width = timelineWidth * pixelRatio;
         canvas.height = TIMELINE_HEIGHT * pixelRatio;
         const ctx = canvas.getContext('2d');
-        
+
         // Scale context for high DPI
         ctx.scale(pixelRatio, pixelRatio);
-        
+
         // Decoding failed, so we have no real amplitude data. Draw a single flat
         // centerline instead of randomized bars (which would read as a genuine
         // signal) to honestly signal "no waveform available".
@@ -595,8 +658,13 @@ export const useTimelineOperations = (mediaOps) => {
         ctx.globalAlpha = 0.3;
 
         const centerlineHeight = 1;
-        ctx.fillRect(0, (TIMELINE_HEIGHT / 2) - centerlineHeight / 2, timelineWidth, centerlineHeight);
-        
+        ctx.fillRect(
+          0,
+          TIMELINE_HEIGHT / 2 - centerlineHeight / 2,
+          timelineWidth,
+          centerlineHeight,
+        );
+
         canvas.toBlob((blob) => {
           if (blob) {
             setWaveformImage(URL.createObjectURL(blob));
@@ -610,7 +678,13 @@ export const useTimelineOperations = (mediaOps) => {
     if (mediaOps.duration > 0 && timelineWidth > 0) {
       generateWaveformImage();
     }
-  }, [doc.document.mediaUrl, mediaOps.duration, timelineWidth, waveformImage, getAuthenticatedMediaUrl]);
+  }, [
+    doc.document.mediaUrl,
+    mediaOps.duration,
+    timelineWidth,
+    waveformImage,
+    getAuthenticatedMediaUrl,
+  ]);
 
   return {
     // State
@@ -623,12 +697,12 @@ export const useTimelineOperations = (mediaOps) => {
     tempTokenBounds,
     timelineScrollLeft,
     timelineWidth,
-    
+
     // Calculations
     getVisibleTokens,
     getTimeFromPosition,
     autoScrollToTime,
-    
+
     // Event handlers
     handleMouseDown,
     handleMouseMove,
@@ -638,17 +712,17 @@ export const useTimelineOperations = (mediaOps) => {
     handleTimelineClick,
     handleSelectionCreate,
     handleAlignmentCreated,
-    
+
     // Refs
     timelineRef,
     needleRef,
     timelineContainerRef,
-    
+
     // State setters for external use
     setTimelineScrollLeft,
     setWaveformImage,
-    
+
     // Constants
-    TIMELINE_HEIGHT
+    TIMELINE_HEIGHT,
   };
 };

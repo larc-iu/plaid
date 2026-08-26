@@ -36,9 +36,13 @@
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
 
-const xmlEscape = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+const xmlEscape = (s) =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 
 // ---- lang resolution -------------------------------------------------------
 
@@ -51,13 +55,14 @@ const fieldLang = (options, field) =>
 
 const item = (indent, type, lang, value) => {
   if (value == null || value === '') return [];
-  return [`${indent}<item type="${xmlEscape(type)}" lang="${xmlEscape(lang)}">${xmlEscape(value)}</item>`];
+  return [
+    `${indent}<item type="${xmlEscape(type)}" lang="${xmlEscape(lang)}">${xmlEscape(value)}</item>`,
+  ];
 };
 
 function morphXml(indent, m, options) {
   const morphType = m?.metadata?.morphType;
-  const typeAttr = FLEX_MORPH_TYPES.includes(morphType)
-    ? ` type="${xmlEscape(morphType)}"` : '';
+  const typeAttr = FLEX_MORPH_TYPES.includes(morphType) ? ` type="${xmlEscape(morphType)}"` : '';
   const lines = [`${indent}<morph${typeAttr}>`];
   lines.push(...item(`${indent}  `, 'txt', baselineLang(options), morphFormOf(m)));
   if (options?.citationForms && m?.vocabItem?.form) {
@@ -65,7 +70,9 @@ function morphXml(indent, m, options) {
   }
   for (const [field, type] of Object.entries(options?.fieldMap?.morpheme || {})) {
     if (type !== 'gls' && type !== 'msa') continue;
-    lines.push(...item(`${indent}  `, type, fieldLang(options, field), m?.annotations?.[field]?.value));
+    lines.push(
+      ...item(`${indent}  `, type, fieldLang(options, field), m?.annotations?.[field]?.value),
+    );
   }
   lines.push(`${indent}</morph>`);
   return lines;
@@ -82,7 +89,9 @@ function wordXml(indent, token, options) {
   }
   for (const [field, type] of Object.entries(options?.fieldMap?.word || {})) {
     if (type !== 'gls' && type !== 'pos') continue;
-    lines.push(...item(`${indent}  `, type, fieldLang(options, field), token.annotations?.[field]?.value));
+    lines.push(
+      ...item(`${indent}  `, type, fieldLang(options, field), token.annotations?.[field]?.value),
+    );
   }
   const morphemes = token.morphemes || [];
   if (morphemes.length) {
@@ -147,20 +156,27 @@ export function phraseTimingFor(sentence, validTokens) {
 // gets no speaker rather than a wrong one.
 export function phraseSpeakerFor(sentence, tokens) {
   const s = coveringAlignment(sentence, tokens)?.metadata?.speaker;
-  return (typeof s === 'string' && s.trim() !== '') ? s.trim() : null;
+  return typeof s === 'string' && s.trim() !== '' ? s.trim() : null;
 }
 
-function phraseXml(indent, sentence, segnum, options, timing = null, mediaGuid = null, speaker = null) {
+function phraseXml(
+  indent,
+  sentence,
+  segnum,
+  options,
+  timing = null,
+  mediaGuid = null,
+  speaker = null,
+) {
   const timeAttrs = timing
-    ? `${mediaGuid ? ` media-file="${xmlEscape(mediaGuid)}"` : ''}`
-      + ` begin-time-offset="${timing.beginMs}" end-time-offset="${timing.endMs}"`
+    ? `${mediaGuid ? ` media-file="${xmlEscape(mediaGuid)}"` : ''}` +
+      ` begin-time-offset="${timing.beginMs}" end-time-offset="${timing.endMs}"`
     : '';
   const speakerAttr = speaker ? ` speaker="${xmlEscape(speaker)}"` : '';
   const lines = [`${indent}<phrase${timeAttrs}${speakerAttr}>`];
   lines.push(...item(`${indent}  `, 'segnum', analysisLang(options), String(segnum)));
   lines.push(`${indent}  <words>`);
-  const pieces = sentence.pieces
-    || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
+  const pieces = sentence.pieces || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
   for (const piece of pieces) {
     if (piece.type === 'token') lines.push(...wordXml(`${indent}    `, piece, options));
     else lines.push(...punctWordXml(`${indent}    `, piece.content, options));
@@ -168,7 +184,9 @@ function phraseXml(indent, sentence, segnum, options, timing = null, mediaGuid =
   lines.push(`${indent}  </words>`);
   for (const [field, type] of Object.entries(options?.fieldMap?.sentence || {})) {
     if (type !== 'gls' && type !== 'lit' && type !== 'note') continue;
-    lines.push(...item(`${indent}  `, type, fieldLang(options, field), sentence.annotations?.[field]?.value));
+    lines.push(
+      ...item(`${indent}  `, type, fieldLang(options, field), sentence.annotations?.[field]?.value),
+    );
   }
   lines.push(`${indent}</phrase>`);
   return lines;
@@ -196,7 +214,9 @@ function languagesXml(indent, options) {
   const add = (tag, vernacular) => {
     if (!tag || seen.has(tag)) return;
     seen.add(tag);
-    lines.push(`${indent}  <language lang="${xmlEscape(tag)}"${vernacular ? ' vernacular="true"' : ''}/>`);
+    lines.push(
+      `${indent}  <language lang="${xmlEscape(tag)}"${vernacular ? ' vernacular="true"' : ''}/>`,
+    );
   };
   add(baselineLang(options), true);
   for (const tag of Object.values(options?.langs?.orthographies || {})) add(tag, true);
@@ -213,8 +233,12 @@ function languagesXml(indent, options) {
 // (FLEx prompts to locate missing media on import either way).
 const mediaLocationOf = (docData) => {
   const path = String(docData.mediaUrl).split(/[?#]/)[0];
-  const base = path.split('/').filter((s) => s !== '').at(-1) ?? '';
-  return base.includes('.') ? base : (docData.name || base || 'media');
+  const base =
+    path
+      .split('/')
+      .filter((s) => s !== '')
+      .at(-1) ?? '';
+  return base.includes('.') ? base : docData.name || base || 'media';
 };
 
 export function interlinearTextXml(igtDoc, options, indent = '  ') {
@@ -224,7 +248,8 @@ export function interlinearTextXml(igtDoc, options, indent = '  ') {
   // Configured document metadata rides along as source/comment items.
   for (const [key, value] of Object.entries(docData.metadata || {})) {
     if (value == null || value === '') continue;
-    if (/source/i.test(key)) lines.push(...item(`${indent}  `, 'source', analysisLang(options), value));
+    if (/source/i.test(key))
+      lines.push(...item(`${indent}  `, 'source', analysisLang(options), value));
     else lines.push(...item(`${indent}  `, 'comment', analysisLang(options), `${key}: ${value}`));
   }
   const validAlignment = (igtDoc.alignmentTokens || []).filter(hasValidTimes);
@@ -239,7 +264,9 @@ export function interlinearTextXml(igtDoc, options, indent = '  ') {
       const timing = validAlignment.length ? phraseTimingFor(sentence, validAlignment) : null;
       if (timing) anyTimed = true;
       const speaker = phraseSpeakerFor(sentence, igtDoc.alignmentTokens || []);
-      lines.push(...phraseXml(`${indent}        `, sentence, segnum, options, timing, mediaGuid, speaker));
+      lines.push(
+        ...phraseXml(`${indent}        `, sentence, segnum, options, timing, mediaGuid, speaker),
+      );
     }
     lines.push(`${indent}      </phrases>`, `${indent}    </paragraph>`);
   }
@@ -247,7 +274,9 @@ export function interlinearTextXml(igtDoc, options, indent = '  ') {
   lines.push(...languagesXml(`${indent}  `, options));
   if (mediaGuid && anyTimed) {
     lines.push(`${indent}  <media-files>`);
-    lines.push(`${indent}    <media guid="${xmlEscape(mediaGuid)}" location="${xmlEscape(mediaLocationOf(docData))}"/>`);
+    lines.push(
+      `${indent}    <media guid="${xmlEscape(mediaGuid)}" location="${xmlEscape(mediaLocationOf(docData))}"/>`,
+    );
     lines.push(`${indent}  </media-files>`);
   }
   lines.push(`${indent}</interlinear-text>`);

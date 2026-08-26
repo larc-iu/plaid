@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildMatchSpec, searchDomains, hitsQueries, hitsByDocQueries, freqQueries } from './searchQueries.js';
+import {
+  buildMatchSpec,
+  searchDomains,
+  hitsQueries,
+  hitsByDocQueries,
+  freqQueries,
+} from './searchQueries.js';
 
 describe('buildMatchSpec', () => {
   it('contains escapes regex specials and is case-insensitive', () => {
@@ -24,7 +30,14 @@ const LAYER_INFO = {
 describe('searchDomains', () => {
   it('lists forms, fields per scope, and lexicon when vocabs exist', () => {
     const ds = searchDomains(LAYER_INFO, [{ id: 'v1' }]);
-    expect(ds.map((d) => d.id)).toEqual(['words', 'morphemes', 'span:posL', 'span:glossL', 'span:trL', 'lexicon']);
+    expect(ds.map((d) => d.id)).toEqual([
+      'words',
+      'morphemes',
+      'span:posL',
+      'span:glossL',
+      'span:trL',
+      'lexicon',
+    ]);
   });
 });
 

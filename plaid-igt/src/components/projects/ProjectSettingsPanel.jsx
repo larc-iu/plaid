@@ -16,7 +16,15 @@ const SECTIONS = [
 // group (Radix Tabs in vertical orientation). Route-backed by the caller — the
 // active section follows /access, /tokens, /services, /settings — so deep links
 // and the browser back button keep working.
-export const ProjectSettingsPanel = ({ project, projectId, client, user, section, onSectionChange, onProjectUpdate }) => {
+export const ProjectSettingsPanel = ({
+  project,
+  projectId,
+  client,
+  user,
+  section,
+  onSectionChange,
+  onProjectUpdate,
+}) => {
   return (
     <Tabs
       orientation="vertical"

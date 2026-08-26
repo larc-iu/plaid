@@ -5,8 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { findUntokenizedRanges, tokenizeText } from './tokenizationUtils.js';
 
-const tokenize = (text, config) =>
-  tokenizeText(text, config, findUntokenizedRanges(text, []));
+const tokenize = (text, config) => tokenizeText(text, config, findUntokenizedRanges(text, []));
 
 describe('tokenizeText punctuation handling', () => {
   const punctCfg = { type: 'unicodePunctuation', whitelist: [] };

@@ -95,32 +95,38 @@ export function DocumentMetadata() {
 
               {/* Show configured metadata fields */}
               {ops.metadataFields.map((field) => {
-                const value = ops.document.metadata[field.name]
+                const value = ops.document.metadata[field.name];
                 return (
-                    <div key={field.name}>
-                      <p className="mb-1 text-sm font-bold">{field.name}</p>
-                      <p className={value ? '' : 'text-muted-foreground'}>{value || 'Not set'}</p>
-                    </div>
-                )
+                  <div key={field.name}>
+                    <p className="mb-1 text-sm font-bold">{field.name}</p>
+                    <p className={value ? '' : 'text-muted-foreground'}>{value || 'Not set'}</p>
+                  </div>
+                );
               })}
 
-              {ops.metadataFields.length === 0 && (!ops.document.metadata || Object.keys(ops.document.metadata).length === 0) && (
-                <div className="rounded-md border border-blue-500/50 bg-blue-500/5 p-3">
-                  <div className="flex items-start gap-2">
-                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-                    <p className="text-sm text-muted-foreground">
-                      No metadata fields configured for this project. You can add metadata fields
-                      in the project settings.
-                    </p>
+              {ops.metadataFields.length === 0 &&
+                (!ops.document.metadata || Object.keys(ops.document.metadata).length === 0) && (
+                  <div className="rounded-md border border-blue-500/50 bg-blue-500/5 p-3">
+                    <div className="flex items-start gap-2">
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                      <p className="text-sm text-muted-foreground">
+                        No metadata fields configured for this project. You can add metadata fields
+                        in the project settings.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
             </div>
           )}
         </div>
       </div>
 
-      <Dialog open={ops.deleteModalOpen} onOpenChange={(open) => { if (!open) ops.handleCloseDeleteModal(); }}>
+      <Dialog
+        open={ops.deleteModalOpen}
+        onOpenChange={(open) => {
+          if (!open) ops.handleCloseDeleteModal();
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Delete Document</DialogTitle>
@@ -133,12 +139,11 @@ export function DocumentMetadata() {
                 <div className="text-sm">
                   <p className="font-medium text-destructive">This action is irreversible</p>
                   <p className="mt-1 text-muted-foreground">
-                    You are about to permanently delete the document <strong>"{ops.document.name}"</strong> and
-                    all of its associated data including annotations and text content.
+                    You are about to permanently delete the document{' '}
+                    <strong>"{ops.document.name}"</strong> and all of its associated data including
+                    annotations and text content.
                   </p>
-                  <p className="mt-2 text-muted-foreground">
-                    This action cannot be undone.
-                  </p>
+                  <p className="mt-2 text-muted-foreground">This action cannot be undone.</p>
                 </div>
               </div>
             </div>
@@ -151,11 +156,7 @@ export function DocumentMetadata() {
               >
                 Cancel
               </Button>
-              <Button
-                variant="destructive"
-                onClick={ops.handleDelete}
-                disabled={ops.deleting}
-              >
+              <Button variant="destructive" onClick={ops.handleDelete} disabled={ops.deleting}>
                 <Trash2 className="h-4 w-4" /> {ops.deleting ? 'Deleting...' : 'Delete Document'}
               </Button>
             </DialogFooter>
@@ -164,4 +165,4 @@ export function DocumentMetadata() {
       </Dialog>
     </div>
   );
-};
+}

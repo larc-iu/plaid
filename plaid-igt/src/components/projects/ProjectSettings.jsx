@@ -24,7 +24,10 @@ export const ProjectSettings = ({ project, projectId, client }) => {
 
   const handleDeleteProject = async () => {
     if (confirmationText.toLowerCase() !== project.name.toLowerCase()) {
-      notifyError('Project name does not match. Please type the exact project name.', 'Invalid confirmation');
+      notifyError(
+        'Project name does not match. Please type the exact project name.',
+        'Invalid confirmation',
+      );
       return;
     }
 
@@ -78,8 +81,8 @@ export const ProjectSettings = ({ project, projectId, client }) => {
         <div className="flex flex-col gap-1">
           <p className="text-sm font-medium">Delete Project</p>
           <p className="mb-3 text-xs text-muted-foreground">
-            Permanently delete this project and all of its documents, annotations, and associated data.
-            This action cannot be undone.
+            Permanently delete this project and all of its documents, annotations, and associated
+            data. This action cannot be undone.
           </p>
           <Button variant="destructive" className="self-start" onClick={handleDeleteClick}>
             <Trash2 className="h-4 w-4" /> Delete Project
@@ -100,8 +103,9 @@ export const ProjectSettings = ({ project, projectId, client }) => {
                 <div className="text-sm">
                   <p className="font-medium text-destructive">This action is irreversible</p>
                   <p className="mt-1 text-muted-foreground">
-                    You are about to permanently delete the project <strong>"{project.name}"</strong> and
-                    all of its associated data including documents, annotations, and configuration.
+                    You are about to permanently delete the project{' '}
+                    <strong>"{project.name}"</strong> and all of its associated data including
+                    documents, annotations, and configuration.
                   </p>
                 </div>
               </div>
@@ -109,7 +113,8 @@ export const ProjectSettings = ({ project, projectId, client }) => {
 
             <div className="flex flex-col gap-1.5">
               <p className="text-sm">
-                To confirm deletion, please type the project name <strong>{project.name}</strong> below:
+                To confirm deletion, please type the project name <strong>{project.name}</strong>{' '}
+                below:
               </p>
               <Input
                 value={confirmationText}
@@ -123,7 +128,11 @@ export const ProjectSettings = ({ project, projectId, client }) => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteModalOpened(false)} disabled={isDeleting}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteModalOpened(false)}
+              disabled={isDeleting}
+            >
               Cancel
             </Button>
             <Button

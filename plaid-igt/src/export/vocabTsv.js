@@ -8,7 +8,12 @@ export const tsvCell = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
  * columns; fieldLabels: optional display names for the header (parallel to
  * fieldNames); usageCounts: { [itemId]: n } or null to omit the Uses column.
  */
-export function serializeVocabTsv({ items, fieldNames = [], fieldLabels = null, usageCounts = null }) {
+export function serializeVocabTsv({
+  items,
+  fieldNames = [],
+  fieldLabels = null,
+  usageCounts = null,
+}) {
   const header = ['Form', ...(fieldLabels ?? fieldNames)];
   if (usageCounts) header.push('Uses');
   const lines = [header.map(tsvCell).join('\t')];

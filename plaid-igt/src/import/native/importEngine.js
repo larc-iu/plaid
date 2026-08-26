@@ -16,8 +16,13 @@
 // at creation — it doubles as provenance back to the source archive).
 
 import {
-  IGT_NAMESPACE, findBaselineTextLayer, findSentenceTokenLayer,
-  findWordTokenLayer, findMorphemeTokenLayer, findAlignmentTokenLayer, readScope,
+  IGT_NAMESPACE,
+  findBaselineTextLayer,
+  findSentenceTokenLayer,
+  findWordTokenLayer,
+  findMorphemeTokenLayer,
+  findAlignmentTokenLayer,
+  readScope,
 } from '../../domain/igtConfig.js';
 
 const CHUNK = 500; // vocab items have no bulk endpoint — chunked batches
@@ -25,16 +30,27 @@ const DONE_KEY = 'nativeImported';
 const ITEM_SOURCE_KEY = 'nativeImportId';
 
 class ImportCancelled extends Error {
-  constructor() { super('Import cancelled'); this.name = 'ImportCancelled'; }
+  constructor() {
+    super('Import cancelled');
+    this.name = 'ImportCancelled';
+  }
 }
 
 /** The setup-wizard input derived from an archive manifest. */
 export function deriveSetupData(manifest, projectName) {
   const schema = manifest.schema || {};
   const fields = [
-    ...(schema.fields?.sentence || []).map((f) => ({ name: f.name, scope: 'Sentence', isCustom: true })),
+    ...(schema.fields?.sentence || []).map((f) => ({
+      name: f.name,
+      scope: 'Sentence',
+      isCustom: true,
+    })),
     ...(schema.fields?.word || []).map((f) => ({ name: f.name, scope: 'Word', isCustom: true })),
-    ...(schema.fields?.morpheme || []).map((f) => ({ name: f.name, scope: 'Morpheme', isCustom: true })),
+    ...(schema.fields?.morpheme || []).map((f) => ({
+      name: f.name,
+      scope: 'Morpheme',
+      isCustom: true,
+    })),
   ];
   const ignored = schema.ignoredTokens;
   return {
@@ -47,20 +63,29 @@ export function deriveSetupData(manifest, projectName) {
     },
     fields: {
       fields,
-      ignoredTokens: ignored == null ? undefined : (
-        ignored.type === 'blacklist'
-          ? { mode: 'explicit', explicitIgnoredTokens: ignored.blacklist || [] }
-          : { mode: 'unicode-punctuation', unicodePunctuationExceptions: ignored.whitelist || [] }
-      ),
+      ignoredTokens:
+        ignored == null
+          ? undefined
+          : ignored.type === 'blacklist'
+            ? { mode: 'explicit', explicitIgnoredTokens: ignored.blacklist || [] }
+            : {
+                mode: 'unicode-punctuation',
+                unicodePunctuationExceptions: ignored.whitelist || [],
+              },
     },
     vocabulary: {
       vocabularies: (manifest.vocabularies || []).map((v) => ({
-        id: `new-${v.id}`, name: v.name, enabled: true, isCustom: true,
+        id: `new-${v.id}`,
+        name: v.name,
+        enabled: true,
+        isCustom: true,
       })),
     },
     documentMetadata: {
       enabledFields: (schema.documentMetadata || []).map((m) => ({
-        name: m.name, enabled: true, isCustom: true,
+        name: m.name,
+        enabled: true,
+        isCustom: true,
       })),
     },
   };
@@ -88,10 +113,16 @@ export function resolveNativeTargets(project, manifest) {
     }
   }
   const schema = manifest.schema || {};
-  for (const [scopeKey, scope] of [['sentence', 'Sentence'], ['word', 'Word'], ['morpheme', 'Morpheme']]) {
+  for (const [scopeKey, scope] of [
+    ['sentence', 'Sentence'],
+    ['word', 'Word'],
+    ['morpheme', 'Morpheme'],
+  ]) {
     for (const f of schema.fields?.[scopeKey] || []) {
       if (!spanLayerByScopeName.has(`${scope}:${f.name}`)) {
-        throw new Error(`Annotation field "${f.name}" (${scope}) missing — project setup incomplete`);
+        throw new Error(
+          `Annotation field "${f.name}" (${scope}) missing — project setup incomplete`,
+        );
       }
     }
   }
@@ -111,12 +142,18 @@ export function resolveNativeTargets(project, manifest) {
  * already stamped with a matching nativeImportId are reused.
  */
 export async function importVocabulary({ client, vocabId, vocabData, onProgress, shouldStop }) {
-  const check = () => { if (shouldStop?.()) throw new ImportCancelled(); };
+  const check = () => {
+    if (shouldStop?.()) throw new ImportCancelled();
+  };
 
   // Field schema first, so the editor renders the columns from the start.
   if (vocabData.fields?.length) {
-    await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields',
-      Object.fromEntries(vocabData.fields.map((f) => [f.name, { inline: !!f.inline }])));
+    await client.vocabLayers.setConfig(
+      vocabId,
+      IGT_NAMESPACE,
+      'fields',
+      Object.fromEntries(vocabData.fields.map((f) => [f.name, { inline: !!f.inline }])),
+    );
   }
 
   const existing = await client.vocabLayers.get(vocabId, true);
@@ -133,7 +170,10 @@ export async function importVocabulary({ client, vocabId, vocabData, onProgress,
     const chunk = pending.slice(i, i + CHUNK);
     const results = await client.batched(async () => {
       for (const it of chunk) {
-        client.vocabItems.create(vocabId, it.form, { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id });
+        client.vocabItems.create(vocabId, it.form, {
+          ...(it.metadata || {}),
+          [ITEM_SOURCE_KEY]: it.id,
+        });
       }
     });
     chunk.forEach((it, j) => {
@@ -164,16 +204,25 @@ const morphemeMetadata = (node) => ({
   ...('morphType' in node ? { morphType: node.morphType } : {}),
 });
 
-const maybeMetadata = (metadata) =>
-  (Object.keys(metadata).length ? { metadata } : {});
+const maybeMetadata = (metadata) => (Object.keys(metadata).length ? { metadata } : {});
 
 /** Import one document end to end. Assumes it does not exist yet. */
 export async function importNativeDocument({
-  client, projectId, targets, docData, itemIdMap, mediaBytes, mediaName,
-  onProgress, shouldStop, warnings = [],
+  client,
+  projectId,
+  targets,
+  docData,
+  itemIdMap,
+  mediaBytes,
+  mediaName,
+  onProgress,
+  shouldStop,
+  warnings = [],
 }) {
   const progress = (step) => onProgress?.({ phase: 'document', doc: docData.name, step });
-  const check = () => { if (shouldStop?.()) throw new ImportCancelled(); };
+  const check = () => {
+    if (shouldStop?.()) throw new ImportCancelled();
+  };
 
   progress('Creating document');
   const newDoc = await client.documents.create(projectId, docData.name, docData.metadata || {});
@@ -185,13 +234,19 @@ export async function importNativeDocument({
   if (body.length > 0) {
     progress('Creating text');
     const text = await client.texts.create(
-      targets.textLayerId, docId, body, docData.baseline?.metadata || {});
+      targets.textLayerId,
+      docId,
+      body,
+      docData.baseline?.metadata || {},
+    );
     const textId = text.id ?? text;
 
     const bulkTokens = async (specs, oldIds) => {
       if (!specs.length) return;
       const { ids } = await client.tokens.bulkCreate(specs);
-      oldIds.forEach((oldId, i) => { if (oldId != null && ids[i]) tokenIdMap.set(oldId, ids[i]); });
+      oldIds.forEach((oldId, i) => {
+        if (oldId != null && ids[i]) tokenIdMap.set(oldId, ids[i]);
+      });
     };
 
     const sentences = docData.sentences || [];
@@ -206,7 +261,10 @@ export async function importNativeDocument({
     const sentenceNodes = [...sentences, ...orphansBy('sentence')];
     await bulkTokens(
       sentenceNodes.map((s) => ({
-        tokenLayerId: targets.sentenceLayerId, text: textId, begin: s.begin, end: s.end,
+        tokenLayerId: targets.sentenceLayerId,
+        text: textId,
+        begin: s.begin,
+        end: s.end,
         ...maybeMetadata({ ...(s.metadata || {}) }),
       })),
       sentenceNodes.map((s) => s.id),
@@ -220,7 +278,10 @@ export async function importNativeDocument({
     ];
     await bulkTokens(
       wordNodes.map(({ spec, node }) => ({
-        tokenLayerId: targets.wordLayerId, text: textId, begin: node.begin, end: node.end,
+        tokenLayerId: targets.wordLayerId,
+        text: textId,
+        begin: node.begin,
+        end: node.end,
         ...maybeMetadata(spec),
       })),
       wordNodes.map(({ node }) => node.id),
@@ -229,12 +290,17 @@ export async function importNativeDocument({
     check();
     progress('Creating morphemes');
     const morphemeNodes = [
-      ...words.flatMap((w) => w.morphemes || []).map((m) => ({ spec: morphemeMetadata(m), node: m })),
+      ...words
+        .flatMap((w) => w.morphemes || [])
+        .map((m) => ({ spec: morphemeMetadata(m), node: m })),
       ...orphansBy('morpheme').map((t) => ({ spec: { ...(t.metadata || {}) }, node: t })),
     ];
     await bulkTokens(
       morphemeNodes.map(({ spec, node }) => ({
-        tokenLayerId: targets.morphemeLayerId, text: textId, begin: node.begin, end: node.end,
+        tokenLayerId: targets.morphemeLayerId,
+        text: textId,
+        begin: node.begin,
+        end: node.end,
         precedence: node.precedence ?? 1,
         ...maybeMetadata(spec),
       })),
@@ -249,13 +315,18 @@ export async function importNativeDocument({
         progress('Creating time alignments');
         await bulkTokens(
           alignment.map((a) => ({
-            tokenLayerId: targets.alignmentLayerId, text: textId, begin: a.begin, end: a.end,
+            tokenLayerId: targets.alignmentLayerId,
+            text: textId,
+            begin: a.begin,
+            end: a.end,
             metadata: { timeBegin: a.timeBegin, timeEnd: a.timeEnd, ...(a.metadata || {}) },
           })),
           alignment.map((a) => a.id),
         );
       } else {
-        warnings.push(`"${docData.name}": ${alignment.length} time alignment(s) skipped — no alignment layer`);
+        warnings.push(
+          `"${docData.name}": ${alignment.length} time alignment(s) skipped — no alignment layer`,
+        );
       }
     }
 
@@ -268,7 +339,8 @@ export async function importNativeDocument({
     check();
     progress('Creating annotations');
     const authoritativeExtraIds = new Set(
-      (docData.extraSpans || []).map((s) => s.id).filter((id) => id != null));
+      (docData.extraSpans || []).map((s) => s.id).filter((id) => id != null),
+    );
     const spansById = new Map();
     const addEntry = (scope, fieldName, entry, oldTokenId) => {
       if (!entry || authoritativeExtraIds.has(entry.id)) return;
@@ -276,19 +348,24 @@ export async function importNativeDocument({
       let agg = spansById.get(key);
       if (!agg) {
         agg = {
-          layerKey: `${scope}:${fieldName}`, tokens: [],
-          value: entry.value ?? null, metadata: entry.metadata,
+          layerKey: `${scope}:${fieldName}`,
+          tokens: [],
+          value: entry.value ?? null,
+          metadata: entry.metadata,
         };
         spansById.set(key, agg);
       }
       agg.tokens.push(oldTokenId);
     };
     for (const s of sentences) {
-      for (const [name, entry] of Object.entries(s.fields || {})) addEntry('Sentence', name, entry, s.id);
+      for (const [name, entry] of Object.entries(s.fields || {}))
+        addEntry('Sentence', name, entry, s.id);
       for (const w of s.words || []) {
-        for (const [name, entry] of Object.entries(w.fields || {})) addEntry('Word', name, entry, w.id);
+        for (const [name, entry] of Object.entries(w.fields || {}))
+          addEntry('Word', name, entry, w.id);
         for (const m of w.morphemes || []) {
-          for (const [name, entry] of Object.entries(m.fields || {})) addEntry('Morpheme', name, entry, m.id);
+          for (const [name, entry] of Object.entries(m.fields || {}))
+            addEntry('Morpheme', name, entry, m.id);
         }
       }
     }
@@ -297,7 +374,9 @@ export async function importNativeDocument({
       const spanLayerId = targets.spanLayerByScopeName.get(layerKey);
       const tokenIds = tokens.map((t) => tokenIdMap.get(t)).filter(Boolean);
       if (!spanLayerId || tokenIds.length !== tokens.length) {
-        warnings.push(`"${docData.name}": annotation ${label} skipped (unresolvable ${!spanLayerId ? 'layer' : 'tokens'})`);
+        warnings.push(
+          `"${docData.name}": annotation ${label} skipped (unresolvable ${!spanLayerId ? 'layer' : 'tokens'})`,
+        );
         return;
       }
       spanSpecs.push({ spanLayerId, tokens: tokenIds, value, ...(metadata ? { metadata } : {}) });
@@ -308,7 +387,9 @@ export async function importNativeDocument({
     for (const extra of docData.extraSpans || []) {
       resolveSpan(
         `${extra.layer?.scope}:${extra.layer?.name}`,
-        extra.tokens || [], extra.value ?? null, extra.metadata,
+        extra.tokens || [],
+        extra.value ?? null,
+        extra.metadata,
         `${extra.layer?.name} (extra)`,
       );
     }
@@ -334,7 +415,9 @@ export async function importNativeDocument({
       const itemId = itemIdMap.get(ref.itemId);
       const tokenIds = oldTokenIds.map((t) => tokenIdMap.get(t)).filter(Boolean);
       if (!itemId || tokenIds.length !== oldTokenIds.length) {
-        warnings.push(`"${docData.name}": vocab link ${label} skipped (unresolvable ${!itemId ? 'item' : 'tokens'})`);
+        warnings.push(
+          `"${docData.name}": vocab link ${label} skipped (unresolvable ${!itemId ? 'item' : 'tokens'})`,
+        );
         return;
       }
       linkSpecs.push({ itemId, tokenIds, metadata: ref.metadata });
@@ -351,7 +434,9 @@ export async function importNativeDocument({
     for (let i = 0; i < linkSpecs.length; i += 1000) {
       check();
       await client.vocabLinks.bulkCreate(
-        linkSpecs.slice(i, i + 1000).map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
+        linkSpecs
+          .slice(i, i + 1000)
+          .map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
       );
     }
   }
@@ -365,7 +450,9 @@ export async function importNativeDocument({
       await client.documents.uploadMedia(docId, new File([mediaBytes], mediaName || 'media'));
     } catch (err) {
       mediaFailed = true;
-      warnings.push(`"${docData.name}": media upload failed — document left unfinished so re-importing retries it: ${err?.message ?? err}`);
+      warnings.push(
+        `"${docData.name}": media upload failed — document left unfinished so re-importing retries it: ${err?.message ?? err}`,
+      );
     }
   }
 
@@ -397,17 +484,23 @@ export async function runNativeImport({ client, projectId, archive, onProgress, 
 
   // Vocabularies: archive vocab → the same-named project vocab created by
   // setup. Item maps merge (item ids are unique across vocabularies).
-  const projectVocabs = (project.vocabs || []);
+  const projectVocabs = project.vocabs || [];
   const itemIdMap = new Map();
   for (const vocab of archive.vocabularies) {
     if (shouldStop?.()) throw new ImportCancelled();
     const target = projectVocabs.find((v) => v.name === vocab.name);
     if (!target) {
-      warnings.push(`Vocabulary "${vocab.name}" has no same-named target in the project — items skipped`);
+      warnings.push(
+        `Vocabulary "${vocab.name}" has no same-named target in the project — items skipped`,
+      );
       continue;
     }
     const map = await importVocabulary({
-      client, vocabId: target.id, vocabData: vocab.data, onProgress, shouldStop,
+      client,
+      vocabId: target.id,
+      vocabData: vocab.data,
+      onProgress,
+      shouldStop,
     });
     for (const [oldId, newId] of map) itemIdMap.set(oldId, newId);
   }
@@ -420,7 +513,13 @@ export async function runNativeImport({ client, projectId, archive, onProgress, 
   for (let i = 0; i < archive.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
     const doc = archive.documents[i];
-    onProgress?.({ phase: 'document', doc: doc.name, index: i, total: archive.documents.length, step: 'Starting' });
+    onProgress?.({
+      phase: 'document',
+      doc: doc.name,
+      index: i,
+      total: archive.documents.length,
+      step: 'Starting',
+    });
     const existing = byName.get(doc.name);
     if (existing) {
       const full = await client.documents.get(existing.id);
@@ -432,10 +531,16 @@ export async function runNativeImport({ client, projectId, archive, onProgress, 
       results.redone += 1;
     }
     await importNativeDocument({
-      client, projectId, targets, docData: doc.data, itemIdMap,
+      client,
+      projectId,
+      targets,
+      docData: doc.data,
+      itemIdMap,
       mediaBytes: doc.mediaBytes,
       mediaName: doc.mediaFile ? doc.mediaFile.split('/').at(-1) : null,
-      onProgress, shouldStop, warnings,
+      onProgress,
+      shouldStop,
+      warnings,
     });
     results.imported += 1;
   }

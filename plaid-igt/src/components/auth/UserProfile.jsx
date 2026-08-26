@@ -9,8 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
-  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 
 const timeAgo = (iso) => {
@@ -19,7 +25,12 @@ const timeAgo = (iso) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
 };
 
-const EMPTY = (username = '') => ({ username, currentPassword: '', newPassword: '', confirmPassword: '' });
+const EMPTY = (username = '') => ({
+  username,
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+});
 
 export const UserProfile = () => {
   useDocumentTitle('Profile');
@@ -104,14 +115,18 @@ export const UserProfile = () => {
   };
 
   const set = (k) => (e) => setFields((f) => ({ ...f, [k]: e.target.value }));
-  const fieldError = (k) => (errors[k] ? <p className="text-xs text-destructive">{errors[k]}</p> : null);
+  const fieldError = (k) =>
+    errors[k] ? <p className="text-xs text-destructive">{errors[k]}</p> : null;
 
   const validate = () => {
     const er = {};
     if (!fields.username.trim()) er.username = 'Username is required';
-    if (fields.newPassword && fields.newPassword.length < 6) er.newPassword = 'Password must be at least 6 characters long';
-    if (fields.newPassword && fields.confirmPassword !== fields.newPassword) er.confirmPassword = 'Passwords do not match';
-    if (fields.newPassword && !fields.currentPassword) er.currentPassword = 'Current password is required to change password';
+    if (fields.newPassword && fields.newPassword.length < 6)
+      er.newPassword = 'Password must be at least 6 characters long';
+    if (fields.newPassword && fields.confirmPassword !== fields.newPassword)
+      er.confirmPassword = 'Passwords do not match';
+    if (fields.newPassword && !fields.currentPassword)
+      er.currentPassword = 'Current password is required to change password';
     setErrors(er);
     return Object.keys(er).length === 0;
   };
@@ -135,7 +150,12 @@ export const UserProfile = () => {
       }
 
       // users.update(id, password, username, isAdmin)
-      await client.users.update(user.id, updateData.password || undefined, updateData.username || undefined, undefined);
+      await client.users.update(
+        user.id,
+        updateData.password || undefined,
+        updateData.username || undefined,
+        undefined,
+      );
       const updatedUserData = await client.users.get(user.id);
 
       notifySuccess('Profile updated successfully!', 'Success');
@@ -174,39 +194,69 @@ export const UserProfile = () => {
                 <p className="text-sm font-medium text-muted-foreground">Username</p>
                 <p className="text-lg">{user?.username}</p>
               </div>
-              <Button className="self-start" onClick={() => setIsEditing(true)}>Edit Profile</Button>
+              <Button className="self-start" onClick={() => setIsEditing(true)}>
+                Edit Profile
+              </Button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="username">Username</Label>
-                <Input id="username" value={fields.username} onChange={set('username')} placeholder="Enter username" />
+                <Input
+                  id="username"
+                  value={fields.username}
+                  onChange={set('username')}
+                  placeholder="Enter username"
+                />
                 {fieldError('username')}
               </div>
 
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <div className="h-px flex-1 bg-border" /> Change Password (Optional) <div className="h-px flex-1 bg-border" />
+                <div className="h-px flex-1 bg-border" /> Change Password (Optional){' '}
+                <div className="h-px flex-1 bg-border" />
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="cur">Current Password</Label>
-                <Input id="cur" type="password" value={fields.currentPassword} onChange={set('currentPassword')} placeholder="Enter current password" />
+                <Input
+                  id="cur"
+                  type="password"
+                  value={fields.currentPassword}
+                  onChange={set('currentPassword')}
+                  placeholder="Enter current password"
+                />
                 {fieldError('currentPassword')}
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="new">New Password</Label>
-                <Input id="new" type="password" value={fields.newPassword} onChange={set('newPassword')} placeholder="Enter new password" />
+                <Input
+                  id="new"
+                  type="password"
+                  value={fields.newPassword}
+                  onChange={set('newPassword')}
+                  placeholder="Enter new password"
+                />
                 {fieldError('newPassword')}
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="conf">Confirm New Password</Label>
-                <Input id="conf" type="password" value={fields.confirmPassword} onChange={set('confirmPassword')} placeholder="Confirm new password" />
+                <Input
+                  id="conf"
+                  type="password"
+                  value={fields.confirmPassword}
+                  onChange={set('confirmPassword')}
+                  placeholder="Confirm new password"
+                />
                 {fieldError('confirmPassword')}
               </div>
 
               <div className="mt-2 flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={handleCancel} disabled={loading}>Cancel</Button>
-                <Button type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save Changes'}</Button>
+                <Button type="button" variant="outline" onClick={handleCancel} disabled={loading}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={loading}>
+                  {loading ? 'Saving…' : 'Save Changes'}
+                </Button>
               </div>
             </form>
           )}
@@ -221,24 +271,30 @@ export const UserProfile = () => {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Create named tokens to access the API from external services (parsers, scripts, the Python{' '}
-            <code>PlaidClient</code>). Each token carries your permissions, never expires, and survives
-            password changes — revoke one to cut off access. Actions taken with a token are labelled by
-            its name in the audit history.
+            Create named tokens to access the API from external services (parsers, scripts, the
+            Python <code>PlaidClient</code>). Each token carries your permissions, never expires,
+            and survives password changes — revoke one to cut off access. Actions taken with a token
+            are labelled by its name in the audit history.
           </p>
 
           {/* One-time reveal of a freshly minted token */}
           {mintedToken && (
             <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
               <p className="text-sm font-medium">Token &ldquo;{mintedToken.name}&rdquo; created</p>
-              <p className="mb-2 mt-0.5 text-xs text-muted-foreground">Copy it now — you won&apos;t be able to see it again.</p>
+              <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
+                Copy it now — you won&apos;t be able to see it again.
+              </p>
               <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 break-all rounded bg-background px-2 py-1 text-xs">{mintedToken.token}</code>
+                <code className="min-w-0 flex-1 break-all rounded bg-background px-2 py-1 text-xs">
+                  {mintedToken.token}
+                </code>
                 <Button size="sm" variant="outline" onClick={handleCopyMinted}>
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   {copied ? 'Copied!' : 'Copy'}
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => setMintedToken(null)}>Done</Button>
+                <Button size="sm" variant="ghost" onClick={() => setMintedToken(null)}>
+                  Done
+                </Button>
               </div>
             </div>
           )}
@@ -254,7 +310,9 @@ export const UserProfile = () => {
                 placeholder="e.g. Stanza Parser"
               />
             </div>
-            <Button type="submit" disabled={creatingToken}>{creatingToken ? 'Creating…' : 'Create Token'}</Button>
+            <Button type="submit" disabled={creatingToken}>
+              {creatingToken ? 'Creating…' : 'Create Token'}
+            </Button>
           </form>
 
           {/* Token list */}
@@ -269,12 +327,22 @@ export const UserProfile = () => {
             ) : (
               <div className="flex flex-col">
                 {activeTokens.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between gap-2 border-t py-2 first:border-t-0">
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between gap-2 border-t py-2 first:border-t-0"
+                  >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{t.name}</p>
-                      <p className="text-xs text-muted-foreground">Created {timeAgo(t.createdAt)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Created {timeAgo(t.createdAt)}
+                      </p>
                     </div>
-                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setRevokeTarget(t)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setRevokeTarget(t)}
+                    >
                       Revoke
                     </Button>
                   </div>
@@ -285,19 +353,27 @@ export const UserProfile = () => {
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!revokeTarget} onOpenChange={(o) => { if (!o) setRevokeTarget(null); }}>
+      <AlertDialog
+        open={!!revokeTarget}
+        onOpenChange={(o) => {
+          if (!o) setRevokeTarget(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Revoke API token?</AlertDialogTitle>
             <AlertDialogDescription>
-              Revoke <strong>{revokeTarget?.name}</strong>? Any service using it will immediately lose access.
-              This cannot be undone.
+              Revoke <strong>{revokeTarget?.name}</strong>? Any service using it will immediately
+              lose access. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); handleRevokeToken(); }}
+              onClick={(e) => {
+                e.preventDefault();
+                handleRevokeToken();
+              }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Revoke

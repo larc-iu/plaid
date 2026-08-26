@@ -94,24 +94,25 @@ export function locateHits(doc, domain, hitIds) {
 // from any project (the vocab concordance spans projects).
 export function buildContextRows(doc, domain, hitIds) {
   const sentFields = (doc.layerInfo.spanLayers?.sentence || []).map((l) => l.name);
-  return locateHits(doc, domain, hitIds).map((r) => {
-    const s = r.sentence;
-    const base = s.begin;
-    const text = cpSlice(doc.body || '', s.begin, s.end);
-    const translation = sentFields
-      .map((f) => s.annotations?.[f]?.value ?? '')
-      .find((v) => v !== '') || '';
-    return {
-      sentenceId: r.sentenceId,
-      sentenceIndex: r.sentenceIndex,
-      text,
-      marks: r.marks
-        .map((m) => ({ begin: m.begin - base, end: m.end - base }))
-        .sort((a, b) => a.begin - b.begin),
-      notes: r.notes,
-      translation,
-    };
-  }).sort((a, b) => a.sentenceIndex - b.sentenceIndex);
+  return locateHits(doc, domain, hitIds)
+    .map((r) => {
+      const s = r.sentence;
+      const base = s.begin;
+      const text = cpSlice(doc.body || '', s.begin, s.end);
+      const translation =
+        sentFields.map((f) => s.annotations?.[f]?.value ?? '').find((v) => v !== '') || '';
+      return {
+        sentenceId: r.sentenceId,
+        sentenceIndex: r.sentenceIndex,
+        text,
+        marks: r.marks
+          .map((m) => ({ begin: m.begin - base, end: m.end - base }))
+          .sort((a, b) => a.begin - b.begin),
+        notes: r.notes,
+        translation,
+      };
+    })
+    .sort((a, b) => a.sentenceIndex - b.sentenceIndex);
 }
 
 export async function runHitsSearch(client, project, layerInfo, domain, queryText, matchType) {
@@ -127,16 +128,19 @@ export async function runHitsSearch(client, project, layerInfo, domain, queryTex
 
   const docCounts = new Map();
   for (const r of docResults) {
-    for (const [docId, n] of r?.results || []) docCounts.set(String(docId), (docCounts.get(String(docId)) || 0) + n);
+    for (const [docId, n] of r?.results || [])
+      docCounts.set(String(docId), (docCounts.get(String(docId)) || 0) + n);
   }
   const totalHits = [...docCounts.values()].reduce((a, b) => a + b, 0);
   const docsByCount = [...docCounts.entries()].sort((a, b) => b[1] - a[1]);
   const toLoad = docsByCount.slice(0, MAX_DOCS);
 
-  const docs = await Promise.all(toLoad.map(async ([docId]) => {
-    const raw = await client.documents.get(docId, true);
-    return new IgtDocument({ raw, project, vocabularies: {}, client, projectId: project.id });
-  }));
+  const docs = await Promise.all(
+    toLoad.map(async ([docId]) => {
+      const raw = await client.documents.get(docId, true);
+      return new IgtDocument({ raw, project, vocabularies: {}, client, projectId: project.id });
+    }),
+  );
 
   const groups = docs.map((doc, i) => ({
     docId: toLoad[i][0],
@@ -175,10 +179,12 @@ export async function runFreqSearch(client, domain, queryText, matchType) {
   let display = counts;
   if (domain.kind === 'lexicon') {
     const formById = new Map();
-    await Promise.all(domain.vocabIds.map(async (vid) => {
-      const layer = await client.vocabLayers.get(vid, true);
-      for (const it of layer.items || []) formById.set(String(it.id), it.form);
-    }));
+    await Promise.all(
+      domain.vocabIds.map(async (vid) => {
+        const layer = await client.vocabLayers.get(vid, true);
+        for (const it of layer.items || []) formById.set(String(it.id), it.form);
+      }),
+    );
     display = new Map();
     for (const [id, n] of counts) {
       const form = formById.get(id) ?? id;

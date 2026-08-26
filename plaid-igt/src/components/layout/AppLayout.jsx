@@ -16,7 +16,9 @@ export function AppLayout({ children }) {
       to={to}
       className={cn(
         'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-        active ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+        active
+          ? 'bg-accent text-accent-foreground'
+          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
       )}
     >
       {label}
@@ -27,10 +29,16 @@ export function AppLayout({ children }) {
     <div className="min-h-screen bg-background text-foreground">
       <header className="tw sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
-          <Link to="/projects" className="font-bold">Plaid IGT</Link>
+          <Link to="/projects" className="font-bold">
+            Plaid IGT
+          </Link>
           <nav className="flex items-center gap-1">
             {navItem('/projects', 'Projects', location.pathname.startsWith('/projects'))}
-            {navItem('/vocabularies', 'Vocabularies', location.pathname.startsWith('/vocabularies'))}
+            {navItem(
+              '/vocabularies',
+              'Vocabularies',
+              location.pathname.startsWith('/vocabularies'),
+            )}
           </nav>
           <div className="ml-auto">{user && <UserButton user={user} onLogout={logout} />}</div>
         </div>

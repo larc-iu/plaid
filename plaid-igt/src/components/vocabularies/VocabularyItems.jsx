@@ -1,8 +1,15 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Trash2, AlertTriangle, Upload, Download, Search, FileText,
-  ChevronLeft, ChevronRight,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  Upload,
+  Download,
+  Search,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -71,7 +78,11 @@ const MarkedText = ({ text, marks }) => {
     const b = Math.max(pos, Math.min(m.begin, chars.length));
     const e = Math.max(b, Math.min(m.end, chars.length));
     if (b > pos) out.push(chars.slice(pos, b).join(''));
-    out.push(<mark key={i} className="rounded bg-yellow-200 px-0.5">{chars.slice(b, e).join('')}</mark>);
+    out.push(
+      <mark key={i} className="rounded bg-yellow-200 px-0.5">
+        {chars.slice(b, e).join('')}
+      </mark>,
+    );
     pos = e;
   });
   if (pos < chars.length) out.push(chars.slice(pos).join(''));
@@ -126,7 +137,8 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const homonyms = useMemo(() => buildHomonymIndex(items), [items]);
 
   const selectedItem = useMemo(
-    () => (selectedId && selectedId !== NEW_ID ? items.find((i) => i.id === selectedId) || null : null),
+    () =>
+      selectedId && selectedId !== NEW_ID ? items.find((i) => i.id === selectedId) || null : null,
     [items, selectedId],
   );
   const isNew = selectedId === NEW_ID;
@@ -154,7 +166,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const fetchUsageCounts = async () => {
     try {
       const res = await client.query({
-        where: [['vocab', '?v', { layer: vocabularyId }], ['vocab-link', '?t', '?v']],
+        where: [
+          ['vocab', '?v', { layer: vocabularyId }],
+          ['vocab-link', '?t', '?v'],
+        ],
         return: { group: ['?v'], aggregates: [['count']] },
       });
       const counts = {};
@@ -182,12 +197,18 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   // Plan the concordance + load the first batch whenever a real item is selected.
   useEffect(() => {
     if (!selectedId || selectedId === NEW_ID) {
-      setConcPlan(null); setConcGroups([]); setConcLoaded(0); setConcError('');
+      setConcPlan(null);
+      setConcGroups([]);
+      setConcLoaded(0);
+      setConcError('');
       return;
     }
     const my = ++concReq.current;
     loadingMoreRef.current = false;
-    setConcPlan(null); setConcGroups([]); setConcLoaded(0); setConcError('');
+    setConcPlan(null);
+    setConcGroups([]);
+    setConcLoaded(0);
+    setConcError('');
     setConcLoading(true);
     planItemConcordance(client, vocabularyId, selectedId)
       .then(async (plan) => {
@@ -237,9 +258,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     if (!concHasMore) return undefined;
     const el = sentinelRef.current;
     if (!el) return undefined;
-    const obs = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) loadMoreRef.current();
-    }, { rootMargin: '300px' });
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreRef.current();
+      },
+      { rootMargin: '300px' },
+    );
     obs.observe(el);
     return () => obs.disconnect();
   }, [concHasMore, concLoaded]);
@@ -285,8 +309,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   };
 
   const dirty = isNew
-    ? (editForm.trim() !== '' || Object.keys(cleanMeta(editFields)).length > 0)
-    : !!selectedItem && (editForm.trim() !== selectedItem.form || !metaEqual(editFields, selectedItem.metadata || {}));
+    ? editForm.trim() !== '' || Object.keys(cleanMeta(editFields)).length > 0
+    : !!selectedItem &&
+      (editForm.trim() !== selectedItem.form ||
+        !metaEqual(editFields, selectedItem.metadata || {}));
 
   // Switching away with unsaved edits would silently discard them — confirm first.
   const applyTarget = (target) => {
@@ -295,12 +321,16 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   };
   const attemptSelect = (item) => {
     if (item.id === selectedId) return; // already open
-    if (dirty) { setPendingTarget({ type: 'item', item }); setDiscardOpen(true); }
-    else selectItem(item);
+    if (dirty) {
+      setPendingTarget({ type: 'item', item });
+      setDiscardOpen(true);
+    } else selectItem(item);
   };
   const attemptNew = () => {
-    if (dirty) { setPendingTarget({ type: 'new' }); setDiscardOpen(true); }
-    else startNew();
+    if (dirty) {
+      setPendingTarget({ type: 'new' });
+      setDiscardOpen(true);
+    } else startNew();
   };
 
   const handleSave = async () => {
@@ -312,7 +342,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       const metadata = cleanMeta(editFields);
       if (isNew) {
         const created = await client.vocabItems.create(
-          vocabularyId, editForm.trim(), Object.keys(metadata).length ? metadata : undefined);
+          vocabularyId,
+          editForm.trim(),
+          Object.keys(metadata).length ? metadata : undefined,
+        );
         await fetchItems();
         if (created?.id) {
           setSelectedId(created.id);
@@ -362,7 +395,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   // skip collisions with existing items — only an identical repeated row in the
   // paste itself (a likely accidental double-paste).
   const parsedBulk = useMemo(() => {
-    const lines = bulkText.split('\n').map((l) => l.replace(/\r$/, '')).filter((l) => l.trim() !== '');
+    const lines = bulkText
+      .split('\n')
+      .map((l) => l.replace(/\r$/, ''))
+      .filter((l) => l.trim() !== '');
     const rows = [];
     const seen = new Set();
     let skipped = 0;
@@ -371,10 +407,15 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       const form = cells[0];
       if (!form) continue;
       const k = cells.join('\t').toLowerCase(); // whole-row key (cells can't contain tabs)
-      if (seen.has(k)) { skipped++; continue; }
+      if (seen.has(k)) {
+        skipped++;
+        continue;
+      }
       seen.add(k);
       const metadata = {};
-      fieldNames.forEach((f, i) => { if (cells[i + 1]) metadata[f] = cells[i + 1]; });
+      fieldNames.forEach((f, i) => {
+        if (cells[i + 1]) metadata[f] = cells[i + 1];
+      });
       rows.push({ form, metadata: Object.keys(metadata).length ? metadata : undefined });
     }
     return { rows, skipped };
@@ -393,7 +434,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       await fetchItems();
       notifySuccess(
         `Added ${rows.length} item${rows.length === 1 ? '' : 's'}${skipped ? ` (${skipped} duplicate${skipped === 1 ? '' : 's'} skipped)` : ''}`,
-        'Bulk Add Complete'
+        'Bulk Add Complete',
       );
     } catch (err) {
       console.error('Bulk add failed:', err);
@@ -413,7 +454,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     });
     downloadBlob(
       `${sanitizeFilename(vocabulary?.name || 'vocabulary')}.tsv`,
-      new Blob([tsv], { type: 'text/tab-separated-values;charset=utf-8' })
+      new Blob([tsv], { type: 'text/tab-separated-values;charset=utf-8' }),
     );
   };
 
@@ -422,9 +463,15 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     const q = search.trim().toLowerCase();
     let list = items;
     if (q) {
-      list = items.filter((it) =>
-        it.form.toLowerCase().includes(q) ||
-        fieldNames.some((f) => String(it.metadata?.[f] ?? '').toLowerCase().includes(q)));
+      list = items.filter(
+        (it) =>
+          it.form.toLowerCase().includes(q) ||
+          fieldNames.some((f) =>
+            String(it.metadata?.[f] ?? '')
+              .toLowerCase()
+              .includes(q),
+          ),
+      );
     }
     return [...list].sort((a, b) => {
       const af = a.form.toLowerCase();
@@ -443,8 +490,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
 
   // Reset to page 1 when the result set is re-scoped; jump the list back to top
   // when the page changes.
-  useEffect(() => { setPage(0); }, [search]);
-  useEffect(() => { if (listRef.current) listRef.current.scrollTop = 0; }, [currentPage]);
+  useEffect(() => {
+    setPage(0);
+  }, [search]);
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [currentPage]);
 
   const listCols = hasGloss
     ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]'
@@ -460,11 +511,15 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
             className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
             value={values.morphType || ''}
             disabled={disabled}
-            onChange={(event) => onChange({ ...values, morphType: event.target.value || undefined })}
+            onChange={(event) =>
+              onChange({ ...values, morphType: event.target.value || undefined })
+            }
           >
             <option value="">—</option>
             {FLEX_MORPH_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
+              <option key={t} value={t}>
+                {t}
+              </option>
             ))}
           </select>
         ) : (
@@ -534,7 +589,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
         </div>
 
         {items.length > 0 && filteredItems.length > 0 && (
-          <div className={cn('grid items-center gap-2 border-b px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground', listCols)}>
+          <div
+            className={cn(
+              'grid items-center gap-2 border-b px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground',
+              listCols,
+            )}
+          >
             <span>Form</span>
             {hasGloss && <span>Gloss</span>}
             <span className="text-right">Uses</span>
@@ -561,9 +621,15 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                       selectedId === item.id && 'bg-accent/60',
                     )}
                   >
-                    <FormLabel form={item.form} index={homonyms.get(item.id)} className="truncate font-medium" />
+                    <FormLabel
+                      form={item.form}
+                      index={homonyms.get(item.id)}
+                      className="truncate font-medium"
+                    />
                     {hasGloss && (
-                      <span className="truncate text-xs text-muted-foreground">{item.metadata?.gloss || ''}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {item.metadata?.gloss || ''}
+                      </span>
                     )}
                     <span className="text-right text-xs tabular-nums text-muted-foreground">
                       {usageCounts ? (usageCounts[item.id] ?? 0) : ''}
@@ -586,7 +652,9 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
             >
               <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
-            <span className="tabular-nums">{rangeStart}–{rangeEnd} of {filteredItems.length}</span>
+            <span className="tabular-nums">
+              {rangeStart}–{rangeEnd} of {filteredItems.length}
+            </span>
             <Button
               variant="ghost"
               size="icon"
@@ -601,11 +669,22 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
 
         <div className="flex items-center gap-2 border-t p-2">
           {canManage && (
-            <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={() => setBulkOpen(true)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 flex-1"
+              onClick={() => setBulkOpen(true)}
+            >
               <Upload className="h-3.5 w-3.5" /> Bulk Add
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="h-7 flex-1" onClick={handleExportTsv} disabled={!items.length}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 flex-1"
+            onClick={handleExportTsv}
+            disabled={!items.length}
+          >
             <Download className="h-3.5 w-3.5" /> Export
           </Button>
         </div>
@@ -615,7 +694,9 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       <div className="min-w-0 flex-1">
         {!selectedId ? (
           <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
-            <p className="text-sm text-muted-foreground">Select an item, or click “New” to add one.</p>
+            <p className="text-sm text-muted-foreground">
+              Select an item, or click “New” to add one.
+            </p>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -623,53 +704,68 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
             <div className="rounded-lg border bg-card p-4">
               <div className="mb-3 flex items-start justify-between gap-2">
                 <h3 className="text-base font-semibold">
-                  {isNew
-                    ? 'New item'
-                    : <FormLabel form={selectedItem?.form ?? ''} index={homonyms.get(selectedItem?.id)} />}
+                  {isNew ? (
+                    'New item'
+                  ) : (
+                    <FormLabel
+                      form={selectedItem?.form ?? ''}
+                      index={homonyms.get(selectedItem?.id)}
+                    />
+                  )}
                 </h3>
                 {!isNew && selectedItem && (
                   <div className="text-right text-xs text-muted-foreground">
-                    {(usageCounts?.[selectedItem.id] ?? 0).toLocaleString()} use{(usageCounts?.[selectedItem.id] ?? 0) === 1 ? '' : 's'}
+                    {(usageCounts?.[selectedItem.id] ?? 0).toLocaleString()} use
+                    {(usageCounts?.[selectedItem.id] ?? 0) === 1 ? '' : 's'}
                   </div>
                 )}
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label>Form <span className="text-destructive">*</span></Label>
+                  <Label>
+                    Form <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     value={editForm}
                     autoFocus={isNew}
                     placeholder="Enter item form"
                     disabled={!canManage}
                     onChange={(e) => setEditForm(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (dirty) handleSave(); } }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (dirty) handleSave();
+                      }
+                    }}
                   />
                 </div>
                 {renderFieldInputs(editFields, setEditFields, !canManage)}
               </div>
 
               {canManage && (
-              <div className="mt-4 flex items-center justify-between">
-                <div>
-                  {!isNew && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => setDeleteOpen(true)}
-                    >
-                      <Trash2 className="h-4 w-4" /> Delete
+                <div className="mt-4 flex items-center justify-between">
+                  <div>
+                    {!isNew && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteOpen(true)}
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={cancelEdit} disabled={!dirty}>
+                      Cancel
                     </Button>
-                  )}
+                    <Button size="sm" onClick={handleSave} disabled={!dirty || !editForm.trim()}>
+                      {isNew ? 'Create' : 'Save'}
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={cancelEdit} disabled={!dirty}>Cancel</Button>
-                  <Button size="sm" onClick={handleSave} disabled={!dirty || !editForm.trim()}>
-                    {isNew ? 'Create' : 'Save'}
-                  </Button>
-                </div>
-              </div>
               )}
             </div>
 
@@ -680,8 +776,8 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                   <span className="text-sm font-medium">Concordance</span>
                   {concPlan && (
                     <span className="text-xs text-muted-foreground">
-                      {concPlan.totalHits.toLocaleString()} use{concPlan.totalHits === 1 ? '' : 's'} in{' '}
-                      {concPlan.totalDocs} document{concPlan.totalDocs === 1 ? '' : 's'}
+                      {concPlan.totalHits.toLocaleString()} use{concPlan.totalHits === 1 ? '' : 's'}{' '}
+                      in {concPlan.totalDocs} document{concPlan.totalDocs === 1 ? '' : 's'}
                       {concPlan.truncated ? ' (capped)' : ''}
                     </span>
                   )}
@@ -705,7 +801,9 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                         <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
                           <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                           <span className="text-sm font-medium">{g.docName}</span>
-                          <span className="text-xs text-muted-foreground">{g.docHits} use{g.docHits === 1 ? '' : 's'}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {g.docHits} use{g.docHits === 1 ? '' : 's'}
+                          </span>
                         </div>
                         <div className="divide-y">
                           {g.rows.map((row) => {
@@ -719,30 +817,43 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                                 key={row.sentenceId}
                                 href={to ? `#${to}` : undefined}
                                 onClick={(e) => {
-                                  if (!to) { e.preventDefault(); return; }
-                                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // let the browser open a new tab
+                                  if (!to) {
+                                    e.preventDefault();
+                                    return;
+                                  }
+                                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0)
+                                    return; // let the browser open a new tab
                                   e.preventDefault();
                                   navigate(to);
                                 }}
                                 className="block w-full cursor-pointer px-3 py-1.5 text-left no-underline hover:bg-muted/50"
-                                title={to ? 'Open in Analyze (middle-click for a new tab)' : undefined}
+                                title={
+                                  to ? 'Open in Analyze (middle-click for a new tab)' : undefined
+                                }
                               >
                                 <p className="text-sm text-foreground">
-                                  <span className="mr-2 text-xs text-muted-foreground">#{row.sentenceIndex + 1}</span>
+                                  <span className="mr-2 text-xs text-muted-foreground">
+                                    #{row.sentenceIndex + 1}
+                                  </span>
                                   <MarkedText text={row.text} marks={row.marks} />
                                 </p>
                                 {row.notes.length > 0 && (
-                                  <p className="mt-0.5 text-xs text-violet-700">{[...new Set(row.notes)].join(' · ')}</p>
+                                  <p className="mt-0.5 text-xs text-violet-700">
+                                    {[...new Set(row.notes)].join(' · ')}
+                                  </p>
                                 )}
                                 {row.translation && (
-                                  <p className="mt-0.5 text-xs italic text-muted-foreground">‘{row.translation}’</p>
+                                  <p className="mt-0.5 text-xs italic text-muted-foreground">
+                                    ‘{row.translation}’
+                                  </p>
                                 )}
                               </a>
                             );
                           })}
                           {g.rows.length === 0 && (
                             <p className="px-3 py-2 text-xs text-muted-foreground">
-                              Uses in this document could not be located (it may have changed) — open it to look.
+                              Uses in this document could not be located (it may have changed) —
+                              open it to look.
                             </p>
                           )}
                         </div>
@@ -751,7 +862,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
 
                     {concHasMore && (
                       <div ref={sentinelRef} className="flex justify-center py-2">
-                        <Button variant="outline" size="sm" onClick={() => loadMoreRef.current()} disabled={concLoadingMore}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => loadMoreRef.current()}
+                          disabled={concLoadingMore}
+                        >
                           {concLoadingMore
                             ? 'Loading…'
                             : `Load more (${(concPlan.totalDocs - concLoaded).toLocaleString()} document${concPlan.totalDocs - concLoaded === 1 ? '' : 's'} left)`}
@@ -767,40 +883,60 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       </div>
 
       {/* Bulk add dialog */}
-      <Dialog open={bulkOpen} onOpenChange={(o) => { if (!o && !bulkBusy) setBulkOpen(false); }}>
+      <Dialog
+        open={bulkOpen}
+        onOpenChange={(o) => {
+          if (!o && !bulkBusy) setBulkOpen(false);
+        }}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Bulk Add Items</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-2">
             <p className="text-sm text-muted-foreground">
-              One item per line. Columns are tab-separated (paste straight from a
-              spreadsheet): <strong>Form</strong>{fieldNames.length ? <> then {fieldNames.map(humanizeFieldName).join(', ')}</> : null}.
-              The same form may repeat as a separate sense (a homonym); only identical rows are skipped.
+              One item per line. Columns are tab-separated (paste straight from a spreadsheet):{' '}
+              <strong>Form</strong>
+              {fieldNames.length ? <> then {fieldNames.map(humanizeFieldName).join(', ')}</> : null}
+              . The same form may repeat as a separate sense (a homonym); only identical rows are
+              skipped.
             </p>
             <Textarea
               rows={10}
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder={fieldNames.length ? `form\t${fieldNames.join('\t')}` : 'one form per line'}
+              placeholder={
+                fieldNames.length ? `form\t${fieldNames.join('\t')}` : 'one form per line'
+              }
               className="font-mono text-xs"
             />
             <p className="text-xs text-muted-foreground">
               {parsedBulk.rows.length} item{parsedBulk.rows.length === 1 ? '' : 's'} to add
-              {parsedBulk.skipped ? ` · ${parsedBulk.skipped} duplicate${parsedBulk.skipped === 1 ? '' : 's'} skipped` : ''}
+              {parsedBulk.skipped
+                ? ` · ${parsedBulk.skipped} duplicate${parsedBulk.skipped === 1 ? '' : 's'} skipped`
+                : ''}
             </p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={bulkBusy}>Cancel</Button>
+            <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={bulkBusy}>
+              Cancel
+            </Button>
             <Button onClick={handleBulkAdd} disabled={!parsedBulk.rows.length || bulkBusy}>
-              {bulkBusy ? 'Adding…' : `Add ${parsedBulk.rows.length} item${parsedBulk.rows.length === 1 ? '' : 's'}`}
+              {bulkBusy
+                ? 'Adding…'
+                : `Add ${parsedBulk.rows.length} item${parsedBulk.rows.length === 1 ? '' : 's'}`}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete confirmation */}
-      <AlertDialog open={deleteOpen} onOpenChange={(o) => { if (!o) setDeleteOpen(false); }}>
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(o) => {
+          if (!o) setDeleteOpen(false);
+        }}
+      >
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Vocabulary Item</AlertDialogTitle>
@@ -811,12 +947,21 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
               <div className="text-sm">
                 <p className="font-medium text-destructive">Warning</p>
                 <p className="mt-1 text-muted-foreground">
-                  You are about to permanently delete the vocabulary item <strong>"{selectedItem?.form}"</strong>.
+                  You are about to permanently delete the vocabulary item{' '}
+                  <strong>"{selectedItem?.form}"</strong>.
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  {usageCounts && (usageCounts[selectedItem?.id] ?? 0) > 0
-                    ? <>It is linked to <strong>{usageCounts[selectedItem.id]} word{usageCounts[selectedItem.id] === 1 ? '' : 's'}/morpheme{usageCounts[selectedItem.id] === 1 ? '' : 's'}</strong> — those links will be removed. </>
-                    : null}
+                  {usageCounts && (usageCounts[selectedItem?.id] ?? 0) > 0 ? (
+                    <>
+                      It is linked to{' '}
+                      <strong>
+                        {usageCounts[selectedItem.id]} word
+                        {usageCounts[selectedItem.id] === 1 ? '' : 's'}/morpheme
+                        {usageCounts[selectedItem.id] === 1 ? '' : 's'}
+                      </strong>{' '}
+                      — those links will be removed.{' '}
+                    </>
+                  ) : null}
                   This action cannot be undone.
                 </p>
               </div>
@@ -835,19 +980,39 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       </AlertDialog>
 
       {/* Discard-unsaved-changes confirmation */}
-      <AlertDialog open={discardOpen} onOpenChange={(o) => { if (!o) { setDiscardOpen(false); setPendingTarget(null); } }}>
+      <AlertDialog
+        open={discardOpen}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDiscardOpen(false);
+            setPendingTarget(null);
+          }
+        }}
+      >
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
           </AlertDialogHeader>
           <p className="text-sm text-muted-foreground">
-            You have unsaved edits to <strong>"{editForm || selectedItem?.form}"</strong>. Switching away will discard them.
+            You have unsaved edits to <strong>"{editForm || selectedItem?.form}"</strong>. Switching
+            away will discard them.
           </p>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => { setDiscardOpen(false); setPendingTarget(null); }}>Keep editing</AlertDialogCancel>
+            <AlertDialogCancel
+              onClick={() => {
+                setDiscardOpen(false);
+                setPendingTarget(null);
+              }}
+            >
+              Keep editing
+            </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { applyTarget(pendingTarget); setDiscardOpen(false); setPendingTarget(null); }}
+              onClick={() => {
+                applyTarget(pendingTarget);
+                setDiscardOpen(false);
+                setPendingTarget(null);
+              }}
             >
               Discard changes
             </AlertDialogAction>

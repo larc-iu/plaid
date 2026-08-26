@@ -83,7 +83,11 @@ export const analysisCopyMutations = {
     let curOps = 0;
     for (const p of todo) {
       const w = opsForWord(p);
-      if (cur.length && curOps + w > ANALYSIS_BATCH_BUDGET) { chunks.push(cur); cur = []; curOps = 0; }
+      if (cur.length && curOps + w > ANALYSIS_BATCH_BUDGET) {
+        chunks.push(cur);
+        cur = [];
+        curOps = 0;
+      }
       cur.push(p);
       curOps += w;
     }
@@ -130,14 +134,11 @@ export const analysisCopyMutations = {
             // Remaining slots: create stamped morpheme tokens; their links/spans
             // wait for batch 2 (ids unknown until this batch lands).
             slots.slice(1).forEach((slot, j) => {
-              this._client.tokens.create(
-                morphemeLayer.id, textId, token.begin, token.end, j + 2,
-                {
-                  ...(slot.form != null ? { form: slot.form } : {}),
-                  ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
-                  ...stamp,
-                }
-              );
+              this._client.tokens.create(morphemeLayer.id, textId, token.begin, token.end, j + 2, {
+                ...(slot.form != null ? { form: slot.form } : {}),
+                ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
+                ...stamp,
+              });
               pendingMorphs.push({ slot, opIdx });
               opIdx++;
             });
@@ -159,7 +160,9 @@ export const analysisCopyMutations = {
         // ---- batch 2: links/spans for the created morphemes ----
         const second = pendingMorphs
           .map(({ slot, opIdx: i }) => ({ slot, id: results[i]?.body?.id }))
-          .filter(({ slot, id }) => id && (slot.vocabItemId || Object.keys(slot.fields || {}).length));
+          .filter(
+            ({ slot, id }) => id && (slot.vocabItemId || Object.keys(slot.fields || {}).length),
+          );
         if (second.length) {
           await this._client.batched(async () => {
             for (const { slot, id } of second) {
@@ -176,7 +179,9 @@ export const analysisCopyMutations = {
       }
 
       await this._reload();
-    })) ? todo.length : false;
+    }))
+      ? todo.length
+      : false;
   },
 
   // Confirm every machine-unverified piece of one word's analysis at once —

@@ -102,7 +102,7 @@ export const ProjectDetail = () => {
   const needsSetupNotice = !!project && !readInitialized(project.config) && !canManage;
 
   const handleDocumentCreated = (newDocument) => {
-    setDocuments(prev => [...prev, newDocument]);
+    setDocuments((prev) => [...prev, newDocument]);
   };
 
   if (loading) {
@@ -116,7 +116,10 @@ export const ProjectDetail = () => {
   if (error || !project) {
     return (
       <div className="tw mx-auto max-w-5xl px-4 py-8">
-        <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
           {error || 'The requested project could not be found.'}
         </div>
       </div>
@@ -127,7 +130,10 @@ export const ProjectDetail = () => {
     return (
       <div className="tw mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
-        <div role="status" className="mt-4 rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground">
+        <div
+          role="status"
+          className="mt-4 rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground"
+        >
           This project hasn’t been set up for IGT yet. Ask a project maintainer to add IGT support.
         </div>
       </div>
@@ -138,7 +144,9 @@ export const ProjectDetail = () => {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="tw">
         <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground">Projects</Link>
+          <Link to="/projects" className="hover:text-foreground">
+            Projects
+          </Link>
           <span>/</span>
           <span className="text-foreground">{project.name}</span>
         </nav>
@@ -159,10 +167,16 @@ export const ProjectDetail = () => {
         }}
       >
         <TabsList className="tw mb-2">
-          <TabsTrigger value="documents"><FileText className="h-4 w-4" /> Documents</TabsTrigger>
-          <TabsTrigger value="search"><Search className="h-4 w-4" /> Search</TabsTrigger>
+          <TabsTrigger value="documents">
+            <FileText className="h-4 w-4" /> Documents
+          </TabsTrigger>
+          <TabsTrigger value="search">
+            <Search className="h-4 w-4" /> Search
+          </TabsTrigger>
           {canManage && (
-            <TabsTrigger value="settings"><Settings className="h-4 w-4" /> Settings</TabsTrigger>
+            <TabsTrigger value="settings">
+              <Settings className="h-4 w-4" /> Settings
+            </TabsTrigger>
           )}
         </TabsList>
         <TabsContent value="documents">

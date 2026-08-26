@@ -4,10 +4,9 @@ import { Switch } from '@/components/ui/switch';
 export const NativeOptions = ({ options, onChange }) => (
   <div className="flex flex-col gap-4">
     <p className="text-sm text-muted-foreground">
-      Plaid IGT JSON is a lossless archive: it always includes the project
-      configuration, all vocabularies, and full document data (ids, offsets,
-      metadata, provenance, time alignment), packaged as a .zip. Archives can
-      be re-imported as new projects.
+      Plaid IGT JSON is a lossless archive: it always includes the project configuration, all
+      vocabularies, and full document data (ids, offsets, metadata, provenance, time alignment),
+      packaged as a .zip. Archives can be re-imported as new projects.
     </p>
     <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
       <span>Embed media files (audio/video) in the archive</span>
@@ -17,8 +16,8 @@ export const NativeOptions = ({ options, onChange }) => (
       />
     </label>
     <p className="text-xs text-muted-foreground">
-      Large media can make the export slow or exceed browser memory — disable
-      to produce a data-only archive (time alignments are kept either way).
+      Large media can make the export slow or exceed browser memory — disable to produce a data-only
+      archive (time alignments are kept either way).
     </p>
   </div>
 );

@@ -38,13 +38,18 @@ function ParamField({ param, value, error, onChange, disabled }) {
   return (
     <div className="flex flex-col gap-1.5" style={{ minWidth: 180 }}>
       <Label htmlFor={id} className="text-xs">
-        {param.label}{param.required ? ' *' : ''}
+        {param.label}
+        {param.required ? ' *' : ''}
       </Label>
       {control}
       {error ? (
-        <p className="text-xs text-destructive" style={{ maxWidth: 260 }}>{error}</p>
+        <p className="text-xs text-destructive" style={{ maxWidth: 260 }}>
+          {error}
+        </p>
       ) : param.description ? (
-        <p className="text-xs text-muted-foreground" style={{ maxWidth: 260 }}>{param.description}</p>
+        <p className="text-xs text-muted-foreground" style={{ maxWidth: 260 }}>
+          {param.description}
+        </p>
       ) : null}
     </div>
   );
@@ -53,9 +58,7 @@ function ParamField({ param, value, error, onChange, disabled }) {
 function renderControl(id, param, value, onChange, disabled) {
   switch (param.type) {
     case 'boolean':
-      return (
-        <Switch id={id} checked={!!value} onCheckedChange={onChange} disabled={disabled} />
-      );
+      return <Switch id={id} checked={!!value} onCheckedChange={onChange} disabled={disabled} />;
     case 'number':
       return (
         <Input
@@ -78,7 +81,9 @@ function renderControl(id, param, value, onChange, disabled) {
           </SelectTrigger>
           <SelectContent>
             {(param.options || []).map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>

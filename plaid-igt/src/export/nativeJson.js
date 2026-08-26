@@ -17,10 +17,17 @@
 // recognizable as ONE span.
 
 import {
-  findBaselineTextLayer, findWordTokenLayer, findSentenceTokenLayer,
-  findMorphemeTokenLayer, findAlignmentTokenLayer,
-  readScope, readOrthographies, readIgnoredTokens, readDocumentMetadata,
-  IGT_NAMESPACE, readVocabFields,
+  findBaselineTextLayer,
+  findWordTokenLayer,
+  findSentenceTokenLayer,
+  findMorphemeTokenLayer,
+  findAlignmentTokenLayer,
+  readScope,
+  readOrthographies,
+  readIgnoredTokens,
+  readDocumentMetadata,
+  IGT_NAMESPACE,
+  readVocabFields,
 } from '../domain/igtConfig.js';
 import { normalizeVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers } from './exportLayers.js';
@@ -31,8 +38,7 @@ export const NATIVE_FORMAT_NAME = 'plaid-igt';
 const nonEmpty = (obj) => obj != null && Object.keys(obj).length > 0;
 
 // Attach `metadata` only when non-empty ("absent = empty" per the spec).
-const withMetadata = (node, metadata) =>
-  (nonEmpty(metadata) ? { ...node, metadata } : node);
+const withMetadata = (node, metadata) => (nonEmpty(metadata) ? { ...node, metadata } : node);
 
 // ---- project.json -----------------------------------------------------------
 
@@ -98,8 +104,10 @@ export function buildProjectFile({ project, documents, vocabularies, asOf = null
  * recreate items in array order to preserve them.
  */
 export function serializeVocabularyNative(vocab) {
-  const fields = normalizeVocabFields(readVocabFields(vocab?.config))
-    .map(({ name, inline }) => ({ name, inline }));
+  const fields = normalizeVocabFields(readVocabFields(vocab?.config)).map(({ name, inline }) => ({
+    name,
+    inline,
+  }));
   const items = [...(vocab?.items || [])]
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .map((it) => withMetadata({ id: it.id, form: it.form }, it.metadata));
@@ -132,10 +140,11 @@ const fieldEntries = (annotations, emittedSpanIds) => {
 // appears in the sentence tree are flushed to extras at the end
 // (consumeRemaining), so links on orphan/sentence/alignment tokens are never
 // silently dropped.
-const extraLinkOf = (entry) => withMetadata(
-  { id: entry.id, vocabId: entry.vocabId, itemId: entry.itemId, tokens: entry.tokens },
-  entry.metadata,
-);
+const extraLinkOf = (entry) =>
+  withMetadata(
+    { id: entry.id, vocabId: entry.vocabId, itemId: entry.itemId, tokens: entry.tokens },
+    entry.metadata,
+  );
 
 const linkIndexFromRaw = (raw) => {
   const byToken = new Map();
@@ -200,7 +209,13 @@ const splitOrthographies = (metadata, orthographyNames) => {
 function morphemeNode(m, linkIndex, ctx) {
   ctx.emittedTokenIds.add(m.id);
   const metadata = { ...(m.metadata || {}) };
-  const node = { id: m.id, begin: m.begin, end: m.end, precedence: m.precedence ?? 1, text: m.content ?? '' };
+  const node = {
+    id: m.id,
+    begin: m.begin,
+    end: m.end,
+    precedence: m.precedence ?? 1,
+    text: m.content ?? '',
+  };
   // form '' is meaningful (present-but-empty) — lift only when the key exists,
   // mirroring morphFormOf's present-vs-absent distinction.
   if (Object.prototype.hasOwnProperty.call(metadata, 'form')) {
@@ -268,26 +283,39 @@ function completenessSweep(layerInfo, ctx) {
         const tokens = s.tokens || [];
         const inTree = ctx.emittedSpanIds.has(s.id);
         if (inTree && tokens.every((t) => ctx.emittedTokenIds.has(t))) continue;
-        extraSpans.push(withMetadata(
-          { id: s.id, layer: { id: sl.id, name: sl.name, scope }, tokens, value: s.value ?? null },
-          s.metadata,
-        ));
+        extraSpans.push(
+          withMetadata(
+            {
+              id: s.id,
+              layer: { id: sl.id, name: sl.name, scope },
+              tokens,
+              value: s.value ?? null,
+            },
+            s.metadata,
+          ),
+        );
       }
     }
   }
   return { orphanTokens, extraSpans };
 }
 
-const alignmentNodes = (alignmentTokens) => (alignmentTokens || []).map((t) => {
-  const metadata = { ...(t.metadata || {}) };
-  delete metadata.timeBegin;
-  delete metadata.timeEnd;
-  return withMetadata({
-    id: t.id, begin: t.begin, end: t.end,
-    timeBegin: t.metadata?.timeBegin ?? null,
-    timeEnd: t.metadata?.timeEnd ?? null,
-  }, metadata);
-});
+const alignmentNodes = (alignmentTokens) =>
+  (alignmentTokens || []).map((t) => {
+    const metadata = { ...(t.metadata || {}) };
+    delete metadata.timeBegin;
+    delete metadata.timeEnd;
+    return withMetadata(
+      {
+        id: t.id,
+        begin: t.begin,
+        end: t.end,
+        timeBegin: t.metadata?.timeBegin ?? null,
+        timeEnd: t.metadata?.timeEnd ?? null,
+      },
+      metadata,
+    );
+  });
 
 /**
  * One document. `mediaFile` is the archive path of the embedded media (or
@@ -304,10 +332,7 @@ export function serializeDocumentNative(igtDoc, { mediaFile = null } = {}) {
 
   const sentences = (igtDoc.sortedSentences || []).map((s) => {
     ctx.emittedTokenIds.add(s.id);
-    const node = withMetadata(
-      { id: s.id, begin: s.begin, end: s.end },
-      s.sentenceToken?.metadata,
-    );
+    const node = withMetadata({ id: s.id, begin: s.begin, end: s.end }, s.sentenceToken?.metadata);
     node.fields = fieldEntries(s.annotations, ctx.emittedSpanIds);
     node.words = (s.tokens || []).map((t) => wordNode(t, orthographyNames, linkIndex, ctx));
     return node;
@@ -329,10 +354,7 @@ export function serializeDocumentNative(igtDoc, { mediaFile = null } = {}) {
     version: raw.version ?? null,
     mediaFile,
     metadata: raw.metadata || {}, // wholesale — the derived view filters this
-    baseline: withMetadata(
-      { textId: text?.id ?? null, body: text?.body ?? '' },
-      text?.metadata,
-    ),
+    baseline: withMetadata({ textId: text?.id ?? null, body: text?.body ?? '' }, text?.metadata),
     sentences,
     alignment: alignmentNodes(igtDoc.alignmentTokens),
     extraVocabLinks: linkIndex.extras,

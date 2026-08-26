@@ -60,21 +60,24 @@ export function useServiceParams(selectedService, storagePrefix, defaultParams =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceId, storagePrefix]);
 
-  const setParam = useCallback((key, value) => {
-    const next = { ...valuesRef.current, [key]: value };
-    if (serviceId) {
-      try {
-        // Persist everything EXCEPT destructive opt-ins, so they can't re-arm
-        // on the next open. They still toggle live within the open dialog.
-        const toPersist = { ...next };
-        for (const k of NON_PERSISTENT_PARAMS) delete toPersist[k];
-        localStorage.setItem(`${storagePrefix}${serviceId}`, JSON.stringify(toPersist));
-      } catch {
-        /* ignore quota / serialization errors */
+  const setParam = useCallback(
+    (key, value) => {
+      const next = { ...valuesRef.current, [key]: value };
+      if (serviceId) {
+        try {
+          // Persist everything EXCEPT destructive opt-ins, so they can't re-arm
+          // on the next open. They still toggle live within the open dialog.
+          const toPersist = { ...next };
+          for (const k of NON_PERSISTENT_PARAMS) delete toPersist[k];
+          localStorage.setItem(`${storagePrefix}${serviceId}`, JSON.stringify(toPersist));
+        } catch {
+          /* ignore quota / serialization errors */
+        }
       }
-    }
-    setValues(next);
-  }, [serviceId, storagePrefix]);
+      setValues(next);
+    },
+    [serviceId, storagePrefix],
+  );
 
   // Live coercion: cleaned values + validation errors keyed by param key.
   const { values: coercedValues, errors } = useMemo(

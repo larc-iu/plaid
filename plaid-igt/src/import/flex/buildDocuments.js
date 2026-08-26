@@ -42,9 +42,7 @@ function alignSegment(body, begin, end, analyses, baselineWs) {
   const warnings = [];
   let cursor = begin;
   for (const a of analyses) {
-    const form = a.kind === 'punct'
-      ? a.form
-      : (a.forms?.[baselineWs] ?? pickEn(a.forms));
+    const form = a.kind === 'punct' ? a.form : (a.forms?.[baselineWs] ?? pickEn(a.forms));
     if (!form) {
       warnings.push(`word with no form at offset ${cursor}`);
       continue;
@@ -88,8 +86,9 @@ function alignSegment(body, begin, end, analyses, baselineWs) {
  */
 export function buildDocuments(ir, opts = {}) {
   const baselineWs = opts.baselineWs ?? ir.writingSystems.vernacular[0];
-  const orthographyWss = ir.writingSystems.vernacular
-    .filter((ws) => ws !== baselineWs && ir.wsUsage.wordForms.includes(ws));
+  const orthographyWss = ir.writingSystems.vernacular.filter(
+    (ws) => ws !== baselineWs && ir.wsUsage.wordForms.includes(ws),
+  );
 
   const documents = [];
   for (const text of ir.texts) {
@@ -103,7 +102,8 @@ export function buildDocuments(ir, opts = {}) {
         // Paragraph FLEx never segmented: absorb into the previous sentence,
         // or open a fresh sentence if it's the first content.
         if (sentences.length) sentences[sentences.length - 1].endU16 = paraEnd;
-        else if (para.content.length) sentences.push({ beginU16: offset, endU16: paraEnd, seg: null });
+        else if (para.content.length)
+          sentences.push({ beginU16: offset, endU16: paraEnd, seg: null });
       } else {
         para.segments.forEach((seg, i) => {
           const next = para.segments[i + 1];
@@ -173,8 +173,8 @@ export function buildDocuments(ir, opts = {}) {
 
   documents.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-  const totalAnalyses = ir.texts.flatMap((t) =>
-    t.paragraphs.flatMap((p) => p.segments.flatMap((s) => s.analyses)))
+  const totalAnalyses = ir.texts
+    .flatMap((t) => t.paragraphs.flatMap((p) => p.segments.flatMap((s) => s.analyses)))
     .filter((a) => a.kind === 'word').length;
   const stats = {
     documents: documents.length,
@@ -183,7 +183,9 @@ export function buildDocuments(ir, opts = {}) {
     puncts: documents.reduce((n, d) => n + d.puncts.length, 0),
     unalignedWords: totalAnalyses - documents.reduce((n, d) => n + d.words.length, 0),
     morphemes: documents.reduce(
-      (n, d) => n + d.words.reduce((m, w) => m + (w.morphemes?.length ?? 0), 0), 0),
+      (n, d) => n + d.words.reduce((m, w) => m + (w.morphemes?.length ?? 0), 0),
+      0,
+    ),
     lexiconEntries: ir.lexicon.length,
     lexiconSenses: ir.lexicon.reduce((n, e) => n + e.senses.length, 0),
     warnings: documents.reduce((n, d) => n + d.warnings.length, 0),

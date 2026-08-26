@@ -45,7 +45,9 @@ export const morphFormOf = (m) => {
  * gloss in exports/copy. */
 export const joinMorphemeTexts = (morphemes, texts) =>
   texts.some((t) => (t ?? '').trim() !== '')
-    ? joinMorphemes(texts.map((t, i) => ({ text: t, morphType: morphemes[i]?.metadata?.morphType })))
+    ? joinMorphemes(
+        texts.map((t, i) => ({ text: t, morphType: morphemes[i]?.metadata?.morphType })),
+      )
     : '';
 
 // Per-word cells: segmented form + one joined-gloss string per morph field +
@@ -53,12 +55,19 @@ export const joinMorphemeTexts = (morphemes, texts) =>
 function wordCells(token, { morphFields, wordFields }) {
   const morphemes = token.morphemes || [];
   const segmented = morphemes.length
-    ? joinMorphemeTexts(morphemes, morphemes.map((m) => morphFormOf(m)))
+    ? joinMorphemeTexts(
+        morphemes,
+        morphemes.map((m) => morphFormOf(m)),
+      )
     : (token.content ?? '');
   const morphLines = morphFields.map((f) =>
     morphemes.length
-      ? joinMorphemeTexts(morphemes, morphemes.map((m) => m.annotations?.[f]?.value ?? ''))
-      : '');
+      ? joinMorphemeTexts(
+          morphemes,
+          morphemes.map((m) => m.annotations?.[f]?.value ?? ''),
+        )
+      : '',
+  );
   const wordLines = wordFields.map((f) => token.annotations?.[f]?.value ?? '');
   return { segmented, morphLines, wordLines };
 }
@@ -86,9 +95,14 @@ export function formatPlain(sentence, fields) {
   const lines = tiers(sentence, fields);
   const n = lines[0].cells.length;
   const widths = Array.from({ length: n }, (_, i) =>
-    Math.max(...lines.map((l) => cpLen(l.cells[i]))));
+    Math.max(...lines.map((l) => cpLen(l.cells[i]))),
+  );
   const out = lines.map((l) =>
-    l.cells.map((c, i) => c + ' '.repeat(widths[i] - cpLen(c))).join('  ').trimEnd());
+    l.cells
+      .map((c, i) => c + ' '.repeat(widths[i] - cpLen(c)))
+      .join('  ')
+      .trimEnd(),
+  );
   for (const t of translations(sentence, fields)) out.push(`‘${t.value}’`);
   return out.join('\n');
 }
@@ -104,8 +118,16 @@ export function formatTsv(sentence, fields) {
 
 // ---- LaTeX ----------------------------------------------------------------
 const LATEX_SPECIALS = {
-  '\\': '\\textbackslash{}', '&': '\\&', '%': '\\%', '$': '\\$', '#': '\\#',
-  '_': '\\_', '{': '\\{', '}': '\\}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}',
+  '\\': '\\textbackslash{}',
+  '&': '\\&',
+  '%': '\\%',
+  $: '\\$',
+  '#': '\\#',
+  _: '\\_',
+  '{': '\\{',
+  '}': '\\}',
+  '~': '\\textasciitilde{}',
+  '^': '\\textasciicircum{}',
 };
 const texEscape = (s) => [...(s ?? '')].map((ch) => LATEX_SPECIALS[ch] ?? ch).join('');
 const texCell = (s) => (s === '' ? '{}' : texEscape(s));
@@ -143,16 +165,18 @@ export function formatExpex(sentence, fields) {
 }
 
 // ---- HTML (leipzig.js) ------------------------------------------------------
-const htmlEscape = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const htmlEscape = (s) =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 
 // leipzig.js: <div data-gloss> with one <p> per aligned line + a final <p>
 // for the free translation. Words split on whitespace, so multiword cells
 // are kept intact with non-breaking spaces.
 export function formatLeipzig(sentence, fields) {
   const nbsp = (s) => htmlEscape(s === '' ? '\u00a0' : s).replace(/ /g, '\u00a0');
-  const lines = tiers(sentence, fields)
-    .map((l) => `  <p>${l.cells.map(nbsp).join(' ')}</p>`);
+  const lines = tiers(sentence, fields).map((l) => `  <p>${l.cells.map(nbsp).join(' ')}</p>`);
   const tr = translations(sentence, fields)[0]?.value;
   if (tr) lines.push(`  <p>‘${htmlEscape(tr)}’</p>`);
   return ['<div data-gloss>', ...lines, '</div>'].join('\n');

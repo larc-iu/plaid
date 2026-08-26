@@ -1,7 +1,14 @@
 import { VocabularyManager } from '../settings/VocabularyManager.jsx';
 
-export const VocabularyStep = ({ data, onDataChange, setupData, isNewProject, projectId, user, client }) => {
-
+export const VocabularyStep = ({
+  data,
+  onDataChange,
+  setupData,
+  isNewProject,
+  projectId,
+  user,
+  client,
+}) => {
   // Load vocabularies from API on mount
   const handleLoadData = async () => {
     try {
@@ -10,11 +17,11 @@ export const VocabularyStep = ({ data, onDataChange, setupData, isNewProject, pr
       const vocabList = await client.vocabLayers.list();
 
       // Transform API vocabs into our format
-      const initialVocabs = (vocabList || []).map(vocab => ({
+      const initialVocabs = (vocabList || []).map((vocab) => ({
         name: vocab.name || vocab.id,
         id: vocab.id,
         enabled: false, // Default to disabled
-        isCustom: false // Existing vocabs from API
+        isCustom: false, // Existing vocabs from API
       }));
 
       return { vocabularies: initialVocabs };

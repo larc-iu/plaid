@@ -24,15 +24,22 @@ describe('sanitizeFilename', () => {
 
 describe('dedupeFilenames', () => {
   it('numbers duplicates before the extension', () => {
-    expect(dedupeFilenames(['a.txt', 'b.txt', 'a.txt', 'a.txt']))
-      .toEqual(['a.txt', 'b.txt', 'a (2).txt', 'a (3).txt']);
+    expect(dedupeFilenames(['a.txt', 'b.txt', 'a.txt', 'a.txt'])).toEqual([
+      'a.txt',
+      'b.txt',
+      'a (2).txt',
+      'a (3).txt',
+    ]);
   });
   it('appends for extensionless names', () => {
     expect(dedupeFilenames(['x', 'x'])).toEqual(['x', 'x (2)']);
   });
   it('never collides a generated suffix with a literal name', () => {
-    expect(dedupeFilenames(['a.txt', 'a.txt', 'a (2).txt']))
-      .toEqual(['a.txt', 'a (2).txt', 'a (2) (2).txt']);
+    expect(dedupeFilenames(['a.txt', 'a.txt', 'a (2).txt'])).toEqual([
+      'a.txt',
+      'a (2).txt',
+      'a (2) (2).txt',
+    ]);
   });
 });
 

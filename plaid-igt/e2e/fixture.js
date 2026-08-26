@@ -65,13 +65,27 @@ async function ensureFixture() {
   const sentenceLayer = await client.tokenLayers.create(textLayer.id, 'Sentences', 'partitioning');
   await client.tokenLayers.setConfig(sentenceLayer.id, 'plaid', 'role', ROLES.SENTENCE);
 
-  const wordLayer = await client.tokenLayers.create(textLayer.id, 'Main Tokens', 'non-overlapping', sentenceLayer.id);
+  const wordLayer = await client.tokenLayers.create(
+    textLayer.id,
+    'Main Tokens',
+    'non-overlapping',
+    sentenceLayer.id,
+  );
   await client.tokenLayers.setConfig(wordLayer.id, 'plaid', 'role', ROLES.WORD);
 
-  const morphemeLayer = await client.tokenLayers.create(textLayer.id, 'Main Morphemes', 'any', wordLayer.id);
+  const morphemeLayer = await client.tokenLayers.create(
+    textLayer.id,
+    'Main Morphemes',
+    'any',
+    wordLayer.id,
+  );
   await client.tokenLayers.setConfig(morphemeLayer.id, 'plaid', 'role', ROLES.MORPHEME);
 
-  const alignmentLayer = await client.tokenLayers.create(textLayer.id, 'Time Alignment', 'non-overlapping');
+  const alignmentLayer = await client.tokenLayers.create(
+    textLayer.id,
+    'Time Alignment',
+    'non-overlapping',
+  );
   await client.tokenLayers.setConfig(alignmentLayer.id, 'plaid', 'role', ROLES.TIME_ALIGNMENT);
 
   // 4. Orthographies on the word layer (baseline excluded) — igt namespace.
@@ -124,7 +138,9 @@ async function ensureVocab(client, projectId) {
 }
 
 function resolveLayers(project) {
-  const tl = (project.textLayers || []).find((l) => roleOf(l) === ROLES.BASELINE) || (project.textLayers || [])[0];
+  const tl =
+    (project.textLayers || []).find((l) => roleOf(l) === ROLES.BASELINE) ||
+    (project.textLayers || [])[0];
   const tokenLayers = tl?.tokenLayers || [];
   return {
     textLayerId: tl?.id,
@@ -160,7 +176,9 @@ async function seedTokensIfEmpty(client, documentId, layers) {
 
   const sentLayer = (tl.tokenLayers || []).find((l) => roleOf(l) === ROLES.SENTENCE);
   if (layers.sentenceLayerId && (sentLayer?.tokens || []).length === 0) {
-    await client.tokens.bulkCreate([{ tokenLayerId: layers.sentenceLayerId, text: text.id, begin: 0, end: body.length }]);
+    await client.tokens.bulkCreate([
+      { tokenLayerId: layers.sentenceLayerId, text: text.id, begin: 0, end: body.length },
+    ]);
   }
 
   const words = [];
@@ -169,10 +187,25 @@ async function seedTokensIfEmpty(client, documentId, layers) {
   while ((m = re.exec(body)) !== null) words.push({ begin: m.index, end: m.index + m[0].length });
 
   if (layers.wordLayerId) {
-    await client.tokens.bulkCreate(words.map((w) => ({ tokenLayerId: layers.wordLayerId, text: text.id, begin: w.begin, end: w.end })));
+    await client.tokens.bulkCreate(
+      words.map((w) => ({
+        tokenLayerId: layers.wordLayerId,
+        text: text.id,
+        begin: w.begin,
+        end: w.end,
+      })),
+    );
   }
   if (layers.morphemeLayerId) {
-    await client.tokens.bulkCreate(words.map((w) => ({ tokenLayerId: layers.morphemeLayerId, text: text.id, begin: w.begin, end: w.end, precedence: 1 })));
+    await client.tokens.bulkCreate(
+      words.map((w) => ({
+        tokenLayerId: layers.morphemeLayerId,
+        text: text.id,
+        begin: w.begin,
+        end: w.end,
+        precedence: 1,
+      })),
+    );
   }
 }
 

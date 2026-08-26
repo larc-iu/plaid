@@ -6,16 +6,16 @@ import {
   tokenizeText,
   findUntokenizedRanges,
   getIgnoredTokensConfig,
-  validateTokenization
+  validateTokenization,
 } from '../../utils/tokenizationUtils.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
 import { planSpanDedup } from '../igtReconcile.js';
 
 const findCoincidentMorphemeIds = (morphemeTokens, targets) => {
   if (!Array.isArray(morphemeTokens) || morphemeTokens.length === 0) return [];
-  const ranges = new Set(targets.map(t => `${t.begin}-${t.end}`));
+  const ranges = new Set(targets.map((t) => `${t.begin}-${t.end}`));
   const ids = [];
-  morphemeTokens.forEach(m => {
+  morphemeTokens.forEach((m) => {
     if (ranges.has(`${m.begin}-${m.end}`)) ids.push(m.id);
   });
   return ids;
@@ -34,9 +34,7 @@ export const tokenMutations = {
       const info = this.layerInfo;
       const wordTokens = info.primaryTokenLayer?.tokens || [];
       const idSet = new Set(ids);
-      const toMerge = wordTokens
-        .filter(t => idSet.has(t.id))
-        .sort((a, b) => a.begin - b.begin);
+      const toMerge = wordTokens.filter((t) => idSet.has(t.id)).sort((a, b) => a.begin - b.begin);
       if (toMerge.length <= 1) throw new Error('Not enough tokens to merge');
 
       const firstToken = toMerge[0];
@@ -52,17 +50,21 @@ export const tokenMutations = {
         }
       });
 
-      const removedWordIds = new Set(toMerge.slice(1).map(t => t.id));
+      const removedWordIds = new Set(toMerge.slice(1).map((t) => t.id));
       const removedMorphIds = new Set(coincident);
 
       this._applyRawPatch((next, infoNext, vocabs) => {
         if (infoNext.primaryTokenLayer?.tokens) {
-          const first = infoNext.primaryTokenLayer.tokens.find(t => t.id === firstToken.id);
+          const first = infoNext.primaryTokenLayer.tokens.find((t) => t.id === firstToken.id);
           if (first) first.end = lastToken.end;
-          infoNext.primaryTokenLayer.tokens = infoNext.primaryTokenLayer.tokens.filter(t => !removedWordIds.has(t.id));
+          infoNext.primaryTokenLayer.tokens = infoNext.primaryTokenLayer.tokens.filter(
+            (t) => !removedWordIds.has(t.id),
+          );
         }
         if (removedMorphIds.size > 0 && infoNext.morphemeTokenLayer?.tokens) {
-          infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(m => !removedMorphIds.has(m.id));
+          infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(
+            (m) => !removedMorphIds.has(m.id),
+          );
         }
         // Server reparents word-scope spans + vocab links from the merged-away
         // words onto firstToken (token.clj merge-tokens); mirror that so they
@@ -89,7 +91,7 @@ export const tokenMutations = {
         });
         this._applyRawPatch((next, infoNext) => {
           for (const p of dedup) {
-            for (const sl of (infoNext.spanLayers?.[p.scope] || [])) {
+            for (const sl of infoNext.spanLayers?.[p.scope] || []) {
               if (sl.id !== p.layerId || !Array.isArray(sl.spans)) continue;
               const dead = new Set(p.deleteSpanIds);
               sl.spans = sl.spans.filter((s) => !dead.has(s.id));
@@ -109,10 +111,10 @@ export const tokenMutations = {
     return this._withSaving('Failed to delete token', async () => {
       const info = this.layerInfo;
       const wordTokens = info.primaryTokenLayer?.tokens || [];
-      const target = wordTokens.find(t => t.id === tokenId);
+      const target = wordTokens.find((t) => t.id === tokenId);
       const removedMorphIds = new Set();
       if (target) {
-        (info.morphemeTokenLayer?.tokens || []).forEach(m => {
+        (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
           if (m.begin === target.begin && m.end === target.end) removedMorphIds.add(m.id);
         });
       }
@@ -121,18 +123,22 @@ export const tokenMutations = {
 
       this._applyRawPatch((next, infoNext) => {
         if (infoNext.primaryTokenLayer?.tokens) {
-          infoNext.primaryTokenLayer.tokens = infoNext.primaryTokenLayer.tokens.filter(t => t.id !== tokenId);
+          infoNext.primaryTokenLayer.tokens = infoNext.primaryTokenLayer.tokens.filter(
+            (t) => t.id !== tokenId,
+          );
         }
         if (removedMorphIds.size > 0 && infoNext.morphemeTokenLayer?.tokens) {
-          infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(m => !removedMorphIds.has(m.id));
+          infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(
+            (m) => !removedMorphIds.has(m.id),
+          );
         }
         // Drop any spans pinned to the deleted word or its morphemes.
         const deadIds = new Set([tokenId, ...removedMorphIds]);
         const filterSpansOn = (spanLayers) => {
-          (spanLayers || []).forEach(sl => {
+          (spanLayers || []).forEach((sl) => {
             if (!Array.isArray(sl.spans)) return;
-            sl.spans = sl.spans.filter(s =>
-              !(Array.isArray(s.tokens) && s.tokens.some(tid => deadIds.has(tid)))
+            sl.spans = sl.spans.filter(
+              (s) => !(Array.isArray(s.tokens) && s.tokens.some((tid) => deadIds.has(tid))),
             );
           });
         };
@@ -154,7 +160,7 @@ export const tokenMutations = {
     }
     const sentenceTokens = info.sentenceTokenLayer?.tokens || [];
     if (sentenceTokens.length > 0) {
-      const fits = sentenceTokens.some(s => begin >= s.begin && end <= s.end);
+      const fits = sentenceTokens.some((s) => begin >= s.begin && end <= s.end);
       if (!fits) {
         this.setError('Selection must be inside an existing sentence');
         return false;
@@ -166,13 +172,14 @@ export const tokenMutations = {
       const newId = result?.id || result;
       this._applyRawPatch((next, infoNext) => {
         if (!infoNext.primaryTokenLayer) return;
-        if (!Array.isArray(infoNext.primaryTokenLayer.tokens)) infoNext.primaryTokenLayer.tokens = [];
+        if (!Array.isArray(infoNext.primaryTokenLayer.tokens))
+          infoNext.primaryTokenLayer.tokens = [];
         infoNext.primaryTokenLayer.tokens.push({
           id: newId,
           text: text.id,
           begin,
           end,
-          metadata: {}
+          metadata: {},
         });
       });
     });
@@ -210,12 +217,14 @@ export const tokenMutations = {
       }
       if (newTokens.length === 0) return;
 
-      await this._client.tokens.bulkCreate(newTokens.map(t => ({
-        tokenLayerId: primaryTokenLayer.id,
-        text: text.id,
-        begin: t.begin,
-        end: t.end
-      })));
+      await this._client.tokens.bulkCreate(
+        newTokens.map((t) => ({
+          tokenLayerId: primaryTokenLayer.id,
+          text: text.id,
+          begin: t.begin,
+          end: t.end,
+        })),
+      );
       createdCount = newTokens.length;
       await this._reload();
     });
@@ -230,8 +239,8 @@ export const tokenMutations = {
       const info = this.layerInfo;
       const wordTokens = info.primaryTokenLayer?.tokens || [];
       if (wordTokens.length === 0) return;
-      await this._client.tokens.bulkDelete(wordTokens.map(t => t.id));
+      await this._client.tokens.bulkDelete(wordTokens.map((t) => t.id));
       await this._reload();
     });
-  }
+  },
 };

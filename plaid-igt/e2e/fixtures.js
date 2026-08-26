@@ -31,12 +31,15 @@ export async function seedAuth(page, { token, userId, username, isAdmin = true }
     userId = userId || fromFile.userId;
   }
   username = username || userId;
-  await page.addInitScript(({ token, userId, username, isAdmin }) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('userId', userId);
-    localStorage.setItem('username', username);
-    localStorage.setItem('isAdmin', String(isAdmin));
-  }, { token, userId, username, isAdmin });
+  await page.addInitScript(
+    ({ token, userId, username, isAdmin }) => {
+      localStorage.setItem('token', token);
+      localStorage.setItem('userId', userId);
+      localStorage.setItem('username', username);
+      localStorage.setItem('isAdmin', String(isAdmin));
+    },
+    { token, userId, username, isAdmin },
+  );
 }
 
 // Collect console errors, failed network requests, and every /api/v1/ call
@@ -61,7 +64,11 @@ export function collectClientErrors(page) {
     if (url.includes('/api/v1/')) {
       const entry = { method: resp.request().method(), status: resp.status(), url };
       if (resp.status() >= 400) {
-        try { entry.body = (await resp.text()).slice(0, 500); } catch { /* body unavailable */ }
+        try {
+          entry.body = (await resp.text()).slice(0, 500);
+        } catch {
+          /* body unavailable */
+        }
         failures.push(entry);
       }
       apiCalls.push(entry);

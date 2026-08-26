@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
@@ -26,8 +30,14 @@ const STEP_TITLES = { preset: 'Preset', options: 'Options', scope: 'Scope' };
 // document page — preselects "this document". asOf (optional) locks the wizard
 // to that document and exports its historical state.
 export const ExportDialog = ({
-  open, onOpenChange, client, project, documents = null, defaultScope = null,
-  canSavePresets = false, asOf = null,
+  open,
+  onOpenChange,
+  client,
+  project,
+  documents = null,
+  defaultScope = null,
+  canSavePresets = false,
+  asOf = null,
 }) => {
   const [step, setStep] = useState('preset');
   const [presets, setPresets] = useState([]);
@@ -76,10 +86,17 @@ export const ExportDialog = ({
   useEffect(() => {
     if (!open || docList || !project?.id) return;
     let cancelled = false;
-    client.projects.listDocuments(project.id)
-      .then((docs) => { if (!cancelled) setDocList(docs || []); })
-      .catch(() => { if (!cancelled) setDocList([]); });
-    return () => { cancelled = true; };
+    client.projects
+      .listDocuments(project.id)
+      .then((docs) => {
+        if (!cancelled) setDocList(docs || []);
+      })
+      .catch(() => {
+        if (!cancelled) setDocList([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, docList, client, project?.id]);
 
   const updatePreset = (patch) => {
@@ -89,7 +106,10 @@ export const ExportDialog = ({
 
   const persistPresets = async (next) => {
     if (!canSavePresets) {
-      notifyWarning('You are not a maintainer of this project, so presets last only for this session.', 'Preset not saved');
+      notifyWarning(
+        'You are not a maintainer of this project, so presets last only for this session.',
+        'Preset not saved',
+      );
       setDirty(false);
       return;
     }
@@ -99,29 +119,40 @@ export const ExportDialog = ({
       notifySuccess('Export presets saved to the project.', 'Presets saved');
     } catch (err) {
       console.error('Failed to save export presets:', err);
-      notifyError('Saving export presets failed — they will last only for this session.', 'Preset save failed');
+      notifyError(
+        'Saving export presets failed — they will last only for this session.',
+        'Preset save failed',
+      );
     }
   };
 
   const run = async () => {
     if (!preset || running) return;
-    const scopeArg = scope === 'document'
-      ? { type: 'document', id: defaultScope.id }
-      : scope === 'documents'
-        ? { type: 'documents', ids: [...selectedDocIds] }
-        : { type: 'project' };
+    const scopeArg =
+      scope === 'document'
+        ? { type: 'document', id: defaultScope.id }
+        : scope === 'documents'
+          ? { type: 'documents', ids: [...selectedDocIds] }
+          : { type: 'project' };
     setRunning(true);
     stopRef.current = false;
     setProgress({ done: 0, total: 0, name: null });
     try {
       const result = await runExport({
-        client, project, preset, scope: scopeArg, asOf,
+        client,
+        project,
+        preset,
+        scope: scopeArg,
+        asOf,
         onProgress: setProgress,
         shouldStop: () => stopRef.current,
       });
       downloadBlob(result.filename, result.blob);
       if (result.warnings.length) {
-        notifyWarning(`Exported with ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${result.warnings.join('; ')}`, 'Export finished');
+        notifyWarning(
+          `Exported with ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${result.warnings.join('; ')}`,
+          'Export finished',
+        );
       } else {
         notifySuccess(`Downloaded ${result.filename}`, 'Export complete');
       }
@@ -140,18 +171,27 @@ export const ExportDialog = ({
   };
 
   const stepIndex = STEPS.indexOf(step);
-  const canNext = step === 'preset' ? !!preset
-    : step === 'options' ? true
-      : scope !== 'documents' || selectedDocIds.size > 0;
+  const canNext =
+    step === 'preset'
+      ? !!preset
+      : step === 'options'
+        ? true
+        : scope !== 'documents' || selectedDocIds.size > 0;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!running) onOpenChange(o); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!running) onOpenChange(o);
+      }}
+    >
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-4 w-4" /> Export
             <span className="text-sm font-normal text-muted-foreground">
-              — {STEP_TITLES[step]}{preset && step !== 'preset' ? ` · ${preset.name}` : ''}
+              — {STEP_TITLES[step]}
+              {preset && step !== 'preset' ? ` · ${preset.name}` : ''}
             </span>
           </DialogTitle>
         </DialogHeader>
@@ -161,7 +201,9 @@ export const ExportDialog = ({
             <div className="h-2 w-full rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-primary transition-all"
-                style={{ width: progress?.total ? `${(progress.done / progress.total) * 100}%` : '5%' }}
+                style={{
+                  width: progress?.total ? `${(progress.done / progress.total) * 100}%` : '5%',
+                }}
               />
             </div>
             <span className="text-sm text-muted-foreground">
@@ -194,8 +236,9 @@ export const ExportDialog = ({
                 }}
               />
             )}
-            {step === 'options' && preset && (
-              preset.format === 'flextext' ? (
+            {step === 'options' &&
+              preset &&
+              (preset.format === 'flextext' ? (
                 <FlextextOptions
                   options={preset.options || {}}
                   layers={layers}
@@ -212,8 +255,7 @@ export const ExportDialog = ({
                   layers={layers}
                   onChange={(options) => updatePreset({ options })}
                 />
-              )
-            )}
+              ))}
             {step === 'scope' && preset && (
               <ScopeStep
                 scope={scope}
@@ -239,17 +281,32 @@ export const ExportDialog = ({
             </Button>
           )}
           {running ? (
-            <Button variant="outline" onClick={() => { stopRef.current = true; }}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                stopRef.current = true;
+              }}
+            >
+              Cancel
+            </Button>
           ) : (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Close
+              </Button>
               {stepIndex > 0 && (
-                <Button variant="outline" onClick={() => setStep(STEPS[stepIndex - 1])}>Back</Button>
+                <Button variant="outline" onClick={() => setStep(STEPS[stepIndex - 1])}>
+                  Back
+                </Button>
               )}
               {step !== 'scope' ? (
-                <Button onClick={() => setStep(STEPS[stepIndex + 1])} disabled={!canNext}>Next</Button>
+                <Button onClick={() => setStep(STEPS[stepIndex + 1])} disabled={!canNext}>
+                  Next
+                </Button>
               ) : (
-                <Button onClick={run} disabled={!canNext}>Export</Button>
+                <Button onClick={run} disabled={!canNext}>
+                  Export
+                </Button>
               )}
             </>
           )}

@@ -22,7 +22,7 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
       className={cn(
         'inline-flex items-center gap-1 font-medium text-muted-foreground transition-colors hover:text-foreground',
         active && 'text-foreground',
-        className
+        className,
       )}
     >
       {label}
@@ -96,17 +96,24 @@ export const ProjectList = () => {
         console.error('Word-count query failed:', err);
         if (!cancelled) {
           setWordCounts({}); // leave counts unknown -> "—"
-          notifyWarning('Word counts could not be loaded for the project list.', 'Word counts unavailable');
+          notifyWarning(
+            'Word counts could not be loaded for the project list.',
+            'Word counts unavailable',
+          );
         }
       } finally {
         if (!cancelled) setWordsLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [projects, client]);
 
   const onSort = (key) =>
-    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+    setSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
+    );
 
   const sortedProjects = useMemo(() => {
     const extract = {
@@ -127,7 +134,9 @@ export const ProjectList = () => {
 
   const renderWords = (projectId) => {
     if (wordsLoading && wordCounts[projectId] === undefined) {
-      return <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />;
+      return (
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />
+      );
     }
     const v = wordCounts[projectId];
     return v == null ? '—' : v.toLocaleString();
@@ -151,7 +160,10 @@ export const ProjectList = () => {
       </div>
 
       {error && (
-        <div role="alert" className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div
+          role="alert"
+          className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </div>
       )}
@@ -171,13 +183,31 @@ export const ProjectList = () => {
                     <SortHeader field="name" label="Project" sort={sort} onSort={onSort} />
                   </th>
                   <th className="px-4 py-2 text-right">
-                    <SortHeader field="documents" label="Docs" sort={sort} onSort={onSort} className="justify-end" />
+                    <SortHeader
+                      field="documents"
+                      label="Docs"
+                      sort={sort}
+                      onSort={onSort}
+                      className="justify-end"
+                    />
                   </th>
                   <th className="px-4 py-2 text-right">
-                    <SortHeader field="words" label="Words" sort={sort} onSort={onSort} className="justify-end" />
+                    <SortHeader
+                      field="words"
+                      label="Words"
+                      sort={sort}
+                      onSort={onSort}
+                      className="justify-end"
+                    />
                   </th>
                   <th className="px-4 py-2 text-right">
-                    <SortHeader field="updated" label="Updated" sort={sort} onSort={onSort} className="justify-end" />
+                    <SortHeader
+                      field="updated"
+                      label="Updated"
+                      sort={sort}
+                      onSort={onSort}
+                      className="justify-end"
+                    />
                   </th>
                 </tr>
               </thead>
@@ -191,7 +221,9 @@ export const ProjectList = () => {
                     <td className="px-4 py-3">
                       <div className="min-w-0">
                         <div className="truncate font-medium">{project.name}</div>
-                        <div className="truncate text-xs text-muted-foreground">ID: {project.id}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          ID: {project.id}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">

@@ -17,36 +17,44 @@ function rawDoc(id, name, body, mediaUrl = null) {
     begin += [...w].length + 1;
   }
   return {
-    id, name, mediaUrl,
-    textLayers: [{
-      config: role('baseline'),
-      text: { body },
-      tokenLayers: [
-        { config: role('word'), tokens: words, spanLayers: [] },
-        {
-          config: role('sentence'),
-          tokens: [{ id: `${id}-s`, begin: 0, end: [...body].length }],
-          spanLayers: [],
-        },
-      ],
-    }],
+    id,
+    name,
+    mediaUrl,
+    textLayers: [
+      {
+        config: role('baseline'),
+        text: { body },
+        tokenLayers: [
+          { config: role('word'), tokens: words, spanLayers: [] },
+          {
+            config: role('sentence'),
+            tokens: [{ id: `${id}-s`, begin: 0, end: [...body].length }],
+            spanLayers: [],
+          },
+        ],
+      },
+    ],
   };
 }
 
 const PROJECT = {
-  id: 'p1', name: 'My Project: Test',
-  textLayers: [{
-    config: role('baseline'),
-    tokenLayers: [
-      { config: role('word'), spanLayers: [] },
-      { config: role('sentence'), spanLayers: [] },
-    ],
-  }],
+  id: 'p1',
+  name: 'My Project: Test',
+  textLayers: [
+    {
+      config: role('baseline'),
+      tokenLayers: [
+        { config: role('word'), spanLayers: [] },
+        { config: role('sentence'), spanLayers: [] },
+      ],
+    },
+  ],
   vocabs: [{ id: 'v1' }],
 };
 
 const VOCAB = {
-  id: 'v1', name: 'Lexicon',
+  id: 'v1',
+  name: 'Lexicon',
   config: { igt: { fields: { gloss: { inline: true }, form: { inline: true } } } },
   items: [{ id: 'i1', form: 'perro', metadata: { gloss: 'dog' } }],
   vocabLinks: [],
@@ -88,8 +96,11 @@ describe('runExport', () => {
     const client = stubClient({ docs });
     const progress = [];
     const result = await runExport({
-      client, project: PROJECT, preset: plainPreset(),
-      scope: { type: 'project' }, onProgress: (p) => progress.push(p),
+      client,
+      project: PROJECT,
+      preset: plainPreset(),
+      scope: { type: 'project' },
+      onProgress: (p) => progress.push(p),
     });
     expect(result.filename).toBe('My Project Test-export.zip');
     expect(result.warnings).toEqual([]);
@@ -98,7 +109,9 @@ describe('runExport', () => {
     expect(new TextDecoder().decode(entries['documents/Alpha.txt'])).toContain('hi  yo');
     // Sequential fetch order, after a single listDocuments.
     expect(client.calls).toEqual([
-      ['listDocuments', 'p1'], ['documents.get', 'd1'], ['documents.get', 'd2'],
+      ['listDocuments', 'p1'],
+      ['documents.get', 'd1'],
+      ['documents.get', 'd2'],
     ]);
     expect(progress.at(-1)).toEqual({ done: 2, total: 2, name: null });
   });
@@ -107,7 +120,9 @@ describe('runExport', () => {
     const docs = [rawDoc('d1', 'Solo Doc', 'hi')];
     const client = stubClient({ docs });
     const result = await runExport({
-      client, project: PROJECT, preset: plainPreset(),
+      client,
+      project: PROJECT,
+      preset: plainPreset(),
       scope: { type: 'document', id: 'd1' },
     });
     expect(result.filename).toBe('Solo Doc.txt');
@@ -120,7 +135,10 @@ describe('runExport', () => {
     const client = stubClient({ docs });
     const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
     const result = await runExport({
-      client, project: PROJECT, preset, scope: { type: 'document', id: 'd1' },
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'document', id: 'd1' },
     });
     expect(result.filename).toBe('Flex.flextext');
     const xml = await result.blob.text();
@@ -134,7 +152,10 @@ describe('runExport', () => {
     const docs = [rawDoc('d1', 'Good', 'hi'), rawDoc('d2', 'Bad', 'yo')];
     const client = stubClient({ docs, failIds: ['d2'] });
     const result = await runExport({
-      client, project: PROJECT, preset: plainPreset(), scope: { type: 'project' },
+      client,
+      project: PROJECT,
+      preset: plainPreset(),
+      scope: { type: 'project' },
     });
     expect(result.warnings).toEqual(['Document d2 failed to load: boom']);
     const entries = await unzipBlob(result.blob);
@@ -144,20 +165,32 @@ describe('runExport', () => {
   it('throws when nothing could be exported', async () => {
     const docs = [rawDoc('d1', 'Bad', 'hi')];
     const client = stubClient({ docs, failIds: ['d1'] });
-    await expect(runExport({
-      client, project: PROJECT, preset: plainPreset(), scope: { type: 'project' },
-    })).rejects.toThrow(/Nothing exported/);
+    await expect(
+      runExport({
+        client,
+        project: PROJECT,
+        preset: plainPreset(),
+        scope: { type: 'project' },
+      }),
+    ).rejects.toThrow(/Nothing exported/);
   });
 
   it('honors cancellation between documents', async () => {
     const docs = [rawDoc('d1', 'A', 'hi'), rawDoc('d2', 'B', 'yo')];
     const client = stubClient({ docs });
     let fetched = 0;
-    await expect(runExport({
-      client, project: PROJECT, preset: plainPreset(), scope: { type: 'project' },
-      onProgress: ({ name }) => { if (name) fetched++; },
-      shouldStop: () => fetched >= 1,
-    })).rejects.toThrow(ExportCancelled);
+    await expect(
+      runExport({
+        client,
+        project: PROJECT,
+        preset: plainPreset(),
+        scope: { type: 'project' },
+        onProgress: ({ name }) => {
+          if (name) fetched++;
+        },
+        shouldStop: () => fetched >= 1,
+      }),
+    ).rejects.toThrow(ExportCancelled);
     expect(client.calls.filter(([m]) => m === 'documents.get')).toEqual([['documents.get', 'd1']]);
   });
 
@@ -166,14 +199,20 @@ describe('runExport', () => {
     const client = stubClient({ docs });
     const preset = { ...plainPreset(), includeVocabularies: true };
     const result = await runExport({
-      client, project: PROJECT, preset, scope: { type: 'documents', ids: ['d1', 'd2'] },
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'documents', ids: ['d1', 'd2'] },
     });
     const entries = await unzipBlob(result.blob);
     expect(Object.keys(entries).sort()).toEqual([
-      'documents/A.txt', 'documents/B.txt', 'vocabularies/Lexicon.tsv',
+      'documents/A.txt',
+      'documents/B.txt',
+      'vocabularies/Lexicon.tsv',
     ]);
-    expect(new TextDecoder().decode(entries['vocabularies/Lexicon.tsv']))
-      .toBe('Form\tgloss\nperro\tdog\n');
+    expect(new TextDecoder().decode(entries['vocabularies/Lexicon.tsv'])).toBe(
+      'Form\tgloss\nperro\tdog\n',
+    );
   });
 
   it('warns about failed vocabularies without emitting empty TSVs for them', async () => {
@@ -181,7 +220,10 @@ describe('runExport', () => {
     const client = stubClient({ docs, vocabFails: true });
     const preset = { ...plainPreset(), includeVocabularies: true };
     const result = await runExport({
-      client, project: PROJECT, preset, scope: { type: 'project' },
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'project' },
     });
     expect(result.warnings).toEqual(['1 vocabulary failed to load']);
     const entries = await unzipBlob(result.blob);
@@ -192,8 +234,11 @@ describe('runExport', () => {
     const docs = [rawDoc('d1', 'A', 'hi')];
     const client = stubClient({ docs });
     await runExport({
-      client, project: PROJECT, preset: plainPreset(),
-      scope: { type: 'document', id: 'd1' }, asOf: '2026-01-01T00:00:00Z',
+      client,
+      project: PROJECT,
+      preset: plainPreset(),
+      scope: { type: 'document', id: 'd1' },
+      asOf: '2026-01-01T00:00:00Z',
     });
     expect(client.calls).toEqual([['documents.get', 'd1', '2026-01-01T00:00:00Z']]);
   });
@@ -209,16 +254,24 @@ describe('runExport — native plaid-igt-json', () => {
     const docs = [rawDoc('d1', 'Solo', 'hi yo')];
     const client = stubClient({ docs });
     const result = await runExport({
-      client, project: PROJECT, preset: { ...nativePreset(), includeVocabularies: false },
+      client,
+      project: PROJECT,
+      preset: { ...nativePreset(), includeVocabularies: false },
       scope: { type: 'document', id: 'd1' },
     });
     expect(result.filename).toBe('Solo-export.zip');
     const entries = await unzipBlob(result.blob);
     expect(Object.keys(entries).sort()).toEqual([
-      'documents/Solo.json', 'project.json', 'vocabularies/Lexicon.json',
+      'documents/Solo.json',
+      'project.json',
+      'vocabularies/Lexicon.json',
     ]);
-    const parsed = Object.fromEntries(Object.entries(entries)
-      .map(([path, bytes]) => [path, JSON.parse(new TextDecoder().decode(bytes))]));
+    const parsed = Object.fromEntries(
+      Object.entries(entries).map(([path, bytes]) => [
+        path,
+        JSON.parse(new TextDecoder().decode(bytes)),
+      ]),
+    );
     expect(parsed['project.json'].formatVersion).toBe(1);
     expect(parsed['project.json'].documents).toEqual([
       { id: 'd1', name: 'Solo', file: 'documents/Solo.json', mediaFile: null },
@@ -242,7 +295,9 @@ describe('runExport — native plaid-igt-json', () => {
     const client = stubClient({ docs });
     const fetched = [];
     const result = await runExport({
-      client, project: PROJECT, preset: nativePreset(),
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
       scope: { type: 'project' },
       fetchMedia: async (_c, id, asOf) => {
         fetched.push([id, asOf]);
@@ -262,9 +317,13 @@ describe('runExport — native plaid-igt-json', () => {
     const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav')];
     const client = stubClient({ docs });
     const result = await runExport({
-      client, project: PROJECT, preset: nativePreset({ includeMedia: false }),
+      client,
+      project: PROJECT,
+      preset: nativePreset({ includeMedia: false }),
       scope: { type: 'project' },
-      fetchMedia: async () => { throw new Error('should not be called'); },
+      fetchMedia: async () => {
+        throw new Error('should not be called');
+      },
     });
     const entries = await unzipBlob(result.blob);
     expect(Object.keys(entries).some((p) => p.startsWith('media/'))).toBe(false);
@@ -275,9 +334,13 @@ describe('runExport — native plaid-igt-json', () => {
     const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav')];
     const client = stubClient({ docs });
     const result = await runExport({
-      client, project: PROJECT, preset: nativePreset(),
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
       scope: { type: 'project' },
-      fetchMedia: async () => { throw new Error('boom'); },
+      fetchMedia: async () => {
+        throw new Error('boom');
+      },
     });
     expect(result.warnings).toEqual(['"A": media could not be fetched: boom']);
     const entries = await unzipBlob(result.blob);

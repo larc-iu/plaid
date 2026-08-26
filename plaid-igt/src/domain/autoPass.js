@@ -17,12 +17,20 @@
 import { IgtDocument } from './IgtDocument.js';
 import { readIgnoredTokens } from './igtConfig.js';
 import {
-  ANALYSIS_COPY_SOURCE, isUnanalyzedWord, tallyAnalyses, mergeTallies,
-  buildAnalysisTable, computeAnalysisCopyProposals,
-  wordFormDocIndexQuery, rankSourceDocs,
+  ANALYSIS_COPY_SOURCE,
+  isUnanalyzedWord,
+  tallyAnalyses,
+  mergeTallies,
+  buildAnalysisTable,
+  computeAnalysisCopyProposals,
+  wordFormDocIndexQuery,
+  rankSourceDocs,
 } from './analysisMemory.js';
 import {
-  AUTO_LINK_SOURCE, precedentQueries, buildPrecedentTable, computeAutoLinkProposals,
+  AUTO_LINK_SOURCE,
+  precedentQueries,
+  buildPrecedentTable,
+  computeAutoLinkProposals,
 } from './autoLink.js';
 
 const MAX_SOURCE_DOCS = 25;
@@ -35,7 +43,10 @@ const MAX_SOURCE_DOCS = 25;
 // re-handle words a copy just analyzed; a phase that fails (the mutation
 // returns false, having already surfaced the error) short-circuits the rest
 // and sets ok=false.
-export async function runBuiltinAnalysis(doc, { link = true, copy = false, copyContents = {} } = {}) {
+export async function runBuiltinAnalysis(
+  doc,
+  { link = true, copy = false, copyContents = {} } = {},
+) {
   let copied = 0;
   let linked = 0;
   if (copy) {
@@ -90,7 +101,9 @@ async function remoteTalliesFor(doc, wordLayerId, forms) {
     maxDocs: MAX_SOURCE_DOCS,
   });
   if (truncated) {
-    console.warn(`Auto-analysis: only the ${MAX_SOURCE_DOCS} documents with the most matching words were consulted for precedent.`);
+    console.warn(
+      `Auto-analysis: only the ${MAX_SOURCE_DOCS} documents with the most matching words were consulted for precedent.`,
+    );
   }
   const tallies = [];
   for (const docId of docIds) {
@@ -110,8 +123,7 @@ async function remoteTalliesFor(doc, wordLayerId, forms) {
 async function runLinkPhase(doc) {
   const vocabIds = Object.keys(doc.vocabularies || {});
   if (!vocabIds.length) return 0;
-  const results = await Promise.all(
-    precedentQueries(vocabIds).map((q) => doc.client.query(q)));
+  const results = await Promise.all(precedentQueries(vocabIds).map((q) => doc.client.query(q)));
   const precedentTable = buildPrecedentTable(results);
   const proposals = computeAutoLinkProposals({
     sentences: doc.sentences,

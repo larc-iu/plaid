@@ -11,20 +11,22 @@
 // could already reference the survivor).
 
 export const reparentSpans = (spanLayers, removedIds, survivorId) => {
-  (spanLayers || []).forEach(sl => {
-    (sl.spans || []).forEach(s => {
-      if (Array.isArray(s.tokens) && s.tokens.some(tid => removedIds.has(tid))) {
-        s.tokens = [...new Set(s.tokens.map(tid => (removedIds.has(tid) ? survivorId : tid)))];
+  (spanLayers || []).forEach((sl) => {
+    (sl.spans || []).forEach((s) => {
+      if (Array.isArray(s.tokens) && s.tokens.some((tid) => removedIds.has(tid))) {
+        s.tokens = [...new Set(s.tokens.map((tid) => (removedIds.has(tid) ? survivorId : tid)))];
       }
     });
   });
 };
 
 export const reparentVocabLinks = (vocabularies, removedIds, survivorId) => {
-  Object.values(vocabularies || {}).forEach(v => {
-    (v.vocabLinks || []).forEach(link => {
-      if (Array.isArray(link.tokens) && link.tokens.some(tid => removedIds.has(tid))) {
-        link.tokens = [...new Set(link.tokens.map(tid => (removedIds.has(tid) ? survivorId : tid)))];
+  Object.values(vocabularies || {}).forEach((v) => {
+    (v.vocabLinks || []).forEach((link) => {
+      if (Array.isArray(link.tokens) && link.tokens.some((tid) => removedIds.has(tid))) {
+        link.tokens = [
+          ...new Set(link.tokens.map((tid) => (removedIds.has(tid) ? survivorId : tid))),
+        ];
       }
     });
   });

@@ -68,8 +68,11 @@ export const ImportFlexProject = () => {
       }
       // Analysis writing systems that actually carry data, project order first
       const used = new Set([
-        ...ir.wsUsage.wordGloss, ...ir.wsUsage.morphGloss,
-        ...ir.wsUsage.freeTranslation, ...ir.wsUsage.literalTranslation, ...ir.wsUsage.note,
+        ...ir.wsUsage.wordGloss,
+        ...ir.wsUsage.morphGloss,
+        ...ir.wsUsage.freeTranslation,
+        ...ir.wsUsage.literalTranslation,
+        ...ir.wsUsage.note,
       ]);
       const analysisWssAvailable = [
         ...ir.writingSystems.analysis.filter((ws) => used.has(ws)),
@@ -90,13 +93,18 @@ export const ImportFlexProject = () => {
 
   // The selection knobs (texts, analysis languages) feed straight into the
   // derived config so the review cards always show what will be created.
-  const filteredBuild = useMemo(() => parsed && ({
-    ...parsed.build,
-    documents: parsed.build.documents.filter((d) => selectedTexts.has(d.guid)),
-  }), [parsed, selectedTexts]);
-  const liveConfig = useMemo(() => parsed && deriveImportConfig(
-    parsed.ir, filteredBuild, { analysisWss: [...selectedWss] },
-  ), [parsed, filteredBuild, selectedWss]);
+  const filteredBuild = useMemo(
+    () =>
+      parsed && {
+        ...parsed.build,
+        documents: parsed.build.documents.filter((d) => selectedTexts.has(d.guid)),
+      },
+    [parsed, selectedTexts],
+  );
+  const liveConfig = useMemo(
+    () => parsed && deriveImportConfig(parsed.ir, filteredBuild, { analysisWss: [...selectedWss] }),
+    [parsed, filteredBuild, selectedWss],
+  );
 
   const startImport = async () => {
     setStage('running');
@@ -132,10 +140,16 @@ export const ImportFlexProject = () => {
             },
           },
           vocabulary: {
-            vocabularies: [{ id: 'new-flex-lexicon', name: vocabName, enabled: true, isCustom: true }],
+            vocabularies: [
+              { id: 'new-flex-lexicon', name: vocabName, enabled: true, isCustom: true },
+            ],
           },
           documentMetadata: {
-            enabledFields: config.documentMetadata.map((m) => ({ name: m.name, enabled: true, isCustom: true })),
+            enabledFields: config.documentMetadata.map((m) => ({
+              name: m.name,
+              enabled: true,
+              isCustom: true,
+            })),
           },
         };
         const setup = await executeProjectSetup({
@@ -144,7 +158,9 @@ export const ImportFlexProject = () => {
           resumeProjectId: projectIdRef.current,
           setupData,
           onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.1 }),
-          onProjectCreated: (id) => { projectIdRef.current = id; },
+          onProjectCreated: (id) => {
+            projectIdRef.current = id;
+          },
         });
         if (setup.failures.length > 0) {
           throw new Error(setup.failures.join(' — '));
@@ -187,7 +203,10 @@ export const ImportFlexProject = () => {
       });
       setResults(res);
       setStage('done');
-      notifySuccess(`Imported ${res.imported} document${res.imported === 1 ? '' : 's'}.`, 'Import Complete');
+      notifySuccess(
+        `Imported ${res.imported} document${res.imported === 1 ? '' : 's'}.`,
+        'Import Complete',
+      );
     } catch (e) {
       console.error('FLEx import failed:', e);
       setRunError(e.message);
@@ -213,9 +232,13 @@ export const ImportFlexProject = () => {
     <div className="tw mx-auto max-w-3xl px-4 py-8">
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">Projects</Link>
+          <Link to="/projects" className="hover:text-foreground hover:underline">
+            Projects
+          </Link>
           <span>/</span>
-          <Link to="/projects/new" className="hover:text-foreground hover:underline">New Project</Link>
+          <Link to="/projects/new" className="hover:text-foreground hover:underline">
+            New Project
+          </Link>
           <span>/</span>
           <span>Import from FLEx</span>
         </nav>
@@ -234,7 +257,10 @@ export const ImportFlexProject = () => {
             className="flex cursor-pointer flex-col items-center gap-3 rounded-lg border-2 border-dashed p-12 text-center hover:bg-muted/50"
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleFile(e.dataTransfer.files?.[0]);
+            }}
           >
             <Upload className="h-8 w-8 text-muted-foreground" />
             <p className="font-medium">Drop a .fwbackup file here, or click to choose</p>
@@ -254,7 +280,9 @@ export const ImportFlexProject = () => {
         {stage === 'parsing' && (
           <div className="flex items-center justify-center gap-3 rounded-lg border bg-card p-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-            <p className="text-sm text-muted-foreground">Reading backup… large projects can take a few seconds.</p>
+            <p className="text-sm text-muted-foreground">
+              Reading backup… large projects can take a few seconds.
+            </p>
           </div>
         )}
 
@@ -273,29 +301,41 @@ export const ImportFlexProject = () => {
               {totalWarnings > 0 && (
                 <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
                   <p className="font-medium text-orange-800">
-                    {totalWarnings} word{totalWarnings === 1 ? '' : 's'} could not be aligned to the baseline and will be skipped:
+                    {totalWarnings} word{totalWarnings === 1 ? '' : 's'} could not be aligned to the
+                    baseline and will be skipped:
                   </p>
                   <ul className="mt-1 list-disc pl-5 text-orange-700">
-                    {warningSamples.map((w, i) => <li key={i}>{w}</li>)}
-                    {totalWarnings > warningSamples.length && <li>…and {totalWarnings - warningSamples.length} more</li>}
+                    {warningSamples.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                    {totalWarnings > warningSamples.length && (
+                      <li>…and {totalWarnings - warningSamples.length} more</li>
+                    )}
                   </ul>
                 </div>
               )}
               {irWarnings.length > 0 && (
                 <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
                   <p className="font-medium text-orange-800">
-                    {irWarnings.length} reference{irWarnings.length === 1 ? '' : 's'} in the backup could not be resolved — some data may be missing from the import:
+                    {irWarnings.length} reference{irWarnings.length === 1 ? '' : 's'} in the backup
+                    could not be resolved — some data may be missing from the import:
                   </p>
                   <ul className="mt-1 list-disc pl-5 text-orange-700">
-                    {irWarningSamples.map((w, i) => <li key={i}>{w}</li>)}
-                    {irWarnings.length > irWarningSamples.length && <li>…and {irWarnings.length - irWarningSamples.length} more</li>}
+                    {irWarningSamples.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                    {irWarnings.length > irWarningSamples.length && (
+                      <li>…and {irWarnings.length - irWarningSamples.length} more</li>
+                    )}
                   </ul>
                 </div>
               )}
             </div>
 
             <div className="rounded-lg border bg-card p-4">
-              <label className="mb-1 block text-sm font-medium" htmlFor="flex-project-name">Project name</label>
+              <label className="mb-1 block text-sm font-medium" htmlFor="flex-project-name">
+                Project name
+              </label>
               <Input
                 id="flex-project-name"
                 value={projectName}
@@ -307,29 +347,50 @@ export const ImportFlexProject = () => {
             <div className="rounded-lg border bg-card p-4">
               <div className="mb-2 flex items-center justify-between">
                 <p className="font-medium">
-                  Texts <span className="font-normal text-muted-foreground">({selectedTexts.size} of {parsed.build.documents.length} selected)</span>
+                  Texts{' '}
+                  <span className="font-normal text-muted-foreground">
+                    ({selectedTexts.size} of {parsed.build.documents.length} selected)
+                  </span>
                 </p>
                 {!locked && (
                   <span className="flex gap-3 text-sm">
-                    <button type="button" className="text-muted-foreground hover:text-foreground hover:underline"
-                      onClick={() => setSelectedTexts(new Set(parsed.build.documents.map((d) => d.guid)))}>all</button>
-                    <button type="button" className="text-muted-foreground hover:text-foreground hover:underline"
-                      onClick={() => setSelectedTexts(new Set())}>none</button>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground hover:underline"
+                      onClick={() =>
+                        setSelectedTexts(new Set(parsed.build.documents.map((d) => d.guid)))
+                      }
+                    >
+                      all
+                    </button>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground hover:underline"
+                      onClick={() => setSelectedTexts(new Set())}
+                    >
+                      none
+                    </button>
                   </span>
                 )}
               </div>
               <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
                 {parsed.build.documents.map((d) => (
-                  <label key={d.guid} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/50">
+                  <label
+                    key={d.guid}
+                    className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/50"
+                  >
                     <input
                       type="checkbox"
                       checked={selectedTexts.has(d.guid)}
                       disabled={locked}
-                      onChange={(e) => setSelectedTexts((prev) => {
-                        const next = new Set(prev);
-                        if (e.target.checked) next.add(d.guid); else next.delete(d.guid);
-                        return next;
-                      })}
+                      onChange={(e) =>
+                        setSelectedTexts((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(d.guid);
+                          else next.delete(d.guid);
+                          return next;
+                        })
+                      }
                     />
                     <span className="flex-1 truncate">{d.name}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">
@@ -344,7 +405,8 @@ export const ImportFlexProject = () => {
               <div className="rounded-lg border bg-card p-4">
                 <p className="mb-1 font-medium">Analysis languages</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Glosses and translations exist in these languages — each selected one gets its own annotation fields.
+                  Glosses and translations exist in these languages — each selected one gets its own
+                  annotation fields.
                 </p>
                 <div className="flex flex-wrap gap-4">
                   {parsed.analysisWssAvailable.map((ws) => (
@@ -353,11 +415,14 @@ export const ImportFlexProject = () => {
                         type="checkbox"
                         checked={selectedWss.has(ws)}
                         disabled={locked}
-                        onChange={(e) => setSelectedWss((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.add(ws); else next.delete(ws);
-                          return next;
-                        })}
+                        onChange={(e) =>
+                          setSelectedWss((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(ws);
+                            else next.delete(ws);
+                            return next;
+                          })
+                        }
                       />
                       <code className="text-xs">{ws}</code>
                     </label>
@@ -370,16 +435,21 @@ export const ImportFlexProject = () => {
               <div className="rounded-lg border bg-card p-4">
                 <p className="mb-1 font-medium">Orthographies</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  The first vernacular writing system ({parsed.build.baselineWs}) becomes the baseline text.
-                  Other writing systems on words become orthographies — rename them if you like.
+                  The first vernacular writing system ({parsed.build.baselineWs}) becomes the
+                  baseline text. Other writing systems on words become orthographies — rename them
+                  if you like.
                 </p>
                 <div className="flex flex-col gap-2">
                   {liveConfig.orthographies.map((o) => (
                     <div key={o.ws} className="flex items-center gap-3">
-                      <code className="w-56 shrink-0 truncate text-xs text-muted-foreground">{o.ws}</code>
+                      <code className="w-56 shrink-0 truncate text-xs text-muted-foreground">
+                        {o.ws}
+                      </code>
                       <Input
                         value={orthoNames[o.ws] ?? o.ws}
-                        onChange={(e) => setOrthoNames((prev) => ({ ...prev, [o.ws]: e.target.value }))}
+                        onChange={(e) =>
+                          setOrthoNames((prev) => ({ ...prev, [o.ws]: e.target.value }))
+                        }
                         disabled={locked}
                       />
                     </div>
@@ -412,10 +482,11 @@ export const ImportFlexProject = () => {
                   <span className="text-sm">
                     <span className="font-medium">Tokenize punctuation</span>
                     <span className="mt-0.5 block text-muted-foreground">
-                      Turn the {parsed.build.stats.puncts.toLocaleString()} punctuation mark{parsed.build.stats.puncts === 1 ? '' : 's'} FLEx
-                      tracks into word tokens, excluded from glossing. Leave off to keep them in the baseline
-                      text only — punctuation shows in the interlinear either way; this just controls whether
-                      it becomes a token.
+                      Turn the {parsed.build.stats.puncts.toLocaleString()} punctuation mark
+                      {parsed.build.stats.puncts === 1 ? '' : 's'} FLEx tracks into word tokens,
+                      excluded from glossing. Leave off to keep them in the baseline text only —
+                      punctuation shows in the interlinear either way; this just controls whether it
+                      becomes a token.
                     </span>
                   </span>
                 </label>
@@ -430,7 +501,9 @@ export const ImportFlexProject = () => {
                     <p className="font-medium text-destructive">
                       {runError === 'Import cancelled' ? 'Import stopped' : 'Import failed'}
                     </p>
-                    {runError !== 'Import cancelled' && <p className="mt-1 text-muted-foreground">{runError}</p>}
+                    {runError !== 'Import cancelled' && (
+                      <p className="mt-1 text-muted-foreground">{runError}</p>
+                    )}
                     {projectIdRef.current && (
                       <p className="mt-1 text-muted-foreground">
                         Progress so far is kept — importing again resumes where it stopped.
@@ -443,13 +516,30 @@ export const ImportFlexProject = () => {
 
             {stage === 'review' && (
               <div className="flex items-center justify-end gap-2">
-                <Button variant="outline" onClick={() => { setParsed(null); setStage('pick'); }} disabled={setupDoneRef.current}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setParsed(null);
+                    setStage('pick');
+                  }}
+                  disabled={setupDoneRef.current}
+                >
                   Choose another file
                 </Button>
-                <Button onClick={startImport} disabled={!projectName.trim() || selectedTexts.size === 0}>
-                  {projectIdRef.current
-                    ? <><RefreshCw className="h-4 w-4" /> Resume Import</>
-                    : <><FileUp className="h-4 w-4" /> Import {selectedTexts.size} text{selectedTexts.size === 1 ? '' : 's'}</>}
+                <Button
+                  onClick={startImport}
+                  disabled={!projectName.trim() || selectedTexts.size === 0}
+                >
+                  {projectIdRef.current ? (
+                    <>
+                      <RefreshCw className="h-4 w-4" /> Resume Import
+                    </>
+                  ) : (
+                    <>
+                      <FileUp className="h-4 w-4" /> Import {selectedTexts.size} text
+                      {selectedTexts.size === 1 ? '' : 's'}
+                    </>
+                  )}
                 </Button>
               </div>
             )}
@@ -462,11 +552,22 @@ export const ImportFlexProject = () => {
                     <p className="font-medium">Importing…</p>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div className="h-full bg-primary transition-all" style={{ width: `${progress?.pct ?? 0}%` }} />
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${progress?.pct ?? 0}%` }}
+                    />
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm text-muted-foreground">{progress?.label ?? 'Starting…'}</p>
-                    <Button variant="outline" size="sm" onClick={() => { stopRef.current = true; }}>
+                    <p className="text-sm text-muted-foreground">
+                      {progress?.label ?? 'Starting…'}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        stopRef.current = true;
+                      }}
+                    >
                       <Square className="h-3.5 w-3.5" /> Stop
                     </Button>
                   </div>
@@ -485,7 +586,10 @@ export const ImportFlexProject = () => {
                       {results?.skipped ? `, ${results.skipped} already present` : ''}
                       {results?.redone ? `, ${results.redone} redone` : ''}.
                     </p>
-                    <Button className="mt-3" onClick={() => navigate(`/projects/${projectIdRef.current}`)}>
+                    <Button
+                      className="mt-3"
+                      onClick={() => navigate(`/projects/${projectIdRef.current}`)}
+                    >
                       Open project
                     </Button>
                   </div>

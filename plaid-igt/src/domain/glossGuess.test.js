@@ -18,15 +18,25 @@ describe('docFrequencyGuessSource', () => {
       sent([word('perros', {}, [morph('perro', { Gloss: 'dog' }), morph('s', { Gloss: 'PL' })])]),
       { morphFields: ['Gloss'] },
     );
-    expect(g.guessFor('morpheme', 's', 'Gloss')).toEqual({ value: 'PL', source: 'gloss:doc-frequency' });
-    expect(g.guessFor('morpheme', 'perro', 'Gloss')).toEqual({ value: 'dog', source: 'gloss:doc-frequency' });
+    expect(g.guessFor('morpheme', 's', 'Gloss')).toEqual({
+      value: 'PL',
+      source: 'gloss:doc-frequency',
+    });
+    expect(g.guessFor('morpheme', 'perro', 'Gloss')).toEqual({
+      value: 'dog',
+      source: 'gloss:doc-frequency',
+    });
     expect(g.guessFor('morpheme', 'gato', 'Gloss')).toBeNull();
   });
 
   it('picks the most frequent value and refuses ties', () => {
     const g = docFrequencyGuessSource(
       sent([
-        word('a', {}, [morph('s', { Gloss: 'PL' }), morph('s', { Gloss: 'PL' }), morph('s', { Gloss: '3SG' })]),
+        word('a', {}, [
+          morph('s', { Gloss: 'PL' }),
+          morph('s', { Gloss: 'PL' }),
+          morph('s', { Gloss: '3SG' }),
+        ]),
         word('b', {}, [morph('la', { Gloss: 'DEF' }), morph('la', { Gloss: '3SG.F' })]),
       ]),
       { morphFields: ['Gloss'] },

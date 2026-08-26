@@ -12,7 +12,14 @@
 // their FLEx sense guid (metadata.flexSense).
 
 import { stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
-import { IGT_NAMESPACE, findBaselineTextLayer, findSentenceTokenLayer, findWordTokenLayer, findMorphemeTokenLayer, readScope } from '../../domain/igtConfig.js';
+import {
+  IGT_NAMESPACE,
+  findBaselineTextLayer,
+  findSentenceTokenLayer,
+  findWordTokenLayer,
+  findMorphemeTokenLayer,
+  readScope,
+} from '../../domain/igtConfig.js';
 import { pickEn } from './fwdataParser.js';
 
 const LINK_CHUNK = 1000; // chunk size for the vocab-link bulk endpoint (bounds tx size)
@@ -60,7 +67,9 @@ export function deriveImportConfig(ir, build, opts = {}) {
   }
   const documentMetadata = [
     ...[...titleWss].map((ws) => ({ name: `Title (${ws})` })),
-    { name: 'Source' }, { name: 'Description' }, { name: 'Genre' },
+    { name: 'Source' },
+    { name: 'Description' },
+    { name: 'Genre' },
   ];
 
   return {
@@ -97,7 +106,10 @@ export function resolveTargets(project, config) {
   const fieldLayers = new Map(); // field name+scope → span layer id
   for (const f of config.fields) {
     const sl = spanLayerByScopeName.get(`${f.scope}:${f.name}`);
-    if (!sl) throw new Error(`Annotation field "${f.name}" (${f.scope}) missing — run project setup first`);
+    if (!sl)
+      throw new Error(
+        `Annotation field "${f.name}" (${f.scope}) missing — run project setup first`,
+      );
     fieldLayers.set(f, sl.id);
   }
   return {
@@ -117,7 +129,14 @@ export function resolveTargets(project, config) {
  * Resume-safe: items already in the vocab with a matching metadata.flexSense
  * are reused, not duplicated.
  */
-export async function importLexicon({ client, vocabId, lexicon, baselineWs, onProgress, shouldStop }) {
+export async function importLexicon({
+  client,
+  vocabId,
+  lexicon,
+  baselineWs,
+  onProgress,
+  shouldStop,
+}) {
   const existing = await client.vocabLayers.get(vocabId, true);
   const senseToItem = new Map();
   for (const item of existing.items || []) {
@@ -126,7 +145,7 @@ export async function importLexicon({ client, vocabId, lexicon, baselineWs, onPr
 
   const pending = [];
   const customFieldNames = new Set();
-  const pickWs = (m) => (m == null ? null : m[baselineWs] ?? pickEn(m));
+  const pickWs = (m) => (m == null ? null : (m[baselineWs] ?? pickEn(m)));
   for (const entry of lexicon) {
     // The item form is the entry's CITATION form (the dictionary headword)
     // when one exists, else the lexeme form; when they differ, the lexeme
@@ -216,9 +235,21 @@ function documentMetadataOf(doc) {
 }
 
 /** Import one document end to end. Assumes it does not exist yet. */
-export async function importDocument({ client, projectId, targets, config, doc, senseToItem, orthographyNames, onProgress, shouldStop }) {
+export async function importDocument({
+  client,
+  projectId,
+  targets,
+  config,
+  doc,
+  senseToItem,
+  orthographyNames,
+  onProgress,
+  shouldStop,
+}) {
   const progress = (step) => onProgress?.({ phase: 'document', doc: doc.name, step });
-  const check = () => { if (shouldStop?.()) throw new Error('Import cancelled'); };
+  const check = () => {
+    if (shouldStop?.()) throw new Error('Import cancelled');
+  };
 
   progress('Creating document');
   const newDoc = await client.documents.create(projectId, doc.name, documentMetadataOf(doc));
@@ -234,26 +265,49 @@ export async function importDocument({ client, projectId, targets, config, doc, 
     progress('Creating sentences');
     const sentenceSpansSpec = doc.sentences.length
       ? doc.sentences
-      : [{ begin: 0, end: [...doc.body].length, freeTranslation: null, literalTranslation: null, notes: [] }];
-    const sentenceIds = (await client.tokens.bulkCreate(
-      sentenceSpansSpec.map((s) => ({ tokenLayerId: targets.sentenceLayerId, text: textId, begin: s.begin, end: s.end })),
-    )).ids;
+      : [
+          {
+            begin: 0,
+            end: [...doc.body].length,
+            freeTranslation: null,
+            literalTranslation: null,
+            notes: [],
+          },
+        ];
+    const sentenceIds = (
+      await client.tokens.bulkCreate(
+        sentenceSpansSpec.map((s) => ({
+          tokenLayerId: targets.sentenceLayerId,
+          text: textId,
+          begin: s.begin,
+          end: s.end,
+        })),
+      )
+    ).ids;
 
     // Word tokens, with orthography metadata
     check();
     progress('Creating words');
-    const wordIds = doc.words.length === 0 ? [] : (await client.tokens.bulkCreate(
-      doc.words.map((w) => {
-        const metadata = {};
-        for (const [ws, name] of Object.entries(orthographyNames)) {
-          if (w.forms?.[ws] != null) metadata[`orthog:${name}`] = w.forms[ws];
-        }
-        return {
-          tokenLayerId: targets.wordLayerId, text: textId, begin: w.begin, end: w.end,
-          ...(Object.keys(metadata).length ? { metadata } : {}),
-        };
-      }),
-    )).ids;
+    const wordIds =
+      doc.words.length === 0
+        ? []
+        : (
+            await client.tokens.bulkCreate(
+              doc.words.map((w) => {
+                const metadata = {};
+                for (const [ws, name] of Object.entries(orthographyNames)) {
+                  if (w.forms?.[ws] != null) metadata[`orthog:${name}`] = w.forms[ws];
+                }
+                return {
+                  tokenLayerId: targets.wordLayerId,
+                  text: textId,
+                  begin: w.begin,
+                  end: w.end,
+                  ...(Object.keys(metadata).length ? { metadata } : {}),
+                };
+              }),
+            )
+          ).ids;
 
     // Punctuation tokens (opt-in). Plain word-layer tokens with no
     // orthographies, morphemes, glosses, or vocab links — they match the
@@ -263,7 +317,12 @@ export async function importDocument({ client, projectId, targets, config, doc, 
     if (config.tokenizePunctuation && (doc.puncts?.length ?? 0) > 0) {
       check();
       await client.tokens.bulkCreate(
-        doc.puncts.map((p) => ({ tokenLayerId: targets.wordLayerId, text: textId, begin: p.begin, end: p.end })),
+        doc.puncts.map((p) => ({
+          tokenLayerId: targets.wordLayerId,
+          text: textId,
+          begin: p.begin,
+          end: p.end,
+        })),
       );
     }
 
@@ -281,16 +340,23 @@ export async function importDocument({ client, projectId, targets, config, doc, 
         if (form != null) metadata.form = form;
         if (m?.morphType != null) metadata.morphType = m.morphType;
         morphSpecs.push({
-          wordIndex: wi, morpheme: m,
+          wordIndex: wi,
+          morpheme: m,
           req: {
-            tokenLayerId: targets.morphemeLayerId, text: textId,
-            begin: w.begin, end: w.end, precedence: mi + 1,
+            tokenLayerId: targets.morphemeLayerId,
+            text: textId,
+            begin: w.begin,
+            end: w.end,
+            precedence: mi + 1,
             ...(Object.keys(metadata).length ? { metadata } : {}),
           },
         });
       });
     });
-    const morphIds = morphSpecs.length === 0 ? [] : (await client.tokens.bulkCreate(morphSpecs.map((s) => s.req))).ids;
+    const morphIds =
+      morphSpecs.length === 0
+        ? []
+        : (await client.tokens.bulkCreate(morphSpecs.map((s) => s.req))).ids;
 
     // Annotation spans, all scopes in chunked bulk calls
     check();
@@ -303,8 +369,10 @@ export async function importDocument({ client, projectId, targets, config, doc, 
     };
     const fieldsBy = (kind) => config.fields.filter((f) => f.kind === kind);
     doc.sentences.forEach((s, si) => {
-      for (const f of fieldsBy('freeTranslation')) addSpan(f, sentenceIds[si], s.freeTranslation?.[f.ws]);
-      for (const f of fieldsBy('literalTranslation')) addSpan(f, sentenceIds[si], s.literalTranslation?.[f.ws]);
+      for (const f of fieldsBy('freeTranslation'))
+        addSpan(f, sentenceIds[si], s.freeTranslation?.[f.ws]);
+      for (const f of fieldsBy('literalTranslation'))
+        addSpan(f, sentenceIds[si], s.literalTranslation?.[f.ws]);
       for (const f of fieldsBy('note')) {
         const notes = s.notes.map((n) => n[f.ws]).filter(Boolean);
         if (notes.length) addSpan(f, sentenceIds[si], notes.join('\n'));
@@ -341,7 +409,11 @@ export async function importDocument({ client, projectId, targets, config, doc, 
     morphSpecs.forEach((s, i) => {
       const itemId = s.morpheme?.senseGuid && senseToItem.get(s.morpheme.senseGuid);
       if (itemId && morphIds[i]) {
-        linkSpecs.push({ itemId, tokenId: morphIds[i], approved: doc.words[s.wordIndex]?.approved === true });
+        linkSpecs.push({
+          itemId,
+          tokenId: morphIds[i],
+          approved: doc.words[s.wordIndex]?.approved === true,
+        });
       }
     });
     for (let i = 0; i < linkSpecs.length; i += LINK_CHUNK) {
@@ -366,14 +438,29 @@ export async function importDocument({ client, projectId, targets, config, doc, 
  * imported; deletes and redoes half-imported ones. onProgress receives
  * {phase: 'lexicon'|'document'|'done', ...} updates throughout.
  */
-export async function runImport({ client, projectId, build, lexicon, config, vocabId, onProgress, shouldStop }) {
+export async function runImport({
+  client,
+  projectId,
+  build,
+  lexicon,
+  config,
+  vocabId,
+  onProgress,
+  shouldStop,
+}) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, config);
   const orthographyNames = Object.fromEntries(
-    (config.orthographies ?? []).map((o) => [o.ws ?? o.name, o.name]));
+    (config.orthographies ?? []).map((o) => [o.ws ?? o.name, o.name]),
+  );
 
   const senseToItem = await importLexicon({
-    client, vocabId, lexicon, baselineWs: config.baselineWs, onProgress, shouldStop,
+    client,
+    vocabId,
+    lexicon,
+    baselineWs: config.baselineWs,
+    onProgress,
+    shouldStop,
   });
 
   // Resume bookkeeping: list existing documents once (auto-paginated)
@@ -384,7 +471,13 @@ export async function runImport({ client, projectId, build, lexicon, config, voc
   for (let i = 0; i < build.documents.length; i += 1) {
     if (shouldStop?.()) throw new Error('Import cancelled');
     const doc = build.documents[i];
-    onProgress?.({ phase: 'document', doc: doc.name, index: i, total: build.documents.length, step: 'Starting' });
+    onProgress?.({
+      phase: 'document',
+      doc: doc.name,
+      index: i,
+      total: build.documents.length,
+      step: 'Starting',
+    });
     const existing = byName.get(doc.name);
     if (existing) {
       const full = await client.documents.get(existing.id);
@@ -396,7 +489,15 @@ export async function runImport({ client, projectId, build, lexicon, config, voc
       results.redone += 1;
     }
     await importDocument({
-      client, projectId, targets, config, doc, senseToItem, orthographyNames, onProgress, shouldStop,
+      client,
+      projectId,
+      targets,
+      config,
+      doc,
+      senseToItem,
+      orthographyNames,
+      onProgress,
+      shouldStop,
     });
     results.imported += 1;
   }

@@ -16,9 +16,6 @@ const NOOP_SNAPSHOT = () => 0;
 // This is the only file under src/domain/ that imports React. Keep the doc
 // class itself framework-agnostic so it can drive a vanilla-JS editor island.
 export function useIgtDocument(doc) {
-  useSyncExternalStore(
-    doc?.subscribe ?? NOOP_SUBSCRIBE,
-    doc?.getSnapshot ?? NOOP_SNAPSHOT
-  );
+  useSyncExternalStore(doc?.subscribe ?? NOOP_SUBSCRIBE, doc?.getSnapshot ?? NOOP_SNAPSHOT);
   return doc;
 }

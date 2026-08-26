@@ -14,17 +14,18 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
 
   // Find existing alignment token that matches current selection
   const getExistingAlignment = useCallback(() => {
-    return (doc.alignmentTokens || []).find(token =>
-      token.metadata?.timeBegin === selection?.start &&
-      token.metadata?.timeEnd === selection?.end
+    return (doc.alignmentTokens || []).find(
+      (token) =>
+        token.metadata?.timeBegin === selection?.start &&
+        token.metadata?.timeEnd === selection?.end,
     );
   }, [selection, doc]);
 
   // Find available text boundaries for alignment
   const getAvailableTextBoundaries = useCallback(() => {
     const alignmentTokens = doc.alignmentTokens || [];
-    const sortedTokens = [...alignmentTokens].sort((a, b) =>
-      (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0)
+    const sortedTokens = [...alignmentTokens].sort(
+      (a, b) => (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0),
     );
 
     const textLength = cpLength(doc.body || '');
@@ -62,52 +63,80 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   }, [getAvailableText]);
 
   // Create new alignment
-  const createAlignment = useCallback(async (text, speaker) => {
-    const ok = await doc.createAlignment({ text, timeBegin: selection.start, timeEnd: selection.end, speaker });
-    if (ok && onAlignmentCreated) {
-      onAlignmentCreated();
-    }
-    return ok;
-  }, [doc, selection, onAlignmentCreated]);
+  const createAlignment = useCallback(
+    async (text, speaker) => {
+      const ok = await doc.createAlignment({
+        text,
+        timeBegin: selection.start,
+        timeEnd: selection.end,
+        speaker,
+      });
+      if (ok && onAlignmentCreated) {
+        onAlignmentCreated();
+      }
+      return ok;
+    },
+    [doc, selection, onAlignmentCreated],
+  );
 
   // Edit existing alignment. Relabeling the speaker alone takes the cheap
   // metadata-only path (no baseline rewrite / token churn); a text change goes
   // through the full delete+insert cascade, carrying the speaker along.
-  const editAlignment = useCallback(async (text, existingAlignment, speaker) => {
-    if (!existingAlignment) return false;
-    const originalText = cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || '';
-    const textChanged = text !== originalText;
-    const speakerChanged = (speaker || '').trim() !== (existingAlignment.metadata?.speaker || '');
-    let ok = true;
-    if (!textChanged && speakerChanged) {
-      ok = await doc.updateAlignmentSpeaker(existingAlignment.id, speaker);
-    } else if (textChanged) {
-      ok = await doc.editAlignment(existingAlignment.id, { text, timeBegin: selection.start, timeEnd: selection.end, speaker });
-    }
-    if (ok && onAlignmentCreated) {
-      onAlignmentCreated();
-    }
-    return ok;
-  }, [doc, selection, onAlignmentCreated]);
+  const editAlignment = useCallback(
+    async (text, existingAlignment, speaker) => {
+      if (!existingAlignment) return false;
+      const originalText =
+        cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || '';
+      const textChanged = text !== originalText;
+      const speakerChanged = (speaker || '').trim() !== (existingAlignment.metadata?.speaker || '');
+      let ok = true;
+      if (!textChanged && speakerChanged) {
+        ok = await doc.updateAlignmentSpeaker(existingAlignment.id, speaker);
+      } else if (textChanged) {
+        ok = await doc.editAlignment(existingAlignment.id, {
+          text,
+          timeBegin: selection.start,
+          timeEnd: selection.end,
+          speaker,
+        });
+      }
+      if (ok && onAlignmentCreated) {
+        onAlignmentCreated();
+      }
+      return ok;
+    },
+    [doc, selection, onAlignmentCreated],
+  );
 
   // Align existing baseline text
-  const alignBaseline = useCallback(async (text, speaker) => {
-    const ok = await doc.alignBaseline({ text, timeBegin: selection.start, timeEnd: selection.end, speaker });
-    if (ok && onAlignmentCreated) {
-      onAlignmentCreated();
-    }
-    return ok;
-  }, [doc, selection, onAlignmentCreated]);
+  const alignBaseline = useCallback(
+    async (text, speaker) => {
+      const ok = await doc.alignBaseline({
+        text,
+        timeBegin: selection.start,
+        timeEnd: selection.end,
+        speaker,
+      });
+      if (ok && onAlignmentCreated) {
+        onAlignmentCreated();
+      }
+      return ok;
+    },
+    [doc, selection, onAlignmentCreated],
+  );
 
   // Delete alignment
-  const deleteAlignment = useCallback(async (existingAlignment) => {
-    if (!existingAlignment) return false;
-    const ok = await doc.deleteAlignment(existingAlignment.id);
-    if (ok && onAlignmentCreated) {
-      onAlignmentCreated();
-    }
-    return ok;
-  }, [doc, onAlignmentCreated]);
+  const deleteAlignment = useCallback(
+    async (existingAlignment) => {
+      if (!existingAlignment) return false;
+      const ok = await doc.deleteAlignment(existingAlignment.id);
+      if (ok && onAlignmentCreated) {
+        onAlignmentCreated();
+      }
+      return ok;
+    },
+    [doc, onAlignmentCreated],
+  );
 
   return {
     // State
@@ -123,6 +152,6 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
     getAvailableTextBoundaries,
     getAvailableText,
     getExistingAlignment,
-    canAlign
+    canAlign,
   };
 };

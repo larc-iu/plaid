@@ -2,7 +2,12 @@ import { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { OrthographiesManager } from './OrthographiesManager.jsx';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { findBaselineTextLayer, findWordTokenLayer, readOrthographies, IGT_NAMESPACE } from '@/domain/igtConfig';
+import {
+  findBaselineTextLayer,
+  findWordTokenLayer,
+  readOrthographies,
+  IGT_NAMESPACE,
+} from '@/domain/igtConfig';
 
 export const OrthographiesSettings = ({ projectId, client }) => {
   const [, setIsLoading] = useState(false);
@@ -50,29 +55,30 @@ export const OrthographiesSettings = ({ projectId, client }) => {
       const currentConfig = readOrthographies(tokenLayer.config);
 
       // Check if orthographies config has been explicitly set (even if empty)
-      const hasOrthographiesConfig = tokenLayer.config?.[IGT_NAMESPACE]
-        && Object.prototype.hasOwnProperty.call(tokenLayer.config[IGT_NAMESPACE], 'orthographies');
+      const hasOrthographiesConfig =
+        tokenLayer.config?.[IGT_NAMESPACE] &&
+        Object.prototype.hasOwnProperty.call(tokenLayer.config[IGT_NAMESPACE], 'orthographies');
 
       if (hasOrthographiesConfig) {
         // Config has been set, respect it even if empty
-        const configOrthographies = (currentConfig || []).map(orth => ({
+        const configOrthographies = (currentConfig || []).map((orth) => ({
           name: orth.name,
           isBaseline: orth.name === 'Baseline',
-          isCustom: !isPredefinedOrthography(orth.name)
+          isCustom: !isPredefinedOrthography(orth.name),
         }));
 
         // Always ensure baseline is included (it's always present but not stored in config)
-        const hasBaseline = configOrthographies.some(orth => orth.isBaseline);
+        const hasBaseline = configOrthographies.some((orth) => orth.isBaseline);
         if (!hasBaseline) {
           configOrthographies.unshift({
             name: 'Baseline',
             isBaseline: true,
-            isCustom: false
+            isCustom: false,
           });
         }
 
         return {
-          orthographies: configOrthographies
+          orthographies: configOrthographies,
         };
       }
 
@@ -118,12 +124,17 @@ export const OrthographiesSettings = ({ projectId, client }) => {
 
       // Convert to API format (filter out baseline, only store non-baseline orthographies)
       const nonBaselineOrthographies = data.orthographies
-        .filter(orth => !orth.isBaseline)
-        .map(orth => ({
-          name: orth.name
+        .filter((orth) => !orth.isBaseline)
+        .map((orth) => ({
+          name: orth.name,
         }));
 
-      await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, "orthographies", nonBaselineOrthographies);
+      await client.tokenLayers.setConfig(
+        tokenLayerId,
+        IGT_NAMESPACE,
+        'orthographies',
+        nonBaselineOrthographies,
+      );
 
       notifySuccess('Orthographies configuration has been updated', 'Settings Saved');
     } catch (error) {
@@ -142,7 +153,13 @@ export const OrthographiesSettings = ({ projectId, client }) => {
     const layerId = wordLayerIdRef.current;
     if (!layerId) return null;
     const res = await client.query({
-      where: [['token', '?t', { layer: layerId, metadata: { [`orthog:${orthographyName}`]: { regex: '.' } } }]],
+      where: [
+        [
+          'token',
+          '?t',
+          { layer: layerId, metadata: { [`orthog:${orthographyName}`]: { regex: '.' } } },
+        ],
+      ],
       return: { group: [], aggregates: [['count']] },
     });
     const n = res?.results?.[0]?.[0];
@@ -163,7 +180,8 @@ export const OrthographiesSettings = ({ projectId, client }) => {
           <div>
             <p className="text-sm font-medium text-destructive">Configuration Error</p>
             <p className="text-sm text-muted-foreground">
-              Failed to load or save orthographies configuration. Please refresh the page and try again.
+              Failed to load or save orthographies configuration. Please refresh the page and try
+              again.
             </p>
           </div>
         </div>
@@ -175,9 +193,9 @@ export const OrthographiesSettings = ({ projectId, client }) => {
     <div className="tw rounded-lg border bg-card p-4">
       <p className="text-lg font-medium">Orthographies</p>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Configure orthographic representations for your project. The Baseline orthography represents your
-        token layer and cannot be removed. You can add additional orthographies like IPA, alternative
-        writing systems, or normalized forms.
+        Configure orthographic representations for your project. The Baseline orthography represents
+        your token layer and cannot be removed. You can add additional orthographies like IPA,
+        alternative writing systems, or normalized forms.
       </p>
 
       <OrthographiesManager

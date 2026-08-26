@@ -16,13 +16,22 @@ import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
 // Relative (not @/) import keeps this module loadable from plain-node e2e
 // scripts, which drive the real setup against the live core.
 import {
-  IGT_NAMESPACE, readInitialized,
-  findBaselineTextLayer, findSentenceTokenLayer, findWordTokenLayer,
-  findMorphemeTokenLayer, findAlignmentTokenLayer,
+  IGT_NAMESPACE,
+  readInitialized,
+  findBaselineTextLayer,
+  findSentenceTokenLayer,
+  findWordTokenLayer,
+  findMorphemeTokenLayer,
+  findAlignmentTokenLayer,
 } from '../../../domain/igtConfig.js';
 
 export async function executeProjectSetup({
-  client, isNewProject, resumeProjectId, setupData, onProgress, onProjectCreated,
+  client,
+  isNewProject,
+  resumeProjectId,
+  setupData,
+  onProgress,
+  onProjectCreated,
 }) {
   const updateProgress = (pct, msg) => onProgress?.(pct, msg);
 
@@ -37,7 +46,12 @@ export async function executeProjectSetup({
     try {
       existingProject = await client.projects.get(resumeProjectId);
       if (readInitialized(existingProject?.config)) {
-        return { projectId: resumeProjectId, resources: {}, failures: [], alreadyInitialized: true };
+        return {
+          projectId: resumeProjectId,
+          resources: {},
+          failures: [],
+          alreadyInitialized: true,
+        };
       }
     } catch (checkError) {
       // Substrate adoption and retry dedup both read existingProject —
@@ -86,7 +100,10 @@ export async function executeProjectSetup({
     textLayerId = textLayer.id;
     resources.textLayer = textLayer;
     needsBaselineTag = true;
-  } else if (setupData.layerSelection?.textLayerType === 'existing' && setupData.layerSelection?.selectedTextLayerId) {
+  } else if (
+    setupData.layerSelection?.textLayerType === 'existing' &&
+    setupData.layerSelection?.selectedTextLayerId
+  ) {
     textLayerId = setupData.layerSelection.selectedTextLayerId;
     updateProgress(20, 'Using existing text layer...');
     needsBaselineTag = true;
@@ -104,7 +121,16 @@ export async function executeProjectSetup({
   if (textLayerId) {
     const existingTokenLayers = adoptedBaseline?.tokenLayers || [];
 
-    const ensureTokenLayer = async (found, role, resourceKey, name, overlapMode, parentId, pct, msg) => {
+    const ensureTokenLayer = async (
+      found,
+      role,
+      resourceKey,
+      name,
+      overlapMode,
+      parentId,
+      pct,
+      msg,
+    ) => {
       if (found) return found.id;
       updateProgress(pct, msg);
       const layer = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
@@ -114,30 +140,63 @@ export async function executeProjectSetup({
     };
 
     sentenceTokenLayerId = await ensureTokenLayer(
-      findSentenceTokenLayer(existingTokenLayers), ROLES.SENTENCE, 'sentenceTokenLayer',
-      'Sentences', 'partitioning', undefined, 28, 'Creating sentence layer...');
+      findSentenceTokenLayer(existingTokenLayers),
+      ROLES.SENTENCE,
+      'sentenceTokenLayer',
+      'Sentences',
+      'partitioning',
+      undefined,
+      28,
+      'Creating sentence layer...',
+    );
 
     tokenLayerId = await ensureTokenLayer(
-      findWordTokenLayer(existingTokenLayers), ROLES.WORD, 'tokenLayer',
-      'Main Tokens', 'non-overlapping', sentenceTokenLayerId, 32, 'Creating token layer...');
+      findWordTokenLayer(existingTokenLayers),
+      ROLES.WORD,
+      'tokenLayer',
+      'Main Tokens',
+      'non-overlapping',
+      sentenceTokenLayerId,
+      32,
+      'Creating token layer...',
+    );
 
     morphemeLayerId = await ensureTokenLayer(
-      findMorphemeTokenLayer(existingTokenLayers), ROLES.MORPHEME, 'morphemeLayer',
-      'Main Morphemes', 'any', tokenLayerId, 35, 'Creating morpheme layer...');
+      findMorphemeTokenLayer(existingTokenLayers),
+      ROLES.MORPHEME,
+      'morphemeLayer',
+      'Main Morphemes',
+      'any',
+      tokenLayerId,
+      35,
+      'Creating morpheme layer...',
+    );
 
     await ensureTokenLayer(
-      findAlignmentTokenLayer(existingTokenLayers), ROLES.TIME_ALIGNMENT, 'alignmentTokenLayer',
-      'Time Alignment', 'non-overlapping', undefined, 38, 'Creating alignment token layer...');
+      findAlignmentTokenLayer(existingTokenLayers),
+      ROLES.TIME_ALIGNMENT,
+      'alignmentTokenLayer',
+      'Time Alignment',
+      'non-overlapping',
+      undefined,
+      38,
+      'Creating alignment token layer...',
+    );
   }
 
   // Step 5: Configure orthographies on the word token layer
   if (tokenLayerId && setupData.orthographies?.orthographies) {
     updateProgress(40, 'Configuring orthographies...');
     const orthographiesConfig = setupData.orthographies.orthographies
-      .filter(orth => !orth.isBaseline)
-      .map(orth => ({ name: orth.name }));
+      .filter((orth) => !orth.isBaseline)
+      .map((orth) => ({ name: orth.name }));
     // Always save the config to indicate user choice, even if empty
-    await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, 'orthographies', orthographiesConfig);
+    await client.tokenLayers.setConfig(
+      tokenLayerId,
+      IGT_NAMESPACE,
+      'orthographies',
+      orthographiesConfig,
+    );
   }
 
   // Step 6: Create span layers for annotation fields. Resume-safe: reuse a
@@ -157,20 +216,25 @@ export async function executeProjectSetup({
       for (const field of setupData.fields.fields) {
         try {
           const parentLayerId =
-            field.scope === 'Sentence' ? sentenceTokenLayerId :
-            field.scope === 'Morpheme' ? morphemeLayerId :
-            tokenLayerId;
+            field.scope === 'Sentence'
+              ? sentenceTokenLayerId
+              : field.scope === 'Morpheme'
+                ? morphemeLayerId
+                : tokenLayerId;
 
           updateProgress(50, `Creating span layer: ${field.name} (${field.scope})...`);
-          const existing = (existingSpanLayersByParent.get(parentLayerId) || [])
-            .find(sl => sl.name === field.name);
-          const spanLayer = existing ?? await client.spanLayers.create(parentLayerId, field.name);
+          const existing = (existingSpanLayersByParent.get(parentLayerId) || []).find(
+            (sl) => sl.name === field.name,
+          );
+          const spanLayer = existing ?? (await client.spanLayers.create(parentLayerId, field.name));
 
           await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
           createdSpanLayers.push(spanLayer);
         } catch (fieldError) {
           console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);
-          failures.push(`Annotation field "${field.name}" could not be created: ${fieldError.message}`);
+          failures.push(
+            `Annotation field "${field.name}" could not be created: ${fieldError.message}`,
+          );
         }
       }
     }
@@ -182,27 +246,36 @@ export async function executeProjectSetup({
   if (tokenLayerId && setupData.fields?.ignoredTokens) {
     updateProgress(60, 'Configuring ignored tokens...');
     const ignoredTokensConfig = {
-      type: setupData.fields.ignoredTokens.mode === 'unicode-punctuation' ? 'unicodePunctuation' : 'blacklist'
+      type:
+        setupData.fields.ignoredTokens.mode === 'unicode-punctuation'
+          ? 'unicodePunctuation'
+          : 'blacklist',
     };
     if (ignoredTokensConfig.type === 'unicodePunctuation') {
-      ignoredTokensConfig.whitelist = setupData.fields.ignoredTokens.unicodePunctuationExceptions || [];
+      ignoredTokensConfig.whitelist =
+        setupData.fields.ignoredTokens.unicodePunctuationExceptions || [];
     } else {
       ignoredTokensConfig.blacklist = setupData.fields.ignoredTokens.explicitIgnoredTokens || [];
     }
-    await client.tokenLayers.setConfig(tokenLayerId, IGT_NAMESPACE, 'ignoredTokens', ignoredTokensConfig);
+    await client.tokenLayers.setConfig(
+      tokenLayerId,
+      IGT_NAMESPACE,
+      'ignoredTokens',
+      ignoredTokensConfig,
+    );
   }
 
   // Step 8: Vocabularies. Resume-safe: already-linked vocabs are reused.
   if (setupData.vocabulary?.vocabularies?.length > 0) {
     updateProgress(70, 'Configuring vocabularies...');
-    const enabledVocabs = setupData.vocabulary.vocabularies.filter(vocab => vocab.enabled);
+    const enabledVocabs = setupData.vocabulary.vocabularies.filter((vocab) => vocab.enabled);
     const linkedVocabs = existingProject?.vocabs || [];
     const vocabulariesProcessed = [];
 
     for (const vocab of enabledVocabs) {
       try {
         if (vocab.isCustom && vocab.id.startsWith('new-')) {
-          const alreadyLinked = linkedVocabs.find(v => v.name === vocab.name);
+          const alreadyLinked = linkedVocabs.find((v) => v.name === vocab.name);
           if (alreadyLinked) {
             vocabulariesProcessed.push(alreadyLinked);
             continue;
@@ -212,7 +285,7 @@ export async function executeProjectSetup({
           await client.projects.linkVocab(currentProjectId, newVocab.id);
           vocabulariesProcessed.push(newVocab);
         } else {
-          if (linkedVocabs.some(v => v.id === vocab.id)) {
+          if (linkedVocabs.some((v) => v.id === vocab.id)) {
             vocabulariesProcessed.push(vocab);
             continue;
           }
@@ -230,7 +303,8 @@ export async function executeProjectSetup({
 
   // Step 9: Configure document metadata
   updateProgress(80, 'Configuring document metadata...');
-  let enabledFields = setupData.documentMetadata?.enabledFields?.filter(field => field.enabled) || [];
+  let enabledFields =
+    setupData.documentMetadata?.enabledFields?.filter((field) => field.enabled) || [];
   if (!setupData.documentMetadata?.enabledFields) {
     const defaultFields = [
       { name: 'Date', enabled: true, isCustom: false },
@@ -238,12 +312,16 @@ export async function executeProjectSetup({
       { name: 'Location', enabled: true, isCustom: false },
       { name: 'Genre', enabled: false, isCustom: false },
       { name: 'Recording Quality', enabled: false, isCustom: false },
-      { name: 'Transcriber', enabled: false, isCustom: false }
+      { name: 'Transcriber', enabled: false, isCustom: false },
     ];
-    enabledFields = defaultFields.filter(field => field.enabled);
+    enabledFields = defaultFields.filter((field) => field.enabled);
   }
-  await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, 'documentMetadata',
-    enabledFields.map(field => ({ name: field.name })));
+  await client.projects.setConfig(
+    currentProjectId,
+    IGT_NAMESPACE,
+    'documentMetadata',
+    enabledFields.map((field) => ({ name: field.name })),
+  );
 
   // Step 10: Mark initialized — ONLY if every step succeeded.
   if (failures.length === 0) {

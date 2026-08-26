@@ -1,5 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Check, X, ChevronUp, ChevronDown, Unlink, AlertTriangle } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Check,
+  X,
+  ChevronUp,
+  ChevronDown,
+  Unlink,
+  AlertTriangle,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,7 +27,7 @@ export const VocabularyManager = ({
   onSaveChanges,
   onError,
   showTitle = true,
-  isSettings = false // New prop to control behavior differences
+  isSettings = false, // New prop to control behavior differences
 }) => {
   const [vocabularies, setVocabularies] = useState([]);
   const [newVocabName, setNewVocabName] = useState('');
@@ -90,7 +99,7 @@ export const VocabularyManager = ({
   const handleVocabToggle = async (vocabId, enabled) => {
     // For settings mode, handle unlinking with confirmation
     if (isSettings && !enabled) {
-      const vocab = vocabularies.find(v => v.id === vocabId);
+      const vocab = vocabularies.find((v) => v.id === vocabId);
       if (vocab) {
         setVocabToUnlink(vocab);
         openUnlinkModal();
@@ -98,8 +107,8 @@ export const VocabularyManager = ({
       }
     }
 
-    const updatedVocabs = vocabularies.map(vocab =>
-      vocab.id === vocabId ? { ...vocab, enabled } : vocab
+    const updatedVocabs = vocabularies.map((vocab) =>
+      vocab.id === vocabId ? { ...vocab, enabled } : vocab,
     );
     await saveChanges(updatedVocabs);
   };
@@ -107,8 +116,8 @@ export const VocabularyManager = ({
   const handleConfirmUnlink = async () => {
     if (!vocabToUnlink) return;
 
-    const updatedVocabs = vocabularies.map(vocab =>
-      vocab.id === vocabToUnlink.id ? { ...vocab, enabled: false } : vocab
+    const updatedVocabs = vocabularies.map((vocab) =>
+      vocab.id === vocabToUnlink.id ? { ...vocab, enabled: false } : vocab,
     );
     await saveChanges(updatedVocabs);
 
@@ -125,8 +134,8 @@ export const VocabularyManager = ({
     }
 
     // Check for duplicate names (case insensitive)
-    const isDuplicate = vocabularies.some(vocab =>
-      vocab.name.toLowerCase() === trimmedName.toLowerCase()
+    const isDuplicate = vocabularies.some(
+      (vocab) => vocab.name.toLowerCase() === trimmedName.toLowerCase(),
     );
 
     if (isDuplicate) {
@@ -138,7 +147,7 @@ export const VocabularyManager = ({
       name: trimmedName,
       id: `new-${Date.now()}`, // Temporary ID for new vocabs
       enabled: true, // New custom vocabs are enabled by default
-      isCustom: true
+      isCustom: true,
     };
 
     const updatedVocabs = [...vocabularies, newVocab];
@@ -149,8 +158,8 @@ export const VocabularyManager = ({
   };
 
   const handleDeleteCustomVocab = async (vocabId) => {
-    const vocabToDelete = vocabularies.find(v => v.id === vocabId);
-    const updatedVocabs = vocabularies.filter(vocab => vocab.id !== vocabId);
+    const vocabToDelete = vocabularies.find((v) => v.id === vocabId);
+    const updatedVocabs = vocabularies.filter((vocab) => vocab.id !== vocabId);
     await saveChanges(updatedVocabs);
 
     notifyInfo(`"${vocabToDelete?.name}" has been removed`, 'Vocabulary Removed');
@@ -166,13 +175,11 @@ export const VocabularyManager = ({
   const wouldBeDuplicate = () => {
     const trimmedName = newVocabName.trim();
     if (!trimmedName) return false;
-    return vocabularies.some(vocab =>
-      vocab.name.toLowerCase() === trimmedName.toLowerCase()
-    );
+    return vocabularies.some((vocab) => vocab.name.toLowerCase() === trimmedName.toLowerCase());
   };
 
   const handleMoveVocab = async (vocabId, direction) => {
-    const currentIndex = vocabularies.findIndex(vocab => vocab.id === vocabId);
+    const currentIndex = vocabularies.findIndex((vocab) => vocab.id === vocabId);
     if (currentIndex === -1) return;
 
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
@@ -212,7 +219,7 @@ export const VocabularyManager = ({
   // Prepare data for the table
   const tableData = vocabularies.map((vocab, index) => ({
     ...vocab,
-    tableId: `${vocab.name}-${index}` // Unique ID for table
+    tableId: `${vocab.name}-${index}`, // Unique ID for table
   }));
 
   return (
@@ -248,11 +255,7 @@ export const VocabularyManager = ({
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={cn(
-                          record.enabled ? '' : 'italic text-muted-foreground'
-                        )}
-                      >
+                      <span className={cn(record.enabled ? '' : 'italic text-muted-foreground')}>
                         {record.name}
                       </span>
                       <div className="flex items-center gap-2">
@@ -264,13 +267,13 @@ export const VocabularyManager = ({
                               variant="outline"
                               className={cn(
                                 'h-7 w-7 transition-opacity',
-                                hoveredVocab === record.id ? 'opacity-100' : 'opacity-0'
+                                hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
                               )}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 handleMoveVocab(record.id, 'up');
                               }}
-                              disabled={tableData.findIndex(item => item.id === record.id) === 0}
+                              disabled={tableData.findIndex((item) => item.id === record.id) === 0}
                             >
                               <ChevronUp className="h-3 w-3" />
                             </Button>
@@ -279,13 +282,16 @@ export const VocabularyManager = ({
                               variant="outline"
                               className={cn(
                                 'h-7 w-7 transition-opacity',
-                                hoveredVocab === record.id ? 'opacity-100' : 'opacity-0'
+                                hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
                               )}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 handleMoveVocab(record.id, 'down');
                               }}
-                              disabled={tableData.findIndex(item => item.id === record.id) === tableData.length - 1}
+                              disabled={
+                                tableData.findIndex((item) => item.id === record.id) ===
+                                tableData.length - 1
+                              }
                             >
                               <ChevronDown className="h-3 w-3" />
                             </Button>
@@ -299,7 +305,7 @@ export const VocabularyManager = ({
                             variant="outline"
                             className={cn(
                               'h-7 w-7 text-orange-600 transition-opacity hover:text-orange-600',
-                              hoveredVocab === record.id ? 'opacity-100' : 'opacity-0'
+                              hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
                             )}
                             onClick={(event) => {
                               event.stopPropagation();
@@ -317,7 +323,7 @@ export const VocabularyManager = ({
                             variant="outline"
                             className={cn(
                               'h-7 w-7 text-destructive transition-opacity hover:text-destructive',
-                              hoveredVocab === record.id ? 'opacity-100' : 'opacity-0'
+                              hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
                             )}
                             onClick={(event) => {
                               event.stopPropagation();
@@ -360,7 +366,12 @@ export const VocabularyManager = ({
       </div>
 
       {/* Unlink Confirmation Modal */}
-      <Dialog open={unlinkModalOpened} onOpenChange={(o) => { if (!o) closeUnlinkModal(); }}>
+      <Dialog
+        open={unlinkModalOpened}
+        onOpenChange={(o) => {
+          if (!o) closeUnlinkModal();
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Unlink Vocabulary</DialogTitle>
@@ -372,7 +383,8 @@ export const VocabularyManager = ({
               <div>
                 <p className="text-sm font-medium text-orange-600">Warning</p>
                 <p className="text-sm text-muted-foreground">
-                  You are about to unlink the vocabulary <strong>"{vocabToUnlink?.name}"</strong> from this project.
+                  You are about to unlink the vocabulary <strong>"{vocabToUnlink?.name}"</strong>{' '}
+                  from this project.
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   This will delete all vocabulary item links for this vocabulary in this project.
@@ -383,10 +395,7 @@ export const VocabularyManager = ({
           </div>
 
           <DialogFooter>
-            <Button
-              variant="secondary"
-              onClick={closeUnlinkModal}
-            >
+            <Button variant="secondary" onClick={closeUnlinkModal}>
               Cancel
             </Button>
             <Button

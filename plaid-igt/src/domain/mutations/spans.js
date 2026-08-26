@@ -9,7 +9,7 @@ import { verifyOnEdit } from '@larc-iu/plaid-client';
 
 const findSpanLayer = (doc, scope, fieldName) => {
   const spanLayers = doc.layerInfo.spanLayers?.[scope] || [];
-  return spanLayers.find(sl => sl.name === fieldName) || null;
+  return spanLayers.find((sl) => sl.name === fieldName) || null;
 };
 
 // Upsert a single-token span on a resolved layer: update if one already covers
@@ -20,8 +20,8 @@ const findSpanLayer = (doc, scope, fieldName) => {
 // machine-made, unverified span verifies it (write-contract rule 3): the
 // update also merges { provConfirmed: true }, keeping provSource for history.
 const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadata) => {
-  const existingSpan = (targetLayer.spans || []).find(span =>
-    Array.isArray(span.tokens) && span.tokens.includes(targetTokenId)
+  const existingSpan = (targetLayer.spans || []).find(
+    (span) => Array.isArray(span.tokens) && span.tokens.includes(targetTokenId),
   );
 
   if (existingSpan) {
@@ -38,22 +38,32 @@ const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadat
       await doc._client.spans.update(existingSpan.id, value);
     }
     doc._applyRawPatch((next, infoNext) => {
-      const layerDoc = (infoNext.spanLayers?.[scope] || []).find(sl => sl.id === targetLayer.id);
+      const layerDoc = (infoNext.spanLayers?.[scope] || []).find((sl) => sl.id === targetLayer.id);
       if (!layerDoc || !Array.isArray(layerDoc.spans)) return;
-      const idx = layerDoc.spans.findIndex(s => s.id === existingSpan.id);
+      const idx = layerDoc.spans.findIndex((s) => s.id === existingSpan.id);
       if (idx !== -1) {
         layerDoc.spans[idx].value = value;
         if (mergedMetadata) layerDoc.spans[idx].metadata = mergedMetadata;
       }
     });
   } else {
-    const result = await doc._client.spans.create(targetLayer.id, [targetTokenId], value, metadata || undefined);
+    const result = await doc._client.spans.create(
+      targetLayer.id,
+      [targetTokenId],
+      value,
+      metadata || undefined,
+    );
     const newSpanId = result?.id || result;
     doc._applyRawPatch((next, infoNext) => {
-      const layerDoc = (infoNext.spanLayers?.[scope] || []).find(sl => sl.id === targetLayer.id);
+      const layerDoc = (infoNext.spanLayers?.[scope] || []).find((sl) => sl.id === targetLayer.id);
       if (!layerDoc) return;
       if (!Array.isArray(layerDoc.spans)) layerDoc.spans = [];
-      layerDoc.spans.push({ id: newSpanId, tokens: [targetTokenId], value, ...(metadata ? { metadata } : {}) });
+      layerDoc.spans.push({
+        id: newSpanId,
+        tokens: [targetTokenId],
+        value,
+        ...(metadata ? { metadata } : {}),
+      });
     });
   }
 };

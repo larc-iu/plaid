@@ -16,8 +16,8 @@ const REPLACE_CHUNK = 400;
 // vocabularies. By convention there is at most one.
 const findPriorLink = (vocabularies, tokenId) => {
   for (const vocab of Object.values(vocabularies || {})) {
-    const link = (vocab.vocabLinks || []).find(l =>
-      Array.isArray(l.tokens) && l.tokens.length === 1 && l.tokens[0] === tokenId
+    const link = (vocab.vocabLinks || []).find(
+      (l) => Array.isArray(l.tokens) && l.tokens.length === 1 && l.tokens[0] === tokenId,
     );
     if (link) return { link, vocabId: vocab.id };
   }
@@ -27,7 +27,7 @@ const findPriorLink = (vocabularies, tokenId) => {
 // Locate the vocab containing the given vocab item id.
 const findVocabForItem = (vocabularies, vocabItemId) => {
   for (const vocab of Object.values(vocabularies || {})) {
-    const item = (vocab.items || []).find(i => i.id === vocabItemId);
+    const item = (vocab.items || []).find((i) => i.id === vocabItemId);
     if (item) return { vocab, item };
   }
   return { vocab: null, item: null };
@@ -45,13 +45,16 @@ export const vocabMutations = {
   // as chunked atomic delete+create batches. Ends with one _reload(). Returns
   // the number of links written (false on failure).
   async bulkLinkVocab(proposals, provSource) {
-    const creates = [];  // { tokenId, item }
+    const creates = []; // { tokenId, item }
     const replaces = []; // { tokenId, item, priorLinkId }
     for (const p of proposals || []) {
       const { item } = findVocabForItem(this._vocabularies, p.vocabItemId);
       if (!item) continue;
       const { link } = findPriorLink(this._vocabularies, p.tokenId);
-      if (!link) { creates.push({ tokenId: p.tokenId, item }); continue; }
+      if (!link) {
+        creates.push({ tokenId: p.tokenId, item });
+        continue;
+      }
       // Replace only machine-unverified links, and only when the item changes.
       if (provState(link.metadata) !== PROV_STATES.MACHINE) continue;
       if (link.vocabItem?.id === item.id) continue;
@@ -65,7 +68,7 @@ export const vocabMutations = {
         // The dedicated endpoint has no per-batch op cap, so even a document
         // with thousands of unlinked tokens links in a single tx.
         await this._client.vocabLinks.bulkCreate(
-          creates.map(c => ({ vocabItem: c.item.id, tokens: [c.tokenId], metadata }))
+          creates.map((c) => ({ vocabItem: c.item.id, tokens: [c.tokenId], metadata })),
         );
       }
       // Replacements (2 ops each: delete stale link + create new) packed into
@@ -94,7 +97,7 @@ export const vocabMutations = {
     return this._withSaving('Failed to confirm link', async () => {
       await this._client.vocabLinks.patchMetadata(link.id, { [PROV.confirmedKey]: true });
       this._applyRawPatch((next, info, vocabs) => {
-        const l = (vocabs[vocabId]?.vocabLinks || []).find(x => x.id === link.id);
+        const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
         if (l) l.metadata = { ...(l.metadata || {}), [PROV.confirmedKey]: true };
       });
     });
@@ -105,7 +108,10 @@ export const vocabMutations = {
   // `metadata` (optional) carries provenance for machine-produced links (see
   // domain/glossGuess.js PROV); human links from the popover pass none.
   async linkVocab(tokenId, vocabItemId, metadata = null) {
-    const { vocab: targetVocab, item: vocabItem } = findVocabForItem(this._vocabularies, vocabItemId);
+    const { vocab: targetVocab, item: vocabItem } = findVocabForItem(
+      this._vocabularies,
+      vocabItemId,
+    );
     if (!targetVocab || !vocabItem) {
       this.setError(`Vocab item ${vocabItemId} not found`);
       return false;
@@ -122,20 +128,25 @@ export const vocabMutations = {
         });
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
-        const result = await this._client.vocabLinks.create(vocabItemId, [tokenId], metadata || undefined);
+        const result = await this._client.vocabLinks.create(
+          vocabItemId,
+          [tokenId],
+          metadata || undefined,
+        );
         newLinkId = result?.id || result;
       }
 
       const itemSnapshot = {
         id: vocabItem.id,
         form: vocabItem.form,
-        metadata: vocabItem.metadata || {}
+        metadata: vocabItem.metadata || {},
       };
 
       this._applyRawPatch((next, info, vocabs) => {
         if (priorLink && priorVocabId && vocabs[priorVocabId]) {
-          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || [])
-            .filter(l => l.id !== priorLink.id);
+          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+            (l) => l.id !== priorLink.id,
+          );
         }
         const tv = vocabs[targetVocabId];
         if (tv) {
@@ -144,7 +155,7 @@ export const vocabMutations = {
             id: newLinkId,
             tokens: [tokenId],
             vocabItem: itemSnapshot,
-            ...(metadata ? { metadata } : {})
+            ...(metadata ? { metadata } : {}),
           });
         }
       });
@@ -160,8 +171,9 @@ export const vocabMutations = {
       await this._client.vocabLinks.delete(priorLink.id);
       this._applyRawPatch((next, info, vocabs) => {
         if (vocabs[priorVocabId]) {
-          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || [])
-            .filter(l => l.id !== priorLink.id);
+          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+            (l) => l.id !== priorLink.id,
+          );
         }
       });
     });
@@ -197,13 +209,14 @@ export const vocabMutations = {
       const newItem = {
         id: newItemId,
         form,
-        metadata: metadata || {}
+        metadata: metadata || {},
       };
 
       this._applyRawPatch((next, info, vocabs) => {
         if (priorLink && priorVocabId && vocabs[priorVocabId]) {
-          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || [])
-            .filter(l => l.id !== priorLink.id);
+          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+            (l) => l.id !== priorLink.id,
+          );
         }
         const tv = vocabs[vocabId];
         if (tv) {
@@ -213,10 +226,10 @@ export const vocabMutations = {
           tv.vocabLinks.push({
             id: newLinkId,
             tokens: [tokenId],
-            vocabItem: { id: newItem.id, form: newItem.form, metadata: newItem.metadata }
+            vocabItem: { id: newItem.id, form: newItem.form, metadata: newItem.metadata },
           });
         }
       });
     });
-  }
+  },
 };

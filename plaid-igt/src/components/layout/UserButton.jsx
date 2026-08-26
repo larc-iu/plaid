@@ -17,7 +17,9 @@ export function UserButton({ user, onLogout }) {
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
         <Avatar className="h-7 w-7">
-          <AvatarFallback className="text-xs">{user.username.charAt(0).toUpperCase()}</AvatarFallback>
+          <AvatarFallback className="text-xs">
+            {user.username.charAt(0).toUpperCase()}
+          </AvatarFallback>
         </Avatar>
         <span className="text-sm font-medium">{user.username}</span>
       </DropdownMenuTrigger>

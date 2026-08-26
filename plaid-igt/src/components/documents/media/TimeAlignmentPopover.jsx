@@ -25,7 +25,7 @@ export const TimeAlignmentPopover = ({
   selection,
   onAlignmentCreated,
   selectionBox,
-  readOnly = false
+  readOnly = false,
 }) => {
   const { doc } = useDocumentCtx();
   const [mode, setMode] = useState('new'); // 'new', 'edit', or 'align'
@@ -43,7 +43,7 @@ export const TimeAlignmentPopover = ({
     deleteAlignment,
     getAvailableText,
     getExistingAlignment,
-    canAlign
+    canAlign,
   } = useAlignmentEditor(selection, onAlignmentCreated);
 
   // Find existing alignment token that matches current selection
@@ -55,7 +55,8 @@ export const TimeAlignmentPopover = ({
       if (existingAlignment) {
         setMode('edit');
         // Extract text using token positions from primary text layer
-        const tokenText = cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || '';
+        const tokenText =
+          cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || '';
         setText(tokenText);
         setSpeaker(existingAlignment.metadata?.speaker || '');
       } else {
@@ -119,17 +120,18 @@ export const TimeAlignmentPopover = ({
       lastSpeaker = sp; // sticky default for the next new segment
 
       notifySuccess(
-        mode === 'edit' ? 'Alignment updated successfully' :
-          mode === 'align' ? 'Text aligned successfully' :
-            'Time-aligned text created successfully',
-        'Success'
+        mode === 'edit'
+          ? 'Alignment updated successfully'
+          : mode === 'align'
+            ? 'Text aligned successfully'
+            : 'Time-aligned text created successfully',
+        'Success',
       );
 
       // Reset and close immediately
       setText('');
       setMode('new');
       onClose();
-
     } finally {
       setSaving(false);
     }
@@ -150,7 +152,6 @@ export const TimeAlignmentPopover = ({
       setText('');
       setMode('new');
       onClose();
-
     } finally {
       setSaving(false);
     }
@@ -184,7 +185,12 @@ export const TimeAlignmentPopover = ({
   const stop = (e) => e.stopPropagation();
 
   return (
-    <Popover open={opened} onOpenChange={() => { /* controlled; never auto-close */ }}>
+    <Popover
+      open={opened}
+      onOpenChange={() => {
+        /* controlled; never auto-close */
+      }}
+    >
       <PopoverAnchor asChild>{selectionBox}</PopoverAnchor>
       <PopoverContent
         side="bottom"
@@ -199,11 +205,13 @@ export const TimeAlignmentPopover = ({
         <div className="flex flex-col gap-4">
           <div>
             <p className="text-sm font-medium">
-              {readOnly ? 'View Time Alignment' : (
-                mode === 'edit' ? 'Edit Alignment' :
-                  mode === 'align' ? 'Align Baseline Text' :
-                    'Create Time Alignment'
-              )}
+              {readOnly
+                ? 'View Time Alignment'
+                : mode === 'edit'
+                  ? 'Edit Alignment'
+                  : mode === 'align'
+                    ? 'Align Baseline Text'
+                    : 'Create Time Alignment'}
             </p>
             <p className="text-xs text-muted-foreground">
               {formatTime(selection?.start || 0)} - {formatTime(selection?.end || 0)}
@@ -225,7 +233,9 @@ export const TimeAlignmentPopover = ({
                   onClick={() => handleModeChange(opt.value)}
                   className={cn(
                     'flex-1 rounded px-3 py-1 transition-colors',
-                    mode === opt.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                    mode === opt.value
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
                   {opt.label}
@@ -239,10 +249,10 @@ export const TimeAlignmentPopover = ({
             <div>
               <p className="mb-1 text-sm font-medium">Content</p>
               <p className="flex min-h-[60px] items-center rounded border bg-muted px-3 py-2 text-sm">
-                {existingAlignment ?
-                  cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || 'No content' :
-                  'No alignment data for this time range'
-                }
+                {existingAlignment
+                  ? cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) ||
+                    'No content'
+                  : 'No alignment data for this time range'}
               </p>
               {existingAlignment?.metadata?.speaker && (
                 <p className="mt-2 text-sm">
@@ -253,53 +263,65 @@ export const TimeAlignmentPopover = ({
           ) : mode === 'align' && !canAlign() ? (
             <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3">
               <p className="text-sm">
-                No unaligned baseline text is available in this time range.
-                All text between neighboring alignments has already been aligned.
+                No unaligned baseline text is available in this time range. All text between
+                neighboring alignments has already been aligned.
               </p>
             </div>
-          ) : (mode === 'new' || mode === 'edit' || mode === 'align') && (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="alignment-text">
-                  {mode === 'align' ? 'Baseline Text to Align' : 'Transcription'} <span className="text-destructive">*</span>
-                </Label>
-                <Textarea
-                  id="alignment-text"
-                  ref={textareaRef}
-                  placeholder={mode === 'align' ? 'Select portion of text to align...' : 'Enter the text for this time segment...'}
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  rows={3}
-                  className="max-h-48"
-                  required
-                />
-                {mode === 'align' && (
-                  <p className="text-xs text-muted-foreground">
-                    Edit this text to select the portion you want to align with the time selection.
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="alignment-speaker">Speaker</Label>
-                <Input
-                  id="alignment-speaker"
-                  list="alignment-speaker-options"
-                  placeholder="e.g. Speaker 1 (optional)"
-                  value={speaker}
-                  onChange={(e) => setSpeaker(e.target.value)}
-                  autoComplete="off"
-                />
-                <datalist id="alignment-speaker-options">
-                  {doc.knownSpeakers.map((s) => <option key={s} value={s} />)}
-                </datalist>
-              </div>
-            </>
+          ) : (
+            (mode === 'new' || mode === 'edit' || mode === 'align') && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="alignment-text">
+                    {mode === 'align' ? 'Baseline Text to Align' : 'Transcription'}{' '}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Textarea
+                    id="alignment-text"
+                    ref={textareaRef}
+                    placeholder={
+                      mode === 'align'
+                        ? 'Select portion of text to align...'
+                        : 'Enter the text for this time segment...'
+                    }
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    rows={3}
+                    className="max-h-48"
+                    required
+                  />
+                  {mode === 'align' && (
+                    <p className="text-xs text-muted-foreground">
+                      Edit this text to select the portion you want to align with the time
+                      selection.
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="alignment-speaker">Speaker</Label>
+                  <Input
+                    id="alignment-speaker"
+                    list="alignment-speaker-options"
+                    placeholder="e.g. Speaker 1 (optional)"
+                    value={speaker}
+                    onChange={(e) => setSpeaker(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <datalist id="alignment-speaker-options">
+                    {doc.knownSpeakers.map((s) => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
+                </div>
+              </>
+            )
           )}
 
           {readOnly ? (
             // Read-only mode: just a close button
             <div className="flex justify-end">
-              <Button variant="ghost" onClick={handleCancel}>Close</Button>
+              <Button variant="ghost" onClick={handleCancel}>
+                Close
+              </Button>
             </div>
           ) : (
             // Edit mode: full set of action buttons
@@ -316,16 +338,14 @@ export const TimeAlignmentPopover = ({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  onClick={handleCancel}
-                  disabled={saving || isProcessing}
-                >
+                <Button variant="ghost" onClick={handleCancel} disabled={saving || isProcessing}>
                   Cancel
                 </Button>
                 <Button
                   onClick={handleSave}
-                  disabled={!text.trim() || (mode === 'align' && !canAlign()) || saving || isProcessing}
+                  disabled={
+                    !text.trim() || (mode === 'align' && !canAlign()) || saving || isProcessing
+                  }
                 >
                   {saving || isProcessing ? 'Saving…' : 'Save'}
                 </Button>
@@ -338,7 +358,8 @@ export const TimeAlignmentPopover = ({
               'Read-only mode: Content cannot be modified in this view.'
             ) : (
               <>
-                Tip: Press Ctrl+Enter to save, Escape to cancel{mode === 'edit' ? ', Delete to remove' : ''}
+                Tip: Press Ctrl+Enter to save, Escape to cancel
+                {mode === 'edit' ? ', Delete to remove' : ''}
                 {mode === 'align' && '. Modify the text above to select which portion to align.'}
               </>
             )}

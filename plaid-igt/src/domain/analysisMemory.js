@@ -56,8 +56,12 @@ export function isUnanalyzedWord(token, ignoredCfg = null) {
   if (filledAnnotations(m.annotations).length) return false;
   const meta = m.metadata || {};
   if (meta.morphType != null) return false;
-  if (Object.prototype.hasOwnProperty.call(meta, 'form')
-    && (meta.form ?? '') !== '' && meta.form !== token.content) return false;
+  if (
+    Object.prototype.hasOwnProperty.call(meta, 'form') &&
+    (meta.form ?? '') !== '' &&
+    meta.form !== token.content
+  )
+    return false;
   return true;
 }
 
@@ -106,11 +110,17 @@ export function extractAnalysis(token) {
   });
 
   // Anything to copy at all? (More than the bare default-morpheme state.)
-  const contentful = word.vocabItemId
-    || Object.keys(word.fields).length > 0
-    || morphemes.length > 1
-    || morphemes.some((m) => m.vocabItemId || Object.keys(m.fields).length > 0
-      || m.morphType != null || m.form !== token.content);
+  const contentful =
+    word.vocabItemId ||
+    Object.keys(word.fields).length > 0 ||
+    morphemes.length > 1 ||
+    morphemes.some(
+      (m) =>
+        m.vocabItemId ||
+        Object.keys(m.fields).length > 0 ||
+        m.morphType != null ||
+        m.form !== token.content,
+    );
   if (!contentful) return null;
 
   const voters = votes.length ? votes : segVotes;
@@ -122,7 +132,10 @@ export function extractAnalysis(token) {
 // Canonical signature so identical analyses tally together regardless of
 // object key order.
 export function analysisSignature(analysis) {
-  const fieldPairs = (fields) => Object.keys(fields).sort().map((k) => [k, fields[k]]);
+  const fieldPairs = (fields) =>
+    Object.keys(fields)
+      .sort()
+      .map((k) => [k, fields[k]]);
   return JSON.stringify([
     analysis.word.vocabItemId,
     fieldPairs(analysis.word.fields),
@@ -177,10 +190,16 @@ export function buildAnalysisTable(tally) {
     let bestN = 0;
     let second = 0;
     for (const entry of bySig.values()) {
-      if (entry.count > bestN) { second = bestN; best = entry.analysis; bestN = entry.count; }
-      else if (entry.count > second) second = entry.count;
+      if (entry.count > bestN) {
+        second = bestN;
+        best = entry.analysis;
+        bestN = entry.count;
+      } else if (entry.count > second) second = entry.count;
     }
-    table.set(form, bestN > second ? { analysis: best, contested: false } : { analysis: null, contested: true });
+    table.set(
+      form,
+      bestN > second ? { analysis: best, contested: false } : { analysis: null, contested: true },
+    );
   }
   return table;
 }
@@ -222,11 +241,14 @@ export function filterAnalysis(analysis, copy = {}) {
   } else {
     morphemes = [];
   }
-  const contentful = word.vocabItemId
-    || Object.keys(word.fields).length > 0
-    || morphemes.length > 1
-    || morphemes.some((m) => m.vocabItemId || Object.keys(m.fields).length > 0
-      || m.morphType != null || m.form != null);
+  const contentful =
+    word.vocabItemId ||
+    Object.keys(word.fields).length > 0 ||
+    morphemes.length > 1 ||
+    morphemes.some(
+      (m) =>
+        m.vocabItemId || Object.keys(m.fields).length > 0 || m.morphType != null || m.form != null,
+    );
   return contentful ? { word, morphemes } : null;
 }
 

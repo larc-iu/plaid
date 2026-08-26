@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Link2 } from 'lucide-react';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
 } from '@/components/ui/select';
 import { TASKS, filterServicesByTask } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError } from '@/utils/feedback';
@@ -16,8 +24,11 @@ import { ServiceSummary } from '../services/ServiceSummary.jsx';
 import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
 import {
-  BUILTIN_LINK_PRECEDENT, encodeServiceSelection, encodeBuiltinSelection,
-  readSpotDefault, resolveInitialSelection,
+  BUILTIN_LINK_PRECEDENT,
+  encodeServiceSelection,
+  encodeBuiltinSelection,
+  readSpotDefault,
+  resolveInitialSelection,
 } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
 
@@ -40,8 +51,13 @@ const PARAMS_PREFIX = 'plaid_igt_link_vocab_params_';
 export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
   const project = doc?.project;
   const {
-    availableServices, isDiscovering, discoverServices,
-    isProcessing, requestService, progressPercent, progressMessage,
+    availableServices,
+    isDiscovering,
+    discoverServices,
+    isProcessing,
+    requestService,
+    progressPercent,
+    progressMessage,
   } = useServiceRequest();
   const [algorithm, setAlgorithm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -60,29 +76,39 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
 
   // Only ONLINE services can take work (discovery also returns
   // previously-seen offline services).
-  const onlineServices = filterServicesByTask(availableServices, TASKS.LINK_VOCAB)
-    .filter((s) => s.online !== false);
-  const serviceOptions = onlineServices
-    .map((s) => ({ value: encodeServiceSelection(s.serviceId), label: s.serviceName, service: s }));
-  const options = [
-    { value: BUILTIN, label: 'Built-in' },
-    ...serviceOptions,
-  ];
+  const onlineServices = filterServicesByTask(availableServices, TASKS.LINK_VOCAB).filter(
+    (s) => s.online !== false,
+  );
+  const serviceOptions = onlineServices.map((s) => ({
+    value: encodeServiceSelection(s.serviceId),
+    label: s.serviceName,
+    service: s,
+  }));
+  const options = [{ value: BUILTIN, label: 'Built-in' }, ...serviceOptions];
   // Resolve until the user explicitly picks: cached -> project default ->
   // built-in. Also covers a cached service that has vanished.
-  const resolved = resolveInitialSelection({
-    services: onlineServices,
-    builtins: [BUILTIN_LINK_PRECEDENT],
-    cached: localStorage.getItem(STORAGE_KEY),
-    projectDefault: readSpotDefault(project, TASKS.LINK_VOCAB),
-  }) || BUILTIN;
+  const resolved =
+    resolveInitialSelection({
+      services: onlineServices,
+      builtins: [BUILTIN_LINK_PRECEDENT],
+      cached: localStorage.getItem(STORAGE_KEY),
+      projectDefault: readSpotDefault(project, TASKS.LINK_VOCAB),
+    }) || BUILTIN;
   const chosen = algorithm ?? resolved;
   const effective = options.some((o) => o.value === chosen) ? chosen : (options[0]?.value ?? null);
   const selectedService = serviceOptions.find((o) => o.value === effective)?.service ?? null;
   const linkDefault = readSpotDefault(project, TASKS.LINK_VOCAB);
-  const { schema: paramSchema, values: paramValues, setParam: setParamValue, coerced: coerceParams, errors: paramErrors } =
-    useServiceParams(selectedService, PARAMS_PREFIX,
-      linkDefault?.service?.serviceId === selectedService?.serviceId ? linkDefault?.params : null);
+  const {
+    schema: paramSchema,
+    values: paramValues,
+    setParam: setParamValue,
+    coerced: coerceParams,
+    errors: paramErrors,
+  } = useServiceParams(
+    selectedService,
+    PARAMS_PREFIX,
+    linkDefault?.service?.serviceId === selectedService?.serviceId ? linkDefault?.params : null,
+  );
 
   const choose = (v) => {
     setAlgorithm(v);
@@ -107,7 +133,10 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
         });
         if (!ok) return; // the domain layer toasted the failure
         const parts = [];
-        if (linked) parts.push(`linked ${linked} word${linked === 1 ? '' : 's'}/morpheme${linked === 1 ? '' : 's'}`);
+        if (linked)
+          parts.push(
+            `linked ${linked} word${linked === 1 ? '' : 's'}/morpheme${linked === 1 ? '' : 's'}`,
+          );
         if (copied) parts.push(`copied analyses onto ${copied} word${copied === 1 ? '' : 's'}`);
         const msg = parts.length
           ? `${parts.join(' and ')} — shown in violet until confirmed.`
@@ -139,7 +168,7 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
             successMessage: 'The linking service finished.',
             errorTitle: 'Auto-link Failed',
             errorMessage: 'The linking service reported an error.',
-          }
+          },
         );
         await doc._reload();
         onOpenChange(false);
@@ -153,7 +182,12 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!running) onOpenChange(o); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!running) onOpenChange(o);
+      }}
+    >
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -167,13 +201,19 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
               <div className="flex items-center gap-1.5">
                 <Label>Method</Label>
                 {selectedService && <ServiceSummary service={selectedService} />}
-                {isDiscovering && <span className="text-xs text-muted-foreground">discovering services…</span>}
+                {isDiscovering && (
+                  <span className="text-xs text-muted-foreground">discovering services…</span>
+                )}
               </div>
               <Select value={effective} onValueChange={choose} disabled={running}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {options.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -187,9 +227,9 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
           {effective === BUILTIN ? (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
-                Attempt to link words and morphemes with majority voting from existing
-                links on the same surface form. Earlier machine-provided linking suggestions
-                are refreshed, and links that humans confirmed or originally made are left alone.
+                Attempt to link words and morphemes with majority voting from existing links on the
+                same surface form. Earlier machine-provided linking suggestions are refreshed, and
+                links that humans confirmed or originally made are left alone.
               </p>
               <label className="flex items-start gap-2 text-sm">
                 <input
@@ -202,9 +242,8 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
                 <span>
                   Also copy analyses
                   <span className="block text-xs text-muted-foreground">
-                    Any match proposed by the auto-linker will also come with
-                    analysis for other annotation layers. Only words with
-                    no analysis at all are touched.
+                    Any match proposed by the auto-linker will also come with analysis for other
+                    annotation layers. Only words with no analysis at all are touched.
                   </span>
                 </span>
               </label>
@@ -235,8 +274,13 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={running}>Cancel</Button>
-          <Button onClick={run} disabled={running || !effective || Object.keys(paramErrors || {}).length > 0}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={running}>
+            Cancel
+          </Button>
+          <Button
+            onClick={run}
+            disabled={running || !effective || Object.keys(paramErrors || {}).length > 0}
+          >
             {running ? 'Linking…' : 'Run'}
           </Button>
         </DialogFooter>

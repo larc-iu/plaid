@@ -17,7 +17,7 @@ export const HistoryDrawer = ({
   loading,
   error,
   onSelectEntry,
-  selectedEntry
+  selectedEntry,
 }) => {
   const [scrollTop, setScrollTop] = useState(0);
   const scrollContainerRef = useRef(null);
@@ -31,7 +31,7 @@ export const HistoryDrawer = ({
     const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE);
     const endIndex = Math.min(
       reversedAuditEntries.length - 1,
-      Math.ceil((scrollTop + actualHeight) / ITEM_HEIGHT) + BUFFER_SIZE
+      Math.ceil((scrollTop + actualHeight) / ITEM_HEIGHT) + BUFFER_SIZE,
     );
     return { startIndex, endIndex };
   }, [scrollTop, reversedAuditEntries.length]);
@@ -114,42 +114,44 @@ export const HistoryDrawer = ({
                     position: 'absolute',
                     top: 0,
                     left: 0,
-                    right: 0
+                    right: 0,
                   }}
                 >
-                  {reversedAuditEntries.slice(visibleRange.startIndex, visibleRange.endIndex + 1).map((entry) => {
-                    const isSelected = selectedEntry?.id === entry.id;
+                  {reversedAuditEntries
+                    .slice(visibleRange.startIndex, visibleRange.endIndex + 1)
+                    .map((entry) => {
+                      const isSelected = selectedEntry?.id === entry.id;
 
-                    return (
-                      <div
-                        key={entry.id}
-                        className={cn(
-                          'flex cursor-pointer flex-col border-b p-3 hover:bg-muted/50',
-                          isSelected && 'bg-accent hover:bg-accent'
-                        )}
-                        style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
-                        onClick={() => handleEntryClick(entry)}
-                      >
-                        <div className="flex-1">
-                          <p className="mb-3 text-sm font-medium leading-tight">
-                            {getEntryDescription(entry)}
-                          </p>
-
-                          <div className="border-t pt-1.5">
-                            <p className="text-xs text-muted-foreground">
-                              {formatTime(entry.time)}
+                      return (
+                        <div
+                          key={entry.id}
+                          className={cn(
+                            'flex cursor-pointer flex-col border-b p-3 hover:bg-muted/50',
+                            isSelected && 'bg-accent hover:bg-accent',
+                          )}
+                          style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
+                          onClick={() => handleEntryClick(entry)}
+                        >
+                          <div className="flex-1">
+                            <p className="mb-3 text-sm font-medium leading-tight">
+                              {getEntryDescription(entry)}
                             </p>
-                            {entry.user && (
+
+                            <div className="border-t pt-1.5">
                               <p className="text-xs text-muted-foreground">
-                                by {entry.user.username}
-                                {entry.userAgent && ` (via ${entry.userAgent})`}
+                                {formatTime(entry.time)}
                               </p>
-                            )}
+                              {entry.user && (
+                                <p className="text-xs text-muted-foreground">
+                                  by {entry.user.username}
+                                  {entry.userAgent && ` (via ${entry.userAgent})`}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               </div>
             </div>
@@ -162,9 +164,7 @@ export const HistoryDrawer = ({
         <div className="border-t bg-accent p-4">
           <div className="flex flex-col items-start gap-2">
             <Badge>Viewing Historical State</Badge>
-            <p className="text-xs text-muted-foreground">
-              {formatTime(selectedEntry.time)}
-            </p>
+            <p className="text-xs text-muted-foreground">{formatTime(selectedEntry.time)}</p>
             <Button size="sm" onClick={() => onSelectEntry(null)}>
               Return to Current State
             </Button>

@@ -50,9 +50,14 @@
 /* Visually-hidden but available to assistive tech (per-sentence headings). */
 .igt-sr-only {
   position: absolute;
-  width: 1px; height: 1px;
-  margin: -1px; padding: 0; border: 0;
-  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
@@ -72,9 +77,17 @@
   border-radius: 10px;
   transition: opacity 0.15s;
 }
-.igt-status[data-state="saving"] { color: #b45309; background: #fffbeb; }
-.igt-status[data-state="saved"] { color: #15803d; background: #f0fdf4; }
-.igt-status[data-state="idle"] { background: transparent; }
+.igt-status[data-state='saving'] {
+  color: #b45309;
+  background: #fffbeb;
+}
+.igt-status[data-state='saved'] {
+  color: #15803d;
+  background: #f0fdf4;
+}
+.igt-status[data-state='idle'] {
+  background: transparent;
+}
 
 /* ---- toolbar (progress / jump / help / save status) ---- */
 .igt-toolbar {
@@ -87,29 +100,82 @@
   border-bottom: 1px solid #eef0f4;
   flex-wrap: wrap;
 }
-.igt-toolbar__left, .igt-toolbar__right { display: flex; align-items: center; gap: 12px; }
-.igt-toolbar__count { font-size: 12px; font-weight: 600; color: #4b5563; }
-.igt-progress { display: flex; align-items: center; gap: 6px; }
+.igt-toolbar__left,
+.igt-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.igt-toolbar__count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4b5563;
+}
+.igt-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .igt-progress__bar {
-  width: 96px; height: 6px; border-radius: 4px; background: #e5e7eb; overflow: hidden;
+  width: 96px;
+  height: 6px;
+  border-radius: 4px;
+  background: #e5e7eb;
+  overflow: hidden;
 }
-.igt-progress__fill { display: block; height: 100%; background: var(--igt-violet); border-radius: 4px; transition: width 0.2s; }
-.igt-progress__text { font-size: 11px; color: #6b7280; }
+.igt-progress__fill {
+  display: block;
+  height: 100%;
+  background: var(--igt-violet);
+  border-radius: 4px;
+  transition: width 0.2s;
+}
+.igt-progress__text {
+  font-size: 11px;
+  color: #6b7280;
+}
 .igt-toolbar__btn {
-  font: inherit; font-size: 12px; font-weight: 500;
-  color: #1d4ed8; background: #eff4ff; border: 1px solid #c7d7fe;
-  border-radius: 6px; padding: 3px 9px; cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1d4ed8;
+  background: #eff4ff;
+  border: 1px solid #c7d7fe;
+  border-radius: 6px;
+  padding: 3px 9px;
+  cursor: pointer;
 }
-.igt-toolbar__btn:hover { background: #e0eaff; }
-.igt-toolbar__btn:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+.igt-toolbar__btn:hover {
+  background: #e0eaff;
+}
+.igt-toolbar__btn:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 1px;
+}
 .igt-help-btn {
-  font: inherit; font-weight: 700; line-height: 1;
-  width: 22px; height: 22px; border-radius: 50%;
-  color: #4b5563; background: #f3f4f6; border: 1px solid #e5e7eb; cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #4b5563;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
 }
-.igt-help-btn:hover { background: #e5e7eb; }
-.igt-help-btn[aria-expanded="true"] { background: var(--igt-blue); color: #fff; border-color: var(--igt-blue); }
-.igt-help-btn:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 2px; }
+.igt-help-btn:hover {
+  background: #e5e7eb;
+}
+.igt-help-btn[aria-expanded='true'] {
+  background: var(--igt-blue);
+  color: #fff;
+  border-color: var(--igt-blue);
+}
+.igt-help-btn:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 2px;
+}
 
 /* ---- sentence pager (top = in the toolbar; bottom = its own centered bar) ---- */
 .igt-pager {
@@ -129,9 +195,19 @@
   padding: 3px 7px;
   cursor: pointer;
 }
-.igt-pager__btn:hover:not(:disabled) { background: #e0eaff; color: #1d4ed8; border-color: #c7d7fe; }
-.igt-pager__btn:disabled { opacity: 0.4; cursor: default; }
-.igt-pager__btn:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+.igt-pager__btn:hover:not(:disabled) {
+  background: #e0eaff;
+  color: #1d4ed8;
+  border-color: #c7d7fe;
+}
+.igt-pager__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.igt-pager__btn:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 1px;
+}
 .igt-pager__label {
   font-size: 12px;
   font-weight: 600;
@@ -158,55 +234,127 @@
   flex-direction: column;
   gap: 7px;
 }
-.igt-legend__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.igt-legend__row > strong { flex: 0 0 84px; color: #111827; }
+.igt-legend__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.igt-legend__row > strong {
+  flex: 0 0 84px;
+  color: #111827;
+}
 .igt-legend__chip {
-  font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 10px;
   border-left: 3px solid transparent;
 }
-.igt-legend__chip--orth { background: #f1f5f9; color: #475569; border-left-color: #94a3b8; }
-.igt-legend__chip--word { background: #eff6ff; color: #1d4ed8; border-left-color: var(--igt-blue); }
-.igt-legend__chip--morph { background: #f4f1fb; color: var(--igt-violet); border-left-color: var(--igt-violet); }
-.igt-legend__chip--sent { background: #f0fdf4; color: var(--igt-green); border-left-color: var(--igt-green); }
+.igt-legend__chip--orth {
+  background: #f1f5f9;
+  color: #475569;
+  border-left-color: #94a3b8;
+}
+.igt-legend__chip--word {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-left-color: var(--igt-blue);
+}
+.igt-legend__chip--morph {
+  background: #f4f1fb;
+  color: var(--igt-violet);
+  border-left-color: var(--igt-violet);
+}
+.igt-legend__chip--sent {
+  background: #f0fdf4;
+  color: var(--igt-green);
+  border-left-color: var(--igt-green);
+}
 /* Provenance swatches in the legend, echoing the cell styles. */
 .igt-legend__prov--machine {
   color: var(--igt-violet);
   font-style: italic;
   border-bottom: 1px dotted #c4b5fd;
 }
-.igt-legend__prov--verified { border-bottom: 1px dotted #c4b5fd; }
+.igt-legend__prov--verified {
+  border-bottom: 1px dotted #c4b5fd;
+}
 .igt-legend kbd {
-  font: inherit; font-size: 10px; background: #fff; border: 1px solid #d1d5db;
-  border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; color: #374151;
+  font: inherit;
+  font-size: 10px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 4px;
+  color: #374151;
 }
 
 /* ---- richer empty states ---- */
-.igt-island__empty--warn { color: #92400e; }
-.igt-empty__title { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 6px; }
-.igt-island__empty--warn .igt-empty__title { color: #92400e; }
-.igt-empty__body { max-width: 460px; margin: 0 auto 14px; font-size: 13px; line-height: 1.5; color: #6b7280; }
-.igt-empty__cta {
-  font: inherit; font-weight: 600; font-size: 13px;
-  color: #fff; background: var(--igt-blue); border: none;
-  border-radius: 7px; padding: 8px 16px; cursor: pointer;
+.igt-island__empty--warn {
+  color: #92400e;
 }
-.igt-empty__cta:hover { background: #1d4ed8; }
-.igt-empty__cta:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 2px; }
+.igt-empty__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 6px;
+}
+.igt-island__empty--warn .igt-empty__title {
+  color: #92400e;
+}
+.igt-empty__body {
+  max-width: 460px;
+  margin: 0 auto 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6b7280;
+}
+.igt-empty__cta {
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  color: #fff;
+  background: var(--igt-blue);
+  border: none;
+  border-radius: 7px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.igt-empty__cta:hover {
+  background: #1d4ed8;
+}
+.igt-empty__cta:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 2px;
+}
 
 /* ---- sentence block ---- */
 .igt-sentence {
   position: relative;
   padding: 20px 12px 20px 34px;
 }
-.igt-sentence:nth-child(odd) { background: #ffffff; }
-.igt-sentence:nth-child(even) { background: #f8fcff; }
+.igt-sentence:nth-child(odd) {
+  background: #ffffff;
+}
+.igt-sentence:nth-child(even) {
+  background: #f8fcff;
+}
 
 /* Search click-through: flash the focused sentence. */
 @keyframes igt-flash {
-  0% { box-shadow: inset 0 0 0 2px var(--igt-blue); background: #eff6ff; }
-  100% { box-shadow: inset 0 0 0 2px transparent; }
+  0% {
+    box-shadow: inset 0 0 0 2px var(--igt-blue);
+    background: #eff6ff;
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
 }
-.igt-sentence--flash { animation: igt-flash 2.4s ease-out; }
+.igt-sentence--flash {
+  animation: igt-flash 2.4s ease-out;
+}
 
 .igt-sentence__num {
   position: absolute;
@@ -231,8 +379,11 @@
   transition: opacity 0.12s;
 }
 .igt-sentence:hover .igt-copy,
-.igt-copy:focus-within { opacity: 1; }
-.igt-copy__btn, .igt-copy__caret {
+.igt-copy:focus-within {
+  opacity: 1;
+}
+.igt-copy__btn,
+.igt-copy__caret {
   font: inherit;
   font-size: 11px;
   font-weight: 500;
@@ -242,10 +393,25 @@
   padding: 2px 8px;
   cursor: pointer;
 }
-.igt-copy__btn { border-radius: 6px 0 0 6px; }
-.igt-copy__caret { border-radius: 0 6px 6px 0; border-left: none; padding: 2px 5px; }
-.igt-copy__btn:hover, .igt-copy__caret:hover { background: #eff4ff; color: #1d4ed8; border-color: #c7d7fe; }
-.igt-copy__btn:focus-visible, .igt-copy__caret:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+.igt-copy__btn {
+  border-radius: 6px 0 0 6px;
+}
+.igt-copy__caret {
+  border-radius: 0 6px 6px 0;
+  border-left: none;
+  padding: 2px 5px;
+}
+.igt-copy__btn:hover,
+.igt-copy__caret:hover {
+  background: #eff4ff;
+  color: #1d4ed8;
+  border-color: #c7d7fe;
+}
+.igt-copy__btn:focus-visible,
+.igt-copy__caret:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 1px;
+}
 .igt-copy__menu {
   position: absolute;
   top: calc(100% + 4px);
@@ -274,10 +440,22 @@
   border-radius: 4px;
   cursor: pointer;
 }
-.igt-copy__item:hover { background: #eef2ff; }
-.igt-copy__item.is-fav { background: #eef2ff; }
-.igt-copy__fav { color: #b45309; font-size: 11px; }
-.igt-copy__hint { padding: 3px 6px 1px; font-size: 10px; color: #9aa3b2; text-align: center; }
+.igt-copy__item:hover {
+  background: #eef2ff;
+}
+.igt-copy__item.is-fav {
+  background: #eef2ff;
+}
+.igt-copy__fav {
+  color: #b45309;
+  font-size: 11px;
+}
+.igt-copy__hint {
+  padding: 3px 6px 1px;
+  font-size: 10px;
+  color: #9aa3b2;
+  text-align: center;
+}
 
 /* ---- the interlinear grid ----
    [row labels | word columns]. Word columns WRAP into bands (FLEx-style)
@@ -340,8 +518,12 @@
 }
 /* Scope accents: orthography (slate), word (blue), morpheme (violet). The
    sentence-scoped Translation label is styled separately below. */
-.igt-row-label--orth { border-left-color: #94a3b8; }
-.igt-row-label--word { border-left-color: var(--igt-blue); }
+.igt-row-label--orth {
+  border-left-color: #94a3b8;
+}
+.igt-row-label--word {
+  border-left-color: var(--igt-blue);
+}
 .igt-row-label--morph {
   height: var(--igt-morph-h);
   font-weight: 600;
@@ -350,7 +532,9 @@
 }
 /* The "Morphemes" label fronts the morpheme FORM row, which is taller than
    the annotation rows when vocab hints are in play. */
-.igt-row-label--morphform { height: var(--igt-morph-form-h); }
+.igt-row-label--morphform {
+  height: var(--igt-morph-form-h);
+}
 /* Header spacer cell — extend the word-header band across the label column so
    the gray header no longer "notches" around the labels. Tracks the word-form
    row height. */
@@ -378,7 +562,9 @@
   width: max-content;
   border-left: 1px solid #f1f3f5;
 }
-.igt-labels + .igt-token-col { border-left: none; }
+.igt-labels + .igt-token-col {
+  border-left: none;
+}
 
 .igt-token-form {
   height: var(--igt-form-h);
@@ -391,7 +577,9 @@
   white-space: nowrap;
   cursor: default;
 }
-.igt-token-form--clickable { cursor: pointer; }
+.igt-token-form--clickable {
+  cursor: pointer;
+}
 
 /* ---- gap column ----
    Baseline text not covered by any word token (punctuation, stray characters).
@@ -409,7 +597,9 @@
   width: max-content;
   border-left: 1px solid #f1f3f5;
 }
-.igt-labels + .igt-gap-col { border-left: none; }
+.igt-labels + .igt-gap-col {
+  border-left: none;
+}
 .igt-gap-form {
   height: var(--igt-form-h);
   display: flex;
@@ -451,17 +641,28 @@
   field-sizing: content;
   padding: 3px 6px;
   outline: none;
-  transition: outline 0.12s, background-color 0.12s, border-color 0.12s;
+  transition:
+    outline 0.12s,
+    background-color 0.12s,
+    border-color 0.12s;
 }
-.igt-field:hover:not(:disabled) { background: #f4f6f9; border-bottom-color: #c3c9d2; }
+.igt-field:hover:not(:disabled) {
+  background: #f4f6f9;
+  border-bottom-color: #c3c9d2;
+}
 .igt-field:focus {
   outline: 2px solid var(--igt-blue);
   outline-offset: -1px;
   border-bottom-color: transparent;
   background: #fff;
 }
-.igt-field--empty { color: #9ca3af; font-style: italic; }
-.igt-field--filled { color: #111827; }
+.igt-field--empty {
+  color: #9ca3af;
+  font-style: italic;
+}
+.igt-field--filled {
+  color: #111827;
+}
 /* Gloss guess (FLEx-style): the suggestion lives in the placeholder — violet
    italic, clearly not-yet-real — and is only written on explicit confirm. */
 .igt-field--guess::placeholder {
@@ -469,7 +670,10 @@
   font-style: italic;
   opacity: 0.75;
 }
-.igt-field--guess { border-bottom-style: dashed; border-bottom-color: #c4b5fd; }
+.igt-field--guess {
+  border-bottom-style: dashed;
+  border-bottom-color: #c4b5fd;
+}
 
 /* ---- provenance states ----
    The three-way distinction (human / machine-unverified / machine-verified)
@@ -490,7 +694,11 @@
   border-bottom-style: solid;
   border-bottom-color: #c4b5fd;
 }
-.igt-field:disabled { opacity: 0.6; cursor: default; background: transparent; }
+.igt-field:disabled {
+  opacity: 0.6;
+  cursor: default;
+  background: transparent;
+}
 
 /* ---- morpheme sub-grid ---- */
 .igt-morphemes {
@@ -519,7 +727,9 @@
 }
 /* Linked to a stem/root lexicon entry: the lavender accent the plain chips
    used to have — reads as "lexically identified". */
-.igt-morph-form--stem { background: #f4f1fb; }
+.igt-morph-form--stem {
+  background: #f4f1fb;
+}
 /* Display-only affix joint between adjacent morphemes ("-", or "=" for
    clitics, from metadata.morphType) — not part of the editable form, and not
    owned by either morpheme: it's a zero-width flex item BETWEEN the two
@@ -569,7 +779,10 @@
 }
 /* Tighter than the default field so the chips hug their content and adjacent
    morphemes (with their boundary joiner) read as one word. */
-.igt-morph-field { min-width: 2.5ch; padding: 3px 3px; }
+.igt-morph-field {
+  min-width: 2.5ch;
+  padding: 3px 3px;
+}
 
 /* ---- vocab link affordance ---- */
 .igt-vocab {
@@ -588,7 +801,10 @@
   min-height: 16px;
   border-radius: 8px;
 }
-.igt-vocab__opener:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+.igt-vocab__opener:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 1px;
+}
 /* Linked: the lexicon item's form, quiet at rest (user call 2026-06-10 — the
    blue chip read as a second gloss row). Small, muted, no background; the
    dotted underline is the "this is a link" cue, brightening on hover/focus.
@@ -654,21 +870,38 @@
   opacity: 0;
   transition: opacity 0.12s;
 }
-.igt-vocab__link::before { content: '+\00A0'; text-decoration: none; }
+.igt-vocab__link::before {
+  content: '+\00A0';
+  text-decoration: none;
+}
 .igt-token-col:hover .igt-vocab__link,
 .igt-morph-col:hover .igt-vocab__link,
 .igt-vocab:focus-within .igt-vocab__link,
-.igt-vocab__link:focus-visible { opacity: 1; }
+.igt-vocab__link:focus-visible {
+  opacity: 1;
+}
 .igt-vocab:hover .igt-vocab__link,
 .igt-vocab__link:hover,
-.igt-vocab__link:focus-visible { color: #1d4ed8; font-weight: 500; }
-.igt-vocab__opener:disabled { cursor: default; }
-.igt-island--readonly .igt-vocab__opener { cursor: default; }
+.igt-vocab__link:focus-visible {
+  color: #1d4ed8;
+  font-weight: 500;
+}
+.igt-vocab__opener:disabled {
+  cursor: default;
+}
+.igt-island--readonly .igt-vocab__opener {
+  cursor: default;
+}
 
 /* Homonym sense number (form₂) — FLEx-style disambiguation for vocab items that
    share a form. Shown on the linked chip and in the lexicon popover list. */
-.igt-vocab__sub { opacity: 0.75; text-decoration: none; }
-.igt-vocab-pop__sub { color: #6b7280; }
+.igt-vocab__sub {
+  opacity: 0.75;
+  text-decoration: none;
+}
+.igt-vocab-pop__sub {
+  color: #6b7280;
+}
 
 /* ---- vocab link popover ---- */
 .igt-vocab-pop {
@@ -721,7 +954,9 @@
   align-items: center;
   gap: 6px;
 }
-.igt-vocab-pop__form { font-weight: 500; }
+.igt-vocab-pop__form {
+  font-weight: 500;
+}
 /* Item detail line: inline-flagged vocab fields (or first metadata value) —
    distinguishes homophonous forms. */
 .igt-vocab-pop__detail {
@@ -732,17 +967,52 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.igt-vocab-pop__item:hover { background: #eef2ff; }
-.igt-vocab-pop__item.is-active { background: #e0e7ff; border-color: #c7d2fe; }
-.igt-vocab-pop__item.is-linked { background: #dcfce7; border-color: #86efac; }
-.igt-vocab-pop__item.is-linked.is-active { background: #bbf7d0; border-color: #4ade80; }
-.igt-vocab-pop__item:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: -1px; }
-.igt-vocab-pop__vname { font-size: 10px; color: #6b7280; }
-.igt-vocab-pop__x { font-size: 10px; color: #b91c1c; }
-.igt-vocab-pop__x:hover { text-decoration: underline; }
-.igt-vocab-pop__ok { font-size: 10px; font-weight: 600; color: #15803d; }
-.igt-vocab-pop__empty { padding: 6px; font-size: 12px; color: #6b7280; }
-.igt-vocab-pop__more { padding: 4px 6px; font-size: 10.5px; color: #9aa3b2; text-align: center; }
+.igt-vocab-pop__item:hover {
+  background: #eef2ff;
+}
+.igt-vocab-pop__item.is-active {
+  background: #e0e7ff;
+  border-color: #c7d2fe;
+}
+.igt-vocab-pop__item.is-linked {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+.igt-vocab-pop__item.is-linked.is-active {
+  background: #bbf7d0;
+  border-color: #4ade80;
+}
+.igt-vocab-pop__item:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: -1px;
+}
+.igt-vocab-pop__vname {
+  font-size: 10px;
+  color: #6b7280;
+}
+.igt-vocab-pop__x {
+  font-size: 10px;
+  color: #b91c1c;
+}
+.igt-vocab-pop__x:hover {
+  text-decoration: underline;
+}
+.igt-vocab-pop__ok {
+  font-size: 10px;
+  font-weight: 600;
+  color: #15803d;
+}
+.igt-vocab-pop__empty {
+  padding: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+.igt-vocab-pop__more {
+  padding: 4px 6px;
+  font-size: 10.5px;
+  color: #9aa3b2;
+  text-align: center;
+}
 .igt-vocab-pop__create {
   width: 100%;
   margin-top: 4px;
@@ -754,28 +1024,64 @@
   font: inherit;
   cursor: pointer;
 }
-.igt-vocab-pop__create.is-active { background: #dbeafe; border-style: solid; }
-.igt-vocab-pop__create:focus-visible { outline: 2px solid var(--igt-blue); outline-offset: 1px; }
+.igt-vocab-pop__create.is-active {
+  background: #dbeafe;
+  border-style: solid;
+}
+.igt-vocab-pop__create:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 1px;
+}
 /* Thin lexicon selector at the bottom: each chip scopes the whole popover to
    one vocab; the active chip is a link to the full vocab view (new tab). */
 .igt-vocab-pop__vocabsel {
-  display: flex; gap: 3px; margin-top: 5px; padding-top: 5px;
-  border-top: 1px solid #eef2f7; overflow-x: auto; scrollbar-width: none;
+  display: flex;
+  gap: 3px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid #eef2f7;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.igt-vocab-pop__vocabsel::-webkit-scrollbar { display: none; }
+.igt-vocab-pop__vocabsel::-webkit-scrollbar {
+  display: none;
+}
 .igt-vocab-pop__vocabtab {
-  display: inline-flex; align-items: center; gap: 3px;
-  flex: 0 1 auto; min-width: 0; max-width: 13ch;
-  padding: 1px 8px; font: inherit; font-size: 10px; line-height: 16px;
-  border: 1px solid #e5e7eb; border-radius: 999px;
-  background: #f9fafb; color: #6b7280; cursor: pointer; text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 13ch;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #f9fafb;
+  color: #6b7280;
+  cursor: pointer;
+  text-decoration: none;
 }
-.igt-vocab-pop__vocabtab:hover { background: #f3f4f6; }
+.igt-vocab-pop__vocabtab:hover {
+  background: #f3f4f6;
+}
 .igt-vocab-pop__vocabtab.is-active {
-  background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; font-weight: 500;
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  font-weight: 500;
 }
-.igt-vocab-pop__vtab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.igt-vocab-pop__vtab-ext { flex: none; font-size: 9px; }
+.igt-vocab-pop__vtab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.igt-vocab-pop__vtab-ext {
+  flex: none;
+  font-size: 9px;
+}
 
 /* ---- sentence-scoped annotations (below grid) ----
    Same row-label treatment as the grid labels (scope accent border, same
@@ -816,4 +1122,6 @@
   overflow: hidden;
 }
 
-.igt-island--readonly .igt-field { cursor: default; }
+.igt-island--readonly .igt-field {
+  cursor: default;
+}

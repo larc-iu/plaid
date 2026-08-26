@@ -9,12 +9,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { useTokenOperations } from './useTokenOperations.js';
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
@@ -81,7 +76,10 @@ export function DocumentTokenize() {
     <TooltipProvider>
       <div className="tw flex flex-col gap-6 mt-4" style={{ height: 'calc(100vh - 200px)' }}>
         {/* Text Visualization */}
-        <div className="rounded-lg border bg-card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div
+          className="rounded-lg border bg-card"
+          style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+        >
           <div className="p-4" style={{ borderBottom: '1px solid #e0e0e0' }}>
             <div className="flex items-center gap-2">
               <h3 className="text-base font-semibold">Tokens</h3>
@@ -107,19 +105,29 @@ export function DocumentTokenize() {
                 </p>
                 <div className="flex flex-col gap-[0.4rem] mb-2">
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd> + <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Drag</kbd>: Create token from selection, or merge tokens
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>{' '}
+                    + <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Drag</kbd>:
+                    Create token from selection, or merge tokens
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>: Split Token
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>:
+                    Split Token
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Right Click</kbd>: Delete Token
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Right Click</kbd>
+                    : Delete Token
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Ctrl</kbd>/<kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Cmd</kbd> + <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd> on token: New Sentence
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Ctrl</kbd>/
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Cmd</kbd> +{' '}
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>{' '}
+                    on token: New Sentence
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs"><ChevronUp className="h-3 w-3 inline" /></kbd>: Merge sentence with previous
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">
+                      <ChevronUp className="h-3 w-3 inline" />
+                    </kbd>
+                    : Merge sentence with previous
                   </div>
                 </div>
               </div>
@@ -187,10 +195,18 @@ export function DocumentTokenize() {
 
               <Button
                 onClick={ops.handleTokenize}
-                disabled={ops.isTokenizing || ops.isProcessing || !text?.body || !layers?.primaryTokenLayer || !hasSentencePartition || readOnly || Object.keys(ops.paramErrors || {}).length > 0}
+                disabled={
+                  ops.isTokenizing ||
+                  ops.isProcessing ||
+                  !text?.body ||
+                  !layers?.primaryTokenLayer ||
+                  !hasSentencePartition ||
+                  readOnly ||
+                  Object.keys(ops.paramErrors || {}).length > 0
+                }
               >
                 <Play className="h-4 w-4" />
-                {(ops.isTokenizing || ops.isProcessing) ? 'Tokenizing...' : 'Tokenize'}
+                {ops.isTokenizing || ops.isProcessing ? 'Tokenizing...' : 'Tokenize'}
               </Button>
             </div>
 
@@ -198,7 +214,9 @@ export function DocumentTokenize() {
               <Button
                 variant="secondary"
                 onClick={() => setConfirmClear('tokens')}
-                disabled={ops.isTokenizing || ops.isProcessing || !existingTokens.length || readOnly}
+                disabled={
+                  ops.isTokenizing || ops.isProcessing || !existingTokens.length || readOnly
+                }
               >
                 Clear Tokens
               </Button>
@@ -206,7 +224,13 @@ export function DocumentTokenize() {
               <Button
                 variant="secondary"
                 onClick={() => setConfirmClear('sentences')}
-                disabled={ops.isTokenizing || ops.isProcessing || !existingSentenceTokens.length || existingSentenceTokens.length === 1 || readOnly}
+                disabled={
+                  ops.isTokenizing ||
+                  ops.isProcessing ||
+                  !existingSentenceTokens.length ||
+                  existingSentenceTokens.length === 1 ||
+                  readOnly
+                }
               >
                 Clear Sentences
               </Button>
@@ -228,19 +252,29 @@ export function DocumentTokenize() {
 
           {/* Progress */}
           <div className="rounded-lg border bg-card p-4" style={{ minHeight: '120px' }}>
-            {(ops.isTokenizing || ops.isProcessing) ? (
+            {ops.isTokenizing || ops.isProcessing ? (
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
                   <Play className="h-4 w-4" />
                   <p className="font-medium">{ops.progressMessage || 'Processing...'}</p>
                 </div>
                 <div className="h-2 w-full rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-primary" style={{ width: `${ops.progressPercent || ops.tokenizationProgress}%` }} />
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${ops.progressPercent || ops.tokenizationProgress}%` }}
+                  />
                 </div>
                 <p className="text-sm text-muted-foreground">{ops.currentOperation}</p>
               </div>
             ) : (
-              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div
+                style={{
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
                 <p className="text-sm text-muted-foreground"></p>
               </div>
             )}
@@ -253,7 +287,8 @@ export function DocumentTokenize() {
                 <div className="flex items-start gap-2">
                   <Info className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
                   <p className="text-sm text-destructive">
-                    Missing primary token layer. Please ensure your project has a primary token layer configured.
+                    Missing primary token layer. Please ensure your project has a primary token
+                    layer configured.
                   </p>
                 </div>
               </div>
@@ -265,16 +300,25 @@ export function DocumentTokenize() {
       {/* Bulk-clear confirmations. Counts come straight from the loaded doc. */}
       <ConfirmDeleteDialog
         open={confirmClear === 'tokens'}
-        onOpenChange={(o) => { if (!o) setConfirmClear(null); }}
+        onOpenChange={(o) => {
+          if (!o) setConfirmClear(null);
+        }}
         title="Clear All Tokens"
         confirmLabel="Clear Tokens"
-        onConfirm={() => { setConfirmClear(null); ops.handleClearTokens(); }}
+        onConfirm={() => {
+          setConfirmClear(null);
+          ops.handleClearTokens();
+        }}
       >
         <p className="font-medium text-destructive">Warning</p>
         <p className="mt-1 text-muted-foreground">
-          This deletes all <strong>{existingTokens.length.toLocaleString()} word
-          token{existingTokens.length === 1 ? '' : 's'}</strong> in this document, along with
-          their morphemes and every annotation and vocabulary link on them. This cannot be undone.
+          This deletes all{' '}
+          <strong>
+            {existingTokens.length.toLocaleString()} word token
+            {existingTokens.length === 1 ? '' : 's'}
+          </strong>{' '}
+          in this document, along with their morphemes and every annotation and vocabulary link on
+          them. This cannot be undone.
         </p>
         <p className="mt-1 text-muted-foreground">
           Sentence boundaries and sentence-level annotations are kept.
@@ -283,16 +327,22 @@ export function DocumentTokenize() {
 
       <ConfirmDeleteDialog
         open={confirmClear === 'sentences'}
-        onOpenChange={(o) => { if (!o) setConfirmClear(null); }}
+        onOpenChange={(o) => {
+          if (!o) setConfirmClear(null);
+        }}
         title="Reset Sentences"
         confirmLabel="Reset Sentences"
-        onConfirm={() => { setConfirmClear(null); ops.handleClearSentences(); }}
+        onConfirm={() => {
+          setConfirmClear(null);
+          ops.handleClearSentences();
+        }}
       >
         <p className="font-medium text-destructive">Warning</p>
         <p className="mt-1 text-muted-foreground">
-          This replaces all <strong>{existingSentenceTokens.length.toLocaleString()} sentences</strong>{' '}
-          with a single sentence spanning the whole text. Sentence-level annotations
-          (e.g. translations) are deleted with their sentences. This cannot be undone.
+          This replaces all{' '}
+          <strong>{existingSentenceTokens.length.toLocaleString()} sentences</strong> with a single
+          sentence spanning the whole text. Sentence-level annotations (e.g. translations) are
+          deleted with their sentences. This cannot be undone.
         </p>
         <p className="mt-1 text-muted-foreground">
           Words, morphemes, and their annotations are kept.
@@ -303,7 +353,9 @@ export function DocumentTokenize() {
           annotations (deleteToken deletes unannotated tokens instantly). */}
       <ConfirmDeleteDialog
         open={!!ops.pendingDelete}
-        onOpenChange={(o) => { if (!o) ops.cancelPendingDelete(); }}
+        onOpenChange={(o) => {
+          if (!o) ops.cancelPendingDelete();
+        }}
         title="Delete Token"
         confirmLabel="Delete"
         onConfirm={() => ops.confirmPendingDelete()}
@@ -312,11 +364,14 @@ export function DocumentTokenize() {
         <p className="mt-1 text-muted-foreground">
           Deleting <strong>“{ops.pendingDelete?.content}”</strong> also deletes{' '}
           <strong>
-            {ops.pendingDelete?.annotations || 0} annotation{ops.pendingDelete?.annotations === 1 ? '' : 's'}
-            {ops.pendingDelete?.links ? ` and ${ops.pendingDelete.links} vocabulary link${ops.pendingDelete.links === 1 ? '' : 's'}` : ''}
+            {ops.pendingDelete?.annotations || 0} annotation
+            {ops.pendingDelete?.annotations === 1 ? '' : 's'}
+            {ops.pendingDelete?.links
+              ? ` and ${ops.pendingDelete.links} vocabulary link${ops.pendingDelete.links === 1 ? '' : 's'}`
+              : ''}
           </strong>{' '}
-          on it — including any from other apps on this project (e.g. UD annotations)
-          that are not visible here. This cannot be undone.
+          on it — including any from other apps on this project (e.g. UD annotations) that are not
+          visible here. This cannot be undone.
         </p>
       </ConfirmDeleteDialog>
 
@@ -325,7 +380,9 @@ export function DocumentTokenize() {
           (split/merge delete the words' morphemes). Word-scope spans survive. */}
       <ConfirmDeleteDialog
         open={!!ops.pendingStructural}
-        onOpenChange={(o) => { if (!o) ops.cancelPendingStructural(); }}
+        onOpenChange={(o) => {
+          if (!o) ops.cancelPendingStructural();
+        }}
         title={ops.pendingStructural?.kind === 'merge' ? 'Merge Words' : 'Split Word'}
         confirmLabel={ops.pendingStructural?.kind === 'merge' ? 'Merge anyway' : 'Split anyway'}
         onConfirm={() => ops.confirmPendingStructural()}
@@ -335,8 +392,11 @@ export function DocumentTokenize() {
           {ops.pendingStructural?.kind === 'merge' ? 'Merging' : 'Splitting'}{' '}
           <strong>“{ops.pendingStructural?.label}”</strong> discards the morpheme analysis, deleting{' '}
           <strong>
-            {ops.pendingStructural?.annotations || 0} annotation{ops.pendingStructural?.annotations === 1 ? '' : 's'}
-            {ops.pendingStructural?.links ? ` and ${ops.pendingStructural.links} vocabulary link${ops.pendingStructural.links === 1 ? '' : 's'}` : ''}
+            {ops.pendingStructural?.annotations || 0} annotation
+            {ops.pendingStructural?.annotations === 1 ? '' : 's'}
+            {ops.pendingStructural?.links
+              ? ` and ${ops.pendingStructural.links} vocabulary link${ops.pendingStructural.links === 1 ? '' : 's'}`
+              : ''}
           </strong>{' '}
           at the morpheme level — including any from other apps on this project that aren’t visible
           here. Word-level annotations are kept. This cannot be undone.
@@ -348,7 +408,9 @@ export function DocumentTokenize() {
           existing analysis. Only opens when there's something to lose. */}
       <ConfirmDeleteDialog
         open={!!ops.pendingTokenize}
-        onOpenChange={(o) => { if (!o) ops.cancelPendingTokenize(); }}
+        onOpenChange={(o) => {
+          if (!o) ops.cancelPendingTokenize();
+        }}
         title="Re-tokenize document"
         confirmLabel="Re-tokenize anyway"
         onConfirm={() => ops.confirmPendingTokenize()}
@@ -357,8 +419,11 @@ export function DocumentTokenize() {
         <p className="mt-1 text-muted-foreground">
           Re-tokenizing re-segments this document, discarding{' '}
           <strong>
-            {ops.pendingTokenize?.annotations || 0} existing annotation{ops.pendingTokenize?.annotations === 1 ? '' : 's'}
-            {ops.pendingTokenize?.links ? ` and ${ops.pendingTokenize.links} vocabulary link${ops.pendingTokenize.links === 1 ? '' : 's'}` : ''}
+            {ops.pendingTokenize?.annotations || 0} existing annotation
+            {ops.pendingTokenize?.annotations === 1 ? '' : 's'}
+            {ops.pendingTokenize?.links
+              ? ` and ${ops.pendingTokenize.links} vocabulary link${ops.pendingTokenize.links === 1 ? '' : 's'}`
+              : ''}
           </strong>{' '}
           (word, morpheme, and sentence level) — including any from other apps on this project that
           aren’t visible here. This cannot be undone.
@@ -436,7 +501,16 @@ function SentenceComponent({ sentence, ops, index, drag, setDrag, dragRef, readO
   );
 }
 
-function TokenComponent({ ops, sentence, piece, pieceIndex, drag, setDrag, dragRef, readOnly = false }) {
+function TokenComponent({
+  ops,
+  sentence,
+  piece,
+  pieceIndex,
+  drag,
+  setDrag,
+  dragRef,
+  readOnly = false,
+}) {
   const [isSplitting, setIsSplitting] = useState(false);
   const isDraggingHere = drag?.sentenceId === sentence.id;
   const isSelected = isDraggingHere && drag.selectedTokenIds.has(piece.id);
@@ -503,7 +577,7 @@ function TokenComponent({ ops, sentence, piece, pieceIndex, drag, setDrag, dragR
         backgroundColor: isSelected ? '#1976d2' : '#e3f2fd',
         color: isSelected ? 'white' : 'inherit',
         border: `1px solid ${isSelected ? '#1565c0' : '#bbdefb'}`,
-        cursor: readOnly ? 'default' : (isDraggingHere ? 'grabbing' : 'pointer'),
+        cursor: readOnly ? 'default' : isDraggingHere ? 'grabbing' : 'pointer',
       }}
     >
       {piece.content}

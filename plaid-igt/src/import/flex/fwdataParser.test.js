@@ -63,7 +63,8 @@ describe.skipIf(!existsSync(LEZGI))('parseFwdata — Lezgi sample', () => {
 
   it('counts word/punct instances as audited', () => {
     const items = ir.texts.flatMap((t) =>
-      t.paragraphs.flatMap((p) => p.segments.flatMap((s) => s.analyses)));
+      t.paragraphs.flatMap((p) => p.segments.flatMap((s) => s.analyses)),
+    );
     expect(items.filter((a) => a.kind === 'word')).toHaveLength(10594);
     expect(items.filter((a) => a.kind === 'punct')).toHaveLength(3376);
     const bundles = items.flatMap((a) => a.morphemes ?? []);
@@ -81,8 +82,8 @@ describe.skipIf(!existsSync(LEZGI))('parseFwdata — Lezgi sample', () => {
   });
 
   it('maps FLEx human approval onto word analyses', () => {
-    const words = ir.texts.flatMap((t) =>
-      t.paragraphs.flatMap((p) => p.segments.flatMap((s) => s.analyses)))
+    const words = ir.texts
+      .flatMap((t) => t.paragraphs.flatMap((p) => p.segments.flatMap((s) => s.analyses)))
       .filter((a) => a.kind === 'word');
     const approved = words.filter((w) => w.approved).length;
     // 6,862 analyses are human-approved, 1,473 parser-only, plus bare
@@ -96,7 +97,8 @@ describe.skipIf(!existsSync(LEZGI))('parseFwdata — Lezgi sample', () => {
     expect(ir.wsUsage.morphGloss).toContain('en');
     expect(ir.wsUsage.freeTranslation).toContain('en');
     expect(ir.wsUsage.wordForms).toEqual(
-      expect.arrayContaining(['lez-Cyrl-AZ-x-qusar', 'lez-Qaaa-AZ-x-Tran-lat']));
+      expect.arrayContaining(['lez-Cyrl-AZ-x-qusar', 'lez-Qaaa-AZ-x-Tran-lat']),
+    );
   });
 
   it('produces NFC output', () => {
@@ -121,14 +123,17 @@ describe.skipIf(!existsSync(SENA))('parseFwdata — Sena 3 sample (newer format)
   it('surfaces custom field definitions', () => {
     expect(ir.customFields.length).toBeGreaterThan(0);
     expect(ir.customFields.map((f) => f.name)).toEqual(
-      expect.arrayContaining(['Plural', 'Singular', 'Parsing Note']));
+      expect.arrayContaining(['Plural', 'Singular', 'Parsing Note']),
+    );
   });
 
   it('extracts custom field VALUES on entries and senses', () => {
     const withPlural = ir.lexicon.filter((e) => e.custom?.Plural);
     expect(withPlural.length).toBeGreaterThan(500); // 520 in the sample
     expect(ir.lexicon.some((e) => e.custom?.Plural === 'pibubu')).toBe(true);
-    const senseNotes = ir.lexicon.flatMap((e) => e.senses).filter((s) => s.custom?.['Parsing Note']);
+    const senseNotes = ir.lexicon
+      .flatMap((e) => e.senses)
+      .filter((s) => s.custom?.['Parsing Note']);
     expect(senseNotes.length).toBeGreaterThan(50); // 60 in the sample
   });
 

@@ -19,7 +19,7 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
       className={cn(
         'inline-flex items-center gap-1 font-medium text-muted-foreground transition-colors hover:text-foreground',
         active && 'text-foreground',
-        className
+        className,
       )}
     >
       {label}
@@ -89,18 +89,25 @@ export const VocabularyList = () => {
           // A user with no project access (e.g. a vocab-only maintainer) can't run
           // the count query — that's expected, not an error worth a toast.
           if (!isPermissionError(err)) {
-            notifyWarning('Item counts could not be loaded for the vocabulary list.', 'Item counts unavailable');
+            notifyWarning(
+              'Item counts could not be loaded for the vocabulary list.',
+              'Item counts unavailable',
+            );
           }
         }
       } finally {
         if (!cancelled) setCountsLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [vocabularies, client]);
 
   const onSort = (key) =>
-    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+    setSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
+    );
 
   const sortedVocabularies = useMemo(() => {
     const extract = {
@@ -120,7 +127,9 @@ export const VocabularyList = () => {
 
   const renderItems = (vocabId) => {
     if (countsLoading && itemCounts[vocabId] === undefined) {
-      return <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />;
+      return (
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />
+      );
     }
     const v = itemCounts[vocabId];
     return v == null ? '—' : v.toLocaleString();
@@ -144,7 +153,10 @@ export const VocabularyList = () => {
       </div>
 
       {error && (
-        <div role="alert" className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div
+          role="alert"
+          className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </div>
       )}
@@ -163,10 +175,22 @@ export const VocabularyList = () => {
                   <SortHeader field="name" label="Vocabulary" sort={sort} onSort={onSort} />
                 </th>
                 <th className="px-4 py-2 text-right">
-                  <SortHeader field="items" label="Items" sort={sort} onSort={onSort} className="justify-end" />
+                  <SortHeader
+                    field="items"
+                    label="Items"
+                    sort={sort}
+                    onSort={onSort}
+                    className="justify-end"
+                  />
                 </th>
                 <th className="px-4 py-2 text-right">
-                  <SortHeader field="maintainers" label="Maintainers" sort={sort} onSort={onSort} className="justify-end" />
+                  <SortHeader
+                    field="maintainers"
+                    label="Maintainers"
+                    sort={sort}
+                    onSort={onSort}
+                    className="justify-end"
+                  />
                 </th>
               </tr>
             </thead>

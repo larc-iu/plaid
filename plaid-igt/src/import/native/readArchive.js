@@ -4,7 +4,10 @@
 import { unzipSync } from 'fflate';
 
 export class ArchiveError extends Error {
-  constructor(message) { super(message); this.name = 'ArchiveError'; }
+  constructor(message) {
+    super(message);
+    this.name = 'ArchiveError';
+  }
 }
 
 /**
@@ -33,19 +36,26 @@ export function readNativeArchive(bytes) {
 
   const manifest = json('project.json');
   if (manifest.format !== 'plaid-igt') {
-    throw new ArchiveError(`Unrecognized format ${JSON.stringify(manifest.format)} — expected "plaid-igt"`);
+    throw new ArchiveError(
+      `Unrecognized format ${JSON.stringify(manifest.format)} — expected "plaid-igt"`,
+    );
   }
   // Per the spec's versioning policy, additive changes don't bump the version,
   // so only a different MAJOR (integer) version is unreadable.
   if (manifest.formatVersion !== 1) {
-    throw new ArchiveError(`Unsupported formatVersion ${manifest.formatVersion} — this build reads version 1`);
+    throw new ArchiveError(
+      `Unsupported formatVersion ${manifest.formatVersion} — this build reads version 1`,
+    );
   }
 
-  const vocabularies = (manifest.vocabularies || []).map((row) => ({ ...row, data: json(row.file) }));
+  const vocabularies = (manifest.vocabularies || []).map((row) => ({
+    ...row,
+    data: json(row.file),
+  }));
   const documents = (manifest.documents || []).map((row) => ({
     ...row,
     data: json(row.file),
-    mediaBytes: row.mediaFile ? entries[row.mediaFile] ?? null : null,
+    mediaBytes: row.mediaFile ? (entries[row.mediaFile] ?? null) : null,
   }));
   return { manifest, vocabularies, documents };
 }

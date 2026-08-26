@@ -4,19 +4,37 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
-  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 
@@ -78,16 +96,19 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     let cancelled = false;
     (async () => {
       setMembersLoading(true);
-      const ids = [...new Set([
-        ...(project.maintainers || []),
-        ...(project.writers || []),
-        ...(project.readers || []),
-      ])];
+      const ids = [
+        ...new Set([
+          ...(project.maintainers || []),
+          ...(project.writers || []),
+          ...(project.readers || []),
+        ]),
+      ];
       try {
-        const resolved = await Promise.all(ids.map(id =>
-          client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))));
+        const resolved = await Promise.all(
+          ids.map((id) => client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))),
+        );
         const rows = resolved
-          .map(u => ({ ...u, role: roleOf(project, u.id) }))
+          .map((u) => ({ ...u, role: roleOf(project, u.id) }))
           .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
         if (!cancelled) setMembers(rows);
       } catch (err) {
@@ -97,7 +118,9 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
         if (!cancelled) setMembersLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [project, client]);
 
   // Server-side search (?q=). Runs once the box is touched; empty browses the
@@ -108,9 +131,12 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     (async () => {
       setSearchLoading(true);
       try {
-        const page = await client.users.listPage({ q: debouncedSearch || undefined, limit: SEARCH_LIMIT });
-        const memberIds = new Set(members.map(m => m.id));
-        const results = (page.entries || []).filter(u => !memberIds.has(u.id));
+        const page = await client.users.listPage({
+          q: debouncedSearch || undefined,
+          limit: SEARCH_LIMIT,
+        });
+        const memberIds = new Set(members.map((m) => m.id));
+        const results = (page.entries || []).filter((u) => !memberIds.has(u.id));
         if (!cancelled) setSearchResults(results);
       } catch (err) {
         console.error('User search failed:', err);
@@ -119,7 +145,9 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
         if (!cancelled) setSearchLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [debouncedSearch, searchActive, members, client]);
 
   const setRole = async (userId, newRole) => {
@@ -163,7 +191,10 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     } catch (err) {
       console.error('Error creating user:', err);
       const exists = err.status === 409 || (err.message && err.message.includes('409'));
-      notifyError(exists ? `A user "${newUser.username}" already exists.` : 'Failed to create user.', 'Error');
+      notifyError(
+        exists ? `A user "${newUser.username}" already exists.` : 'Failed to create user.',
+        'Error',
+      );
     } finally {
       setCreating(false);
     }
@@ -177,9 +208,11 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   const handleUpdateUser = async () => {
     try {
       setSavingEdit(true);
-      const newUsername = editForm.username !== editingUser.username ? editForm.username : undefined;
+      const newUsername =
+        editForm.username !== editingUser.username ? editForm.username : undefined;
       const newPassword = editForm.password || undefined;
-      const newIsAdmin = editForm.isAdmin !== (editingUser.isAdmin || false) ? editForm.isAdmin : undefined;
+      const newIsAdmin =
+        editForm.isAdmin !== (editingUser.isAdmin || false) ? editForm.isAdmin : undefined;
       await client.users.update(editingUser.id, newPassword, newUsername, newIsAdmin);
       notifySuccess('User updated', 'Success');
       setEditingUser(null);
@@ -218,7 +251,13 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">{members.length} with access</span>
             {isAdmin && (
-              <Button size="sm" onClick={() => { setNewUser(EMPTY_USER); setCreateOpen(true); }}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setNewUser(EMPTY_USER);
+                  setCreateOpen(true);
+                }}
+              >
                 <UserPlus className="h-4 w-4" /> Create User
               </Button>
             )}
@@ -243,7 +282,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
               </tr>
             </thead>
             <tbody>
-              {members.map(m => (
+              {members.map((m) => (
                 <tr key={m.id} className="border-t">
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
@@ -258,9 +297,15 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                       onValueChange={(v) => setRole(m.id, v)}
                       disabled={m.id === user.id || updatingUser === m.id}
                     >
-                      <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-8 w-40">
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
-                        {ROLE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        {ROLE_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </td>
@@ -268,12 +313,19 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                     <td className="px-4 py-2">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="User actions">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="User actions"
+                          >
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => startEdit(m)}>Edit user…</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => startEdit(m)}>
+                            Edit user…
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -302,8 +354,8 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
             />
           </div>
 
-          {searchActive && (
-            searchLoading ? (
+          {searchActive &&
+            (searchLoading ? (
               <div className="flex justify-center py-4 text-muted-foreground">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
               </div>
@@ -327,11 +379,13 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="outline"><Plus className="h-4 w-4" /> Add</Button>
+                        <Button size="sm" variant="outline">
+                          <Plus className="h-4 w-4" /> Add
+                        </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Add as…</DropdownMenuLabel>
-                        {GRANT_ROLES.map(role => (
+                        {GRANT_ROLES.map((role) => (
                           <DropdownMenuItem key={role} onSelect={() => setRole(u.id, role)}>
                             {cap(role)}
                           </DropdownMenuItem>
@@ -341,15 +395,16 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                   </div>
                 ))}
               </div>
-            )
-          )}
+            ))}
         </div>
       </div>
 
       {/* Create User dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Create New User</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Create New User</DialogTitle>
+          </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label>User ID</Label>
@@ -369,7 +424,11 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
               />
             </div>
             <div className="flex items-start gap-2">
-              <Switch id="new-admin" checked={newUser.isAdmin} onCheckedChange={(c) => setNewUser({ ...newUser, isAdmin: c })} />
+              <Switch
+                id="new-admin"
+                checked={newUser.isAdmin}
+                onCheckedChange={(c) => setNewUser({ ...newUser, isAdmin: c })}
+              />
               <div>
                 <Label htmlFor="new-admin">Admin user</Label>
                 <p className="text-xs text-muted-foreground">Grant this user admin privileges</p>
@@ -377,29 +436,51 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>Cancel</Button>
-            <Button onClick={handleCreateUser} disabled={creating}>{creating ? 'Creating…' : 'Create User'}</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateUser} disabled={creating}>
+              {creating ? 'Creating…' : 'Create User'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Edit User dialog */}
-      <Dialog open={!!editingUser} onOpenChange={(o) => { if (!o) setEditingUser(null); }}>
+      <Dialog
+        open={!!editingUser}
+        onOpenChange={(o) => {
+          if (!o) setEditingUser(null);
+        }}
+      >
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editingUser ? `Edit User: ${editingUser.username}` : ''}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editingUser ? `Edit User: ${editingUser.username}` : ''}</DialogTitle>
+          </DialogHeader>
           {editingUser && (
             <>
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
                   <Label>Username</Label>
-                  <Input value={editForm.username} onChange={(e) => setEditForm({ ...editForm, username: e.target.value })} />
+                  <Input
+                    value={editForm.username}
+                    onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>New password (leave blank to keep current)</Label>
-                  <Input type="password" value={editForm.password} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} />
+                  <Input
+                    type="password"
+                    value={editForm.password}
+                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                  />
                 </div>
                 <div className="flex items-start gap-2">
-                  <Switch id="edit-admin" checked={editForm.isAdmin} onCheckedChange={(c) => setEditForm({ ...editForm, isAdmin: c })} />
+                  <Switch
+                    id="edit-admin"
+                    checked={editForm.isAdmin}
+                    onCheckedChange={(c) => setEditForm({ ...editForm, isAdmin: c })}
+                  />
                   <Label htmlFor="edit-admin">Admin user</Label>
                 </div>
               </div>
@@ -412,8 +493,16 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                   Delete User
                 </Button>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setEditingUser(null)} disabled={savingEdit}>Cancel</Button>
-                  <Button onClick={handleUpdateUser} disabled={savingEdit}>{savingEdit ? 'Saving…' : 'Update User'}</Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setEditingUser(null)}
+                    disabled={savingEdit}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleUpdateUser} disabled={savingEdit}>
+                    {savingEdit ? 'Saving…' : 'Update User'}
+                  </Button>
                 </div>
               </DialogFooter>
             </>
@@ -422,18 +511,27 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
       </Dialog>
 
       {/* Delete confirm */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o) setDeleteTarget(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete user?</AlertDialogTitle>
             <AlertDialogDescription>
-              Permanently delete <strong>{deleteTarget?.username}</strong> ({deleteTarget?.id}). This cannot be undone.
+              Permanently delete <strong>{deleteTarget?.username}</strong> ({deleteTarget?.id}).
+              This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); handleDeleteUser(); }}
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteUser();
+              }}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

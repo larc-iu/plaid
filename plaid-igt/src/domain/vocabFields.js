@@ -29,9 +29,7 @@ export const CORE_VOCAB_FIELDS = [
 const CORE_BY_NAME = new Map(CORE_VOCAB_FIELDS.map((f) => [f.name, f]));
 
 /** Fields that must always be present, pinned first in this (core) order. */
-const IMMUTABLE_NAMES = new Set(
-  CORE_VOCAB_FIELDS.filter((f) => f.immutable).map((f) => f.name),
-);
+const IMMUTABLE_NAMES = new Set(CORE_VOCAB_FIELDS.filter((f) => f.immutable).map((f) => f.name));
 
 /** Human-friendly labels for known fields (overrides the generic humanizer). */
 const FIELD_LABELS = {

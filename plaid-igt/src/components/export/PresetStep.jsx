@@ -4,11 +4,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
 } from '@/components/ui/select';
 import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
-  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { EXPORT_FORMATS } from '@/export/presets';
 
@@ -60,27 +70,52 @@ export const PresetStep = ({ presets, selectedId, onSelect, onCreate, onRename, 
                     className="h-7 flex-1"
                     autoFocus
                   />
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={commitRename} aria-label="Confirm rename">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={commitRename}
+                    aria-label="Confirm rename"
+                  >
                     <Check className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setRenamingId(null)} aria-label="Cancel rename">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setRenamingId(null)}
+                    aria-label="Cancel rename"
+                  >
                     <X className="h-3.5 w-3.5" />
                   </Button>
                 </>
               ) : (
                 <>
-                  <button type="button" className="flex flex-1 items-center gap-2 text-left" onClick={() => onSelect(p.id)}>
+                  <button
+                    type="button"
+                    className="flex flex-1 items-center gap-2 text-left"
+                    onClick={() => onSelect(p.id)}
+                  >
                     <span className="font-medium">{p.name}</span>
                     <span className="text-xs text-muted-foreground">{formatLabel(p.format)}</span>
                   </button>
                   <Button
-                    variant="ghost" size="icon" className="h-7 w-7" aria-label={`Rename ${p.name}`}
-                    onClick={() => { setRenamingId(p.id); setRenameValue(p.name); }}
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label={`Rename ${p.name}`}
+                    onClick={() => {
+                      setRenamingId(p.id);
+                      setRenameValue(p.name);
+                    }}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
                   <Button
-                    variant="ghost" size="icon" className="h-7 w-7" aria-label={`Delete ${p.name}`}
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label={`Delete ${p.name}`}
                     onClick={() => setDeletingId(p.id)}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -92,8 +127,8 @@ export const PresetStep = ({ presets, selectedId, onSelect, onCreate, onRename, 
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No export presets yet — create one below. Presets remember your format
-          and layer choices for next time.
+          No export presets yet — create one below. Presets remember your format and layer choices
+          for next time.
         </p>
       )}
 
@@ -105,14 +140,20 @@ export const PresetStep = ({ presets, selectedId, onSelect, onCreate, onRename, 
             placeholder="Preset name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') create(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') create();
+            }}
             className="flex-1"
           />
           <Select value={newFormat} onValueChange={setNewFormat}>
-            <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-56">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {EXPORT_FORMATS.map((f) => (
-                <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>
+                <SelectItem key={f.id} value={f.id}>
+                  {f.label}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -122,7 +163,12 @@ export const PresetStep = ({ presets, selectedId, onSelect, onCreate, onRename, 
         </div>
       </div>
 
-      <AlertDialog open={!!deletingId} onOpenChange={(o) => { if (!o) setDeletingId(null); }}>
+      <AlertDialog
+        open={!!deletingId}
+        onOpenChange={(o) => {
+          if (!o) setDeletingId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete preset?</AlertDialogTitle>
@@ -132,7 +178,12 @@ export const PresetStep = ({ presets, selectedId, onSelect, onCreate, onRename, 
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { onDelete(deletingId); setDeletingId(null); }}>
+            <AlertDialogAction
+              onClick={() => {
+                onDelete(deletingId);
+                setDeletingId(null);
+              }}
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

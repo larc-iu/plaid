@@ -11,8 +11,7 @@ export const EXPORT_FORMATS = [
   { id: 'plaid-igt-json', label: 'Plaid IGT JSON (lossless .zip archive)', ext: 'json' },
 ];
 
-export const formatExt = (format) =>
-  EXPORT_FORMATS.find((f) => f.id === format)?.ext ?? 'txt';
+export const formatExt = (format) => EXPORT_FORMATS.find((f) => f.id === format)?.ext ?? 'txt';
 
 export const readExportPresets = (project) => {
   const presets = project?.config?.[IGT_NAMESPACE]?.export?.presets;
@@ -24,7 +23,11 @@ export async function writeExportPresets(client, projectId, presets) {
 }
 
 // Sanitize a language tag-ish string: keep letters/digits/hyphens.
-const tagify = (name) => String(name ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '').slice(0, 30);
+const tagify = (name) =>
+  String(name ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '')
+    .slice(0, 30);
 
 // Pre-fill the flextext field→item-type mapping from field names — the exact
 // inverse of the FLEx importer's naming (Translation / Literal Translation /
@@ -65,7 +68,8 @@ export function newPreset(format, layers, name = 'New preset') {
           baseline: 'und',
           analysis: 'en',
           orthographies: Object.fromEntries(
-            layers.orthographies.map((n) => [n, tagify(n) || 'und'])),
+            layers.orthographies.map((n) => [n, tagify(n) || 'und']),
+          ),
           fieldOverrides: {},
         },
         fieldMap: defaultFieldMap(layers),

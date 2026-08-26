@@ -8,15 +8,23 @@ import { Switch } from '@/components/ui/switch';
 // vocabulariesForced (native format) replaces the toggle with a note — the
 // archive always includes vocabularies and zips at every scope.
 export const ScopeStep = ({
-  scope, onScopeChange, documents, defaultDocument, historicalOnly = false,
-  selectedDocIds, onSelectedDocIdsChange,
-  includeVocabularies, onIncludeVocabulariesChange, hasVocabularies,
+  scope,
+  onScopeChange,
+  documents,
+  defaultDocument,
+  historicalOnly = false,
+  selectedDocIds,
+  onSelectedDocIdsChange,
+  includeVocabularies,
+  onIncludeVocabulariesChange,
+  hasVocabularies,
   vocabulariesForced = false,
 }) => {
   const radio = (value, label, extra = null) => (
     <label className="flex cursor-pointer items-center gap-2 text-sm">
       <input
-        type="radio" name="export-scope"
+        type="radio"
+        name="export-scope"
         checked={scope === value}
         onChange={() => onScopeChange(value)}
       />
@@ -27,7 +35,8 @@ export const ScopeStep = ({
 
   const toggleDoc = (id, on) => {
     const next = new Set(selectedDocIds);
-    if (on) next.add(id); else next.delete(id);
+    if (on) next.add(id);
+    else next.delete(id);
     onSelectedDocIdsChange(next);
   };
 
@@ -41,14 +50,13 @@ export const ScopeStep = ({
         <Label>Scope</Label>
         {radio('document', `This document — ${defaultDocument?.name}`)}
         <p className="text-xs text-muted-foreground">
-          You are viewing a historical state, so the export covers this
-          document as of that moment. Project-wide export is available outside
-          of history view.
+          You are viewing a historical state, so the export covers this document as of that moment.
+          Project-wide export is available outside of history view.
         </p>
         {vocabulariesForced && (
           <p className="text-xs text-muted-foreground">
-            This format always produces a .zip archive including all
-            vocabularies and the project configuration.
+            This format always produces a .zip archive including all vocabularies and the project
+            configuration.
           </p>
         )}
       </div>
@@ -67,7 +75,10 @@ export const ScopeStep = ({
       {scope === 'documents' && (
         <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border p-2">
           {(documents || []).map((d) => (
-            <label key={d.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/50">
+            <label
+              key={d.id}
+              className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/50"
+            >
               <input
                 type="checkbox"
                 checked={selectedDocIds.has(d.id)}
@@ -84,15 +95,18 @@ export const ScopeStep = ({
 
       {vocabulariesForced ? (
         <p className="border-t pt-3 text-xs text-muted-foreground">
-          This format always produces a .zip archive including all vocabularies
-          and the project configuration, whatever the scope.
+          This format always produces a .zip archive including all vocabularies and the project
+          configuration, whatever the scope.
         </p>
-      ) : (zipExpected && hasVocabularies && (
-        <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
-          <span>Include vocabularies as TSV files</span>
-          <Switch checked={!!includeVocabularies} onCheckedChange={onIncludeVocabulariesChange} />
-        </label>
-      ))}
+      ) : (
+        zipExpected &&
+        hasVocabularies && (
+          <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
+            <span>Include vocabularies as TSV files</span>
+            <Switch checked={!!includeVocabularies} onCheckedChange={onIncludeVocabulariesChange} />
+          </label>
+        )
+      )}
     </div>
   );
 };

@@ -6,7 +6,9 @@
 import { ROLES } from '@larc-iu/plaid-client';
 
 let idCounter = 0;
-export const resetIds = () => { idCounter = 0; };
+export const resetIds = () => {
+  idCounter = 0;
+};
 const nextId = (p = 'new') => `${p}-${++idCounter}`;
 
 // ---- raw document builder -----------------------------------------------
@@ -19,32 +21,57 @@ export function buildRawDoc(opts = {}) {
   const textId = 'text-1';
 
   const wordSpanLayers = (opts.wordFields ?? ['POS']).map((name, i) => ({
-    id: `wsl-${i}`, name, config: { igt: { scope: 'Word' } }, spans: [],
+    id: `wsl-${i}`,
+    name,
+    config: { igt: { scope: 'Word' } },
+    spans: [],
   }));
   const morphSpanLayers = (opts.morphFields ?? ['Gloss']).map((name, i) => ({
-    id: `msl-${i}`, name, config: { igt: { scope: 'Morpheme' } }, spans: [],
+    id: `msl-${i}`,
+    name,
+    config: { igt: { scope: 'Morpheme' } },
+    spans: [],
   }));
   const sentSpanLayers = (opts.sentFields ?? ['Translation']).map((name, i) => ({
-    id: `ssl-${i}`, name, config: { igt: { scope: 'Sentence' } }, spans: [],
+    id: `ssl-${i}`,
+    name,
+    config: { igt: { scope: 'Sentence' } },
+    spans: [],
   }));
 
   const words = opts.words ?? [
     { id: 'w-1', begin: 0, end: 3 },
     { id: 'w-2', begin: 4, end: 7 },
   ];
-  const wordTokens = words.map(w => ({
-    id: w.id, text: textId, begin: w.begin, end: w.end, metadata: w.metadata ?? {},
+  const wordTokens = words.map((w) => ({
+    id: w.id,
+    text: textId,
+    begin: w.begin,
+    end: w.end,
+    metadata: w.metadata ?? {},
   }));
 
   // Morphemes: by default one per word, same extent, precedence 1.
-  const morphemes = opts.morphemes ?? words.map((w, i) => ({
-    id: `m-${i + 1}`, text: textId, begin: w.begin, end: w.end, precedence: 1, metadata: {},
-  }));
+  const morphemes =
+    opts.morphemes ??
+    words.map((w, i) => ({
+      id: `m-${i + 1}`,
+      text: textId,
+      begin: w.begin,
+      end: w.end,
+      precedence: 1,
+      metadata: {},
+    }));
 
   // Code-point length (offsets are code points) so astral-text fixtures get a
   // correct default sentence covering the whole body.
   const sentences = opts.sentences ?? [{ id: 's-1', begin: 0, end: [...body].length }];
-  const sentenceTokens = sentences.map(s => ({ id: s.id, text: textId, begin: s.begin, end: s.end }));
+  const sentenceTokens = sentences.map((s) => ({
+    id: s.id,
+    text: textId,
+    begin: s.begin,
+    end: s.end,
+  }));
 
   return {
     id: 'doc-1',
@@ -53,25 +80,45 @@ export function buildRawDoc(opts = {}) {
     metadata: opts.metadata ?? {},
     textLayers: [
       {
-        id: 'tl-1', name: 'Main Text', config: { plaid: { role: ROLES.BASELINE } },
+        id: 'tl-1',
+        name: 'Main Text',
+        config: { plaid: { role: ROLES.BASELINE } },
         text: { id: textId, body },
         tokenLayers: [
           {
-            id: 'sentL', name: 'Sentences', config: { plaid: { role: ROLES.SENTENCE } },
-            tokens: sentenceTokens, spanLayers: sentSpanLayers, vocabs: [],
+            id: 'sentL',
+            name: 'Sentences',
+            config: { plaid: { role: ROLES.SENTENCE } },
+            tokens: sentenceTokens,
+            spanLayers: sentSpanLayers,
+            vocabs: [],
           },
           {
-            id: 'wordL', name: 'Words',
-            config: { plaid: { role: ROLES.WORD }, igt: { orthographies: opts.orthographies ?? [{ name: 'IPA' }] } },
-            tokens: wordTokens, spanLayers: wordSpanLayers, vocabs: opts.wordVocabs ?? [],
+            id: 'wordL',
+            name: 'Words',
+            config: {
+              plaid: { role: ROLES.WORD },
+              igt: { orthographies: opts.orthographies ?? [{ name: 'IPA' }] },
+            },
+            tokens: wordTokens,
+            spanLayers: wordSpanLayers,
+            vocabs: opts.wordVocabs ?? [],
           },
           {
-            id: 'morphL', name: 'Morphemes', config: { plaid: { role: ROLES.MORPHEME } },
-            tokens: morphemes, spanLayers: morphSpanLayers, vocabs: opts.morphVocabs ?? [],
+            id: 'morphL',
+            name: 'Morphemes',
+            config: { plaid: { role: ROLES.MORPHEME } },
+            tokens: morphemes,
+            spanLayers: morphSpanLayers,
+            vocabs: opts.morphVocabs ?? [],
           },
           {
-            id: 'alignL', name: 'Alignment', config: { plaid: { role: ROLES.TIME_ALIGNMENT } },
-            tokens: opts.alignmentTokens ?? [], spanLayers: [], vocabs: [],
+            id: 'alignL',
+            name: 'Alignment',
+            config: { plaid: { role: ROLES.TIME_ALIGNMENT } },
+            tokens: opts.alignmentTokens ?? [],
+            spanLayers: [],
+            vocabs: [],
           },
         ],
       },
@@ -95,31 +142,50 @@ export function makeFakeClient(opts = {}) {
 
   // Each op: synchronous side-effect of recording; returns a "result builder"
   // used when not batching (returns {id}) or collected for submitBatch.
-  const op = (kind, makeBody) => (...args) => {
-    record(kind, args);
-    const body = makeBody(...args);
-    if (batching) {
-      queue.push({ status: 200, body });
-      return undefined; // batched ops don't return a usable value
-    }
-    return body;
-  };
+  const op =
+    (kind, makeBody) =>
+    (...args) => {
+      record(kind, args);
+      const body = makeBody(...args);
+      if (batching) {
+        queue.push({ status: 200, body });
+        return undefined; // batched ops don't return a usable value
+      }
+      return body;
+    };
 
   const client = {
     calls,
     isBatching: false,
-    beginBatch() { batching = true; this.isBatching = true; queue = []; },
+    beginBatch() {
+      batching = true;
+      this.isBatching = true;
+      queue = [];
+    },
     async submitBatch() {
       const results = queue;
-      batching = false; this.isBatching = false; queue = null;
+      batching = false;
+      this.isBatching = false;
+      queue = null;
       record('submitBatch', []);
       return results;
     },
-    abortBatch() { batching = false; this.isBatching = false; queue = null; },
-    isBatchMode() { return this.isBatching; },
+    abortBatch() {
+      batching = false;
+      this.isBatching = false;
+      queue = null;
+    },
+    isBatchMode() {
+      return this.isBatching;
+    },
     async batched(fn) {
       this.beginBatch();
-      try { await fn(); } catch (e) { if (this.isBatchMode()) this.abortBatch(); throw e; }
+      try {
+        await fn();
+      } catch (e) {
+        if (this.isBatchMode()) this.abortBatch();
+        throw e;
+      }
       return this.submitBatch();
     },
 
@@ -129,7 +195,9 @@ export function makeFakeClient(opts = {}) {
       update: op('tokens.update', () => ({})),
       split: op('tokens.split', () => ({ id: nextId('tok') })),
       merge: op('tokens.merge', () => ({})),
-      bulkCreate: op('tokens.bulkCreate', (body) => ({ ids: (body || []).map(() => nextId('tok')) })),
+      bulkCreate: op('tokens.bulkCreate', (body) => ({
+        ids: (body || []).map(() => nextId('tok')),
+      })),
       bulkDelete: op('tokens.bulkDelete', () => ({})),
       setMetadata: op('tokens.setMetadata', () => ({})),
       patchMetadata: op('tokens.patchMetadata', () => ({})),
@@ -144,7 +212,9 @@ export function makeFakeClient(opts = {}) {
     },
     vocabLinks: {
       create: op('vocabLinks.create', () => ({ id: nextId('link') })),
-      bulkCreate: op('vocabLinks.bulkCreate', (body) => ({ ids: (body || []).map(() => nextId('link')) })),
+      bulkCreate: op('vocabLinks.bulkCreate', (body) => ({
+        ids: (body || []).map(() => nextId('link')),
+      })),
       bulkDelete: op('vocabLinks.bulkDelete', () => ({})),
       delete: op('vocabLinks.delete', () => ({})),
       patchMetadata: op('vocabLinks.patchMetadata', () => ({})),
@@ -174,7 +244,7 @@ export function makeFakeClient(opts = {}) {
       // (those are embedded in the document GET under tokenLayer.vocabs[] and
       // folded in by mergeRawVocabLinks). Tests pass `opts.vocabularies` to
       // pre-seed links on the loaded table directly.
-      get: async (id) => (opts.vocabularies?.[id] ?? { id, items: [] }),
+      get: async (id) => opts.vocabularies?.[id] ?? { id, items: [] },
     },
   };
   return client;
