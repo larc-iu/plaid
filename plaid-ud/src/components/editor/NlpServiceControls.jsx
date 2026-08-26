@@ -75,11 +75,15 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
     return isDiscovering ? (
       <Group gap={6}>
         <Loader size={14} color="gray" />
-        <Text size="sm" c="dimmed">Checking for NLP services…</Text>
+        <Text size="sm" c="dimmed">
+          Checking for NLP services…
+        </Text>
       </Group>
     ) : (
       <Group gap="xs">
-        <Text size="sm" c="dimmed">No parsing service online</Text>
+        <Text size="sm" c="dimmed">
+          No parsing service online
+        </Text>
         <Button size="xs" variant="light" color="gray" onClick={discoverServices}>
           Retry
         </Button>
@@ -105,7 +109,13 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
       {paramSchema.length > 0 && (
         <Popover width={320} position="bottom-end" withArrow shadow="md">
           <Popover.Target>
-            <ActionIcon variant="light" color="gray" size="lg" aria-label="Service options" disabled={isParsing}>
+            <ActionIcon
+              variant="light"
+              color="gray"
+              size="lg"
+              aria-label="Service options"
+              disabled={isParsing}
+            >
               <IconAdjustments size={18} />
             </ActionIcon>
           </Popover.Target>

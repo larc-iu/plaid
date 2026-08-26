@@ -5,7 +5,18 @@ import { UD_NAMESPACE, getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from './useManagedProject.js';
 import {
-  Container, Title, Text, Button, Group, Stack, Paper, TextInput, Modal, Alert, Center, Loader,
+  Container,
+  Title,
+  Text,
+  Button,
+  Group,
+  Stack,
+  Paper,
+  TextInput,
+  Modal,
+  Alert,
+  Center,
+  Loader,
 } from '@mantine/core';
 
 // "General" tab: project-wide settings that aren't vocab/colors. Currently the
@@ -40,7 +51,8 @@ export const ProjectGeneral = ({ embedded = false }) => {
       const info = getUdLayerInfo(project);
       if (!info.textLayer) throw new Error('Project has no configured text layer.');
       const loc = tokenizerLocale.trim();
-      if (loc) await client.textLayers.setConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale', loc);
+      if (loc)
+        await client.textLayers.setConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale', loc);
       else await client.textLayers.deleteConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale');
       await fetchProject();
       notifySuccess('Tokenizer locale saved.');
@@ -57,7 +69,10 @@ export const ProjectGeneral = ({ embedded = false }) => {
 
   const handleDeleteProject = async () => {
     if (!isDeleteConfirmValid) {
-      notifyError('Project name does not match. Please type the exact project name.', 'Invalid confirmation');
+      notifyError(
+        'Project name does not match. Please type the exact project name.',
+        'Invalid confirmation',
+      );
       return;
     }
     try {
@@ -74,7 +89,11 @@ export const ProjectGeneral = ({ embedded = false }) => {
   };
 
   if (loading) {
-    return <Center py={48}><Loader /></Center>;
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   }
 
   if (!project || !canConfigure) {
@@ -86,18 +105,23 @@ export const ProjectGeneral = ({ embedded = false }) => {
   const content = (
     <Stack gap="xl">
       <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">Tokenizer locale</Title>
+        <Title order={2} size="h4" mb="xs">
+          Tokenizer locale
+        </Title>
         <Text size="sm" c="dimmed" mb="md">
           <p>
             Language tag used for whitespace/word tokenization (<code>Intl.Segmenter</code>). Drives
-            script-specific segmentation — especially <code>ja</code>, <code>zh</code>, <code>th</code>, which
-            are segmented by dictionary lookup when given the locale. A BCP-47 tag (e.g. <code>en</code>,
-            <code> ja</code>, <code>zh-Hans</code>); leave empty for generic (<code>und</code>).
+            script-specific segmentation — especially <code>ja</code>, <code>zh</code>,{' '}
+            <code>th</code>, which are segmented by dictionary lookup when given the locale. A
+            BCP-47 tag (e.g. <code>en</code>,<code> ja</code>, <code>zh-Hans</code>); leave empty
+            for generic (<code>und</code>).
           </p>
           <p>
-            See <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Segmenter">
+            See{' '}
+            <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Segmenter">
               further information about <code>Intl.Segmenter</code>
-            </a>.
+            </a>
+            .
           </p>
         </Text>
         {info.textLayer ? (
@@ -121,18 +145,25 @@ export const ProjectGeneral = ({ embedded = false }) => {
 
       <Paper withBorder radius="md" style={{ borderColor: 'var(--mantine-color-red-4)' }}>
         <Group px="lg" py="md" style={{ borderBottom: '1px solid var(--mantine-color-red-2)' }}>
-          <Title order={3} size="h4" c="red">Danger Zone</Title>
+          <Title order={3} size="h4" c="red">
+            Danger Zone
+          </Title>
         </Group>
         <Stack px="lg" py="md" gap="sm" align="flex-start">
-          <Text size="sm" fw={500}>Delete this project</Text>
+          <Text size="sm" fw={500}>
+            Delete this project
+          </Text>
           <Text size="sm" c="dimmed">
-            Permanently delete <strong>{project.name}</strong> and all of its documents, annotations,
-            and configuration. This action cannot be undone.
+            Permanently delete <strong>{project.name}</strong> and all of its documents,
+            annotations, and configuration. This action cannot be undone.
           </Text>
           <Button
             color="red"
             variant="light"
-            onClick={() => { setDeleteConfirmText(''); setDeleteModalOpened(true); }}
+            onClick={() => {
+              setDeleteConfirmText('');
+              setDeleteModalOpened(true);
+            }}
           >
             Delete Project
           </Button>
@@ -141,29 +172,48 @@ export const ProjectGeneral = ({ embedded = false }) => {
 
       <Modal
         opened={deleteModalOpened}
-        onClose={() => { if (!isDeleting) setDeleteModalOpened(false); }}
+        onClose={() => {
+          if (!isDeleting) setDeleteModalOpened(false);
+        }}
         title="Delete Project"
         centered
       >
         <Stack gap="md">
           <Alert color="red" title="This action is irreversible">
-            You are about to permanently delete the project <strong>{project.name}</strong> and all of
-            its associated data including documents, annotations, and configuration.
+            You are about to permanently delete the project <strong>{project.name}</strong> and all
+            of its associated data including documents, annotations, and configuration.
           </Alert>
           <TextInput
-            label={<>To confirm, type the project name <strong>{project.name}</strong></>}
+            label={
+              <>
+                To confirm, type the project name <strong>{project.name}</strong>
+              </>
+            }
             value={deleteConfirmText}
             onChange={(e) => setDeleteConfirmText(e.target.value)}
             placeholder="Enter project name"
-            error={deleteConfirmText && !isDeleteConfirmValid ? 'Project name does not match' : undefined}
+            error={
+              deleteConfirmText && !isDeleteConfirmValid ? 'Project name does not match' : undefined
+            }
             data-autofocus
-            onKeyDown={(e) => { if (e.key === 'Enter' && isDeleteConfirmValid) handleDeleteProject(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && isDeleteConfirmValid) handleDeleteProject();
+            }}
           />
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDeleteModalOpened(false)} disabled={isDeleting}>
+            <Button
+              variant="default"
+              onClick={() => setDeleteModalOpened(false)}
+              disabled={isDeleting}
+            >
               Cancel
             </Button>
-            <Button color="red" onClick={handleDeleteProject} disabled={!isDeleteConfirmValid} loading={isDeleting}>
+            <Button
+              color="red"
+              onClick={handleDeleteProject}
+              disabled={!isDeleteConfirmValid}
+              loading={isDeleting}
+            >
               Delete Project
             </Button>
           </Group>
@@ -172,5 +222,11 @@ export const ProjectGeneral = ({ embedded = false }) => {
     </Stack>
   );
 
-  return embedded ? content : <Container size="lg" py="xl">{content}</Container>;
+  return embedded ? (
+    content
+  ) : (
+    <Container size="lg" py="xl">
+      {content}
+    </Container>
+  );
 };

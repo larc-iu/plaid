@@ -22,12 +22,12 @@ function flat(where) {
     if (!Array.isArray(cl)) return;
     out.push(cl);
     if (cl[0] === 'not') cl.slice(1).forEach(walk);
-    if (cl[0] === 'or') cl.slice(1).forEach(g => g.forEach(walk));
+    if (cl[0] === 'or') cl.slice(1).forEach((g) => g.forEach(walk));
   };
   where.forEach(walk);
   return out;
 }
-const clauses = (where, head) => flat(where).filter(c => c[0] === head);
+const clauses = (where, head) => flat(where).filter((c) => c[0] === head);
 
 test('single-node upos query is exact', () => {
   const { query, impossible } = compile('pattern { X [upos=VERB] }');
@@ -42,7 +42,10 @@ test('single-node upos query is exact', () => {
       ['covers', '?s1', '?n_X'],
     ],
     return: 'entities',
-    orderBy: [['?S', 'doc'], ['?S', 'begin']],
+    orderBy: [
+      ['?S', 'doc'],
+      ['?S', 'begin'],
+    ],
     limit: 200,
   });
 });
@@ -60,9 +63,9 @@ test('labeled edge: relation with lemma-span source/target + injective !=', () =
   assert.equal(rel[2].value, 'nsubj');
   // source/target are lemma-span vars, each covering the right node token.
   const covers = clauses(query.where, 'covers');
-  assert.ok(covers.some(c => c[2] === '?n_X'));
-  assert.ok(covers.some(c => c[2] === '?n_Y'));
-  assert.ok(query.where.some(c => c[0] === '!=' && c[1] === '?n_X' && c[2] === '?n_Y'));
+  assert.ok(covers.some((c) => c[2] === '?n_X'));
+  assert.ok(covers.some((c) => c[2] === '?n_Y'));
+  assert.ok(query.where.some((c) => c[0] === '!=' && c[1] === '?n_X' && c[2] === '?n_Y'));
 });
 
 test('value list (upos=VERB|AUX) is an array, no extra branches', () => {
@@ -72,12 +75,20 @@ test('value list (upos=VERB|AUX) is an array, no extra branches', () => {
 });
 
 test('FEATS: equality, defined, inequality, undefined', () => {
-  assert.equal(clauses(compile('pattern { X [Number=Sing] }').query.where, 'span')[0][2].value, 'Number=Sing');
-  assert.deepEqual(clauses(compile('pattern { X [Number] }').query.where, 'span')[0][2].value, { regex: '^Number=' });
-  assert.deepEqual(clauses(compile('pattern { X [Number<>Sing] }').query.where, 'span')[0][2].value, { regex: '^Number=(?!Sing$)' });
+  assert.equal(
+    clauses(compile('pattern { X [Number=Sing] }').query.where, 'span')[0][2].value,
+    'Number=Sing',
+  );
+  assert.deepEqual(clauses(compile('pattern { X [Number] }').query.where, 'span')[0][2].value, {
+    regex: '^Number=',
+  });
+  assert.deepEqual(
+    clauses(compile('pattern { X [Number<>Sing] }').query.where, 'span')[0][2].value,
+    { regex: '^Number=(?!Sing$)' },
+  );
   // !Number -> a not-wrapped FEATS span
   const { query } = compile('pattern { X [!Person] }');
-  const not = query.where.find(c => c[0] === 'not');
+  const not = query.where.find((c) => c[0] === 'not');
   assert.ok(not);
   assert.deepEqual(not[1], ['span', not[1][1], { layer: 'FEATS', value: { regex: '^Person=' } }]);
 });
@@ -88,23 +99,29 @@ test('upos<> uses a not-exactly regex', () => {
 });
 
 test('regex and pcre values', () => {
-  assert.deepEqual(clauses(compile('pattern { X [lemma=re"^be"] }').query.where, 'span')[0][2].value, { regex: '^be' });
-  assert.deepEqual(clauses(compile('pattern { X [lemma=/be/i] }').query.where, 'span')[0][2].value, { regex: 'be', flags: 'i' });
+  assert.deepEqual(
+    clauses(compile('pattern { X [lemma=re"^be"] }').query.where, 'span')[0][2].value,
+    { regex: '^be' },
+  );
+  assert.deepEqual(
+    clauses(compile('pattern { X [lemma=/be/i] }').query.where, 'span')[0][2].value,
+    { regex: 'be', flags: 'i' },
+  );
 });
 
 test('without { X -[obj]-> Y } wraps in not, no injective != inside', () => {
   const { query } = compile('pattern { X [upos=VERB] } without { X -[obj]-> Y }');
-  const not = query.where.find(c => c[0] === 'not');
+  const not = query.where.find((c) => c[0] === 'not');
   assert.ok(not);
-  const rel = not.slice(1).find(c => c[0] === 'relation');
+  const rel = not.slice(1).find((c) => c[0] === 'relation');
   assert.equal(rel[2].value, 'obj');
   // no `!=` anywhere inside the not
-  assert.ok(!flat([not]).some(c => c[0] === '!='));
+  assert.ok(!flat([not]).some((c) => c[0] === '!='));
 });
 
 test('node feature-structure disjunction -> or with branch tracking', () => {
   const { query } = compile('pattern { X [upos=VERB,Tense=Past] | [upos=ADJ] }');
-  const or = query.where.find(c => c[0] === 'or');
+  const or = query.where.find((c) => c[0] === 'or');
   assert.ok(or);
   assert.equal(or.length - 1, 2); // two groups
 });
@@ -118,20 +135,26 @@ test('ordering and dominance', () => {
 
 test('is_projective: not-wrapped crossing/root-cover encoding, no recursive related*', () => {
   const proj = compile('pattern { X [upos=VERB] } global { is_projective }');
-  const not = proj.query.where.find(c => c[0] === 'not');
+  const not = proj.query.where.find((c) => c[0] === 'not');
   assert.ok(not, 'expected a not clause');
   const inner = flat([not]);
-  assert.ok(inner.some(c => c[0] === 'precedes*'), 'uses precedence');
-  assert.ok(inner.some(c => c[0] === 'relation'), 'uses relations');
-  assert.ok(!inner.some(c => c[0] === 'related*'), 'avoids the recursive related*');
+  assert.ok(
+    inner.some((c) => c[0] === 'precedes*'),
+    'uses precedence',
+  );
+  assert.ok(
+    inner.some((c) => c[0] === 'relation'),
+    'uses relations',
+  );
+  assert.ok(!inner.some((c) => c[0] === 'related*'), 'avoids the recursive related*');
 });
 
 test('is_not_projective: positive top-level crossing/root-cover or, no negation', () => {
   const { query } = compile('pattern { X [] } global { is_not_projective }');
-  assert.ok(!query.where.some(c => c[0] === 'not'), 'positive form has no outer not');
-  const or = query.where.find(c => c[0] === 'or');
+  assert.ok(!query.where.some((c) => c[0] === 'not'), 'positive form has no outer not');
+  const or = query.where.find((c) => c[0] === 'or');
   assert.ok(or && or.length - 1 === 2, 'an or of crossing + root-cover groups');
-  assert.ok(!flat(query.where).some(c => c[0] === 'related*'));
+  assert.ok(!flat(query.where).some((c) => c[0] === 'related*'));
 });
 
 test('is_cyclic constant-folds to impossible; is_tree is fine', () => {
@@ -147,36 +170,48 @@ test('delta = 2 builds a precedes chain with one intermediate', () => {
 
 test('cross-node X.lemma = Y.lemma uses a shared value variable', () => {
   const { query } = compile('with { X.lemma = Y.lemma }');
-  const spans = clauses(query.where, 'span').filter(s => s[2].layer === 'LEMMA');
+  const spans = clauses(query.where, 'span').filter((s) => s[2].layer === 'LEMMA');
   assert.equal(spans.length, 2);
   assert.deepEqual(spans[0][2].value, spans[1][2].value); // same {var: '?v..'}
   assert.ok(spans[0][2].value.var);
 });
 
 test('non-injective $ excludes a node from the != set', () => {
-  const inj = compile('pattern { X[]; Y[]; Z[] }').query.where.filter(c => c[0] === '!=').length;
+  const inj = compile('pattern { X[]; Y[]; Z[] }').query.where.filter((c) => c[0] === '!=').length;
   assert.equal(inj, 3); // X-Y, X-Z, Y-Z
-  const withDollar = compile('pattern { X[]; Y[]; Z$[] }').query.where.filter(c => c[0] === '!=').length;
+  const withDollar = compile('pattern { X[]; Y[]; Z$[] }').query.where.filter(
+    (c) => c[0] === '!=',
+  ).length;
   assert.equal(withDollar, 1); // only X-Y
 });
 
 test('residue errors are GrewUnsupportedError', () => {
   const unsup = (src) => {
-    try { compile(src); return null; } catch (e) { return e; }
+    try {
+      compile(src);
+      return null;
+    } catch (e) {
+      return e;
+    }
   };
   assert.equal(unsup('pattern { X[]; Y[]; delta(X,Y) = 999 }').name, 'GrewUnsupportedError');
   assert.equal(unsup('pattern { X -[!deep]-> Y }').name, 'GrewUnsupportedError'); // non-numeric edge feature
   assert.equal(unsup('pattern { X[]; Y[]; X -[re"x"]->> Y }').name, 'GrewUnsupportedError'); // regex transitive label
-  assert.equal(unsup('pattern { X[] } without { X.lemma <> Y.lemma }').name, 'GrewUnsupportedError');
+  assert.equal(
+    unsup('pattern { X[] } without { X.lemma <> Y.lemma }').name,
+    'GrewUnsupportedError',
+  );
 });
 
 test('missing layer in this project -> GrewUnsupportedError', () => {
   const noXpos = { ...LI, xposLayer: null };
-  assert.throws(() => parseAndCompile('pattern { X [xpos=NN] }', noXpos),
-    (e) => e.name === 'GrewUnsupportedError' && /xpos/.test(e.message));
+  assert.throws(
+    () => parseAndCompile('pattern { X [xpos=NN] }', noXpos),
+    (e) => e.name === 'GrewUnsupportedError' && /xpos/.test(e.message),
+  );
 });
 
 test('sent_id produces a warning', () => {
   const { warnings } = compile('global { sent_id = "x" }');
-  assert.ok(warnings.some(w => /sent_id/.test(w)));
+  assert.ok(warnings.some((w) => /sent_id/.test(w)));
 });

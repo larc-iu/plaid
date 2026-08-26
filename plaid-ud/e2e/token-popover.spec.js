@@ -7,7 +7,13 @@ import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY } from '@larc-iu/plaid-cl
 
 const BASE = 'http://localhost:8085';
 const UD_NS = 'ud';
-const SPAN_SPECS = [['Form', 'form'], ['Lemma', 'lemma'], ['UPOS', 'upos'], ['XPOS', 'xpos'], ['Features', 'features']];
+const SPAN_SPECS = [
+  ['Form', 'form'],
+  ['Lemma', 'lemma'],
+  ['UPOS', 'upos'],
+  ['XPOS', 'xpos'],
+  ['Features', 'features'],
+];
 const S = {};
 
 test.beforeAll(async () => {
@@ -45,7 +51,9 @@ test.beforeAll(async () => {
   const byKey = Object.fromEntries(SPAN_SPECS.map(([, key], i) => [key, spanLayerIds[i]]));
 
   client.beginBatch();
-  SPAN_SPECS.forEach(([, key], i) => client.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true));
+  SPAN_SPECS.forEach(([, key], i) =>
+    client.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true),
+  );
   client.relationLayers.create(byKey.lemma, 'Dependency Relations');
   const b7 = await client.submitBatch();
   const relationLayerId = b7[b7.length - 1].body.id;
@@ -58,17 +66,35 @@ test.beforeAll(async () => {
   S.documentId = doc.id;
   const text = await client.texts.create(textLayerId, doc.id, body);
 
-  const words = [[0, 3], [4, 7], [8, 12]]; // the / dog / runs
+  const words = [
+    [0, 3],
+    [4, 7],
+    [8, 12],
+  ]; // the / dog / runs
   client.beginBatch();
-  client.tokens.bulkCreate([{ tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length }]);
-  client.tokens.bulkCreate(words.map(([b, e]) => ({ tokenLayerId: wordLayerId, text: text.id, begin: b, end: e })));
-  client.tokens.bulkCreate(words.map(([b, e]) => ({ tokenLayerId: morphemeLayerId, text: text.id, begin: b, end: e, precedence: 0 })));
+  client.tokens.bulkCreate([
+    { tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length },
+  ]);
+  client.tokens.bulkCreate(
+    words.map(([b, e]) => ({ tokenLayerId: wordLayerId, text: text.id, begin: b, end: e })),
+  );
+  client.tokens.bulkCreate(
+    words.map(([b, e]) => ({
+      tokenLayerId: morphemeLayerId,
+      text: text.id,
+      begin: b,
+      end: e,
+      precedence: 0,
+    })),
+  );
   await client.submitBatch();
 });
 
 test.afterAll(async () => {
   if (S.client && S.projectId) {
-    await S.client.projects.delete(S.projectId).catch((e) => console.error('cleanup failed:', e.message));
+    await S.client.projects
+      .delete(S.projectId)
+      .catch((e) => console.error('cleanup failed:', e.message));
   }
 });
 
@@ -104,7 +130,7 @@ test('panel stays open while editing inline, cancels on Escape', async ({ page }
   await expect(p).toBeVisible();
 
   const input = p.getByRole('textbox').first();
-  await input.click();      // focus → pins the panel
+  await input.click(); // focus → pins the panel
   await input.fill('dogg'); // unsaved draft
   await page.mouse.move(2, 2); // move the cursor well away
   await page.waitForTimeout(400); // longer than the close delay

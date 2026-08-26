@@ -18,7 +18,6 @@
   pointer-events: auto; /* Re-enable pointer events for SVG interactions */
 }
 
-
 .tree-root-rect {
   cursor: pointer;
 }
@@ -144,6 +143,6 @@
   fill: none;
   stroke: #93c5fd;
   stroke-width: 2;
-  stroke-dasharray: 5,5;
+  stroke-dasharray: 5, 5;
   pointer-events: none;
 }

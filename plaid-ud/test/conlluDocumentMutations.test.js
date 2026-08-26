@@ -21,7 +21,10 @@ const INPUT = [
 
 const deferred = () => {
   let resolve, reject;
-  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
   return { promise, resolve, reject };
 };
 
@@ -53,7 +56,11 @@ test('updateRelation reverts via reload when the server rejects', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const pristine = structuredClone(raw);
   const client = {
-    relations: { update: async () => { throw new Error('boom'); } },
+    relations: {
+      update: async () => {
+        throw new Error('boom');
+      },
+    },
     // _withSaving's failure path refetches the document; serve the pristine copy.
     documents: { get: async () => structuredClone(pristine) },
   };
@@ -76,14 +83,25 @@ const provClient = () => {
   return {
     calls,
     beginBatch() {},
-    async submitBatch() { calls.push(['submitBatch']); return []; },
+    async submitBatch() {
+      calls.push(['submitBatch']);
+      return [];
+    },
     spans: {
-      update: (id, value) => { calls.push(['spans.update', id, value]); },
-      patchMetadata: (id, body) => { calls.push(['spans.patchMetadata', id, body]); },
+      update: (id, value) => {
+        calls.push(['spans.update', id, value]);
+      },
+      patchMetadata: (id, body) => {
+        calls.push(['spans.patchMetadata', id, body]);
+      },
     },
     relations: {
-      update: (id, value) => { calls.push(['relations.update', id, value]); },
-      patchMetadata: (id, body) => { calls.push(['relations.patchMetadata', id, body]); },
+      update: (id, value) => {
+        calls.push(['relations.update', id, value]);
+      },
+      patchMetadata: (id, body) => {
+        calls.push(['relations.patchMetadata', id, body]);
+      },
     },
   };
 };
@@ -97,8 +115,10 @@ test('editing a machine-made annotation verifies it (batched update + patchMetad
   span.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
 
   assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
-  assert.deepEqual(client.calls.map((c) => c[0]),
-    ['spans.update', 'spans.patchMetadata', 'submitBatch']);
+  assert.deepEqual(
+    client.calls.map((c) => c[0]),
+    ['spans.update', 'spans.patchMetadata', 'submitBatch'],
+  );
   assert.deepEqual(client.calls[1][2], { provConfirmed: true });
 
   // The optimistic patch carries value AND verified metadata together.
@@ -115,7 +135,10 @@ test('editing a human annotation stays a plain update (no metadata write)', asyn
 
   const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
   assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
-  assert.deepEqual(client.calls.map((c) => c[0]), ['spans.update']);
+  assert.deepEqual(
+    client.calls.map((c) => c[0]),
+    ['spans.update'],
+  );
 });
 
 test('editing a machine-made relation verifies it too', async () => {
@@ -127,8 +150,10 @@ test('editing a machine-made relation verifies it too', async () => {
   rel.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
 
   assert.equal(await doc.updateRelation(rel.id, 'nsubj'), true);
-  assert.deepEqual(client.calls.map((c) => c[0]),
-    ['relations.update', 'relations.patchMetadata', 'submitBatch']);
+  assert.deepEqual(
+    client.calls.map((c) => c[0]),
+    ['relations.update', 'relations.patchMetadata', 'submitBatch'],
+  );
   const after = doc.layerInfo.relationLayer.relations.find((r) => r.id === rel.id);
   assert.equal(after.value, 'nsubj');
   assert.equal(after.metadata.provConfirmed, true);

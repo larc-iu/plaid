@@ -13,24 +13,74 @@ const UD_NAMESPACE = 'ud';
 
 // UPOS is a CLOSED universal set of exactly 17 tags — not configurable.
 export const UPOS_TAGS = Object.freeze([
-  'ADJ', 'ADP', 'ADV', 'AUX', 'CCONJ', 'DET', 'INTJ', 'NOUN', 'NUM',
-  'PART', 'PRON', 'PROPN', 'PUNCT', 'SCONJ', 'SYM', 'VERB', 'X'
+  'ADJ',
+  'ADP',
+  'ADV',
+  'AUX',
+  'CCONJ',
+  'DET',
+  'INTJ',
+  'NOUN',
+  'NUM',
+  'PART',
+  'PRON',
+  'PROPN',
+  'PUNCT',
+  'SCONJ',
+  'SYM',
+  'VERB',
+  'X',
 ]);
 
 // The 37 universal dependency relations — the seed baseline for the DEPREL
 // vocabulary. Projects may add language-specific `:subtype` forms on top.
 export const UNIVERSAL_DEPRELS = Object.freeze([
-  'acl', 'advcl', 'advmod', 'amod', 'appos', 'aux', 'case', 'cc', 'ccomp',
-  'clf', 'compound', 'conj', 'cop', 'csubj', 'dep', 'det', 'discourse',
-  'dislocated', 'expl', 'fixed', 'flat', 'goeswith', 'iobj', 'list', 'mark',
-  'nmod', 'nsubj', 'nummod', 'obj', 'obl', 'orphan', 'parataxis', 'punct',
-  'reparandum', 'root', 'vocative', 'xcomp'
+  'acl',
+  'advcl',
+  'advmod',
+  'amod',
+  'appos',
+  'aux',
+  'case',
+  'cc',
+  'ccomp',
+  'clf',
+  'compound',
+  'conj',
+  'cop',
+  'csubj',
+  'dep',
+  'det',
+  'discourse',
+  'dislocated',
+  'expl',
+  'fixed',
+  'flat',
+  'goeswith',
+  'iobj',
+  'list',
+  'mark',
+  'nmod',
+  'nsubj',
+  'nummod',
+  'obj',
+  'obl',
+  'orphan',
+  'parataxis',
+  'punct',
+  'reparandum',
+  'root',
+  'vocative',
+  'xcomp',
 ]);
 
 // Default UD morphological feature inventory (universal features + values),
 // used to seed the FEATS picker. Stored/edited as an array of {key, values}.
 export const UD_FEATURE_INVENTORY = Object.freeze([
-  { key: 'PronType', values: ['Prs', 'Rcp', 'Art', 'Int', 'Rel', 'Dem', 'Tot', 'Neg', 'Ind', 'Exc', 'Emp'] },
+  {
+    key: 'PronType',
+    values: ['Prs', 'Rcp', 'Art', 'Int', 'Rel', 'Dem', 'Tot', 'Neg', 'Ind', 'Exc', 'Emp'],
+  },
   { key: 'NumType', values: ['Card', 'Ord', 'Mult', 'Frac', 'Sets', 'Dist', 'Range'] },
   { key: 'Poss', values: ['Yes'] },
   { key: 'Reflex', values: ['Yes'] },
@@ -39,12 +89,52 @@ export const UD_FEATURE_INVENTORY = Object.freeze([
   { key: 'Typo', values: ['Yes'] },
   { key: 'Gender', values: ['Masc', 'Fem', 'Neut', 'Com'] },
   { key: 'Animacy', values: ['Anim', 'Inan', 'Hum', 'Nhum'] },
-  { key: 'Number', values: ['Sing', 'Plur', 'Dual', 'Ptan', 'Coll', 'Tri', 'Pauc', 'Grpa', 'Grpl', 'Inv', 'Count'] },
-  { key: 'Case', values: ['Nom', 'Acc', 'Dat', 'Gen', 'Voc', 'Loc', 'Ins', 'Abl', 'Par', 'Abs', 'Erg', 'Ess', 'Tra', 'Com', 'Cau', 'Ben'] },
+  {
+    key: 'Number',
+    values: ['Sing', 'Plur', 'Dual', 'Ptan', 'Coll', 'Tri', 'Pauc', 'Grpa', 'Grpl', 'Inv', 'Count'],
+  },
+  {
+    key: 'Case',
+    values: [
+      'Nom',
+      'Acc',
+      'Dat',
+      'Gen',
+      'Voc',
+      'Loc',
+      'Ins',
+      'Abl',
+      'Par',
+      'Abs',
+      'Erg',
+      'Ess',
+      'Tra',
+      'Com',
+      'Cau',
+      'Ben',
+    ],
+  },
   { key: 'Definite', values: ['Def', 'Ind', 'Spec', 'Cons', 'Com'] },
   { key: 'Degree', values: ['Pos', 'Cmp', 'Sup', 'Abs', 'Equ'] },
   { key: 'VerbForm', values: ['Fin', 'Inf', 'Sup', 'Part', 'Ger', 'Gdv', 'Conv', 'Vnoun'] },
-  { key: 'Mood', values: ['Ind', 'Imp', 'Cnd', 'Pot', 'Sub', 'Jus', 'Prp', 'Qot', 'Opt', 'Des', 'Nec', 'Adm', 'Irr'] },
+  {
+    key: 'Mood',
+    values: [
+      'Ind',
+      'Imp',
+      'Cnd',
+      'Pot',
+      'Sub',
+      'Jus',
+      'Prp',
+      'Qot',
+      'Opt',
+      'Des',
+      'Nec',
+      'Adm',
+      'Irr',
+    ],
+  },
   { key: 'Tense', values: ['Past', 'Pres', 'Fut', 'Imp', 'Pqp'] },
   { key: 'Aspect', values: ['Imp', 'Perf', 'Prosp', 'Prog', 'Hab', 'Iter'] },
   { key: 'Voice', values: ['Act', 'Pass', 'Mid', 'Antip', 'Cau', 'Dir', 'Inv', 'Rcp'] },
@@ -52,7 +142,7 @@ export const UD_FEATURE_INVENTORY = Object.freeze([
   { key: 'Polarity', values: ['Pos', 'Neg'] },
   { key: 'Person', values: ['0', '1', '2', '3', '4'] },
   { key: 'Polite', values: ['Infm', 'Form', 'Elev', 'Humb'] },
-  { key: 'Clusivity', values: ['In', 'Ex'] }
+  { key: 'Clusivity', values: ['In', 'Ex'] },
 ]);
 
 // Strip a `:subtype` so a relation and its subtypes share one color
@@ -64,9 +154,24 @@ export const baseRel = (deprel) => (deprel || '').split(':')[0];
 // SVG tree and the grid). Deliberately distinct from the selection/hover blue
 // (#2563eb) so the highlight state stays unambiguous.
 export const AUTO_PALETTE = Object.freeze([
-  '#1f77b4', '#d62728', '#2ca02c', '#9467bd', '#e6750e', '#17a2b8',
-  '#8c564b', '#c52aa0', '#5b6f1f', '#1a7f7f', '#7048e8', '#b8860b',
-  '#2f6f9e', '#a01b4a', '#3a7d34', '#6d4c41', '#0b7285', '#9c36b5'
+  '#1f77b4',
+  '#d62728',
+  '#2ca02c',
+  '#9467bd',
+  '#e6750e',
+  '#17a2b8',
+  '#8c564b',
+  '#c52aa0',
+  '#5b6f1f',
+  '#1a7f7f',
+  '#7048e8',
+  '#b8860b',
+  '#2f6f9e',
+  '#a01b4a',
+  '#3a7d34',
+  '#6d4c41',
+  '#0b7285',
+  '#9c36b5',
 ]);
 
 // FNV-1a — stable across sessions/users so a given label always maps to the
@@ -80,13 +185,11 @@ const hashString = (str) => {
   return h >>> 0;
 };
 
-export const autoColor = (label) =>
-  AUTO_PALETTE[hashString(label || '') % AUTO_PALETTE.length];
+export const autoColor = (label) => AUTO_PALETTE[hashString(label || '') % AUTO_PALETTE.length];
 
 // Configured color (from a normalized {label: '#hex'} map) else the deterministic
 // auto-color. Callers pass baseRel(value) for deprels.
-export const resolveColor = (label, colorMap) =>
-  (colorMap && colorMap[label]) || autoColor(label);
+export const resolveColor = (label, colorMap) => (colorMap && colorMap[label]) || autoColor(label);
 
 // ---- config read / normalize (each takes a layer's `.config` object) ----
 
@@ -118,8 +221,6 @@ export const readFeatureInventory = (config) => {
 
 // Drop empty assignments before persisting a {label: '#hex'} map. Pass to setConfig.
 export const cleanColorMap = (colorMap) =>
-  Object.fromEntries(
-    Object.entries(colorMap || {}).filter(([label, color]) => label && color)
-  );
+  Object.fromEntries(Object.entries(colorMap || {}).filter(([label, color]) => label && color));
 
 export { UD_NAMESPACE };

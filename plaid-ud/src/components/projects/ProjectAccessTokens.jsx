@@ -9,14 +9,16 @@ export const ProjectAccessTokens = ({ embedded = false }) => {
   const content = (
     <Paper withBorder radius="md">
       <Group px="lg" py="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-        <Title order={3} size="h4">API Access</Title>
+        <Title order={3} size="h4">
+          API Access
+        </Title>
       </Group>
       <Stack px="lg" py="md" gap="sm" align="flex-start">
         <Text size="sm" c="dimmed">
-          To access the API programmatically from external services like parsers or scripts,
-          create a named API token. Unlike your login session, a named token can be revoked
-          individually and its name appears in the audit history, so machine-made changes are
-          distinguishable from yours.
+          To access the API programmatically from external services like parsers or scripts, create
+          a named API token. Unlike your login session, a named token can be revoked individually
+          and its name appears in the audit history, so machine-made changes are distinguishable
+          from yours.
         </Text>
         <Button component={Link} to="/profile" color="gray">
           Manage API Tokens
@@ -28,5 +30,11 @@ export const ProjectAccessTokens = ({ embedded = false }) => {
     </Paper>
   );
 
-  return embedded ? content : <Container size="lg" py="xl">{content}</Container>;
+  return embedded ? (
+    content
+  ) : (
+    <Container size="lg" py="xl">
+      {content}
+    </Container>
+  );
 };

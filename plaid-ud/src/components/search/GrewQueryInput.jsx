@@ -8,7 +8,10 @@ import { highlightGrew } from './grewSyntax.js';
 // compile errors render here with a caret; server errors render as a message.
 export const GrewQueryInput = ({ value, onChange, onRun, running, error }) => {
   const onKeyDown = (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); onRun(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      onRun();
+    }
   };
 
   return (
@@ -51,18 +54,25 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error }) => {
 
 function QueryError({ error }) {
   const isUnsupported = error.name === 'GrewUnsupportedError';
-  const title = error.name === 'GrewParseError'
-    ? `Syntax error${error.line ? ` (line ${error.line})` : ''}`
-    : isUnsupported
-      ? 'Unsupported feature'
-      : 'Search failed';
+  const title =
+    error.name === 'GrewParseError'
+      ? `Syntax error${error.line ? ` (line ${error.line})` : ''}`
+      : isUnsupported
+        ? 'Unsupported feature'
+        : 'Search failed';
   return (
-    <Alert color={isUnsupported ? 'yellow' : 'red'} icon={<IconAlertTriangle size={16} />} title={title}>
+    <Alert
+      color={isUnsupported ? 'yellow' : 'red'}
+      icon={<IconAlertTriangle size={16} />}
+      title={title}
+    >
       <Stack gap={4}>
         <span>{error.message}</span>
         {error.name === 'GrewParseError' && error.sourceLine != null && (
           <Code block style={{ fontSize: 12 }}>
-            {error.sourceLine}{'\n'}{' '.repeat(Math.max(0, (error.col || 1) - 1))}^
+            {error.sourceLine}
+            {'\n'}
+            {' '.repeat(Math.max(0, (error.col || 1) - 1))}^
           </Code>
         )}
       </Stack>

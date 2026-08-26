@@ -34,40 +34,58 @@ export function validateConlluDocument(layerInfo) {
   try {
     const bare = wordsNeedingSyntacticWord(layerInfo);
     if (bare.length) {
-      add(SEVERITY.ERROR, 'syntactic-word-missing',
+      add(
+        SEVERITY.ERROR,
+        'syntactic-word-missing',
         `${bare.length} word(s) still lack a syntactic-word after auto-repair.`,
-        { extents: bare.map(w => `${w.begin}:${w.end}`) });
+        { extents: bare.map((w) => `${w.begin}:${w.end}`) },
+      );
     }
     const orphans = orphanSyntacticWords(layerInfo);
     if (orphans.ids.length) {
-      add(SEVERITY.ERROR, 'syntactic-word-orphan',
+      add(
+        SEVERITY.ERROR,
+        'syntactic-word-orphan',
         `${orphans.ids.length} orphan syntactic-word(s) (matching no word) remain after auto-repair.`,
-        { ids: orphans.ids });
+        { ids: orphans.ids },
+      );
     }
     const crossing = interSententialRelationIds(layerInfo);
     if (crossing.length) {
-      add(SEVERITY.ERROR, 'relation-inter-sentential',
+      add(
+        SEVERITY.ERROR,
+        'relation-inter-sentential',
         `${crossing.length} dependency relation(s) still cross a sentence boundary after auto-repair.`,
-        { ids: crossing });
+        { ids: crossing },
+      );
     }
     const dedup = planSpanDedup(layerInfo);
     if (dedup.length) {
-      add(SEVERITY.ERROR, 'span-duplicate',
+      add(
+        SEVERITY.ERROR,
+        'span-duplicate',
         `${dedup.length} morpheme(s) still carry duplicate Form/Lemma/UPOS/XPOS spans after auto-repair.`,
-        { tokens: dedup.map(d => `${d.field}@${d.tokenId}`) });
+        { tokens: dedup.map((d) => `${d.field}@${d.tokenId}`) },
+      );
     }
   } catch (err) {
-    add(SEVERITY.ERROR, 'residue-check-failed',
-      `Invariant residue check threw: ${err?.message || err}`);
+    add(
+      SEVERITY.ERROR,
+      'residue-check-failed',
+      `Invariant residue check threw: ${err?.message || err}`,
+    );
   }
 
   // --- (2) Un-healable app contracts (warn; repair needs a human) ---
   // More than one dependency head on a node: UD allows exactly one, and we
   // cannot know which is correct, so we only report it.
   multiHeadTargets(layerInfo).forEach(({ target, count }) => {
-    add(SEVERITY.WARNING, 'multi-head',
+    add(
+      SEVERITY.WARNING,
+      'multi-head',
       `A node has ${count} dependency heads (only one is allowed) — fix it by hand.`,
-      { target, count });
+      { target, count },
+    );
   });
 
   return findings;
@@ -76,8 +94,11 @@ export function validateConlluDocument(layerInfo) {
 // Format findings for the clipboard "Copy details" action: one line each,
 // machine-pasteable into a bug report.
 export function formatFindingsForClipboard(findings, { documentId } = {}) {
-  const header = documentId ? `Document integrity findings (document ${documentId})` : 'Document integrity findings';
-  const lines = (findings || []).map(f =>
-    `[${f.severity}] ${f.code}: ${f.message} ${JSON.stringify(f.context || {})}`);
+  const header = documentId
+    ? `Document integrity findings (document ${documentId})`
+    : 'Document integrity findings';
+  const lines = (findings || []).map(
+    (f) => `[${f.severity}] ${f.code}: ${f.message} ${JSON.stringify(f.context || {})}`,
+  );
   return [header, ...lines].join('\n');
 }

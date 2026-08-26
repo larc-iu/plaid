@@ -18,7 +18,10 @@
   background: var(--mantine-color-white);
   border: 1px solid var(--mantine-color-gray-2);
   border-radius: var(--mantine-radius-sm);
-  transition: box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease;
+  transition:
+    box-shadow 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease;
 }
 .entry:hover .cardContent {
   border-color: var(--mantine-color-gray-4);

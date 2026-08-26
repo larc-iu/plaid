@@ -17,8 +17,15 @@
 
 import { GrewUnsupportedError } from './errors.js';
 import {
-  escapeRegex, normalizeFlags, featDefinedRegex, featNeqRegex, featEqValue,
-  negatedLabelRegex, subtypeRegex, notExactlyRegex, featuresLabelRegex,
+  escapeRegex,
+  normalizeFlags,
+  featDefinedRegex,
+  featNeqRegex,
+  featEqValue,
+  negatedLabelRegex,
+  subtypeRegex,
+  notExactlyRegex,
+  featuresLabelRegex,
 } from './regex.js';
 
 const COLUMN_FEATS = { upos: 'uposLayer', xpos: 'xposLayer', lemma: 'lemmaLayer' };
@@ -41,13 +48,15 @@ class Compiler {
     this.impossible = false;
     this.nFresh = 0;
     this.branches = 1;
-    this.boundTop = new Set();   // node ids bound at top level
-    this.topLemma = new Map();   // node id -> top-level lemma span var
-    this.edgesById = new Map();  // named edge id -> {srcId, tgtId}
+    this.boundTop = new Set(); // node ids bound at top level
+    this.topLemma = new Map(); // node id -> top-level lemma span var
+    this.edgesById = new Map(); // named edge id -> {srcId, tgtId}
     this.topNodeIds = new Set(); // ids that appear in pattern/with
   }
 
-  fresh(p = 'g') { return `?${p}${++this.nFresh}`; }
+  fresh(p = 'g') {
+    return `?${p}${++this.nFresh}`;
+  }
 
   layerId(key, feature) {
     const layer = this.li[key];
@@ -92,7 +101,7 @@ class Compiler {
 
     // Injective matching: distinct named non-`$` nodes map to distinct tokens.
     const nonInj = new Set(ast.nonInjective || []);
-    const injIds = [...this.topNodeIds].filter(id => !nonInj.has(id)).sort();
+    const injIds = [...this.topNodeIds].filter((id) => !nonInj.has(id)).sort();
     for (let i = 0; i < injIds.length; i++) {
       for (let j = i + 1; j < injIds.length; j++) {
         this.where.push(['!=', `?n_${injIds[i]}`, `?n_${injIds[j]}`]);
@@ -100,35 +109,73 @@ class Compiler {
     }
 
     if (this.branches > MAX_BRANCHES) {
-      throw new GrewUnsupportedError('branch-explosion',
+      throw new GrewUnsupportedError(
+        'branch-explosion',
         `This query expands to too many alternatives (${this.branches} > ${MAX_BRANCHES}). ` +
-        `Prefer value lists (a|b) over disjoint feature structures, or split the query.`);
+          `Prefer value lists (a|b) over disjoint feature structures, or split the query.`,
+      );
     }
 
     const query = {
       find: this.find,
       where: this.where,
       return: 'entities',
-      orderBy: [['?S', 'doc'], ['?S', 'begin']],
+      orderBy: [
+        ['?S', 'doc'],
+        ['?S', 'begin'],
+      ],
       limit: this.opts.limit || 200,
     };
     if (this.opts.projectId) query.scope = { projectIds: [this.opts.projectId] };
     return { query, warnings: this.warnings, impossible: this.impossible };
   }
 
-  topCtx() { return { scope: 'top', list: this.where, inNot: false, depth: 0, localBound: new Set(), localLemma: new Map() }; }
-  notCtx(list, depth) { return { scope: 'local', list, inNot: true, depth, localBound: new Set(), localLemma: new Map() }; }
+  topCtx() {
+    return {
+      scope: 'top',
+      list: this.where,
+      inNot: false,
+      depth: 0,
+      localBound: new Set(),
+      localLemma: new Map(),
+    };
+  }
+  notCtx(list, depth) {
+    return {
+      scope: 'local',
+      list,
+      inNot: true,
+      depth,
+      localBound: new Set(),
+      localLemma: new Map(),
+    };
+  }
 
   // --- discovery pass ---
 
   discover(item) {
-    const addNode = (id) => { if (id) this.topNodeIds.add(id); };
+    const addNode = (id) => {
+      if (id) this.topNodeIds.add(id);
+    };
     switch (item.kind) {
-      case 'node': addNode(item.id); break;
-      case 'nodefeat': addNode(item.node); break;
-      case 'featcmp': addNode(item.left.node); addNode(item.right.node); break;
-      case 'order': addNode(item.left); addNode(item.right); break;
-      case 'dist': addNode(item.a); addNode(item.b); break;
+      case 'node':
+        addNode(item.id);
+        break;
+      case 'nodefeat':
+        addNode(item.node);
+        break;
+      case 'featcmp':
+        addNode(item.left.node);
+        addNode(item.right.node);
+        break;
+      case 'order':
+        addNode(item.left);
+        addNode(item.right);
+        break;
+      case 'dist':
+        addNode(item.a);
+        addNode(item.b);
+        break;
       case 'dominates':
         if (!item.left.wild) addNode(item.left.id);
         if (!item.right.wild) addNode(item.right.id);
@@ -136,10 +183,16 @@ class Compiler {
       case 'edge':
         if (!item.src.wild) addNode(item.src.id);
         if (!item.tgt.wild) addNode(item.tgt.id);
-        if (item.id) this.edgesById.set(item.id, { srcId: item.src.wild ? null : item.src.id, tgtId: item.tgt.wild ? null : item.tgt.id });
+        if (item.id)
+          this.edgesById.set(item.id, {
+            srcId: item.src.wild ? null : item.src.id,
+            tgtId: item.tgt.wild ? null : item.tgt.id,
+          });
         break;
-      case 'cross': break; // operands are edge ids; endpoints discovered via their edges
-      default: break;
+      case 'cross':
+        break; // operands are edge ids; endpoints discovered via their edges
+      default:
+        break;
     }
   }
 
@@ -193,14 +246,29 @@ class Compiler {
         this.nodeTok(item.id, ctx); // ensure bound (no-op for an already-bound top node)
         this.emitNodeFeatures(item, ctx);
         break;
-      case 'nodefeat': this.emitNodeFeat(item.node, { name: item.feat, op: item.op, value: item.value }, ctx); break;
-      case 'featcmp': this.emitFeatCmp(item, ctx); break;
-      case 'edge': this.emitEdge(item, ctx); break;
-      case 'dominates': this.emitDominates(item, ctx); break;
-      case 'order': this.emitOrder(item, ctx); break;
-      case 'dist': this.emitDist(item, ctx); break;
-      case 'cross': this.emitCross(item, ctx); break;
-      default: throw new GrewUnsupportedError(item.kind, `Unsupported clause: ${item.kind}`);
+      case 'nodefeat':
+        this.emitNodeFeat(item.node, { name: item.feat, op: item.op, value: item.value }, ctx);
+        break;
+      case 'featcmp':
+        this.emitFeatCmp(item, ctx);
+        break;
+      case 'edge':
+        this.emitEdge(item, ctx);
+        break;
+      case 'dominates':
+        this.emitDominates(item, ctx);
+        break;
+      case 'order':
+        this.emitOrder(item, ctx);
+        break;
+      case 'dist':
+        this.emitDist(item, ctx);
+        break;
+      case 'cross':
+        this.emitCross(item, ctx);
+        break;
+      default:
+        throw new GrewUnsupportedError(item.kind, `Unsupported clause: ${item.kind}`);
     }
   }
 
@@ -213,9 +281,15 @@ class Compiler {
     // Disjunction of feature structures -> `or` with the token re-bound per group.
     this.branches *= node.alts.length;
     const MORPH = this.layerId('morphemeTokenLayer', 'word');
-    const groups = node.alts.map(alt => {
+    const groups = node.alts.map((alt) => {
       const sub = [];
-      const gctx = { ...ctx, list: sub, depth: ctx.depth + 1, localBound: new Set([node.id]), localLemma: new Map() };
+      const gctx = {
+        ...ctx,
+        list: sub,
+        depth: ctx.depth + 1,
+        localBound: new Set([node.id]),
+        localLemma: new Map(),
+      };
       this.checkDepth(gctx.depth);
       sub.push(['token', tv, { layer: MORPH }]);
       for (const fi of alt) this.emitFeatItem(tv, node.id, fi, gctx);
@@ -243,8 +317,10 @@ class Compiler {
         return;
       }
       const cm = { layer };
-      if (fi.op === '=') { const vc = this.valueConstraint(fi.value, ctx); if (vc !== undefined) cm.value = vc; }
-      else if (fi.op === '<>') cm.value = { regex: notExactlyRegex(this.litValue(fi.value)) };
+      if (fi.op === '=') {
+        const vc = this.valueConstraint(fi.value, ctx);
+        if (vc !== undefined) cm.value = vc;
+      } else if (fi.op === '<>') cm.value = { regex: notExactlyRegex(this.litValue(fi.value)) };
       // op 'defined' (and `=*`) -> just require the span to exist (no value)
       ctx.list.push(['span', av, cm]);
       ctx.list.push(['covers', av, tv]);
@@ -255,7 +331,11 @@ class Compiler {
     const FEATS = this.layerId('featuresLayer', 'Features');
     const av = this.fresh('f');
     if (fi.op === 'undefined') {
-      ctx.list.push(['not', ['span', av, { layer: FEATS, value: { regex: featDefinedRegex(name) } }], ['covers', av, tv]]);
+      ctx.list.push([
+        'not',
+        ['span', av, { layer: FEATS, value: { regex: featDefinedRegex(name) } }],
+        ['covers', av, tv],
+      ]);
       return;
     }
     let value;
@@ -269,7 +349,10 @@ class Compiler {
   emitFormFeat(tv, fi, ctx) {
     if (fi.op === 'defined') return; // every token has a surface value
     if (fi.op === 'undefined') {
-      throw new GrewUnsupportedError('!form', 'Matching tokens with no surface form is not supported.');
+      throw new GrewUnsupportedError(
+        '!form',
+        'Matching tokens with no surface form is not supported.',
+      );
     }
     if (fi.op === '<>') {
       this.warnFormMwt();
@@ -283,7 +366,9 @@ class Compiler {
   warnFormMwt() {
     if (this._formWarned) return;
     this._formWarned = true;
-    this.warnings.push('`form` matches the token\'s text slice; for multiword tokens the surface form may differ.');
+    this.warnings.push(
+      "`form` matches the token's text slice; for multiword tokens the surface form may differ.",
+    );
   }
 
   emitFeatCmp(item, ctx) {
@@ -297,10 +382,13 @@ class Compiler {
       this.bindFeatValueVar(right, rLayer, vv, ctx);
     } else {
       if (ctx.inNot) {
-        throw new GrewUnsupportedError('featcmp-neq-in-without',
-          'A feature inequality (X.f <> Y.f) cannot appear inside a `without` block.');
+        throw new GrewUnsupportedError(
+          'featcmp-neq-in-without',
+          'A feature inequality (X.f <> Y.f) cannot appear inside a `without` block.',
+        );
       }
-      const v1 = this.fresh('v'), v2 = this.fresh('v');
+      const v1 = this.fresh('v'),
+        v2 = this.fresh('v');
       this.bindFeatValueVar(left, lLayer, v1, ctx);
       this.bindFeatValueVar(right, rLayer, v2, ctx);
       ctx.list.push(['!=', v1, v2]);
@@ -310,9 +398,13 @@ class Compiler {
   featLayerForCmp(feat) {
     const lower = feat.toLowerCase();
     if (lower === 'form') {
-      throw new GrewUnsupportedError('form-cmp', 'Comparing `form` across nodes is not supported; compare `lemma` instead.');
+      throw new GrewUnsupportedError(
+        'form-cmp',
+        'Comparing `form` across nodes is not supported; compare `lemma` instead.',
+      );
     }
-    if (COLUMN_FEATS[lower]) return { kind: 'column', layer: this.layerId(COLUMN_FEATS[lower], lower) };
+    if (COLUMN_FEATS[lower])
+      return { kind: 'column', layer: this.layerId(COLUMN_FEATS[lower], lower) };
     return { kind: 'feats', name: feat, layer: this.layerId('featuresLayer', 'Features') };
   }
 
@@ -325,8 +417,10 @@ class Compiler {
       // value var binds the whole "Key=Value"; require it be this feature's key.
       // The `~` is a predicate, which is illegal inside a `without`/`not`.
       if (ctx.inNot) {
-        throw new GrewUnsupportedError('feats-cmp-in-without',
-          'Comparing FEATS values across nodes is not supported inside a `without` block.');
+        throw new GrewUnsupportedError(
+          'feats-cmp-in-without',
+          'Comparing FEATS values across nodes is not supported inside a `without` block.',
+        );
       }
       ctx.list.push(['span', av, { layer: layerSpec.layer, value: { var: vv } }]);
       ctx.list.push(['~', `${av}.value`, featDefinedRegex(layerSpec.name)]);
@@ -350,7 +444,10 @@ class Compiler {
 
   emitDominates(item, ctx) {
     if (item.left.wild || item.right.wild) {
-      throw new GrewUnsupportedError('dominates-wildcard', 'Transitive dominance (->>) requires named endpoints.');
+      throw new GrewUnsupportedError(
+        'dominates-wildcard',
+        'Transitive dominance (->>) requires named endpoints.',
+      );
     }
     const REL = this.layerId('relationLayer', 'Dependency');
     const a = this.lemmaSpan(item.left.id, ctx);
@@ -360,8 +457,10 @@ class Compiler {
       if (item.label.type === 'list' && !item.label.negated) {
         m.value = item.label.labels.length === 1 ? item.label.labels[0] : item.label.labels;
       } else {
-        throw new GrewUnsupportedError('dominates-label',
-          'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.');
+        throw new GrewUnsupportedError(
+          'dominates-label',
+          'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.',
+        );
       }
     }
     ctx.list.push(['related*', a, b, m]);
@@ -386,47 +485,85 @@ class Compiler {
     const chainAtLeast = (list, from, to, m) => {
       // posTo - posFrom >= m, for m >= 1
       let prev = from;
-      for (let i = 1; i <= m - 1; i++) { prev = this.chainStep(list, prev); }
+      for (let i = 1; i <= m - 1; i++) {
+        prev = this.chainStep(list, prev);
+      }
       list.push(['precedes*', prev, to]);
     };
     const chainExactPos = (list, from, to, m) => {
       // posTo - posFrom == m, for m >= 1
       let prev = from;
-      for (let i = 1; i <= m - 1; i++) { prev = this.chainStep(list, prev); }
+      for (let i = 1; i <= m - 1; i++) {
+        prev = this.chainStep(list, prev);
+      }
       list.push(['precedes', prev, to]);
     };
-    const notBlock = (build) => { const sub = []; build(sub); this.checkDepth(ctx.depth + 1); ctx.list.push(['not', ...sub]); };
+    const notBlock = (build) => {
+      const sub = [];
+      build(sub);
+      this.checkDepth(ctx.depth + 1);
+      ctx.list.push(['not', ...sub]);
+    };
 
     this.checkDistBound(k);
     if (op === '=') {
-      if (k === 0) { this.impossible = true; return; }
-      if (k > 0) chainExactPos(ctx.list, a, b, k); else chainExactPos(ctx.list, b, a, -k);
+      if (k === 0) {
+        this.impossible = true;
+        return;
+      }
+      if (k > 0) chainExactPos(ctx.list, a, b, k);
+      else chainExactPos(ctx.list, b, a, -k);
       return;
     }
     // comparisons supported for k >= 0
-    if (k < 0) throw new GrewUnsupportedError('delta-negative-threshold',
-      `delta(X,Y) ${op} ${k} with a negative threshold is not supported; use an exact delta or a non-negative threshold.`);
-    if (op === '>') { if (k === 0) ctx.list.push(['precedes*', a, b]); else chainAtLeast(ctx.list, a, b, k + 1); return; }
-    if (op === '>=') { if (k === 0) ctx.list.push(['precedes*', a, b]); else chainAtLeast(ctx.list, a, b, k); return; }
-    if (op === '<') { notBlock(sub => chainAtLeast(sub, a, b, k)); return; }
-    if (op === '<=') { notBlock(sub => chainAtLeast(sub, a, b, k + 1)); return; }
+    if (k < 0)
+      throw new GrewUnsupportedError(
+        'delta-negative-threshold',
+        `delta(X,Y) ${op} ${k} with a negative threshold is not supported; use an exact delta or a non-negative threshold.`,
+      );
+    if (op === '>') {
+      if (k === 0) ctx.list.push(['precedes*', a, b]);
+      else chainAtLeast(ctx.list, a, b, k + 1);
+      return;
+    }
+    if (op === '>=') {
+      if (k === 0) ctx.list.push(['precedes*', a, b]);
+      else chainAtLeast(ctx.list, a, b, k);
+      return;
+    }
+    if (op === '<') {
+      notBlock((sub) => chainAtLeast(sub, a, b, k));
+      return;
+    }
+    if (op === '<=') {
+      notBlock((sub) => chainAtLeast(sub, a, b, k + 1));
+      return;
+    }
   }
 
   emitLength(a, b, op, k, ctx) {
     this.checkDistBound(k);
-    if (k < 0) throw new GrewUnsupportedError('length-negative', 'length(X,Y) requires a non-negative number.');
+    if (k < 0)
+      throw new GrewUnsupportedError(
+        'length-negative',
+        'length(X,Y) requires a non-negative number.',
+      );
     // length = |delta|. Express via delta in both directions.
     if (op === '=') {
       this.branches *= 2;
-      const g1 = []; this.emitDelta(a, b, '=', k, { ...ctx, list: g1 });
-      const g2 = []; this.emitDelta(a, b, '=', -k, { ...ctx, list: g2 });
+      const g1 = [];
+      this.emitDelta(a, b, '=', k, { ...ctx, list: g1 });
+      const g2 = [];
+      this.emitDelta(a, b, '=', -k, { ...ctx, list: g2 });
       ctx.list.push(['or', g1, g2]);
       return;
     }
     if (op === '>' || op === '>=') {
       this.branches *= 2;
-      const g1 = []; this.emitDelta(a, b, op, k, { ...ctx, list: g1 });
-      const g2 = []; this.emitDelta(b, a, op, k, { ...ctx, list: g2 });
+      const g1 = [];
+      this.emitDelta(a, b, op, k, { ...ctx, list: g1 });
+      const g2 = [];
+      this.emitDelta(b, a, op, k, { ...ctx, list: g2 });
       ctx.list.push(['or', g1, g2]);
       return;
     }
@@ -448,18 +585,26 @@ class Compiler {
 
   checkDistBound(k) {
     if (Math.abs(k) > MAX_LINEAR_DISTANCE) {
-      throw new GrewUnsupportedError('distance-too-large',
-        `delta/length distances above ${MAX_LINEAR_DISTANCE} are not supported.`);
+      throw new GrewUnsupportedError(
+        'distance-too-large',
+        `delta/length distances above ${MAX_LINEAR_DISTANCE} are not supported.`,
+      );
     }
   }
 
   emitCross(item, ctx) {
     const e1 = this.edgesById.get(item.left);
     const e2 = this.edgesById.get(item.right);
-    if (!e1 || !e2) throw new GrewUnsupportedError('cross-unknown-edge',
-      `Edge crossing (><) needs two named edges declared in the pattern.`);
+    if (!e1 || !e2)
+      throw new GrewUnsupportedError(
+        'cross-unknown-edge',
+        `Edge crossing (><) needs two named edges declared in the pattern.`,
+      );
     if (!e1.srcId || !e1.tgtId || !e2.srcId || !e2.tgtId) {
-      throw new GrewUnsupportedError('cross-wildcard', 'Edge crossing (><) requires both edges to have named endpoints.');
+      throw new GrewUnsupportedError(
+        'cross-wildcard',
+        'Edge crossing (><) requires both edges to have named endpoints.',
+      );
     }
     const ts = (id) => this.nodeTok(id, ctx);
     const groups = this.interleavings(ts(e1.srcId), ts(e1.tgtId), ts(e2.srcId), ts(e2.tgtId));
@@ -470,13 +615,21 @@ class Compiler {
   // The orderings in which arcs {a1,a2} and {b1,b2} interleave (cross). Each
   // group is a strict-precedence chain over the four endpoint tokens.
   interleavings(a1, a2, b1, b2) {
-    const chain = (w, x, y, z) => [['precedes*', w, x], ['precedes*', x, y], ['precedes*', y, z]];
+    const chain = (w, x, y, z) => [
+      ['precedes*', w, x],
+      ['precedes*', x, y],
+      ['precedes*', y, z],
+    ];
     // a-endpoint before/after, b likewise; crossing = alternating a,b,a,b.
     return [
-      chain(a1, b1, a2, b2), chain(a1, b2, a2, b1),
-      chain(a2, b1, a1, b2), chain(a2, b2, a1, b1),
-      chain(b1, a1, b2, a2), chain(b1, a2, b2, a1),
-      chain(b2, a1, b1, a2), chain(b2, a2, b1, a1),
+      chain(a1, b1, a2, b2),
+      chain(a1, b2, a2, b1),
+      chain(a2, b1, a1, b2),
+      chain(a2, b2, a1, b1),
+      chain(b1, a1, b2, a2),
+      chain(b1, a2, b2, a1),
+      chain(b2, a1, b1, a2),
+      chain(b2, a2, b1, a1),
     ];
   }
 
@@ -493,8 +646,15 @@ class Compiler {
     // (one head per word, root self-loop, acyclic by construction).
     const TRUE = new Set(['is_tree', 'is_forest', 'is_not_cyclic']);
     const FALSE = new Set(['is_not_tree', 'is_not_forest', 'is_cyclic']);
-    if (TRUE.has(name)) { this.warnTreeInvariant(); return; }
-    if (FALSE.has(name)) { this.warnTreeInvariant(); this.impossible = true; return; }
+    if (TRUE.has(name)) {
+      this.warnTreeInvariant();
+      return;
+    }
+    if (FALSE.has(name)) {
+      this.warnTreeInvariant();
+      this.impossible = true;
+      return;
+    }
     if (name === 'is_projective' || name === 'is_not_projective') {
       // non-projective(S) = two arcs cross OR an arc covers the root word. The
       // arcs are scoped to ?S via `within`, so the engine localizes them to the
@@ -512,7 +672,9 @@ class Compiler {
   warnTreeInvariant() {
     if (this._treeWarned) return;
     this._treeWarned = true;
-    this.warnings.push('Tree/cyclicity globals assume well-formed UD trees (one head per word, acyclic); partially-annotated sentences may not satisfy that assumption.');
+    this.warnings.push(
+      'Tree/cyclicity globals assume well-formed UD trees (one head per word, acyclic); partially-annotated sentences may not satisfy that assumption.',
+    );
   }
 
   // Projectivity test, in two non-recursive halves (both pure precedence over
@@ -523,14 +685,27 @@ class Compiler {
   // "Two dependency arcs in ?S cross" — their four endpoint tokens interleave.
   crossingGroup() {
     const REL = this.layerId('relationLayer', 'Dependency');
-    const e1 = this.fresh('pe'), e2 = this.fresh('pe');
-    const h1 = this.fresh('ph'), d1 = this.fresh('pd'), h2 = this.fresh('ph'), d2 = this.fresh('pd');
-    const h1t = this.fresh('pt'), d1t = this.fresh('pt'), h2t = this.fresh('pt'), d2t = this.fresh('pt');
+    const e1 = this.fresh('pe'),
+      e2 = this.fresh('pe');
+    const h1 = this.fresh('ph'),
+      d1 = this.fresh('pd'),
+      h2 = this.fresh('ph'),
+      d2 = this.fresh('pd');
+    const h1t = this.fresh('pt'),
+      d1t = this.fresh('pt'),
+      h2t = this.fresh('pt'),
+      d2t = this.fresh('pt');
     return [
       ['relation', e1, { layer: REL, source: h1, target: d1 }],
       ['relation', e2, { layer: REL, source: h2, target: d2 }],
-      ['covers', h1, h1t], ['covers', d1, d1t], ['covers', h2, h2t], ['covers', d2, d2t],
-      ['within', h1t, '?S'], ['within', d1t, '?S'], ['within', h2t, '?S'], ['within', d2t, '?S'],
+      ['covers', h1, h1t],
+      ['covers', d1, d1t],
+      ['covers', h2, h2t],
+      ['covers', d2, d2t],
+      ['within', h1t, '?S'],
+      ['within', d1t, '?S'],
+      ['within', h2t, '?S'],
+      ['within', d2t, '?S'],
       ['or', ...this.interleavings(h1t, d1t, h2t, d2t)],
     ];
   }
@@ -539,16 +714,34 @@ class Compiler {
   // the `root`-labelled relation) sits strictly between some arc's endpoints.
   rootCoverGroup() {
     const REL = this.layerId('relationLayer', 'Dependency');
-    const rr = this.fresh('prr'), rl = this.fresh('prl'), rt = this.fresh('prt');
-    const e = this.fresh('pe'), h = this.fresh('ph'), d = this.fresh('pd'), ht = this.fresh('pt'), dt = this.fresh('pt');
+    const rr = this.fresh('prr'),
+      rl = this.fresh('prl'),
+      rt = this.fresh('prt');
+    const e = this.fresh('pe'),
+      h = this.fresh('ph'),
+      d = this.fresh('pd'),
+      ht = this.fresh('pt'),
+      dt = this.fresh('pt');
     return [
       ['relation', rr, { layer: REL, value: 'root', target: rl }],
-      ['covers', rl, rt], ['within', rt, '?S'],
+      ['covers', rl, rt],
+      ['within', rt, '?S'],
       ['relation', e, { layer: REL, source: h, target: d }],
-      ['covers', h, ht], ['covers', d, dt], ['within', ht, '?S'], ['within', dt, '?S'],
-      ['or',
-        [['precedes*', ht, rt], ['precedes*', rt, dt]],
-        [['precedes*', dt, rt], ['precedes*', rt, ht]]],
+      ['covers', h, ht],
+      ['covers', d, dt],
+      ['within', ht, '?S'],
+      ['within', dt, '?S'],
+      [
+        'or',
+        [
+          ['precedes*', ht, rt],
+          ['precedes*', rt, dt],
+        ],
+        [
+          ['precedes*', dt, rt],
+          ['precedes*', rt, ht],
+        ],
+      ],
     ];
   }
 
@@ -556,22 +749,33 @@ class Compiler {
     const { key, op, value } = item;
     const lower = key.toLowerCase();
     if (lower === 'text') {
-      if (op === 'undefined') throw new GrewUnsupportedError('!text', 'Matching sentences without text is not supported.');
-      const cm = op === '<>'
-        ? { value: { regex: notExactlyRegex(this.litValue(value)) } }
-        : { value: this.valueConstraint(value, this.topCtx()) };
+      if (op === 'undefined')
+        throw new GrewUnsupportedError(
+          '!text',
+          'Matching sentences without text is not supported.',
+        );
+      const cm =
+        op === '<>'
+          ? { value: { regex: notExactlyRegex(this.litValue(value)) } }
+          : { value: this.valueConstraint(value, this.topCtx()) };
       this.where.push(['token', '?S', cm]);
       return;
     }
     if (lower === 'sent_id') {
-      this.warnings.push('`sent_id` is not stored on import, so this constraint will not match imported data.');
+      this.warnings.push(
+        '`sent_id` is not stored on import, so this constraint will not match imported data.',
+      );
     }
     if (op === 'undefined') {
-      throw new GrewUnsupportedError('global-meta-undefined', `Matching the absence of metadata (${key}) is not supported.`);
+      throw new GrewUnsupportedError(
+        'global-meta-undefined',
+        `Matching the absence of metadata (${key}) is not supported.`,
+      );
     }
-    const inner = op === '<>'
-      ? { regex: notExactlyRegex(this.litValue(value)) }
-      : this.valueConstraint(value, this.topCtx());
+    const inner =
+      op === '<>'
+        ? { regex: notExactlyRegex(this.litValue(value)) }
+        : this.valueConstraint(value, this.topCtx());
     this.where.push(['token', '?S', { metadata: { [key]: inner } }]);
   }
 
@@ -583,16 +787,19 @@ class Compiler {
     if (v.type === 'any') return undefined; // 'defined' handled by caller
     if (v.type === 'regex') return this.regexConstraint(v);
     if (v.type === 'disj') {
-      if (v.items.every(it => it.type === 'lit')) return v.items.map(it => it.value);
-      throw new GrewUnsupportedError('regex-disjunction',
-        'A disjunction mixing regexes is not supported; use separate clauses or a single regex.');
+      if (v.items.every((it) => it.type === 'lit')) return v.items.map((it) => it.value);
+      throw new GrewUnsupportedError(
+        'regex-disjunction',
+        'A disjunction mixing regexes is not supported; use separate clauses or a single regex.',
+      );
     }
     return undefined;
   }
 
   featValueConstraint(name, v) {
     if (v.type === 'lit') return featEqValue(name, v.value);
-    if (v.type === 'disj' && v.items.every(it => it.type === 'lit')) return v.items.map(it => featEqValue(name, it.value));
+    if (v.type === 'disj' && v.items.every((it) => it.type === 'lit'))
+      return v.items.map((it) => featEqValue(name, it.value));
     if (v.type === 'regex') {
       const r = this.regexConstraint(v);
       return { regex: `${featDefinedRegex(name)}(?:${r.regex})`, flags: r.flags };
@@ -611,7 +818,10 @@ class Compiler {
   litValue(v) {
     if (v && v.type === 'lit') return v.value;
     if (v && v.type === 'regex') {
-      throw new GrewUnsupportedError('regex-inequality', 'A "<>" (not-equal) constraint must compare against a literal, not a regex.');
+      throw new GrewUnsupportedError(
+        'regex-inequality',
+        'A "<>" (not-equal) constraint must compare against a literal, not a regex.',
+      );
     }
     throw new GrewUnsupportedError('value', 'Expected a literal value.');
   }
@@ -624,8 +834,11 @@ class Compiler {
     }
     if (label.type === 'regex') return this.regexConstraint(label);
     if (label.type === 'features') {
-      if (!label.feats.every(f => /^[0-9]+$/.test(f.key) && !f.neg)) {
-        throw new GrewUnsupportedError('edge-feature', 'Only positive numbered edge features (1=, 2=, …) are supported.');
+      if (!label.feats.every((f) => /^[0-9]+$/.test(f.key) && !f.neg)) {
+        throw new GrewUnsupportedError(
+          'edge-feature',
+          'Only positive numbered edge features (1=, 2=, …) are supported.',
+        );
       }
       return { regex: featuresLabelRegex(label.feats) };
     }
@@ -634,7 +847,10 @@ class Compiler {
 
   checkDepth(depth) {
     if (depth > MAX_DEPTH) {
-      throw new GrewUnsupportedError('nesting-too-deep', `Query nesting exceeds ${MAX_DEPTH} levels.`);
+      throw new GrewUnsupportedError(
+        'nesting-too-deep',
+        `Query nesting exceeds ${MAX_DEPTH} levels.`,
+      );
     }
   }
 }

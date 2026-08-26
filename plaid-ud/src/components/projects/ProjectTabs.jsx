@@ -25,9 +25,12 @@ export const ProjectTabs = ({ projectId, project }) => {
     : `/projects/${projectId}/configuration`;
 
   const p = location.pathname;
-  const active = p.endsWith('/search') ? 'search'
-    : p.endsWith('/import-export') ? 'import-export'
-      : /\/(management|customization|services|tokens|general|configuration)$/.test(p) ? 'settings'
+  const active = p.endsWith('/search')
+    ? 'search'
+    : p.endsWith('/import-export')
+      ? 'import-export'
+      : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
+        ? 'settings'
         : 'documents';
 
   const go = (value) => {
@@ -38,10 +41,14 @@ export const ProjectTabs = ({ projectId, project }) => {
   return (
     <>
       <Breadcrumbs mb="md">
-        <Anchor component={Link} to="/projects" size="sm">Projects</Anchor>
+        <Anchor component={Link} to="/projects" size="sm">
+          Projects
+        </Anchor>
         <Group gap={6} wrap="nowrap">
           <EntityAvatar id={projectId} size={16} />
-          <Text size="sm" c="dimmed">{project?.name || 'Loading...'}</Text>
+          <Text size="sm" c="dimmed">
+            {project?.name || 'Loading...'}
+          </Text>
         </Group>
       </Breadcrumbs>
 

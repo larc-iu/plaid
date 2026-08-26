@@ -1,12 +1,27 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  Stack, Group, Text, Title, Button, Badge, Radio, ActionIcon, Paper, Alert, Tooltip, Loader,
+  Stack,
+  Group,
+  Text,
+  Title,
+  Button,
+  Badge,
+  Radio,
+  ActionIcon,
+  Paper,
+  Alert,
+  Tooltip,
+  Loader,
 } from '@mantine/core';
 import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
 import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
 import {
-  TASKS, filterServicesByTask, servesTask, getParamSchema, buildDefaultValues,
+  TASKS,
+  filterServicesByTask,
+  servesTask,
+  getParamSchema,
+  buildDefaultValues,
 } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ServiceParamForm } from '../editor/ServiceParamForm.jsx';
@@ -14,7 +29,11 @@ import { ServiceSummary } from '../editor/ServiceSummary.jsx';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import {
-  UD_NAMESPACE, encodeServiceSelection, decodeSelection, selectionFromConfig, selectionToConfig,
+  UD_NAMESPACE,
+  encodeServiceSelection,
+  decodeSelection,
+  selectionFromConfig,
+  selectionToConfig,
 } from '../../utils/serviceDefaults.js';
 
 // The app's service integration spots: each is a place in the UI where an
@@ -24,8 +43,9 @@ const SPOTS = [
   {
     key: TASKS.PARSE,
     label: 'Auto-parse',
-    description: 'Fills in lemmas, POS tags, features, and dependencies for a document '
-      + '(the "Auto Parse" button in the annotation editor).',
+    description:
+      'Fills in lemmas, POS tags, features, and dependencies for a document ' +
+      '(the "Auto Parse" button in the annotation editor).',
     builtins: [],
   },
 ];
@@ -43,12 +63,16 @@ const lastSeenText = (svc) => {
 // any app built-ins, a default selection, and default parameter values for the
 // selected default service.
 function SpotCard({ spot, services, draftEntry, onChange, canManage, onDiscard }) {
-  const spotServices = useMemo(() => filterServicesByTask(services, spot.key), [services, spot.key]);
+  const spotServices = useMemo(
+    () => filterServicesByTask(services, spot.key),
+    [services, spot.key],
+  );
   const selection = selectionFromConfig(draftEntry) || 'none';
   const decoded = decodeSelection(selection);
-  const selectedService = decoded?.kind === 'service'
-    ? spotServices.find((s) => s.serviceId === decoded.id) || null
-    : null;
+  const selectedService =
+    decoded?.kind === 'service'
+      ? spotServices.find((s) => s.serviceId === decoded.id) || null
+      : null;
   const paramSchema = getParamSchema(selectedService);
   const paramValues = useMemo(
     () => ({ ...buildDefaultValues(paramSchema), ...(draftEntry?.params || {}) }),
@@ -66,38 +90,67 @@ function SpotCard({ spot, services, draftEntry, onChange, canManage, onDiscard }
   return (
     <Paper withBorder p="md">
       <Title order={4}>{spot.label}</Title>
-      <Text size="sm" c="dimmed" mb="sm">{spot.description}</Text>
+      <Text size="sm" c="dimmed" mb="sm">
+        {spot.description}
+      </Text>
 
       {spot.builtins.length === 0 && spotServices.length === 0 ? (
         <Text size="sm" c="dimmed">
-          No service for this spot has ever connected to this project. Start one and it will appear here.
+          No service for this spot has ever connected to this project. Start one and it will appear
+          here.
         </Text>
       ) : (
         <Radio.Group value={selection} onChange={setSelection}>
           <Stack gap="xs">
-            <Radio value="none" label={<Text size="sm" span>No default (pick per use)</Text>} disabled={!canManage} />
+            <Radio
+              value="none"
+              label={
+                <Text size="sm" span>
+                  No default (pick per use)
+                </Text>
+              }
+              disabled={!canManage}
+            />
             {spot.builtins.map((b) => (
               <Group key={b.name} gap="xs" wrap="nowrap">
                 <Radio
                   value={`builtin:${b.name}`}
-                  label={<Text size="sm" span>{b.label}</Text>}
+                  label={
+                    <Text size="sm" span>
+                      {b.label}
+                    </Text>
+                  }
                   disabled={!canManage}
                 />
-                <Badge size="sm" variant="light" color="blue">built-in</Badge>
+                <Badge size="sm" variant="light" color="blue">
+                  built-in
+                </Badge>
               </Group>
             ))}
             {spotServices.map((svc) => (
               <Group key={svc.serviceId} gap="xs" wrap="nowrap">
                 <Radio
                   value={encodeServiceSelection(svc.serviceId)}
-                  label={<Text size="sm" span>{svc.serviceName || svc.serviceId}</Text>}
+                  label={
+                    <Text size="sm" span>
+                      {svc.serviceName || svc.serviceId}
+                    </Text>
+                  }
                   disabled={!canManage}
                 />
-                {svc.online
-                  ? <Badge size="sm" variant="light" color="green">online</Badge>
-                  : <Badge size="sm" variant="light" color="gray">offline</Badge>}
+                {svc.online ? (
+                  <Badge size="sm" variant="light" color="green">
+                    online
+                  </Badge>
+                ) : (
+                  <Badge size="sm" variant="light" color="gray">
+                    offline
+                  </Badge>
+                )}
                 {!svc.online && (
-                  <Text size="xs" c="dimmed">{lastSeenText(svc)}</Text>
+                  <Text size="xs" c="dimmed">
+                    {lastSeenText(svc)}
+                  </Text>
                 )}
                 <ServiceSummary service={svc} />
                 {!svc.online && canManage && (
@@ -120,7 +173,9 @@ function SpotCard({ spot, services, draftEntry, onChange, canManage, onDiscard }
 
       {selectedService && paramSchema.length > 0 && (
         <Paper withBorder p="sm" mt="md" bg="gray.0">
-          <Text size="sm" fw={600} mb="xs">Default options for {selectedService.serviceName || selectedService.serviceId}</Text>
+          <Text size="sm" fw={600} mb="xs">
+            Default options for {selectedService.serviceName || selectedService.serviceId}
+          </Text>
           <ServiceParamForm
             schema={paramSchema}
             values={paramValues}
@@ -170,11 +225,15 @@ export const ProjectServicesSettings = () => {
     }
   }, [projectId, getClient]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // The online/offline picture goes stale while the tab is hidden; refresh on return.
   useEffect(() => {
-    const onVisibility = () => { if (!document.hidden) load(); };
+    const onVisibility = () => {
+      if (!document.hidden) load();
+    };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [load]);
@@ -223,15 +282,19 @@ export const ProjectServicesSettings = () => {
   );
 
   if (loading && !project) {
-    return <Group justify="center" py="xl"><Loader size="sm" /></Group>;
+    return (
+      <Group justify="center" py="xl">
+        <Loader size="sm" />
+      </Group>
+    );
   }
 
   return (
     <Stack gap="md">
       <Group justify="space-between">
         <Text size="sm" c="dimmed" maw={560}>
-          Services that have connected to this project are remembered here, online or not.
-          Set a default (and default options) for each spot; people can still switch per use.
+          Services that have connected to this project are remembered here, online or not. Set a
+          default (and default options) for each spot; people can still switch per use.
         </Text>
         <Button
           variant="default"
@@ -272,10 +335,20 @@ export const ProjectServicesSettings = () => {
             {unmatched.map((svc) => (
               <Group key={svc.serviceId} gap="xs" wrap="nowrap">
                 <Text size="sm">{svc.serviceName || svc.serviceId}</Text>
-                {svc.online
-                  ? <Badge size="sm" variant="light" color="green">online</Badge>
-                  : <Badge size="sm" variant="light" color="gray">offline</Badge>}
-                {!svc.online && <Text size="xs" c="dimmed">{lastSeenText(svc)}</Text>}
+                {svc.online ? (
+                  <Badge size="sm" variant="light" color="green">
+                    online
+                  </Badge>
+                ) : (
+                  <Badge size="sm" variant="light" color="gray">
+                    offline
+                  </Badge>
+                )}
+                {!svc.online && (
+                  <Text size="xs" c="dimmed">
+                    {lastSeenText(svc)}
+                  </Text>
+                )}
                 <ServiceSummary service={svc} />
                 {!svc.online && canManage && (
                   <ActionIcon
@@ -295,7 +368,9 @@ export const ProjectServicesSettings = () => {
 
       {canManage && (
         <Group>
-          <Button onClick={save} loading={saving} disabled={!dirty}>Save defaults</Button>
+          <Button onClick={save} loading={saving} disabled={!dirty}>
+            Save defaults
+          </Button>
         </Group>
       )}
     </Stack>

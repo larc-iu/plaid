@@ -19,13 +19,20 @@ export function splitConlluByNewdoc(text) {
   let cur = null;
   for (const line of text.split('\n')) {
     const m = line.match(re);
-    if (m) { cur = { id: m[1] ? m[1].trim() : null, lines: [] }; docs.push(cur); continue; }
-    if (!cur) { cur = { id: null, lines: [] }; docs.push(cur); }
+    if (m) {
+      cur = { id: m[1] ? m[1].trim() : null, lines: [] };
+      docs.push(cur);
+      continue;
+    }
+    if (!cur) {
+      cur = { id: null, lines: [] };
+      docs.push(cur);
+    }
     cur.lines.push(line);
   }
   return docs
-    .map(d => ({ id: d.id, text: d.lines.join('\n').trim() }))
-    .filter(d => d.text.length > 0);
+    .map((d) => ({ id: d.id, text: d.lines.join('\n').trim() }))
+    .filter((d) => d.text.length > 0);
 }
 
 export function parseCoNLLU(text) {
@@ -37,10 +44,10 @@ export function parseCoNLLU(text) {
   // tell the user loudly (a toast) instead of mangling data in silence.
   let droppedEmptyNodes = 0;
   let droppedMiscTokens = 0;
-  
+
   for (const line of lines) {
     const trimmedLine = line.trim();
-    
+
     // Skip empty lines between sentences
     if (trimmedLine === '') {
       if (currentSentence && currentSentence.tokens.length > 0) {
@@ -55,14 +62,14 @@ export function parseCoNLLU(text) {
       }
       continue;
     }
-    
+
     // Handle metadata lines
     if (trimmedLine.startsWith('#')) {
       // Skip newdoc id and sent_id as requested
       if (trimmedLine.startsWith('# newdoc id') || trimmedLine.startsWith('# sent_id')) {
         continue;
       }
-      
+
       // Parse other metadata
       const metadataMatch = trimmedLine.match(/^#\s*([^=]+?)\s*=\s*(.+)$/);
       if (metadataMatch) {
@@ -77,24 +84,26 @@ export function parseCoNLLU(text) {
       }
       continue;
     }
-    
+
     // Parse token lines
     const columns = trimmedLine.split('\t');
     if (columns.length !== 10) {
-      throw new Error(`Invalid CoNLL-U format: Expected 10 columns, found ${columns.length} in line: ${trimmedLine}`);
+      throw new Error(
+        `Invalid CoNLL-U format: Expected 10 columns, found ${columns.length} in line: ${trimmedLine}`,
+      );
     }
-    
+
     const [id, form, lemma, upos, xpos, feats, head, deprel, _deps, misc] = columns;
-    
+
     // Initialize sentence if needed
     if (!currentSentence) {
       currentSentence = {
         tokens: [],
         multiWordTokens: [],
-        metadata: {}
+        metadata: {},
       };
     }
-    
+
     // Skip ellipsis tokens (e.g., "4.1"). The UD format uses decimal IDs for
     // empty nodes (enhanced dependencies) which we don't model — counted so
     // the caller can surface the data loss to the user.
@@ -102,31 +111,31 @@ export function parseCoNLLU(text) {
       droppedEmptyNodes += 1;
       continue;
     }
-    
+
     // Handle multi-word tokens (e.g., "1-3")
     if (id.includes('-')) {
       const [startStr, endStr] = id.split('-');
       const start = parseInt(startStr);
       const end = parseInt(endStr);
-      
+
       if (isNaN(start) || isNaN(end) || start <= 0 || end <= 0 || start >= end) {
         throw new Error(`Invalid multi-word token range: ${id}`);
       }
-      
+
       currentSentence.multiWordTokens.push({
         start: start,
         end: end,
-        form: form === '_' ? '' : form
+        form: form === '_' ? '' : form,
       });
       continue;
     }
-    
+
     // Validate ID is a positive integer
     const idNum = parseInt(id);
     if (isNaN(idNum) || idNum <= 0) {
       throw new Error(`Invalid token ID: ${id}`);
     }
-    
+
     // The MISC column is deliberately unsupported (it often carries annotations
     // like entity info that tokenization changes would silently corrupt; see
     // plaid-ud scope decisions). Count word-row MISC drops so the user hears
@@ -138,13 +147,13 @@ export function parseCoNLLU(text) {
 
     // Parse features into array
     const featuresArray = feats === '_' ? [] : feats.split('|');
-    
+
     // Parse HEAD (0 means root)
     const headNum = head === '_' ? 0 : parseInt(head);
     if (isNaN(headNum) || headNum < 0) {
       throw new Error(`Invalid HEAD value: ${head}`);
     }
-    
+
     // Add token to current sentence.
     // FORM is required for a regular token, so a literal `_` is the surface form
     // (an underscore character — common in web text as an emphasis marker), NOT
@@ -159,10 +168,10 @@ export function parseCoNLLU(text) {
       xpos: xpos === '_' ? null : xpos,
       feats: featuresArray,
       head: headNum,
-      deprel: deprel === '_' ? null : deprel
+      deprel: deprel === '_' ? null : deprel,
     });
   }
-  
+
   // Add last sentence if exists
   if (currentSentence && currentSentence.tokens.length > 0) {
     currentSentence.metadata = currentMetadata;
@@ -172,17 +181,17 @@ export function parseCoNLLU(text) {
     }
     sentences.push(currentSentence);
   }
-  
+
   // Validate that tokens are properly ordered within sentences
   for (const sentence of sentences) {
-    const sortedIds = sentence.tokens.map(t => t.id).sort((a, b) => a - b);
+    const sortedIds = sentence.tokens.map((t) => t.id).sort((a, b) => a - b);
     for (let i = 0; i < sortedIds.length; i++) {
       if (sortedIds[i] !== i + 1) {
         throw new Error(`Invalid token ordering: expected continuous IDs starting from 1`);
       }
     }
   }
-  
+
   return { sentences, dropped: { emptyNodes: droppedEmptyNodes, miscTokens: droppedMiscTokens } };
 }
 
@@ -214,7 +223,7 @@ export function buildConlluHierarchy(parsedData) {
   // token covers its member rows; every other row is its own 1:1 unit.
   const surfaceUnitsForSentence = (sentence) => {
     const mwtByStart = new Map();
-    (sentence.multiWordTokens || []).forEach(m => mwtByStart.set(m.start, m));
+    (sentence.multiWordTokens || []).forEach((m) => mwtByStart.set(m.start, m));
 
     const units = [];
     const rows = sentence.tokens;
@@ -234,16 +243,24 @@ export function buildConlluHierarchy(parsedData) {
         const hasExplicitForm = Boolean(mwt.form);
         const surfaceForm = hasExplicitForm
           ? mwt.form
-          : members.map(r => r.form).filter(Boolean).join('');
+          : members
+              .map((r) => r.form)
+              .filter(Boolean)
+              .join('');
         units.push({
           surfaceForm,
           hasExplicitForm,
           isMwt: true,
-          members
+          members,
         });
         i = endIdx + 1;
       } else {
-        units.push({ surfaceForm: rows[i].form, hasExplicitForm: false, isMwt: false, members: [rows[i]] });
+        units.push({
+          surfaceForm: rows[i].form,
+          hasExplicitForm: false,
+          isMwt: false,
+          members: [rows[i]],
+        });
         i += 1;
       }
     }
@@ -268,7 +285,7 @@ export function buildConlluHierarchy(parsedData) {
         if (!warnedSyntheticOffsets) {
           console.warn(
             `CoNLL-U import: could not locate form "${form}" in sentence text; ` +
-            `using synthetic gap-free offsets for this sentence (positions will not match the original text).`
+              `using synthetic gap-free offsets for this sentence (positions will not match the original text).`,
           );
           warnedSyntheticOffsets = true;
         }
@@ -295,9 +312,10 @@ export function buildConlluHierarchy(parsedData) {
 
   parsedData.sentences.forEach((sentence, sentIdx) => {
     const units = surfaceUnitsForSentence(sentence);
-    const rawSentenceText = (sentence.metadata && sentence.metadata.text)
-      ? sentence.metadata.text
-      : units.map(u => u.surfaceForm).join(' ');
+    const rawSentenceText =
+      sentence.metadata && sentence.metadata.text
+        ? sentence.metadata.text
+        : units.map((u) => u.surfaceForm).join(' ');
 
     const { positions: unitPositions, usedSynthetic } = locateUnits(rawSentenceText, units);
     if (usedSynthetic) syntheticOffsetSentences += 1;
@@ -317,9 +335,10 @@ export function buildConlluHierarchy(parsedData) {
     // the (padded) body substring, then trims — round-trip yields the
     // original visible text without a body/metadata mismatch.
     const sentenceMetadata = sentence.metadata || {};
-    const finalMetadata = overflowed && 'text' in sentenceMetadata
-      ? Object.fromEntries(Object.entries(sentenceMetadata).filter(([k]) => k !== 'text'))
-      : sentenceMetadata;
+    const finalMetadata =
+      overflowed && 'text' in sentenceMetadata
+        ? Object.fromEntries(Object.entries(sentenceMetadata).filter(([k]) => k !== 'text'))
+        : sentenceMetadata;
 
     const sentenceStart = cpLength(text);
     text += sentenceText;
@@ -337,7 +356,7 @@ export function buildConlluHierarchy(parsedData) {
         isMwt: unit.isMwt,
         hasExplicitForm: unit.hasExplicitForm,
         surfaceForm: unit.surfaceForm,
-        morphemes
+        morphemes,
       };
     });
 
@@ -345,7 +364,7 @@ export function buildConlluHierarchy(parsedData) {
       begin: sentenceStart,
       end: sentenceEnd,
       metadata: finalMetadata,
-      words
+      words,
     });
   });
 

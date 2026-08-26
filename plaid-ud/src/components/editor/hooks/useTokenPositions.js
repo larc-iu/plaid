@@ -6,10 +6,16 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 const samePositions = (a, b) => {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    const p = a[i], q = b[i];
-    if (p.x !== q.x || p.y !== q.y || p.width !== q.width ||
-        p.index !== q.index || p.lemmaSpanId !== q.lemmaSpanId ||
-        p.token?.id !== q.token?.id) {
+    const p = a[i],
+      q = b[i];
+    if (
+      p.x !== q.x ||
+      p.y !== q.y ||
+      p.width !== q.width ||
+      p.index !== q.index ||
+      p.lemmaSpanId !== q.lemmaSpanId ||
+      p.token?.id !== q.token?.id
+    ) {
       return false;
     }
   }
@@ -36,12 +42,13 @@ export const useTokenPositions = (tokenData, lemmaSpans) => {
         const tokenRect = tokenRef.getBoundingClientRect();
         const centerX = tokenRect.left + tokenRect.width / 2 - gridRect.left;
         const centerY = tokenRect.top + tokenRect.height / 2 - gridRect.top + 50; // Offset for SVG positioning
-        
+
         // Find lemma span for this token
-        const matchingLemmaSpan = lemmaSpans?.find(span => 
-          (span.tokens && span.tokens.includes(data.token.id)) || span.begin === data.token.id
+        const matchingLemmaSpan = lemmaSpans?.find(
+          (span) =>
+            (span.tokens && span.tokens.includes(data.token.id)) || span.begin === data.token.id,
         );
-        
+
         positions.push({
           token: data.token,
           x: centerX,
@@ -49,7 +56,7 @@ export const useTokenPositions = (tokenData, lemmaSpans) => {
           width: tokenRect.width,
           form: data.tokenForm,
           lemmaSpanId: matchingLemmaSpan?.id,
-          index: index
+          index: index,
         });
       }
     });
@@ -69,21 +76,21 @@ export const useTokenPositions = (tokenData, lemmaSpans) => {
     const timeoutId = setTimeout(() => {
       measureTokenPositions();
     }, 0);
-    
+
     // Clean up previous observer
     if (resizeObserverRef.current) {
       resizeObserverRef.current.disconnect();
     }
-    
+
     // Add resize observer to update positions when layout changes
     resizeObserverRef.current = new ResizeObserver(() => {
       measureTokenPositions();
     });
-    
+
     if (sentenceGridRef.current) {
       resizeObserverRef.current.observe(sentenceGridRef.current);
     }
-    
+
     return () => {
       clearTimeout(timeoutId);
       if (resizeObserverRef.current) {
@@ -95,6 +102,6 @@ export const useTokenPositions = (tokenData, lemmaSpans) => {
   return {
     tokenPositions,
     sentenceGridRef,
-    tokenRefs
+    tokenRefs,
   };
 };

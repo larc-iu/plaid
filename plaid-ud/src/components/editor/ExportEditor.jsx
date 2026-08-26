@@ -23,12 +23,15 @@ export const ExportEditor = () => {
     let cancelled = false;
     const run = async () => {
       const client = getClient();
-      if (!client) { logout(); return; }
+      if (!client) {
+        logout();
+        return;
+      }
       try {
         setLoading(true);
         const [projectData, next] = await Promise.all([
           client.projects.get(projectId),
-          ConlluDocument.load(client, projectId, documentId)
+          ConlluDocument.load(client, projectId, documentId),
         ]);
         if (cancelled) return;
         setProject(projectData);
@@ -36,7 +39,10 @@ export const ExportEditor = () => {
         setLoadError('');
       } catch (err) {
         if (cancelled) return;
-        if (err.status === 401) { logout(); return; }
+        if (err.status === 401) {
+          logout();
+          return;
+        }
         setLoadError('Failed to load document: ' + (err.message || 'Unknown error'));
         console.error('Error fetching data:', err);
       } finally {
@@ -44,7 +50,9 @@ export const ExportEditor = () => {
       }
     };
     run();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, documentId]);
 
@@ -63,7 +71,11 @@ export const ExportEditor = () => {
   };
 
   if (loading) {
-    return <Center py={48}><Loader /></Center>;
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   }
 
   if (!doc || !project) {
@@ -79,9 +91,15 @@ export const ExportEditor = () => {
         document={doc.raw}
       />
 
-      <Title order={3} mb="md">CoNLL-U Export</Title>
+      <Title order={3} mb="md">
+        CoNLL-U Export
+      </Title>
 
-      {loadError && <Alert color="red" mb="md">{loadError}</Alert>}
+      {loadError && (
+        <Alert color="red" mb="md">
+          {loadError}
+        </Alert>
+      )}
 
       <Group gap="sm" mb="md">
         <CopyButton value={conlluContent} timeout={2000}>

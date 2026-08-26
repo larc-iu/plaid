@@ -21,10 +21,13 @@ const make = () => {
     id: 'tl-word',
     tokens: [word, otherWord],
     spanLayers: [
-      { id: 'sl-wgloss', spans: [
-        { id: 's1', tokens: ['w1'], value: 'word-gloss' },
-        { id: 's2', tokens: ['w2'], value: 'other-word-gloss' },
-      ] },
+      {
+        id: 'sl-wgloss',
+        spans: [
+          { id: 's1', tokens: ['w1'], value: 'word-gloss' },
+          { id: 's2', tokens: ['w2'], value: 'other-word-gloss' },
+        ],
+      },
     ],
     vocabs: [{ id: 'v1', vocabLinks: [{ id: 'l1', tokens: ['w1'] }] }],
   };
@@ -33,15 +36,23 @@ const make = () => {
     parentTokenLayer: 'tl-word',
     tokens: [igtMorph, igtMorphOther],
     spanLayers: [
-      { id: 'sl-mgloss', spans: [
-        { id: 's3', tokens: ['m1'], value: 'morph-gloss' },
-        { id: 's4', tokens: ['m2'], value: 'other-morph-gloss' },
-      ] },
+      {
+        id: 'sl-mgloss',
+        spans: [
+          { id: 's3', tokens: ['m1'], value: 'morph-gloss' },
+          { id: 's4', tokens: ['m2'], value: 'other-morph-gloss' },
+        ],
+      },
     ],
-    vocabs: [{ id: 'v1', vocabLinks: [
-      { id: 'l2', tokens: ['m1'] },
-      { id: 'l3', tokens: ['m2'] },
-    ] }],
+    vocabs: [
+      {
+        id: 'v1',
+        vocabLinks: [
+          { id: 'l2', tokens: ['m1'] },
+          { id: 'l3', tokens: ['m2'] },
+        ],
+      },
+    ],
   };
   const udSynLayer = {
     id: 'tl-ud-syn',
@@ -89,8 +100,9 @@ test('sentence-level material does not count toward a word delete', () => {
 });
 
 test('handles missing layers / word gracefully', () => {
-  assert.deepEqual(foreignAnnotationLossForWord(null, { id: 'x', begin: 0, end: 1 }),
-    { spans: 0, links: 0 });
-  assert.deepEqual(foreignAnnotationLossForWord({ textLayer: {} }, null),
-    { spans: 0, links: 0 });
+  assert.deepEqual(foreignAnnotationLossForWord(null, { id: 'x', begin: 0, end: 1 }), {
+    spans: 0,
+    links: 0,
+  });
+  assert.deepEqual(foreignAnnotationLossForWord({ textLayer: {} }, null), { spans: 0, links: 0 });
 });

@@ -50,7 +50,12 @@ export const readSpotDefault = (project, task, namespace = UD_NAMESPACE) =>
 // Pick the selection an editor should start from. `services` are the spot's
 // task-matching services; only ONLINE ones are runnable. `builtins` is a list
 // of built-in names (always runnable). Returns a selection string or null.
-export const resolveInitialSelection = ({ services = [], builtins = [], cached, projectDefault }) => {
+export const resolveInitialSelection = ({
+  services = [],
+  builtins = [],
+  cached,
+  projectDefault,
+}) => {
   const valid = (selection) => {
     const decoded = decodeSelection(selection);
     if (!decoded) return false;

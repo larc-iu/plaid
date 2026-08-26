@@ -9,7 +9,13 @@ import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY } from '@larc-iu/plaid-cl
 
 const BASE = 'http://localhost:8085';
 const UD_NS = 'ud';
-const SPAN_SPECS = [['Form', 'form'], ['Lemma', 'lemma'], ['UPOS', 'upos'], ['XPOS', 'xpos'], ['Features', 'features']];
+const SPAN_SPECS = [
+  ['Form', 'form'],
+  ['Lemma', 'lemma'],
+  ['UPOS', 'upos'],
+  ['XPOS', 'xpos'],
+  ['Features', 'features'],
+];
 const S = {};
 
 test.beforeAll(async () => {
@@ -47,7 +53,9 @@ test.beforeAll(async () => {
   const byKey = Object.fromEntries(SPAN_SPECS.map(([, key], i) => [key, spanLayerIds[i]]));
 
   client.beginBatch();
-  SPAN_SPECS.forEach(([, key], i) => client.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true));
+  SPAN_SPECS.forEach(([, key], i) =>
+    client.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true),
+  );
   client.relationLayers.create(byKey.lemma, 'Dependency Relations');
   const b7 = await client.submitBatch();
   const relationLayerId = b7[b7.length - 1].body.id;
@@ -60,11 +68,27 @@ test.beforeAll(async () => {
   S.documentId = doc.id;
   const text = await client.texts.create(textLayerId, doc.id, body);
 
-  const words = [[0, 3], [4, 7], [8, 12]];
+  const words = [
+    [0, 3],
+    [4, 7],
+    [8, 12],
+  ];
   client.beginBatch();
-  client.tokens.bulkCreate([{ tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length }]);
-  client.tokens.bulkCreate(words.map(([b, e]) => ({ tokenLayerId: wordLayerId, text: text.id, begin: b, end: e })));
-  client.tokens.bulkCreate(words.map(([b, e]) => ({ tokenLayerId: morphemeLayerId, text: text.id, begin: b, end: e, precedence: 0 })));
+  client.tokens.bulkCreate([
+    { tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length },
+  ]);
+  client.tokens.bulkCreate(
+    words.map(([b, e]) => ({ tokenLayerId: wordLayerId, text: text.id, begin: b, end: e })),
+  );
+  client.tokens.bulkCreate(
+    words.map(([b, e]) => ({
+      tokenLayerId: morphemeLayerId,
+      text: text.id,
+      begin: b,
+      end: e,
+      precedence: 0,
+    })),
+  );
   const morphIds = (await client.submitBatch())[2].body.ids;
   S.morphIds = morphIds; // [the, dog, runs]
 
@@ -72,32 +96,48 @@ test.beforeAll(async () => {
   await client.spans.create(byKey.lemma, [morphIds[1]], 'dog');
   const lemRuns = (await client.spans.create(byKey.lemma, [morphIds[2]], 'run')).id;
   // A machine prediction (unconfirmed) on "dog"'s UPOS — drives the review UI.
-  const upos = await client.spans.create(byKey.upos, [morphIds[1]], 'NOUN', { prov: 'inferred', provSource: 'service:test' });
+  const upos = await client.spans.create(byKey.upos, [morphIds[1]], 'NOUN', {
+    prov: 'inferred',
+    provSource: 'service:test',
+  });
   S.uposSpanId = upos.id;
   // An unapproved (machine) dependency relation runs(head) -> the(dependent).
   // Targets "the", not "dog", so the per-word dog-accept tests leave it inferred.
-  await client.relations.create(relationLayerId, lemRuns, lemThe, 'det', { prov: 'inferred', provSource: 'service:test' });
+  await client.relations.create(relationLayerId, lemRuns, lemThe, 'det', {
+    prov: 'inferred',
+    provSource: 'service:test',
+  });
 });
 
 // Each accept test confirms the prediction, so reset it to unconfirmed first.
 test.beforeEach(async () => {
-  await S.client.spans.patchMetadata(S.uposSpanId, { prov: 'inferred', provSource: 'service:test', provConfirmed: null });
+  await S.client.spans.patchMetadata(S.uposSpanId, {
+    prov: 'inferred',
+    provSource: 'service:test',
+    provConfirmed: null,
+  });
 });
 
 test.afterAll(async () => {
   if (S.client && S.projectId) {
-    await S.client.projects.delete(S.projectId).catch((e) => console.error('cleanup failed:', e.message));
+    await S.client.projects
+      .delete(S.projectId)
+      .catch((e) => console.error('cleanup failed:', e.message));
   }
 });
 
 async function openAnnotate(page) {
   await seedAuth(page);
   await page.addInitScript(() => {
-    localStorage.setItem('ud-annotation-visible-fields',
-      JSON.stringify({ lemma: true, xpos: true, upos: true, feats: true }));
+    localStorage.setItem(
+      'ud-annotation-visible-fields',
+      JSON.stringify({ lemma: true, xpos: true, upos: true, feats: true }),
+    );
   });
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/annotate`);
-  await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({
+    timeout: 15000,
+  });
 }
 
 const opacityOf = (loc) => loc.evaluate((el) => getComputedStyle(el).opacity);
@@ -144,7 +184,9 @@ test('an unapproved dependency edge is violet + dashed', async ({ page }) => {
   const arc = page.locator('.tree-arc-path').first(); // the lone (unapproved) relation
   await expect(arc).toBeVisible();
   // Unapproved violet #6d28d9 = rgb(109, 40, 217), and a dashed stroke.
-  await expect.poll(() => arc.evaluate((el) => getComputedStyle(el).stroke)).toBe('rgb(109, 40, 217)');
+  await expect
+    .poll(() => arc.evaluate((el) => getComputedStyle(el).stroke))
+    .toBe('rgb(109, 40, 217)');
   expect(await arc.evaluate((el) => getComputedStyle(el).strokeDasharray)).not.toBe('none');
 });
 

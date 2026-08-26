@@ -1,5 +1,9 @@
 import {
-  UPOS_TAGS, UNIVERSAL_DEPRELS, readVocab, readColorMap, readFeatureInventory
+  UPOS_TAGS,
+  UNIVERSAL_DEPRELS,
+  readVocab,
+  readColorMap,
+  readFeatureInventory,
 } from './udVocab.js';
 import { ROLES, findByRole, readRole } from '@larc-iu/plaid-client';
 
@@ -17,7 +21,7 @@ const UD_TOKEN_ROLES = new Set([ROLES.SENTENCE, ROLES.WORD, ROLES.SYNTACTIC_WORD
 // list, including foreign siblings).
 export const hasForeignSubstrateParticipants = (layerInfo) => {
   const tokenLayers = layerInfo?.textLayer?.tokenLayers || [];
-  return tokenLayers.some(tk => {
+  return tokenLayers.some((tk) => {
     const role = readRole(tk.config);
     return role && !UD_TOKEN_ROLES.has(role);
   });
@@ -43,14 +47,19 @@ export const foreignAnnotationLossForWord = (layerInfo, word) => {
   const result = { spans: 0, links: 0 };
   if (!layerInfo?.textLayer || !word) return result;
   const tokenLayers = layerInfo.textLayer.tokenLayers || [];
-  const udSpanLayerIds = new Set([
-    layerInfo.formLayer?.id, layerInfo.lemmaLayer?.id, layerInfo.uposLayer?.id,
-    layerInfo.xposLayer?.id, layerInfo.featuresLayer?.id,
-  ].filter(Boolean));
+  const udSpanLayerIds = new Set(
+    [
+      layerInfo.formLayer?.id,
+      layerInfo.lemmaLayer?.id,
+      layerInfo.uposLayer?.id,
+      layerInfo.xposLayer?.id,
+      layerInfo.featuresLayer?.id,
+    ].filter(Boolean),
+  );
 
   // Token layers nested (transitively) under the word layer — these cascade.
   const childrenOf = new Map();
-  tokenLayers.forEach(tl => {
+  tokenLayers.forEach((tl) => {
     if (tl.parentTokenLayer) {
       if (!childrenOf.has(tl.parentTokenLayer)) childrenOf.set(tl.parentTokenLayer, []);
       childrenOf.get(tl.parentTokenLayer).push(tl);
@@ -69,20 +78,22 @@ export const foreignAnnotationLossForWord = (layerInfo, word) => {
   // Every token the cascade deletes.
   const dying = new Set([word.id]);
   for (const tl of cascading) {
-    (tl.tokens || []).forEach(t => { if (containsToken(word, t)) dying.add(t.id); });
+    (tl.tokens || []).forEach((t) => {
+      if (containsToken(word, t)) dying.add(t.id);
+    });
   }
 
   // Foreign spans + vocab links riding on dying tokens.
   for (const tl of [layerInfo.wordTokenLayer, ...cascading].filter(Boolean)) {
     for (const sl of tl.spanLayers || []) {
       if (udSpanLayerIds.has(sl.id)) continue;
-      (sl.spans || []).forEach(s => {
-        if (Array.isArray(s.tokens) && s.tokens.some(t => dying.has(t))) result.spans += 1;
+      (sl.spans || []).forEach((s) => {
+        if (Array.isArray(s.tokens) && s.tokens.some((t) => dying.has(t))) result.spans += 1;
       });
     }
     for (const vocab of tl.vocabs || []) {
-      (vocab.vocabLinks || []).forEach(l => {
-        if (Array.isArray(l.tokens) && l.tokens.some(t => dying.has(t))) result.links += 1;
+      (vocab.vocabLinks || []).forEach((l) => {
+        if (Array.isArray(l.tokens) && l.tokens.some((t) => dying.has(t))) result.links += 1;
       });
     }
   }
@@ -103,7 +114,7 @@ export const UD_SPAN_CONFIG_KEYS = {
   lemma: 'lemma',
   upos: 'upos',
   xpos: 'xpos',
-  features: 'features'
+  features: 'features',
 };
 
 // Display labels (UD terminology). The keys are the internal config-flag names
@@ -119,7 +130,7 @@ export const UD_LAYER_LABELS = {
   upos: 'UPOS layer',
   xpos: 'XPOS layer',
   features: 'Features layer',
-  dependency: 'Dependency relation layer'
+  dependency: 'Dependency relation layer',
 };
 
 const hasConfigFlag = (config, key) => config?.[UD_NAMESPACE]?.[key] === true;
@@ -134,12 +145,12 @@ const findUdTokenLayerByRole = (textLayer, role) => findByRole(textLayer?.tokenL
 
 const findUdSpanLayer = (tokenLayer, configKey) => {
   if (!tokenLayer?.spanLayers) return null;
-  return tokenLayer.spanLayers.find(layer => hasConfigFlag(layer.config, configKey)) || null;
+  return tokenLayer.spanLayers.find((layer) => hasConfigFlag(layer.config, configKey)) || null;
 };
 
 const findUdRelationLayer = (spanLayer, configKey = UD_RELATION_CONFIG_KEY) => {
   if (!spanLayer?.relationLayers) return null;
-  return spanLayer.relationLayers.find(layer => hasConfigFlag(layer.config, configKey)) || null;
+  return spanLayer.relationLayers.find((layer) => hasConfigFlag(layer.config, configKey)) || null;
 };
 
 const EMPTY_MISSING = [
@@ -152,7 +163,7 @@ const EMPTY_MISSING = [
   'upos',
   'xpos',
   'features',
-  'dependency'
+  'dependency',
 ];
 
 export const getUdLayerInfo = (document) => {
@@ -174,11 +185,11 @@ export const getUdLayerInfo = (document) => {
         upos: UPOS_TAGS,
         xpos: [],
         deprel: UNIVERSAL_DEPRELS,
-        featureInventory: readFeatureInventory(null)
+        featureInventory: readFeatureInventory(null),
       },
       colors: { upos: {}, deprel: {} },
       missingLayers: [...EMPTY_MISSING],
-      isConfigured: false
+      isConfigured: false,
     };
   }
 
@@ -246,20 +257,20 @@ export const getUdLayerInfo = (document) => {
       upos: readVocab(uposLayer?.config, { fallback: UPOS_TAGS }),
       xpos: readVocab(xposLayer?.config, { fallback: [] }),
       deprel: readVocab(relationLayer?.config, { fallback: UNIVERSAL_DEPRELS }),
-      featureInventory: readFeatureInventory(featuresLayer?.config)
+      featureInventory: readFeatureInventory(featuresLayer?.config),
     },
     colors: {
       upos: readColorMap(uposLayer?.config),
-      deprel: readColorMap(relationLayer?.config)
+      deprel: readColorMap(relationLayer?.config),
     },
     missingLayers: normalizedMissing,
-    isConfigured: normalizedMissing.length === 0
+    isConfigured: normalizedMissing.length === 0,
   };
 };
 
 export const missingUdLayerLabels = (missingKeys) => {
   if (!Array.isArray(missingKeys)) return [];
-  return missingKeys.map(key => UD_LAYER_LABELS[key] || key);
+  return missingKeys.map((key) => UD_LAYER_LABELS[key] || key);
 };
 
 export { UD_NAMESPACE };

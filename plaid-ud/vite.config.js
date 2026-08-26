@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => ({
@@ -10,7 +10,7 @@ export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/ud/' : '/',
   plugins: [react()],
   resolve: {
-    preserveSymlinks: true
+    preserveSymlinks: true,
   },
   // `plaid-client` is a symlinked local package (../plaid-client-js). Vite's
   // dep pre-bundling caches it under node_modules/.vite/deps and does NOT
@@ -20,7 +20,7 @@ export default defineConfig(({ command }) => ({
   // as source through the normal module graph, so edits hot-reload like any
   // first-party file.
   optimizeDeps: {
-    exclude: ['@larc-iu/plaid-client']
+    exclude: ['@larc-iu/plaid-client'],
   },
   server: {
     port: 5173,
@@ -28,14 +28,14 @@ export default defineConfig(({ command }) => ({
     // symlinked local source package we actively edit during the SQL port.
     // Un-ignore it so saves there trigger HMR like first-party files.
     watch: {
-      ignored: ['!**/node_modules/@larc-iu/plaid-client/**']
+      ignored: ['!**/node_modules/@larc-iu/plaid-client/**'],
     },
     proxy: {
       '/api': {
         target: 'http://localhost:8085',
         changeOrigin: true,
-        secure: false
-      }
-    }
-  }
-}))
+        secure: false,
+      },
+    },
+  },
+}));

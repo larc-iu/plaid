@@ -1,6 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  Alert, Text, Popover, Switch, Button, Group, Stack, TextInput, ActionIcon, Divider,
+  Alert,
+  Text,
+  Popover,
+  Switch,
+  Button,
+  Group,
+  Stack,
+  TextInput,
+  ActionIcon,
+  Divider,
 } from '@mantine/core';
 import { IconTrash, IconPlus, IconX } from '@tabler/icons-react';
 import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
@@ -35,7 +44,7 @@ export const TokenVisualizer = ({
   onWordDelete,
   onSentenceToggle,
   onSetWordMorphemes,
-  setError
+  setError,
 }) => {
   // Prefer the parent's error banner for inline validation errors; fall back to
   // a toast if the prop isn't wired.
@@ -53,43 +62,51 @@ export const TokenVisualizer = ({
 
   const isTextDirty = Boolean(originalText) && text !== originalText;
   const contains = containsToken;
-  const sortPos = (a, b) => (a.begin - b.begin) || (a.end - b.end) || ((a.precedence ?? 0) - (b.precedence ?? 0));
+  const sortPos = (a, b) =>
+    a.begin - b.begin || a.end - b.end || (a.precedence ?? 0) - (b.precedence ?? 0);
 
   // Words per token (server positions), and which tokens begin a sentence.
-  const sortedMorphemes = useMemo(
-    () => [...morphemeTokens].sort(sortPos),
-    [morphemeTokens]
-  );
+  const sortedMorphemes = useMemo(() => [...morphemeTokens].sort(sortPos), [morphemeTokens]);
   const morphemesByWord = useMemo(
-    () => new Map(wordTokens.map(w => [w.id, sortedMorphemes.filter(m => contains(w, m))])),
-    [wordTokens, sortedMorphemes]
+    () => new Map(wordTokens.map((w) => [w.id, sortedMorphemes.filter((m) => contains(w, m))])),
+    [wordTokens, sortedMorphemes],
   );
-  const wordById = useMemo(() => new Map(wordTokens.map(w => [w.id, w])), [wordTokens]);
+  const wordById = useMemo(() => new Map(wordTokens.map((w) => [w.id, w])), [wordTokens]);
   const sentenceBegins = useMemo(
-    () => new Set(sentenceTokens.map(s => s.begin)),
-    [sentenceTokens]
+    () => new Set(sentenceTokens.map((s) => s.begin)),
+    [sentenceTokens],
   );
   const sentenceInitialWordIds = useMemo(
-    () => new Set(wordTokens.filter(w => sentenceBegins.has(w.begin)).map(w => w.id)),
-    [wordTokens, sentenceBegins]
+    () => new Set(wordTokens.filter((w) => sentenceBegins.has(w.begin)).map((w) => w.id)),
+    [wordTokens, sentenceBegins],
   );
 
   const formOf = (m, word) => {
     const f = morphemeForms.get(m.id);
-    return (f != null && f !== '') ? f : cpSlice(text, word.begin, word.end);
+    return f != null && f !== '' ? f : cpSlice(text, word.begin, word.end);
   };
   // A token's current word forms — its words' Form-or-substring, or the token's
   // own surface for a 1:1 token. Seeds the editor and detects unsaved changes.
   const currentFormsOf = (word) => {
     const ms = morphemesByWord.get(word.id) || [];
-    return ms.length ? ms.map(m => formOf(m, word)) : [cpSlice(text, word.begin, word.end)];
+    return ms.length ? ms.map((m) => formOf(m, word)) : [cpSlice(text, word.begin, word.end)];
   };
 
   // --- hover open/close with pin-while-editing ---
   const OPEN_DELAY = 150;
   const CLOSE_DELAY = 200;
-  const clearOpen = () => { if (openTimer.current) { clearTimeout(openTimer.current); openTimer.current = null; } };
-  const clearClose = () => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; } };
+  const clearOpen = () => {
+    if (openTimer.current) {
+      clearTimeout(openTimer.current);
+      openTimer.current = null;
+    }
+  };
+  const clearClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
   // True while focus is inside the open panel — i.e. the user is editing.
   const isEditing = () => !!(panelRef.current && panelRef.current.contains(document.activeElement));
   const requestOpen = (id) => {
@@ -113,9 +130,22 @@ export const TokenVisualizer = ({
       setOpenId(null);
     }, CLOSE_DELAY);
   };
-  const keepOpen = () => { clearOpen(); clearClose(); };
-  const closePanel = () => { clearOpen(); clearClose(); setOpenId(null); };
-  useEffect(() => () => { clearOpen(); clearClose(); }, []);
+  const keepOpen = () => {
+    clearOpen();
+    clearClose();
+  };
+  const closePanel = () => {
+    clearOpen();
+    clearClose();
+    setOpenId(null);
+  };
+  useEffect(
+    () => () => {
+      clearOpen();
+      clearClose();
+    },
+    [],
+  );
 
   // Click a token (or its panel switch) to toggle whether it starts a sentence.
   const toggleSentence = async (word) => {
@@ -139,12 +169,16 @@ export const TokenVisualizer = ({
   // Apply the edited word forms (split into words / a multi-word token). No-op
   // when unchanged, so simply hovering + closing never rewrites the token.
   const saveWords = async (word) => {
-    const forms = draftForms.map(f => f.trim()).filter(Boolean);
-    const current = currentFormsOf(word).map(f => f.trim());
+    const forms = draftForms.map((f) => f.trim()).filter(Boolean);
+    const current = currentFormsOf(word).map((f) => f.trim());
     closePanel();
     const changed = forms.length > 0 && JSON.stringify(forms) !== JSON.stringify(current);
     if (changed && onSetWordMorphemes) {
-      try { await onSetWordMorphemes(word, forms); } catch (e) { console.error('Set words failed:', e); }
+      try {
+        await onSetWordMorphemes(word, forms);
+      } catch (e) {
+        console.error('Set words failed:', e);
+      }
     }
   };
 
@@ -166,7 +200,7 @@ export const TokenVisualizer = ({
       acceptNode: (node) =>
         node.parentElement && node.parentElement.closest('.tv-overlay')
           ? NodeFilter.FILTER_REJECT
-          : NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_ACCEPT,
     });
     let pos = 0;
     let node;
@@ -181,11 +215,17 @@ export const TokenVisualizer = ({
     let end = -1;
     for (const m of map) {
       if (m.node === range.startContainer && m.offset === range.startOffset) start = m.pos;
-      if (m.node === range.endContainer && m.offset === range.endOffset) { end = m.pos; break; }
+      if (m.node === range.endContainer && m.offset === range.endOffset) {
+        end = m.pos;
+        break;
+      }
     }
     if (end === -1 && range.endContainer.nodeType === Node.TEXT_NODE) {
       for (const m of map) {
-        if (m.node === range.endContainer && m.offset === range.endOffset - 1) { end = m.pos + 1; break; }
+        if (m.node === range.endContainer && m.offset === range.endOffset - 1) {
+          end = m.pos + 1;
+          break;
+        }
       }
     }
     // Fall back to first occurrence if the DOM walk didn't line up.
@@ -202,7 +242,7 @@ export const TokenVisualizer = ({
     start = utf16ToCp(text, start);
     end = utf16ToCp(text, end);
 
-    if (wordTokens.some(w => start < w.end && end > w.begin)) {
+    if (wordTokens.some((w) => start < w.end && end > w.begin)) {
       reportError('Cannot create token: selection overlaps an existing token');
       return;
     }
@@ -221,10 +261,11 @@ export const TokenVisualizer = ({
     const cCps = Array.from(current);
     const curLen = cCps.length;
     let editPos = 0;
-    while (editPos < Math.min(oCps.length, cCps.length) && oCps[editPos] === cCps[editPos]) editPos += 1;
+    while (editPos < Math.min(oCps.length, cCps.length) && oCps[editPos] === cCps[editPos])
+      editPos += 1;
     const lengthDiff = cCps.length - oCps.length;
 
-    return words.map(word => {
+    return words.map((word) => {
       const wordText = cpSlice(original, word.begin, word.end);
       if (word.end <= editPos) return word;
       if (word.begin >= editPos) {
@@ -241,7 +282,10 @@ export const TokenVisualizer = ({
         const idx = cpIndexOf(current, wordText, from);
         if (idx === -1) break;
         const score = 1000 - Math.abs(idx - word.begin);
-        if (score > bestScore) { bestScore = score; best = { begin: idx, end: idx + cpLength(wordText) }; }
+        if (score > bestScore) {
+          bestScore = score;
+          best = { begin: idx, end: idx + cpLength(wordText) };
+        }
         from = idx + 1;
       }
       if (best) return { ...word, begin: best.begin, end: best.end, adjusted: true };
@@ -250,7 +294,11 @@ export const TokenVisualizer = ({
   }, [wordTokens, originalText, text]);
 
   if (!text) {
-    return <Text ta="center" py="xl" c="dimmed">No text to visualize</Text>;
+    return (
+      <Text ta="center" py="xl" c="dimmed">
+        No text to visualize
+      </Text>
+    );
   }
 
   if (wordTokens.length === 0) {
@@ -264,7 +312,8 @@ export const TokenVisualizer = ({
           {text}
         </div>
         <Text size="sm" c="dimmed" ta="center" mt="md">
-          No tokens yet. Click &quot;Basic Tokenize&quot; to create the hierarchy, or select text to create a token.
+          No tokens yet. Click &quot;Basic Tokenize&quot; to create the hierarchy, or select text to
+          create a token.
         </Text>
       </div>
     );
@@ -309,8 +358,12 @@ export const TokenVisualizer = ({
         <Popover.Dropdown p="sm" onMouseEnter={keepOpen} onMouseLeave={requestClose}>
           <Stack ref={panelRef} gap="xs" miw={244} maw={320}>
             <Group justify="space-between" gap="md" wrap="nowrap">
-              <Text ff="monospace" fw={600} size="sm">{display}</Text>
-              <Text size="xs" c="dimmed">[{word.begin}–{word.end}]</Text>
+              <Text ff="monospace" fw={600} size="sm">
+                {display}
+              </Text>
+              <Text size="xs" c="dimmed">
+                [{word.begin}–{word.end}]
+              </Text>
             </Group>
 
             {onSentenceToggle && (
@@ -325,15 +378,26 @@ export const TokenVisualizer = ({
             {onSetWordMorphemes && (
               <>
                 <Divider my={2} />
-                <Text size="xs" c="dimmed">Words{isMwt ? ' (multi-word token)' : ''}</Text>
+                <Text size="xs" c="dimmed">
+                  Words{isMwt ? ' (multi-word token)' : ''}
+                </Text>
                 <Stack gap={6}>
                   {draftForms.map((form, i) => (
                     <Group key={i} gap="xs" wrap="nowrap">
                       <TextInput
                         size="xs"
                         value={form}
-                        onChange={(e) => setDraftForms(prev => prev.map((f, idx) => (idx === i ? e.target.value : f)))}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveWords(word); } }}
+                        onChange={(e) =>
+                          setDraftForms((prev) =>
+                            prev.map((f, idx) => (idx === i ? e.target.value : f)),
+                          )
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            saveWords(word);
+                          }
+                        }}
                         style={{ flex: 1 }}
                         styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
                       />
@@ -342,7 +406,9 @@ export const TokenVisualizer = ({
                           variant="subtle"
                           color="gray"
                           size="sm"
-                          onClick={() => setDraftForms(prev => prev.filter((_, idx) => idx !== i))}
+                          onClick={() =>
+                            setDraftForms((prev) => prev.filter((_, idx) => idx !== i))
+                          }
                           aria-label="Remove word"
                         >
                           <IconX size={14} />
@@ -354,7 +420,7 @@ export const TokenVisualizer = ({
                     variant="subtle"
                     size="compact-xs"
                     leftSection={<IconPlus size={14} />}
-                    onClick={() => setDraftForms(prev => [...prev, ''])}
+                    onClick={() => setDraftForms((prev) => [...prev, ''])}
                     style={{ alignSelf: 'flex-start' }}
                   >
                     Add word
@@ -375,9 +441,13 @@ export const TokenVisualizer = ({
                 >
                   Delete
                 </Button>
-              ) : <span />}
+              ) : (
+                <span />
+              )}
               {onSetWordMorphemes && (
-                <Button size="compact-xs" onClick={() => saveWords(word)}>Save</Button>
+                <Button size="compact-xs" onClick={() => saveWords(word)}>
+                  Save
+                </Button>
               )}
             </Group>
           </Stack>
@@ -388,14 +458,17 @@ export const TokenVisualizer = ({
 
   const renderText = () => {
     const adjusted = adjustedWords;
-    const valid = adjusted.filter(w => !w.invalid).sort((a, b) => a.begin - b.begin);
-    const invalid = adjusted.filter(w => w.invalid);
+    const valid = adjusted.filter((w) => !w.invalid).sort((a, b) => a.begin - b.begin);
+    const invalid = adjusted.filter((w) => w.invalid);
 
     // Group tokens into sentences (a token that begins a sentence starts a block).
     const sentences = [];
     let current = [];
-    valid.forEach(word => {
-      if (sentenceInitialWordIds.has(word.id) && current.length) { sentences.push(current); current = []; }
+    valid.forEach((word) => {
+      if (sentenceInitialWordIds.has(word.id) && current.length) {
+        sentences.push(current);
+        current = [];
+      }
       current.push(word);
     });
     if (current.length) sentences.push(current);
@@ -406,22 +479,35 @@ export const TokenVisualizer = ({
       const els = [];
       words.forEach((word, wi) => {
         if (word.begin > lastEnd) {
-          els.push(<span key={`bt-${si}-${wi}`} className={classes.plainText}>{cpSlice(text, lastEnd, word.begin)}</span>);
+          els.push(
+            <span key={`bt-${si}-${wi}`} className={classes.plainText}>
+              {cpSlice(text, lastEnd, word.begin)}
+            </span>,
+          );
         }
         els.push(renderWordBadge(word));
         lastEnd = Math.max(lastEnd, word.end);
       });
-      return <div key={`s-${si}`} className={classes.sentence}>{els}</div>;
+      return (
+        <div key={`s-${si}`} className={classes.sentence}>
+          {els}
+        </div>
+      );
     });
 
     if (lastEnd < cpLength(text)) {
-      blocks.push(<div key="trail" className={classes.plainText}>{cpSlice(text, lastEnd)}</div>);
+      blocks.push(
+        <div key="trail" className={classes.plainText}>
+          {cpSlice(text, lastEnd)}
+        </div>,
+      );
     }
     if (invalid.length) {
       blocks.push(
         <Text key="invalid" size="xs" c="orange.6" mt="xs">
-          {invalid.length} token{invalid.length !== 1 ? 's' : ''} no longer match the edited text — save and re-tokenize to resync.
-        </Text>
+          {invalid.length} token{invalid.length !== 1 ? 's' : ''} no longer match the edited text —
+          save and re-tokenize to resync.
+        </Text>,
       );
     }
     return blocks;
@@ -434,11 +520,7 @@ export const TokenVisualizer = ({
           Showing token positions relocated for your unsaved edits. Save the text to apply.
         </Alert>
       )}
-      <div
-        ref={textContainerRef}
-        className={classes.container}
-        onMouseUp={handleTextSelection}
-      >
+      <div ref={textContainerRef} className={classes.container} onMouseUp={handleTextSelection}>
         {renderText()}
       </div>
       <Text size="xs" c="dimmed" mt="sm">

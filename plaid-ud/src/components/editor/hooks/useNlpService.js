@@ -9,7 +9,10 @@ import {
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { notifyError } from '../../../utils/feedback.jsx';
 import {
-  encodeServiceSelection, decodeSelection, readSpotDefault, resolveInitialSelection,
+  encodeServiceSelection,
+  decodeSelection,
+  readSpotDefault,
+  resolveInitialSelection,
 } from '../../../utils/serviceDefaults.js';
 
 const SERVICE_KEY = 'plaid_ud_parse_service';
@@ -109,8 +112,8 @@ export const useNlpService = (projectId, documentId, project) => {
       return;
     }
     const defaults = buildDefaultValues(paramSchema);
-    const projectParams = (projectDefault?.service?.serviceId === selectedServiceId
-      && projectDefault?.params) || {};
+    const projectParams =
+      (projectDefault?.service?.serviceId === selectedServiceId && projectDefault?.params) || {};
     let cached = {};
     try {
       const raw = localStorage.getItem(`${PARAMS_PREFIX}${selectedServiceId}`);
@@ -126,19 +129,22 @@ export const useNlpService = (projectId, documentId, project) => {
     setParamValues(merged);
   }, [selectedServiceId, paramSchema, projectDefault]);
 
-  const setParam = useCallback((key, value) => {
-    setParamValues((prev) => {
-      const next = { ...prev, [key]: value };
-      if (selectedServiceId) {
-        try {
-          localStorage.setItem(`${PARAMS_PREFIX}${selectedServiceId}`, JSON.stringify(next));
-        } catch {
-          /* ignore quota / serialization errors */
+  const setParam = useCallback(
+    (key, value) => {
+      setParamValues((prev) => {
+        const next = { ...prev, [key]: value };
+        if (selectedServiceId) {
+          try {
+            localStorage.setItem(`${PARAMS_PREFIX}${selectedServiceId}`, JSON.stringify(next));
+          } catch {
+            /* ignore quota / serialization errors */
+          }
         }
-      }
-      return next;
-    });
-  }, [selectedServiceId]);
+        return next;
+      });
+    },
+    [selectedServiceId],
+  );
 
   // Request document parsing from the selected service with its arguments.
   const requestParse = useCallback(async () => {
@@ -213,8 +219,11 @@ export const useNlpService = (projectId, documentId, project) => {
     setParam,
 
     // Computed flags
-    canParse: parseServices.length > 0 && !!selectedService && !isParsing
-      && Object.keys(paramErrors).length === 0,
+    canParse:
+      parseServices.length > 0 &&
+      !!selectedService &&
+      !isParsing &&
+      Object.keys(paramErrors).length === 0,
     hasServices: parseServices.length > 0,
   };
 };

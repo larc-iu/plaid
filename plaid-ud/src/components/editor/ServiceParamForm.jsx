@@ -1,4 +1,12 @@
-import { Stack, Select, NumberInput, Switch, MultiSelect, TextInput, Textarea } from '@mantine/core';
+import {
+  Stack,
+  Select,
+  NumberInput,
+  Switch,
+  MultiSelect,
+  TextInput,
+  Textarea,
+} from '@mantine/core';
 
 // Renders a service's declared parameter schema as a Mantine form. Each field
 // reports edits via onChange(key, value); the parent owns the values + validation

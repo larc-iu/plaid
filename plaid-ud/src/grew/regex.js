@@ -24,8 +24,7 @@ export const featNeqRegex = (name, val) => `^${escapeRegex(name)}=(?!${escapeReg
 export const featEqValue = (name, val) => `${name}=${val}`;
 
 // A deprel value that is NOT exactly one of `labels` (Grew `-[^a|b]->`).
-export const negatedLabelRegex = (labels) =>
-  `^(?!(?:${labels.map(escapeRegex).join('|')})$)`;
+export const negatedLabelRegex = (labels) => `^(?!(?:${labels.map(escapeRegex).join('|')})$)`;
 
 // A deprel value whose main type is `label`, matching the bare label and any
 // subtype: `nsubj` matches "nsubj" and "nsubj:pass" (Grew `-[1=nsubj]->`).
@@ -39,6 +38,6 @@ export const notExactlyRegex = (val) => `^(?!${escapeRegex(val)}$)`;
 // as a subtype prefix. `!key` / non-numeric keys are unsupported (caller checks).
 export const featuresLabelRegex = (feats) => {
   const ordered = [...feats].sort((a, b) => Number(a.key) - Number(b.key));
-  const joined = ordered.map(f => f.val).join(':');
+  const joined = ordered.map((f) => f.val).join(':');
   return subtypeRegex(joined);
 };

@@ -30,9 +30,9 @@ export const AuthProvider = ({ children }) => {
       setUser(result.user);
       return { success: true };
     } catch (error) {
-      return { 
-        success: false, 
-        error: error.message || 'Login failed' 
+      return {
+        success: false,
+        error: error.message || 'Login failed',
       };
     }
   };
@@ -65,7 +65,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Not authenticated');
       }
       return authService.getClient();
-    }
+    },
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

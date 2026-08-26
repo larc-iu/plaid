@@ -16,14 +16,19 @@ const SAMPLE_TEXT =
 
 const TOKEN_LAYER_PLAN = [
   { name: 'Sentences', configKey: 'sentenceTokenLayer', overlapMode: 'partitioning', parent: null },
-  { name: 'Words',     configKey: 'wordTokenLayer',     overlapMode: 'non-overlapping', parent: 'Sentences' },
-  { name: 'Morphemes', configKey: 'morphemeTokenLayer', overlapMode: 'any',              parent: 'Words' },
+  {
+    name: 'Words',
+    configKey: 'wordTokenLayer',
+    overlapMode: 'non-overlapping',
+    parent: 'Sentences',
+  },
+  { name: 'Morphemes', configKey: 'morphemeTokenLayer', overlapMode: 'any', parent: 'Words' },
 ];
 const SPAN_LAYER_PLAN = [
-  { name: 'Form',     configKey: 'form' },
-  { name: 'Lemma',    configKey: 'lemma' },
-  { name: 'UPOS',     configKey: 'upos' },
-  { name: 'XPOS',     configKey: 'xpos' },
+  { name: 'Form', configKey: 'form' },
+  { name: 'Lemma', configKey: 'lemma' },
+  { name: 'UPOS', configKey: 'upos' },
+  { name: 'XPOS', configKey: 'xpos' },
   { name: 'Features', configKey: 'features' },
 ];
 
@@ -58,9 +63,10 @@ async function ensureFixture() {
   const projectId = project.id;
 
   // 2. Text layer
-  let textLayer = (project.textLayers || []).find((l) => flag(l.config, 'textLayer'))
-    || (project.textLayers || []).find((l) => l.name === TEXT_LAYER_NAME)
-    || null;
+  let textLayer =
+    (project.textLayers || []).find((l) => flag(l.config, 'textLayer')) ||
+    (project.textLayers || []).find((l) => l.name === TEXT_LAYER_NAME) ||
+    null;
   if (!textLayer) {
     const created = await client.textLayers.create(projectId, TEXT_LAYER_NAME);
     await client.textLayers.setConfig(created.id, NS, 'textLayer', true);
@@ -75,10 +81,15 @@ async function ensureFixture() {
   for (const step of TOKEN_LAYER_PLAN) {
     let layer = findFlagged(textLayer.tokenLayers, step.configKey);
     if (!layer) {
-      const parentId = step.parent ? tokenLayersByConfigKey[
-        TOKEN_LAYER_PLAN.find((s) => s.name === step.parent).configKey
-      ].id : undefined;
-      const created = await client.tokenLayers.create(textLayer.id, step.name, step.overlapMode, parentId);
+      const parentId = step.parent
+        ? tokenLayersByConfigKey[TOKEN_LAYER_PLAN.find((s) => s.name === step.parent).configKey].id
+        : undefined;
+      const created = await client.tokenLayers.create(
+        textLayer.id,
+        step.name,
+        step.overlapMode,
+        parentId,
+      );
       await client.tokenLayers.setConfig(created.id, NS, step.configKey, true);
       layer = { id: created.id, name: step.name, config: { [NS]: { [step.configKey]: true } } };
     }
@@ -134,11 +145,13 @@ export async function getFixture() {
 
 // CLI mode: `node e2e/fixture.js` prints the IDs and exits.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  ensureFixture().then((f) => {
-    console.log(JSON.stringify(f, null, 2));
-    process.exit(0);
-  }).catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  ensureFixture()
+    .then((f) => {
+      console.log(JSON.stringify(f, null, 2));
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
 }

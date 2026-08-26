@@ -43,7 +43,12 @@ export function rawDocFromConllu(conlluText, name = 'doc') {
       const wordSubstring = cpSlice(hierarchy.text, w.begin, w.end);
       w.morphemes.forEach((m) => {
         const morphemeId = id('morph');
-        morphemeTokens.push({ id: morphemeId, begin: m.begin, end: m.end, precedence: m.precedence });
+        morphemeTokens.push({
+          id: morphemeId,
+          begin: m.begin,
+          end: m.end,
+          precedence: m.precedence,
+        });
         const row = m.row;
         // Form spans only when the surface form differs from the substring
         // (the form-else-substring rule).
@@ -57,54 +62,66 @@ export function rawDocFromConllu(conlluText, name = 'doc') {
         }
         if (row.upos) uposSpans.push({ id: id('upos'), tokens: [morphemeId], value: row.upos });
         if (row.xpos) xposSpans.push({ id: id('xpos'), tokens: [morphemeId], value: row.xpos });
-        (row.feats || []).forEach((f) => featSpans.push({ id: id('feat'), tokens: [morphemeId], value: f }));
+        (row.feats || []).forEach((f) =>
+          featSpans.push({ id: id('feat'), tokens: [morphemeId], value: f }),
+        );
       });
     });
 
     // Dependency relations live on Lemma spans; the root is a self-loop.
-    s.words.forEach((w) => w.morphemes.forEach((m) => {
-      const row = m.row;
-      const targetId = lemmaSpanIdByRow.get(row.id);
-      if (!row.deprel || !targetId) return;
-      if (row.head === 0) {
-        relations.push({ id: id('rel'), source: targetId, target: targetId, value: row.deprel });
-      } else if (row.head > 0) {
-        const sourceId = lemmaSpanIdByRow.get(row.head);
-        if (sourceId) relations.push({ id: id('rel'), source: sourceId, target: targetId, value: row.deprel });
-      }
-    }));
+    s.words.forEach((w) =>
+      w.morphemes.forEach((m) => {
+        const row = m.row;
+        const targetId = lemmaSpanIdByRow.get(row.id);
+        if (!row.deprel || !targetId) return;
+        if (row.head === 0) {
+          relations.push({ id: id('rel'), source: targetId, target: targetId, value: row.deprel });
+        } else if (row.head > 0) {
+          const sourceId = lemmaSpanIdByRow.get(row.head);
+          if (sourceId)
+            relations.push({
+              id: id('rel'),
+              source: sourceId,
+              target: targetId,
+              value: row.deprel,
+            });
+        }
+      }),
+    );
   });
 
   return {
     id: `${name}-id`,
     name,
-    textLayers: [{
-      id: 'text-layer',
-      config: { plaid: { role: 'baseline' } },
-      text: { id: 'text-1', body: hierarchy.text },
-      tokenLayers: [
-        { id: 'sentence-layer', config: { plaid: { role: 'sentence' } }, tokens: sentenceTokens },
-        { id: 'word-layer', config: { plaid: { role: 'word' } }, tokens: wordTokens },
-        {
-          id: 'morpheme-layer',
-          config: { plaid: { role: 'syntactic-word' } },
-          tokens: morphemeTokens,
-          spanLayers: [
-            { id: 'form-layer', config: { ud: { form: true } }, spans: formSpans },
-            {
-              id: 'lemma-layer',
-              config: { ud: { lemma: true } },
-              spans: lemmaSpans,
-              relationLayers: [
-                { id: 'relation-layer', config: { ud: { dependency: true } }, relations },
-              ],
-            },
-            { id: 'upos-layer', config: { ud: { upos: true } }, spans: uposSpans },
-            { id: 'xpos-layer', config: { ud: { xpos: true } }, spans: xposSpans },
-            { id: 'features-layer', config: { ud: { features: true } }, spans: featSpans },
-          ],
-        },
-      ],
-    }],
+    textLayers: [
+      {
+        id: 'text-layer',
+        config: { plaid: { role: 'baseline' } },
+        text: { id: 'text-1', body: hierarchy.text },
+        tokenLayers: [
+          { id: 'sentence-layer', config: { plaid: { role: 'sentence' } }, tokens: sentenceTokens },
+          { id: 'word-layer', config: { plaid: { role: 'word' } }, tokens: wordTokens },
+          {
+            id: 'morpheme-layer',
+            config: { plaid: { role: 'syntactic-word' } },
+            tokens: morphemeTokens,
+            spanLayers: [
+              { id: 'form-layer', config: { ud: { form: true } }, spans: formSpans },
+              {
+                id: 'lemma-layer',
+                config: { ud: { lemma: true } },
+                spans: lemmaSpans,
+                relationLayers: [
+                  { id: 'relation-layer', config: { ud: { dependency: true } }, relations },
+                ],
+              },
+              { id: 'upos-layer', config: { ud: { upos: true } }, spans: uposSpans },
+              { id: 'xpos-layer', config: { ud: { xpos: true } }, spans: xposSpans },
+              { id: 'features-layer', config: { ud: { features: true } }, spans: featSpans },
+            ],
+          },
+        ],
+      },
+    ],
   };
 }

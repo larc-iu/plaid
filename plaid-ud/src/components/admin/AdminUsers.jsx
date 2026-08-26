@@ -1,7 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Title, Text, Button, Alert, Paper, Stack, Group, Center, Loader, Table, Badge,
-  Modal, TextInput, PasswordInput, Checkbox,
+  Title,
+  Text,
+  Button,
+  Alert,
+  Paper,
+  Stack,
+  Group,
+  Center,
+  Loader,
+  Table,
+  Badge,
+  Modal,
+  TextInput,
+  PasswordInput,
+  Checkbox,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconPlus, IconSearch } from '@tabler/icons-react';
@@ -25,9 +38,9 @@ export const AdminUsers = () => {
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);                  // 0-indexed current page
-  const [cursors, setCursors] = useState([undefined]);  // cursors[i] = keyset cursor that fetches page i (page 0 → none)
-  const [nextCursor, setNextCursor] = useState(null);   // cursor for the page after this one, or null at the end
+  const [page, setPage] = useState(0); // 0-indexed current page
+  const [cursors, setCursors] = useState([undefined]); // cursors[i] = keyset cursor that fetches page i (page 0 → none)
+  const [nextCursor, setNextCursor] = useState(null); // cursor for the page after this one, or null at the end
 
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 250);
@@ -47,26 +60,31 @@ export const AdminUsers = () => {
   // Fetch one page. `cursor` is the keyset cursor for `pageIndex` (undefined for
   // the first page); the response carries this page's rows plus the cursor for
   // the next page (null when there are no more).
-  const fetchPage = useCallback(async (pageIndex, cursor) => {
-    if (!isAdmin) return;
-    setLoading(true);
-    try {
-      const client = getClient();
-      const resp = await client.users.listPage({
-        q: debouncedSearch || undefined, limit: PAGE_SIZE, cursor: cursor || undefined,
-      });
-      setUsers(resp.entries || []);
-      setNextCursor(resp.nextCursor || null);
-      setPage(pageIndex);
-    } catch (err) {
-      console.error('Failed to load users:', err);
-      notifyError('Failed to load users');
-      setUsers([]);
-      setNextCursor(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [isAdmin, debouncedSearch, getClient]);
+  const fetchPage = useCallback(
+    async (pageIndex, cursor) => {
+      if (!isAdmin) return;
+      setLoading(true);
+      try {
+        const client = getClient();
+        const resp = await client.users.listPage({
+          q: debouncedSearch || undefined,
+          limit: PAGE_SIZE,
+          cursor: cursor || undefined,
+        });
+        setUsers(resp.entries || []);
+        setNextCursor(resp.nextCursor || null);
+        setPage(pageIndex);
+      } catch (err) {
+        console.error('Failed to load users:', err);
+        notifyError('Failed to load users');
+        setUsers([]);
+        setNextCursor(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [isAdmin, debouncedSearch, getClient],
+  );
 
   // (Re)start at the first page on mount and whenever the search changes.
   useEffect(() => {
@@ -76,7 +94,7 @@ export const AdminUsers = () => {
 
   const goNext = () => {
     if (!nextCursor || loading) return;
-    setCursors(prev => {
+    setCursors((prev) => {
       const copy = prev.slice(0, page + 1);
       copy[page + 1] = nextCursor;
       return copy;
@@ -107,7 +125,11 @@ export const AdminUsers = () => {
 
     setCreateUserLoading(true);
     try {
-      await getClient().users.create(newUserForm.username, newUserForm.password, newUserForm.isAdmin);
+      await getClient().users.create(
+        newUserForm.username,
+        newUserForm.password,
+        newUserForm.isAdmin,
+      );
       notifySuccess('User created successfully');
       setShowCreateUserForm(false);
       setNewUserForm(EMPTY_USER_FORM);
@@ -115,7 +137,9 @@ export const AdminUsers = () => {
     } catch (err) {
       console.error('Error creating user:', err);
       if (err.status === 409 || (err.message && err.message.includes('409'))) {
-        setCreateUserError(`A user with the ID "${newUserForm.username}" already exists. Please choose a different user ID.`);
+        setCreateUserError(
+          `A user with the ID "${newUserForm.username}" already exists. Please choose a different user ID.`,
+        );
       } else {
         setCreateUserError('Failed to create user: ' + (err.message || 'Unknown error'));
       }
@@ -150,9 +174,11 @@ export const AdminUsers = () => {
 
     setEditUserLoading(true);
     try {
-      const newUsername = editUserForm.username !== editingUser.username ? editUserForm.username : undefined;
+      const newUsername =
+        editUserForm.username !== editingUser.username ? editUserForm.username : undefined;
       const newPassword = editUserForm.password || undefined;
-      const newIsAdmin = editUserForm.isAdmin !== (editingUser.isAdmin || false) ? editUserForm.isAdmin : undefined;
+      const newIsAdmin =
+        editUserForm.isAdmin !== (editingUser.isAdmin || false) ? editUserForm.isAdmin : undefined;
 
       await getClient().users.update(editingUser.id, newPassword, newUsername, newIsAdmin);
       notifySuccess('User updated successfully');
@@ -211,7 +237,11 @@ export const AdminUsers = () => {
         </Stack>
         <Button
           leftSection={<IconPlus size={16} />}
-          onClick={() => { setNewUserForm(EMPTY_USER_FORM); setShowCreateUserForm(true); setCreateUserError(''); }}
+          onClick={() => {
+            setNewUserForm(EMPTY_USER_FORM);
+            setShowCreateUserForm(true);
+            setCreateUserError('');
+          }}
         >
           Create User
         </Button>
@@ -229,7 +259,9 @@ export const AdminUsers = () => {
         </Group>
 
         {loading ? (
-          <Center py="xl"><Loader size="sm" /></Center>
+          <Center py="xl">
+            <Loader size="sm" />
+          </Center>
         ) : users.length === 0 ? (
           <Text px="lg" py="md" size="sm" c="dimmed">
             {debouncedSearch ? 'No matching users.' : 'No users found.'}
@@ -244,7 +276,7 @@ export const AdminUsers = () => {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {users.map(u => {
+                {users.map((u) => {
                   const isSelf = u.id === user.id;
                   const deactivated = !!u.deactivatedAt;
                   return (
@@ -256,16 +288,34 @@ export const AdminUsers = () => {
                     >
                       <Table.Td>
                         <Group gap="xs" wrap="nowrap">
-                          <Text size="sm" fw={500}>{u.username}</Text>
-                          {u.isAdmin && <Badge size="xs" color="grape" variant="light">Admin</Badge>}
-                          {isSelf && <Badge size="xs" color="blue" variant="light">You</Badge>}
+                          <Text size="sm" fw={500}>
+                            {u.username}
+                          </Text>
+                          {u.isAdmin && (
+                            <Badge size="xs" color="grape" variant="light">
+                              Admin
+                            </Badge>
+                          )}
+                          {isSelf && (
+                            <Badge size="xs" color="blue" variant="light">
+                              You
+                            </Badge>
+                          )}
                         </Group>
-                        <Text size="xs" c="dimmed">ID: {u.id}</Text>
+                        <Text size="xs" c="dimmed">
+                          ID: {u.id}
+                        </Text>
                       </Table.Td>
                       <Table.Td>
-                        {deactivated
-                          ? <Badge size="sm" color="red" variant="light">Deactivated</Badge>
-                          : <Badge size="sm" color="green" variant="light">Active</Badge>}
+                        {deactivated ? (
+                          <Badge size="sm" color="red" variant="light">
+                            Deactivated
+                          </Badge>
+                        ) : (
+                          <Badge size="sm" color="green" variant="light">
+                            Active
+                          </Badge>
+                        )}
                       </Table.Td>
                     </Table.Tr>
                   );
@@ -276,11 +326,18 @@ export const AdminUsers = () => {
         )}
 
         {(page > 0 || nextCursor) && (
-          <Group justify="space-between" px="lg" py="sm" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+          <Group
+            justify="space-between"
+            px="lg"
+            py="sm"
+            style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
+          >
             <Button variant="default" size="xs" disabled={page === 0 || loading} onClick={goPrev}>
               Previous
             </Button>
-            <Text size="sm" c="dimmed">Page {page + 1}</Text>
+            <Text size="sm" c="dimmed">
+              Page {page + 1}
+            </Text>
             <Button variant="default" size="xs" disabled={!nextCursor || loading} onClick={goNext}>
               Next
             </Button>
@@ -291,7 +348,10 @@ export const AdminUsers = () => {
       {/* Create User Modal */}
       <Modal
         opened={showCreateUserForm}
-        onClose={() => { setShowCreateUserForm(false); setCreateUserError(''); }}
+        onClose={() => {
+          setShowCreateUserForm(false);
+          setCreateUserError('');
+        }}
         title="Create New User"
         centered
       >
@@ -304,7 +364,7 @@ export const AdminUsers = () => {
               description="Unique identifier for this user (cannot be changed later)"
               placeholder="e.g., john.doe"
               value={newUserForm.username}
-              onChange={(e) => setNewUserForm(prev => ({ ...prev, username: e.target.value }))}
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, username: e.target.value }))}
               required
               data-autofocus
             />
@@ -312,20 +372,24 @@ export const AdminUsers = () => {
             <Checkbox
               label="Admin User"
               checked={newUserForm.isAdmin}
-              onChange={(e) => setNewUserForm(prev => ({ ...prev, isAdmin: e.currentTarget.checked }))}
+              onChange={(e) =>
+                setNewUserForm((prev) => ({ ...prev, isAdmin: e.currentTarget.checked }))
+              }
             />
 
             <PasswordInput
               label="Password"
               value={newUserForm.password}
-              onChange={(e) => setNewUserForm(prev => ({ ...prev, password: e.target.value }))}
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
               required
             />
 
             <PasswordInput
               label="Confirm Password"
               value={newUserForm.confirmPassword}
-              onChange={(e) => setNewUserForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+              onChange={(e) =>
+                setNewUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
+              }
               required
             />
 
@@ -353,7 +417,7 @@ export const AdminUsers = () => {
               <TextInput
                 label="Username"
                 value={editUserForm.username}
-                onChange={(e) => setEditUserForm(prev => ({ ...prev, username: e.target.value }))}
+                onChange={(e) => setEditUserForm((prev) => ({ ...prev, username: e.target.value }))}
                 required
                 data-autofocus
               />
@@ -362,25 +426,36 @@ export const AdminUsers = () => {
                 label="Admin User"
                 checked={editUserForm.isAdmin}
                 disabled={editingUser.id === user.id}
-                description={editingUser.id === user.id ? 'You cannot change your own admin status' : undefined}
-                onChange={(e) => setEditUserForm(prev => ({ ...prev, isAdmin: e.currentTarget.checked }))}
+                description={
+                  editingUser.id === user.id ? 'You cannot change your own admin status' : undefined
+                }
+                onChange={(e) =>
+                  setEditUserForm((prev) => ({ ...prev, isAdmin: e.currentTarget.checked }))
+                }
               />
 
               <PasswordInput
                 label="New Password (leave blank to keep current)"
                 value={editUserForm.password}
-                onChange={(e) => setEditUserForm(prev => ({ ...prev, password: e.target.value }))}
+                onChange={(e) => setEditUserForm((prev) => ({ ...prev, password: e.target.value }))}
               />
 
               <PasswordInput
                 label="Confirm New Password"
                 value={editUserForm.confirmPassword}
-                onChange={(e) => setEditUserForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                onChange={(e) =>
+                  setEditUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
+                }
               />
 
               <Group justify="space-between" pt="xs">
                 {editingUser.deactivatedAt ? (
-                  <Button type="button" variant="subtle" color="green" onClick={() => handleReactivate(editingUser)}>
+                  <Button
+                    type="button"
+                    variant="subtle"
+                    color="green"
+                    onClick={() => handleReactivate(editingUser)}
+                  >
                     Reactivate
                   </Button>
                 ) : (
@@ -398,7 +473,9 @@ export const AdminUsers = () => {
                   <Button type="button" variant="default" onClick={() => setEditingUser(null)}>
                     Cancel
                   </Button>
-                  <Button type="submit" loading={editUserLoading}>Update User</Button>
+                  <Button type="submit" loading={editUserLoading}>
+                    Update User
+                  </Button>
                 </Group>
               </Group>
             </Stack>

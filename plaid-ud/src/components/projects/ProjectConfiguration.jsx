@@ -6,14 +6,26 @@ import {
   UD_SPAN_CONFIG_KEYS,
   UD_RELATION_CONFIG_KEY,
   UD_LAYER_LABELS,
-  getUdLayerInfo
+  getUdLayerInfo,
 } from '../../utils/udLayerUtils.js';
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES, findByRole } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import {
-  Container, Title, Text, Button, Group, Stack, Paper, Radio, Select, TextInput, List, Center, Loader,
+  Container,
+  Title,
+  Text,
+  Button,
+  Group,
+  Stack,
+  Paper,
+  Radio,
+  Select,
+  TextInput,
+  List,
+  Center,
+  Loader,
 } from '@mantine/core';
 
 // Span layers, in creation order, all attached to the morpheme token layer.
@@ -23,7 +35,7 @@ const SPAN_LAYER_NAMES = {
   lemma: 'Lemma',
   upos: 'UPOS',
   xpos: 'XPOS',
-  features: 'Features'
+  features: 'Features',
 };
 
 // "UD Configuration" tab: the layer-structure half of project setup — the text
@@ -43,7 +55,7 @@ export const ProjectConfiguration = ({ embedded = false }) => {
   const [formData, setFormData] = useState({
     textLayerType: 'existing',
     selectedTextLayerId: '',
-    newTextLayerName: 'Text'
+    newTextLayerName: 'Text',
   });
 
   const fetchProject = async () => {
@@ -87,7 +99,7 @@ export const ProjectConfiguration = ({ embedded = false }) => {
     setFormData({
       textLayerType: availableTextLayers.length === 0 ? 'new' : 'existing',
       selectedTextLayerId: existingTextLayerId,
-      newTextLayerName: 'Text'
+      newTextLayerName: 'Text',
     });
   }, [project]);
 
@@ -103,12 +115,20 @@ export const ProjectConfiguration = ({ embedded = false }) => {
 
   // Find an existing UD annotation layer (idempotent re-configuration), else null.
   const findFlagged = (layers, namespace, key) =>
-    (layers || []).find(layer => layer.config?.[namespace]?.[key] === true) || null;
+    (layers || []).find((layer) => layer.config?.[namespace]?.[key] === true) || null;
   // Substrate layers are matched by their shared ROLE (findByRole, imported from
   // the client). This is also how UD adopts a substrate created by another app:
   // reuse its baseline/sentence/word and create only the layers UD needs below.
 
-  const ensureTokenLayer = async (client, textLayerId, existingTextLayer, role, name, overlapMode, parentId) => {
+  const ensureTokenLayer = async (
+    client,
+    textLayerId,
+    existingTextLayer,
+    role,
+    name,
+    overlapMode,
+    parentId,
+  ) => {
     const existing = findByRole(existingTextLayer?.tokenLayers, role);
     if (existing) return existing;
     const created = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
@@ -116,7 +136,13 @@ export const ProjectConfiguration = ({ embedded = false }) => {
     return created;
   };
 
-  const ensureSpanLayer = async (client, morphemeLayerId, existingMorphemeLayer, configKey, name) => {
+  const ensureSpanLayer = async (
+    client,
+    morphemeLayerId,
+    existingMorphemeLayer,
+    configKey,
+    name,
+  ) => {
     const existing = findFlagged(existingMorphemeLayer?.spanLayers, UD_NAMESPACE, configKey);
     if (existing) return existing;
     const created = await client.spanLayers.create(morphemeLayerId, name);
@@ -150,7 +176,7 @@ export const ProjectConfiguration = ({ embedded = false }) => {
       //
       // 1. Text layer
       let textLayerId = formData.selectedTextLayerId;
-      let existingTextLayer = availableTextLayers.find(l => l.id === textLayerId) || null;
+      let existingTextLayer = availableTextLayers.find((l) => l.id === textLayerId) || null;
       if (formData.textLayerType === 'new') {
         const name = formData.newTextLayerName.trim() || 'Text';
         const textLayer = await client.textLayers.create(projectId, name);
@@ -164,32 +190,66 @@ export const ProjectConfiguration = ({ embedded = false }) => {
       //    holds syntactic words, so its role is `syntactic-word` (a sibling of
       //    IGT's `morpheme` layer under the shared word layer).
       const sentenceLayer = await ensureTokenLayer(
-        client, textLayerId, existingTextLayer,
-        ROLES.SENTENCE, 'Sentences', 'partitioning', undefined
+        client,
+        textLayerId,
+        existingTextLayer,
+        ROLES.SENTENCE,
+        'Sentences',
+        'partitioning',
+        undefined,
       );
       const wordLayer = await ensureTokenLayer(
-        client, textLayerId, existingTextLayer,
-        ROLES.WORD, 'Tokens', 'non-overlapping', sentenceLayer.id
+        client,
+        textLayerId,
+        existingTextLayer,
+        ROLES.WORD,
+        'Tokens',
+        'non-overlapping',
+        sentenceLayer.id,
       );
       const morphemeLayer = await ensureTokenLayer(
-        client, textLayerId, existingTextLayer,
-        ROLES.SYNTACTIC_WORD, 'Words', 'any', wordLayer.id
+        client,
+        textLayerId,
+        existingTextLayer,
+        ROLES.SYNTACTIC_WORD,
+        'Words',
+        'any',
+        wordLayer.id,
       );
 
       // 3. Annotation span layers, all under the syntactic-word ("Morphemes") layer
-      const existingMorphemeLayer = findByRole(existingTextLayer?.tokenLayers, ROLES.SYNTACTIC_WORD);
+      const existingMorphemeLayer = findByRole(
+        existingTextLayer?.tokenLayers,
+        ROLES.SYNTACTIC_WORD,
+      );
       const spanLayers = {};
       for (const key of SPAN_KEYS_IN_ORDER) {
         spanLayers[key] = await ensureSpanLayer(
-          client, morphemeLayer.id, existingMorphemeLayer, UD_SPAN_CONFIG_KEYS[key], SPAN_LAYER_NAMES[key]
+          client,
+          morphemeLayer.id,
+          existingMorphemeLayer,
+          UD_SPAN_CONFIG_KEYS[key],
+          SPAN_LAYER_NAMES[key],
         );
       }
 
       // 4. Dependency relation layer under the lemma span layer
-      const existingRelationLayer = findFlagged(spanLayers.lemma?.relationLayers, UD_NAMESPACE, UD_RELATION_CONFIG_KEY);
+      const existingRelationLayer = findFlagged(
+        spanLayers.lemma?.relationLayers,
+        UD_NAMESPACE,
+        UD_RELATION_CONFIG_KEY,
+      );
       if (!existingRelationLayer) {
-        const relationLayer = await client.relationLayers.create(spanLayers.lemma.id, 'Dependency Relations');
-        await client.relationLayers.setConfig(relationLayer.id, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+        const relationLayer = await client.relationLayers.create(
+          spanLayers.lemma.id,
+          'Dependency Relations',
+        );
+        await client.relationLayers.setConfig(
+          relationLayer.id,
+          UD_NAMESPACE,
+          UD_RELATION_CONFIG_KEY,
+          true,
+        );
       }
 
       notifySuccess('UD layer configuration saved successfully.');
@@ -204,7 +264,11 @@ export const ProjectConfiguration = ({ embedded = false }) => {
   };
 
   if (loading) {
-    return <Center py={48}><Loader /></Center>;
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   }
 
   if (!project || !canConfigure) {
@@ -213,13 +277,19 @@ export const ProjectConfiguration = ({ embedded = false }) => {
 
   const info = getUdLayerInfo(project);
   const missingLabels = info.missingLayers?.length
-    ? info.missingLayers.map(key => UD_LAYER_LABELS[key] || key).join(', ')
+    ? info.missingLayers.map((key) => UD_LAYER_LABELS[key] || key).join(', ')
     : '';
 
   const statusLine = info.isConfigured ? (
-    <Text size="sm" c="green">All Universal Dependencies layers are configured.</Text>
+    <Text size="sm" c="green">
+      All Universal Dependencies layers are configured.
+    </Text>
   ) : (
-    missingLabels && <Text size="sm" c="orange">Missing configuration detected for: {missingLabels}</Text>
+    missingLabels && (
+      <Text size="sm" c="orange">
+        Missing configuration detected for: {missingLabels}
+      </Text>
+    )
   );
 
   const content = (
@@ -230,7 +300,9 @@ export const ProjectConfiguration = ({ embedded = false }) => {
         <Group justify="space-between" align="flex-start" mb="lg">
           <div>
             <Title order={1}>Configure UD Layers</Title>
-            <Text c="dimmed" mt={4}>Project: {project.name}</Text>
+            <Text c="dimmed" mt={4}>
+              Project: {project.name}
+            </Text>
             <div style={{ marginTop: 'var(--mantine-spacing-xs)' }}>{statusLine}</div>
           </div>
           <Button component={Link} to={`/projects/${projectId}/documents`} variant="default">
@@ -242,14 +314,20 @@ export const ProjectConfiguration = ({ embedded = false }) => {
       <form onSubmit={handleSubmit}>
         <Stack gap="xl">
           <Paper withBorder p="lg" radius="md">
-            <Title order={2} size="h4" mb="md">Text Layer</Title>
+            <Title order={2} size="h4" mb="md">
+              Text Layer
+            </Title>
             <Stack gap="md">
               <Radio.Group
                 value={formData.textLayerType}
-                onChange={(value) => setFormData(prev => ({ ...prev, textLayerType: value }))}
+                onChange={(value) => setFormData((prev) => ({ ...prev, textLayerType: value }))}
               >
                 <Group gap="lg">
-                  <Radio value="existing" label="Use existing" disabled={availableTextLayers.length === 0} />
+                  <Radio
+                    value="existing"
+                    label="Use existing"
+                    disabled={availableTextLayers.length === 0}
+                  />
                   <Radio value="new" label="Create new" />
                 </Group>
               </Radio.Group>
@@ -259,15 +337,22 @@ export const ProjectConfiguration = ({ embedded = false }) => {
                   label="Select text layer"
                   placeholder="Select a text layer"
                   value={formData.selectedTextLayerId || null}
-                  onChange={(value) => setFormData(prev => ({ ...prev, selectedTextLayerId: value || '' }))}
-                  data={availableTextLayers.map(layer => ({ value: layer.id, label: `${layer.name} (${layer.id})` }))}
+                  onChange={(value) =>
+                    setFormData((prev) => ({ ...prev, selectedTextLayerId: value || '' }))
+                  }
+                  data={availableTextLayers.map((layer) => ({
+                    value: layer.id,
+                    label: `${layer.name} (${layer.id})`,
+                  }))}
                 />
               ) : (
                 <TextInput
                   label="New text layer name"
                   name="newTextLayerName"
                   value={formData.newTextLayerName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, newTextLayerName: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, newTextLayerName: e.target.value }))
+                  }
                   placeholder="e.g. Text"
                 />
               )}
@@ -275,15 +360,34 @@ export const ProjectConfiguration = ({ embedded = false }) => {
           </Paper>
 
           <Paper withBorder p="lg" radius="md">
-            <Title order={2} size="h4" mb="xs">Token Hierarchy &amp; Annotations</Title>
+            <Title order={2} size="h4" mb="xs">
+              Token Hierarchy &amp; Annotations
+            </Title>
             <Text size="sm" c="dimmed" mb="md">
-              Saving creates (or completes) the three-layer token hierarchy and the annotation layers below.
-              Existing layers are reused — including a shared substrate set up by another app — so this is safe to re-run.
+              Saving creates (or completes) the three-layer token hierarchy and the annotation
+              layers below. Existing layers are reused — including a shared substrate set up by
+              another app — so this is safe to re-run.
             </Text>
             <List size="sm" spacing={4}>
-              <List.Item><Text span fw={500}>Sentences</Text> token layer (partitioning)</List.Item>
-              <List.Item><Text span fw={500}>Tokens</Text> token layer (non-overlapping, nested in sentences) — orthographic tokens</List.Item>
-              <List.Item><Text span fw={500}>Words</Text> token layer (overlap allowed, nested in tokens) — where annotations live; a token splits into one or more words (multi-word tokens)</List.Item>
+              <List.Item>
+                <Text span fw={500}>
+                  Sentences
+                </Text>{' '}
+                token layer (partitioning)
+              </List.Item>
+              <List.Item>
+                <Text span fw={500}>
+                  Tokens
+                </Text>{' '}
+                token layer (non-overlapping, nested in sentences) — orthographic tokens
+              </List.Item>
+              <List.Item>
+                <Text span fw={500}>
+                  Words
+                </Text>{' '}
+                token layer (overlap allowed, nested in tokens) — where annotations live; a token
+                splits into one or more words (multi-word tokens)
+              </List.Item>
               <List.Item>Span layers on words: Form, Lemma, UPOS, XPOS, Features</List.Item>
               <List.Item>Dependency relation layer on the Lemma layer</List.Item>
             </List>
@@ -302,5 +406,11 @@ export const ProjectConfiguration = ({ embedded = false }) => {
     </>
   );
 
-  return embedded ? content : <Container size="lg" py="xl">{content}</Container>;
+  return embedded ? (
+    content
+  ) : (
+    <Container size="lg" py="xl">
+      {content}
+    </Container>
+  );
 };

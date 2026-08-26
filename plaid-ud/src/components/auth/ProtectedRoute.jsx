@@ -6,7 +6,11 @@ export const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
-    return <Center mih="100vh"><Loader /></Center>;
+    return (
+      <Center mih="100vh">
+        <Loader />
+      </Center>
+    );
   }
 
   return isAuthenticated ? children : <Navigate to="/login" replace />;

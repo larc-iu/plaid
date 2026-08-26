@@ -16,7 +16,9 @@ export const DocumentTabs = ({ projectId, documentId, project, document }) => {
   return (
     <>
       <Breadcrumbs mb="md">
-        <Anchor component={Link} to="/projects" size="sm">Projects</Anchor>
+        <Anchor component={Link} to="/projects" size="sm">
+          Projects
+        </Anchor>
         <Anchor component={Link} to={`/projects/${projectId}/documents`} size="sm">
           <Group gap={6} wrap="nowrap">
             <EntityAvatar id={projectId} size={16} />
@@ -25,7 +27,9 @@ export const DocumentTabs = ({ projectId, documentId, project, document }) => {
         </Anchor>
         <Group gap={6} wrap="nowrap">
           <EntityAvatar id={documentId} size={16} />
-          <Text size="sm" c="dimmed">{document?.name || 'Loading...'}</Text>
+          <Text size="sm" c="dimmed">
+            {document?.name || 'Loading...'}
+          </Text>
         </Group>
       </Breadcrumbs>
 

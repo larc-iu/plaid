@@ -1,6 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Center, Stack, Paper, Title, Text, TextInput, PasswordInput, Button, Alert } from '@mantine/core';
+import {
+  Center,
+  Stack,
+  Paper,
+  Title,
+  Text,
+  TextInput,
+  PasswordInput,
+  Button,
+  Alert,
+} from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
@@ -37,8 +47,12 @@ export const LoginForm = () => {
     <Center mih="100vh" bg="gray.0" p="md">
       <Stack w="100%" maw={400} gap="xl">
         <div>
-          <Title order={1} ta="center">Plaid UD Login</Title>
-          <Text c="dimmed" ta="center" size="sm" mt="xs">Universal Dependencies Tree Editor</Text>
+          <Title order={1} ta="center">
+            Plaid UD Login
+          </Title>
+          <Text c="dimmed" ta="center" size="sm" mt="xs">
+            Universal Dependencies Tree Editor
+          </Text>
         </div>
 
         <Paper withBorder shadow="sm" p="xl" radius="md">

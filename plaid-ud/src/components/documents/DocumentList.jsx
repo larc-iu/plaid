@@ -1,8 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader,
-  Tooltip, Pagination, TextInput, CloseButton,
+  Title,
+  Button,
+  Alert,
+  Paper,
+  Stack,
+  Group,
+  Text,
+  Box,
+  Center,
+  Loader,
+  Tooltip,
+  Pagination,
+  TextInput,
+  CloseButton,
 } from '@mantine/core';
 import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -88,7 +100,11 @@ export const DocumentList = () => {
       // what a word count should mean.
       const wordLayerId = getUdLayerInfo(project).morphemeTokenLayer?.id;
       if (!wordLayerId || !client) {
-        if (!cancelled) { setHasWordLayer(false); setWordCounts({}); setWordsLoading(false); }
+        if (!cancelled) {
+          setHasWordLayer(false);
+          setWordCounts({});
+          setWordsLoading(false);
+        }
         return;
       }
       try {
@@ -97,16 +113,24 @@ export const DocumentList = () => {
           return: { group: ['?d'], aggregates: [['count']] },
         });
         const byDoc = {};
-        for (const [docId, n] of (res?.results || [])) byDoc[docId] = n;
-        if (!cancelled) { setHasWordLayer(true); setWordCounts(byDoc); }
+        for (const [docId, n] of res?.results || []) byDoc[docId] = n;
+        if (!cancelled) {
+          setHasWordLayer(true);
+          setWordCounts(byDoc);
+        }
       } catch (err) {
         console.error('Word-count query failed:', err);
-        if (!cancelled) { setHasWordLayer(false); setWordCounts({}); }
+        if (!cancelled) {
+          setHasWordLayer(false);
+          setWordCounts({});
+        }
       } finally {
         if (!cancelled) setWordsLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [project, getClient]);
 
   // A row links to the Annotate tab by default; but a document with no tokens
@@ -120,12 +144,20 @@ export const DocumentList = () => {
     return `/projects/${projectId}/documents/${documentId}/${knownEmpty ? 'edit' : 'annotate'}`;
   };
 
-  const onSort = (key) => { setSort(nextSort(key)); setPage(1); };
-  const onFilter = (value) => { setFilter(value); setPage(1); };
+  const onSort = (key) => {
+    setSort(nextSort(key));
+    setPage(1);
+  };
+  const onFilter = (value) => {
+    setFilter(value);
+    setPage(1);
+  };
 
   const sortedDocuments = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    const matched = q ? documents.filter((d) => (d.name || '').toLowerCase().includes(q)) : documents;
+    const matched = q
+      ? documents.filter((d) => (d.name || '').toLowerCase().includes(q))
+      : documents;
     const extract = {
       name: (d) => d.name?.toLowerCase() ?? '',
       words: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : null),
@@ -138,10 +170,17 @@ export const DocumentList = () => {
   // documents off the last page falls back into range instead of showing blank.
   const totalPages = Math.max(1, Math.ceil(sortedDocuments.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-  const pageDocuments = sortedDocuments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const pageDocuments = sortedDocuments.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
 
   if (loading) {
-    return <Center py={48}><Loader /></Center>;
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   }
 
   if (!project) {
@@ -170,20 +209,30 @@ export const DocumentList = () => {
             value={filter}
             onChange={(e) => onFilter(e.currentTarget.value)}
             leftSection={<IconSearch size={16} />}
-            rightSection={filter
-              ? <CloseButton size="sm" onClick={() => onFilter('')} aria-label="Clear filter" />
-              : null}
+            rightSection={
+              filter ? (
+                <CloseButton size="sm" onClick={() => onFilter('')} aria-label="Clear filter" />
+              ) : null
+            }
             w={240}
           />
           {canEdit && (
-            <Button color="dark" leftSection={<IconPlus size={16} />} onClick={() => setShowCreateForm(true)}>
+            <Button
+              color="dark"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => setShowCreateForm(true)}
+            >
               New Document
             </Button>
           )}
         </Group>
       </Group>
 
-      {error && <Alert color="red" mb="md">{error}</Alert>}
+      {error && (
+        <Alert color="red" mb="md">
+          {error}
+        </Alert>
+      )}
 
       <DocumentForm
         projectId={projectId}
@@ -209,9 +258,15 @@ export const DocumentList = () => {
             py="xs"
             style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
           >
-            <SortButton field="name" sort={sort} onSort={onSort} align="left">Document</SortButton>
-            <SortButton field="words" sort={sort} onSort={onSort} width={W_WORDS}>Words</SortButton>
-            <SortButton field="updated" sort={sort} onSort={onSort} width={W_UPDATED}>Updated</SortButton>
+            <SortButton field="name" sort={sort} onSort={onSort} align="left">
+              Document
+            </SortButton>
+            <SortButton field="words" sort={sort} onSort={onSort} width={W_WORDS}>
+              Words
+            </SortButton>
+            <SortButton field="updated" sort={sort} onSort={onSort} width={W_UPDATED}>
+              Updated
+            </SortButton>
           </Group>
 
           <Stack gap={0}>
@@ -227,14 +282,28 @@ export const DocumentList = () => {
                   <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
                     <EntityAvatar id={document.id} size={36} />
                     <div style={{ minWidth: 0 }}>
-                      <Text fw={500} size="lg" truncate>{document.name}</Text>
-                      <Text size="xs" c="dimmed" truncate>ID: {document.id}</Text>
+                      <Text fw={500} size="lg" truncate>
+                        {document.name}
+                      </Text>
+                      <Text size="xs" c="dimmed" truncate>
+                        ID: {document.id}
+                      </Text>
                     </div>
                   </Group>
 
-                  <Box ta="right" w={W_WORDS}><Text size="sm" c="dimmed" component="span">{renderWords(document.id)}</Text></Box>
-                  <Tooltip label={fullTimestamp(document.timeModified)} disabled={!document.timeModified} withinPortal>
-                    <Text size="sm" c="dimmed" ta="right" w={W_UPDATED}>{timeAgo(document.timeModified) || '—'}</Text>
+                  <Box ta="right" w={W_WORDS}>
+                    <Text size="sm" c="dimmed" component="span">
+                      {renderWords(document.id)}
+                    </Text>
+                  </Box>
+                  <Tooltip
+                    label={fullTimestamp(document.timeModified)}
+                    disabled={!document.timeModified}
+                    withinPortal
+                  >
+                    <Text size="sm" c="dimmed" ta="right" w={W_UPDATED}>
+                      {timeAgo(document.timeModified) || '—'}
+                    </Text>
                   </Tooltip>
                 </Group>
               </Box>

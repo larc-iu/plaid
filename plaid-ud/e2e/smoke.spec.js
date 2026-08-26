@@ -14,7 +14,8 @@ test('text editor loads for a 3-layer UD doc', async ({ page }) => {
 
   console.log('--- url ---', page.url());
   console.log('--- api calls ---');
-  for (const c of apiCalls) console.log(`${c.status} ${c.method} ${c.url.replace('http://localhost:5173', '')}`);
+  for (const c of apiCalls)
+    console.log(`${c.status} ${c.method} ${c.url.replace('http://localhost:5173', '')}`);
   console.log('--- failed requests ---');
   for (const f of failures) console.log(JSON.stringify(f));
   console.log('--- console errors ---');

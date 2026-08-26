@@ -17,23 +17,25 @@ import { ExportEditor } from './components/editor/ExportEditor.jsx';
 import './App.css';
 
 function App() {
-  
   return (
     <HashRouter>
       <AuthProvider>
         <Routes>
           {/* Public routes */}
           <Route path="/login" element={<LoginForm />} />
-          
+
           {/* Protected routes */}
-          <Route path="/" element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }>
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
             {/* Default redirect to projects */}
             <Route index element={<Navigate to="/projects" replace />} />
-            
+
             {/* User profile page */}
             <Route path="profile" element={<UserProfile />} />
 
@@ -43,7 +45,7 @@ function App() {
 
             {/* Projects page */}
             <Route path="projects" element={<ProjectList />} />
-            
+
             {/* Documents page */}
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
 
@@ -52,7 +54,7 @@ function App() {
 
             {/* Bulk CoNLL-U import + project-wide ZIP export */}
             <Route path="projects/:projectId/import-export" element={<ProjectImportExport />} />
-            
+
             {/* Project settings (tabbed: users & permissions, UD customization,
                 services, access tokens, general). All paths render the same
                 view; the active tab follows the path. */}
@@ -65,17 +67,23 @@ function App() {
             {/* Standalone UD layer setup/repair page — the destination of the
                 annotation editor's "missing layers" auto-redirect. */}
             <Route path="projects/:projectId/configuration" element={<ProjectConfiguration />} />
-            
+
             {/* Text editor route */}
             <Route path="projects/:projectId/documents/:documentId/edit" element={<TextEditor />} />
-            
+
             {/* Annotation editor route */}
-            <Route path="projects/:projectId/documents/:documentId/annotate" element={<AnnotationEditor />} />
-            
+            <Route
+              path="projects/:projectId/documents/:documentId/annotate"
+              element={<AnnotationEditor />}
+            />
+
             {/* Export editor route */}
-            <Route path="projects/:projectId/documents/:documentId/export" element={<ExportEditor />} />
+            <Route
+              path="projects/:projectId/documents/:documentId/export"
+              element={<ExportEditor />}
+            />
           </Route>
-          
+
           {/* Catch all - redirect to login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

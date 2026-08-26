@@ -26,7 +26,7 @@ export function readFieldProbs(metadata, field) {
   const raw = key && metadata?.[PROV.detailKey]?.[key];
   if (!raw || typeof raw !== 'object') return null;
   const entries = Object.entries(raw).filter(
-    ([, p]) => typeof p === 'number' && Number.isFinite(p)
+    ([, p]) => typeof p === 'number' && Number.isFinite(p),
   );
   return entries.length ? Object.fromEntries(entries) : null;
 }
@@ -71,8 +71,7 @@ export function provCellTitle(base, metadata) {
   if (detail?.language) bits.push(detail.language);
   const prob = metadata?.[PROV.probKey];
   if (typeof prob === 'number') bits.push(`p=${prob}`);
-  const who = state === PROV_STATES.VERIFIED
-    ? 'machine-made, human-verified'
-    : 'machine-made, unverified';
+  const who =
+    state === PROV_STATES.VERIFIED ? 'machine-made, human-verified' : 'machine-made, unverified';
   return `${base}: ${who} (${bits.filter(Boolean).join(' · ')})`;
 }

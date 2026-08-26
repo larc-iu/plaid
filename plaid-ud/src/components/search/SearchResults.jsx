@@ -12,9 +12,19 @@ const PAGE_SIZE = 50; // matched sentences per page
 // the annotation editor (deep-linked via ?sent=), built by `hrefFor`. The full
 // match set is paged client-side (the query API returns all matches at once —
 // it has no offset/cursor).
-export const SearchResults = ({ groups, count, truncated, warnings, searched, docName, hrefFor }) => {
+export const SearchResults = ({
+  groups,
+  count,
+  truncated,
+  warnings,
+  searched,
+  docName,
+  hrefFor,
+}) => {
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [groups]);
+  useEffect(() => {
+    setPage(1);
+  }, [groups]);
 
   const totalPages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -34,7 +44,13 @@ export const SearchResults = ({ groups, count, truncated, warnings, searched, do
     <Stack gap="md">
       {warnings?.length > 0 && (
         <Alert color="yellow" icon={<IconInfoCircle size={16} />} title="Notes">
-          <Stack gap={2}>{warnings.map((w, i) => <Text key={i} size="sm">{w}</Text>)}</Stack>
+          <Stack gap={2}>
+            {warnings.map((w, i) => (
+              <Text key={i} size="sm">
+                {w}
+              </Text>
+            ))}
+          </Stack>
         </Alert>
       )}
 
@@ -50,18 +66,37 @@ export const SearchResults = ({ groups, count, truncated, warnings, searched, do
       {byDoc.map(([docId, sentences]) => (
         <Paper key={docId} withBorder radius="md">
           <Box px="md" py="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-            <Text fw={600} size="sm" truncate>{docName(docId) || docId}</Text>
+            <Text fw={600} size="sm" truncate>
+              {docName(docId) || docId}
+            </Text>
           </Box>
           <Stack gap={0}>
             {sentences.map((s, idx) => (
               <Box key={s.sentenceId}>
                 {idx > 0 && <Divider />}
-                <Box className={classes.row} p="md" component={Link} to={hrefFor(s.docId, s.sentenceId)}>
+                <Box
+                  className={classes.row}
+                  p="md"
+                  component={Link}
+                  to={hrefFor(s.docId, s.sentenceId)}
+                >
                   <Text size="sm" style={{ lineHeight: 1.6 }}>
                     {segmentize(s.text, s.highlights).map((seg, i) =>
-                      seg.hl
-                        ? <Box key={i} component="mark" style={{ background: 'var(--mantine-color-yellow-2)', borderRadius: 3, padding: '0 2px' }}>{seg.text}</Box>
-                        : <span key={i}>{seg.text}</span>,
+                      seg.hl ? (
+                        <Box
+                          key={i}
+                          component="mark"
+                          style={{
+                            background: 'var(--mantine-color-yellow-2)',
+                            borderRadius: 3,
+                            padding: '0 2px',
+                          }}
+                        >
+                          {seg.text}
+                        </Box>
+                      ) : (
+                        <span key={i}>{seg.text}</span>
+                      ),
                     )}
                   </Text>
                 </Box>

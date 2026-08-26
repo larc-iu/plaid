@@ -1,6 +1,11 @@
 import { cpLength, cpSlice, utf16ToCp, verifyOnEdit } from '@larc-iu/plaid-client';
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
-import { interSententialRelationIds, wordsNeedingSyntacticWord, orphanSyntacticWords, planSpanDedup } from '../utils/udReconcile.js';
+import {
+  interSententialRelationIds,
+  wordsNeedingSyntacticWord,
+  orphanSyntacticWords,
+  planSpanDedup,
+} from '../utils/udReconcile.js';
 import { validateConlluDocument } from './validate.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { basicTokenize } from '../utils/basicTokenize.js';
@@ -9,15 +14,15 @@ import { notifyError } from '../utils/notify.js';
 const UNDERSCORE = '_';
 
 const byPosition = (a, b) =>
-  (a.begin - b.begin) || (a.end - b.end) || ((a.precedence ?? 0) - (b.precedence ?? 0));
+  a.begin - b.begin || a.end - b.end || (a.precedence ?? 0) - (b.precedence ?? 0);
 
 const buildSpanIndex = (layer) => {
   const index = new Map();
-  (layer?.spans || []).forEach(span => {
+  (layer?.spans || []).forEach((span) => {
     const spanTokens = Array.isArray(span.tokens) ? span.tokens : [];
     spanTokens
-      .filter(tokenId => tokenId != null)
-      .forEach(tokenId => {
+      .filter((tokenId) => tokenId != null)
+      .forEach((tokenId) => {
         if (!index.has(tokenId)) index.set(tokenId, []);
         index.get(tokenId).push(span);
       });
@@ -82,13 +87,13 @@ export class ConlluDocument {
     if (emptyNodes > 0) {
       importWarnings.push(
         `${emptyNodes} empty node${emptyNodes === 1 ? '' : 's'} (decimal-ID rows) ` +
-        'dropped: Plaid UD does not store empty nodes or enhanced dependencies.'
+          'dropped: Plaid UD does not store empty nodes or enhanced dependencies.',
       );
     }
     if (miscTokens > 0) {
       importWarnings.push(
         `MISC values on ${miscTokens} token row${miscTokens === 1 ? '' : 's'} ` +
-        'dropped: Plaid UD does not store the MISC column.'
+          'dropped: Plaid UD does not store the MISC column.',
       );
     }
 
@@ -98,14 +103,16 @@ export class ConlluDocument {
       createdDocumentId = documentResponse.id;
       // Layer config is project-level and identical for every document, so a
       // bulk-import caller can pass it in to skip a per-document round trip.
-      const layerInfo = precomputedLayerInfo
-        || getUdLayerInfo(await client.documents.get(createdDocumentId, true));
+      const layerInfo =
+        precomputedLayerInfo || getUdLayerInfo(await client.documents.get(createdDocumentId, true));
 
       if (!layerInfo.isConfigured) {
         const missingLabels = missingUdLayerLabels(layerInfo.missingLayers).join(', ');
-        throw new Error(missingLabels
-          ? `Project is missing required UD layer configuration: ${missingLabels}. Configure the project before importing.`
-          : 'Project is missing required UD layer configuration. Configure the project before importing.');
+        throw new Error(
+          missingLabels
+            ? `Project is missing required UD layer configuration: ${missingLabels}. Configure the project before importing.`
+            : 'Project is missing required UD layer configuration. Configure the project before importing.',
+        );
       }
 
       const {
@@ -118,7 +125,7 @@ export class ConlluDocument {
         uposLayer,
         xposLayer,
         featuresLayer,
-        relationLayer
+        relationLayer,
       } = layerInfo;
 
       const hierarchy = buildConlluHierarchy(parsedData);
@@ -132,41 +139,52 @@ export class ConlluDocument {
       if (syntheticOffsetSentences > 0) {
         importWarnings.push(
           `${syntheticOffsetSentences} sentence${syntheticOffsetSentences === 1 ? '' : 's'} used synthetic offsets ` +
-          "(their tokens couldn't be located in the sentence text, so positions won't match the original)."
+            "(their tokens couldn't be located in the sentence text, so positions won't match the original).",
         );
       }
 
-      const textResponse = await client.texts.create(textLayer.id, createdDocumentId, hierarchy.text);
+      const textResponse = await client.texts.create(
+        textLayer.id,
+        createdDocumentId,
+        hierarchy.text,
+      );
       const textId = textResponse.id;
 
       // Sentences carry arbitrary `# k = v` metadata; words carry the MWT
       // surface form on `metadata.form` ONLY when the FORM column was
       // explicitly non-underscore. (MISC is not stored — see scope decisions.)
-      const sentenceOps = hierarchy.sentences.map(s => {
-        const op = { tokenLayerId: sentenceTokenLayer.id, text: textId, begin: s.begin, end: s.end };
+      const sentenceOps = hierarchy.sentences.map((s) => {
+        const op = {
+          tokenLayerId: sentenceTokenLayer.id,
+          text: textId,
+          begin: s.begin,
+          end: s.end,
+        };
         if (s.metadata && Object.keys(s.metadata).length > 0) op.metadata = s.metadata;
         return op;
       });
       const wordOps = [];
-      hierarchy.sentences.forEach(s => s.words.forEach(w => {
-        const op = { tokenLayerId: wordTokenLayer.id, text: textId, begin: w.begin, end: w.end };
-        const meta = {};
-        if (w.isMwt && w.hasExplicitForm && w.surfaceForm) meta.form = w.surfaceForm;
-        if (Object.keys(meta).length > 0) op.metadata = meta;
-        wordOps.push(op);
-      }));
+      hierarchy.sentences.forEach((s) =>
+        s.words.forEach((w) => {
+          const op = { tokenLayerId: wordTokenLayer.id, text: textId, begin: w.begin, end: w.end };
+          const meta = {};
+          if (w.isMwt && w.hasExplicitForm && w.surfaceForm) meta.form = w.surfaceForm;
+          if (Object.keys(meta).length > 0) op.metadata = meta;
+          wordOps.push(op);
+        }),
+      );
       const morphemeOps = [];
       const morphemeMeta = []; // parallel to morphemeOps
       hierarchy.sentences.forEach((s, sentIdx) => {
-        s.words.forEach(w => {
+        s.words.forEach((w) => {
           const wordSubstring = cpSlice(hierarchy.text, w.begin, w.end);
-          w.morphemes.forEach(m => {
+          w.morphemes.forEach((m) => {
             morphemeOps.push({
               tokenLayerId: morphemeTokenLayer.id,
               text: textId,
               begin: m.begin,
               end: m.end,
-              precedence: m.precedence
+              precedence: m.precedence,
             });
             morphemeMeta.push({ sentIdx, row: m.row, wordSubstring });
           });
@@ -181,15 +199,14 @@ export class ConlluDocument {
         if (wordOps.length > 0) client.tokens.bulkCreate(wordOps);
         if (morphemeOps.length > 0) {
           client.tokens.bulkCreate(morphemeOps);
-          morphemeResultIndex = (wordOps.length > 0) ? 2 : 1;
+          morphemeResultIndex = wordOps.length > 0 ? 2 : 1;
         }
       });
-      const morphemeIds = morphemeResultIndex >= 0
-        ? (tokenResults[morphemeResultIndex]?.body?.ids || [])
-        : [];
+      const morphemeIds =
+        morphemeResultIndex >= 0 ? tokenResults[morphemeResultIndex]?.body?.ids || [] : [];
 
       // Annotation spans on morphemes. Bundle all five into ONE atomic batch.
-      const lemmaSpanIds = parsedData.sentences.map(s => s.tokens.map(() => null));
+      const lemmaSpanIds = parsedData.sentences.map((s) => s.tokens.map(() => null));
       const formOps = [];
       const lemmaOps = [];
       const lemmaMeta = [];
@@ -217,7 +234,9 @@ export class ConlluDocument {
           xposOps.push({ spanLayerId: xposLayer.id, tokens: [morphemeId], value: row.xpos });
         }
         if (featuresLayer && Array.isArray(row.feats)) {
-          row.feats.forEach(f => featOps.push({ spanLayerId: featuresLayer.id, tokens: [morphemeId], value: f }));
+          row.feats.forEach((f) =>
+            featOps.push({ spanLayerId: featuresLayer.id, tokens: [morphemeId], value: f }),
+          );
         }
       });
 
@@ -225,16 +244,33 @@ export class ConlluDocument {
       // batched() submits an empty batch as a no-op ([]), so the old
       // "submit only if something was queued" guard is unnecessary.
       const spanResults = await client.batched(async () => {
-        if (formOps.length) { client.spans.bulkCreate(formOps); spanOpsInOrder.push('form'); }
-        if (lemmaOps.length) { client.spans.bulkCreate(lemmaOps); spanOpsInOrder.push('lemma'); }
-        if (uposOps.length) { client.spans.bulkCreate(uposOps); spanOpsInOrder.push('upos'); }
-        if (xposOps.length) { client.spans.bulkCreate(xposOps); spanOpsInOrder.push('xpos'); }
-        if (featOps.length) { client.spans.bulkCreate(featOps); spanOpsInOrder.push('feat'); }
+        if (formOps.length) {
+          client.spans.bulkCreate(formOps);
+          spanOpsInOrder.push('form');
+        }
+        if (lemmaOps.length) {
+          client.spans.bulkCreate(lemmaOps);
+          spanOpsInOrder.push('lemma');
+        }
+        if (uposOps.length) {
+          client.spans.bulkCreate(uposOps);
+          spanOpsInOrder.push('upos');
+        }
+        if (xposOps.length) {
+          client.spans.bulkCreate(xposOps);
+          spanOpsInOrder.push('xpos');
+        }
+        if (featOps.length) {
+          client.spans.bulkCreate(featOps);
+          spanOpsInOrder.push('feat');
+        }
       });
       const lemmaResultIdx = spanOpsInOrder.indexOf('lemma');
       if (lemmaResultIdx >= 0) {
         const ids = spanResults[lemmaResultIdx]?.body?.ids || [];
-        lemmaMeta.forEach((lm, k) => { lemmaSpanIds[lm.sentIdx][lm.rowIndex] = ids[k]; });
+        lemmaMeta.forEach((lm, k) => {
+          lemmaSpanIds[lm.sentIdx][lm.rowIndex] = ids[k];
+        });
       }
 
       // Dependency relations — a separate follow-up batch since they
@@ -247,11 +283,21 @@ export class ConlluDocument {
             const targetId = ids[tokIdx];
             if (!token.deprel || !targetId) return;
             if (token.head === 0) {
-              relationOps.push({ relationLayerId: relationLayer.id, source: targetId, target: targetId, value: token.deprel });
+              relationOps.push({
+                relationLayerId: relationLayer.id,
+                source: targetId,
+                target: targetId,
+                value: token.deprel,
+              });
             } else if (token.head > 0) {
               const sourceId = ids[token.head - 1];
               if (sourceId) {
-                relationOps.push({ relationLayerId: relationLayer.id, source: sourceId, target: targetId, value: token.deprel });
+                relationOps.push({
+                  relationLayerId: relationLayer.id,
+                  source: sourceId,
+                  target: targetId,
+                  value: token.deprel,
+                });
               }
             }
           });
@@ -277,7 +323,7 @@ export class ConlluDocument {
           // manually. The original error message stays at the front.
           const wrapped = new Error(
             `${err?.message || 'Import failed'} (rollback also failed; ` +
-            `manually delete orphan document ${createdDocumentId})`
+              `manually delete orphan document ${createdDocumentId})`,
           );
           wrapped.cause = err;
           throw wrapped;
@@ -287,28 +333,46 @@ export class ConlluDocument {
     }
   }
 
-  get version() { return this._version; }
+  get version() {
+    return this._version;
+  }
 
-  get raw() { return this._raw; }
-  get id() { return this._raw?.id; }
-  get name() { return this._raw?.name; }
-  get client() { return this._client; }
-  get projectId() { return this._projectId; }
-  get isSaving() { return this._isSaving; }
-  get error() { return this._error; }
+  get raw() {
+    return this._raw;
+  }
+  get id() {
+    return this._raw?.id;
+  }
+  get name() {
+    return this._raw?.name;
+  }
+  get client() {
+    return this._client;
+  }
+  get projectId() {
+    return this._projectId;
+  }
+  get isSaving() {
+    return this._isSaving;
+  }
+  get error() {
+    return this._error;
+  }
 
   // ----- React subscription bridge (useSyncExternalStore-compatible) -----
   // Arrow-function fields so identities stay stable across renders.
   subscribe = (listener) => {
     this._listeners.add(listener);
-    return () => { this._listeners.delete(listener); };
+    return () => {
+      this._listeners.delete(listener);
+    };
   };
 
   getSnapshot = () => this._version;
 
   _emit() {
     this._version++;
-    this._listeners.forEach(fn => fn());
+    this._listeners.forEach((fn) => fn());
   }
 
   // Operation/validation errors surface as toasts (the editors no longer render
@@ -363,7 +427,7 @@ export class ConlluDocument {
       uposLayer,
       xposLayer,
       featuresLayer,
-      relationLayer
+      relationLayer,
     } = this.layerInfo;
 
     const sentenceTokens = [...(sentenceTokenLayer?.tokens || [])].sort(byPosition);
@@ -382,14 +446,15 @@ export class ConlluDocument {
 
     const buildMorphemeEntry = (morphemeToken, tokenIndex, word) => {
       const id = morphemeToken.id;
-      const substring = cpSlice(body,morphemeToken.begin, morphemeToken.end);
+      const substring = cpSlice(body, morphemeToken.begin, morphemeToken.end);
       const formSpan = (formIndex.get(id) || [])[0] || null;
       const lemma = (lemmaIndex.get(id) || [])[0] || null;
       const upos = (uposIndex.get(id) || [])[0] || null;
       const xpos = (xposIndex.get(id) || [])[0] || null;
-      const feats = (featuresIndex.get(id) || []).filter(span => span.value);
+      const feats = (featuresIndex.get(id) || []).filter((span) => span.value);
 
-      const tokenForm = (formSpan?.value != null && formSpan.value !== '') ? formSpan.value : substring;
+      const tokenForm =
+        formSpan?.value != null && formSpan.value !== '' ? formSpan.value : substring;
 
       return {
         token: morphemeToken,
@@ -400,33 +465,34 @@ export class ConlluDocument {
         xpos,
         feats,
         word: word || null,
-        wordForm: word ? cpSlice(body,word.begin, word.end) : tokenForm,
+        wordForm: word ? cpSlice(body, word.begin, word.end) : tokenForm,
         spanIds: {
           form: formSpan?.id || null,
           lemma: lemma?.id || null,
           upos: upos?.id || null,
           xpos: xpos?.id || null,
-          features: feats.map(span => ({ value: span.value, spanId: span.id }))
+          features: feats.map((span) => ({ value: span.value, spanId: span.id })),
         },
-        tokenIndex
+        tokenIndex,
       };
     };
 
-    const effectiveSentences = sentenceTokens.length > 0
-      ? sentenceTokens
-      : [{ id: '__all__', begin: 0, end: cpLength(body) }];
+    const effectiveSentences =
+      sentenceTokens.length > 0
+        ? sentenceTokens
+        : [{ id: '__all__', begin: 0, end: cpLength(body) }];
 
     const rows = [];
 
     effectiveSentences.forEach((sentence, sentenceIdx) => {
-      const wordsInSentence = wordTokens.filter(word => containsToken(sentence, word));
+      const wordsInSentence = wordTokens.filter((word) => containsToken(sentence, word));
 
       const morphemeEntries = [];
       let tokenIndex = 0;
 
       if (wordsInSentence.length > 0) {
-        wordsInSentence.forEach(word => {
-          const wordMorphemes = morphemeTokens.filter(m => containsToken(word, m));
+        wordsInSentence.forEach((word) => {
+          const wordMorphemes = morphemeTokens.filter((m) => containsToken(word, m));
           wordMorphemes.forEach((morpheme, i) => {
             const entry = buildMorphemeEntry(morpheme, tokenIndex + 1, word);
             entry.isFirstMorphemeOfWord = i === 0;
@@ -436,33 +502,35 @@ export class ConlluDocument {
           });
         });
       } else {
-        morphemeTokens.filter(m => containsToken(sentence, m)).forEach(morpheme => {
-          const entry = buildMorphemeEntry(morpheme, tokenIndex + 1, null);
-          entry.isFirstMorphemeOfWord = true;
-          entry.wordHasMultipleMorphemes = false;
-          morphemeEntries.push(entry);
-          tokenIndex += 1;
-        });
+        morphemeTokens
+          .filter((m) => containsToken(sentence, m))
+          .forEach((morpheme) => {
+            const entry = buildMorphemeEntry(morpheme, tokenIndex + 1, null);
+            entry.isFirstMorphemeOfWord = true;
+            entry.wordHasMultipleMorphemes = false;
+            morphemeEntries.push(entry);
+            tokenIndex += 1;
+          });
       }
 
       if (morphemeEntries.length === 0) return;
 
-      const morphemeIds = new Set(morphemeEntries.map(entry => entry.token.id));
+      const morphemeIds = new Set(morphemeEntries.map((entry) => entry.token.id));
 
-      const sentenceLemmaSpans = (lemmaLayer?.spans || []).filter(span => {
+      const sentenceLemmaSpans = (lemmaLayer?.spans || []).filter((span) => {
         const spanTokens = Array.isArray(span.tokens) ? span.tokens : [];
-        return spanTokens.some(tokenId => morphemeIds.has(tokenId));
+        return spanTokens.some((tokenId) => morphemeIds.has(tokenId));
       });
-      const sentenceLemmaSpanIds = new Set(sentenceLemmaSpans.map(span => span.id));
-      const relations = relationList.filter(rel => sentenceLemmaSpanIds.has(rel.source));
+      const sentenceLemmaSpanIds = new Set(sentenceLemmaSpans.map((span) => span.id));
+      const relations = relationList.filter((rel) => sentenceLemmaSpanIds.has(rel.source));
 
       rows.push({
         id: sentence.id ?? sentenceIdx,
-        text: cpSlice(body,sentence.begin, sentence.end),
+        text: cpSlice(body, sentence.begin, sentence.end),
         sentenceToken: sentenceTokens.length > 0 ? sentence : null,
         tokens: morphemeEntries,
         relations,
-        lemmaSpans: sentenceLemmaSpans
+        lemmaSpans: sentenceLemmaSpans,
       });
     });
 
@@ -489,7 +557,9 @@ export class ConlluDocument {
       console.error(`${label}:`, err);
       this._error = `${label}: ${err.message || 'Unknown error'}`;
       notifyError(this._error);
-      try { await this._reload(); } catch (reloadErr) {
+      try {
+        await this._reload();
+      } catch (reloadErr) {
         console.error('Reload after failure also failed:', reloadErr);
       }
       return false;
@@ -610,22 +680,36 @@ export class ConlluDocument {
 
       let morphemeResultIndex = -1;
       const batchResults = await this._client.batched(async () => {
-        this._client.tokens.bulkCreate(sentenceRanges.map(([begin, end]) => ({
-          tokenLayerId: sentenceTokenLayer.id, text: text.id, begin, end
-        })));
+        this._client.tokens.bulkCreate(
+          sentenceRanges.map(([begin, end]) => ({
+            tokenLayerId: sentenceTokenLayer.id,
+            text: text.id,
+            begin,
+            end,
+          })),
+        );
         if (wordRanges.length > 0) {
-          this._client.tokens.bulkCreate(wordRanges.map(([begin, end]) => ({
-            tokenLayerId: wordTokenLayer.id, text: text.id, begin, end
-          })));
-          this._client.tokens.bulkCreate(wordRanges.map(([begin, end]) => ({
-            tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end
-          })));
+          this._client.tokens.bulkCreate(
+            wordRanges.map(([begin, end]) => ({
+              tokenLayerId: wordTokenLayer.id,
+              text: text.id,
+              begin,
+              end,
+            })),
+          );
+          this._client.tokens.bulkCreate(
+            wordRanges.map(([begin, end]) => ({
+              tokenLayerId: morphemeTokenLayer.id,
+              text: text.id,
+              begin,
+              end,
+            })),
+          );
           morphemeResultIndex = 2;
         }
       });
-      const morphemeIds = morphemeResultIndex >= 0
-        ? (batchResults[morphemeResultIndex]?.body?.ids || [])
-        : [];
+      const morphemeIds =
+        morphemeResultIndex >= 0 ? batchResults[morphemeResultIndex]?.body?.ids || [] : [];
 
       // Default lemma spans (a follow-up call — they reference the morpheme
       // ids produced above). Let a failure propagate: _withSaving toasts and
@@ -635,7 +719,7 @@ export class ConlluDocument {
         const lemmaOps = morphemeIds.map((tokenId, i) => ({
           spanLayerId: lemmaLayer.id,
           tokens: [tokenId],
-          value: cpSlice(body,wordRanges[i][0], wordRanges[i][1])
+          value: cpSlice(body, wordRanges[i][0], wordRanges[i][1]),
         }));
         await this._client.spans.bulkCreate(lemmaOps);
       }
@@ -653,11 +737,11 @@ export class ConlluDocument {
       const wordTokens = wordTokenLayer?.tokens || [];
       const morphemeTokens = morphemeTokenLayer?.tokens || [];
       if (sentenceTokens.length > 0) {
-        await this._client.tokens.bulkDelete(sentenceTokens.map(t => t.id));
+        await this._client.tokens.bulkDelete(sentenceTokens.map((t) => t.id));
       } else if (wordTokens.length > 0) {
-        await this._client.tokens.bulkDelete(wordTokens.map(t => t.id));
+        await this._client.tokens.bulkDelete(wordTokens.map((t) => t.id));
       } else if (morphemeTokens.length > 0) {
-        await this._client.tokens.bulkDelete(morphemeTokens.map(t => t.id));
+        await this._client.tokens.bulkDelete(morphemeTokens.map((t) => t.id));
       }
       await this._reload();
     });
@@ -672,24 +756,26 @@ export class ConlluDocument {
       const sentenceTokens = sentenceTokenLayer?.tokens || [];
       const morphemeTokens = morphemeTokenLayer?.tokens || [];
 
-      const startsHere = sentenceTokens.find(s => s.begin === charPos);
+      const startsHere = sentenceTokens.find((s) => s.begin === charPos);
       if (startsHere) {
         // Remove the boundary: merge with the preceding sentence. Merging
         // only widens a sentence, so no dependency relation can become invalid.
-        const prevSent = sentenceTokens.find(s => s.end === charPos);
+        const prevSent = sentenceTokens.find((s) => s.end === charPos);
         if (!prevSent) return;
         await this._client.tokens.merge(prevSent.id, startsHere.id);
         this._applyRawPatch((next, info) => {
           if (info.sentenceTokenLayer?.tokens) {
-            const p = info.sentenceTokenLayer.tokens.find(t => t.id === prevSent.id);
+            const p = info.sentenceTokenLayer.tokens.find((t) => t.id === prevSent.id);
             if (p) p.end = startsHere.end;
-            info.sentenceTokenLayer.tokens = info.sentenceTokenLayer.tokens.filter(t => t.id !== startsHere.id);
+            info.sentenceTokenLayer.tokens = info.sentenceTokenLayer.tokens.filter(
+              (t) => t.id !== startsHere.id,
+            );
           }
         });
         return;
       }
 
-      const containing = sentenceTokens.find(s => s.begin < charPos && charPos < s.end);
+      const containing = sentenceTokens.find((s) => s.begin < charPos && charPos < s.end);
       if (!containing) return;
 
       // Any dependency relation whose endpoints land on opposite sides of
@@ -697,38 +783,45 @@ export class ConlluDocument {
       // same atomic batch as the split so a relation never spans two
       // sentences. (UD relations are sentence-internal — an app-level
       // invariant the server doesn't model.)
-      const beginByMorpheme = new Map(morphemeTokens.map(t => [t.id, t.begin]));
+      const beginByMorpheme = new Map(morphemeTokens.map((t) => [t.id, t.begin]));
       const beginByLemmaSpan = new Map();
-      (lemmaLayer?.spans || []).forEach(span => {
+      (lemmaLayer?.spans || []).forEach((span) => {
         const tid = Array.isArray(span.tokens) && span.tokens.length > 0 ? span.tokens[0] : null;
-        if (tid != null && beginByMorpheme.has(tid)) beginByLemmaSpan.set(span.id, beginByMorpheme.get(tid));
+        if (tid != null && beginByMorpheme.has(tid))
+          beginByLemmaSpan.set(span.id, beginByMorpheme.get(tid));
       });
-      const crossing = (relationLayer?.relations || []).filter(rel => {
+      const crossing = (relationLayer?.relations || []).filter((rel) => {
         if (rel.source === rel.target) return false;
         const s = beginByLemmaSpan.get(rel.source);
         const t = beginByLemmaSpan.get(rel.target);
         if (s == null || t == null) return false;
-        return (s < charPos) !== (t < charPos);
+        return s < charPos !== t < charPos;
       });
 
       const res = await this._client.batched(async () => {
         this._client.tokens.split(containing.id, charPos);
-        crossing.forEach(rel => this._client.relations.delete(rel.id));
+        crossing.forEach((rel) => this._client.relations.delete(rel.id));
       });
       const newRightSentId = res[0]?.body?.id;
-      const removedRelIds = new Set(crossing.map(r => r.id));
+      const removedRelIds = new Set(crossing.map((r) => r.id));
 
       this._applyRawPatch((next, info) => {
         if (info.sentenceTokenLayer?.tokens) {
-          const s = info.sentenceTokenLayer.tokens.find(t => t.id === containing.id);
+          const s = info.sentenceTokenLayer.tokens.find((t) => t.id === containing.id);
           const oldEnd = containing.end;
           if (s) s.end = charPos;
           if (newRightSentId) {
-            info.sentenceTokenLayer.tokens.push({ id: newRightSentId, begin: charPos, end: oldEnd });
+            info.sentenceTokenLayer.tokens.push({
+              id: newRightSentId,
+              begin: charPos,
+              end: oldEnd,
+            });
           }
         }
         if (info.relationLayer?.relations && removedRelIds.size) {
-          info.relationLayer.relations = info.relationLayer.relations.filter(r => !removedRelIds.has(r.id));
+          info.relationLayer.relations = info.relationLayer.relations.filter(
+            (r) => !removedRelIds.has(r.id),
+          );
         }
       });
     });
@@ -759,8 +852,12 @@ export class ConlluDocument {
   // would otherwise seed duplicate syntactic-words).
   async reconcileOnOpen() {
     const ZERO = {
-      deletedRelations: 0, createdSyntacticWords: 0,
-      deletedOrphans: 0, deletedAnnotatedOrphans: 0, dedupedSpans: 0, findings: [],
+      deletedRelations: 0,
+      createdSyntacticWords: 0,
+      deletedOrphans: 0,
+      deletedAnnotatedOrphans: 0,
+      dedupedSpans: 0,
+      findings: [],
     };
     if (this._reconciling) return ZERO;
     this._reconciling = true;
@@ -775,7 +872,7 @@ export class ConlluDocument {
       // Don't dedup spans on orphan tokens we're about to delete (the cascade
       // takes those spans anyway; touching them in the same batch would 404).
       const orphanIdSet = new Set(orphans.ids);
-      const dedupPlans = planSpanDedup(info).filter(p => !orphanIdSet.has(p.tokenId));
+      const dedupPlans = planSpanDedup(info).filter((p) => !orphanIdSet.has(p.tokenId));
 
       let createdSyntacticWords = 0;
       let deletedRelations = 0;
@@ -787,18 +884,20 @@ export class ConlluDocument {
       if (seedExtents.length || orphans.ids.length || dedupPlans.length) {
         await this._client.batched(async () => {
           if (seedExtents.length) {
-            this._client.tokens.bulkCreate(seedExtents.map(e => ({
-              tokenLayerId: morphemeTokenLayer.id,
-              text: textId,
-              begin: e.begin,
-              end: e.end,
-              precedence: 0
-            })));
+            this._client.tokens.bulkCreate(
+              seedExtents.map((e) => ({
+                tokenLayerId: morphemeTokenLayer.id,
+                text: textId,
+                begin: e.begin,
+                end: e.end,
+                precedence: 0,
+              })),
+            );
           }
           if (orphans.ids.length) this._client.tokens.bulkDelete(orphans.ids);
-          dedupPlans.forEach(p => {
+          dedupPlans.forEach((p) => {
             if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
-            p.deleteSpanIds.forEach(id => this._client.spans.delete(id));
+            p.deleteSpanIds.forEach((id) => this._client.spans.delete(id));
           });
         });
         createdSyntacticWords = seedExtents.length;
@@ -812,7 +911,7 @@ export class ConlluDocument {
       if (relIds.length) {
         try {
           await this._client.batched(async () => {
-            relIds.forEach(id => this._client.relations.delete(id));
+            relIds.forEach((id) => this._client.relations.delete(id));
           });
         } catch (err) {
           if (err?.status !== 404) throw err;
@@ -824,8 +923,12 @@ export class ConlluDocument {
       // Validate the reloaded (true server) state — even when nothing healed.
       const findings = validateConlluDocument(this.layerInfo);
       return {
-        deletedRelations, createdSyntacticWords, deletedOrphans,
-        deletedAnnotatedOrphans: orphans.annotatedCount, dedupedSpans, findings,
+        deletedRelations,
+        createdSyntacticWords,
+        deletedOrphans,
+        deletedAnnotatedOrphans: orphans.annotatedCount,
+        dedupedSpans,
+        findings,
       };
     } catch (err) {
       // A failed heal batch leaves the client in batch mode (we skip the
@@ -849,7 +952,7 @@ export class ConlluDocument {
   // atomic batch (batch ops cannot reference ids created earlier in the
   // same batch).
   async setWordMorphemes(word, forms) {
-    const cleanForms = forms.map(f => (f || '').trim()).filter(f => f.length > 0);
+    const cleanForms = forms.map((f) => (f || '').trim()).filter((f) => f.length > 0);
     if (cleanForms.length === 0) return false;
 
     return this._withSaving('Failed to set words', async () => {
@@ -864,7 +967,7 @@ export class ConlluDocument {
       // the word's surface form. Morpheme begin/end are in body coordinates,
       // so substring(body, word.begin, word.end) is the authoritative surface.
       const body = this.body;
-      const wordSubstring = cpSlice(body,word.begin, word.end);
+      const wordSubstring = cpSlice(body, word.begin, word.end);
       const isMwt = cleanForms.length > 1;
       const existingMeta = word.metadata || {};
       // Decide whether the word's metadata needs to change.
@@ -881,16 +984,18 @@ export class ConlluDocument {
       // Batch 1 — atomic morpheme replacement PLUS the word-metadata write
       // (so the server commits or rolls them back together; no window where
       // morphemes exist with stale or missing `metadata.form`).
-      const existing = morphemeTokens.filter(m => containsToken(word, m));
+      const existing = morphemeTokens.filter((m) => containsToken(word, m));
       const setResults = await this._client.batched(async () => {
-        if (existing.length) this._client.tokens.bulkDelete(existing.map(m => m.id));
-        this._client.tokens.bulkCreate(cleanForms.map((_, i) => ({
-          tokenLayerId: morphemeTokenLayer.id,
-          text: text.id,
-          begin: word.begin,
-          end: word.end,
-          precedence: i
-        })));
+        if (existing.length) this._client.tokens.bulkDelete(existing.map((m) => m.id));
+        this._client.tokens.bulkCreate(
+          cleanForms.map((_, i) => ({
+            tokenLayerId: morphemeTokenLayer.id,
+            text: text.id,
+            begin: word.begin,
+            end: word.end,
+            precedence: i,
+          })),
+        );
         if (nextWordMetadata !== null) {
           this._client.tokens.setMetadata(word.id, nextWordMetadata);
         }
@@ -932,28 +1037,36 @@ export class ConlluDocument {
       const { wordTokenLayer, morphemeTokenLayer, lemmaLayer } = this.layerInfo;
       const wordTokens = wordTokenLayer?.tokens || [];
       const morphemeTokens = morphemeTokenLayer?.tokens || [];
-      const word = wordTokens.find(w => w.id === wordId);
-      const removedMorphIds = new Set(word ? morphemeTokens.filter(m => containsToken(word, m)).map(m => m.id) : []);
+      const word = wordTokens.find((w) => w.id === wordId);
+      const removedMorphIds = new Set(
+        word ? morphemeTokens.filter((m) => containsToken(word, m)).map((m) => m.id) : [],
+      );
       const removedLemmaSpanIds = new Set(
         (lemmaLayer?.spans || [])
-          .filter(s => Array.isArray(s.tokens) && s.tokens.some(t => removedMorphIds.has(t)))
-          .map(s => s.id)
+          .filter((s) => Array.isArray(s.tokens) && s.tokens.some((t) => removedMorphIds.has(t)))
+          .map((s) => s.id),
       );
       // Optimistic: remove the word + its cascade locally before the round trip.
       this._applyRawPatch((next, info) => {
         if (info.wordTokenLayer?.tokens) {
-          info.wordTokenLayer.tokens = info.wordTokenLayer.tokens.filter(t => t.id !== wordId);
+          info.wordTokenLayer.tokens = info.wordTokenLayer.tokens.filter((t) => t.id !== wordId);
         }
         if (info.morphemeTokenLayer?.tokens) {
-          info.morphemeTokenLayer.tokens = info.morphemeTokenLayer.tokens.filter(t => !removedMorphIds.has(t.id));
+          info.morphemeTokenLayer.tokens = info.morphemeTokenLayer.tokens.filter(
+            (t) => !removedMorphIds.has(t.id),
+          );
         }
-        (info.morphemeTokenLayer?.spanLayers || []).forEach(sl => {
+        (info.morphemeTokenLayer?.spanLayers || []).forEach((sl) => {
           if (Array.isArray(sl.spans)) {
-            sl.spans = sl.spans.filter(s => !(Array.isArray(s.tokens) && s.tokens.some(t => removedMorphIds.has(t))));
+            sl.spans = sl.spans.filter(
+              (s) => !(Array.isArray(s.tokens) && s.tokens.some((t) => removedMorphIds.has(t))),
+            );
           }
         });
         if (info.relationLayer?.relations) {
-          info.relationLayer.relations = info.relationLayer.relations.filter(r => !removedLemmaSpanIds.has(r.source) && !removedLemmaSpanIds.has(r.target));
+          info.relationLayer.relations = info.relationLayer.relations.filter(
+            (r) => !removedLemmaSpanIds.has(r.source) && !removedLemmaSpanIds.has(r.target),
+          );
         }
       });
       await this._client.tokens.delete(wordId);
@@ -981,7 +1094,7 @@ export class ConlluDocument {
     // tiled doc would break partitioning. Only when no sentences exist yet
     // do we transparently create one covering the whole text.
     const selRange = { begin, end };
-    if (sentenceTokens.length > 0 && !sentenceTokens.some(s => containsToken(s, selRange))) {
+    if (sentenceTokens.length > 0 && !sentenceTokens.some((s) => containsToken(s, selRange))) {
       this.setError('Selection must be inside an existing sentence');
       return false;
     }
@@ -992,10 +1105,16 @@ export class ConlluDocument {
       const fullLen = cpLength(textContent);
       const res = await this._client.batched(async () => {
         if (sentenceTokens.length === 0) {
-          this._client.tokens.bulkCreate([{ tokenLayerId: sentenceTokenLayer.id, text: text.id, begin: 0, end: fullLen }]);
+          this._client.tokens.bulkCreate([
+            { tokenLayerId: sentenceTokenLayer.id, text: text.id, begin: 0, end: fullLen },
+          ]);
         }
-        this._client.tokens.bulkCreate([{ tokenLayerId: wordTokenLayer.id, text: text.id, begin, end }]);
-        this._client.tokens.bulkCreate([{ tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end }]);
+        this._client.tokens.bulkCreate([
+          { tokenLayerId: wordTokenLayer.id, text: text.id, begin, end },
+        ]);
+        this._client.tokens.bulkCreate([
+          { tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end },
+        ]);
       });
       const sentenceId = sentenceTokens.length === 0 ? res[0]?.body?.ids?.[0] : null;
       const wordId = res[res.length - 2]?.body?.ids?.[0];
@@ -1006,13 +1125,20 @@ export class ConlluDocument {
       // a silently lemma-less word.
       let lemmaSpanId = null;
       if (lemmaLayer?.id && morphemeId) {
-        const lr = await this._client.spans.bulkCreate([{ spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: cpSlice(textContent,begin, end) }]);
+        const lr = await this._client.spans.bulkCreate([
+          {
+            spanLayerId: lemmaLayer.id,
+            tokens: [morphemeId],
+            value: cpSlice(textContent, begin, end),
+          },
+        ]);
         lemmaSpanId = lr?.ids?.[0] || null;
       }
 
       this._applyRawPatch((next, infoNext) => {
         if (sentenceId && infoNext.sentenceTokenLayer) {
-          if (!Array.isArray(infoNext.sentenceTokenLayer.tokens)) infoNext.sentenceTokenLayer.tokens = [];
+          if (!Array.isArray(infoNext.sentenceTokenLayer.tokens))
+            infoNext.sentenceTokenLayer.tokens = [];
           infoNext.sentenceTokenLayer.tokens.push({ id: sentenceId, begin: 0, end: fullLen });
         }
         if (wordId && infoNext.wordTokenLayer) {
@@ -1020,12 +1146,17 @@ export class ConlluDocument {
           infoNext.wordTokenLayer.tokens.push({ id: wordId, begin, end });
         }
         if (morphemeId && infoNext.morphemeTokenLayer) {
-          if (!Array.isArray(infoNext.morphemeTokenLayer.tokens)) infoNext.morphemeTokenLayer.tokens = [];
+          if (!Array.isArray(infoNext.morphemeTokenLayer.tokens))
+            infoNext.morphemeTokenLayer.tokens = [];
           infoNext.morphemeTokenLayer.tokens.push({ id: morphemeId, begin, end });
         }
         if (lemmaSpanId && morphemeId && infoNext.lemmaLayer) {
           if (!Array.isArray(infoNext.lemmaLayer.spans)) infoNext.lemmaLayer.spans = [];
-          infoNext.lemmaLayer.spans.push({ id: lemmaSpanId, tokens: [morphemeId], value: cpSlice(textContent,begin, end) });
+          infoNext.lemmaLayer.spans.push({
+            id: lemmaSpanId,
+            tokens: [morphemeId],
+            value: cpSlice(textContent, begin, end),
+          });
         }
       });
     });
@@ -1046,7 +1177,7 @@ export class ConlluDocument {
       lemma: info.lemmaLayer,
       upos: info.uposLayer,
       xpos: info.xposLayer,
-      features: info.featuresLayer
+      features: info.featuresLayer,
     };
     if (!Object.prototype.hasOwnProperty.call(layerByField, field)) {
       this.setError(`Unknown field: ${field}`);
@@ -1064,9 +1195,12 @@ export class ConlluDocument {
         // token overwrites the existing value rather than creating a duplicate.
         const key = String(value).split('=')[0];
         const featSpans = targetLayer?.spans || [];
-        const existingFeat = featSpans.find(span =>
-          Array.isArray(span.tokens) && span.tokens.includes(tokenId) &&
-          typeof span.value === 'string' && span.value.split('=')[0] === key
+        const existingFeat = featSpans.find(
+          (span) =>
+            Array.isArray(span.tokens) &&
+            span.tokens.includes(tokenId) &&
+            typeof span.value === 'string' &&
+            span.value.split('=')[0] === key,
         );
         if (existingFeat) {
           // Human edit of a machine feature verifies it (see the existing-span
@@ -1074,15 +1208,16 @@ export class ConlluDocument {
           const verifyFeat = verifyOnEdit(existingFeat.metadata);
           // Optimistic overwrite: update the tag locally before the round trip.
           this._applyRawPatch((next, infoNext) => {
-            const layerDoc = infoNext.tokenLayer?.spanLayers?.find(layer =>
-              layer.spans?.some(span => span.id === existingFeat.id)
+            const layerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
+              layer.spans?.some((span) => span.id === existingFeat.id),
             );
-            const spanIndex = layerDoc?.spans?.findIndex(span => span.id === existingFeat.id);
+            const spanIndex = layerDoc?.spans?.findIndex((span) => span.id === existingFeat.id);
             if (layerDoc?.spans && spanIndex != null && spanIndex !== -1) {
               layerDoc.spans[spanIndex].value = value;
               if (verifyFeat) {
                 layerDoc.spans[spanIndex].metadata = {
-                  ...(layerDoc.spans[spanIndex].metadata || {}), ...verifyFeat,
+                  ...(layerDoc.spans[spanIndex].metadata || {}),
+                  ...verifyFeat,
                 };
               }
             }
@@ -1102,9 +1237,10 @@ export class ConlluDocument {
         const spanResult = await this._client.spans.create(targetLayer.id, [tokenId], value);
         const newSpanId = spanResult?.id || spanResult;
         this._applyRawPatch((next, infoNext) => {
-          const featuresLayerDoc = infoNext.featuresLayer && infoNext.featuresLayer.id === targetLayer.id
-            ? infoNext.featuresLayer
-            : infoNext.tokenLayer?.spanLayers?.find(layer => layer.id === targetLayer.id);
+          const featuresLayerDoc =
+            infoNext.featuresLayer && infoNext.featuresLayer.id === targetLayer.id
+              ? infoNext.featuresLayer
+              : infoNext.tokenLayer?.spanLayers?.find((layer) => layer.id === targetLayer.id);
           if (featuresLayerDoc) {
             if (!featuresLayerDoc.spans) featuresLayerDoc.spans = [];
             featuresLayerDoc.spans.push({ id: newSpanId, tokens: [tokenId], value });
@@ -1114,8 +1250,8 @@ export class ConlluDocument {
       }
 
       const spans = targetLayer?.spans || [];
-      const existingSpan = spans.find(span =>
-        Array.isArray(span.tokens) && span.tokens.includes(tokenId)
+      const existingSpan = spans.find(
+        (span) => Array.isArray(span.tokens) && span.tokens.includes(tokenId),
       );
       if (existingSpan) {
         // A human edit of a machine-made, unverified span VERIFIES it
@@ -1126,16 +1262,17 @@ export class ConlluDocument {
         const verify = verifyOnEdit(existingSpan.metadata);
         // Optimistic: update the value (+ metadata) locally before the round trip.
         this._applyRawPatch((next, infoNext) => {
-          const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find(layer =>
-            layer.spans?.some(span => span.id === existingSpan.id)
+          const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
+            layer.spans?.some((span) => span.id === existingSpan.id),
           );
           if (targetLayerDoc?.spans) {
-            const spanIndex = targetLayerDoc.spans.findIndex(span => span.id === existingSpan.id);
+            const spanIndex = targetLayerDoc.spans.findIndex((span) => span.id === existingSpan.id);
             if (spanIndex !== -1) {
               targetLayerDoc.spans[spanIndex].value = value;
               if (verify) {
                 targetLayerDoc.spans[spanIndex].metadata = {
-                  ...(targetLayerDoc.spans[spanIndex].metadata || {}), ...verify,
+                  ...(targetLayerDoc.spans[spanIndex].metadata || {}),
+                  ...verify,
                 };
               }
             }
@@ -1155,7 +1292,9 @@ export class ConlluDocument {
         const spanResult = await this._client.spans.create(targetLayer.id, [tokenId], value);
         const newSpanId = spanResult?.id || spanResult;
         this._applyRawPatch((next, infoNext) => {
-          const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find(layer => layer.id === targetLayer.id);
+          const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find(
+            (layer) => layer.id === targetLayer.id,
+          );
           if (targetLayerDoc) {
             if (!targetLayerDoc.spans) targetLayerDoc.spans = [];
             targetLayerDoc.spans.push({ id: newSpanId, tokens: [tokenId], value });
@@ -1171,7 +1310,7 @@ export class ConlluDocument {
       this._applyRawPatch((next, info) => {
         const featuresLayerDoc = info.featuresLayer;
         if (featuresLayerDoc && Array.isArray(featuresLayerDoc.spans)) {
-          featuresLayerDoc.spans = featuresLayerDoc.spans.filter(span => span.id !== spanId);
+          featuresLayerDoc.spans = featuresLayerDoc.spans.filter((span) => span.id !== spanId);
         }
       });
       await this._client.spans.delete(spanId);
@@ -1207,18 +1346,18 @@ export class ConlluDocument {
         const lemmaLayer = info.lemmaLayer;
         const lemmaSpans = lemmaLayer.spans || [];
 
-        const existingById = lemmaSpans.find(span => span.id === candidateId);
+        const existingById = lemmaSpans.find((span) => span.id === candidateId);
         if (existingById) return existingById.id;
 
         // Span `tokens` is a flat array of token ids.
         const tokenId = candidateId;
-        const existingByToken = lemmaSpans.find(span =>
-          Array.isArray(span.tokens) && span.tokens.includes(tokenId)
+        const existingByToken = lemmaSpans.find(
+          (span) => Array.isArray(span.tokens) && span.tokens.includes(tokenId),
         );
         if (existingByToken) return existingByToken.id;
 
         const textBody = info.textLayer?.text?.body || '';
-        const token = info.tokenLayer?.tokens?.find(t => t.id === tokenId);
+        const token = info.tokenLayer?.tokens?.find((t) => t.id === tokenId);
         const lemmaValue = token ? cpSlice(textBody, token.begin, token.end) : '';
 
         const apiResponse = await this._client.spans.create(lemmaLayer.id, [tokenId], lemmaValue);
@@ -1228,7 +1367,7 @@ export class ConlluDocument {
           const lemmaLayerDoc = infoNext.lemmaLayer;
           if (lemmaLayerDoc) {
             if (!Array.isArray(lemmaLayerDoc.spans)) lemmaLayerDoc.spans = [];
-            if (lemmaLayerDoc.spans.findIndex(s => s.id === createdSpanId) === -1) {
+            if (lemmaLayerDoc.spans.findIndex((s) => s.id === createdSpanId) === -1) {
               lemmaLayerDoc.spans.push({ id: createdSpanId, tokens: [tokenId], value: lemmaValue });
             }
           }
@@ -1241,7 +1380,10 @@ export class ConlluDocument {
       const resolvedTargetId = await ensureLemmaSpan(targetSpanId);
 
       if (!resolvedSourceId || !resolvedTargetId) {
-        console.warn('Unable to create relation because lemma spans could not be resolved:', { sourceSpanId, targetSpanId });
+        console.warn('Unable to create relation because lemma spans could not be resolved:', {
+          sourceSpanId,
+          targetSpanId,
+        });
         return;
       }
 
@@ -1249,19 +1391,31 @@ export class ConlluDocument {
       // target (one head per node) and create the new relation in ONE batch,
       // so a mid-flight failure can't leave the node headless (deletes landed,
       // create didn't) or double-headed (delete failed, create landed).
-      const incomingRelations = (info.relationLayer.relations || []).filter(rel => rel.target === resolvedTargetId);
+      const incomingRelations = (info.relationLayer.relations || []).filter(
+        (rel) => rel.target === resolvedTargetId,
+      );
       const finalDeprel = deprel || (resolvedSourceId === resolvedTargetId ? 'root' : 'dep');
       const batchResults = await this._client.batched(async () => {
-        incomingRelations.forEach(rel => this._client.relations.delete(rel.id));
-        this._client.relations.create(info.relationLayer.id, resolvedSourceId, resolvedTargetId, finalDeprel);
+        incomingRelations.forEach((rel) => this._client.relations.delete(rel.id));
+        this._client.relations.create(
+          info.relationLayer.id,
+          resolvedSourceId,
+          resolvedTargetId,
+          finalDeprel,
+        );
       });
       const newRelationId = batchResults[batchResults.length - 1]?.body?.id;
       this._applyRawPatch((next, infoNext) => {
         const relLayer = infoNext.relationLayer;
         if (!relLayer) return;
         if (!Array.isArray(relLayer.relations)) relLayer.relations = [];
-        relLayer.relations = relLayer.relations.filter(rel => rel.target !== resolvedTargetId);
-        relLayer.relations.push({ id: newRelationId, source: resolvedSourceId, target: resolvedTargetId, value: finalDeprel });
+        relLayer.relations = relLayer.relations.filter((rel) => rel.target !== resolvedTargetId);
+        relLayer.relations.push({
+          id: newRelationId,
+          source: resolvedSourceId,
+          target: resolvedTargetId,
+          value: finalDeprel,
+        });
       });
     });
   }
@@ -1271,8 +1425,9 @@ export class ConlluDocument {
       // Human edit of a machine relation verifies it (provenance write
       // contract) — same shape as updateAnnotation: one optimistic patch,
       // one atomic batch.
-      const existing = (this.layerInfo.relationLayer?.relations || [])
-        .find(r => r.id === relationId);
+      const existing = (this.layerInfo.relationLayer?.relations || []).find(
+        (r) => r.id === relationId,
+      );
       const verify = verifyOnEdit(existing?.metadata);
       // Optimistic: reflect the new value immediately, BEFORE the round trip,
       // so the label doesn't flash the previous value while the save is in
@@ -1280,12 +1435,13 @@ export class ConlluDocument {
       this._applyRawPatch((next, infoNext) => {
         const relLayer = infoNext.relationLayer;
         if (!relLayer || !Array.isArray(relLayer.relations)) return;
-        const idx = relLayer.relations.findIndex(r => r.id === relationId);
+        const idx = relLayer.relations.findIndex((r) => r.id === relationId);
         if (idx !== -1) {
           relLayer.relations[idx].value = deprel;
           if (verify) {
             relLayer.relations[idx].metadata = {
-              ...(relLayer.relations[idx].metadata || {}), ...verify,
+              ...(relLayer.relations[idx].metadata || {}),
+              ...verify,
             };
           }
         }
@@ -1307,7 +1463,7 @@ export class ConlluDocument {
       this._applyRawPatch((next, infoNext) => {
         const relLayer = infoNext.relationLayer;
         if (!relLayer || !Array.isArray(relLayer.relations)) return;
-        relLayer.relations = relLayer.relations.filter(r => r.id !== relationId);
+        relLayer.relations = relLayer.relations.filter((r) => r.id !== relationId);
       });
       await this._client.relations.delete(relationId);
     });
@@ -1325,13 +1481,18 @@ export class ConlluDocument {
     if (idSet.size === 0) return false;
     return this._withSaving('Failed to confirm annotations', async () => {
       const info = this.layerInfo;
-      const spanLayers = [info.lemmaLayer, info.uposLayer, info.xposLayer, info.featuresLayer].filter(Boolean);
+      const spanLayers = [
+        info.lemmaLayer,
+        info.uposLayer,
+        info.xposLayer,
+        info.featuresLayer,
+      ].filter(Boolean);
 
       // Machine-unverified spans on the target tokens.
       const spanPatchById = new Map();
       for (const layer of spanLayers) {
         for (const span of layer.spans || []) {
-          if (Array.isArray(span.tokens) && span.tokens.some(t => idSet.has(t))) {
+          if (Array.isArray(span.tokens) && span.tokens.some((t) => idSet.has(t))) {
             const verify = verifyOnEdit(span.metadata);
             if (verify) spanPatchById.set(span.id, verify);
           }
@@ -1340,11 +1501,13 @@ export class ConlluDocument {
 
       // Incoming dependency relations: the dependent is the relation's TARGET
       // lemma span, so map target span → its tokens and match against the set.
-      const lemmaTokensBySpan = new Map((info.lemmaLayer?.spans || []).map(s => [s.id, s.tokens || []]));
+      const lemmaTokensBySpan = new Map(
+        (info.lemmaLayer?.spans || []).map((s) => [s.id, s.tokens || []]),
+      );
       const relPatchById = new Map();
       for (const rel of info.relationLayer?.relations || []) {
         const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
-        if (targetTokens.some(t => idSet.has(t))) {
+        if (targetTokens.some((t) => idSet.has(t))) {
           const verify = verifyOnEdit(rel.metadata);
           if (verify) relPatchById.set(rel.id, verify);
         }
@@ -1354,7 +1517,12 @@ export class ConlluDocument {
 
       // Optimistic: stamp confirmed locally so the inferred styling clears now.
       this._applyRawPatch((next, infoNext) => {
-        for (const layer of [infoNext.lemmaLayer, infoNext.uposLayer, infoNext.xposLayer, infoNext.featuresLayer]) {
+        for (const layer of [
+          infoNext.lemmaLayer,
+          infoNext.uposLayer,
+          infoNext.xposLayer,
+          infoNext.featuresLayer,
+        ]) {
           for (const span of layer?.spans || []) {
             const patch = spanPatchById.get(span.id);
             if (patch) span.metadata = { ...(span.metadata || {}), ...patch };
@@ -1374,7 +1542,8 @@ export class ConlluDocument {
             for (const [id, patch] of spanPatchById) this._client.spans.patchMetadata(id, patch);
             for (const [id, patch] of relPatchById) this._client.relations.patchMetadata(id, patch);
           });
-        });
+        },
+      );
     });
   }
 
@@ -1403,10 +1572,13 @@ export class ConlluDocument {
       return '# No tokenized content available';
     }
 
-    const esc = (v) => (v == null || v === '') ? UNDERSCORE : String(v);
+    const esc = (v) => (v == null || v === '' ? UNDERSCORE : String(v));
     const serializeFeats = (feats) => {
       if (!feats || feats.length === 0) return UNDERSCORE;
-      const values = feats.map(f => f.value).filter(Boolean).sort();
+      const values = feats
+        .map((f) => f.value)
+        .filter(Boolean)
+        .sort();
       return values.length > 0 ? values.join('|') : UNDERSCORE;
     };
 
@@ -1423,28 +1595,30 @@ export class ConlluDocument {
         if (m.spanIds?.lemma) idByLemmaSpanId.set(m.spanIds.lemma, i + 1);
       });
       const incomingByTarget = new Map();
-      (sentence.relations || []).forEach(rel => incomingByTarget.set(rel.target, rel));
+      (sentence.relations || []).forEach((rel) => incomingByTarget.set(rel.target, rel));
 
       // Prefer a `sent_id` carried on the sentence token's metadata (round-
       // tripped from import); otherwise synthesize one from doc name + index.
       const sentMeta = sentence.sentenceToken?.metadata || {};
       const sentIdFromMeta = sentMeta.sent_id;
-      output.push(sentIdFromMeta
-        ? `# sent_id = ${sentIdFromMeta}`
-        : `# sent_id = ${docName}-${sentIdx + 1}`);
+      output.push(
+        sentIdFromMeta ? `# sent_id = ${sentIdFromMeta}` : `# sent_id = ${docName}-${sentIdx + 1}`,
+      );
 
       // Emit arbitrary `# k = v` metadata sorted alphabetically. If metadata
       // carries `text`, the loop emits it; otherwise we fall back to the
       // sentence's substring of the document body. Skip `sent_id` (emitted
       // above) so it doesn't double-emit.
       let hasTextMetadata = false;
-      Object.keys(sentMeta).sort().forEach(key => {
-        if (key === 'sent_id') return;
-        const value = sentMeta[key];
-        if (key === 'text') hasTextMetadata = true;
-        if (value === true) output.push(`# ${key}`);
-        else output.push(`# ${key} = ${value}`);
-      });
+      Object.keys(sentMeta)
+        .sort()
+        .forEach((key) => {
+          if (key === 'sent_id') return;
+          const value = sentMeta[key];
+          if (key === 'text') hasTextMetadata = true;
+          if (value === true) output.push(`# ${key}`);
+          else output.push(`# ${key} = ${value}`);
+        });
       if (!hasTextMetadata) {
         output.push(`# text = ${(sentence.text || '').trim()}`);
       }
@@ -1470,10 +1644,20 @@ export class ConlluDocument {
           const surfaceForm = wordMeta.form || UNDERSCORE;
           // MISC is not stored (see scope decisions), so the bracket row's MISC
           // column is always `_`.
-          output.push([
-            `${i + 1}-${i + groupLen}`, surfaceForm,
-            UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE, UNDERSCORE
-          ].join('\t'));
+          output.push(
+            [
+              `${i + 1}-${i + groupLen}`,
+              surfaceForm,
+              UNDERSCORE,
+              UNDERSCORE,
+              UNDERSCORE,
+              UNDERSCORE,
+              UNDERSCORE,
+              UNDERSCORE,
+              UNDERSCORE,
+              UNDERSCORE,
+            ].join('\t'),
+          );
         }
 
         for (let k = 0; k < groupLen; k++) {
@@ -1500,8 +1684,11 @@ export class ConlluDocument {
               }
             }
           }
-          const deps = (head === UNDERSCORE || deprel === UNDERSCORE) ? UNDERSCORE : `${head}:${deprel}`;
-          output.push([id, form, lemma, upos, xpos, feats, head, deprel, deps, UNDERSCORE].join('\t'));
+          const deps =
+            head === UNDERSCORE || deprel === UNDERSCORE ? UNDERSCORE : `${head}:${deprel}`;
+          output.push(
+            [id, form, lemma, upos, xpos, feats, head, deprel, deps, UNDERSCORE].join('\t'),
+          );
         }
 
         i += groupLen;

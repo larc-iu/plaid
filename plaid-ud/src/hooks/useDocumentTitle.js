@@ -11,6 +11,8 @@ export function useDocumentTitle(...segments) {
   const title = [...segments.flat().filter(Boolean), APP_NAME].join(SEP);
   useEffect(() => {
     document.title = title;
-    return () => { document.title = APP_NAME; };
+    return () => {
+      document.title = APP_NAME;
+    };
   }, [title]);
 }

@@ -9,10 +9,7 @@ import { shapes } from '@dicebear/collection';
 // clean, colorful, faceless geometry. Pure render: no state, no network — the
 // SVG is generated locally and inlined as a data URI.
 export const EntityAvatar = ({ id, size = 22, style }) => {
-  const uri = useMemo(
-    () => createAvatar(shapes, { seed: id || '', size }).toDataUri(),
-    [id, size]
-  );
+  const uri = useMemo(() => createAvatar(shapes, { seed: id || '', size }).toDataUri(), [id, size]);
   return (
     <img
       src={uri}

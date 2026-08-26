@@ -1,12 +1,32 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  Title, Paper, Stack, Group, Button, Text, Alert, Progress, List, Code,
-  Center, Loader, Anchor, ScrollArea, ActionIcon, Tooltip, Modal,
+  Title,
+  Paper,
+  Stack,
+  Group,
+  Button,
+  Text,
+  Alert,
+  Progress,
+  List,
+  Code,
+  Center,
+  Loader,
+  Anchor,
+  ScrollArea,
+  ActionIcon,
+  Tooltip,
+  Modal,
 } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import {
-  IconUpload, IconX, IconCheck, IconDownload, IconFileText, IconTrash,
+  IconUpload,
+  IconX,
+  IconCheck,
+  IconDownload,
+  IconFileText,
+  IconTrash,
   IconAlertTriangle,
 } from '@tabler/icons-react';
 import JSZip from 'jszip';
@@ -21,12 +41,13 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 // ---- helpers --------------------------------------------------------------
 
-const readText = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = (e) => resolve(e.target.result);
-  reader.onerror = () => reject(new Error('Failed to read file'));
-  reader.readAsText(file);
-});
+const readText = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsText(file);
+  });
 
 const baseName = (name) => name.replace(/\.(conllu|txt)$/i, '') || name;
 
@@ -105,7 +126,10 @@ export const ProjectImportExport = () => {
     (async () => {
       setLoading(true);
       const client = getClient();
-      if (!client) { logout(); return; }
+      if (!client) {
+        logout();
+        return;
+      }
       try {
         const p = await client.projects.get(projectId);
         if (cancelled) return;
@@ -113,13 +137,18 @@ export const ProjectImportExport = () => {
         setLoadError('');
       } catch (err) {
         if (cancelled) return;
-        if (err.status === 401) { logout(); return; }
+        if (err.status === 401) {
+          logout();
+          return;
+        }
         setLoadError('Failed to load project: ' + (err.message || 'Unknown error'));
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -127,7 +156,10 @@ export const ProjectImportExport = () => {
   // close / reload (the blocking modal below prevents clicking away in-app).
   useEffect(() => {
     if (!importing) return;
-    const onBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ''; };
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [importing]);
@@ -145,7 +177,10 @@ export const ProjectImportExport = () => {
     // document, which roughly doubles import time on a big set.
     const layerInfo = getUdLayerInfo(project);
     const acc = [];
-    const push = (row) => { acc.push(row); setResults([...acc]); };
+    const push = (row) => {
+      acc.push(row);
+      setResults([...acc]);
+    };
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -154,23 +189,53 @@ export const ProjectImportExport = () => {
       try {
         text = await readText(file);
       } catch {
-        push({ key: `${i}-read`, file: file.name, name: baseName(file.name), status: 'rejected', reason: 'Could not read file' });
+        push({
+          key: `${i}-read`,
+          file: file.name,
+          name: baseName(file.name),
+          status: 'rejected',
+          reason: 'Could not read file',
+        });
         continue;
       }
       const chunks = splitConlluByNewdoc(text);
       const base = baseName(file.name);
       if (chunks.length === 0) {
-        push({ key: `${i}-empty`, file: file.name, name: base, status: 'rejected', reason: 'File is empty' });
+        push({
+          key: `${i}-empty`,
+          file: file.name,
+          name: base,
+          status: 'rejected',
+          reason: 'File is empty',
+        });
         continue;
       }
       for (let c = 0; c < chunks.length; c++) {
         const chunk = chunks[c];
         const name = chunk.id || (chunks.length > 1 ? `${base} (${c + 1})` : base);
         try {
-          const { importWarnings } = await ConlluDocument.importFromConllu(client, projectId, name, chunk.text, layerInfo);
-          push({ key: `${i}-${c}`, file: file.name, name, status: 'imported', warnings: importWarnings || [] });
+          const { importWarnings } = await ConlluDocument.importFromConllu(
+            client,
+            projectId,
+            name,
+            chunk.text,
+            layerInfo,
+          );
+          push({
+            key: `${i}-${c}`,
+            file: file.name,
+            name,
+            status: 'imported',
+            warnings: importWarnings || [],
+          });
         } catch (err) {
-          push({ key: `${i}-${c}`, file: file.name, name, status: 'rejected', reason: err.message || 'Unknown error' });
+          push({
+            key: `${i}-${c}`,
+            file: file.name,
+            name,
+            status: 'rejected',
+            reason: err.message || 'Unknown error',
+          });
         }
       }
     }
@@ -178,10 +243,12 @@ export const ProjectImportExport = () => {
     setImportProgress({ done: files.length, total: files.length, current: '' });
     setImporting(false);
     setFiles([]);
-    const imported = acc.filter(r => r.status === 'imported').length;
+    const imported = acc.filter((r) => r.status === 'imported').length;
     const rejected = acc.length - imported;
     if (imported > 0) {
-      notifySuccess(`Imported ${imported} document${imported === 1 ? '' : 's'}${rejected ? `, ${rejected} rejected` : ''}.`);
+      notifySuccess(
+        `Imported ${imported} document${imported === 1 ? '' : 's'}${rejected ? `, ${rejected} rejected` : ''}.`,
+      );
     } else {
       notifyError(`No documents imported (${rejected} rejected).`);
     }
@@ -203,19 +270,24 @@ export const ProjectImportExport = () => {
       const used = new Set();
       const skippedAcc = [];
 
-      await mapWithConcurrency(docs, 5, async (d) => {
-        try {
-          const doc = await ConlluDocument.load(client, projectId, d.id);
-          const t = doc.toConllu();
-          if (isExportError(t)) {
-            skippedAcc.push({ name: d.name, reason: t.replace(/^#\s*/, '') });
-          } else {
-            zip.file(dedupeName(d.name, used), t);
+      await mapWithConcurrency(
+        docs,
+        5,
+        async (d) => {
+          try {
+            const doc = await ConlluDocument.load(client, projectId, d.id);
+            const t = doc.toConllu();
+            if (isExportError(t)) {
+              skippedAcc.push({ name: d.name, reason: t.replace(/^#\s*/, '') });
+            } else {
+              zip.file(dedupeName(d.name, used), t);
+            }
+          } catch (err) {
+            skippedAcc.push({ name: d.name, reason: err.message || 'Failed to load' });
           }
-        } catch (err) {
-          skippedAcc.push({ name: d.name, reason: err.message || 'Failed to load' });
-        }
-      }, (done) => setExportProgress({ done, total: docs.length }));
+        },
+        (done) => setExportProgress({ done, total: docs.length }),
+      );
 
       setSkipped(skippedAcc);
       if (used.size === 0) {
@@ -225,7 +297,9 @@ export const ProjectImportExport = () => {
       const blob = await zip.generateAsync({ type: 'blob' });
       downloadBlob(blob, `${sanitize(project?.name)}.zip`);
       if (skippedAcc.length > 0) {
-        notifyWarning(`Exported ${used.size}; ${skippedAcc.length} skipped (empty or unconfigured).`);
+        notifyWarning(
+          `Exported ${used.size}; ${skippedAcc.length} skipped (empty or unconfigured).`,
+        );
       } else {
         notifySuccess(`Exported ${used.size} document${used.size === 1 ? '' : 's'}.`);
       }
@@ -236,10 +310,15 @@ export const ProjectImportExport = () => {
     }
   };
 
-  if (loading) return <Center py={48}><Loader /></Center>;
+  if (loading)
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   if (!project) return <Alert color="red">{loadError || 'Project not found'}</Alert>;
 
-  const importedCount = results.filter(r => r.status === 'imported').length;
+  const importedCount = results.filter((r) => r.status === 'imported').length;
   const rejectedCount = results.length - importedCount;
 
   return (
@@ -261,7 +340,8 @@ export const ProjectImportExport = () => {
             animated
           />
           <Text size="sm" c="dimmed">
-            Importing {Math.min(importProgress.done + 1, importProgress.total)} / {importProgress.total}
+            Importing {Math.min(importProgress.done + 1, importProgress.total)} /{' '}
+            {importProgress.total}
             {importProgress.current ? `: ${importProgress.current}` : ''}
           </Text>
           <Text size="xs" c="dimmed">
@@ -271,16 +351,27 @@ export const ProjectImportExport = () => {
       </Modal>
 
       <ProjectTabs projectId={projectId} project={project} />
-      <Title order={2} mb="lg">Import &amp; Export</Title>
+      <Title order={2} mb="lg">
+        Import &amp; Export
+      </Title>
 
       {/* ---- IMPORT (writers and up) ---- */}
       {canEdit && (
         <Paper withBorder p="lg" radius="md" mb="xl">
-          <Title order={4} mb="xs">Import CoNLL-U files</Title>
+          <Title order={4} mb="xs">
+            Import CoNLL-U files
+          </Title>
           {!configured ? (
-            <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Project not configured">
+            <Alert
+              color="yellow"
+              icon={<IconAlertTriangle size={16} />}
+              title="Project not configured"
+            >
               This project’s UD layers aren’t set up yet, so documents can’t be imported.{' '}
-              <Anchor component={Link} to={`/projects/${projectId}/configuration`}>Set up its layers</Anchor> first.
+              <Anchor component={Link} to={`/projects/${projectId}/configuration`}>
+                Set up its layers
+              </Anchor>{' '}
+              first.
             </Alert>
           ) : (
             <Stack gap="md">
@@ -290,11 +381,19 @@ export const ProjectImportExport = () => {
                 disabled={importing}
               >
                 <Group justify="center" gap="lg" mih={120} style={{ pointerEvents: 'none' }}>
-                  <Dropzone.Accept><IconUpload size={42} color="var(--mantine-color-blue-6)" /></Dropzone.Accept>
-                  <Dropzone.Reject><IconX size={42} color="var(--mantine-color-red-6)" /></Dropzone.Reject>
-                  <Dropzone.Idle><IconFileText size={42} color="var(--mantine-color-dimmed)" /></Dropzone.Idle>
+                  <Dropzone.Accept>
+                    <IconUpload size={42} color="var(--mantine-color-blue-6)" />
+                  </Dropzone.Accept>
+                  <Dropzone.Reject>
+                    <IconX size={42} color="var(--mantine-color-red-6)" />
+                  </Dropzone.Reject>
+                  <Dropzone.Idle>
+                    <IconFileText size={42} color="var(--mantine-color-dimmed)" />
+                  </Dropzone.Idle>
                   <div>
-                    <Text size="lg" inline>Drag <Code>.conllu</Code> files here, or click to select</Text>
+                    <Text size="lg" inline>
+                      Drag <Code>.conllu</Code> files here, or click to select
+                    </Text>
                   </div>
                 </Group>
               </Dropzone>
@@ -302,8 +401,16 @@ export const ProjectImportExport = () => {
               {files.length > 0 && (
                 <Paper bg="gray.0" p="sm" radius="sm">
                   <Group justify="space-between" mb="xs">
-                    <Text size="sm" fw={500}>{files.length} file{files.length === 1 ? '' : 's'} queued</Text>
-                    <Button size="compact-xs" variant="subtle" color="gray" onClick={() => setFiles([])} disabled={importing}>
+                    <Text size="sm" fw={500}>
+                      {files.length} file{files.length === 1 ? '' : 's'} queued
+                    </Text>
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => setFiles([])}
+                      disabled={importing}
+                    >
                       Clear
                     </Button>
                   </Group>
@@ -311,7 +418,9 @@ export const ProjectImportExport = () => {
                     {files.map((f, i) => (
                       <Group key={`${f.name}-${i}`} gap="xs" wrap="nowrap">
                         <IconFileText size={14} style={{ flexShrink: 0 }} />
-                        <Text size="sm" truncate style={{ flex: 1 }}>{f.name}</Text>
+                        <Text size="sm" truncate style={{ flex: 1 }}>
+                          {f.name}
+                        </Text>
                         {!importing && (
                           <Tooltip label="Remove">
                             <ActionIcon
@@ -350,25 +459,46 @@ export const ProjectImportExport = () => {
                   <ScrollArea.Autosize mah={360}>
                     <Stack gap="xs">
                       {/* Most recent on top. */}
-                      {results.slice().reverse().map((r) => (
-                        <div key={r.key}>
-                          <Group gap="xs" wrap="nowrap">
-                            {r.status === 'imported'
-                              ? <IconCheck size={16} color="var(--mantine-color-green-6)" style={{ flexShrink: 0 }} />
-                              : <IconX size={16} color="var(--mantine-color-red-6)" style={{ flexShrink: 0 }} />}
-                            <Text size="sm" fw={500}>{r.name}</Text>
-                            <Text size="xs" c="dimmed" truncate>({r.file})</Text>
-                          </Group>
-                          {r.status === 'rejected' && (
-                            <Text size="xs" c="red" pl={24}>{r.reason}</Text>
-                          )}
-                          {r.status === 'imported' && r.warnings?.length > 0 && (
-                            <List size="xs" c="yellow.8" pl={24} withPadding spacing={2}>
-                              {r.warnings.map((w, k) => <List.Item key={k}>{w}</List.Item>)}
-                            </List>
-                          )}
-                        </div>
-                      ))}
+                      {results
+                        .slice()
+                        .reverse()
+                        .map((r) => (
+                          <div key={r.key}>
+                            <Group gap="xs" wrap="nowrap">
+                              {r.status === 'imported' ? (
+                                <IconCheck
+                                  size={16}
+                                  color="var(--mantine-color-green-6)"
+                                  style={{ flexShrink: 0 }}
+                                />
+                              ) : (
+                                <IconX
+                                  size={16}
+                                  color="var(--mantine-color-red-6)"
+                                  style={{ flexShrink: 0 }}
+                                />
+                              )}
+                              <Text size="sm" fw={500}>
+                                {r.name}
+                              </Text>
+                              <Text size="xs" c="dimmed" truncate>
+                                ({r.file})
+                              </Text>
+                            </Group>
+                            {r.status === 'rejected' && (
+                              <Text size="xs" c="red" pl={24}>
+                                {r.reason}
+                              </Text>
+                            )}
+                            {r.status === 'imported' && r.warnings?.length > 0 && (
+                              <List size="xs" c="yellow.8" pl={24} withPadding spacing={2}>
+                                {r.warnings.map((w, k) => (
+                                  <List.Item key={k}>{w}</List.Item>
+                                ))}
+                              </List>
+                            )}
+                          </div>
+                        ))}
                     </Stack>
                   </ScrollArea.Autosize>
                   {!importing && importedCount > 0 && (
@@ -390,7 +520,9 @@ export const ProjectImportExport = () => {
 
       {/* ---- EXPORT (all roles) ---- */}
       <Paper withBorder p="lg" radius="md">
-        <Title order={4} mb="xs">Export project</Title>
+        <Title order={4} mb="xs">
+          Export project
+        </Title>
         <Text size="sm" c="dimmed" mb="md">
           Download every document in this project as a <Code>.zip</Code> of CoNLL-U files.
         </Text>
@@ -419,10 +551,16 @@ export const ProjectImportExport = () => {
         )}
 
         {skipped.length > 0 && (
-          <Alert color="yellow" mt="md" title={`${skipped.length} document${skipped.length === 1 ? '' : 's'} skipped`}>
+          <Alert
+            color="yellow"
+            mt="md"
+            title={`${skipped.length} document${skipped.length === 1 ? '' : 's'} skipped`}
+          >
             <List size="xs" spacing={2}>
               {skipped.map((s, i) => (
-                <List.Item key={i}><b>{s.name || 'Untitled'}</b> — {s.reason}</List.Item>
+                <List.Item key={i}>
+                  <b>{s.name || 'Untitled'}</b> — {s.reason}
+                </List.Item>
               ))}
             </List>
           </Alert>

@@ -53,7 +53,10 @@ export function highlightGrew(code) {
       matched = true;
       break;
     }
-    if (!matched) { out += escapeHtml(code[i]); i += 1; } // safety net
+    if (!matched) {
+      out += escapeHtml(code[i]);
+      i += 1;
+    } // safety net
   }
   return out;
 }

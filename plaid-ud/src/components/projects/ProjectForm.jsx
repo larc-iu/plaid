@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   UD_NAMESPACE,
   UD_SPAN_CONFIG_KEYS,
-  UD_RELATION_CONFIG_KEY
+  UD_RELATION_CONFIG_KEY,
 } from '../../utils/udLayerUtils.js';
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
 
@@ -31,7 +31,7 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
     ['Lemma', UD_SPAN_CONFIG_KEYS.lemma],
     ['UPOS', UD_SPAN_CONFIG_KEYS.upos],
     ['XPOS', UD_SPAN_CONFIG_KEYS.xpos],
-    ['Features', UD_SPAN_CONFIG_KEYS.features]
+    ['Features', UD_SPAN_CONFIG_KEYS.features],
   ];
 
   const createProjectWithLayers = async () => {
@@ -76,7 +76,12 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
         // UD's "Morphemes" layer holds SYNTACTIC WORDS (MWT splits), so its role is
         // `syntactic-word`, NOT `morpheme`. IGT's true-morpheme layer is a sibling
         // under the shared word layer. Getting this wrong corrupts segmentation.
-        client.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
+        client.tokenLayers.setConfig(
+          morphemeLayerId,
+          PLAID_NAMESPACE,
+          ROLE_KEY,
+          ROLES.SYNTACTIC_WORD,
+        );
         for (const [name] of SPAN_LAYER_SPECS) {
           client.spanLayers.create(morphemeLayerId, name);
         }
@@ -97,7 +102,12 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
 
       // B8: relationLayer.setConfig
       await client.batched(async () => {
-        client.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+        client.relationLayers.setConfig(
+          relationLayerId,
+          UD_NAMESPACE,
+          UD_RELATION_CONFIG_KEY,
+          true,
+        );
       });
 
       return project;
@@ -112,7 +122,7 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
         const dErr = deleteErr?.message || 'Unknown error';
         const wrapped = new Error(
           `Project bootstrap failed (${original}) AND rollback also failed (${dErr}). ` +
-          `Please manually delete project ${projectId}.`
+            `Please manually delete project ${projectId}.`,
         );
         wrapped.cause = err;
         throw wrapped;
@@ -123,7 +133,7 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!projectName.trim()) {
       setError('Project name is required');
       return;
@@ -162,7 +172,8 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
 
           <Paper bg="gray.0" p="md" radius="md">
             <Text size="sm" c="dimmed">
-              This will create a new project with all necessary layers for Universal Dependencies annotation:
+              This will create a new project with all necessary layers for Universal Dependencies
+              annotation:
             </Text>
             <List size="sm" spacing={4} mt="xs" c="dimmed">
               <List.Item>Text layer</List.Item>

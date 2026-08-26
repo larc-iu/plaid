@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import {
-  Title, Anchor, Stack, Center, Loader, Alert,
-} from '@mantine/core';
+import { Title, Anchor, Stack, Center, Loader, Alert } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
@@ -59,28 +57,36 @@ export const SearchPage = () => {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const layerInfo = useMemo(() => getUdLayerInfo(project), [project]);
-  const docName = useCallback(
-    (id) => documents.find(d => d.id === id)?.name || id,
-    [documents],
-  );
+  const docName = useCallback((id) => documents.find((d) => d.id === id)?.name || id, [documents]);
 
   const run = useCallback(async () => {
     if (!queryText.trim() || running) return;
     setRunning(true);
     setError(null);
     try {
-      const { query, warnings: warns, impossible } = parseAndCompile(queryText, layerInfo, { projectId, limit: RESULT_LIMIT });
+      const {
+        query,
+        warnings: warns,
+        impossible,
+      } = parseAndCompile(queryText, layerInfo, { projectId, limit: RESULT_LIMIT });
       setWarnings(warns || []);
       if (impossible) {
-        setGroups([]); setCount(0); setTruncated(false); setSearched(true);
+        setGroups([]);
+        setCount(0);
+        setTruncated(false);
+        setSearched(true);
         return;
       }
       const res = await getClient().query(query);
-      setGroups(groupResults(res.results, layerInfo.sentenceTokenLayer.id, layerInfo.morphemeTokenLayer.id));
+      setGroups(
+        groupResults(res.results, layerInfo.sentenceTokenLayer.id, layerInfo.morphemeTokenLayer.id),
+      );
       setCount(res.count ?? 0);
       setTruncated(!!res.truncated);
       setSearched(true);
@@ -88,7 +94,10 @@ export const SearchPage = () => {
       if (err instanceof GrewError) {
         setError(err);
       } else if (err?.status === 408) {
-        setError({ name: 'ServerError', message: 'The query was too broad and timed out. Add more constraints.' });
+        setError({
+          name: 'ServerError',
+          message: 'The query was too broad and timed out. Add more constraints.',
+        });
       } else {
         setError({ name: 'ServerError', message: err?.message || 'The search request failed.' });
       }
@@ -98,11 +107,17 @@ export const SearchPage = () => {
   }, [queryText, running, layerInfo, projectId, getClient]);
 
   const sentenceHref = useCallback(
-    (docId, sentenceId) => `/projects/${projectId}/documents/${docId}/annotate?sent=${encodeURIComponent(sentenceId)}`,
+    (docId, sentenceId) =>
+      `/projects/${projectId}/documents/${docId}/annotate?sent=${encodeURIComponent(sentenceId)}`,
     [projectId],
   );
 
-  if (loading) return <Center py={48}><Loader /></Center>;
+  if (loading)
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   if (loadError) return <Alert color="red">{loadError}</Alert>;
 
   return (
@@ -114,13 +129,23 @@ export const SearchPage = () => {
 
         {!layerInfo.isConfigured ? (
           <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Not available">
-            This project isn’t configured for UD annotation yet, so dependency search isn’t available.{' '}
-            <Anchor component={Link} to={`/projects/${projectId}/configuration`}>Set up its layers</Anchor> first.
+            This project isn’t configured for UD annotation yet, so dependency search isn’t
+            available.{' '}
+            <Anchor component={Link} to={`/projects/${projectId}/configuration`}>
+              Set up its layers
+            </Anchor>{' '}
+            first.
           </Alert>
         ) : (
           <>
             <GrewHelp onPick={(q) => setQueryText(q)} />
-            <GrewQueryInput value={queryText} onChange={setQueryText} onRun={run} running={running} error={error} />
+            <GrewQueryInput
+              value={queryText}
+              onChange={setQueryText}
+              onRun={run}
+              running={running}
+              error={error}
+            />
             <SearchResults
               groups={groups}
               count={count}

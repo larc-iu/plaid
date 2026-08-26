@@ -5,7 +5,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  readFieldProbs, groupSuggestions, probLabel, provCellTitle, PARSER_GROUP,
+  readFieldProbs,
+  groupSuggestions,
+  probLabel,
+  provCellTitle,
+  PARSER_GROUP,
 } from '../src/utils/provenanceUi.js';
 
 const MACHINE_META = {
@@ -21,13 +25,15 @@ const MACHINE_META = {
 };
 
 test('readFieldProbs reads the field-specific distribution, sanitized', () => {
-  assert.deepEqual(readFieldProbs(MACHINE_META, 'upos'),
-    { NOUN: 0.84, PROPN: 0.1, ADJ: 0.02 });
+  assert.deepEqual(readFieldProbs(MACHINE_META, 'upos'), { NOUN: 0.84, PROPN: 0.1, ADJ: 0.02 });
   assert.deepEqual(readFieldProbs(MACHINE_META, 'deprel'), { det: 0.9, nsubj: 0.05 });
   assert.equal(readFieldProbs(MACHINE_META, 'xpos'), null);
   assert.equal(readFieldProbs(undefined, 'upos'), null);
-  assert.equal(readFieldProbs({ provDetail: { uposProbs: { NOUN: 'high' } } }, 'upos'), null,
-    'non-numeric entries are dropped; an all-junk map reads as no distribution');
+  assert.equal(
+    readFieldProbs({ provDetail: { uposProbs: { NOUN: 'high' } } }, 'upos'),
+    null,
+    'non-numeric entries are dropped; an all-junk map reads as no distribution',
+  );
 });
 
 test('groupSuggestions floats the top-k above the rest, ranked by prob', () => {
@@ -48,8 +54,7 @@ test('groupSuggestions keeps off-vocab parser labels and falls back without prob
 });
 
 test('groupSuggestions caps at topK', () => {
-  const probs = Object.fromEntries(
-    Array.from({ length: 10 }, (_, i) => [`t${i}`, (10 - i) / 100]));
+  const probs = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`t${i}`, (10 - i) / 100]));
   const grouped = groupSuggestions([], probs, { topK: 3 });
   assert.deepEqual(grouped, [{ group: PARSER_GROUP, items: ['t0', 't1', 't2'] }]);
 });
@@ -66,12 +71,15 @@ test('provCellTitle describes machine-made annotations and passes humans through
   assert.equal(provCellTitle('Edit upos', {}), 'Edit upos');
   assert.equal(
     provCellTitle('Edit upos', MACHINE_META),
-    'Edit upos — machine-made, unverified (service:my-parser · my-parser==2.1 · en · p=0.84)');
+    'Edit upos — machine-made, unverified (service:my-parser · my-parser==2.1 · en · p=0.84)',
+  );
   assert.equal(
     provCellTitle('Edit upos', { ...MACHINE_META, provConfirmed: true }),
-    'Edit upos — machine-made, human-verified (service:my-parser · my-parser==2.1 · en · p=0.84)');
+    'Edit upos — machine-made, human-verified (service:my-parser · my-parser==2.1 · en · p=0.84)',
+  );
   // Sparse record: just the source.
   assert.equal(
     provCellTitle('deprel', { prov: 'inferred', provSource: 'service:p' }),
-    'deprel — machine-made, unverified (service:p)');
+    'deprel — machine-made, unverified (service:p)',
+  );
 });

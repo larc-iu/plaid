@@ -30,7 +30,9 @@ const loadVisibleFields = () => {
   try {
     const saved = JSON.parse(localStorage.getItem(FIELD_VISIBILITY_KEY));
     if (saved && typeof saved === 'object') return { ...DEFAULT_VISIBLE_FIELDS, ...saved };
-  } catch { /* ignore malformed/absent value */ }
+  } catch {
+    /* ignore malformed/absent value */
+  }
   return DEFAULT_VISIBLE_FIELDS;
 };
 
@@ -41,15 +43,17 @@ const loadVisibleFields = () => {
 const reportIntegrityFindings = (findings, documentId) => {
   if (!findings?.length) return;
   console.group(`[plaid-ud] Document integrity findings (${findings.length})`);
-  findings.forEach(f =>
-    (f.severity === 'error' ? console.error : console.warn)(`[${f.code}] ${f.message}`, f.context));
+  findings.forEach((f) =>
+    (f.severity === 'error' ? console.error : console.warn)(`[${f.code}] ${f.message}`, f.context),
+  );
   console.groupEnd();
 
-  const errors = findings.filter(f => f.severity === 'error');
+  const errors = findings.filter((f) => f.severity === 'error');
   const headline = errors.length ? errors : findings;
-  const reason = headline.length === 1
-    ? headline[0].message
-    : `${headline.length} issues found — see the browser console for details.`;
+  const reason =
+    headline.length === 1
+      ? headline[0].message
+      : `${headline.length} issues found — see the browser console for details.`;
   const detail = formatFindingsForClipboard(findings, { documentId });
   notifications.show({
     title: 'Data integrity issue detected',
@@ -100,7 +104,11 @@ export const AnnotationEditor = () => {
   // Which annotation rows are expanded (document-wide). Persisted to localStorage.
   const [visibleFields, setVisibleFields] = useState(loadVisibleFields);
   useEffect(() => {
-    try { localStorage.setItem(FIELD_VISIBILITY_KEY, JSON.stringify(visibleFields)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(FIELD_VISIBILITY_KEY, JSON.stringify(visibleFields));
+    } catch {
+      /* ignore */
+    }
   }, [visibleFields]);
   const handleToggleField = useCallback((field) => {
     setVisibleFields((prev) => ({ ...prev, [field]: !prev[field] }));
@@ -120,7 +128,7 @@ export const AnnotationEditor = () => {
       if (initial) setLoading(true);
       const [projectData, next] = await Promise.all([
         client.projects.get(projectId),
-        ConlluDocument.load(client, projectId, documentId)
+        ConlluDocument.load(client, projectId, documentId),
       ]);
       setProject(projectData);
       // Reconcile-on-open: heal UD invariants another app may have broken while
@@ -131,19 +139,27 @@ export const AnnotationEditor = () => {
       if (initial && doReconcile && canEditProject(projectData, user)) {
         try {
           const {
-            deletedRelations, createdSyntacticWords, deletedOrphans,
-            deletedAnnotatedOrphans, dedupedSpans, findings, error,
+            deletedRelations,
+            createdSyntacticWords,
+            deletedOrphans,
+            deletedAnnotatedOrphans,
+            dedupedSpans,
+            findings,
+            error,
           } = await next.reconcileOnOpen();
           if (error) {
             notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
           } else {
             const parts = [];
             if (createdSyntacticWords > 0) {
-              parts.push(`added ${createdSyntacticWords} word${createdSyntacticWords === 1 ? '' : 's'} ` +
-                'to the annotation grid');
+              parts.push(
+                `added ${createdSyntacticWords} word${createdSyntacticWords === 1 ? '' : 's'} ` +
+                  'to the annotation grid',
+              );
             }
             if (deletedOrphans > 0) {
-              let s = `removed ${deletedOrphans} stray word${deletedOrphans === 1 ? '' : 's'} ` +
+              let s =
+                `removed ${deletedOrphans} stray word${deletedOrphans === 1 ? '' : 's'} ` +
                 'that no longer matched the text';
               if (deletedAnnotatedOrphans > 0) {
                 s += ` (${deletedAnnotatedOrphans} had annotations, recoverable via document history)`;
@@ -151,18 +167,22 @@ export const AnnotationEditor = () => {
               parts.push(s);
             }
             if (dedupedSpans > 0) {
-              parts.push(`merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} ` +
-                "(values joined with ' | ' — review them)");
+              parts.push(
+                `merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} ` +
+                  "(values joined with ' | ' — review them)",
+              );
             }
             if (deletedRelations > 0) {
-              parts.push(`removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
-                'crossed a sentence boundary');
+              parts.push(
+                `removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
+                  'crossed a sentence boundary',
+              );
             }
             if (parts.length) {
               notifyWarning(
                 `This document was edited in another app: ${parts.join('; ')}. Please review.`,
                 'Document repaired',
-                { autoClose: false }
+                { autoClose: false },
               );
             }
             reportIntegrityFindings(findings, next.id);
@@ -220,7 +240,7 @@ export const AnnotationEditor = () => {
     hasLoadedAudit,
     fetchHistoricalDocument,
     clearHistoricalDocument,
-    fetchAuditLog
+    fetchAuditLog,
   } = useDocumentHistory(documentId);
 
   // When viewing historical state we fall back to the legacy raw-doc render
@@ -242,9 +262,7 @@ export const AnnotationEditor = () => {
   const historicalLayerInfo = useLayerInfo(historicalDocument);
   const layerInfo = viewingHistoricalState ? historicalLayerInfo : doc?.layerInfo;
   const historicalSentences = useSentenceData(historicalDocument);
-  const processedSentences = viewingHistoricalState
-    ? historicalSentences
-    : (doc?.sentences || []);
+  const processedSentences = viewingHistoricalState ? historicalSentences : doc?.sentences || [];
 
   // Scroll to (and flash) the sentence named by ?sent= once, after the grid
   // has rendered. Rows are virtualized but their placeholders hold the slot, so
@@ -252,7 +270,7 @@ export const AnnotationEditor = () => {
   useEffect(() => {
     if (loading || !sentParam || !processedSentences.length) return;
     if (scrolledForRef.current === sentParam) return;
-    if (!processedSentences.some(s => String(s.id) === String(sentParam))) return;
+    if (!processedSentences.some((s) => String(s.id) === String(sentParam))) return;
     scrolledForRef.current = sentParam;
     const raf = requestAnimationFrame(() => {
       const el = document.querySelector(`[data-sentence-row="${CSS.escape(String(sentParam))}"]`);
@@ -288,7 +306,10 @@ export const AnnotationEditor = () => {
   // useCallback keeps their identity stable across the transient saving
   // re-renders (isSaving/error emits), so the memoized sentence/cell subtree
   // isn't re-rendered mid-edit — otherwise focus jitters during the save.
-  const handleAnnotationUpdate = useCallback((tokenId, field, value) => doc?.updateAnnotation(tokenId, field, value), [doc]);
+  const handleAnnotationUpdate = useCallback(
+    (tokenId, field, value) => doc?.updateAnnotation(tokenId, field, value),
+    [doc],
+  );
   const handleFeatureDelete = useCallback((spanId) => doc?.deleteFeature(spanId), [doc]);
   const handleRelationCreate = useCallback((s, t, dep) => doc?.createRelation(s, t, dep), [doc]);
   const handleRelationUpdate = useCallback((id, dep) => doc?.updateRelation(id, dep), [doc]);
@@ -353,15 +374,18 @@ export const AnnotationEditor = () => {
   const toolbar = (
     <Group justify="space-between" mt="md">
       <Group gap="sm">
-        <Button variant="light" color="gray" leftSection={<IconHistory size={16} />} onClick={handleOpenHistory}>
+        <Button
+          variant="light"
+          color="gray"
+          leftSection={<IconHistory size={16} />}
+          onClick={handleOpenHistory}
+        >
           History
         </Button>
       </Group>
 
       <Group gap="sm">
-        {selectedHistoryEntry && (
-          <Button onClick={handleCloseHistory}>Return to Current</Button>
-        )}
+        {selectedHistoryEntry && <Button onClick={handleCloseHistory}>Return to Current</Button>}
 
         <NlpServiceControls
           projectId={projectId}
@@ -416,9 +440,14 @@ export const AnnotationEditor = () => {
     return (
       <Box style={{ width: '100%', minHeight: '100vh' }}>
         <Center py={64}>
-          <Alert color="yellow" title="Not set up for UD" maw={520} icon={<IconInfoCircle size={18} />}>
-            This project hasn’t been set up for Universal Dependencies yet. Ask a project
-            maintainer to add UD support.
+          <Alert
+            color="yellow"
+            title="Not set up for UD"
+            maw={520}
+            icon={<IconInfoCircle size={18} />}
+          >
+            This project hasn’t been set up for Universal Dependencies yet. Ask a project maintainer
+            to add UD support.
           </Alert>
         </Center>
       </Box>
@@ -444,10 +473,16 @@ export const AnnotationEditor = () => {
           minHeight: '100vh',
         }}
       >
-        {loading && <Center py={48}><Loader /></Center>}
+        {loading && (
+          <Center py={48}>
+            <Loader />
+          </Center>
+        )}
 
         {!loading && !activeDocument && (
-          <Text ta="center" c="dimmed" py="xl">Document not found</Text>
+          <Text ta="center" c="dimmed" py="xl">
+            Document not found
+          </Text>
         )}
 
         {!loading && activeDocument && (
@@ -464,10 +499,10 @@ export const AnnotationEditor = () => {
               {errorMessages}
               {processedSentences.length > 0 && !readOnly && (
                 <Text size="xs" c="dimmed" mt="sm">
-                  Tip: drag from one token to another to create a dependency relation; click a relation's
-                  label to rename it, and click a cell to edit an annotation. Accept a machine
-                  prediction without editing with Ctrl+Enter (the word's ✓), or “Accept predictions” for
-                  the whole sentence.
+                  Tip: drag from one token to another to create a dependency relation; click a
+                  relation's label to rename it, and click a cell to edit an annotation. Accept a
+                  machine prediction without editing with Ctrl+Enter (the word's ✓), or “Accept
+                  predictions” for the whole sentence.
                 </Text>
               )}
             </Box>
@@ -489,26 +524,32 @@ export const AnnotationEditor = () => {
                   <Box
                     key={sentenceData.id}
                     data-sentence-row={sentenceData.id}
-                    style={flashSentId === String(sentenceData.id)
-                      ? { boxShadow: '0 0 0 3px var(--mantine-color-yellow-4)', borderRadius: 6, transition: 'box-shadow 0.3s' }
-                      : { transition: 'box-shadow 0.3s' }}
+                    style={
+                      flashSentId === String(sentenceData.id)
+                        ? {
+                            boxShadow: '0 0 0 3px var(--mantine-color-yellow-4)',
+                            borderRadius: 6,
+                            transition: 'box-shadow 0.3s',
+                          }
+                        : { transition: 'box-shadow 0.3s' }
+                    }
                   >
-                  <VirtualSentenceRow
-                    sentenceData={sentenceData}
-                    onAnnotationUpdate={readOnly ? null : handleAnnotationUpdate}
-                    onFeatureDelete={readOnly ? null : handleFeatureDelete}
-                    onRelationCreate={readOnly ? null : handleRelationCreate}
-                    onRelationUpdate={readOnly ? null : handleRelationUpdate}
-                    onRelationDelete={readOnly ? null : handleRelationDelete}
-                    onConfirmTokens={readOnly ? null : handleConfirmTokens}
-                    sentenceIndex={index}
-                    totalTokensBefore={totalTokensBefore}
-                    estimatedHeight={250} // Estimated height for placeholder
-                    vocab={layerInfo?.vocab}
-                    colors={layerInfo?.colors}
-                    visibleFields={visibleFields}
-                    onToggleField={handleToggleField}
-                  />
+                    <VirtualSentenceRow
+                      sentenceData={sentenceData}
+                      onAnnotationUpdate={readOnly ? null : handleAnnotationUpdate}
+                      onFeatureDelete={readOnly ? null : handleFeatureDelete}
+                      onRelationCreate={readOnly ? null : handleRelationCreate}
+                      onRelationUpdate={readOnly ? null : handleRelationUpdate}
+                      onRelationDelete={readOnly ? null : handleRelationDelete}
+                      onConfirmTokens={readOnly ? null : handleConfirmTokens}
+                      sentenceIndex={index}
+                      totalTokensBefore={totalTokensBefore}
+                      estimatedHeight={250} // Estimated height for placeholder
+                      vocab={layerInfo?.vocab}
+                      colors={layerInfo?.colors}
+                      visibleFields={visibleFields}
+                      onToggleField={handleToggleField}
+                    />
                   </Box>
                 );
               })

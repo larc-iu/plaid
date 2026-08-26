@@ -1,12 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  SimpleGrid, Stack, Title, Textarea, Button, Group, Text, Alert, Paper, Center, Loader,
+  SimpleGrid,
+  Stack,
+  Title,
+  Textarea,
+  Button,
+  Group,
+  Text,
+  Alert,
+  Paper,
+  Center,
+  Loader,
 } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { missingUdLayerLabels, hasForeignSubstrateParticipants, foreignAnnotationLossForWord } from '../../utils/udLayerUtils.js';
+import {
+  missingUdLayerLabels,
+  hasForeignSubstrateParticipants,
+  foreignAnnotationLossForWord,
+} from '../../utils/udLayerUtils.js';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
@@ -44,7 +58,7 @@ export const TextEditor = () => {
       if (initial) setLoading(true);
       const [projectData, next] = await Promise.all([
         client.projects.get(projectId),
-        ConlluDocument.load(client, projectId, documentId)
+        ConlluDocument.load(client, projectId, documentId),
       ]);
       setProject(projectData);
       setDoc(next);
@@ -52,8 +66,9 @@ export const TextEditor = () => {
       if (text?.body) {
         setTextContent(text.body);
         const info = next.layerInfo;
-        const hasTokens = (info.sentenceTokenLayer?.tokens || []).length > 0
-          || (info.wordTokenLayer?.tokens || []).length > 0;
+        const hasTokens =
+          (info.sentenceTokenLayer?.tokens || []).length > 0 ||
+          (info.wordTokenLayer?.tokens || []).length > 0;
         if (hasTokens && !originalTokenizedText) {
           setOriginalTokenizedText(text.body);
         }
@@ -114,9 +129,9 @@ export const TextEditor = () => {
     confirmDelete({
       title: 'Clear all tokens',
       message: shared
-        ? "These tokens are shared with another app on this project (e.g. interlinear " +
+        ? 'These tokens are shared with another app on this project (e.g. interlinear ' +
           "glossing). Clearing them here will also delete that app's annotations on this " +
-          "document. This cannot be undone — are you sure?"
+          'document. This cannot be undone — are you sure?'
         : 'Are you sure you want to clear all tokens? This action cannot be undone.',
       confirmLabel: 'Clear',
       onConfirm: async () => {
@@ -154,10 +169,13 @@ export const TextEditor = () => {
     const losses = [
       spans > 0 && `${spans} annotation${spans === 1 ? '' : 's'}`,
       links > 0 && `${links} vocabulary link${links === 1 ? '' : 's'}`,
-    ].filter(Boolean).join(' and ');
+    ]
+      .filter(Boolean)
+      .join(' and ');
     confirmDelete({
       title: 'Delete token',
-      message: `Deleting “${surface}” will also delete ${losses} from another app on this ` +
+      message:
+        `Deleting “${surface}” will also delete ${losses} from another app on this ` +
         'project (e.g. interlinear glossing) that are not visible in this editor. ' +
         'This cannot be undone — are you sure?',
       confirmLabel: 'Delete',
@@ -190,7 +208,11 @@ export const TextEditor = () => {
   };
 
   if (loading) {
-    return <Center py={48}><Loader /></Center>;
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   }
 
   if (loadError) {
@@ -208,7 +230,7 @@ export const TextEditor = () => {
 
   // morpheme id -> Form span value (overrides text substring for display).
   const morphemeForms = new Map();
-  (layerInfo.formLayer?.spans || []).forEach(span => {
+  (layerInfo.formLayer?.spans || []).forEach((span) => {
     const tokenId = Array.isArray(span.tokens) && span.tokens.length > 0 ? span.tokens[0] : null;
     if (tokenId != null && span.value != null) morphemeForms.set(tokenId, span.value);
   });
@@ -229,11 +251,13 @@ export const TextEditor = () => {
   // got there.
   const layersMisconfigured = Boolean(
     layerInfo.isConfigured &&
-    layerInfo.sentenceTokenLayer && layerInfo.wordTokenLayer && layerInfo.morphemeTokenLayer &&
-    (layerInfo.sentenceTokenLayer.overlapMode !== 'partitioning' ||
-     layerInfo.wordTokenLayer.overlapMode !== 'non-overlapping' ||
-     layerInfo.wordTokenLayer.parentTokenLayer !== layerInfo.sentenceTokenLayer.id ||
-     layerInfo.morphemeTokenLayer.parentTokenLayer !== layerInfo.wordTokenLayer.id)
+      layerInfo.sentenceTokenLayer &&
+      layerInfo.wordTokenLayer &&
+      layerInfo.morphemeTokenLayer &&
+      (layerInfo.sentenceTokenLayer.overlapMode !== 'partitioning' ||
+        layerInfo.wordTokenLayer.overlapMode !== 'non-overlapping' ||
+        layerInfo.wordTokenLayer.parentTokenLayer !== layerInfo.sentenceTokenLayer.id ||
+        layerInfo.morphemeTokenLayer.parentTokenLayer !== layerInfo.wordTokenLayer.id),
   );
 
   const missingLayerLabels = !layerInfo.isConfigured
@@ -251,8 +275,8 @@ export const TextEditor = () => {
 
       {readOnly && (
         <Alert color="blue" variant="light" mb="sm" py="xs">
-          Read-only — you have viewer access to this project, so the text and
-          tokenization can't be edited.
+          Read-only — you have viewer access to this project, so the text and tokenization can't be
+          edited.
         </Alert>
       )}
 
@@ -264,10 +288,9 @@ export const TextEditor = () => {
 
       {layersMisconfigured && (
         <Alert color="yellow" mb="sm">
-          This project's token layers are missing their overlap-mode / parent
-          configuration (likely created with an older client bundle). Tokenization
-          will still work, but server-enforced nesting and partitioning won't.
-          Consider recreating the project.
+          This project's token layers are missing their overlap-mode / parent configuration (likely
+          created with an older client bundle). Tokenization will still work, but server-enforced
+          nesting and partitioning won't. Consider recreating the project.
         </Alert>
       )}
 
@@ -285,12 +308,19 @@ The quick brown fox jumps over the lazy dog.
 This is a second sentence for testing.`}
             autosize
             minRows={12}
-            styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', lineHeight: 1.6 } }}
+            styles={{
+              input: { fontFamily: 'var(--mantine-font-family-monospace)', lineHeight: 1.6 },
+            }}
           />
 
           <Group gap="sm">
             {!readOnly && (
-              <Button color="green" onClick={handleSaveText} disabled={saving || !textContent.trim()} loading={saving}>
+              <Button
+                color="green"
+                onClick={handleSaveText}
+                disabled={saving || !textContent.trim()}
+                loading={saving}
+              >
                 Save Text
               </Button>
             )}
@@ -299,7 +329,13 @@ This is a second sentence for testing.`}
               <Button
                 onClick={handleTokenize}
                 disabled={saving || !textContent.trim() || isTextDirty || hasTokens}
-                title={isTextDirty ? 'Please save text changes before tokenizing' : (hasTokens ? 'Clear tokens before re-tokenizing' : '')}
+                title={
+                  isTextDirty
+                    ? 'Please save text changes before tokenizing'
+                    : hasTokens
+                      ? 'Clear tokens before re-tokenizing'
+                      : ''
+                }
               >
                 Basic Tokenize
               </Button>
@@ -312,17 +348,26 @@ This is a second sentence for testing.`}
             )}
 
             <Text size="sm" fw={500} c="dimmed" ml="auto">
-              {wordTokens.length} token{wordTokens.length !== 1 ? 's' : ''}, {sentenceTokens.length} sentence{sentenceTokens.length !== 1 ? 's' : ''}
+              {wordTokens.length} token{wordTokens.length !== 1 ? 's' : ''}, {sentenceTokens.length}{' '}
+              sentence{sentenceTokens.length !== 1 ? 's' : ''}
             </Text>
           </Group>
 
           <Text size="sm">
-            {saving && <Text span c="blue" fs="italic">Processing...</Text>}
+            {saving && (
+              <Text span c="blue" fs="italic">
+                Processing...
+              </Text>
+            )}
             {!saving && lastSaved && (
-              <Text span c="green">Saved: {lastSaved.toLocaleTimeString()}</Text>
+              <Text span c="green">
+                Saved: {lastSaved.toLocaleTimeString()}
+              </Text>
             )}
             {!saving && !lastSaved && textContent && isTextDirty && (
-              <Text span c="yellow.8" fs="italic">Unsaved changes</Text>
+              <Text span c="yellow.8" fs="italic">
+                Unsaved changes
+              </Text>
             )}
           </Text>
 
@@ -340,7 +385,9 @@ This is a second sentence for testing.`}
         </Stack>
 
         <Paper withBorder bg="gray.0" p="md" radius="md">
-          <Title order={4} mb="md">Token Visualization</Title>
+          <Title order={4} mb="md">
+            Token Visualization
+          </Title>
           <TokenVisualizer
             text={textContent}
             originalText={originalTokenizedText}
@@ -364,7 +411,12 @@ This is a second sentence for testing.`}
           pt="md"
           style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
         >
-          <Button color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={handleDeleteDocument}>
+          <Button
+            color="red"
+            variant="light"
+            leftSection={<IconTrash size={16} />}
+            onClick={handleDeleteDocument}
+          >
             Delete Document
           </Button>
         </Group>

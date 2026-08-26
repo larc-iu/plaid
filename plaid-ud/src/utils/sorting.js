@@ -20,7 +20,8 @@ export const cmp = (a, b) => {
 export const sortBy = (items, extract, dir) => {
   const sign = dir === 'asc' ? 1 : -1;
   return [...items].sort((a, b) => {
-    const av = extract(a), bv = extract(b);
+    const av = extract(a),
+      bv = extract(b);
     if (av == null || bv == null) return cmp(av, bv); // nulls last, ignore sign
     return sign * cmp(av, bv);
   });

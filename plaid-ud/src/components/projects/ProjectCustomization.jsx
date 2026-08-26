@@ -2,13 +2,30 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import {
-  UPOS_TAGS, UNIVERSAL_DEPRELS, autoColor, cleanColorMap, baseRel
+  UPOS_TAGS,
+  UNIVERSAL_DEPRELS,
+  autoColor,
+  cleanColorMap,
+  baseRel,
 } from '../../utils/udVocab.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from './useManagedProject.js';
 import {
-  Container, Title, Text, Button, Group, Stack, Alert, Paper, TextInput, Center, Loader,
-  TagsInput, ColorInput, ActionIcon, SimpleGrid,
+  Container,
+  Title,
+  Text,
+  Button,
+  Group,
+  Stack,
+  Alert,
+  Paper,
+  TextInput,
+  Center,
+  Loader,
+  TagsInput,
+  ColorInput,
+  ActionIcon,
+  SimpleGrid,
 } from '@mantine/core';
 import { IconTrash, IconRestore } from '@tabler/icons-react';
 
@@ -27,7 +44,7 @@ export const ProjectCustomization = ({ embedded = false }) => {
   const [xposVocab, setXposVocab] = useState([]);
   const [deprelVocab, setDeprelVocab] = useState([]);
   const [deprelColors, setDeprelColors] = useState({}); // { baseRel: '#hex' }
-  const [uposColors, setUposColors] = useState({});     // { UPOS: '#hex' }
+  const [uposColors, setUposColors] = useState({}); // { UPOS: '#hex' }
   const [featureInventory, setFeatureInventory] = useState([]); // [{key, values}]
 
   // Seed the editors from the project's current layer config.
@@ -39,14 +56,17 @@ export const ProjectCustomization = ({ embedded = false }) => {
     setDeprelVocab(info.vocab.deprel || []);
     setDeprelColors(info.colors.deprel || {});
     setUposColors(info.colors.upos || {});
-    setFeatureInventory(info.vocab.featureInventory.list.map(e => ({ key: e.key, values: [...e.values] })));
+    setFeatureInventory(
+      info.vocab.featureInventory.list.map((e) => ({ key: e.key, values: [...e.values] })),
+    );
   }, [project]);
 
   // Set/clear a single color in a {label: '#hex'} map (clearing falls back to auto).
   const setColorIn = (setter) => (key, value) => {
-    setter(prev => {
+    setter((prev) => {
       const next = { ...prev };
-      if (value) next[key] = value; else delete next[key];
+      if (value) next[key] = value;
+      else delete next[key];
       return next;
     });
   };
@@ -64,18 +84,41 @@ export const ProjectCustomization = ({ embedded = false }) => {
         await client.spanLayers.setConfig(info.xposLayer.id, UD_NAMESPACE, 'vocab', xposVocab);
       }
       if (info.relationLayer) {
-        await client.relationLayers.setConfig(info.relationLayer.id, UD_NAMESPACE, 'vocab', deprelVocab);
-        await client.relationLayers.setConfig(info.relationLayer.id, UD_NAMESPACE, 'colors', cleanColorMap(deprelColors));
+        await client.relationLayers.setConfig(
+          info.relationLayer.id,
+          UD_NAMESPACE,
+          'vocab',
+          deprelVocab,
+        );
+        await client.relationLayers.setConfig(
+          info.relationLayer.id,
+          UD_NAMESPACE,
+          'colors',
+          cleanColorMap(deprelColors),
+        );
       }
       if (info.uposLayer) {
         await client.spanLayers.setConfig(info.uposLayer.id, UD_NAMESPACE, 'vocab', uposVocab);
-        await client.spanLayers.setConfig(info.uposLayer.id, UD_NAMESPACE, 'colors', cleanColorMap(uposColors));
+        await client.spanLayers.setConfig(
+          info.uposLayer.id,
+          UD_NAMESPACE,
+          'colors',
+          cleanColorMap(uposColors),
+        );
       }
       if (info.featuresLayer) {
         const inventory = featureInventory
-          .filter(e => e.key.trim())
-          .map(e => ({ key: e.key.trim(), values: (e.values || []).map(v => v.trim()).filter(Boolean) }));
-        await client.spanLayers.setConfig(info.featuresLayer.id, UD_NAMESPACE, 'inventory', inventory);
+          .filter((e) => e.key.trim())
+          .map((e) => ({
+            key: e.key.trim(),
+            values: (e.values || []).map((v) => v.trim()).filter(Boolean),
+          }));
+        await client.spanLayers.setConfig(
+          info.featuresLayer.id,
+          UD_NAMESPACE,
+          'inventory',
+          inventory,
+        );
       }
 
       await fetchProject();
@@ -89,7 +132,11 @@ export const ProjectCustomization = ({ embedded = false }) => {
   };
 
   if (loading) {
-    return <Center py={48}><Loader /></Center>;
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   }
 
   if (!project || !canConfigure) {
@@ -107,7 +154,9 @@ export const ProjectCustomization = ({ embedded = false }) => {
     <Stack gap="xl">
       <Paper withBorder p="lg" radius="md">
         <Group justify="space-between" align="center" mb="xs">
-          <Title order={2} size="h4">UPOS tags</Title>
+          <Title order={2} size="h4">
+            UPOS tags
+          </Title>
           <Button
             size="xs"
             variant="subtle"
@@ -118,8 +167,9 @@ export const ProjectCustomization = ({ embedded = false }) => {
           </Button>
         </Group>
         <Text size="sm" c="dimmed" mb="md">
-          Universal part-of-speech tags suggested while annotating. Defaults to the 17 universal tags; edit them
-          for project-specific needs. Annotators may still type values outside this list.
+          Universal part-of-speech tags suggested while annotating. Defaults to the 17 universal
+          tags; edit them for project-specific needs. Annotators may still type values outside this
+          list.
         </Text>
         <TagsInput
           value={uposVocab}
@@ -130,10 +180,12 @@ export const ProjectCustomization = ({ embedded = false }) => {
       </Paper>
 
       <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">XPOS tags</Title>
+        <Title order={2} size="h4" mb="xs">
+          XPOS tags
+        </Title>
         <Text size="sm" c="dimmed" mb="md">
-          Language-specific part-of-speech tags suggested while annotating. Annotators may still type values
-          outside this list.
+          Language-specific part-of-speech tags suggested while annotating. Annotators may still
+          type values outside this list.
         </Text>
         <TagsInput
           value={xposVocab}
@@ -145,7 +197,9 @@ export const ProjectCustomization = ({ embedded = false }) => {
 
       <Paper withBorder p="lg" radius="md">
         <Group justify="space-between" align="center" mb="xs">
-          <Title order={2} size="h4">Dependency relations</Title>
+          <Title order={2} size="h4">
+            Dependency relations
+          </Title>
           <Button
             size="xs"
             variant="subtle"
@@ -156,7 +210,8 @@ export const ProjectCustomization = ({ embedded = false }) => {
           </Button>
         </Group>
         <Text size="sm" c="dimmed" mb="md">
-          Relations suggested when labeling edges. Subtypes (e.g. <code>nsubj:pass</code>) are allowed.
+          Relations suggested when labeling edges. Subtypes (e.g. <code>nsubj:pass</code>) are
+          allowed.
         </Text>
         <TagsInput
           value={deprelVocab}
@@ -167,13 +222,16 @@ export const ProjectCustomization = ({ embedded = false }) => {
       </Paper>
 
       <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">Relation colors</Title>
+        <Title order={2} size="h4" mb="xs">
+          Relation colors
+        </Title>
         <Text size="sm" c="dimmed" mb="md">
-          Dependency edges are colored by their base relation. Each shows its current color (an automatic one
-          by default); pick a color to override, or clear the field to revert to automatic.
+          Dependency edges are colored by their base relation. Each shows its current color (an
+          automatic one by default); pick a color to override, or clear the field to revert to
+          automatic.
         </Text>
         <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
-          {[...new Set(deprelVocab.map(baseRel))].sort().map(rel => (
+          {[...new Set(deprelVocab.map(baseRel))].sort().map((rel) => (
             <ColorInput
               key={rel}
               label={rel}
@@ -187,13 +245,15 @@ export const ProjectCustomization = ({ embedded = false }) => {
       </Paper>
 
       <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">UPOS colors</Title>
+        <Title order={2} size="h4" mb="xs">
+          UPOS colors
+        </Title>
         <Text size="sm" c="dimmed" mb="md">
-          The UPOS tags above, colored in the annotation grid. Each shows its current color; pick one to
-          override, or clear the field to revert to automatic.
+          The UPOS tags above, colored in the annotation grid. Each shows its current color; pick
+          one to override, or clear the field to revert to automatic.
         </Text>
         <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
-          {[...new Set(uposVocab)].map(tag => (
+          {[...new Set(uposVocab)].map((tag) => (
             <ColorInput
               key={tag}
               label={tag}
@@ -207,9 +267,12 @@ export const ProjectCustomization = ({ embedded = false }) => {
       </Paper>
 
       <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">Feature inventory</Title>
+        <Title order={2} size="h4" mb="xs">
+          Feature inventory
+        </Title>
         <Text size="sm" c="dimmed" mb="md">
-          Feature names and values offered in the FEATS picker. New keys/values are still allowed while annotating.
+          Feature names and values offered in the FEATS picker. New keys/values are still allowed
+          while annotating.
         </Text>
         <Stack gap="xs">
           {featureInventory.map((entry, i) => (
@@ -219,23 +282,29 @@ export const ProjectCustomization = ({ embedded = false }) => {
                 value={entry.key}
                 w={150}
                 placeholder="e.g. Number"
-                onChange={(e) => setFeatureInventory(prev =>
-                  prev.map((x, j) => j === i ? { ...x, key: e.target.value } : x))}
+                onChange={(e) =>
+                  setFeatureInventory((prev) =>
+                    prev.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)),
+                  )
+                }
               />
               <TagsInput
                 label={i === 0 ? 'Values' : undefined}
                 value={entry.values}
                 style={{ flex: 1 }}
                 placeholder="Add a value"
-                onChange={(vals) => setFeatureInventory(prev =>
-                  prev.map((x, j) => j === i ? { ...x, values: vals } : x))}
+                onChange={(vals) =>
+                  setFeatureInventory((prev) =>
+                    prev.map((x, j) => (j === i ? { ...x, values: vals } : x)),
+                  )
+                }
               />
               <ActionIcon
                 variant="subtle"
                 color="red"
                 mb={4}
                 aria-label={`Remove ${entry.key || 'feature'}`}
-                onClick={() => setFeatureInventory(prev => prev.filter((_, j) => j !== i))}
+                onClick={() => setFeatureInventory((prev) => prev.filter((_, j) => j !== i))}
               >
                 <IconTrash size={16} />
               </ActionIcon>
@@ -245,7 +314,7 @@ export const ProjectCustomization = ({ embedded = false }) => {
             <Button
               variant="light"
               size="xs"
-              onClick={() => setFeatureInventory(prev => [...prev, { key: '', values: [] }])}
+              onClick={() => setFeatureInventory((prev) => [...prev, { key: '', values: [] }])}
             >
               Add feature
             </Button>
@@ -261,5 +330,11 @@ export const ProjectCustomization = ({ embedded = false }) => {
     </Stack>
   );
 
-  return embedded ? content : <Container size="lg" py="xl">{content}</Container>;
+  return embedded ? (
+    content
+  ) : (
+    <Container size="lg" py="xl">
+      {content}
+    </Container>
+  );
 };

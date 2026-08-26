@@ -33,10 +33,14 @@ export const ProjectSettings = () => {
   const location = useLocation();
   const { getClient } = useAuth();
   const [project, setProject] = useState(null);
-  const active = location.pathname.endsWith('/customization') ? 'customization'
-    : location.pathname.endsWith('/services') ? 'services'
-      : location.pathname.endsWith('/tokens') ? 'tokens'
-        : location.pathname.endsWith('/general') ? 'general'
+  const active = location.pathname.endsWith('/customization')
+    ? 'customization'
+    : location.pathname.endsWith('/services')
+      ? 'services'
+      : location.pathname.endsWith('/tokens')
+        ? 'tokens'
+        : location.pathname.endsWith('/general')
+          ? 'general'
           : 'management';
 
   useDocumentTitle(SECTION_TITLES[active], project?.name);
@@ -46,14 +50,19 @@ export const ProjectSettings = () => {
   useEffect(() => {
     const client = getClient();
     if (!client) return;
-    client.projects.get(projectId).then(p => setProject(p)).catch(() => {});
+    client.projects
+      .get(projectId)
+      .then((p) => setProject(p))
+      .catch(() => {});
   }, [projectId, getClient]);
 
   return (
     <>
       <ProjectTabs projectId={projectId} project={project} />
 
-      <Title order={1} mb="lg">Project Settings</Title>
+      <Title order={1} mb="lg">
+        Project Settings
+      </Title>
 
       <Tabs
         orientation="vertical"

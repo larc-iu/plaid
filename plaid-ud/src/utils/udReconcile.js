@@ -33,7 +33,8 @@ export const interSententialRelationIds = (layerInfo) => {
   const sortedSentences = [...sentenceTokens].sort((a, b) => a.begin - b.begin);
   const sentenceIdAt = (begin) => {
     if (begin == null) return null;
-    let lo = 0, hi = sortedSentences.length - 1;
+    let lo = 0,
+      hi = sortedSentences.length - 1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       const s = sortedSentences[mid];
@@ -44,23 +45,23 @@ export const interSententialRelationIds = (layerInfo) => {
     return null;
   };
 
-  const beginByMorpheme = new Map(morphemeTokens.map(t => [t.id, t.begin]));
+  const beginByMorpheme = new Map(morphemeTokens.map((t) => [t.id, t.begin]));
   const sentenceIdByLemmaSpan = new Map();
-  lemmaSpans.forEach(span => {
+  lemmaSpans.forEach((span) => {
     const tid = Array.isArray(span.tokens) && span.tokens.length > 0 ? span.tokens[0] : null;
     const begin = tid != null ? beginByMorpheme.get(tid) : null;
     sentenceIdByLemmaSpan.set(span.id, sentenceIdAt(begin));
   });
 
   return relations
-    .filter(rel => {
+    .filter((rel) => {
       if (rel.source === rel.target) return false; // root self-loop
       const s = sentenceIdByLemmaSpan.get(rel.source);
       const t = sentenceIdByLemmaSpan.get(rel.target);
       if (s == null || t == null) return false; // unresolvable — leave it alone
       return s !== t; // different sentences -> crosses a boundary
     })
-    .map(rel => rel.id);
+    .map((rel) => rel.id);
 };
 
 /**
@@ -86,10 +87,10 @@ export const wordsNeedingSyntacticWord = (layerInfo) => {
   const morphemeTokens = layerInfo?.morphemeTokenLayer?.tokens || [];
   if (!wordTokens.length) return [];
 
-  const covered = new Set(morphemeTokens.map(m => `${m.begin}:${m.end}`));
+  const covered = new Set(morphemeTokens.map((m) => `${m.begin}:${m.end}`));
   return wordTokens
-    .filter(w => !covered.has(`${w.begin}:${w.end}`))
-    .map(w => ({ begin: w.begin, end: w.end }));
+    .filter((w) => !covered.has(`${w.begin}:${w.end}`))
+    .map((w) => ({ begin: w.begin, end: w.end }));
 };
 
 /**
@@ -115,17 +116,25 @@ export const orphanSyntacticWords = (layerInfo) => {
   const morphemeTokens = layerInfo?.morphemeTokenLayer?.tokens || [];
   if (!morphemeTokens.length) return { ids: [], annotatedCount: 0 };
 
-  const wordExtents = new Set(wordTokens.map(w => `${w.begin}:${w.end}`));
-  const orphans = morphemeTokens.filter(m => !wordExtents.has(`${m.begin}:${m.end}`));
+  const wordExtents = new Set(wordTokens.map((w) => `${w.begin}:${w.end}`));
+  const orphans = morphemeTokens.filter((m) => !wordExtents.has(`${m.begin}:${m.end}`));
 
   const annotated = new Set();
-  [layerInfo.formLayer, layerInfo.lemmaLayer, layerInfo.uposLayer, layerInfo.xposLayer, layerInfo.featuresLayer]
+  [
+    layerInfo.formLayer,
+    layerInfo.lemmaLayer,
+    layerInfo.uposLayer,
+    layerInfo.xposLayer,
+    layerInfo.featuresLayer,
+  ]
     .filter(Boolean)
-    .forEach(sl => (sl.spans || []).forEach(sp => (sp.tokens || []).forEach(t => annotated.add(t))));
+    .forEach((sl) =>
+      (sl.spans || []).forEach((sp) => (sp.tokens || []).forEach((t) => annotated.add(t))),
+    );
 
   return {
-    ids: orphans.map(m => m.id),
-    annotatedCount: orphans.filter(m => annotated.has(m.id)).length,
+    ids: orphans.map((m) => m.id),
+    annotatedCount: orphans.filter((m) => annotated.has(m.id)).length,
   };
 };
 
@@ -159,7 +168,7 @@ const planLayerSpanDedup = (layer, field) => {
       keepSpanId: spans[0].id,
       mergedValue,
       needsUpdate: mergedValue !== firstValue,
-      deleteSpanIds: spans.slice(1).map(s => s.id),
+      deleteSpanIds: spans.slice(1).map((s) => s.id),
     });
   });
   return plans;
@@ -193,8 +202,12 @@ export const planSpanDedup = (layerInfo) => [
  * @returns {Array<{target: string, count: number}>}
  */
 export const multiHeadTargets = (layerInfo) => {
-  const relations = (layerInfo?.relationLayer?.relations || []).filter(r => r.source !== r.target);
+  const relations = (layerInfo?.relationLayer?.relations || []).filter(
+    (r) => r.source !== r.target,
+  );
   const counts = new Map();
-  relations.forEach(r => counts.set(r.target, (counts.get(r.target) || 0) + 1));
-  return [...counts.entries()].filter(([, n]) => n > 1).map(([target, count]) => ({ target, count }));
+  relations.forEach((r) => counts.set(r.target, (counts.get(r.target) || 0) + 1));
+  return [...counts.entries()]
+    .filter(([, n]) => n > 1)
+    .map(([target, count]) => ({ target, count }));
 };

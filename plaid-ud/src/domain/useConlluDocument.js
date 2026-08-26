@@ -13,9 +13,6 @@ const NOOP_SNAPSHOT = () => 0;
 // same doc instance; React's useSyncExternalStore won't tear down /
 // resubscribe spuriously.
 export function useConlluDocument(doc) {
-  useSyncExternalStore(
-    doc?.subscribe ?? NOOP_SUBSCRIBE,
-    doc?.getSnapshot ?? NOOP_SNAPSHOT
-  );
+  useSyncExternalStore(doc?.subscribe ?? NOOP_SUBSCRIBE, doc?.getSnapshot ?? NOOP_SNAPSHOT);
   return doc;
 }

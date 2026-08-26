@@ -27,11 +27,17 @@ function mergeRanges(ranges) {
 export function groupResults(results, sentenceLayerId, nodeLayerId) {
   const byId = new Map();
   for (const row of results || []) {
-    const s = row.find(e => e && e.layer === sentenceLayerId);
+    const s = row.find((e) => e && e.layer === sentenceLayerId);
     if (!s) continue;
     let g = byId.get(s.id);
     if (!g) {
-      g = { docId: s.document, sentenceId: s.id, text: s.value ?? '', begin: s.begin ?? 0, ranges: new Map() };
+      g = {
+        docId: s.document,
+        sentenceId: s.id,
+        text: s.value ?? '',
+        begin: s.begin ?? 0,
+        ranges: new Map(),
+      };
       byId.set(s.id, g);
     }
     const len = cp(g.text).length;
@@ -43,8 +49,16 @@ export function groupResults(results, sentenceLayerId, nodeLayerId) {
     }
   }
   return [...byId.values()]
-    .map(g => ({ docId: g.docId, sentenceId: g.sentenceId, text: g.text, highlights: mergeRanges([...g.ranges.values()]) }))
-    .sort((a, b) => String(a.docId).localeCompare(String(b.docId)) || a.sentenceId.localeCompare(b.sentenceId));
+    .map((g) => ({
+      docId: g.docId,
+      sentenceId: g.sentenceId,
+      text: g.text,
+      highlights: mergeRanges([...g.ranges.values()]),
+    }))
+    .sort(
+      (a, b) =>
+        String(a.docId).localeCompare(String(b.docId)) || a.sentenceId.localeCompare(b.sentenceId),
+    );
 }
 
 // Split `text` into alternating plain/highlighted segments for rendering.

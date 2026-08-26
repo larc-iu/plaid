@@ -3,7 +3,7 @@ import { SentenceRow } from './SentenceRow.jsx';
 
 export const VirtualSentenceRow = ({
   sentenceData,
-  onAnnotationUpdate, 
+  onAnnotationUpdate,
   onFeatureDelete,
   onRelationCreate,
   onRelationUpdate,
@@ -15,7 +15,7 @@ export const VirtualSentenceRow = ({
   vocab,
   colors,
   visibleFields,
-  onToggleField
+  onToggleField,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [hasBeenVisible, setHasBeenVisible] = useState(false);
@@ -30,7 +30,7 @@ export const VirtualSentenceRow = ({
       (entries) => {
         const [entry] = entries;
         setIsVisible(entry.isIntersecting);
-        
+
         // Once visible, keep track for smooth transitions
         if (entry.isIntersecting) {
           setHasBeenVisible(true);
@@ -39,8 +39,8 @@ export const VirtualSentenceRow = ({
       {
         // Pre-load sentences 300px before they enter viewport
         rootMargin: '300px 0px 300px 0px',
-        threshold: 0
-      }
+        threshold: 0,
+      },
     );
 
     observerRef.current.observe(containerRef.current);
@@ -55,9 +55,9 @@ export const VirtualSentenceRow = ({
   // Render placeholder when not visible and hasn't been rendered yet
   if (!isVisible && !hasBeenVisible) {
     return (
-      <div 
+      <div
         ref={containerRef}
-        style={{ 
+        style={{
           height: `${estimatedHeight}px`,
           display: 'flex',
           alignItems: 'center',
@@ -65,7 +65,7 @@ export const VirtualSentenceRow = ({
           color: '#9ca3af',
           fontSize: '14px',
           border: '1px dashed #e5e7eb',
-          margin: '4px 0'
+          margin: '4px 0',
         }}
       >
         Loading sentence {sentenceIndex + 1}...

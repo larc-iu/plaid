@@ -58,7 +58,11 @@ export function parse(src) {
 
   function parseClause() {
     // delta(X,Y) / length(X,Y)
-    if (at(TT.IDENT) && (peek().value === 'delta' || peek().value === 'length') && at(TT.LPAREN, 1)) {
+    if (
+      at(TT.IDENT) &&
+      (peek().value === 'delta' || peek().value === 'length') &&
+      at(TT.LPAREN, 1)
+    ) {
       return parseDist();
     }
 
@@ -112,15 +116,24 @@ export function parse(src) {
   }
 
   function parseRef() {
-    if (at(TT.STAR)) { next(); return { wild: true }; }
+    if (at(TT.STAR)) {
+      next();
+      return { wild: true };
+    }
     const id = expect(TT.IDENT, 'a node identifier').value;
-    if (at(TT.DOLLAR)) { next(); nonInjective.add(id); }
+    if (at(TT.DOLLAR)) {
+      next();
+      nonInjective.add(id);
+    }
     return { wild: false, id };
   }
 
   function parseNodeDecl(id, line) {
     const alts = [parseFeatureStruct()];
-    while (at(TT.PIPE)) { next(); alts.push(parseFeatureStruct()); }
+    while (at(TT.PIPE)) {
+      next();
+      alts.push(parseFeatureStruct());
+    }
     return { kind: 'node', id, alts, line };
   }
 
@@ -129,7 +142,10 @@ export function parse(src) {
     const items = [];
     if (!at(TT.RBRACK)) {
       items.push(parseFeatItem());
-      while (at(TT.COMMA)) { next(); items.push(parseFeatItem()); }
+      while (at(TT.COMMA)) {
+        next();
+        items.push(parseFeatItem());
+      }
     }
     expect(TT.RBRACK, "']'");
     return items;
@@ -142,19 +158,31 @@ export function parse(src) {
       return { name, op: 'undefined', value: null };
     }
     const name = expect(TT.IDENT, 'a feature name').value;
-    if (at(TT.EQ)) { next(); return { name, op: '=', value: parseValueExpr() }; }
-    if (at(TT.NEQ)) { next(); return { name, op: '<>', value: parseValueExpr() }; }
+    if (at(TT.EQ)) {
+      next();
+      return { name, op: '=', value: parseValueExpr() };
+    }
+    if (at(TT.NEQ)) {
+      next();
+      return { name, op: '<>', value: parseValueExpr() };
+    }
     return { name, op: 'defined', value: null };
   }
 
   function parseValueExpr() {
     const items = [parseValueAtom()];
-    while (at(TT.PIPE)) { next(); items.push(parseValueAtom()); }
+    while (at(TT.PIPE)) {
+      next();
+      items.push(parseValueAtom());
+    }
     return items.length === 1 ? items[0] : { type: 'disj', items };
   }
 
   function parseValueAtom() {
-    if (at(TT.STAR)) { next(); return { type: 'any' }; }
+    if (at(TT.STAR)) {
+      next();
+      return { type: 'any' };
+    }
     if (at(TT.STRING)) return { type: 'lit', value: next().value };
     if (at(TT.REGEX)) {
       const r = next().value;
@@ -177,7 +205,13 @@ export function parse(src) {
       const rnode = next().value;
       next(); // '.'
       const rfeat = expect(TT.IDENT, 'a feature name').value;
-      return { kind: 'featcmp', left: { node: id, feat }, op, right: { node: rnode, feat: rfeat }, line };
+      return {
+        kind: 'featcmp',
+        left: { node: id, feat },
+        op,
+        right: { node: rnode, feat: rfeat },
+        line,
+      };
     }
     return { kind: 'nodefeat', node: id, feat, op, value: parseValueExpr(), line };
   }
@@ -197,9 +231,13 @@ export function parse(src) {
       expect(TT.RBRACK, "']'");
     }
     let transitive;
-    if (at(TT.ARROW)) { next(); transitive = false; }
-    else if (at(TT.DOMINATES)) { next(); transitive = true; }
-    else fail(`Expected '->' or '->>' but found ${describe(peek())}`);
+    if (at(TT.ARROW)) {
+      next();
+      transitive = false;
+    } else if (at(TT.DOMINATES)) {
+      next();
+      transitive = true;
+    } else fail(`Expected '->' or '->>' but found ${describe(peek())}`);
     const tgt = parseRef();
     if (transitive) return { kind: 'dominates', id: edgeId, left: src, right: tgt, label };
     return { kind: 'edge', id: edgeId, src, tgt, label };
@@ -211,22 +249,34 @@ export function parse(src) {
       return { type: 'regex', pattern: r.pattern, flavor: r.flavor, flags: r.flags };
     }
     let negated = false;
-    if (at(TT.CARET)) { next(); negated = true; }
+    if (at(TT.CARET)) {
+      next();
+      negated = true;
+    }
 
     // Edge-feature form: `1=nsubj, 2=pass, !deep` (key=val or !key, comma-sep).
     const looksFeature = at(TT.BANG) || ((at(TT.IDENT) || at(TT.NUMBER)) && at(TT.EQ, 1));
     if (!negated && looksFeature) {
       const feats = [];
       do {
-        if (at(TT.BANG)) { next(); feats.push({ key: expect(TT.IDENT, 'a feature name').value, neg: true }); }
-        else { const key = next().value; expect(TT.EQ, "'='"); feats.push({ key, val: parseLabelAtom() }); }
+        if (at(TT.BANG)) {
+          next();
+          feats.push({ key: expect(TT.IDENT, 'a feature name').value, neg: true });
+        } else {
+          const key = next().value;
+          expect(TT.EQ, "'='");
+          feats.push({ key, val: parseLabelAtom() });
+        }
       } while (at(TT.COMMA) && (next(), true));
       return { type: 'features', feats };
     }
 
     // Label list: `nsubj | obj | nsubj:pass`
     const labels = [parseLabelAtom()];
-    while (at(TT.PIPE)) { next(); labels.push(parseLabelAtom()); }
+    while (at(TT.PIPE)) {
+      next();
+      labels.push(parseLabelAtom());
+    }
     return { type: 'list', labels, negated };
   }
 
@@ -235,7 +285,10 @@ export function parse(src) {
   function parseLabelAtom() {
     if (at(TT.STRING)) return next().value;
     let s = String(expect(TT.IDENT, 'an edge label').value);
-    while (at(TT.COLON)) { next(); s += ':' + expect(TT.IDENT, 'a label subtype').value; }
+    while (at(TT.COLON)) {
+      next();
+      s += ':' + expect(TT.IDENT, 'a label subtype').value;
+    }
     return s;
   }
 
@@ -247,7 +300,9 @@ export function parse(src) {
     const b = expect(TT.IDENT, 'a node identifier').value;
     expect(TT.RPAREN, "')'");
     const opTok = next();
-    const op = { [TT.EQ]: '=', [TT.LT]: '<', [TT.LE]: '<=', [TT.GT]: '>', [TT.GE]: '>=' }[opTok.type];
+    const op = { [TT.EQ]: '=', [TT.LT]: '<', [TT.LE]: '<=', [TT.GT]: '>', [TT.GE]: '>=' }[
+      opTok.type
+    ];
     if (!op) fail(`Expected a comparison operator after ${fn}(…)`, opTok);
     const nTok = expect(TT.NUMBER, 'a number');
     return { kind: 'dist', fn, a, b, op, n: parseInt(nTok.value, 10) };
@@ -258,7 +313,8 @@ export function parse(src) {
   function parseGlobalItem() {
     // Optional `meta.` / `global.` prefix (Grew v1.18 in-pattern globals).
     if (at(TT.IDENT) && (peek().value === 'meta' || peek().value === 'global') && at(TT.DOT, 1)) {
-      next(); next();
+      next();
+      next();
     }
     if (at(TT.BANG)) {
       next();

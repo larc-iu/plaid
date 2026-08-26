@@ -1,9 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  Title, Text, Button, Alert, Paper, Stack, Group, Center, Loader, Table, Badge,
-  Select, Modal, TextInput, PasswordInput, Checkbox, Breadcrumbs, Anchor,
-  Menu, ActionIcon,
+  Title,
+  Text,
+  Button,
+  Alert,
+  Paper,
+  Stack,
+  Group,
+  Center,
+  Loader,
+  Table,
+  Badge,
+  Select,
+  Modal,
+  TextInput,
+  PasswordInput,
+  Checkbox,
+  Breadcrumbs,
+  Anchor,
+  Menu,
+  ActionIcon,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconPlus, IconSearch, IconDotsVertical } from '@tabler/icons-react';
@@ -92,16 +109,19 @@ export const ProjectManagement = ({ embedded = false }) => {
     (async () => {
       setMembersLoading(true);
       const client = getClient();
-      const ids = [...new Set([
-        ...(project.maintainers || []),
-        ...(project.writers || []),
-        ...(project.readers || []),
-      ])];
+      const ids = [
+        ...new Set([
+          ...(project.maintainers || []),
+          ...(project.writers || []),
+          ...(project.readers || []),
+        ]),
+      ];
       try {
-        const resolved = await Promise.all(ids.map(id =>
-          client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))));
+        const resolved = await Promise.all(
+          ids.map((id) => client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))),
+        );
         const rows = resolved
-          .map(u => ({ ...u, role: roleOf(project, u.id) }))
+          .map((u) => ({ ...u, role: roleOf(project, u.id) }))
           .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
         if (!cancelled) setMembers(rows);
       } catch (err) {
@@ -111,7 +131,9 @@ export const ProjectManagement = ({ embedded = false }) => {
         if (!cancelled) setMembersLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [project, getClient]);
 
   // Search the directory (server-side ?q=). Runs once the box is touched, so an
@@ -124,9 +146,12 @@ export const ProjectManagement = ({ embedded = false }) => {
       setSearchLoading(true);
       const client = getClient();
       try {
-        const page = await client.users.listPage({ q: debouncedSearch || undefined, limit: SEARCH_LIMIT });
-        const memberIds = new Set(members.map(m => m.id));
-        const results = (page.entries || []).filter(u => !memberIds.has(u.id));
+        const page = await client.users.listPage({
+          q: debouncedSearch || undefined,
+          limit: SEARCH_LIMIT,
+        });
+        const memberIds = new Set(members.map((m) => m.id));
+        const results = (page.entries || []).filter((u) => !memberIds.has(u.id));
         if (!cancelled) setSearchResults(results);
       } catch (err) {
         console.error('User search failed:', err);
@@ -135,7 +160,9 @@ export const ProjectManagement = ({ embedded = false }) => {
         if (!cancelled) setSearchLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [debouncedSearch, searchActive, members, getClient]);
 
   // Add / change / remove a project role for a user.
@@ -190,7 +217,9 @@ export const ProjectManagement = ({ embedded = false }) => {
     } catch (err) {
       console.error('Error creating user:', err);
       if (err.status === 409 || (err.message && err.message.includes('409'))) {
-        setCreateUserError(`A user with the ID "${newUserForm.username}" already exists. Please choose a different user ID.`);
+        setCreateUserError(
+          `A user with the ID "${newUserForm.username}" already exists. Please choose a different user ID.`,
+        );
       } else {
         setCreateUserError('Failed to create user: ' + (err.message || 'Unknown error'));
       }
@@ -227,9 +256,11 @@ export const ProjectManagement = ({ embedded = false }) => {
 
     try {
       const client = getClient();
-      const newUsername = editUserForm.username !== editingUser.username ? editUserForm.username : undefined;
+      const newUsername =
+        editUserForm.username !== editingUser.username ? editUserForm.username : undefined;
       const newPassword = editUserForm.password || undefined;
-      const newIsAdmin = editUserForm.isAdmin !== (editingUser.isAdmin || false) ? editUserForm.isAdmin : undefined;
+      const newIsAdmin =
+        editUserForm.isAdmin !== (editingUser.isAdmin || false) ? editUserForm.isAdmin : undefined;
 
       await client.users.update(editingUser.id, newPassword, newUsername, newIsAdmin);
 
@@ -263,7 +294,11 @@ export const ProjectManagement = ({ embedded = false }) => {
   };
 
   if (loading) {
-    return <Center py={48}><Loader /></Center>;
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   }
 
   if (!project) {
@@ -279,9 +314,15 @@ export const ProjectManagement = ({ embedded = false }) => {
       {!embedded && (
         <>
           <Breadcrumbs mb="lg">
-            <Anchor component={Link} to="/projects" size="sm">Projects</Anchor>
-            <Anchor component={Link} to={`/projects/${projectId}/documents`} size="sm">{project.name}</Anchor>
-            <Text size="sm" c="dimmed">Project Management</Text>
+            <Anchor component={Link} to="/projects" size="sm">
+              Projects
+            </Anchor>
+            <Anchor component={Link} to={`/projects/${projectId}/documents`} size="sm">
+              {project.name}
+            </Anchor>
+            <Text size="sm" c="dimmed">
+              Project Management
+            </Text>
           </Breadcrumbs>
 
           <Stack gap={2} mb="lg">
@@ -295,7 +336,10 @@ export const ProjectManagement = ({ embedded = false }) => {
         <Button
           leftSection={<IconPlus size={16} />}
           mb="lg"
-          onClick={() => { setShowCreateUserForm(true); setCreateUserError(''); }}
+          onClick={() => {
+            setShowCreateUserForm(true);
+            setCreateUserError('');
+          }}
         >
           Create User
         </Button>
@@ -303,13 +347,24 @@ export const ProjectManagement = ({ embedded = false }) => {
 
       {/* Current members */}
       <Paper withBorder radius="md" mb="lg">
-        <Group px="lg" py="md" justify="space-between" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-          <Title order={3} size="h4">Members</Title>
-          <Text size="sm" c="dimmed">{members.length} with access</Text>
+        <Group
+          px="lg"
+          py="md"
+          justify="space-between"
+          style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
+        >
+          <Title order={3} size="h4">
+            Members
+          </Title>
+          <Text size="sm" c="dimmed">
+            {members.length} with access
+          </Text>
         </Group>
 
         {membersLoading ? (
-          <Center py="xl"><Loader size="sm" /></Center>
+          <Center py="xl">
+            <Loader size="sm" />
+          </Center>
         ) : members.length === 0 ? (
           <Text px="lg" py="md" size="sm" c="dimmed">
             No one has been granted access yet. Use “Add a user” below.
@@ -325,14 +380,22 @@ export const ProjectManagement = ({ embedded = false }) => {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {members.map(m => (
+                {members.map((m) => (
                   <Table.Tr key={m.id}>
                     <Table.Td>
                       <Group gap="xs" wrap="nowrap">
-                        <Text size="sm" fw={500}>{m.username}</Text>
-                        {m.isAdmin && <Badge size="xs" color="grape" variant="light">Admin</Badge>}
+                        <Text size="sm" fw={500}>
+                          {m.username}
+                        </Text>
+                        {m.isAdmin && (
+                          <Badge size="xs" color="grape" variant="light">
+                            Admin
+                          </Badge>
+                        )}
                       </Group>
-                      <Text size="xs" c="dimmed">ID: {m.id}</Text>
+                      <Text size="xs" c="dimmed">
+                        ID: {m.id}
+                      </Text>
                     </Table.Td>
                     <Table.Td>
                       <Select
@@ -371,7 +434,9 @@ export const ProjectManagement = ({ embedded = false }) => {
       {/* Add a user (server-side search) */}
       <Paper withBorder radius="md" mb="lg">
         <Group px="lg" py="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-          <Title order={3} size="h4">Add a user</Title>
+          <Title order={3} size="h4">
+            Add a user
+          </Title>
         </Group>
         <Stack px="lg" py="md" gap="sm">
           <TextInput
@@ -381,9 +446,11 @@ export const ProjectManagement = ({ embedded = false }) => {
             onChange={(e) => setSearch(e.currentTarget.value)}
             onFocus={() => setSearchActive(true)}
           />
-          {searchActive && (
-            searchLoading ? (
-              <Center py="md"><Loader size="sm" /></Center>
+          {searchActive &&
+            (searchLoading ? (
+              <Center py="md">
+                <Loader size="sm" />
+              </Center>
             ) : searchResults.length === 0 ? (
               <Text size="sm" c="dimmed" py="xs">
                 {debouncedSearch ? 'No matching users.' : 'No other users to add.'}
@@ -400,20 +467,32 @@ export const ProjectManagement = ({ embedded = false }) => {
                   >
                     <div style={{ minWidth: 0 }}>
                       <Group gap="xs" wrap="nowrap">
-                        <Text size="sm" fw={500} truncate>{u.username}</Text>
-                        {u.isAdmin && <Badge size="xs" color="grape" variant="light">Admin</Badge>}
+                        <Text size="sm" fw={500} truncate>
+                          {u.username}
+                        </Text>
+                        {u.isAdmin && (
+                          <Badge size="xs" color="grape" variant="light">
+                            Admin
+                          </Badge>
+                        )}
                       </Group>
-                      <Text size="xs" c="dimmed" truncate>ID: {u.id}</Text>
+                      <Text size="xs" c="dimmed" truncate>
+                        ID: {u.id}
+                      </Text>
                     </div>
                     <Menu position="bottom-end" withinPortal>
                       <Menu.Target>
-                        <Button size="compact-sm" variant="light" leftSection={<IconPlus size={14} />}>
+                        <Button
+                          size="compact-sm"
+                          variant="light"
+                          leftSection={<IconPlus size={14} />}
+                        >
                           Add
                         </Button>
                       </Menu.Target>
                       <Menu.Dropdown>
                         <Menu.Label>Add as…</Menu.Label>
-                        {GRANT_ROLES.map(role => (
+                        {GRANT_ROLES.map((role) => (
                           <Menu.Item key={role} onClick={() => setRole(u.id, role)}>
                             {role.charAt(0).toUpperCase() + role.slice(1)}
                           </Menu.Item>
@@ -423,15 +502,17 @@ export const ProjectManagement = ({ embedded = false }) => {
                   </Group>
                 ))}
               </Stack>
-            )
-          )}
+            ))}
         </Stack>
       </Paper>
 
       {/* Create User Modal */}
       <Modal
         opened={isAdmin && showCreateUserForm}
-        onClose={() => { setShowCreateUserForm(false); setCreateUserError(''); }}
+        onClose={() => {
+          setShowCreateUserForm(false);
+          setCreateUserError('');
+        }}
         title="Create New User"
         centered
       >
@@ -444,7 +525,7 @@ export const ProjectManagement = ({ embedded = false }) => {
               description="Unique identifier for this user (cannot be changed later)"
               placeholder="e.g., john.doe"
               value={newUserForm.username}
-              onChange={(e) => setNewUserForm(prev => ({ ...prev, username: e.target.value }))}
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, username: e.target.value }))}
               required
               data-autofocus
             />
@@ -452,20 +533,24 @@ export const ProjectManagement = ({ embedded = false }) => {
             <Checkbox
               label="Admin User"
               checked={newUserForm.isAdmin}
-              onChange={(e) => setNewUserForm(prev => ({ ...prev, isAdmin: e.currentTarget.checked }))}
+              onChange={(e) =>
+                setNewUserForm((prev) => ({ ...prev, isAdmin: e.currentTarget.checked }))
+              }
             />
 
             <PasswordInput
               label="Password"
               value={newUserForm.password}
-              onChange={(e) => setNewUserForm(prev => ({ ...prev, password: e.target.value }))}
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
               required
             />
 
             <PasswordInput
               label="Confirm Password"
               value={newUserForm.confirmPassword}
-              onChange={(e) => setNewUserForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+              onChange={(e) =>
+                setNewUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
+              }
               required
             />
 
@@ -493,7 +578,7 @@ export const ProjectManagement = ({ embedded = false }) => {
               <TextInput
                 label="Username"
                 value={editUserForm.username}
-                onChange={(e) => setEditUserForm(prev => ({ ...prev, username: e.target.value }))}
+                onChange={(e) => setEditUserForm((prev) => ({ ...prev, username: e.target.value }))}
                 required
                 data-autofocus
               />
@@ -501,19 +586,23 @@ export const ProjectManagement = ({ embedded = false }) => {
               <Checkbox
                 label="Admin User"
                 checked={editUserForm.isAdmin}
-                onChange={(e) => setEditUserForm(prev => ({ ...prev, isAdmin: e.currentTarget.checked }))}
+                onChange={(e) =>
+                  setEditUserForm((prev) => ({ ...prev, isAdmin: e.currentTarget.checked }))
+                }
               />
 
               <PasswordInput
                 label="New Password (leave blank to keep current)"
                 value={editUserForm.password}
-                onChange={(e) => setEditUserForm(prev => ({ ...prev, password: e.target.value }))}
+                onChange={(e) => setEditUserForm((prev) => ({ ...prev, password: e.target.value }))}
               />
 
               <PasswordInput
                 label="Confirm New Password"
                 value={editUserForm.confirmPassword}
-                onChange={(e) => setEditUserForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                onChange={(e) =>
+                  setEditUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
+                }
               />
 
               <Group justify="space-between" pt="xs">
@@ -533,7 +622,9 @@ export const ProjectManagement = ({ embedded = false }) => {
                 </Group>
               </Group>
               {editingUser.id === user.id && (
-                <Text size="xs" c="dimmed">You cannot delete your own account</Text>
+                <Text size="xs" c="dimmed">
+                  You cannot delete your own account
+                </Text>
               )}
             </Stack>
           </form>

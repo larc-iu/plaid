@@ -22,6 +22,12 @@ test('is tolerant of partial / malformed input while typing', () => {
 });
 
 test('highlights operators and global flags', () => {
-  assert.match(highlightGrew('X ->> Y'), /color:var\(--mantine-color-violet-6\)">-&gt;&gt;<\/span>/);
-  assert.match(highlightGrew('global { is_projective }'), /color:var\(--mantine-color-grape-6\)">is_projective<\/span>/);
+  assert.match(
+    highlightGrew('X ->> Y'),
+    /color:var\(--mantine-color-violet-6\)">-&gt;&gt;<\/span>/,
+  );
+  assert.match(
+    highlightGrew('global { is_projective }'),
+    /color:var\(--mantine-color-grape-6\)">is_projective<\/span>/,
+  );
 });

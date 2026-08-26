@@ -68,7 +68,9 @@ test.beforeAll(async () => {
 
   // B7: span flags + relation layer (under Lemma)
   client.beginBatch();
-  SPAN_SPECS.forEach(([, key], i) => client.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true));
+  SPAN_SPECS.forEach(([, key], i) =>
+    client.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true),
+  );
   client.relationLayers.create(byKey.lemma, 'Dependency Relations');
   const b7 = await client.submitBatch();
   const relationLayerId = b7[b7.length - 1].body.id;
@@ -84,11 +86,27 @@ test.beforeAll(async () => {
   S.documentId = doc.id;
   const text = await client.texts.create(textLayerId, doc.id, body);
 
-  const words = [[0, 3], [4, 7], [8, 12]]; // the / dog / runs
+  const words = [
+    [0, 3],
+    [4, 7],
+    [8, 12],
+  ]; // the / dog / runs
   client.beginBatch();
-  client.tokens.bulkCreate([{ tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length }]);
-  client.tokens.bulkCreate(words.map(([b, e]) => ({ tokenLayerId: wordLayerId, text: text.id, begin: b, end: e })));
-  client.tokens.bulkCreate(words.map(([b, e]) => ({ tokenLayerId: morphemeLayerId, text: text.id, begin: b, end: e, precedence: 0 })));
+  client.tokens.bulkCreate([
+    { tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length },
+  ]);
+  client.tokens.bulkCreate(
+    words.map(([b, e]) => ({ tokenLayerId: wordLayerId, text: text.id, begin: b, end: e })),
+  );
+  client.tokens.bulkCreate(
+    words.map(([b, e]) => ({
+      tokenLayerId: morphemeLayerId,
+      text: text.id,
+      begin: b,
+      end: e,
+      precedence: 0,
+    })),
+  );
   const tb = await client.submitBatch();
   const morphIds = tb[2].body.ids;
   S.morphIds = morphIds; // [the, dog, runs]
@@ -103,7 +121,9 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (S.client && S.projectId) {
-    await S.client.projects.delete(S.projectId).catch((e) => console.error('cleanup failed:', e.message));
+    await S.client.projects
+      .delete(S.projectId)
+      .catch((e) => console.error('cleanup failed:', e.message));
   }
 });
 
@@ -111,20 +131,25 @@ async function openGrid(page) {
   const collected = collectClientErrors(page);
   await seedAuth(page);
   await page.addInitScript(() => {
-    localStorage.setItem('ud-annotation-visible-fields',
-      JSON.stringify({ lemma: true, xpos: true, upos: true, feats: true }));
+    localStorage.setItem(
+      'ud-annotation-visible-fields',
+      JSON.stringify({ lemma: true, xpos: true, upos: true, feats: true }),
+    );
   });
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/annotate`);
   // Wait until the grid shows all three token forms (reconcile-on-open may write first).
   for (const form of ['the', 'dog', 'runs']) {
-    await expect(page.locator('.token-form', { hasText: form }).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.token-form', { hasText: form }).first()).toBeVisible({
+      timeout: 15000,
+    });
   }
   return collected;
 }
 
 const featsInput = (page, i) => page.locator(`[id="${S.morphIds[i]}-feats"]`);
 const pillsOf = (page, i) =>
-  page.locator('.features-container', { has: page.locator(`[id="${S.morphIds[i]}-feats"]`) })
+  page
+    .locator('.features-container', { has: page.locator(`[id="${S.morphIds[i]}-feats"]`) })
     .locator('.feature-tag');
 
 // Server-side truth: list the Features spans as {value, token-index} pairs.
@@ -136,7 +161,11 @@ async function serverFeatures(label) {
       for (const sl of tokl.spanLayers || []) {
         if (sl.name !== 'Features') continue;
         for (const s of sl.spans || []) {
-          out.push({ id: s.id, value: s.value, tok: S.morphIds.indexOf(s.tokens?.[0]?.id ?? s.tokens?.[0]) });
+          out.push({
+            id: s.id,
+            value: s.value,
+            tok: S.morphIds.indexOf(s.tokens?.[0]?.id ?? s.tokens?.[0]),
+          });
         }
       }
     }
@@ -152,7 +181,8 @@ function reportCollected(label, { errors, failures, apiCalls }) {
   for (const f of failures) console.log(JSON.stringify(f));
   console.log(`--- [${label}] write API calls ---`);
   for (const c of apiCalls) {
-    if (c.method !== 'GET') console.log(`${c.status} ${c.method} ${c.url.replace('http://localhost:5173', '')}`);
+    if (c.method !== 'GET')
+      console.log(`${c.status} ${c.method} ${c.url.replace('http://localhost:5173', '')}`);
   }
 }
 
@@ -165,7 +195,7 @@ test('B1: typing Key=Value then Enter commits (POST) and clears input', async ({
 
   const postPromise = page.waitForResponse(
     (r) => r.url().includes('/api/v1/spans') && r.request().method() === 'POST',
-    { timeout: 8000 }
+    { timeout: 8000 },
   );
   await input.press('Enter');
   const post = await postPromise;
@@ -213,7 +243,7 @@ test('B2: suggestions — keys as "Key=", then values; picking fills/commits', a
   // Picking "Case=Acc" commits
   const postPromise = page.waitForResponse(
     (r) => r.url().includes('/api/v1/spans') && r.request().method() === 'POST',
-    { timeout: 8000 }
+    { timeout: 8000 },
   );
   await valOption.first().click();
   const post = await postPromise;
@@ -247,7 +277,9 @@ test('B2: suggestions — keys as "Key=", then values; picking fills/commits', a
   expect.soft(collected.errors, 'console errors').toEqual([]);
 });
 
-test('B3: pill selection via Backspace, arrow moves, delete, escape/typing clears', async ({ page }) => {
+test('B3: pill selection via Backspace, arrow moves, delete, escape/typing clears', async ({
+  page,
+}) => {
   const collected = await openGrid(page);
   const input = featsInput(page, 0); // 'the' — has Number=Sing + Gender=Fem
   const pills = pillsOf(page, 0);
@@ -256,7 +288,7 @@ test('B3: pill selection via Backspace, arrow moves, delete, escape/typing clear
   await expect(input).toHaveValue('');
 
   // Close the dropdown if focus opened it, so keys reach our handler cleanly.
-  if (await input.getAttribute('aria-expanded') === 'true') await input.press('Escape');
+  if ((await input.getAttribute('aria-expanded')) === 'true') await input.press('Escape');
 
   // Backspace at empty input selects the LAST pill
   await input.press('Backspace');
@@ -282,11 +314,11 @@ test('B3: pill selection via Backspace, arrow moves, delete, escape/typing clear
   await input.pressSequentially('x');
   await expect(page.locator('.feature-tag--selected')).toHaveCount(0);
   await input.press('Escape'); // may close dropdown opened by typing
-  if (await input.inputValue() !== '') await input.press('Escape');
+  if ((await input.inputValue()) !== '') await input.press('Escape');
   // ensure input ends empty for the delete step (Escape with closed dropdown clears+blurs)
   await input.click();
   await expect(input).toHaveValue('');
-  if (await input.getAttribute('aria-expanded') === 'true') await input.press('Escape');
+  if ((await input.getAttribute('aria-expanded')) === 'true') await input.press('Escape');
 
   // Backspace-select then Backspace-delete fires DELETE /spans/:id
   await serverFeatures('B3 just before delete');
@@ -294,7 +326,7 @@ test('B3: pill selection via Backspace, arrow moves, delete, escape/typing clear
   await expect(pills.nth(1)).toHaveClass(/feature-tag--selected/);
   const delPromise = page.waitForResponse(
     (r) => /\/api\/v1\/spans\//.test(r.url()) && r.request().method() === 'DELETE',
-    { timeout: 8000 }
+    { timeout: 8000 },
   );
   await input.press('Backspace');
   const del = await delPromise;
@@ -324,7 +356,7 @@ test('B4+B5: grid arrow navigation and tab order', async ({ page }) => {
   // ArrowUp from feats (dropdown closed) -> UPOS input
   await input.click();
   console.log('feats aria-expanded after click:', await input.getAttribute('aria-expanded'));
-  if (await input.getAttribute('aria-expanded') === 'true') await input.press('Escape');
+  if ((await input.getAttribute('aria-expanded')) === 'true') await input.press('Escape');
   await input.press('ArrowUp');
   await expect(upos).toBeFocused();
 
@@ -338,7 +370,7 @@ test('B4+B5: grid arrow navigation and tab order', async ({ page }) => {
     const stillFocused = await upos.evaluate((el) => document.activeElement === el);
     console.log('upos still focused after Escape:', stillFocused);
     if (!stillFocused) await upos.focus();
-    if (await upos.getAttribute('aria-expanded') === 'true') {
+    if ((await upos.getAttribute('aria-expanded')) === 'true') {
       console.log('NOTE: upos dropdown still open after Escape');
     }
   }
@@ -346,19 +378,19 @@ test('B4+B5: grid arrow navigation and tab order', async ({ page }) => {
   await expect(input).toBeFocused();
 
   // ArrowLeft at empty feats input -> previous token's feats
-  if (await input.getAttribute('aria-expanded') === 'true') await input.press('Escape');
+  if ((await input.getAttribute('aria-expanded')) === 'true') await input.press('Escape');
   await expect(input).toHaveValue('');
   await input.press('ArrowLeft');
   await expect(featsInput(page, 0)).toBeFocused();
 
   // ArrowRight from there -> back to dog's feats
   const first = featsInput(page, 0);
-  if (await first.getAttribute('aria-expanded') === 'true') await first.press('Escape');
+  if ((await first.getAttribute('aria-expanded')) === 'true') await first.press('Escape');
   await first.press('ArrowRight');
   await expect(input).toBeFocused();
 
   // and ArrowRight again -> runs' feats
-  if (await input.getAttribute('aria-expanded') === 'true') await input.press('Escape');
+  if ((await input.getAttribute('aria-expanded')) === 'true') await input.press('Escape');
   await input.press('ArrowRight');
   await expect(featsInput(page, 2)).toBeFocused();
 
@@ -381,12 +413,14 @@ test('B6: auto-highlighted suggestion is selected by Enter (no arrowing)', async
   await input.pressSequentially('Fem', { delay: 30 });
   const post = page.waitForResponse(
     (r) => r.url().includes('/api/v1/spans') && r.request().method() === 'POST',
-    { timeout: 8000 }
+    { timeout: 8000 },
   );
   await input.press('Enter');
   await post;
 
-  await expect(pillsOf(page, 2).filter({ hasText: 'Gender=Fem' })).toHaveCount(1, { timeout: 8000 });
+  await expect(pillsOf(page, 2).filter({ hasText: 'Gender=Fem' })).toHaveCount(1, {
+    timeout: 8000,
+  });
   await expect(input).toHaveValue(''); // committed + cleared (single add, not double)
   expect.soft(collected.errors, 'console errors').toEqual([]);
 });

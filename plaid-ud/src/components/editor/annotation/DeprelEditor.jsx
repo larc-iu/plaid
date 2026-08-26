@@ -45,29 +45,41 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
   const vocabLower = new Set((suggestions || []).map((s) => s.toLowerCase()));
   const literalValue = typed && !vocabLower.has(typed.toLowerCase()) ? typed : null;
   const data = literalValue
-    ? [...groupSuggestions(suggestions || [], deprelProbs), { value: literalValue, label: literalValue }]
+    ? [
+        ...groupSuggestions(suggestions || [], deprelProbs),
+        { value: literalValue, label: literalValue },
+      ]
     : groupSuggestions(suggestions || [], deprelProbs);
 
   // Order matches by closeness to the query: exact, then left-to-right prefix,
   // then later substring; ties broken by match position, then length, then name.
   const rankCmp = (a, b, q) => {
-    const al = a.toLowerCase(), bl = b.toLowerCase();
+    const al = a.toLowerCase(),
+      bl = b.toLowerCase();
     const rank = (l) => (l === q ? 0 : l.startsWith(q) ? 1 : 2);
-    const ra = rank(al), rb = rank(bl);
+    const ra = rank(al),
+      rb = rank(bl);
     if (ra !== rb) return ra - rb;
-    const ia = al.indexOf(q), ib = bl.indexOf(q);
+    const ia = al.indexOf(q),
+      ib = bl.indexOf(q);
     if (ia !== ib) return ia - ib;
     if (a.length !== b.length) return a.length - b.length;
     return a.localeCompare(b);
   };
   const filterSort = (items, q) =>
-    !q ? items : items.filter((o) => o.label.toLowerCase().includes(q)).sort((a, b) => rankCmp(a.label, b.label, q));
+    !q
+      ? items
+      : items
+          .filter((o) => o.label.toLowerCase().includes(q))
+          .sort((a, b) => rankCmp(a.label, b.label, q));
 
   // Group-aware filter: the data may be flat or grouped. Keeps the literal item
   // (if present) out of filtering and pins it last; everything else is
   // match-ranked once the user has started typing.
   const optionsFilter = ({ options, search }) => {
-    const literal = literalValue ? options.find((o) => !('group' in o) && o.value === literalValue) : null;
+    const literal = literalValue
+      ? options.find((o) => !('group' in o) && o.value === literalValue)
+      : null;
     const rest = literal ? options.filter((o) => o !== literal) : options;
     let body;
     if (pristine) {
@@ -78,7 +90,10 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
         .filter((o) => 'group' in o)
         .map((o) => ({ ...o, items: filterSort(o.items, q) }))
         .filter((o) => o.items.length > 0);
-      const plain = filterSort(rest.filter((o) => !('group' in o)), q);
+      const plain = filterSort(
+        rest.filter((o) => !('group' in o)),
+        q,
+      );
       body = [...groups, ...plain];
     }
     return literal ? [...body, literal] : body;
@@ -89,7 +104,9 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
       data={data}
       renderOption={({ option }) => {
         if (literalValue && option.value === literalValue) {
-          return <span style={{ fontStyle: 'italic', opacity: 0.8 }}>Use “{option.value}” as typed</span>;
+          return (
+            <span style={{ fontStyle: 'italic', opacity: 0.8 }}>Use “{option.value}” as typed</span>
+          );
         }
         const pct = deprelProbs ? probLabel(deprelProbs, option.value) : null;
         return (
@@ -100,8 +117,14 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
         );
       }}
       value={value}
-      onChange={(v) => { setValue(v); setPristine(false); }}
-      onFocus={(e) => { setPristine(true); setTimeout(() => e.target.select?.(), 0); }}
+      onChange={(v) => {
+        setValue(v);
+        setPristine(false);
+      }}
+      onFocus={(e) => {
+        setPristine(true);
+        setTimeout(() => e.target.select?.(), 0);
+      }}
       onBlur={() => once(() => onCommit(value))}
       // Arrow-key navigation only HIGHLIGHTS an option; it doesn't update
       // `value`. Mantine applies the highlighted option via onOptionSubmit (on
@@ -116,10 +139,23 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
         // listener (Escape = bail, Ctrl+D = enter) doesn't also fire while the
         // editor owns these keys — keeps Enter/Escape returning focus to the
         // selected label instead of clearing it.
-        if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); queueMicrotask(() => once(() => onCommit(value))); }
-        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); once(onCancel); }
-        else if (e.key === 'Delete' && e.shiftKey) { e.preventDefault(); e.stopPropagation(); once(onDelete); }
-        else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); once(() => onTab(value, e.shiftKey)); }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          queueMicrotask(() => once(() => onCommit(value)));
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          once(onCancel);
+        } else if (e.key === 'Delete' && e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          once(onDelete);
+        } else if (e.key === 'Tab') {
+          e.preventDefault();
+          e.stopPropagation();
+          once(() => onTab(value, e.shiftKey));
+        }
       }}
       filter={optionsFilter}
       // Auto-highlight the best match for Enter — but only once typing has
@@ -132,11 +168,16 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
       comboboxProps={{ withinPortal: true, width: 'max-content', position: 'bottom-start' }}
       styles={{
         input: {
-          height: 22, minHeight: 22, padding: '0 6px', fontSize: 11,
-          textAlign: 'center', fontFamily: 'sans-serif',
-          borderColor: '#2563eb', color: '#2563eb'
+          height: 22,
+          minHeight: 22,
+          padding: '0 6px',
+          fontSize: 11,
+          textAlign: 'center',
+          fontFamily: 'sans-serif',
+          borderColor: '#2563eb',
+          color: '#2563eb',
         },
-        option: { whiteSpace: 'nowrap', fontSize: 11 }
+        option: { whiteSpace: 'nowrap', fontSize: 11 },
       }}
     />
   );

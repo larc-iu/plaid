@@ -1,7 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
-  Title, Button, Alert, Paper, Stack, Group, Text, Box, Center, Loader, Tooltip,
+  Title,
+  Button,
+  Alert,
+  Paper,
+  Stack,
+  Group,
+  Text,
+  Box,
+  Center,
+  Loader,
+  Tooltip,
 } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -95,7 +105,9 @@ export const ProjectList = () => {
         if (!cancelled) setWordsLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [projects, getClient]);
 
   const handleProjectCreated = (project) => {
@@ -122,7 +134,11 @@ export const ProjectList = () => {
   }, [projects, wordCounts, sort]);
 
   if (loading) {
-    return <Center py={48}><Loader /></Center>;
+    return (
+      <Center py={48}>
+        <Loader />
+      </Center>
+    );
   }
 
   const renderWords = (projectId) => {
@@ -135,12 +151,20 @@ export const ProjectList = () => {
     <>
       <Group justify="space-between" mb="lg">
         <Title order={2}>Projects</Title>
-        <Button color="dark" leftSection={<IconPlus size={16} />} onClick={() => setShowCreateForm(true)}>
+        <Button
+          color="dark"
+          leftSection={<IconPlus size={16} />}
+          onClick={() => setShowCreateForm(true)}
+        >
           New UD Project
         </Button>
       </Group>
 
-      {error && <Alert color="red" mb="md">{error}</Alert>}
+      {error && (
+        <Alert color="red" mb="md">
+          {error}
+        </Alert>
+      )}
 
       <ProjectForm
         isOpen={showCreateForm}
@@ -162,10 +186,18 @@ export const ProjectList = () => {
             py="xs"
             style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
           >
-            <SortButton field="name" sort={sort} onSort={onSort} align="left">Project</SortButton>
-            <SortButton field="documents" sort={sort} onSort={onSort} width={W_DOCS}>Docs</SortButton>
-            <SortButton field="words" sort={sort} onSort={onSort} width={W_WORDS}>Words</SortButton>
-            <SortButton field="updated" sort={sort} onSort={onSort} width={W_UPDATED}>Updated</SortButton>
+            <SortButton field="name" sort={sort} onSort={onSort} align="left">
+              Project
+            </SortButton>
+            <SortButton field="documents" sort={sort} onSort={onSort} width={W_DOCS}>
+              Docs
+            </SortButton>
+            <SortButton field="words" sort={sort} onSort={onSort} width={W_WORDS}>
+              Words
+            </SortButton>
+            <SortButton field="updated" sort={sort} onSort={onSort} width={W_UPDATED}>
+              Updated
+            </SortButton>
           </Group>
 
           <Stack gap={0}>
@@ -181,15 +213,31 @@ export const ProjectList = () => {
                   <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
                     <EntityAvatar id={project.id} size={36} />
                     <div style={{ minWidth: 0 }}>
-                      <Text fw={500} size="lg" truncate>{project.name}</Text>
-                      <Text size="xs" c="dimmed" truncate>ID: {project.id}</Text>
+                      <Text fw={500} size="lg" truncate>
+                        {project.name}
+                      </Text>
+                      <Text size="xs" c="dimmed" truncate>
+                        ID: {project.id}
+                      </Text>
                     </div>
                   </Group>
 
-                  <Text size="sm" c="dimmed" ta="right" w={W_DOCS}>{project.documentCount ?? 0}</Text>
-                  <Box ta="right" w={W_WORDS}><Text size="sm" c="dimmed" component="span">{renderWords(project.id)}</Text></Box>
-                  <Tooltip label={fullTimestamp(project.lastModified)} disabled={!project.lastModified} withinPortal>
-                    <Text size="sm" c="dimmed" ta="right" w={W_UPDATED}>{timeAgo(project.lastModified) || '—'}</Text>
+                  <Text size="sm" c="dimmed" ta="right" w={W_DOCS}>
+                    {project.documentCount ?? 0}
+                  </Text>
+                  <Box ta="right" w={W_WORDS}>
+                    <Text size="sm" c="dimmed" component="span">
+                      {renderWords(project.id)}
+                    </Text>
+                  </Box>
+                  <Tooltip
+                    label={fullTimestamp(project.lastModified)}
+                    disabled={!project.lastModified}
+                    withinPortal
+                  >
+                    <Text size="sm" c="dimmed" ta="right" w={W_UPDATED}>
+                      {timeAgo(project.lastModified) || '—'}
+                    </Text>
                   </Tooltip>
                 </Group>
               </Box>

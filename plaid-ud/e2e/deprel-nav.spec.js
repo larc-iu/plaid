@@ -11,7 +11,13 @@ import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY } from '@larc-iu/plaid-cl
 
 const BASE = 'http://localhost:8085';
 const UD_NS = 'ud';
-const SPAN_SPECS = [['Form', 'form'], ['Lemma', 'lemma'], ['UPOS', 'upos'], ['XPOS', 'xpos'], ['Features', 'features']];
+const SPAN_SPECS = [
+  ['Form', 'form'],
+  ['Lemma', 'lemma'],
+  ['UPOS', 'upos'],
+  ['XPOS', 'xpos'],
+  ['Features', 'features'],
+];
 const S = {};
 
 test.beforeAll(async () => {
@@ -49,7 +55,9 @@ test.beforeAll(async () => {
   const byKey = Object.fromEntries(SPAN_SPECS.map(([, key], i) => [key, spanLayerIds[i]]));
 
   client.beginBatch();
-  SPAN_SPECS.forEach(([, key], i) => client.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true));
+  SPAN_SPECS.forEach(([, key], i) =>
+    client.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true),
+  );
   client.relationLayers.create(byKey.lemma, 'Dependency Relations');
   const b7 = await client.submitBatch();
   const relationLayerId = b7[b7.length - 1].body.id;
@@ -63,11 +71,27 @@ test.beforeAll(async () => {
   S.documentId = doc.id;
   const text = await client.texts.create(textLayerId, doc.id, body);
 
-  const words = [[0, 3], [4, 7], [8, 12]]; // the / dog / runs
+  const words = [
+    [0, 3],
+    [4, 7],
+    [8, 12],
+  ]; // the / dog / runs
   client.beginBatch();
-  client.tokens.bulkCreate([{ tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length }]);
-  client.tokens.bulkCreate(words.map(([b, e]) => ({ tokenLayerId: wordLayerId, text: text.id, begin: b, end: e })));
-  client.tokens.bulkCreate(words.map(([b, e]) => ({ tokenLayerId: morphemeLayerId, text: text.id, begin: b, end: e, precedence: 0 })));
+  client.tokens.bulkCreate([
+    { tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length },
+  ]);
+  client.tokens.bulkCreate(
+    words.map(([b, e]) => ({ tokenLayerId: wordLayerId, text: text.id, begin: b, end: e })),
+  );
+  client.tokens.bulkCreate(
+    words.map(([b, e]) => ({
+      tokenLayerId: morphemeLayerId,
+      text: text.id,
+      begin: b,
+      end: e,
+      precedence: 0,
+    })),
+  );
   const morphIds = (await client.submitBatch())[2].body.ids;
   S.morphIds = morphIds; // [the, dog, runs]
 
@@ -83,7 +107,9 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (S.client && S.projectId) {
-    await S.client.projects.delete(S.projectId).catch((e) => console.error('cleanup failed:', e.message));
+    await S.client.projects
+      .delete(S.projectId)
+      .catch((e) => console.error('cleanup failed:', e.message));
   }
 });
 
@@ -91,26 +117,32 @@ async function openGrid(page) {
   const collected = collectClientErrors(page);
   await seedAuth(page);
   await page.addInitScript(() => {
-    localStorage.setItem('ud-annotation-visible-fields',
-      JSON.stringify({ lemma: true, xpos: true, upos: true, feats: true }));
+    localStorage.setItem(
+      'ud-annotation-visible-fields',
+      JSON.stringify({ lemma: true, xpos: true, upos: true, feats: true }),
+    );
   });
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/annotate`);
   for (const form of ['the', 'dog', 'runs']) {
-    await expect(page.locator('.token-form', { hasText: form }).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.token-form', { hasText: form }).first()).toBeVisible({
+      timeout: 15000,
+    });
   }
   // Wait for the three deprel labels to be painted (after position measurement).
   await expect(page.locator('.tree-deprel-text')).toHaveCount(3, { timeout: 15000 });
   return collected;
 }
 
-const active = (page) => page.evaluate(() => ({
-  tag: document.activeElement?.tagName?.toLowerCase() || null,
-  text: (document.activeElement?.textContent || '').trim(),
-  id: document.activeElement?.id || '',
-  cls: document.activeElement?.getAttribute?.('class') || '',
-}));
+const active = (page) =>
+  page.evaluate(() => ({
+    tag: document.activeElement?.tagName?.toLowerCase() || null,
+    text: (document.activeElement?.textContent || '').trim(),
+    id: document.activeElement?.id || '',
+    cls: document.activeElement?.getAttribute?.('class') || '',
+  }));
 
-const label = (page, value) => page.locator('.tree-deprel-text', { hasText: new RegExp(`^${value}`) });
+const label = (page, value) =>
+  page.locator('.tree-deprel-text', { hasText: new RegExp(`^${value}`) });
 
 test('Enter returns focus to the edited deprel label', async ({ page }) => {
   const collected = await openGrid(page);

@@ -25,19 +25,19 @@ export const Layout = () => {
       >
         <Container size="xl">
           <Group justify="space-between" h={64}>
-            <Title
-              order={3}
-              component={Link}
-              to="/"
-              c="inherit"
-              style={{ textDecoration: 'none' }}
-            >
+            <Title order={3} component={Link} to="/" c="inherit" style={{ textDecoration: 'none' }}>
               Plaid UD
             </Title>
             {user && (
               <Group gap="xs">
                 {user.isAdmin && (
-                  <Button component={Link} to="/admin/users" variant="subtle" color="gray" size="sm">
+                  <Button
+                    component={Link}
+                    to="/admin/users"
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                  >
                     Users
                   </Button>
                 )}

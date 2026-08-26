@@ -1,7 +1,19 @@
 import { useState, useEffect } from 'react';
 import {
-  Stack, Paper, Title, Text, Button, Group, Alert, TextInput, PasswordInput,
-  Divider, Code, CopyButton, Loader, Box,
+  Stack,
+  Paper,
+  Title,
+  Text,
+  Button,
+  Group,
+  Alert,
+  TextInput,
+  PasswordInput,
+  Divider,
+  Code,
+  CopyButton,
+  Loader,
+  Box,
 } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess } from '../../utils/feedback.jsx';
@@ -77,7 +89,8 @@ export const UserProfile = () => {
   const handleRevokeToken = (tokenId) => {
     confirmDelete({
       title: 'Revoke API token',
-      message: 'Revoke this API token? Any service using it will immediately lose access. This cannot be undone.',
+      message:
+        'Revoke this API token? Any service using it will immediately lose access. This cannot be undone.',
       confirmLabel: 'Revoke',
       onConfirm: async () => {
         try {
@@ -98,7 +111,7 @@ export const UserProfile = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
     // Clear messages when user starts typing
     if (error) setError('');
   };
@@ -171,7 +184,12 @@ export const UserProfile = () => {
       setIsEditing(false);
 
       // Clear password fields
-      setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
+      setFormData((prev) => ({
+        ...prev,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      }));
 
       // Update localStorage and auth context with complete user data
       localStorage.setItem('username', updatedUserData.username);
@@ -185,7 +203,7 @@ export const UserProfile = () => {
       });
 
       // Update form data to reflect the new username
-      setFormData(prev => ({ ...prev, username: updatedUserData.username }));
+      setFormData((prev) => ({ ...prev, username: updatedUserData.username }));
     } catch (err) {
       setError(err.message || 'Failed to update profile');
     } finally {
@@ -212,12 +230,16 @@ export const UserProfile = () => {
   return (
     <Stack maw={672} mx="auto" gap="lg">
       <Paper withBorder radius="md" p="lg">
-        <Title order={3} mb="lg">User Profile</Title>
+        <Title order={3} mb="lg">
+          User Profile
+        </Title>
 
         {!isEditing ? (
           <Stack gap="md" align="flex-start">
             <div>
-              <Text size="sm" fw={500} c="dimmed">Username</Text>
+              <Text size="sm" fw={500} c="dimmed">
+                Username
+              </Text>
               <Text>{user?.username}</Text>
             </div>
             <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
@@ -257,8 +279,12 @@ export const UserProfile = () => {
               />
 
               <Group justify="flex-end" gap="sm">
-                <Button type="button" variant="default" onClick={handleCancel}>Cancel</Button>
-                <Button type="submit" loading={loading}>Save Changes</Button>
+                <Button type="button" variant="default" onClick={handleCancel}>
+                  Cancel
+                </Button>
+                <Button type="submit" loading={loading}>
+                  Save Changes
+                </Button>
               </Group>
             </Stack>
           </form>
@@ -271,18 +297,24 @@ export const UserProfile = () => {
       <Paper withBorder radius="md" p="lg">
         <Title order={3}>API Tokens</Title>
         <Text size="sm" c="dimmed" mt={4}>
-          Create named tokens to access the API from external services (parsers, scripts,
-          the Python <Code>PlaidClient</Code>). Each token carries your permissions, never
-          expires, and survives password changes — revoke one to cut off access. Actions taken
-          with a token are labelled by its name in the audit history.
+          Create named tokens to access the API from external services (parsers, scripts, the Python{' '}
+          <Code>PlaidClient</Code>). Each token carries your permissions, never expires, and
+          survives password changes — revoke one to cut off access. Actions taken with a token are
+          labelled by its name in the audit history.
         </Text>
 
-        {tokensError && <Alert color="red" mt="md">{tokensError}</Alert>}
+        {tokensError && (
+          <Alert color="red" mt="md">
+            {tokensError}
+          </Alert>
+        )}
 
         {/* One-time reveal of a freshly minted token */}
         {mintedToken && (
           <Alert color="yellow" mt="md" title={`Token "${mintedToken.name}" created`}>
-            <Text size="sm" mb="xs">Copy it now — you won’t be able to see it again.</Text>
+            <Text size="sm" mb="xs">
+              Copy it now — you won’t be able to see it again.
+            </Text>
             <Group gap="xs" wrap="nowrap" align="center">
               <Code style={{ flex: 1, wordBreak: 'break-all' }}>{mintedToken.token}</Code>
               <CopyButton value={mintedToken.token} timeout={2000}>
@@ -292,7 +324,9 @@ export const UserProfile = () => {
                   </Button>
                 )}
               </CopyButton>
-              <Button size="xs" variant="default" onClick={() => setMintedToken(null)}>Done</Button>
+              <Button size="xs" variant="default" onClick={() => setMintedToken(null)}>
+                Done
+              </Button>
             </Group>
           </Alert>
         )}
@@ -307,16 +341,25 @@ export const UserProfile = () => {
               onChange={(e) => setNewTokenName(e.target.value)}
               placeholder="e.g. Stanza Parser"
             />
-            <Button type="submit" loading={creatingToken}>Create Token</Button>
+            <Button type="submit" loading={creatingToken}>
+              Create Token
+            </Button>
           </Group>
         </form>
 
         {/* Token list */}
         <Box mt="lg">
           {tokensLoading ? (
-            <Group gap="xs"><Loader size="sm" /><Text size="sm" c="dimmed">Loading tokens…</Text></Group>
+            <Group gap="xs">
+              <Loader size="sm" />
+              <Text size="sm" c="dimmed">
+                Loading tokens…
+              </Text>
+            </Group>
           ) : activeTokens.length === 0 ? (
-            <Text size="sm" c="dimmed">You have no active API tokens.</Text>
+            <Text size="sm" c="dimmed">
+              You have no active API tokens.
+            </Text>
           ) : (
             <Stack gap={0}>
               {activeTokens.map((t, i) => (
@@ -328,10 +371,19 @@ export const UserProfile = () => {
                   style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <Text size="sm" fw={500} truncate>{t.name}</Text>
-                    <Text size="xs" c="dimmed">Created {timeAgo(t.createdAt) || 'unknown'}</Text>
+                    <Text size="sm" fw={500} truncate>
+                      {t.name}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Created {timeAgo(t.createdAt) || 'unknown'}
+                    </Text>
                   </div>
-                  <Button variant="subtle" color="red" size="compact-sm" onClick={() => handleRevokeToken(t.id)}>
+                  <Button
+                    variant="subtle"
+                    color="red"
+                    size="compact-sm"
+                    onClick={() => handleRevokeToken(t.id)}
+                  >
                     Revoke
                   </Button>
                 </Group>

@@ -47,7 +47,7 @@ export const HistoryDrawer = ({
   auditEntries,
   loading,
   onSelectEntry,
-  selectedEntry
+  selectedEntry,
 }) => {
   const [scrollTop, setScrollTop] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState(() => new Set());
@@ -58,7 +58,7 @@ export const HistoryDrawer = ({
 
   const groups = useMemo(
     () => groupEntries(reversedAuditEntries, GROUP_THRESHOLD_MS),
-    [reversedAuditEntries]
+    [reversedAuditEntries],
   );
 
   // Flatten the groups into a uniform-height row list so the virtual scroller
@@ -89,7 +89,7 @@ export const HistoryDrawer = ({
     const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE);
     const endIndex = Math.min(
       rows.length - 1,
-      Math.ceil((scrollTop + actualHeight) / ITEM_HEIGHT) + BUFFER_SIZE
+      Math.ceil((scrollTop + actualHeight) / ITEM_HEIGHT) + BUFFER_SIZE,
     );
     return { startIndex, endIndex };
   }, [scrollTop, rows.length]);
@@ -117,11 +117,20 @@ export const HistoryDrawer = ({
       <div style={{ flex: 1, paddingRight: '0.5rem' }}>
         <div className={classes.clamp}>{getEntryDescription(entry)}</div>
       </div>
-      <div style={{ flexShrink: 0, paddingTop: '0.5rem', borderTop: '1px solid var(--mantine-color-gray-1)' }}>
-        <Text size="xs" c="dimmed">{fullTimestamp(entry.time)}</Text>
+      <div
+        style={{
+          flexShrink: 0,
+          paddingTop: '0.5rem',
+          borderTop: '1px solid var(--mantine-color-gray-1)',
+        }}
+      >
+        <Text size="xs" c="dimmed">
+          {fullTimestamp(entry.time)}
+        </Text>
         {entry.user && (
           <Text size="xs" c="dimmed">
-            by {entry.user.username}{entry.apiToken ? ` (via ${entry.apiToken.name})` : ''}
+            by {entry.user.username}
+            {entry.apiToken ? ` (via ${entry.apiToken.name})` : ''}
           </Text>
         )}
       </div>
@@ -142,9 +151,7 @@ export const HistoryDrawer = ({
           style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
           onClick={() => onSelectEntry(entry)}
         >
-          <div className={classes.cardContent}>
-            {renderEntryBody(entry)}
-          </div>
+          <div className={classes.cardContent}>{renderEntryBody(entry)}</div>
         </div>
       );
     }
@@ -174,8 +181,16 @@ export const HistoryDrawer = ({
               </Text>
             </div>
           </div>
-          <div style={{ flexShrink: 0, paddingTop: '0.35rem', borderTop: '1px solid var(--mantine-color-gray-1)' }}>
-            <Text size="xs" c="dimmed">{fullTimestamp(first.time)}</Text>
+          <div
+            style={{
+              flexShrink: 0,
+              paddingTop: '0.35rem',
+              borderTop: '1px solid var(--mantine-color-gray-1)',
+            }}
+          >
+            <Text size="xs" c="dimmed">
+              {fullTimestamp(first.time)}
+            </Text>
             <Text size="xs" c="dimmed">
               {group.entries.length} actions{first.user ? ` by ${first.user.username}` : ''}
               {first.apiToken ? ` (via ${first.apiToken.name})` : ''}
@@ -207,19 +222,38 @@ export const HistoryDrawer = ({
 
         <Drawer.Body
           p={0}
-          style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)', overflow: 'hidden' }}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            height: 'calc(100% - 60px)',
+            overflow: 'hidden',
+          }}
         >
-          {loading && <Group justify="center" py="xl"><Loader size="sm" /></Group>}
+          {loading && (
+            <Group justify="center" py="xl">
+              <Loader size="sm" />
+            </Group>
+          )}
 
           {/* Errors (audit-log load, or a failed time-travel fetch) surface as
               toasts — see useDocumentHistory. The entry list stays put so a
               transient failure doesn't wipe the history you were browsing. */}
           {!loading && reversedAuditEntries.length === 0 && (
-            <Text ta="center" c="dimmed" py="xl" size="sm">No history entries found</Text>
+            <Text ta="center" c="dimmed" py="xl" size="sm">
+              No history entries found
+            </Text>
           )}
 
           {!loading && reversedAuditEntries.length > 0 && (
-            <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '1rem' }}>
+            <Box
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+                padding: '1rem',
+              }}
+            >
               <Text size="xs" c="dimmed" mb="sm">
                 {reversedAuditEntries.length} entries • Click to view historical state
               </Text>
@@ -234,7 +268,15 @@ export const HistoryDrawer = ({
                 }}
               >
                 <div style={{ height: totalHeight, position: 'relative' }}>
-                  <div style={{ transform: `translateY(${offsetY}px)`, position: 'absolute', top: 0, left: 0, right: 0 }}>
+                  <div
+                    style={{
+                      transform: `translateY(${offsetY}px)`,
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                    }}
+                  >
                     {rows.slice(visibleRange.startIndex, visibleRange.endIndex + 1).map(renderRow)}
                   </div>
                 </div>
@@ -245,8 +287,12 @@ export const HistoryDrawer = ({
           {/* Footer with current selection info */}
           {selectedEntry && (
             <Box p="md" bg="blue.0" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
-              <Text size="sm" fw={500} c="blue.9" mb={4}>Viewing Historical State</Text>
-              <Text size="xs" c="blue.7">{fullTimestamp(selectedEntry.time)}</Text>
+              <Text size="sm" fw={500} c="blue.9" mb={4}>
+                Viewing Historical State
+              </Text>
+              <Text size="xs" c="blue.7">
+                {fullTimestamp(selectedEntry.time)}
+              </Text>
               <Button size="xs" mt="xs" onClick={() => onSelectEntry(null)}>
                 Return to Current State
               </Button>

@@ -15,10 +15,17 @@ let client;
 test.beforeAll(async () => {
   client = await PlaidClient.login('http://localhost:8085', 'a@b.com', 'password');
   let projects = [];
-  try { projects = await client.projects.list(); } catch { projects = await client.projects.listAll(); }
+  try {
+    projects = await client.projects.list();
+  } catch {
+    projects = await client.projects.listAll();
+  }
   for (const p of projects) {
     const full = await client.projects.get(p.id);
-    if (getUdLayerInfo(full).isConfigured) { PID = p.id; break; }
+    if (getUdLayerInfo(full).isConfigured) {
+      PID = p.id;
+      break;
+    }
   }
 });
 
@@ -29,7 +36,9 @@ test.afterAll(async () => {
     for (const d of docs) {
       if (d.name?.startsWith(NAME_PREFIX)) await client.documents.delete(d.id);
     }
-  } catch { /* best-effort cleanup */ }
+  } catch {
+    /* best-effort cleanup */
+  }
 });
 
 test('four tabs, bulk import (newdoc split + reject), and zip export', async ({ page }) => {

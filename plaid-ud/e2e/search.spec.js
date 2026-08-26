@@ -12,13 +12,25 @@ let PID;
 test.beforeAll(async () => {
   const client = await PlaidClient.login('http://localhost:8085', 'a@b.com', 'password');
   let projects = [];
-  try { projects = await client.projects.list(); } catch { projects = await client.projects.listAll(); }
+  try {
+    projects = await client.projects.list();
+  } catch {
+    projects = await client.projects.listAll();
+  }
   for (const p of projects) {
     const full = await client.projects.get(p.id);
     const li = getUdLayerInfo(full);
     if (!li.isConfigured) continue;
-    const r = await client.query({ find: ['?t'], where: [['token', '?t', { layer: li.morphemeTokenLayer.id }]], return: 'count', scope: { projectIds: [p.id] } });
-    if ((r.count ?? 0) > 0) { PID = p.id; break; }
+    const r = await client.query({
+      find: ['?t'],
+      where: [['token', '?t', { layer: li.morphemeTokenLayer.id }]],
+      return: 'count',
+      scope: { projectIds: [p.id] },
+    });
+    if ((r.count ?? 0) > 0) {
+      PID = p.id;
+      break;
+    }
   }
 });
 

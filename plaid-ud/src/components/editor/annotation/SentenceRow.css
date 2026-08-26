@@ -26,7 +26,11 @@
   background-color: transparent;
   border: 1px solid var(--mantine-color-violet-3);
   opacity: 0.6;
-  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 .sentence-confirm .accept-predictions-btn,
 .sentence-confirm .accept-predictions-btn * {
@@ -109,7 +113,9 @@
   cursor: pointer;
   user-select: none;
   border-radius: 2px;
-  transition: background-color 0.15s, color 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .row-label--toggle:hover {
@@ -210,7 +216,9 @@
   border-radius: 2px;
   /*padding: 1px 3px;
   margin-bottom: 2px;*/
-  transition: background-color 0.2s, border-color 0.2s;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
 }
 
 .feature-tag--normal {
@@ -219,15 +227,15 @@
 }
 
 .feature-tag--hovered {
-  background-color: #FECACA;
-  border: 1px solid #EF4444;
+  background-color: #fecaca;
+  border: 1px solid #ef4444;
 }
 
 /* Keyboard-selected pill (Backspace at the empty chip input): same
    delete-intent styling as hover, but driven by the chip-input selection. */
 .feature-tag--selected {
-  background-color: #FECACA;
-  border: 1px solid #EF4444;
+  background-color: #fecaca;
+  border: 1px solid #ef4444;
 }
 
 .feature-text {
@@ -247,7 +255,7 @@
   right: 2px;
   top: 50%;
   transform: translateY(-50%);
-  color: #EF4444;
+  color: #ef4444;
   font-size: 10px;
   line-height: 1;
   padding: 0;
