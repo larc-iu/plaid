@@ -22,6 +22,7 @@ import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glos
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import { morphemeJoiner, isStemType, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
+import { humanizeError } from '@/utils/feedback';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
 function levenshtein(a, b) {
@@ -736,6 +737,19 @@ export class IgtEditor {
   // ---- morpheme form field (adds split/merge/delete key handling) ----
   _morphFormKeydown(morph, word, siblings) {
     return async (e) => {
+      // While a split is in flight the destination cell doesn't exist yet, but
+      // the (still-focused, not-disabled) source input keeps receiving keys.
+      // Buffer them and replay into the new morpheme once it renders, so fast
+      // typing ("ngo-ko") never drops characters (review: split key-drop).
+      if (this._morphSplit) {
+        e.preventDefault();
+        const st = this._morphSplit;
+        if (e.key === 'Enter' || e.key === 'Tab') st.commitKey = e.key;
+        else if (e.key === 'Backspace') st.buffer = st.buffer.slice(0, -1);
+        else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) st.buffer += e.key;
+        // Arrows / Escape / etc. mid-flight are swallowed (no meaningful target).
+        return;
+      }
       if (this._maybeConfirmWord(e)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -788,11 +802,23 @@ export class IgtEditor {
         const orig = el.value;
         el.value = left;
         el.dataset.suppressCommit = '1';
-        el.disabled = true; // block stale keystrokes during the async op
-        this._pendingFocus = { wordId: word.id, precedence: (morph.precedence ?? 1) + 1, cursor: 0 };
+        // Do NOT disable the input: a disabled input stops firing key events and
+        // drops keystrokes typed before the new cell renders. Keep it live and
+        // buffer those keys (top-of-handler guard) to replay into the new cell.
+        // We DON'T use _pendingFocus here: the source input stays focused during
+        // flight, which _restorePendingFocus treats as "user moved focus" and
+        // bails on — so _applyMorphSplitReplay locates + focuses the new cell.
+        this._morphSplit = {
+          buffer: '', commitKey: null, right,
+          wordId: word.id, precedence: (morph.precedence ?? 1) + 1,
+        };
         const ok = await this._run(() => this.doc.splitMorpheme(morph.id, left, right));
-        el.disabled = false; // lit-html won't reset it (readOnly binding unchanged)
-        if (!ok) restore(orig);
+        const split = this._morphSplit;
+        this._morphSplit = null;
+        if (!ok) { restore(orig); return; }
+        // Render has run synchronously by now, so the new cell exists; focus it
+        // and flush the buffered keystrokes into it.
+        this._applyMorphSplitReplay(split);
         return;
       }
 
@@ -825,6 +851,32 @@ export class IgtEditor {
         }
       }
     };
+  }
+
+  // Flush keystrokes buffered while a split was in flight into the freshly
+  // rendered + focused new morpheme cell, then honor a buffered commit key.
+  _applyMorphSplitReplay(split) {
+    if (!split) return;
+    const el = this.container.querySelector(
+      `.igt-morph-field[data-word="${split.wordId}"][data-prec="${split.precedence}"]`);
+    if (!el) return; // new cell didn't render as expected — nothing to replay into
+    el.focus(); // sets dataset.orig to the current value for commit
+    if (split.buffer) {
+      // Base is the split's true right-hand form, NOT el.value: an empty-form
+      // morpheme renders the parent-text fallback ("the"), which must not be
+      // concatenated. Buffered chars were typed after the caret (which sat at
+      // the start of `right`), so: buffer + right.
+      const base = split.right || '';
+      el.value = split.buffer + base;
+      const c = split.buffer.length;
+      try { el.setSelectionRange(c, c); } catch { /* not selectable */ }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+      try { el.setSelectionRange(0, 0); } catch { /* not selectable */ }
+    }
+    // A buffered Enter/Tab commits the new cell and advances (blur → commit).
+    if (split.commitKey === 'Enter') { if (!this._navMove(el, 'next')) el.blur(); }
+    else if (split.commitKey === 'Tab') { this._navMove(el, 'next'); }
   }
 
   // Paste-splitting: pasting text containing "-" into a morpheme form splits
@@ -942,7 +994,7 @@ export class IgtEditor {
     return html`
       ${this._toolbar(sentences, ctx, pageCount)}
       ${this._helpOpen ? this._legend(ctx) : nothing}
-      ${doc.error ? html`<div class="igt-island__error" role="alert">${doc.error}</div>` : nothing}
+      ${doc.error ? html`<div class="igt-island__error" role="alert">${humanizeError(doc.error, doc.error)}</div>` : nothing}
       ${repeat(pageSentences, (s) => s.id, (s, i) => this._sentence(s, pageStart + i, ctx))}
       ${pageCount > 1 ? this._pager(sentences.length, pageCount, 'bottom') : nothing}
     `;
