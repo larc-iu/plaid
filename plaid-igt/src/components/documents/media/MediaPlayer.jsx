@@ -42,7 +42,11 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
 
   const mediaRef = useRef(null);
   const [mediaError, setMediaError] = useState(null);
-  const [mediaType, setMediaType] = useState('video');
+  // 'unknown' until loadedmetadata tells us whether the file has a picture: an
+  // audio-only file must never show the big black video box (it used to,
+  // because the default was 'video' and the box only hid once metadata said
+  // otherwise — and stayed if the file never loaded).
+  const [mediaType, setMediaType] = useState('unknown');
   const animationFrameRef = useRef(null);
 
   // Expose media element reference to parent
@@ -162,7 +166,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
               maxHeight: '400px',
               backgroundColor: '#000',
               borderRadius: '8px',
-              display: mediaType === 'audio' ? 'none' : 'block',
+              display: mediaType === 'video' ? 'block' : 'none',
             }}
             onTimeUpdate={() => {}} // RAF handles time updates now
             onPlay={() => {

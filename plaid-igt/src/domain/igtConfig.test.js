@@ -12,6 +12,8 @@ import {
   readDocumentMetadata,
   readInitialized,
   readVocabFields,
+  isTokenIgnored,
+  trimIgnoredEdges,
 } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { buildRawDoc } from './test-helpers.js';
@@ -81,5 +83,45 @@ describe('getIgtLayerInfo binds the new shape', () => {
     expect(info.spanLayers.word.map((l) => l.name)).toEqual(['POS']);
     expect(info.spanLayers.morpheme.map((l) => l.name)).toEqual(['Gloss']);
     expect(info.spanLayers.sentence.map((l) => l.name)).toEqual(['Translation']);
+  });
+});
+
+describe('ignored-tokens rule', () => {
+  const cfg = { type: 'unicodePunctuation', whitelist: ['?'] };
+  it('ignores pure punctuation/symbol tokens, honoring the whitelist', () => {
+    expect(isTokenIgnored('.', cfg)).toBe(true);
+    expect(isTokenIgnored('...', cfg)).toBe(true);
+    expect(isTokenIgnored('$', cfg)).toBe(true);
+    expect(isTokenIgnored('?', cfg)).toBe(false); // whitelisted
+    expect(isTokenIgnored('word', cfg)).toBe(false);
+    expect(isTokenIgnored('word.', cfg)).toBe(false);
+  });
+  it('does NOT ignore emoji / pictographs (they are annotatable word-like units)', () => {
+    expect(isTokenIgnored('😀', cfg)).toBe(false);
+    expect(isTokenIgnored('👍🏽', cfg)).toBe(false);
+  });
+  it('blacklist type matches whole tokens only', () => {
+    expect(isTokenIgnored('um', { type: 'blacklist', blacklist: ['um'] })).toBe(true);
+    expect(isTokenIgnored('umm', { type: 'blacklist', blacklist: ['um'] })).toBe(false);
+  });
+});
+
+describe('trimIgnoredEdges', () => {
+  const cfg = { type: 'unicodePunctuation', whitelist: [] };
+  it('strips edge punctuation by the same rule, keeping interior punctuation', () => {
+    expect(trimIgnoredEdges('derechos.', cfg)).toBe('derechos');
+    expect(trimIgnoredEdges('¿Qué?', cfg)).toBe('Qué');
+    expect(trimIgnoredEdges('"hello,"', cfg)).toBe('hello');
+    expect(trimIgnoredEdges("dog's", cfg)).toBe("dog's");
+    expect(trimIgnoredEdges('ngo-ko', cfg)).toBe('ngo-ko');
+  });
+  it('never trims to empty and leaves emoji alone', () => {
+    expect(trimIgnoredEdges('...', cfg)).toBe('...');
+    expect(trimIgnoredEdges('😀!', cfg)).toBe('😀');
+    expect(trimIgnoredEdges('', cfg)).toBe('');
+  });
+  it('is a no-op without a unicodePunctuation config', () => {
+    expect(trimIgnoredEdges('derechos.', null)).toBe('derechos.');
+    expect(trimIgnoredEdges('derechos.', { type: 'blacklist', blacklist: [] })).toBe('derechos.');
   });
 });

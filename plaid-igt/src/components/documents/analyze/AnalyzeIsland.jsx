@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { IgtEditor } from './island/IgtEditor.js';
 import { AutoLinkDialog } from './AutoLinkDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { useAuth } from '../../../contexts/AuthContext.jsx';
 
 // Thin React shell around the vanilla IgtEditor island. Consumes the single
 // shared IgtDocument from DocumentContext (the same instance the other tabs use)
@@ -25,9 +26,15 @@ export const AnalyzeIsland = () => {
     return () => window.removeEventListener('igt:auto-link-open', onOpen);
   }, []);
 
+  // Vocab-entry creation needs vocab-maintainer rights (linking needs less);
+  // the island hides its "+ Create" row for vocabs this user can't add to.
+  const { user } = useAuth();
+  const canWriteVocab = (vocab) =>
+    !!user && (user.isAdmin === true || (vocab?.maintainers || []).includes(user.id));
+
   useEffect(() => {
     if (!doc || !hostRef.current) return undefined;
-    editorRef.current = new IgtEditor(hostRef.current, doc, { readOnly });
+    editorRef.current = new IgtEditor(hostRef.current, doc, { readOnly, canWriteVocab });
     return () => {
       if (editorRef.current) {
         editorRef.current.destroy();

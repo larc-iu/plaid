@@ -701,3 +701,44 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(kinds(doc.client)).toContain('texts.update'); // delete op on the body
   });
 });
+
+describe('clearing an annotation cell', () => {
+  it('deletes the existing span instead of storing an empty value', async () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-1'], value: 'DET' },
+    ];
+    const doc = makeDoc({ raw });
+    const ok = await doc.updateTokenSpan('w-1', 'POS', '');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).toContain('spans.delete');
+    expect(kinds(doc.client)).not.toContain('spans.update');
+    expect(doc.sentences[0].tokens[0].annotations.POS).toBeNull();
+  });
+
+  it('deletes a machine-made span too (no "verified empty" residue)', async () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      {
+        id: 'sp-1',
+        tokens: ['w-1'],
+        value: 'DET',
+        metadata: { prov: 'inferred', provSource: 'service:x' },
+      },
+    ];
+    const doc = makeDoc({ raw });
+    const ok = await doc.updateTokenSpan('w-1', 'POS', '');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).toEqual(expect.arrayContaining(['spans.delete']));
+    expect(kinds(doc.client)).not.toContain('spans.setMetadata');
+    expect(doc.sentences[0].tokens[0].annotations.POS).toBeNull();
+  });
+
+  it('is a no-op when there is nothing to clear', async () => {
+    const doc = makeDoc();
+    const ok = await doc.updateTokenSpan('w-1', 'POS', '');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('spans.delete');
+    expect(kinds(doc.client)).not.toContain('spans.create');
+  });
+});

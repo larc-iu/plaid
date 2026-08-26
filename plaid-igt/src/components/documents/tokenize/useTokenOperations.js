@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { cpLength, cpSlice, filterServicesByTask, TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
@@ -136,10 +136,20 @@ export const useTokenOperations = () => {
   // material invisible here — opens a count-based confirm instead
   // (pendingDelete drives the dialog in DocumentTokenize).
   const [pendingDelete, setPendingDelete] = useState(null); // {tokenId, content, annotations, links}
+  // All structural doc mutations from this tab are funneled through one
+  // promise chain (same idiom as the Analyze island's _run). IgtDocument's
+  // _withSaving is single-flight — it DROPS a call that overlaps an in-flight
+  // one — so two quick clicks used to lose the second silently.
+  const chainRef = useRef(Promise.resolve());
+  const run = (fn) => {
+    const next = chainRef.current.then(fn);
+    chainRef.current = next.catch(() => {});
+    return next;
+  };
   const deleteToken = async (tokenId) => {
     const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     const loss = countAnnotationLossForWord(doc.layerInfo, doc.vocabularies, word);
-    if (loss.annotations + loss.links === 0) return doc.deleteToken(tokenId);
+    if (loss.annotations + loss.links === 0) return run(() => doc.deleteToken(tokenId));
     setPendingDelete({
       tokenId,
       content: word ? cpSlice(doc.body || '', word.begin, word.end) : 'this token',
@@ -151,7 +161,7 @@ export const useTokenOperations = () => {
     if (!pendingDelete) return false;
     const { tokenId } = pendingDelete;
     setPendingDelete(null);
-    return doc.deleteToken(tokenId);
+    return run(() => doc.deleteToken(tokenId));
   };
   const cancelPendingDelete = () => setPendingDelete(null);
 
@@ -165,7 +175,7 @@ export const useTokenOperations = () => {
   const splitToken = async (tokenId, splitOffset) => {
     const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, word ? [word] : []);
-    if (loss.annotations + loss.links === 0) return doc.splitToken(tokenId, splitOffset);
+    if (loss.annotations + loss.links === 0) return run(() => doc.splitToken(tokenId, splitOffset));
     setPendingStructural({
       kind: 'split',
       payload: { tokenId, splitOffset },
@@ -178,7 +188,7 @@ export const useTokenOperations = () => {
     const ids = tokenIds instanceof Set ? Array.from(tokenIds) : Array.from(tokenIds || []);
     const words = (doc.layerInfo.primaryTokenLayer?.tokens || []).filter((t) => ids.includes(t.id));
     const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, words);
-    if (loss.annotations + loss.links === 0) return doc.mergeTokens(ids);
+    if (loss.annotations + loss.links === 0) return run(() => doc.mergeTokens(ids));
     setPendingStructural({
       kind: 'merge',
       payload: { ids },
@@ -191,13 +201,15 @@ export const useTokenOperations = () => {
     if (!pendingStructural) return false;
     const p = pendingStructural;
     setPendingStructural(null);
-    return p.kind === 'split'
-      ? doc.splitToken(p.payload.tokenId, p.payload.splitOffset)
-      : doc.mergeTokens(p.payload.ids);
+    return run(() =>
+      p.kind === 'split'
+        ? doc.splitToken(p.payload.tokenId, p.payload.splitOffset)
+        : doc.mergeTokens(p.payload.ids),
+    );
   };
   const cancelPendingStructural = () => setPendingStructural(null);
-  const mergeSentence = (sentenceId) => doc.mergeSentence(sentenceId);
-  const splitSentence = (charPos) => doc.splitSentence(charPos);
+  const mergeSentence = (sentenceId) => run(() => doc.mergeSentence(sentenceId));
+  const splitSentence = (charPos) => run(() => doc.splitSentence(charPos));
 
   // Create a token from a DOM text selection inside an untokenized `piece`.
   // The Range math (mapping the selection to char offsets) must stay here since
@@ -226,7 +238,7 @@ export const useTokenOperations = () => {
       }
       const actualStart = piece.begin + selectionStart;
       const actualEnd = actualStart + selectionLength;
-      await doc.createToken(actualStart, actualEnd);
+      await run(() => doc.createToken(actualStart, actualEnd));
     } catch (error) {
       console.error('Create token from selection:', error);
     } finally {

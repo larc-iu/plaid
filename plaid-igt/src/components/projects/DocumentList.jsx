@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -359,6 +360,9 @@ export const DocumentList = ({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Create New Document</DialogTitle>
+            <DialogDescription>
+              Name the document; you can add its text on the Baseline tab afterwards.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="doc-name">Document Name</Label>

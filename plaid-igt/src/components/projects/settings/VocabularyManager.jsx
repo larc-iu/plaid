@@ -221,6 +221,10 @@ export const VocabularyManager = ({
     ...vocab,
     tableId: `${vocab.name}-${index}`, // Unique ID for table
   }));
+  // Vocab names aren't unique server-side; two "Lexicon"s are otherwise
+  // indistinguishable here, so tag duplicates with the tail of their id.
+  const nameCounts = new Map();
+  for (const v of tableData) nameCounts.set(v.name, (nameCounts.get(v.name) || 0) + 1);
 
   return (
     <div className="flex flex-col gap-8">
@@ -257,10 +261,17 @@ export const VocabularyManager = ({
                     <div className="flex items-center justify-between gap-2">
                       <span className={cn(record.enabled ? '' : 'italic text-muted-foreground')}>
                         {record.name}
+                        {nameCounts.get(record.name) > 1 && record.id && (
+                          <span className="ml-1.5 font-mono text-xs text-muted-foreground">
+                            {String(record.id).slice(-6)}
+                          </span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
-                        {/* Only show move buttons in setup mode */}
-                        {!isSettings && (
+                        {/* Only show move buttons in setup mode, and only for
+                            vocabs that are actually being linked — ordering an
+                            unlinked row is meaningless. */}
+                        {!isSettings && record.enabled && (
                           <>
                             <Button
                               size="icon"

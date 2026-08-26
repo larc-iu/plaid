@@ -173,21 +173,40 @@ export const ProjectSetup = () => {
           <div className="md:col-span-3">
             <div className="rounded-lg border bg-card p-4">
               <ol className="flex flex-col gap-3">
-                {steps.map((step, index) => (
-                  <li key={step.id} className="flex items-center gap-2 text-sm">
-                    <span
-                      className={cn(
-                        'flex h-6 w-6 items-center justify-center rounded-full border text-xs',
-                        index <= currentStep
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-muted text-muted-foreground',
-                      )}
-                    >
-                      <step.icon className="h-3.5 w-3.5" />
-                    </span>
-                    <span className={cn(index === currentStep && 'font-medium')}>{step.title}</span>
-                  </li>
-                ))}
+                {steps.map((step, index) => {
+                  // Completed steps are real links back (revisit + edit); the
+                  // current and future steps are inert labels (forward
+                  // navigation goes through Next so validation runs).
+                  const done = index < currentStep;
+                  return (
+                    <li key={step.id} className="flex items-center gap-2 text-sm">
+                      <button
+                        type="button"
+                        disabled={!done}
+                        onClick={() => handleStepClick(index)}
+                        className={cn(
+                          'flex items-center gap-2 text-left',
+                          done ? 'cursor-pointer hover:underline' : 'cursor-default',
+                        )}
+                        aria-current={index === currentStep ? 'step' : undefined}
+                      >
+                        <span
+                          className={cn(
+                            'flex h-6 w-6 items-center justify-center rounded-full border text-xs',
+                            index <= currentStep
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-muted text-muted-foreground',
+                          )}
+                        >
+                          <step.icon className="h-3.5 w-3.5" />
+                        </span>
+                        <span className={cn(index === currentStep && 'font-medium')}>
+                          {step.title}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ol>
             </div>
           </div>

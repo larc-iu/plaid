@@ -24,6 +24,22 @@ const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadat
     (span) => Array.isArray(span.tokens) && span.tokens.includes(targetTokenId),
   );
 
+  // Clearing a cell DELETES the span rather than storing '' (user decision
+  // 2026-08-26): an empty span is indistinguishable from "unannotated" in the
+  // grid, but it would still count as an annotation everywhere else (exports,
+  // queries, loss counts) and — for a machine span — would be a "verified"
+  // empty value. Clearing an unannotated cell is a no-op.
+  if ((value ?? '') === '') {
+    if (!existingSpan) return;
+    await doc._client.spans.delete(existingSpan.id);
+    doc._applyRawPatch((next, infoNext) => {
+      const layerDoc = (infoNext.spanLayers?.[scope] || []).find((sl) => sl.id === targetLayer.id);
+      if (!layerDoc || !Array.isArray(layerDoc.spans)) return;
+      layerDoc.spans = layerDoc.spans.filter((s) => s.id !== existingSpan.id);
+    });
+    return;
+  }
+
   if (existingSpan) {
     // No caller fragment = a human edit; verifying a machine span is the
     // fragment such an edit carries.

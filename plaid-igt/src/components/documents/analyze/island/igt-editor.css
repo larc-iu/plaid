@@ -1125,3 +1125,13 @@
 .igt-island--readonly .igt-field {
   cursor: default;
 }
+
+/* Homonym note under the popover's "+ Create" row: the form already exists in
+   this lexicon, so creating adds a separate sense rather than reusing it. */
+.igt-vocab-pop__note {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-style: italic;
+  color: #92400e;
+}

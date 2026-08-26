@@ -137,7 +137,7 @@ export function DocumentTokenize() {
           {/* Sentence rendering */}
           <div className="sentence-container">
             {!hasSentencePartition && !readOnly && (
-              <div className="m-4 rounded-md border border-yellow-500/50 bg-yellow-500/5 p-3">
+              <div className="m-4 rounded-md border border-yellow-500/50 bg-yellow-500/5 p-3 font-sans">
                 <div className="flex items-start gap-2">
                   <Info className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600" />
                   <div>
@@ -232,7 +232,7 @@ export function DocumentTokenize() {
                   readOnly
                 }
               >
-                Clear Sentences
+                Reset Sentences
               </Button>
             </div>
           </div>

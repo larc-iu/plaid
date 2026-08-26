@@ -41,7 +41,13 @@ export const readOrthographies = (config) => readIgt(config, 'orthographies') ??
 /** A word token layer's ignored-tokens config: {type, ...}, or null. */
 export const readIgnoredTokens = (config) => readIgt(config, 'ignoredTokens') ?? null;
 
-const PUNCT_RE = /[\p{P}\p{S}]/u;
+// "Punctuation" for the ignore rule: Unicode punctuation and symbols, EXCEPT
+// pictographs (emoji). An emoji token in an object-language transcript is a
+// word-like unit a linguist may well want to gloss (an interjection, a
+// gesture); treating it as punctuation silently removed its annotation cells.
+const PUNCT_CHAR_RE = /[\p{P}\p{S}]/u;
+const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
+const isPunctChar = (c) => PUNCT_CHAR_RE.test(c) && !PICTOGRAPH_RE.test(c);
 /**
  * Is a token excluded from word-level annotation under an ignored-tokens config
  * (`readIgnoredTokens` shape)? `content` is the token's surface text. Shared by
@@ -51,13 +57,35 @@ const PUNCT_RE = /[\p{P}\p{S}]/u;
 export const isTokenIgnored = (content, cfg) => {
   if (!cfg) return false;
   if (cfg.type === 'unicodePunctuation') {
-    if ([...(content || '')].every((c) => PUNCT_RE.test(c))) {
+    if ([...(content || '')].every(isPunctChar)) {
       return !(cfg.whitelist || []).includes(content);
     }
     return false;
   }
   if (cfg.type === 'blacklist') return (cfg.blacklist || []).includes(content);
   return false;
+};
+
+/**
+ * Strip leading/trailing punctuation from a surface form using the SAME rule
+ * the ignored-tokens config applies to whole tokens — for deriving a lexicon
+ * entry's form from a word like `derechos.` or `¿Qué`. Under the
+ * `unicodePunctuation` rule every edge char that rule counts as punctuation is
+ * trimmed (whitelisted strings are whole-token exceptions and don't affect
+ * trimming). Under `blacklist` (whole-token list) or no config nothing is
+ * trimmed. Never trims a form down to empty: an all-punctuation form is
+ * returned as-is.
+ */
+export const trimIgnoredEdges = (content, cfg) => {
+  const s = content ?? '';
+  if (!cfg || cfg.type !== 'unicodePunctuation') return s;
+  const chars = [...s];
+  let start = 0;
+  let end = chars.length;
+  while (start < end && isPunctChar(chars[start])) start++;
+  while (end > start && isPunctChar(chars[end - 1])) end--;
+  if (start >= end) return s;
+  return chars.slice(start, end).join('');
 };
 
 /** A project's enabled document-metadata fields: [{name}], or null. */

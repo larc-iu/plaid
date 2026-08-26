@@ -22,6 +22,7 @@ import {
   readIgnoredTokens,
   readVocabFields,
   isTokenIgnored,
+  trimIgnoredEdges,
 } from '@/domain/igtConfig';
 import { docFrequencyGuessSource } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
@@ -92,7 +93,11 @@ const PROV_TITLE = {
 const provTitle = (value, state) => `${value} — ${PROV_TITLE[state]}`;
 
 export class IgtEditor {
-  constructor(container, doc, { readOnly = false } = {}) {
+  constructor(container, doc, { readOnly = false, canWriteVocab = null } = {}) {
+    // May the current user add entries to a vocab (needs vocab-maintainer
+    // rights on the server)? Linking needs less, so the popover hides its
+    // "+ Create" row when this says no. Default: assume yes (dev/tests).
+    this.canWriteVocab = typeof canWriteVocab === 'function' ? canWriteVocab : () => true;
     this.container = container;
     this.doc = doc;
     this.readOnly = readOnly;
@@ -144,6 +149,14 @@ export class IgtEditor {
     // (rAF-throttled) instead of closing. Capture phase catches the grid's
     // own scroll. No-op when no popover is open.
     this._onWinChange = () => this._repositionPopover();
+    // Refuse to let a hard reload / tab close silently drop an uncommitted
+    // cell edit or a save still in flight (the browser shows its own prompt).
+    this._onBeforeUnload = (e) => {
+      if (!this._hasUnsavedWork()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', this._onBeforeUnload);
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
     // Keyboard review of auto-linker suggestions: Ctrl/Cmd+Arrow hops between
@@ -210,11 +223,21 @@ export class IgtEditor {
     document.removeEventListener('click', this._onDocClick);
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
+    window.removeEventListener('beforeunload', this._onBeforeUnload);
     this.container.removeEventListener('keydown', this._predictionKeydown);
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
     clearTimeout(this._savedTimer);
     clearTimeout(this._copiedTimer);
     render(nothing, this.container);
+  }
+
+  // An in-flight save, or a focused cell whose value differs from what it
+  // was focused with (i.e. typed but not yet committed by blur/Enter).
+  _hasUnsavedWork() {
+    if (this.doc.isSaving) return true;
+    const el = document.activeElement;
+    if (!el || !this.container.contains(el) || !el.classList?.contains('igt-field')) return false;
+    return (el.value ?? '') !== (el.dataset.orig ?? '');
   }
 
   // ---- vocab popover ----
@@ -483,11 +506,14 @@ export class IgtEditor {
     e.target.classList.toggle('igt-field--empty', !filled);
   };
 
-  // Guess confirmation: Enter/Tab on an empty cell showing a guess adopts the
+  // Guess confirmation: Enter on an empty cell showing a guess adopts the
   // guess into the input value (marked confirmed so the blur-commit attaches
   // provenance) and then proceeds with normal navigation, whose focus change
-  // blurs and commits. Typing replaces the guess (it's just a placeholder);
-  // plain blur leaves the cell empty — guesses are never written implicitly.
+  // blurs and commits. Tab deliberately does NOT adopt (user decision
+  // 2026-08-26): tabbing across a row to reach a cell must never write the
+  // guesses it passes over. Typing replaces the guess (it's just a
+  // placeholder); plain blur leaves the cell empty — guesses are never written
+  // implicitly.
   _maybeConfirmGuess(el) {
     if (el.value === '' && el.dataset.guessValue) {
       el.value = el.dataset.guessValue;
@@ -617,7 +643,7 @@ export class IgtEditor {
 
   _basicKeydown = (e) => {
     if (this._maybeConfirmWord(e)) return;
-    if (e.key === 'Enter' || e.key === 'Tab') this._maybeConfirmGuess(e.target);
+    if (e.key === 'Enter') this._maybeConfirmGuess(e.target);
     if (e.key === 'Enter') {
       // Commit and advance to the next cell in the same tier (the "fill a row
       // across" glossing workflow). Shift+Enter goes back. Falls back to blur
@@ -830,6 +856,16 @@ export class IgtEditor {
       e.target.value = e.target.dataset.orig ?? '';
       this._autoGrow(e.target);
       e.target.blur();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      // Leave the textarea only from its last/first line (caret at the very
+      // end/start); inside a multi-line translation the arrows still move the
+      // caret. Without this the Translation field trapped ArrowDown.
+      const el = e.target;
+      const atEnd = el.selectionStart === el.value.length;
+      const atStart = el.selectionEnd === 0;
+      if ((e.key === 'ArrowDown' && atEnd) || (e.key === 'ArrowUp' && atStart)) {
+        if (this._navMove(el, e.key === 'ArrowDown' ? 'down' : 'up')) e.preventDefault();
+      }
     }
   };
 
@@ -1139,6 +1175,7 @@ export class IgtEditor {
     const sentFields = info.spanLayers.sentence.map((l) => l.name);
     const hasMorphemes = !!info.morphemeTokenLayer;
     const ignoredCfg = readIgnoredTokens(info.primaryTokenLayer.config);
+    this._ignoredCfg = ignoredCfg; // the popover trims a new entry's form by it
 
     // Gloss guesses (pluggable — see domain/glossGuess.js; assign
     // this.guessSourceFactory to swap the algorithm). Rebuilt per data render;
@@ -1336,8 +1373,8 @@ export class IgtEditor {
         <div class="igt-legend__row">
           <strong>Guesses</strong>
           <span
-            >violet italic values are guesses from matching forms — <kbd>↵</kbd>/<kbd>Tab</kbd>
-            confirms, typing replaces, leaving the cell discards</span
+            >violet italic values are guesses from matching forms — <kbd>↵</kbd> confirms, typing
+            replaces, leaving the cell discards</span
           >
         </div>
         <div class="igt-legend__row">
@@ -1871,12 +1908,21 @@ export class IgtEditor {
     }
     const limited = items.slice(0, 30);
     const truncated = items.length - limited.length;
-    // A single "+ Create" row, into the active vocab, when there's a form.
-    const canCreate = !!(formText && activeVocab);
+    // The form a new entry would get: the word/morpheme's surface with edge
+    // punctuation trimmed by the project's own ignored-tokens rule
+    // (`derechos.` → `derechos`; user decision 2026-08-26).
+    const createForm = trimIgnoredEdges(formText || '', this._ignoredCfg);
+    // A single "+ Create" row, into the active vocab, when there's a form AND
+    // this user may add entries to it. Item creation needs vocab-maintainer
+    // rights while linking needs only project-writer + vocab-reader, so a
+    // writer who can link may still not create — hide the row instead of
+    // letting it 403.
+    const canCreate = !!(createForm && activeVocab && this.canWriteVocab(activeVocab));
     // If the form already exists in the active vocab, the new item would be a
-    // homonym — preview the subscript it would get (existing count + 1).
+    // homonym — preview the subscript it would get (existing count + 1) and
+    // say so, since a duplicate is usually a mis-click on the existing entry.
     const newFormDupes = canCreate
-      ? (activeVocab.items || []).filter((it) => it.form === formText).length
+      ? (activeVocab.items || []).filter((it) => it.form === createForm).length
       : 0;
     const newFormSub = newFormDupes >= 1 ? newFormDupes + 1 : null;
     // Rows the keyboard can land on: every item plus the create row.
@@ -1898,7 +1944,7 @@ export class IgtEditor {
         if (linked && inferredCurrent) this._confirmLink(tokenId, true);
         else this._toggleVocab(tokenId, it, linked, true);
       } else if (canCreate) {
-        this._createVocab(tokenId, activeVocab.id, formText, true);
+        this._createVocab(tokenId, activeVocab.id, createForm, true);
       }
     };
     const onSearchKey = (e) => {
@@ -2009,13 +2055,18 @@ export class IgtEditor {
               }}
               @click=${(e) => {
                 e.stopPropagation();
-                this._createVocab(tokenId, activeVocab.id, formText);
+                this._createVocab(tokenId, activeVocab.id, createForm);
               }}
             >
               + Create
-              "${formText}${newFormSub != null
+              "${createForm}${newFormSub != null
                 ? html`<sub class="igt-vocab-pop__sub">${newFormSub}</sub>`
                 : nothing}"
+              ${newFormSub != null
+                ? html`<span class="igt-vocab-pop__note"
+                    >“${createForm}” already exists — this adds a separate sense</span
+                  >`
+                : nothing}
             </button>`
           : nothing}
         ${kind === 'morpheme' ? this._morphTypeRow(tokenId) : nothing}
