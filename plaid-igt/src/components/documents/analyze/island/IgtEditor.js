@@ -17,7 +17,12 @@ import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
-import { readOrthographies, readIgnoredTokens, readVocabFields, isTokenIgnored } from '@/domain/igtConfig';
+import {
+  readOrthographies,
+  readIgnoredTokens,
+  readVocabFields,
+  isTokenIgnored,
+} from '@/domain/igtConfig';
 import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import { morphemeJoiner, isStemType, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
@@ -57,7 +62,9 @@ class UncontrolledValueDirective extends Directive {
     if (el && document.activeElement !== el && el.value !== v) el.value = v;
     return this.render(value);
   }
-  render() { return nothing; }
+  render() {
+    return nothing;
+  }
 }
 const uncontrolledValue = directive(UncontrolledValueDirective);
 
@@ -118,7 +125,10 @@ export class IgtEditor {
     // different (sentences, fields) => { id, guessFor } factory to swap the
     // algorithm (e.g. a service-backed one).
     this.guessSourceFactory = docFrequencyGuessSource;
-    this._onChange = () => { this._syncStatus(); this._scheduleRender(); };
+    this._onChange = () => {
+      this._syncStatus();
+      this._scheduleRender();
+    };
     this._unsub = doc.subscribe(this._onChange);
     // Per-sentence "Copy as IGT": which sentence's format menu is open, and
     // which sentence just copied (for the "Copied ✓" flash).
@@ -126,7 +136,10 @@ export class IgtEditor {
     this._copiedFlash = null;
     this._copiedTimer = null;
     // Any click outside an opener/popover/menu (those stopPropagation) closes it.
-    this._onDocClick = () => { this._closePopover(); this._closeCopyMenu(); };
+    this._onDocClick = () => {
+      this._closePopover();
+      this._closeCopyMenu();
+    };
     document.addEventListener('click', this._onDocClick);
     // The popover is position:fixed; scrolling the page or the grid, or
     // resizing, would detach it from its column — re-anchor it to its opener
@@ -150,7 +163,11 @@ export class IgtEditor {
   // throwaway double-mount consume it before the real mount runs.
   _consumeFocusRequest() {
     let req = null;
-    try { req = JSON.parse(sessionStorage.getItem('igt:focus-sentence') || 'null'); } catch { /* noop */ }
+    try {
+      req = JSON.parse(sessionStorage.getItem('igt:focus-sentence') || 'null');
+    } catch {
+      /* noop */
+    }
     if (!req || req.docId !== this.doc.id) return;
     const idx = (this.doc.sentences || []).findIndex((s) => s.id === req.sentenceId);
     if (idx < 0) {
@@ -163,7 +180,9 @@ export class IgtEditor {
       this._render(true);
     }
     requestAnimationFrame(() => {
-      const el = this.container.querySelector(`.igt-sentence[data-sentence-id="${req.sentenceId}"]`);
+      const el = this.container.querySelector(
+        `.igt-sentence[data-sentence-id="${req.sentenceId}"]`,
+      );
       if (!el) return; // throwaway mount already torn down — leave the key for the real one
       sessionStorage.removeItem('igt:focus-sentence');
       el.scrollIntoView({ block: 'center' });
@@ -212,7 +231,13 @@ export class IgtEditor {
     // Focus the search box now that it's in the DOM (lit-html `autofocus` is
     // unreliable on nodes inserted by a re-render rather than initial parse).
     const search = this.container.querySelector('.igt-vocab-pop__search');
-    if (search) { try { search.focus(); } catch { /* noop */ } }
+    if (search) {
+      try {
+        search.focus();
+      } catch {
+        /* noop */
+      }
+    }
   }
 
   // Move the highlighted popover row. `total` includes the virtual "create" row
@@ -238,10 +263,16 @@ export class IgtEditor {
       if (!this._popover) return;
       const opener = this.container.querySelector(`[data-vocab-opener="${this._popoverReturnId}"]`);
       const pos = opener ? this._computePopoverPos(opener) : null;
-      if (!pos) { this._closePopover(); return; }
+      if (!pos) {
+        this._closePopover();
+        return;
+      }
       this._popoverPos = pos;
       const el = this.container.querySelector('.igt-vocab-pop');
-      if (el) { el.style.left = `${pos.left}px`; el.style.top = `${pos.top}px`; }
+      if (el) {
+        el.style.left = `${pos.left}px`;
+        el.style.top = `${pos.top}px`;
+      }
     });
   }
 
@@ -251,7 +282,9 @@ export class IgtEditor {
   _computePopoverPos(anchorEl) {
     const r = anchorEl?.getBoundingClientRect?.();
     if (!r) return null;
-    const W = 240, Hest = 280, pad = 8;
+    const W = 240,
+      Hest = 280,
+      pad = 8;
     let left = r.left + r.width / 2 - W / 2;
     left = Math.max(pad, Math.min(left, window.innerWidth - W - pad));
     let top = r.bottom + 4;
@@ -277,7 +310,13 @@ export class IgtEditor {
     this._render(true);
     if (returnFocus && returnId != null) {
       const opener = this.container.querySelector(`[data-vocab-opener="${returnId}"]`);
-      if (opener) { try { opener.focus(); } catch { /* noop */ } }
+      if (opener) {
+        try {
+          opener.focus();
+        } catch {
+          /* noop */
+        }
+      }
     }
   }
   // ---- auto-linking ----
@@ -330,7 +369,10 @@ export class IgtEditor {
       } else {
         this._statusState = 'saved';
         clearTimeout(this._savedTimer);
-        this._savedTimer = setTimeout(() => { this._statusState = 'idle'; this._paintStatus(); }, 1600);
+        this._savedTimer = setTimeout(() => {
+          this._statusState = 'idle';
+          this._paintStatus();
+        }, 1600);
       }
     }
     this._paintStatus();
@@ -358,19 +400,23 @@ export class IgtEditor {
     this._lastDataVersion = this.doc.dataVersion;
     // Defensively clear any stale suppress-commit flags so a sticky flag can't
     // swallow a later legitimate edit on a reused node (review H2).
-    this.container
-      .querySelectorAll('[data-suppress-commit]')
-      .forEach((el) => { delete el.dataset.suppressCommit; });
+    this.container.querySelectorAll('[data-suppress-commit]').forEach((el) => {
+      delete el.dataset.suppressCommit;
+    });
     this.container.classList.toggle('igt-island--readonly', !!this.readOnly);
     // Vocab-linked projects show a hint line under every word/morpheme form;
     // the CSS reserves taller form rows for it (see --igt-form-h).
-    this.container.classList.toggle('igt-island--vocab',
-      Object.keys(this.doc.vocabularies || {}).length > 0);
+    this.container.classList.toggle(
+      'igt-island--vocab',
+      Object.keys(this.doc.vocabularies || {}).length > 0,
+    );
     render(this._template(), this.container);
     this._restorePendingFocus();
     // Size sentence textareas to their content (uncontrolledValue may have just
     // written a programmatic value, e.g. on load / reload).
-    this.container.querySelectorAll('textarea.igt-field--sentence').forEach((el) => this._autoGrow(el));
+    this.container
+      .querySelectorAll('textarea.igt-field--sentence')
+      .forEach((el) => this._autoGrow(el));
   }
 
   _restorePendingFocus() {
@@ -380,8 +426,12 @@ export class IgtEditor {
     // If the user already moved focus into another field while the structural op
     // was in flight, don't yank it back to the computed target (review: focus theft).
     const active = document.activeElement;
-    if (active && active !== this.container && this.container.contains(active)
-        && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+    if (
+      active &&
+      active !== this.container &&
+      this.container.contains(active) &&
+      (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+    ) {
       return;
     }
     // Vocab-link review sweep: land focus on the next suggested chip after a
@@ -393,18 +443,33 @@ export class IgtEditor {
     }
     let el = null;
     if (pf.wordId != null && pf.precedence != null) {
-      el = this.container.querySelector(`.igt-morph-field[data-word="${pf.wordId}"][data-prec="${pf.precedence}"]`);
+      el = this.container.querySelector(
+        `.igt-morph-field[data-word="${pf.wordId}"][data-prec="${pf.precedence}"]`,
+      );
     }
     if (!el) return;
     el.focus();
-    const c = pf.cursor === 'end' ? el.value.length : (typeof pf.cursor === 'number' ? pf.cursor : el.value.length);
-    try { el.setSelectionRange(c, c); } catch { /* not selectable */ }
+    const c =
+      pf.cursor === 'end'
+        ? el.value.length
+        : typeof pf.cursor === 'number'
+          ? pf.cursor
+          : el.value.length;
+    try {
+      el.setSelectionRange(c, c);
+    } catch {
+      /* not selectable */
+    }
   }
 
   // ---- field event helpers ----
   _onFieldFocus = (e) => {
     e.target.dataset.orig = e.target.value;
-    try { e.target.select(); } catch { /* noop */ }
+    try {
+      e.target.select();
+    } catch {
+      /* noop */
+    }
   };
 
   // Morpheme form fields must NOT select-all on focus: the split handler reads
@@ -464,7 +529,11 @@ export class IgtEditor {
       const f = fields[i];
       if (f.dataset.confirmWord && f.dataset.confirmWord !== wordId && this._tierOf(f) === tier) {
         f.focus();
-        try { f.select(); } catch { /* not selectable */ }
+        try {
+          f.select();
+        } catch {
+          /* not selectable */
+        }
         return true;
       }
     }
@@ -496,12 +565,17 @@ export class IgtEditor {
       return dir === 'prev' ? chips[chips.length - 1] : chips[0];
     }
     if (dir === 'next') {
-      return chips.find((c) => c !== anchor
-        && (anchor.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING)) || null;
+      return (
+        chips.find(
+          (c) =>
+            c !== anchor && anchor.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ) || null
+      );
     }
     let prev = null;
     for (const c of chips) {
-      if (c !== anchor && (anchor.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_PRECEDING)) prev = c;
+      if (c !== anchor && anchor.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_PRECEDING)
+        prev = c;
     }
     return prev;
   }
@@ -572,8 +646,7 @@ export class IgtEditor {
   // All focusable editable cells in DOM order (disabled inputs are excluded —
   // they aren't navigation targets).
   _navFields() {
-    return [...this.container.querySelectorAll('.igt-field')]
-      .filter((el) => !el.disabled);
+    return [...this.container.querySelectorAll('.igt-field')].filter((el) => !el.disabled);
   }
 
   // The "tier" of a cell — its kind + field name from data-cell-key
@@ -610,17 +683,21 @@ export class IgtEditor {
         if (el === current) continue;
         const r = el.getBoundingClientRect();
         const s = score(el, r.left + r.width / 2, r.top + r.height / 2);
-        if (s != null && s < bestScore) { bestScore = s; best = el; }
+        if (s != null && s < bestScore) {
+          bestScore = s;
+          best = el;
+        }
       }
       return best;
     };
 
     // Pass 1: strictly within the current screen row / column band.
     let best = pick((el, ex, ey) => {
-      if (dir === 'next') return (Math.abs(ey - cy) <= rowTol && ex > cx + 1) ? ex - cx : null;
-      if (dir === 'prev') return (Math.abs(ey - cy) <= rowTol && ex < cx - 1) ? cx - ex : null;
-      if (dir === 'down') return (ey > cy + 1 && Math.abs(ex - cx) <= colTol) ? (ey - cy) + Math.abs(ex - cx) * 3 : null;
-      return (ey < cy - 1 && Math.abs(ex - cx) <= colTol) ? (cy - ey) + Math.abs(ex - cx) * 3 : null;
+      if (dir === 'next') return Math.abs(ey - cy) <= rowTol && ex > cx + 1 ? ex - cx : null;
+      if (dir === 'prev') return Math.abs(ey - cy) <= rowTol && ex < cx - 1 ? cx - ex : null;
+      if (dir === 'down')
+        return ey > cy + 1 && Math.abs(ex - cx) <= colTol ? ey - cy + Math.abs(ex - cx) * 3 : null;
+      return ey < cy - 1 && Math.abs(ex - cx) <= colTol ? cy - ey + Math.abs(ex - cx) * 3 : null;
     });
 
     // Pass 2: cross the band boundary.
@@ -643,7 +720,11 @@ export class IgtEditor {
 
     if (!best) return false;
     best.focus();
-    try { best.select(); } catch { /* not selectable */ }
+    try {
+      best.select();
+    } catch {
+      /* not selectable */
+    }
     return true;
   }
 
@@ -653,17 +734,31 @@ export class IgtEditor {
   _commitField(e, apply) {
     if (this.readOnly) return;
     const el = e.target;
-    if (el.dataset.suppressCommit) { delete el.dataset.suppressCommit; return; }
+    if (el.dataset.suppressCommit) {
+      delete el.dataset.suppressCommit;
+      return;
+    }
     const next = el.value;
-    const prov = el.dataset.guessConfirmed === '1' && next === el.dataset.guessValue
-      ? confirmedGuessProvenance(el.dataset.guessSource || 'unknown')
-      : null;
+    const prov =
+      el.dataset.guessConfirmed === '1' && next === el.dataset.guessValue
+        ? confirmedGuessProvenance(el.dataset.guessSource || 'unknown')
+        : null;
     delete el.dataset.guessConfirmed;
     if (next === (el.dataset.orig ?? '')) return;
     this._run(() => apply(next, prov));
   }
 
-  _field({ key, value, apply, extraClass = '', sentence = false, ariaLabel, guess = null, prov = null, confirmWord = null }) {
+  _field({
+    key,
+    value,
+    apply,
+    extraClass = '',
+    sentence = false,
+    ariaLabel,
+    guess = null,
+    prov = null,
+    confirmWord = null,
+  }) {
     const v = value ?? '';
     const filled = v !== '';
     // A guess renders as a styled placeholder: the input VALUE stays empty, so
@@ -674,7 +769,9 @@ export class IgtEditor {
     // an auto-growing textarea that wraps, rather than a one-line scrolling input.
     if (sentence) {
       return html`<textarea
-        class="igt-field igt-field--sentence ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${extraClass}"
+        class="igt-field igt-field--sentence ${filled
+          ? 'igt-field--filled'
+          : 'igt-field--empty'} ${extraClass}"
         data-cell-key=${key}
         aria-label=${ariaLabel ?? nothing}
         rows="1"
@@ -688,13 +785,21 @@ export class IgtEditor {
     }
     const p = filled ? prov : null;
     return html`<input
-      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g ? 'igt-field--guess' : ''} ${p ? `igt-field--${p}` : ''} ${extraClass}"
+      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g
+        ? 'igt-field--guess'
+        : ''} ${p ? `igt-field--${p}` : ''} ${extraClass}"
       data-cell-key=${key}
       data-guess-value=${g ? g.value : nothing}
       data-guess-source=${g ? g.source : nothing}
       data-confirm-word=${confirmWord ?? nothing}
       aria-label=${ariaLabel ?? nothing}
-      title=${g ? `Guess: ${g.value} — Enter confirms, typing replaces` : (p ? `${v} — ${PROV_TITLE[p]}` : (filled ? v : (ariaLabel ?? nothing)))}
+      title=${g
+        ? `Guess: ${g.value} — Enter confirms, typing replaces`
+        : p
+          ? `${v} — ${PROV_TITLE[p]}`
+          : filled
+            ? v
+            : (ariaLabel ?? nothing)}
       placeholder=${g ? g.value : nothing}
       size=${this._fieldSize(g ? g.value : v)}
       ?disabled=${this.readOnly}
@@ -703,7 +808,7 @@ export class IgtEditor {
       @input=${this._onFieldInput}
       @keydown=${this._basicKeydown}
       @blur=${(e) => this._commitField(e, apply)}
-    >`;
+    />`;
   }
 
   _onSentenceInput = (e) => {
@@ -716,11 +821,12 @@ export class IgtEditor {
   // translations top to bottom), falling through to the default at the end;
   // Escape reverts.
   _sentenceKeydown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); }
-    else if (e.key === 'Tab') {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      e.target.blur();
+    } else if (e.key === 'Tab') {
       if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
-    }
-    else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape') {
       e.preventDefault();
       e.target.value = e.target.dataset.orig ?? '';
       this._autoGrow(e.target);
@@ -762,8 +868,14 @@ export class IgtEditor {
         if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
         return;
       }
-      if (e.key === 'ArrowDown') { if (this._navMove(e.target, 'down')) e.preventDefault(); return; }
-      if (e.key === 'ArrowUp') { if (this._navMove(e.target, 'up')) e.preventDefault(); return; }
+      if (e.key === 'ArrowDown') {
+        if (this._navMove(e.target, 'down')) e.preventDefault();
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        if (this._navMove(e.target, 'up')) e.preventDefault();
+        return;
+      }
       if (e.key === 'Escape') {
         e.preventDefault();
         e.target.value = e.target.dataset.orig ?? '';
@@ -791,7 +903,11 @@ export class IgtEditor {
           const en = el.selectionEnd ?? s;
           el.value = el.value.slice(0, s) + '-' + el.value.slice(en);
           const c = s + 1;
-          try { el.setSelectionRange(c, c); } catch { /* noop */ }
+          try {
+            el.setSelectionRange(c, c);
+          } catch {
+            /* noop */
+          }
           el.dispatchEvent(new Event('input', { bubbles: true }));
           return;
         }
@@ -809,13 +925,19 @@ export class IgtEditor {
         // flight, which _restorePendingFocus treats as "user moved focus" and
         // bails on — so _applyMorphSplitReplay locates + focuses the new cell.
         this._morphSplit = {
-          buffer: '', commitKey: null, right,
-          wordId: word.id, precedence: (morph.precedence ?? 1) + 1,
+          buffer: '',
+          commitKey: null,
+          right,
+          wordId: word.id,
+          precedence: (morph.precedence ?? 1) + 1,
         };
         const ok = await this._run(() => this.doc.splitMorpheme(morph.id, left, right));
         const split = this._morphSplit;
         this._morphSplit = null;
-        if (!ok) { restore(orig); return; }
+        if (!ok) {
+          restore(orig);
+          return;
+        }
         // Render has run synchronously by now, so the new cell exists; focus it
         // and flush the buffered keystrokes into it.
         this._applyMorphSplitReplay(split);
@@ -830,7 +952,11 @@ export class IgtEditor {
           e.preventDefault();
           el.dataset.suppressCommit = '1';
           el.disabled = true;
-          this._pendingFocus = { wordId: word.id, precedence: (morph.precedence ?? 1) - 1, cursor: 'end' };
+          this._pendingFocus = {
+            wordId: word.id,
+            precedence: (morph.precedence ?? 1) - 1,
+            cursor: 'end',
+          };
           const ok = await this._run(() => this.doc.deleteMorpheme(morph.id));
           el.disabled = false;
           if (!ok) restore(null);
@@ -843,7 +969,11 @@ export class IgtEditor {
           const prevLen = morphFormOf(prev).length;
           el.dataset.suppressCommit = '1';
           el.disabled = true;
-          this._pendingFocus = { wordId: word.id, precedence: prev.precedence ?? idx, cursor: prevLen };
+          this._pendingFocus = {
+            wordId: word.id,
+            precedence: prev.precedence ?? idx,
+            cursor: prevLen,
+          };
           const ok = await this._run(() => this.doc.mergeMorphemes(morph.id));
           el.disabled = false;
           if (!ok) restore(null);
@@ -858,7 +988,8 @@ export class IgtEditor {
   _applyMorphSplitReplay(split) {
     if (!split) return;
     const el = this.container.querySelector(
-      `.igt-morph-field[data-word="${split.wordId}"][data-prec="${split.precedence}"]`);
+      `.igt-morph-field[data-word="${split.wordId}"][data-prec="${split.precedence}"]`,
+    );
     if (!el) return; // new cell didn't render as expected — nothing to replay into
     el.focus(); // sets dataset.orig to the current value for commit
     if (split.buffer) {
@@ -869,14 +1000,25 @@ export class IgtEditor {
       const base = split.right || '';
       el.value = split.buffer + base;
       const c = split.buffer.length;
-      try { el.setSelectionRange(c, c); } catch { /* not selectable */ }
+      try {
+        el.setSelectionRange(c, c);
+      } catch {
+        /* not selectable */
+      }
       el.dispatchEvent(new Event('input', { bubbles: true }));
     } else {
-      try { el.setSelectionRange(0, 0); } catch { /* not selectable */ }
+      try {
+        el.setSelectionRange(0, 0);
+      } catch {
+        /* not selectable */
+      }
     }
     // A buffered Enter/Tab commits the new cell and advances (blur → commit).
-    if (split.commitKey === 'Enter') { if (!this._navMove(el, 'next')) el.blur(); }
-    else if (split.commitKey === 'Tab') { this._navMove(el, 'next'); }
+    if (split.commitKey === 'Enter') {
+      if (!this._navMove(el, 'next')) el.blur();
+    } else if (split.commitKey === 'Tab') {
+      this._navMove(el, 'next');
+    }
   }
 
   // Paste-splitting: pasting text containing "-" into a morpheme form splits
@@ -894,7 +1036,10 @@ export class IgtEditor {
       const s = el.selectionStart ?? el.value.length;
       const en = el.selectionEnd ?? s;
       const combined = el.value.slice(0, s) + text + el.value.slice(en);
-      const segments = combined.split('-').map(x => x.trim()).filter(x => x !== '');
+      const segments = combined
+        .split('-')
+        .map((x) => x.trim())
+        .filter((x) => x !== '');
       if (segments.length <= 1) {
         // All hyphens were leading/trailing/doubled — just insert the cleaned text.
         el.value = segments[0] ?? '';
@@ -905,7 +1050,11 @@ export class IgtEditor {
       el.value = segments[0];
       el.dataset.suppressCommit = '1';
       el.disabled = true;
-      this._pendingFocus = { wordId: word.id, precedence: (morph.precedence ?? 1) + segments.length - 1, cursor: 'end' };
+      this._pendingFocus = {
+        wordId: word.id,
+        precedence: (morph.precedence ?? 1) + segments.length - 1,
+        cursor: 'end',
+      };
       const ok = await this._run(() => this.doc.splitMorphemeMulti(morph.id, segments));
       el.disabled = false;
       if (!ok) {
@@ -920,7 +1069,10 @@ export class IgtEditor {
   _commitMorphForm(e, morphId) {
     if (this.readOnly) return;
     const el = e.target;
-    if (el.dataset.suppressCommit) { delete el.dataset.suppressCommit; return; }
+    if (el.dataset.suppressCommit) {
+      delete el.dataset.suppressCommit;
+      return;
+    }
     const next = el.value;
     if (next === (el.dataset.orig ?? '')) return;
     this._run(() => this.doc.updateMorphemeForm(morphId, next));
@@ -948,27 +1100,41 @@ export class IgtEditor {
     }
     const info = doc.layerInfo;
     if (!info.primaryTokenLayer) {
-      return html`
-        <div class="igt-island__empty igt-island__empty--warn">
-          <div class="igt-empty__title">This document isn't set up for interlinear analysis yet</div>
-          <p class="igt-empty__body">No primary <em>word</em> token layer is configured for this project. An
-            administrator needs to finish project setup before the interlinear grid can be used.</p>
-        </div>`;
+      return html` <div class="igt-island__empty igt-island__empty--warn">
+        <div class="igt-empty__title">This document isn't set up for interlinear analysis yet</div>
+        <p class="igt-empty__body">
+          No primary <em>word</em> token layer is configured for this project. An administrator
+          needs to finish project setup before the interlinear grid can be used.
+        </p>
+      </div>`;
     }
     const sentences = doc.sentences;
     const hasTokens = sentences.some((s) => s.tokens.length > 0);
     if (!hasTokens) {
-      return html`
-        <div class="igt-island__empty">
-          <div class="igt-empty__title">Nothing to analyze yet</div>
-          <p class="igt-empty__body">Interlinear glossing happens here once the text is split into words. Head to
-            the <strong>Tokenize</strong> tab to break the baseline text into sentences and words first.</p>
-          ${this.readOnly ? nothing : html`<button type="button" class="igt-empty__cta"
-            @click=${(e) => { e.stopPropagation(); this._navigateTab('tokenize'); }}>Go to Tokenize →</button>`}
-        </div>`;
+      return html` <div class="igt-island__empty">
+        <div class="igt-empty__title">Nothing to analyze yet</div>
+        <p class="igt-empty__body">
+          Interlinear glossing happens here once the text is split into words. Head to the
+          <strong>Tokenize</strong> tab to break the baseline text into sentences and words first.
+        </p>
+        ${this.readOnly
+          ? nothing
+          : html`<button
+              type="button"
+              class="igt-empty__cta"
+              @click=${(e) => {
+                e.stopPropagation();
+                this._navigateTab('tokenize');
+              }}
+            >
+              Go to Tokenize →
+            </button>`}
+      </div>`;
     }
 
-    const orthographies = (readOrthographies(info.primaryTokenLayer.config) || []).map((o) => o.name);
+    const orthographies = (readOrthographies(info.primaryTokenLayer.config) || []).map(
+      (o) => o.name,
+    );
     const wordFields = info.spanLayers.word.map((l) => l.name);
     const morphFields = info.spanLayers.morpheme.map((l) => l.name);
     const sentFields = info.spanLayers.sentence.map((l) => l.name);
@@ -978,10 +1144,17 @@ export class IgtEditor {
     // Gloss guesses (pluggable — see domain/glossGuess.js; assign
     // this.guessSourceFactory to swap the algorithm). Rebuilt per data render;
     // null in read-only mode so historical views never show suggestions.
-    const guess = this.readOnly ? null
-      : this._guessSource(sentences, wordFields, morphFields);
+    const guess = this.readOnly ? null : this._guessSource(sentences, wordFields, morphFields);
 
-    const ctx = { orthographies, wordFields, morphFields, sentFields, hasMorphemes, ignoredCfg, guess };
+    const ctx = {
+      orthographies,
+      wordFields,
+      morphFields,
+      sentFields,
+      hasMorphemes,
+      ignoredCfg,
+      guess,
+    };
 
     // One page of sentences in the DOM (see PAGE_SIZE). Sentence numbering
     // stays GLOBAL; cross-page movement is handled by the pager and the search
@@ -992,10 +1165,17 @@ export class IgtEditor {
     const pageSentences = sentences.slice(pageStart, pageStart + IgtEditor.PAGE_SIZE);
 
     return html`
-      ${this._toolbar(sentences, ctx, pageCount)}
-      ${this._helpOpen ? this._legend(ctx) : nothing}
-      ${doc.error ? html`<div class="igt-island__error" role="alert">${humanizeError(doc.error, doc.error)}</div>` : nothing}
-      ${repeat(pageSentences, (s) => s.id, (s, i) => this._sentence(s, pageStart + i, ctx))}
+      ${this._toolbar(sentences, ctx, pageCount)} ${this._helpOpen ? this._legend(ctx) : nothing}
+      ${doc.error
+        ? html`<div class="igt-island__error" role="alert">
+            ${humanizeError(doc.error, doc.error)}
+          </div>`
+        : nothing}
+      ${repeat(
+        pageSentences,
+        (s) => s.id,
+        (s, i) => this._sentence(s, pageStart + i, ctx),
+      )}
       ${pageCount > 1 ? this._pager(sentences.length, pageCount, 'bottom') : nothing}
     `;
   }
@@ -1007,16 +1187,30 @@ export class IgtEditor {
     this._page = page;
     this._render(true);
     if (scrollToTop) {
-      try { this.container.scrollIntoView({ block: 'start' }); } catch { /* noop */ }
+      try {
+        this.container.scrollIntoView({ block: 'start' });
+      } catch {
+        /* noop */
+      }
     }
   }
 
   _pager(total, pageCount, where) {
     const start = this._page * IgtEditor.PAGE_SIZE;
     const end = Math.min(total, start + IgtEditor.PAGE_SIZE);
-    const btn = (label, target, title, disabled) => html`
-      <button type="button" class="igt-pager__btn" ?disabled=${disabled} title=${title}
-        @click=${(e) => { e.stopPropagation(); this._setPage(target, where === 'bottom'); }}>${label}</button>`;
+    const btn = (label, target, title, disabled) =>
+      html` <button
+        type="button"
+        class="igt-pager__btn"
+        ?disabled=${disabled}
+        title=${title}
+        @click=${(e) => {
+          e.stopPropagation();
+          this._setPage(target, where === 'bottom');
+        }}
+      >
+        ${label}
+      </button>`;
     return html`
       <div class="igt-pager">
         ${btn('«', 0, 'First page', this._page === 0)}
@@ -1035,7 +1229,7 @@ export class IgtEditor {
     let done = 0;
     for (const s of sentences) {
       for (const t of s.tokens) {
-        for (const m of (t.morphemes || [])) {
+        for (const m of t.morphemes || []) {
           total += 1;
           if (ctx.morphFields.some((n) => (m.annotations?.[n]?.value ?? '') !== '')) done += 1;
         }
@@ -1057,26 +1251,56 @@ export class IgtEditor {
         <div class="igt-toolbar__left">
           ${pageCount > 1
             ? this._pager(nSent, pageCount, 'top')
-            : html`<span class="igt-toolbar__count">${nSent} sentence${nSent === 1 ? '' : 's'}</span>`}
-          ${IgtEditor.SHOW_GLOSS_PROGRESS && stats ? html`
-            <span class="igt-progress" title=${`${stats.done} of ${stats.total} morphemes have a gloss`}>
-              <span class="igt-progress__bar"><span class="igt-progress__fill" style=${`width:${stats.pct}%`}></span></span>
-              <span class="igt-progress__text">${stats.done}/${stats.total} glossed</span>
-            </span>
-          ` : nothing}
+            : html`<span class="igt-toolbar__count"
+                >${nSent} sentence${nSent === 1 ? '' : 's'}</span
+              >`}
+          ${IgtEditor.SHOW_GLOSS_PROGRESS && stats
+            ? html`
+                <span
+                  class="igt-progress"
+                  title=${`${stats.done} of ${stats.total} morphemes have a gloss`}
+                >
+                  <span class="igt-progress__bar"
+                    ><span class="igt-progress__fill" style=${`width:${stats.pct}%`}></span
+                  ></span>
+                  <span class="igt-progress__text">${stats.done}/${stats.total} glossed</span>
+                </span>
+              `
+            : nothing}
           ${!this.readOnly && Object.keys(this.doc.vocabularies || {}).length > 0
-            ? html`<button type="button" class="igt-toolbar__btn"
+            ? html`<button
+                type="button"
+                class="igt-toolbar__btn"
                 title="Link words and morphemes to the lexicon — choose the built-in rule or a linking service. Auto-links show in violet until you confirm them."
-                @click=${(e) => { e.stopPropagation(); this._openAutoLink(); }}>
+                @click=${(e) => {
+                  e.stopPropagation();
+                  this._openAutoLink();
+                }}
+              >
                 Auto-link…
               </button>`
             : nothing}
         </div>
         <div class="igt-toolbar__right">
-          <span class="igt-status" role="status" aria-live="polite" data-state=${this._statusState || 'idle'}></span>
-          <button type="button" class="igt-help-btn" aria-expanded=${this._helpOpen ? 'true' : 'false'}
-            aria-label="Keyboard & scope help" title="Keyboard & scope help"
-            @click=${(e) => { e.stopPropagation(); this._toggleHelp(); }}>?</button>
+          <span
+            class="igt-status"
+            role="status"
+            aria-live="polite"
+            data-state=${this._statusState || 'idle'}
+          ></span>
+          <button
+            type="button"
+            class="igt-help-btn"
+            aria-expanded=${this._helpOpen ? 'true' : 'false'}
+            aria-label="Keyboard & scope help"
+            title="Keyboard & scope help"
+            @click=${(e) => {
+              e.stopPropagation();
+              this._toggleHelp();
+            }}
+          >
+            ?
+          </button>
         </div>
       </div>
     `;
@@ -1089,35 +1313,61 @@ export class IgtEditor {
           <strong>Scopes</strong>
           <span class="igt-legend__chip igt-legend__chip--orth">Orthography</span>
           <span class="igt-legend__chip igt-legend__chip--word">Word</span>
-          ${ctx.hasMorphemes ? html`<span class="igt-legend__chip igt-legend__chip--morph">Morpheme</span>` : nothing}
+          ${ctx.hasMorphemes
+            ? html`<span class="igt-legend__chip igt-legend__chip--morph">Morpheme</span>`
+            : nothing}
           <span class="igt-legend__chip igt-legend__chip--sent">Sentence</span>
         </div>
         <div class="igt-legend__row">
           <strong>Navigate</strong>
-          <span><kbd>Enter</kbd>/<kbd>Tab</kbd> next cell in the same row · <kbd>⇧</kbd>+ previous · <kbd>↑</kbd><kbd>↓</kbd> move rows · <kbd>Esc</kbd> cancel edit</span>
+          <span
+            ><kbd>Enter</kbd>/<kbd>Tab</kbd> next cell in the same row · <kbd>⇧</kbd>+ previous ·
+            <kbd>↑</kbd><kbd>↓</kbd> move rows · <kbd>Esc</kbd> cancel edit</span
+          >
         </div>
-        ${ctx.hasMorphemes ? html`
-          <div class="igt-legend__row">
-            <strong>Morphemes</strong>
-            <span>type <kbd>-</kbd> to split (pasting <em>a-b-c</em> splits too) · <kbd>⌫</kbd> at start merges with previous · <kbd>Alt</kbd>+<kbd>-</kbd> literal hyphen</span>
-          </div>` : nothing}
+        ${ctx.hasMorphemes
+          ? html` <div class="igt-legend__row">
+              <strong>Morphemes</strong>
+              <span
+                >type <kbd>-</kbd> to split (pasting <em>a-b-c</em> splits too) · <kbd>⌫</kbd> at
+                start merges with previous · <kbd>Alt</kbd>+<kbd>-</kbd> literal hyphen</span
+              >
+            </div>`
+          : nothing}
         <div class="igt-legend__row">
           <strong>Guesses</strong>
-          <span>violet italic values are guesses from matching forms — <kbd>↵</kbd>/<kbd>Tab</kbd> confirms, typing replaces, leaving the cell discards</span>
+          <span
+            >violet italic values are guesses from matching forms — <kbd>↵</kbd>/<kbd>Tab</kbd>
+            confirms, typing replaces, leaving the cell discards</span
+          >
         </div>
         <div class="igt-legend__row">
           <strong>Provenance</strong>
-          <span><span class="igt-legend__prov igt-legend__prov--machine">violet italic</span> = machine-made, unverified ·
-            <span class="igt-legend__prov igt-legend__prov--verified">violet underline</span> = machine-made, confirmed by a person ·
-            plain = made by a person · editing a value confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> confirms a whole word and jumps to the next</span>
+          <span
+            ><span class="igt-legend__prov igt-legend__prov--machine">violet italic</span> =
+            machine-made, unverified ·
+            <span class="igt-legend__prov igt-legend__prov--verified">violet underline</span> =
+            machine-made, confirmed by a person · plain = made by a person · editing a value
+            confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> confirms a whole word and jumps to the
+            next</span
+          >
         </div>
         <div class="igt-legend__row">
           <strong>Lexicon</strong>
-          <span>hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry · <em>Auto-link</em> links everything that follows project precedent or matches one entry — violet links are auto-made; open one and click it (or <em>confirm</em>) to approve</span>
+          <span
+            >hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry ·
+            <em>Auto-link</em> links everything that follows project precedent or matches one entry
+            — violet links are auto-made; open one and click it (or <em>confirm</em>) to
+            approve</span
+          >
         </div>
         <div class="igt-legend__row">
           <strong>Review links</strong>
-          <span><kbd>Ctrl</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between suggested (violet) links · on one: <kbd>↵</kbd> confirm · <kbd>⌫</kbd> remove · <kbd>Space</kbd> change — each jumps to the next</span>
+          <span
+            ><kbd>Ctrl</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between suggested (violet) links · on
+            one: <kbd>↵</kbd> confirm · <kbd>⌫</kbd> remove · <kbd>Space</kbd> change — each jumps
+            to the next</span
+          >
         </div>
       </div>
     `;
@@ -1152,7 +1402,11 @@ export class IgtEditor {
   }
 
   async _copySentence(sentence, ctx, format) {
-    const fields = { morphFields: ctx.morphFields, wordFields: ctx.wordFields, sentFields: ctx.sentFields };
+    const fields = {
+      morphFields: ctx.morphFields,
+      wordFields: ctx.wordFields,
+      sentFields: ctx.sentFields,
+    };
     const text = formatSentence(sentence, fields, format);
     try {
       await navigator.clipboard.writeText(text);
@@ -1164,12 +1418,19 @@ export class IgtEditor {
       ta.style.opacity = '0';
       document.body.appendChild(ta);
       ta.select();
-      try { document.execCommand('copy'); } finally { ta.remove(); }
+      try {
+        document.execCommand('copy');
+      } finally {
+        ta.remove();
+      }
     }
     this._copyMenu = null;
     this._copiedFlash = sentence.id;
     clearTimeout(this._copiedTimer);
-    this._copiedTimer = setTimeout(() => { this._copiedFlash = null; this._render(true); }, 1400);
+    this._copiedTimer = setTimeout(() => {
+      this._copiedFlash = null;
+      this._render(true);
+    }, 1400);
     this._render(true);
   }
 
@@ -1180,30 +1441,47 @@ export class IgtEditor {
     const copied = this._copiedFlash === sentence.id;
     return html`
       <div class="igt-copy" @click=${(e) => e.stopPropagation()}>
-        <button type="button" class="igt-copy__btn"
+        <button
+          type="button"
+          class="igt-copy__btn"
           title=${`Copy as IGT — ${favLabel}`}
-          @click=${() => this._copySentence(sentence, ctx, fav)}>
+          @click=${() => this._copySentence(sentence, ctx, fav)}
+        >
           ${copied ? 'Copied ✓' : 'Copy'}
         </button>
-        <button type="button" class="igt-copy__caret" aria-label="Choose copy format"
+        <button
+          type="button"
+          class="igt-copy__caret"
+          aria-label="Choose copy format"
           aria-expanded=${open ? 'true' : 'false'}
-          @click=${() => { this._copyMenu = open ? null : sentence.id; this._render(true); }}>
+          @click=${() => {
+            this._copyMenu = open ? null : sentence.id;
+            this._render(true);
+          }}
+        >
           ▾
         </button>
-        ${open ? html`
-          <div class="igt-copy__menu" role="menu">
-            ${COPY_FORMATS.map((f) => html`
-              <button type="button" class="igt-copy__item ${f.id === fav ? 'is-fav' : ''}" role="menuitem"
-                @click=${() => {
-                  localStorage.setItem(COPY_FORMAT_STORAGE_KEY, f.id);
-                  this._copySentence(sentence, ctx, f.id);
-                }}>
-                <span>${f.label}</span>
-                ${f.id === fav ? html`<span class="igt-copy__fav">★</span>` : nothing}
-              </button>
-            `)}
-            <div class="igt-copy__hint">picking a format makes it the default</div>
-          </div>` : nothing}
+        ${open
+          ? html` <div class="igt-copy__menu" role="menu">
+              ${COPY_FORMATS.map(
+                (f) => html`
+                  <button
+                    type="button"
+                    class="igt-copy__item ${f.id === fav ? 'is-fav' : ''}"
+                    role="menuitem"
+                    @click=${() => {
+                      localStorage.setItem(COPY_FORMAT_STORAGE_KEY, f.id);
+                      this._copySentence(sentence, ctx, f.id);
+                    }}
+                  >
+                    <span>${f.label}</span>
+                    ${f.id === fav ? html`<span class="igt-copy__fav">★</span>` : nothing}
+                  </button>
+                `,
+              )}
+              <div class="igt-copy__hint">picking a format makes it the default</div>
+            </div>`
+          : nothing}
       </div>
     `;
   }
@@ -1213,10 +1491,14 @@ export class IgtEditor {
     // covers (punctuation, stray characters): each such run gets a slim,
     // non-editable "gap" column so it stays visible in its true position.
     // Whitespace-only gaps (ordinary inter-word spacing) are dropped.
-    const cols = sentence.pieces.filter(
-      (p) => p.isToken || (p.content || '').trim() !== '');
+    const cols = sentence.pieces.filter((p) => p.isToken || (p.content || '').trim() !== '');
     return html`
-      <div class="igt-sentence" data-sentence-id=${sentence.id} role="group" aria-label=${`Sentence ${index + 1}`}>
+      <div
+        class="igt-sentence"
+        data-sentence-id=${sentence.id}
+        role="group"
+        aria-label=${`Sentence ${index + 1}`}
+      >
         <h3 class="igt-sr-only">Sentence ${index + 1}</h3>
         <span class="igt-sentence__num" aria-hidden="true">${index + 1}</span>
         ${this._copyControl(sentence, ctx)}
@@ -1226,7 +1508,8 @@ export class IgtEditor {
             ${repeat(
               cols,
               (p) => (p.isToken ? p.id : `gap:${p.begin}-${p.end}`),
-              (p) => (p.isToken ? this._tokenCol(p, ctx) : this._gapCol(p)))}
+              (p) => (p.isToken ? this._tokenCol(p, ctx) : this._gapCol(p)),
+            )}
           </div>
         </div>
         ${this._sentenceAnnos(sentence, index, ctx)}
@@ -1238,8 +1521,8 @@ export class IgtEditor {
     // Each label is truncated with an ellipsis (see .igt-row-label__text) so a
     // long field/orthography name can't spill into the token grid; the row's
     // title attr keeps the full name available on hover.
-    const lbl = (cls, name, scope) => html`
-      <div class="igt-row-label ${cls}" title=${`${name} (${scope})`}>
+    const lbl = (cls, name, scope) =>
+      html` <div class="igt-row-label ${cls}" title=${`${name} (${scope})`}>
         <span class="igt-row-label__text">${name}</span>
       </div>`;
     return html`
@@ -1247,8 +1530,17 @@ export class IgtEditor {
         <div class="igt-row-label igt-row-label--spacer"></div>
         ${ctx.orthographies.map((n) => lbl('igt-row-label--orth', n, 'orthography'))}
         ${ctx.wordFields.map((n) => lbl('igt-row-label--word', n, 'word'))}
-        ${ctx.hasMorphemes ? html`<div class="igt-row-label igt-row-label--morph igt-row-label--morphform" title="Morphemes"><span class="igt-row-label__text">Morphemes</span></div>` : nothing}
-        ${ctx.hasMorphemes ? ctx.morphFields.map((n) => lbl('igt-row-label--morph', n, 'morpheme')) : nothing}
+        ${ctx.hasMorphemes
+          ? html`<div
+              class="igt-row-label igt-row-label--morph igt-row-label--morphform"
+              title="Morphemes"
+            >
+              <span class="igt-row-label__text">Morphemes</span>
+            </div>`
+          : nothing}
+        ${ctx.hasMorphemes
+          ? ctx.morphFields.map((n) => lbl('igt-row-label--morph', n, 'morpheme'))
+          : nothing}
       </div>
     `;
   }
@@ -1270,29 +1562,39 @@ export class IgtEditor {
     return html`
       <div class="igt-token-col">
         <div class="igt-token-form" title=${token.content}>
-          ${this._vocabFace(token.content, { id: token.id, vocabItem: token.vocabItem, formText: token.content, kind: 'word' })}
+          ${this._vocabFace(token.content, {
+            id: token.id,
+            vocabItem: token.vocabItem,
+            formText: token.content,
+            kind: 'word',
+          })}
         </div>
-        ${ctx.orthographies.map((name) => html`
-          <div class="igt-cell">
-            ${this._field({
-              key: `or:${token.id}:${name}`,
-              value: token.orthographies?.[name] ?? '',
-              apply: (v) => this.doc.updateOrthography(token.id, name, v),
-              ariaLabel: `${name} for ${token.content}`,
-            })}
-          </div>
-        `)}
-        ${ctx.wordFields.map((name) => html`<div class="igt-cell">
-            ${this._field({
-              key: `wa:${token.id}:${name}`,
-              value: token.annotations?.[name]?.value ?? '',
-              apply: (v, prov) => this.doc.updateTokenSpan(token.id, name, v, prov),
-              ariaLabel: `${name} for ${token.content}`,
-              guess: ctx.guess?.guessFor('word', token.content, name) ?? null,
-              prov: spanProv(token.annotations?.[name]),
-              confirmWord: token.id,
-            })}
-          </div>`)}
+        ${ctx.orthographies.map(
+          (name) => html`
+            <div class="igt-cell">
+              ${this._field({
+                key: `or:${token.id}:${name}`,
+                value: token.orthographies?.[name] ?? '',
+                apply: (v) => this.doc.updateOrthography(token.id, name, v),
+                ariaLabel: `${name} for ${token.content}`,
+              })}
+            </div>
+          `,
+        )}
+        ${ctx.wordFields.map(
+          (name) =>
+            html`<div class="igt-cell">
+              ${this._field({
+                key: `wa:${token.id}:${name}`,
+                value: token.annotations?.[name]?.value ?? '',
+                apply: (v, prov) => this.doc.updateTokenSpan(token.id, name, v, prov),
+                ariaLabel: `${name} for ${token.content}`,
+                guess: ctx.guess?.guessFor('word', token.content, name) ?? null,
+                prov: spanProv(token.annotations?.[name]),
+                confirmWord: token.id,
+              })}
+            </div>`,
+        )}
         ${ctx.hasMorphemes ? this._morphemes(token, ctx) : nothing}
       </div>
     `;
@@ -1325,15 +1627,22 @@ export class IgtEditor {
     // either morpheme — it renders between the columns, straddling the gap.
     return html`
       <div class="igt-morphemes">
-        ${repeat(morphemes, (m) => m.id, (m, i) => {
-          const joiner = i > 0
-            ? morphemeJoiner(morphemes[i - 1]?.metadata?.morphType, m.metadata?.morphType)
-            : null;
-          return html`
-            ${joiner ? html`<span class="igt-morph-joiner" aria-hidden="true">${joiner}</span>` : nothing}
-            ${this._morphCol(m, token, morphemes, ctx)}
-          `;
-        })}
+        ${repeat(
+          morphemes,
+          (m) => m.id,
+          (m, i) => {
+            const joiner =
+              i > 0
+                ? morphemeJoiner(morphemes[i - 1]?.metadata?.morphType, m.metadata?.morphType)
+                : null;
+            return html`
+              ${joiner
+                ? html`<span class="igt-morph-joiner" aria-hidden="true">${joiner}</span>`
+                : nothing}
+              ${this._morphCol(m, token, morphemes, ctx)}
+            `;
+          },
+        )}
       </div>
     `;
   }
@@ -1352,13 +1661,15 @@ export class IgtEditor {
         <div class="igt-morph-form ${stem ? 'igt-morph-form--stem' : ''}">
           ${this._vocabFace(
             html`<input
-              class="igt-field igt-morph-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${prov ? `igt-field--${prov}` : ''}"
+              class="igt-field igt-morph-field ${filled
+                ? 'igt-field--filled'
+                : 'igt-field--empty'} ${prov ? `igt-field--${prov}` : ''}"
               data-cell-key=${`mf:${morph.id}`}
               data-word=${word.id}
               data-prec=${morph.precedence ?? 1}
               data-confirm-word=${word.id}
               aria-label=${`Morpheme form${value ? ` ${value}` : ''}`}
-              title=${prov ? `${value} — ${PROV_TITLE[prov]}` : (filled ? value : nothing)}
+              title=${prov ? `${value} — ${PROV_TITLE[prov]}` : filled ? value : nothing}
               size=${this._fieldSize(value)}
               ?disabled=${this.readOnly}
               ${uncontrolledValue(value)}
@@ -1367,24 +1678,26 @@ export class IgtEditor {
               @keydown=${this._morphFormKeydown(morph, word, siblings)}
               @paste=${this._onMorphPaste(morph, word)}
               @blur=${(e) => this._commitMorphForm(e, morph.id)}
-            >`,
+            />`,
             { id: morph.id, vocabItem: morph.vocabItem, formText: value, kind: 'morpheme' },
           )}
         </div>
-        ${ctx.morphFields.map((name) => html`
-          <div class="igt-morph-cell">
-            ${this._field({
-              key: `ma:${morph.id}:${name}`,
-              value: morph.annotations?.[name]?.value ?? '',
-              apply: (v, prov) => this.doc.updateMorphemeSpan(morph.id, name, v, prov),
-              extraClass: 'igt-morph-field',
-              ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
-              guess: ctx.guess?.guessFor('morpheme', value, name) ?? null,
-              prov: spanProv(morph.annotations?.[name]),
-              confirmWord: word.id,
-            })}
-          </div>
-        `)}
+        ${ctx.morphFields.map(
+          (name) => html`
+            <div class="igt-morph-cell">
+              ${this._field({
+                key: `ma:${morph.id}:${name}`,
+                value: morph.annotations?.[name]?.value ?? '',
+                apply: (v, prov) => this.doc.updateMorphemeSpan(morph.id, name, v, prov),
+                extraClass: 'igt-morph-field',
+                ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
+                guess: ctx.guess?.guessFor('morpheme', value, name) ?? null,
+                prov: spanProv(morph.annotations?.[name]),
+                confirmWord: word.id,
+              })}
+            </div>
+          `,
+        )}
       </div>
     `;
   }
@@ -1393,18 +1706,20 @@ export class IgtEditor {
     if (!ctx.sentFields.length) return nothing;
     return html`
       <div class="igt-sentence-annos">
-        ${ctx.sentFields.map((name) => html`
-          <div class="igt-sentence-anno">
-            <span class="igt-sentence-anno__label" title=${name}>${name}</span>
-            ${this._field({
-              key: `sa:${sentence.id}:${name}`,
-              value: sentence.annotations?.[name]?.value ?? '',
-              apply: (v) => this.doc.updateSentenceSpan(sentence.id, name, v),
-              sentence: true,
-              ariaLabel: `${name} for sentence ${index + 1}`,
-            })}
-          </div>
-        `)}
+        ${ctx.sentFields.map(
+          (name) => html`
+            <div class="igt-sentence-anno">
+              <span class="igt-sentence-anno__label" title=${name}>${name}</span>
+              ${this._field({
+                key: `sa:${sentence.id}:${name}`,
+                value: sentence.annotations?.[name]?.value ?? '',
+                apply: (v) => this.doc.updateSentenceSpan(sentence.id, name, v),
+                sentence: true,
+                ariaLabel: `${name} for sentence ${index + 1}`,
+              })}
+            </div>
+          `,
+        )}
       </div>
     `;
   }
@@ -1429,28 +1744,43 @@ export class IgtEditor {
       // Three-way provenance: human links plain, machine-unverified violet
       // ("inferred"), machine-verified quietly marked.
       const state = vocabItem.prov ?? PROV_STATES.HUMAN;
-      const stateClass = state === PROV_STATES.MACHINE ? 'igt-vocab__hint--inferred'
-        : state === PROV_STATES.VERIFIED ? 'igt-vocab__hint--verified' : '';
-      const title = state === PROV_STATES.MACHINE
-        ? `Auto-linked to "${vocabItem.form}" — open to confirm or change`
-        : state === PROV_STATES.VERIFIED
-          ? `Linked to "${vocabItem.form}" — auto-linked, confirmed${canLink ? ' · manage' : ''}`
-          : `Linked to "${vocabItem.form}"${canLink ? ' — manage' : ''}`;
+      const stateClass =
+        state === PROV_STATES.MACHINE
+          ? 'igt-vocab__hint--inferred'
+          : state === PROV_STATES.VERIFIED
+            ? 'igt-vocab__hint--verified'
+            : '';
+      const title =
+        state === PROV_STATES.MACHINE
+          ? `Auto-linked to "${vocabItem.form}" — open to confirm or change`
+          : state === PROV_STATES.VERIFIED
+            ? `Linked to "${vocabItem.form}" — auto-linked, confirmed${canLink ? ' · manage' : ''}`
+            : `Linked to "${vocabItem.form}"${canLink ? ' — manage' : ''}`;
       const sub = this._homonymSub(vocabItem);
-      opener = html`<button type="button" class="igt-vocab__opener igt-vocab__hint ${stateClass}"
-        data-vocab-opener=${id} ?disabled=${!canLink}
+      opener = html`<button
+        type="button"
+        class="igt-vocab__opener igt-vocab__hint ${stateClass}"
+        data-vocab-opener=${id}
+        ?disabled=${!canLink}
         title=${title}
-        @click=${openerClick}>${vocabItem.form}${sub != null ? html`<sub class="igt-vocab__sub">${sub}</sub>` : nothing}</button>`;
+        @click=${openerClick}
+      >
+        ${vocabItem.form}${sub != null ? html`<sub class="igt-vocab__sub">${sub}</sub>` : nothing}
+      </button>`;
     } else if (canLink) {
-      opener = html`<button type="button" class="igt-vocab__opener igt-vocab__link"
-        data-vocab-opener=${id} title="Link to a lexicon entry"
-        @click=${openerClick}>link</button>`;
+      opener = html`<button
+        type="button"
+        class="igt-vocab__opener igt-vocab__link"
+        data-vocab-opener=${id}
+        title="Link to a lexicon entry"
+        @click=${openerClick}
+      >
+        link
+      </button>`;
     }
     return html`
       <span class="igt-vocab">
-        ${face}
-        ${opener}
-        ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
+        ${face} ${opener} ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
       </span>
     `;
   }
@@ -1491,7 +1821,7 @@ export class IgtEditor {
       .map((n) => meta[n])
       .filter((v) => v != null && String(v).trim() !== '')
       .map(String);
-    return (inlineNames.length ? vals.join(' · ') : (vals[0] ?? ''));
+    return inlineNames.length ? vals.join(' · ') : (vals[0] ?? '');
   }
 
   _vocabPopover(tokenId, formText, currentItem, kind) {
@@ -1500,10 +1830,11 @@ export class IgtEditor {
     // selector at the bottom. Default to the linked item's vocab (so an existing
     // link is visible), else the first. The list, create, and manage row all
     // follow the active vocab.
-    const activeVocab = vocabs.find((v) => v.id === this._popoverVocabId)
-      || vocabs.find((v) => v.id === currentItem?.vocabId)
-      || vocabs[0]
-      || null;
+    const activeVocab =
+      vocabs.find((v) => v.id === this._popoverVocabId) ||
+      vocabs.find((v) => v.id === currentItem?.vocabId) ||
+      vocabs[0] ||
+      null;
     this._popoverVocabId = activeVocab?.id ?? null;
 
     const search = (this._popoverSearch || '').toLowerCase();
@@ -1533,11 +1864,16 @@ export class IgtEditor {
     items.sort((a, b) => {
       const t = tierOf(a) - tierOf(b);
       if (t !== 0) return t;
-      return levenshtein(q, (a.form || '').toLowerCase()) - levenshtein(q, (b.form || '').toLowerCase());
+      return (
+        levenshtein(q, (a.form || '').toLowerCase()) - levenshtein(q, (b.form || '').toLowerCase())
+      );
     });
     if (currentItem) {
       const i = items.findIndex((it) => it.id === currentItem.id);
-      if (i > 0) { const [x] = items.splice(i, 1); items.unshift(x); }
+      if (i > 0) {
+        const [x] = items.splice(i, 1);
+        items.unshift(x);
+      }
     }
     const limited = items.slice(0, 30);
     const truncated = items.length - limited.length;
@@ -1545,13 +1881,17 @@ export class IgtEditor {
     const canCreate = !!(formText && activeVocab);
     // If the form already exists in the active vocab, the new item would be a
     // homonym — preview the subscript it would get (existing count + 1).
-    const newFormDupes = canCreate ? (activeVocab.items || []).filter((it) => it.form === formText).length : 0;
+    const newFormDupes = canCreate
+      ? (activeVocab.items || []).filter((it) => it.form === formText).length
+      : 0;
     const newFormSub = newFormDupes >= 1 ? newFormDupes + 1 : null;
     // Rows the keyboard can land on: every item plus the create row.
     const total = limited.length + (canCreate ? 1 : 0);
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
     const pos = this._popoverPos;
-    const posStyle = pos ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;` : '';
+    const posStyle = pos
+      ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;`
+      : '';
 
     // For an INFERRED link, selecting the linked row CONFIRMS it (the human
     // gesture that flips provConfirmed); for a human link it unlinks (toggle),
@@ -1568,11 +1908,21 @@ export class IgtEditor {
       }
     };
     const onSearchKey = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); this._closePopover(true); }
-      else if (e.key === 'ArrowDown') { e.preventDefault(); this._movePopoverActive(1, total); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); this._movePopoverActive(-1, total); }
-      else if (e.key === 'Enter') { e.preventDefault(); selectActive(); }
-      else if (e.key === 'Tab') { e.preventDefault(); } // trap focus in the search box
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this._closePopover(true);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        this._movePopoverActive(1, total);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        this._movePopoverActive(-1, total);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        selectActive();
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+      } // trap focus in the search box
     };
     const selectVocab = (id) => {
       this._popoverVocabId = id;
@@ -1581,32 +1931,70 @@ export class IgtEditor {
     };
 
     return html`
-      <div class="igt-vocab-pop" style=${posStyle} role="dialog" aria-label="Link to lexicon"
-        @click=${(e) => e.stopPropagation()}>
-        <input class="igt-vocab-pop__search" placeholder="Search lexicon…"
+      <div
+        class="igt-vocab-pop"
+        style=${posStyle}
+        role="dialog"
+        aria-label="Link to lexicon"
+        @click=${(e) => e.stopPropagation()}
+      >
+        <input
+          class="igt-vocab-pop__search"
+          placeholder="Search lexicon…"
           aria-label="Search lexicon"
           .value=${live(this._popoverSearch || '')}
-          @input=${(e) => { this._popoverSearch = e.target.value; this._popoverActiveIndex = 0; this._render(true); }}
-          @keydown=${onSearchKey}>
+          @input=${(e) => {
+            this._popoverSearch = e.target.value;
+            this._popoverActiveIndex = 0;
+            this._render(true);
+          }}
+          @keydown=${onSearchKey}
+        />
         <div class="igt-vocab-pop__list">
           ${limited.length
             ? limited.map((it, i) => {
                 const linked = currentItem && it.id === currentItem.id;
                 const confirmable = linked && inferredCurrent;
-                return html`<button type="button" class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${i === activeIdx ? 'is-active' : ''}"
-                  @mousemove=${() => { if (this._popoverActiveIndex !== i) { this._popoverActiveIndex = i; this._render(true); } }}
+                return html`<button
+                  type="button"
+                  class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${i === activeIdx
+                    ? 'is-active'
+                    : ''}"
+                  @mousemove=${() => {
+                    if (this._popoverActiveIndex !== i) {
+                      this._popoverActiveIndex = i;
+                      this._render(true);
+                    }
+                  }}
                   @click=${(e) => {
                     e.stopPropagation();
                     if (confirmable) this._confirmLink(tokenId);
                     else this._toggleVocab(tokenId, it, linked);
-                  }}>
+                  }}
+                >
                   <span class="igt-vocab-pop__main">
-                    <span class="igt-vocab-pop__form">${it.form}${it._sub != null ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>` : nothing}</span>
+                    <span class="igt-vocab-pop__form"
+                      >${it.form}${it._sub != null
+                        ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>`
+                        : nothing}</span
+                    >
                     ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
-                    ${linked ? html`<span class="igt-vocab-pop__x" role="button" tabindex="-1"
-                      @click=${(e) => { e.stopPropagation(); this._toggleVocab(tokenId, it, true); }}>unlink</span>` : nothing}
+                    ${linked
+                      ? html`<span
+                          class="igt-vocab-pop__x"
+                          role="button"
+                          tabindex="-1"
+                          @click=${(e) => {
+                            e.stopPropagation();
+                            this._toggleVocab(tokenId, it, true);
+                          }}
+                          >unlink</span
+                        >`
+                      : nothing}
                   </span>
-                  ${it._detail ? html`<span class="igt-vocab-pop__detail">${it._detail}</span>` : nothing}
+                  ${it._detail
+                    ? html`<span class="igt-vocab-pop__detail">${it._detail}</span>`
+                    : nothing}
                 </button>`;
               })
             : html`<div class="igt-vocab-pop__empty">No matches</div>`}
@@ -1615,10 +2003,25 @@ export class IgtEditor {
             : nothing}
         </div>
         ${canCreate
-          ? html`<button type="button" class="igt-vocab-pop__create ${activeIdx === limited.length ? 'is-active' : ''}"
-              @mousemove=${() => { const idx = limited.length; if (this._popoverActiveIndex !== idx) { this._popoverActiveIndex = idx; this._render(true); } }}
-              @click=${(e) => { e.stopPropagation(); this._createVocab(tokenId, activeVocab.id, formText); }}>
-              + Create "${formText}${newFormSub != null ? html`<sub class="igt-vocab-pop__sub">${newFormSub}</sub>` : nothing}"
+          ? html`<button
+              type="button"
+              class="igt-vocab-pop__create ${activeIdx === limited.length ? 'is-active' : ''}"
+              @mousemove=${() => {
+                const idx = limited.length;
+                if (this._popoverActiveIndex !== idx) {
+                  this._popoverActiveIndex = idx;
+                  this._render(true);
+                }
+              }}
+              @click=${(e) => {
+                e.stopPropagation();
+                this._createVocab(tokenId, activeVocab.id, formText);
+              }}
+            >
+              + Create
+              "${formText}${newFormSub != null
+                ? html`<sub class="igt-vocab-pop__sub">${newFormSub}</sub>`
+                : nothing}"
             </button>`
           : nothing}
         ${kind === 'morpheme' ? this._morphTypeRow(tokenId) : nothing}
@@ -1630,13 +2033,31 @@ export class IgtEditor {
                 // chip is a link to the full vocab view (new tab). So the first
                 // click selects, a second click on the now-active chip opens.
                 return isActive
-                  ? html`<a class="igt-vocab-pop__vocabtab is-active" role="tab" aria-selected="true"
-                      href=${`#/vocabularies/${v.id}`} target="_blank" rel="noopener"
+                  ? html`<a
+                      class="igt-vocab-pop__vocabtab is-active"
+                      role="tab"
+                      aria-selected="true"
+                      href=${`#/vocabularies/${v.id}`}
+                      target="_blank"
+                      rel="noopener"
                       title=${`Open “${v.name}” in a new tab`}
-                      @click=${(e) => e.stopPropagation()}><span class="igt-vocab-pop__vtab-name">${v.name}</span><span class="igt-vocab-pop__vtab-ext">↗</span></a>`
-                  : html`<button type="button" class="igt-vocab-pop__vocabtab" role="tab" aria-selected="false"
+                      @click=${(e) => e.stopPropagation()}
+                      ><span class="igt-vocab-pop__vtab-name">${v.name}</span
+                      ><span class="igt-vocab-pop__vtab-ext">↗</span></a
+                    >`
+                  : html`<button
+                      type="button"
+                      class="igt-vocab-pop__vocabtab"
+                      role="tab"
+                      aria-selected="false"
                       title=${`Switch to “${v.name}”`}
-                      @click=${(e) => { e.stopPropagation(); selectVocab(v.id); }}><span class="igt-vocab-pop__vtab-name">${v.name}</span></button>`;
+                      @click=${(e) => {
+                        e.stopPropagation();
+                        selectVocab(v.id);
+                      }}
+                    >
+                      <span class="igt-vocab-pop__vtab-name">${v.name}</span>
+                    </button>`;
               })}
             </div>`
           : nothing}
@@ -1649,16 +2070,25 @@ export class IgtEditor {
   // and the form are untouched; the display-only affix joints ("-"/"=") react
   // immediately.
   _morphTypeRow(morphemeId) {
-    const morph = (this.doc.layerInfo.morphemeTokenLayer?.tokens || [])
-      .find((m) => m.id === morphemeId);
+    const morph = (this.doc.layerInfo.morphemeTokenLayer?.tokens || []).find(
+      (m) => m.id === morphemeId,
+    );
     const current = morph?.metadata?.morphType ?? '';
     return html`
       <label class="igt-vocab-pop__type" @click=${(e) => e.stopPropagation()}>
         <span>Type</span>
-        <select ?disabled=${this.readOnly} aria-label="Morpheme type"
-          @change=${(e) => { e.stopPropagation(); this.doc.setMorphemeType(morphemeId, e.target.value || null); }}>
+        <select
+          ?disabled=${this.readOnly}
+          aria-label="Morpheme type"
+          @change=${(e) => {
+            e.stopPropagation();
+            this.doc.setMorphemeType(morphemeId, e.target.value || null);
+          }}
+        >
           <option value="" ?selected=${current === ''}>—</option>
-          ${FLEX_MORPH_TYPES.map((t) => html`<option value=${t} ?selected=${current === t}>${t}</option>`)}
+          ${FLEX_MORPH_TYPES.map(
+            (t) => html`<option value=${t} ?selected=${current === t}>${t}</option>`,
+          )}
         </select>
       </label>
     `;

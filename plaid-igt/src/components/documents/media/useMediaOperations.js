@@ -7,7 +7,9 @@ import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
 import { useServiceParams } from '../../documents/hooks/useServiceParams.js';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
 import {
-  encodeServiceSelection, readSpotDefault, resolveInitialSelection,
+  encodeServiceSelection,
+  readSpotDefault,
+  resolveInitialSelection,
 } from '../../../domain/serviceDefaults.js';
 
 // Matches the old Mantine useHotkeys default: ignore key events from form fields.
@@ -61,7 +63,7 @@ export const useMediaOperations = () => {
     requestService,
     hasServices,
     progressPercent,
-    progressMessage
+    progressMessage,
   } = useServiceRequest();
 
   // The selected ASR service (null for none) and its user-controllable
@@ -71,9 +73,17 @@ export const useMediaOperations = () => {
     ? availableServices.find((s) => s.serviceId === selectedServiceId) || null
     : null;
   const transcribeDefault = readSpotDefault(project, TASKS.TRANSCRIBE);
-  const { schema: paramSchema, values: paramValues, setParam: setParamValue, coerced: coerceParams, errors: paramErrors } =
-    useServiceParams(selectedService, PARAMS_PREFIX,
-      transcribeDefault?.service?.serviceId === selectedServiceId ? transcribeDefault?.params : null);
+  const {
+    schema: paramSchema,
+    values: paramValues,
+    setParam: setParamValue,
+    coerced: coerceParams,
+    errors: paramErrors,
+  } = useServiceParams(
+    selectedService,
+    PARAMS_PREFIX,
+    transcribeDefault?.service?.serviceId === selectedServiceId ? transcribeDefault?.params : null,
+  );
 
   // Get authenticated media URL with proper base path handling
   const getAuthenticatedMediaUrl = (serverUrl) => {
@@ -173,27 +183,33 @@ export const useMediaOperations = () => {
   }, []);
 
   // Media upload operations
-  const handleMediaUpload = useCallback(async (file) => {
-    if (!file) return;
+  const handleMediaUpload = useCallback(
+    async (file) => {
+      if (!file) return;
 
-    setIsUploading(true);
-    const ok = await doc.uploadMedia(file);
-    setIsUploading(false);
-    if (ok) {
-      notifySuccess('Media file uploaded successfully', 'Success');
-    }
-  }, [doc]);
+      setIsUploading(true);
+      const ok = await doc.uploadMedia(file);
+      setIsUploading(false);
+      if (ok) {
+        notifySuccess('Media file uploaded successfully', 'Success');
+      }
+    },
+    [doc],
+  );
 
   const handleDeleteMedia = useCallback(async () => {
     if (!doc.document.id) return;
 
-    if (!(await confirm({
-      title: 'Delete media file?',
-      description: 'This will permanently remove the audio/video from this document. '
-        + 'This cannot be undone.',
-      confirmLabel: 'Delete',
-      destructive: true,
-    }))) {
+    if (
+      !(await confirm({
+        title: 'Delete media file?',
+        description:
+          'This will permanently remove the audio/video from this document. ' +
+          'This cannot be undone.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      }))
+    ) {
       return;
     }
 
@@ -237,14 +253,18 @@ export const useMediaOperations = () => {
     // re-run must start from a clean slate. If the document already has a
     // transcript, confirm, then wipe the baseline before transcribing fresh.
     const hasExistingTranscript = !!(doc.body && doc.body.trim());
-    if (hasExistingTranscript && !(await confirm({
-      title: 'Replace existing transcript?',
-      description: 'This document already has a transcript. Transcribing again will REPLACE it '
-        + '— discarding the existing text, tokens, time alignments, and any annotations on them. '
-        + 'This cannot be undone.',
-      confirmLabel: 'Replace',
-      destructive: true,
-    }))) {
+    if (
+      hasExistingTranscript &&
+      !(await confirm({
+        title: 'Replace existing transcript?',
+        description:
+          'This document already has a transcript. Transcribing again will REPLACE it ' +
+          '— discarding the existing text, tokens, time alignments, and any annotations on them. ' +
+          'This cannot be undone.',
+        confirmLabel: 'Replace',
+        destructive: true,
+      }))
+    ) {
       return;
     }
 
@@ -280,8 +300,8 @@ export const useMediaOperations = () => {
           successTitle: 'Transcription Complete',
           successMessage: 'Audio has been transcribed successfully',
           errorTitle: 'Transcription Failed',
-          errorMessage: 'An error occurred during transcription'
-        }
+          errorMessage: 'An error occurred during transcription',
+        },
       );
 
       updateProgress(100, 'Transcription complete!');
@@ -289,23 +309,34 @@ export const useMediaOperations = () => {
       // Note: For ASR transcription, we reload since it creates many alignment
       // tokens and the service response doesn't include the created token data.
       await doc._reload();
-
     } catch (error) {
       console.error('Transcription failed:', error);
       updateProgress(0, '');
     }
-  }, [asrAlgorithm, doc, project, requestService, updateProgress, coerceParams, paramErrors, confirm]);
+  }, [
+    asrAlgorithm,
+    doc,
+    project,
+    requestService,
+    updateProgress,
+    coerceParams,
+    paramErrors,
+    confirm,
+  ]);
 
   const handleClearAlignments = useCallback(async () => {
     if (!alignmentTokens.length) return;
 
-    if (!(await confirm({
-      title: 'Clear all time alignments?',
-      description: 'This will remove every time-alignment segment on this document. '
-        + 'This cannot be undone.',
-      confirmLabel: 'Clear alignments',
-      destructive: true,
-    }))) {
+    if (
+      !(await confirm({
+        title: 'Clear all time alignments?',
+        description:
+          'This will remove every time-alignment segment on this document. ' +
+          'This cannot be undone.',
+        confirmLabel: 'Clear alignments',
+        destructive: true,
+      }))
+    ) {
       return;
     }
 
@@ -418,7 +449,7 @@ export const useMediaOperations = () => {
   useEffect(() => {
     const options = filterServicesByTask(availableServices, TASKS.TRANSCRIBE)
       .filter((s) => s.online !== false)
-      .map(service => ({
+      .map((service) => ({
         value: encodeServiceSelection(service.serviceId),
         label: service.serviceName,
       }));
@@ -431,15 +462,18 @@ export const useMediaOperations = () => {
     if (asrAlgorithmOptions.length === 0) {
       return;
     }
-    const onlineServices = filterServicesByTask(availableServices, TASKS.TRANSCRIBE)
-      .filter((s) => s.online !== false);
+    const onlineServices = filterServicesByTask(availableServices, TASKS.TRANSCRIBE).filter(
+      (s) => s.online !== false,
+    );
     setAsrAlgorithm((cur) => {
       if (cur && asrAlgorithmOptions.some((opt) => opt.value === cur)) return cur;
-      return resolveInitialSelection({
-        services: onlineServices,
-        cached: localStorage.getItem(SERVICE_KEY),
-        projectDefault: readSpotDefault(project, TASKS.TRANSCRIBE),
-      }) || '';
+      return (
+        resolveInitialSelection({
+          services: onlineServices,
+          cached: localStorage.getItem(SERVICE_KEY),
+          projectDefault: readSpotDefault(project, TASKS.TRANSCRIBE),
+        }) || ''
+      );
     });
   }, [asrAlgorithmOptions, availableServices, project]);
 
@@ -521,6 +555,6 @@ export const useMediaOperations = () => {
     hasServices,
 
     // Refs
-    mediaElementRef
+    mediaElementRef,
   };
 };

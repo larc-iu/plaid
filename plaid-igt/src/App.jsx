@@ -21,151 +21,202 @@ function App() {
     <HashRouter>
       <AuthProvider>
         <ConfirmProvider>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/login" element={<LoginForm />} />
-          
-          {/* Protected routes */}
-          <Route path="/" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <Navigate to="/projects" replace />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/projects" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ProjectList />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/projects/new" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <NewProjectChooser />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+          <Routes>
+            {/* Public routes */}
+            <Route path="/login" element={<LoginForm />} />
 
-          <Route path="/projects/new/blank" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ProjectSetup />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            {/* Protected routes */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <Navigate to="/projects" replace />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route path="/projects/import" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ImportFlexProject />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route
+              path="/projects"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectList />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route path="/projects/import-archive" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ImportNativeProject />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route
+              path="/projects/new"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <NewProjectChooser />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route path="/projects/:projectId/setup" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ProjectSetup />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/projects/:projectId/documents/:documentId" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <StrictModeProvider>
-                  <DocumentDetail />
-                </StrictModeProvider>
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/projects/:projectId" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ProjectDetail />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route
+              path="/projects/new/blank"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectSetup />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Project administration is the Settings tab of ProjectDetail; the
+            <Route
+              path="/projects/import"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ImportFlexProject />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/projects/import-archive"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ImportNativeProject />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/projects/:projectId/setup"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectSetup />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/projects/:projectId/documents/:documentId"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <StrictModeProvider>
+                      <DocumentDetail />
+                    </StrictModeProvider>
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/projects/:projectId"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Project administration is the Settings tab of ProjectDetail; the
               section suffixes keep each settings section deep-linkable. */}
-          <Route path="/projects/:projectId/access" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ProjectDetail />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/projects/:projectId/tokens" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ProjectDetail />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/projects/:projectId/services" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ProjectDetail />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/projects/:projectId/settings" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ProjectDetail />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/vocabularies" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <VocabularyList />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/vocabularies/new" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <VocabularyDetail />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/vocabularies/:vocabularyId" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <VocabularyDetail />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/profile" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <UserProfile />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
-          
-          {/* Catch all - redirect to login */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+            <Route
+              path="/projects/:projectId/access"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:projectId/tokens"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:projectId/services"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:projectId/settings"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/vocabularies"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <VocabularyList />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/vocabularies/new"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <VocabularyDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/vocabularies/:vocabularyId"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <VocabularyDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <UserProfile />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Catch all - redirect to login */}
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
         </ConfirmProvider>
       </AuthProvider>
     </HashRouter>

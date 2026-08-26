@@ -49,13 +49,20 @@ export function ConfirmProvider({ children }) {
     if (resolverRef.current) resolverRef.current(false);
     setOpts({ ...EMPTY, ...options });
     setOpen(true);
-    return new Promise((resolve) => { resolverRef.current = resolve; });
+    return new Promise((resolve) => {
+      resolverRef.current = resolve;
+    });
   }, []);
 
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      <AlertDialog open={open} onOpenChange={(o) => { if (!o) settle(false); }}>
+      <AlertDialog
+        open={open}
+        onOpenChange={(o) => {
+          if (!o) settle(false);
+        }}
+      >
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -71,13 +78,13 @@ export function ConfirmProvider({ children }) {
             )}
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => settle(false)}>
-              {opts.cancelLabel}
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={() => settle(false)}>{opts.cancelLabel}</AlertDialogCancel>
             <AlertDialogAction
-              className={opts.destructive
-                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                : undefined}
+              className={
+                opts.destructive
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                  : undefined
+              }
               onClick={() => settle(true)}
             >
               {opts.confirmLabel}

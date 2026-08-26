@@ -17,12 +17,19 @@ describe('sentenceTierLines', () => {
 
   it('falls back to surface forms when segmentation is off', () => {
     const doc = makeFixtureDoc();
-    const lines = sentenceTierLines(doc.sortedSentences[0], { ...FULL_SELECTION, segmentMorphemes: false });
+    const lines = sentenceTierLines(doc.sortedSentences[0], {
+      ...FULL_SELECTION,
+      segmentMorphemes: false,
+    });
     expect(lines[0].cells).toEqual(['perros', 'corren']);
   });
 
   it('handles empty selections and tokens without morphemes', () => {
-    const s = makeSentence({ begin: 0, end: 1, tokens: [{ content: 'x', annotations: {}, morphemes: [] }] });
+    const s = makeSentence({
+      begin: 0,
+      end: 1,
+      tokens: [{ content: 'x', annotations: {}, morphemes: [] }],
+    });
     const lines = sentenceTierLines(s, {});
     expect(lines).toEqual([{ kind: 'cells', label: null, cells: ['x'] }]);
   });
@@ -31,11 +38,20 @@ describe('sentenceTierLines', () => {
 describe('formatSentencePlain', () => {
   it('pads columns by code points and labels free lines', () => {
     const s = makeSentence({
-      begin: 0, end: 5,
+      begin: 0,
+      end: 5,
       annotations: { Translation: { value: 'ok' } },
       tokens: [
-        { content: '𝕒𝕒', annotations: {}, morphemes: [{ metadata: { form: '𝕒𝕒' }, annotations: { Gloss: { value: 'x' } } }] },
-        { content: 'b', annotations: {}, morphemes: [{ metadata: { form: 'b' }, annotations: { Gloss: { value: 'yy' } } }] },
+        {
+          content: '𝕒𝕒',
+          annotations: {},
+          morphemes: [{ metadata: { form: '𝕒𝕒' }, annotations: { Gloss: { value: 'x' } } }],
+        },
+        {
+          content: 'b',
+          annotations: {},
+          morphemes: [{ metadata: { form: 'b' }, annotations: { Gloss: { value: 'yy' } } }],
+        },
       ],
     });
     const out = formatSentencePlain(s, { morphFields: ['Gloss'], sentFields: ['Translation'] });
@@ -47,14 +63,17 @@ describe('formatSentencePlain', () => {
     // Gloss word field that only one token fills. The empty orthography tiers
     // must not render as blank lines; the partially-filled Gloss tier stays.
     const s = makeSentence({
-      begin: 0, end: 3,
+      begin: 0,
+      end: 3,
       tokens: [
         { content: 'ab', annotations: { Gloss: { value: 'x' } }, orthographies: {}, morphemes: [] },
         { content: 'c', annotations: {}, orthographies: {}, morphemes: [] },
       ],
     });
     const out = formatSentencePlain(s, {
-      orthographies: ['IPA', 'Cyrillic'], wordFields: ['Gloss'], segmentMorphemes: false,
+      orthographies: ['IPA', 'Cyrillic'],
+      wordFields: ['Gloss'],
+      segmentMorphemes: false,
     });
     expect(out.split('\n')).toEqual(['ab  c', 'x']);
   });
@@ -64,30 +83,39 @@ describe('serializeDocumentPlain', () => {
   it('emits header with metadata, numbered sentences, trailing newline', () => {
     const doc = makeFixtureDoc();
     const out = serializeDocumentPlain(doc, FULL_SELECTION);
-    expect(out).toBe([
-      'Test & Doc',
-      'Source: Field notes',
-      'Genre: narrative',
-      '',
-      '(1)',
-      'perro=s          corren',
-      'perros-translit',
-      'dog=PL',
-      'NOUN             VERB',
-      'Translation: The dogs run.',
-      '',
-    ].join('\n'));
+    expect(out).toBe(
+      [
+        'Test & Doc',
+        'Source: Field notes',
+        'Genre: narrative',
+        '',
+        '(1)',
+        'perro=s          corren',
+        'perros-translit',
+        'dog=PL',
+        'NOUN             VERB',
+        'Translation: The dogs run.',
+        '',
+      ].join('\n'),
+    );
   });
 
   it('omits header and numbering when disabled', () => {
     const doc = makeFixtureDoc();
-    const out = serializeDocumentPlain(doc, { ...FULL_SELECTION, includeHeader: false, numberSentences: false });
+    const out = serializeDocumentPlain(doc, {
+      ...FULL_SELECTION,
+      includeHeader: false,
+      numberSentences: false,
+    });
     expect(out.startsWith('perro=s')).toBe(true);
     expect(out).not.toContain('(1)');
   });
 
   it('handles a document with no sentences', () => {
-    const out = serializeDocumentPlain({ document: { name: 'Empty' }, body: '', sortedSentences: [] }, FULL_SELECTION);
+    const out = serializeDocumentPlain(
+      { document: { name: 'Empty' }, body: '', sortedSentences: [] },
+      FULL_SELECTION,
+    );
     expect(out).toBe('Empty\n');
   });
 
@@ -103,9 +131,18 @@ describe('serializeDocumentPlain', () => {
     const doc = makeFixtureDoc({
       alignmentTokens: [{ id: 'a1', begin: 0, end: 14, metadata: { speaker: 'Speaker 1' } }],
     });
-    expect(serializeDocumentPlain(makeFixtureDoc(), { ...FULL_SELECTION, includeHeader: false })
-      .startsWith('(1)\n')).toBe(true);
-    expect(serializeDocumentPlain(doc, { ...FULL_SELECTION, includeHeader: false, speakers: false })
-      .startsWith('(1)\n')).toBe(true);
+    expect(
+      serializeDocumentPlain(makeFixtureDoc(), {
+        ...FULL_SELECTION,
+        includeHeader: false,
+      }).startsWith('(1)\n'),
+    ).toBe(true);
+    expect(
+      serializeDocumentPlain(doc, {
+        ...FULL_SELECTION,
+        includeHeader: false,
+        speakers: false,
+      }).startsWith('(1)\n'),
+    ).toBe(true);
   });
 });

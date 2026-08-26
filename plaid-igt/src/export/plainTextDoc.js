@@ -40,24 +40,30 @@ export function sentenceTierLines(sentence, selection) {
 
   for (const name of selection?.orthographies || []) {
     lines.push({
-      kind: 'cells', label: name,
+      kind: 'cells',
+      label: name,
       cells: tokens.map((t) => t.orthographies?.[name] ?? ''),
     });
   }
   for (const name of selection?.morphFields || []) {
     lines.push({
-      kind: 'cells', label: name,
+      kind: 'cells',
+      label: name,
       cells: tokens.map((t) => {
         const morphemes = t.morphemes || [];
         return morphemes.length
-          ? joinMorphemeTexts(morphemes, morphemes.map((m) => m.annotations?.[name]?.value ?? ''))
+          ? joinMorphemeTexts(
+              morphemes,
+              morphemes.map((m) => m.annotations?.[name]?.value ?? ''),
+            )
           : '';
       }),
     });
   }
   for (const name of selection?.wordFields || []) {
     lines.push({
-      kind: 'cells', label: name,
+      kind: 'cells',
+      label: name,
       cells: tokens.map((t) => t.annotations?.[name]?.value ?? ''),
     });
   }
@@ -74,14 +80,20 @@ export function formatSentencePlain(sentence, selection) {
     // Drop a tier that has no values in THIS sentence (e.g. an enabled-but-
     // unused orthography), so it doesn't render as a run of blank lines. The
     // anchor word-forms line (index 0) is always kept.
-    .filter((l, i) => i === 0 || l.kind !== 'cells'
-      || l.cells.some((c) => (c ?? '').trim() !== ''));
+    .filter(
+      (l, i) => i === 0 || l.kind !== 'cells' || l.cells.some((c) => (c ?? '').trim() !== ''),
+    );
   const cellLines = lines.filter((l) => l.kind === 'cells');
   const n = cellLines[0]?.cells.length ?? 0;
   const widths = Array.from({ length: n }, (_, i) =>
-    Math.max(...cellLines.map((l) => cpLen(l.cells[i]))));
+    Math.max(...cellLines.map((l) => cpLen(l.cells[i]))),
+  );
   const out = cellLines.map((l) =>
-    l.cells.map((c, i) => c + ' '.repeat(widths[i] - cpLen(c))).join('  ').trimEnd());
+    l.cells
+      .map((c, i) => c + ' '.repeat(widths[i] - cpLen(c)))
+      .join('  ')
+      .trimEnd(),
+  );
   for (const l of lines) {
     if (l.kind === 'free') out.push(`${l.label}: ${l.text}`);
   }
