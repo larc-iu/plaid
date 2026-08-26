@@ -772,9 +772,9 @@ class StanzaParserService(BaseService):
         # it, and if someone else already holds it `locked` raises and we refuse
         # rather than clobber their work.
         response_helper.progress(15, "Acquiring document lock...")
-        # Describe every write this parse makes in the audit log (instead of the
-        # generic per-op "Bulk create N tokens", etc.).
-        with self.client.audit_message(f"Stanza UD parse ({language})"):
+        # Group every write this parse makes into ONE labeled audit-log entry (each
+        # op keeps its own description underneath).
+        with self.client.operation(f"Stanza UD parse ({language})"):
             with self.client.documents.locked(document_id):
                 summary = parse_document(self.pipeline_provider, self.client, document_id,
                                          language=language, overwrite=overwrite)

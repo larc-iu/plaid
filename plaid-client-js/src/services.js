@@ -147,6 +147,16 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  * @returns {Promise<any>} The service's result
  */
 export function requestService(client, projectId, serviceId, data, timeout = 10000, onProgress) {
+  // Propagate an open logical operation (client.beginOperation) to the
+  // service: its writes then fold under the requester's audit-log entry
+  // (the Python BaseService adopts the id around process_request). Only for a
+  // plain-object payload — that's the only shape the service param schema
+  // delivers anyway.
+  const group = client.operationGroup;
+  const payload =
+    group && data && typeof data === 'object' && !Array.isArray(data)
+      ? { ...data, operationGroup: { id: group.id, message: group.message } }
+      : data;
   return new Promise((resolve, reject) => {
     const abortController = new AbortController();
     let settled = false;
@@ -174,7 +184,7 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
               'Content-Type': 'application/json',
               'Accept': 'text/event-stream',
             },
-            body: JSON.stringify(data === undefined ? null : transformRequest(data)),
+            body: JSON.stringify(payload === undefined ? null : transformRequest(payload)),
             signal: abortController.signal,
           },
         );

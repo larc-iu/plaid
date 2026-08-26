@@ -29,6 +29,14 @@ const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
 // Vocab links are scoped on the vocab layer, not the document, so the doc
 // also holds the project's loaded vocabularies (`_vocabularies`) and applies
 // link/unlink patches to that table in `_applyRawPatch`.
+// Audit-log label for a mutation, derived from its "Failed to <verb phrase>"
+// error label: "Failed to merge morphemes" → "Merge morphemes". Keeps every
+// mutation a labeled logical operation without a second string per call site.
+export function operationLabel(errorLabel) {
+  const s = String(errorLabel).replace(/^Failed to\s+/i, '');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export class IgtDocument {
   constructor({
     raw,
@@ -264,13 +272,19 @@ export class IgtDocument {
   // Single-flight gate around a mutation: skip if already saving, clear the
   // error at the start, capture and surface errors, refetch the document on
   // failure. Returns true on success / false otherwise so callers can branch.
-  async _withSaving(label, fn) {
+  //
+  // Every mutation also runs as ONE logical operation in the audit log
+  // (`client.withOperation`): however many writes/batches it makes show up in
+  // the History drawer as a single expandable entry labeled `operation`
+  // (derived from the "Failed to …" error label unless given explicitly).
+  // Nested mutations flatten into the outer operation.
+  async _withSaving(label, fn, operation = operationLabel(label)) {
     if (this._isSaving) return false;
     this._isSaving = true;
     this._error = '';
     this._emit();
     try {
-      await fn();
+      await this._client.withOperation(operation, fn);
       return true;
     } catch (err) {
       console.error(`${label}:`, err);
@@ -360,7 +374,16 @@ export class IgtDocument {
   // and un-healable app-contract violations come back as `findings` for the
   // caller to log + toast. Loud + recoverable. Deliberately NOT via _withSaving
   // (a heal failure must not reload-and-revert the freshly loaded document).
+  // Every heal write folds under one "Reconcile layers on open" audit entry
+  // (no entry at all when nothing needed healing — groups are created lazily
+  // by the first write).
   async reconcileOnOpen() {
+    return this._client.withOperation('Reconcile layers on open', () =>
+      this._reconcileOnOpenImpl(),
+    );
+  }
+
+  async _reconcileOnOpenImpl() {
     const ZERO = {
       created: 0,
       deleted: 0,

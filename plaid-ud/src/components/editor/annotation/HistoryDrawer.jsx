@@ -6,40 +6,14 @@ import classes from './HistoryDrawer.module.css';
 
 const ITEM_HEIGHT = 116; // Height of each rendered row in pixels (card + gutter; see .cardContent)
 const BUFFER_SIZE = 5; // Number of rows to render outside visible area
-const GROUP_THRESHOLD_MS = 5000; // Entries closer in time than this collapse together
 
-const getEntryDescription = (entry) => entry.ops?.[0]?.description || 'No description available';
-
-// The acting agent behind an audit entry. Two entries only glom if the SAME
-// user is acting through the SAME token — an API token (by id, falling back to
-// name) or the plain web session. So edits by different users, or by one user
-// via different tokens, never collapse together even when near-simultaneous.
-const agentKey = (entry) => {
-  const actor = entry.user?.id ?? entry.user?.username ?? 'unknown';
-  const token = entry.apiToken?.id ?? entry.apiToken?.name ?? 'session';
-  return `${actor}::${token}`;
-};
-
-// Group consecutive entries whose timestamps fall within GROUP_THRESHOLD_MS of
-// each other AND that share the same acting agent. Entries arrive
-// most-recent-first, so their times descend; we compare each entry against the
-// previous one in the (already reversed) list.
-const groupEntries = (entries, thresholdMs) => {
-  const groups = [];
-  let current = null;
-  for (const entry of entries) {
-    const t = new Date(entry.time).getTime();
-    const key = agentKey(entry);
-    if (current && current.agentKey === key && Math.abs(current.lastTime - t) <= thresholdMs) {
-      current.entries.push(entry);
-      current.lastTime = t;
-    } else {
-      current = { id: entry.id, agentKey: key, lastTime: t, entries: [entry] };
-      groups.push(current);
-    }
-  }
-  return groups;
-};
+// The audit log arrives already folded into logical units by the server: a
+// labeled operation ("Merge morphemes"), else an atomic batch, else a lone
+// write. `entry.ops` is the unit's full membership (oldest first); `time` is
+// the head op's time and `endTime` the last member's — the state AFTER the
+// whole operation, which is what selecting a unit travels to.
+const unitLabel = (entry) =>
+  entry.message || entry.ops?.[0]?.description || 'No description available';
 
 export const HistoryDrawer = ({
   isOpen,
@@ -56,32 +30,41 @@ export const HistoryDrawer = ({
   // Reverse the audit entries to show most recent first
   const reversedAuditEntries = useMemo(() => [...auditEntries].reverse(), [auditEntries]);
 
-  const groups = useMemo(
-    () => groupEntries(reversedAuditEntries, GROUP_THRESHOLD_MS),
-    [reversedAuditEntries],
-  );
-
-  // Flatten the groups into a uniform-height row list so the virtual scroller
-  // keeps working: every row is exactly ITEM_HEIGHT. A lone entry is one row; a
-  // collapsed multi-entry group is a single header row; expanding a group
-  // splices its child rows in directly below the header.
+  // Flatten the units into a uniform-height row list so the virtual scroller
+  // keeps working: every row is exactly ITEM_HEIGHT. A single-op unit is one
+  // row; a multi-op unit is a header row; expanding it splices its member ops
+  // (newest first, matching the list direction) in directly below the header.
   const rows = useMemo(() => {
     const out = [];
-    for (const group of groups) {
-      if (group.entries.length === 1) {
-        out.push({ key: group.entries[0].id, type: 'single', entry: group.entries[0] });
+    for (const entry of reversedAuditEntries) {
+      const ops = entry.ops || [];
+      if (ops.length <= 1) {
+        out.push({ key: entry.id, type: 'single', entry });
         continue;
       }
-      const expanded = expandedGroups.has(group.id);
-      out.push({ key: `group-${group.id}`, type: 'header', group, expanded });
+      const expanded = expandedGroups.has(entry.id);
+      out.push({ key: `group-${entry.id}`, type: 'header', entry, expanded });
       if (expanded) {
-        group.entries.forEach((entry, i) => {
-          out.push({ key: entry.id, type: 'child', entry, isLast: i === group.entries.length - 1 });
+        const children = [...ops].reverse();
+        children.forEach((op, i) => {
+          out.push({
+            key: `${entry.id}:${op.id}`,
+            type: 'child',
+            entry,
+            op,
+            isLast: i === children.length - 1,
+          });
         });
       }
     }
     return out;
-  }, [groups, expandedGroups]);
+  }, [reversedAuditEntries, expandedGroups]);
+
+  // Selecting a unit views the document as it was AFTER the whole operation;
+  // selecting one of its member ops views the state right after that op.
+  const selectUnit = (entry) =>
+    onSelectEntry({ id: entry.id, time: entry.endTime || entry.time, label: unitLabel(entry) });
+  const selectOp = (op) => onSelectEntry({ id: op.id, time: op.time, label: op.description });
 
   // Calculate which rows should be rendered based on scroll position
   const visibleRange = useMemo(() => {
@@ -111,11 +94,11 @@ export const HistoryDrawer = ({
   const totalHeight = rows.length * ITEM_HEIGHT;
   const offsetY = visibleRange.startIndex * ITEM_HEIGHT;
 
-  // Shared body for a single audit entry (used by lone entries and group children)
-  const renderEntryBody = (entry) => (
+  // Body of a card: a description line plus the time / actor footer.
+  const renderBody = (description, time, user, apiToken) => (
     <>
       <div style={{ flex: 1, paddingRight: '0.5rem' }}>
-        <div className={classes.clamp}>{getEntryDescription(entry)}</div>
+        <div className={classes.clamp}>{description}</div>
       </div>
       <div
         style={{
@@ -125,12 +108,12 @@ export const HistoryDrawer = ({
         }}
       >
         <Text size="xs" c="dimmed">
-          {fullTimestamp(entry.time)}
+          {fullTimestamp(time)}
         </Text>
-        {entry.user && (
+        {user && (
           <Text size="xs" c="dimmed">
-            by {entry.user.username}
-            {entry.apiToken ? ` (via ${entry.apiToken.name})` : ''}
+            by {user.username}
+            {apiToken ? ` (via ${apiToken.name})` : ''}
           </Text>
         )}
       </div>
@@ -138,46 +121,78 @@ export const HistoryDrawer = ({
   );
 
   const renderRow = (row) => {
-    if (row.type === 'single' || row.type === 'child') {
-      const entry = row.entry;
+    if (row.type === 'single') {
+      const { entry } = row;
       const isSelected = selectedEntry?.id === entry.id;
-      const isChild = row.type === 'child';
       return (
         <div
           key={row.key}
-          className={isChild ? `${classes.entry} ${classes.childEntry}` : classes.entry}
+          className={classes.entry}
           data-selected={isSelected}
-          data-last={isChild ? row.isLast : undefined}
           style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
-          onClick={() => onSelectEntry(entry)}
+          onClick={() => selectUnit(entry)}
         >
-          <div className={classes.cardContent}>{renderEntryBody(entry)}</div>
+          <div className={classes.cardContent}>
+            {renderBody(unitLabel(entry), entry.time, entry.user, entry.apiToken)}
+          </div>
         </div>
       );
     }
 
-    // Group header row — collapsed stack of entries that occurred near-simultaneously.
-    const { group, expanded } = row;
-    const first = group.entries[0];
-    const others = group.entries.length - 1;
-    // Highlight the header when it hides the currently-selected entry.
-    const containsSelected = !expanded && group.entries.some((e) => e.id === selectedEntry?.id);
+    if (row.type === 'child') {
+      const { op } = row;
+      const isSelected = selectedEntry?.id === op.id;
+      return (
+        <div
+          key={row.key}
+          className={`${classes.entry} ${classes.childEntry}`}
+          data-selected={isSelected}
+          data-last={row.isLast}
+          style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
+          onClick={() => selectOp(op)}
+        >
+          <div className={classes.cardContent}>
+            {renderBody(op.description, op.time, op.user, null)}
+          </div>
+        </div>
+      );
+    }
+
+    // Header row of a multi-op unit. Clicking the card selects the unit (the
+    // state after its last op); the chevron expands the member ops.
+    const { entry, expanded } = row;
+    const ops = entry.ops || [];
+    const isSelected = selectedEntry?.id === entry.id;
+    // Highlight the header when it hides the currently-selected member op.
+    const containsSelected = !expanded && ops.some((op) => op.id === selectedEntry?.id);
     return (
       <div
         key={row.key}
         className={`${classes.entry} ${classes.groupEntry}`}
         data-expanded={expanded}
-        data-selected={containsSelected}
+        data-selected={isSelected || containsSelected}
         style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
-        onClick={() => toggleGroup(group.id)}
+        onClick={() => selectUnit(entry)}
       >
         <div className={`${classes.cardContent} ${classes.groupContent}`}>
           <div style={{ display: 'flex', gap: '0.4rem', flex: 1, minHeight: 0 }}>
-            <IconChevronRight size={16} className={classes.chevron} />
+            <button
+              type="button"
+              aria-label={expanded ? 'Collapse' : 'Expand'}
+              aria-expanded={expanded}
+              className={classes.chevronButton}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleGroup(entry.id);
+              }}
+            >
+              <IconChevronRight size={16} className={classes.chevron} />
+            </button>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className={classes.clampOne}>{getEntryDescription(first)}</div>
+              <div className={classes.clampOne}>{unitLabel(entry)}</div>
               <Text size="xs" fw={600} c="blue.7">
-                and {others} other action{others === 1 ? '' : 's'}
+                {ops.length} actions
+                {entry.message ? '' : entry.batchId ? ' (batch)' : ''}
               </Text>
             </div>
           </div>
@@ -189,11 +204,14 @@ export const HistoryDrawer = ({
             }}
           >
             <Text size="xs" c="dimmed">
-              {fullTimestamp(first.time)}
+              {fullTimestamp(entry.time)}
+              {entry.endTime && entry.endTime !== entry.time
+                ? ` → ${fullTimestamp(entry.endTime)}`
+                : ''}
             </Text>
             <Text size="xs" c="dimmed">
-              {group.entries.length} actions{first.user ? ` by ${first.user.username}` : ''}
-              {first.apiToken ? ` (via ${first.apiToken.name})` : ''}
+              {entry.user ? `by ${entry.user.username}` : ''}
+              {entry.apiToken ? ` (via ${entry.apiToken.name})` : ''}
             </Text>
           </div>
         </div>

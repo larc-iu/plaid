@@ -175,6 +175,35 @@ export function makeFakeClient(opts = {}) {
       this.isBatching = false;
       queue = null;
     },
+    // Logical operations (audit-log grouping): recorded like any other call so
+    // a test can assert a mutation ran as one labeled operation; nesting
+    // flattens exactly like the real client.
+    operationGroup: null,
+    beginOperation(message) {
+      if (this.operationGroup) {
+        this.operationGroup.depth += 1;
+        return this.operationGroup.id;
+      }
+      record('beginOperation', [message]);
+      this.operationGroup = { id: `op-${calls.length}`, message, depth: 1 };
+      return this.operationGroup.id;
+    },
+    async endOperation() {
+      if (!this.operationGroup) return;
+      if (this.operationGroup.depth > 1) {
+        this.operationGroup.depth -= 1;
+        return;
+      }
+      this.operationGroup = null;
+    },
+    async withOperation(message, fn) {
+      this.beginOperation(message);
+      try {
+        return await fn(() => {});
+      } finally {
+        await this.endOperation();
+      }
+    },
     isBatchMode() {
       return this.isBatching;
     },

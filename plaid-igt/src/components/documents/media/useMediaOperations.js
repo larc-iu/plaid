@@ -274,35 +274,41 @@ export const useMediaOperations = () => {
     const sentenceTokenLayer = doc.layerInfo.sentenceTokenLayer;
 
     try {
-      // Start from a clean slate: setting the body to '' cascade-deletes its
-      // tokens, sentences, alignments, and every annotation on them, so ASR
-      // builds a fresh document instead of appending a second transcript.
-      if (hasExistingTranscript) {
-        updateProgress(5, 'Clearing the previous transcript...');
-        await doc.saveBaselineText('');
-      }
-      updateProgress(10, 'Starting transcription...');
+      // The whole re-transcribe (our wipe of the previous transcript + every
+      // write the ASR service makes) is ONE logical operation in the audit
+      // log: the open operation propagates to the service via the request.
+      const label = `Transcribe audio (${selectedService?.serviceName || serviceId})`;
+      await doc.client.withOperation(label, async () => {
+        // Start from a clean slate: setting the body to '' cascade-deletes its
+        // tokens, sentences, alignments, and every annotation on them, so ASR
+        // builds a fresh document instead of appending a second transcript.
+        if (hasExistingTranscript) {
+          updateProgress(5, 'Clearing the previous transcript...');
+          await doc.saveBaselineText('');
+        }
+        updateProgress(10, 'Starting transcription...');
 
-      await requestService(
-        project.id,
-        documentId,
-        serviceId,
-        {
-          // User-controlled arguments declared by the service, spread FIRST so
-          // the fixed layer/doc params below always win over any same-named arg.
-          ...coerceParams(),
-          documentId: documentId,
-          textLayerId: primaryTextLayer.id,
-          alignmentTokenLayerId: alignmentTokenLayer.id,
-          sentenceTokenLayerId: sentenceTokenLayer.id,
-        },
-        {
-          successTitle: 'Transcription Complete',
-          successMessage: 'Audio has been transcribed successfully',
-          errorTitle: 'Transcription Failed',
-          errorMessage: 'An error occurred during transcription',
-        },
-      );
+        await requestService(
+          project.id,
+          documentId,
+          serviceId,
+          {
+            // User-controlled arguments declared by the service, spread FIRST so
+            // the fixed layer/doc params below always win over any same-named arg.
+            ...coerceParams(),
+            documentId: documentId,
+            textLayerId: primaryTextLayer.id,
+            alignmentTokenLayerId: alignmentTokenLayer.id,
+            sentenceTokenLayerId: sentenceTokenLayer.id,
+          },
+          {
+            successTitle: 'Transcription Complete',
+            successMessage: 'Audio has been transcribed successfully',
+            errorTitle: 'Transcription Failed',
+            errorMessage: 'An error occurred during transcription',
+          },
+        );
+      });
 
       updateProgress(100, 'Transcription complete!');
 
@@ -318,6 +324,7 @@ export const useMediaOperations = () => {
     doc,
     project,
     requestService,
+    selectedService,
     updateProgress,
     coerceParams,
     paramErrors,

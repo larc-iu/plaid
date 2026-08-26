@@ -1,11 +1,24 @@
 import { useState, useRef, useMemo } from 'react';
-import { X, History } from 'lucide-react';
+import { X, History, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
-const ITEM_HEIGHT = 120; // Height of each audit entry in pixels
-const BUFFER_SIZE = 5; // Number of items to render outside visible area
+const ITEM_HEIGHT = 120; // Height of each row in pixels
+const BUFFER_SIZE = 5; // Number of rows to render outside visible area
+
+// The audit log arrives already folded into logical units by the server: a
+// labeled operation ("Merge morphemes"), else an atomic batch, else a lone
+// write. `entry.ops` is the unit's full membership (oldest first); `time` is
+// the head op's time and `endTime` the last member's — the state AFTER the
+// whole operation, which is what selecting a unit travels to.
+const unitLabel = (entry) =>
+  entry.message || entry.ops?.[0]?.description || 'No description available';
+
+const formatTime = (timestamp) => new Date(timestamp).toLocaleString();
+
+const actorLine = (user, apiToken) =>
+  user ? `by ${user.username}${apiToken ? ` (via ${apiToken.name})` : ''}` : null;
 
 // Non-modal left slide-in panel (no overlay, no focus trap) so the editor stays
 // interactive while browsing history — preserves the old Mantine Drawer's
@@ -20,41 +33,160 @@ export const HistoryDrawer = ({
   selectedEntry,
 }) => {
   const [scrollTop, setScrollTop] = useState(0);
+  const [expanded, setExpanded] = useState(() => new Set());
   const scrollContainerRef = useRef(null);
 
-  // Reverse the audit entries to show most recent first
-  const reversedAuditEntries = [...auditEntries].reverse();
+  // Most recent first
+  const reversedAuditEntries = useMemo(() => [...auditEntries].reverse(), [auditEntries]);
 
-  // Calculate which items should be rendered based on scroll position
+  // Flatten units into a uniform-height row list so the virtual scroller keeps
+  // working. A unit is one row; expanding a multi-op unit splices its member
+  // ops (newest first, matching the list direction) in directly below it.
+  const rows = useMemo(() => {
+    const out = [];
+    for (const entry of reversedAuditEntries) {
+      const ops = entry.ops || [];
+      const multi = ops.length > 1;
+      const isExpanded = multi && expanded.has(entry.id);
+      out.push({ key: entry.id, type: 'unit', entry, multi, expanded: isExpanded });
+      if (isExpanded) {
+        const children = [...ops].reverse();
+        children.forEach((op, i) =>
+          out.push({
+            key: `${entry.id}:${op.id}`,
+            type: 'op',
+            entry,
+            op,
+            isLast: i === children.length - 1,
+          }),
+        );
+      }
+    }
+    return out;
+  }, [reversedAuditEntries, expanded]);
+
   const visibleRange = useMemo(() => {
     const actualHeight = scrollContainerRef.current?.clientHeight || 400;
     const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE);
     const endIndex = Math.min(
-      reversedAuditEntries.length - 1,
+      rows.length - 1,
       Math.ceil((scrollTop + actualHeight) / ITEM_HEIGHT) + BUFFER_SIZE,
     );
     return { startIndex, endIndex };
-  }, [scrollTop, reversedAuditEntries.length]);
+  }, [scrollTop, rows.length]);
 
-  const handleScroll = (e) => {
-    setScrollTop(e.target.scrollTop);
+  const handleScroll = (e) => setScrollTop(e.target.scrollTop);
+
+  const toggleExpanded = (id) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
-  const handleEntryClick = (entry) => {
-    onSelectEntry(entry);
-  };
+  // Selecting a unit views the document as it was AFTER the whole operation;
+  // selecting one of its member ops views the state right after that op.
+  const selectUnit = (entry) =>
+    onSelectEntry({ id: entry.id, time: entry.endTime || entry.time, label: unitLabel(entry) });
+  const selectOp = (op) => onSelectEntry({ id: op.id, time: op.time, label: op.description });
 
-  const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleString();
-  };
-
-  const getEntryDescription = (entry) => {
-    return entry.ops?.[0]?.description || 'No description available';
-  };
-
-  // Calculate total height and spacer heights for virtual scrolling
-  const totalHeight = reversedAuditEntries.length * ITEM_HEIGHT;
+  const totalHeight = rows.length * ITEM_HEIGHT;
   const offsetY = visibleRange.startIndex * ITEM_HEIGHT;
+
+  const renderRow = (row) => {
+    if (row.type === 'op') {
+      const { op, isLast } = row;
+      const isSelected = selectedEntry?.id === op.id;
+      return (
+        <div
+          key={row.key}
+          className={cn(
+            'flex cursor-pointer flex-col border-b p-3 pl-8 hover:bg-muted/50',
+            'border-l-4 border-l-primary/30 bg-muted/20',
+            isLast && 'mb-0',
+            isSelected && 'bg-accent hover:bg-accent',
+          )}
+          style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
+          onClick={() => selectOp(op)}
+        >
+          <div className="flex-1">
+            <p className="mb-3 line-clamp-2 text-sm leading-tight">{op.description}</p>
+            <div className="border-t pt-1.5">
+              <p className="text-xs text-muted-foreground">{formatTime(op.time)}</p>
+              {op.user && (
+                <p className="text-xs text-muted-foreground">{actorLine(op.user, null)}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const { entry, multi, expanded: isExpanded } = row;
+    const isSelected = selectedEntry?.id === entry.id;
+    // Highlight a collapsed unit softly when it hides the selected member op.
+    const containsSelected =
+      !isExpanded && multi && (entry.ops || []).some((op) => op.id === selectedEntry?.id);
+    const count = entry.ops?.length || 0;
+    return (
+      <div
+        key={row.key}
+        className={cn(
+          'flex cursor-pointer flex-col border-b p-3 hover:bg-muted/50',
+          isSelected && 'bg-accent hover:bg-accent',
+          containsSelected && 'bg-accent/40',
+        )}
+        style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
+        onClick={() => selectUnit(entry)}
+      >
+        <div className="flex flex-1 gap-2">
+          {multi ? (
+            <button
+              type="button"
+              aria-label={isExpanded ? 'Collapse' : 'Expand'}
+              aria-expanded={isExpanded}
+              className="mt-0.5 h-5 w-5 shrink-0 rounded hover:bg-muted"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleExpanded(entry.id);
+              }}
+            >
+              <ChevronRight
+                className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')}
+              />
+            </button>
+          ) : (
+            <span className="w-5 shrink-0" />
+          )}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <p className="mb-1 line-clamp-2 text-sm font-medium leading-tight">
+              {unitLabel(entry)}
+            </p>
+            {multi && (
+              <p className="mb-2 text-xs font-semibold text-primary">
+                {count} actions{entry.message ? '' : ` (${entry.batchId ? 'batch' : 'group'})`}
+              </p>
+            )}
+            <div className="mt-auto border-t pt-1.5">
+              <p className="text-xs text-muted-foreground">
+                {formatTime(entry.time)}
+                {multi && entry.endTime && entry.endTime !== entry.time
+                  ? ` → ${formatTime(entry.endTime)}`
+                  : ''}
+              </p>
+              {entry.user && (
+                <p className="text-xs text-muted-foreground">
+                  {actorLine(entry.user, entry.apiToken)}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (!isOpen) return null;
 
@@ -117,41 +249,7 @@ export const HistoryDrawer = ({
                     right: 0,
                   }}
                 >
-                  {reversedAuditEntries
-                    .slice(visibleRange.startIndex, visibleRange.endIndex + 1)
-                    .map((entry) => {
-                      const isSelected = selectedEntry?.id === entry.id;
-
-                      return (
-                        <div
-                          key={entry.id}
-                          className={cn(
-                            'flex cursor-pointer flex-col border-b p-3 hover:bg-muted/50',
-                            isSelected && 'bg-accent hover:bg-accent',
-                          )}
-                          style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
-                          onClick={() => handleEntryClick(entry)}
-                        >
-                          <div className="flex-1">
-                            <p className="mb-3 text-sm font-medium leading-tight">
-                              {getEntryDescription(entry)}
-                            </p>
-
-                            <div className="border-t pt-1.5">
-                              <p className="text-xs text-muted-foreground">
-                                {formatTime(entry.time)}
-                              </p>
-                              {entry.user && (
-                                <p className="text-xs text-muted-foreground">
-                                  by {entry.user.username}
-                                  {entry.userAgent && ` (via ${entry.userAgent})`}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  {rows.slice(visibleRange.startIndex, visibleRange.endIndex + 1).map(renderRow)}
                 </div>
               </div>
             </div>
@@ -164,6 +262,9 @@ export const HistoryDrawer = ({
         <div className="border-t bg-accent p-4">
           <div className="flex flex-col items-start gap-2">
             <Badge>Viewing Historical State</Badge>
+            {selectedEntry.label && (
+              <p className="line-clamp-2 text-xs font-medium">{selectedEntry.label}</p>
+            )}
             <p className="text-xs text-muted-foreground">{formatTime(selectedEntry.time)}</p>
             <Button size="sm" onClick={() => onSelectEntry(null)}>
               Return to Current State

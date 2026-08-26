@@ -182,3 +182,50 @@ def test_group_params_coexist_with_document_version_and_audit_message():
     assert params['audit-message'] == 'Step {span_id}'
     assert params['group-id'] == gid
     assert params['group-message'] == 'Combined'
+
+
+def test_begin_operation_can_adopt_a_group_id():
+    client = _client()
+    gid = client.begin_operation('outer label', group_id='11111111-2222-4333-8444-555555555555')
+    assert gid == '11111111-2222-4333-8444-555555555555'
+    assert all(_params(p)['group-id'] == gid for p in _queue(client))
+
+
+def test_base_service_joins_the_requesters_operation():
+    from plaid_client.service import BaseService
+
+    seen = {}
+
+    class _Svc(BaseService):
+        def process_request(self, request_data, response_helper):
+            seen['request_data'] = dict(request_data)
+            seen['group'] = dict(self.client._operation_group) if self.client._operation_group else None
+            # the service's own operation flattens into the requester's
+            with self.client.operation('inner label'):
+                seen['inner_id'] = self.client._operation_group['id']
+                seen['inner_msg'] = self.client._operation_group['message']
+
+    svc = _Svc('svc', 'Svc', 'test')
+    svc.client = _client()
+
+    class _Helper:
+        def progress(self, *a): pass
+        def complete(self, *a): pass
+        def error(self, *a): seen['error'] = a
+
+    svc.handle_service_request(
+        {'document_id': 'D', 'operation_group': {'id': 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', 'message': 'Re-transcribe'}},
+        _Helper())
+    assert 'error' not in seen
+    assert seen['request_data'] == {'document_id': 'D'}, 'operation_group is popped before process_request'
+    assert seen['group']['id'] == 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+    assert seen['group']['message'] == 'Re-transcribe'
+    assert seen['inner_id'] == 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+    assert seen['inner_msg'] == 'Re-transcribe'
+    assert svc.client._operation_group is None, 'ended after the request'
+
+    # without a propagated group the service runs unjoined
+    seen.clear()
+    svc.handle_service_request({'document_id': 'D'}, _Helper())
+    assert seen['group'] is None
+    assert seen['inner_msg'] == 'inner label'

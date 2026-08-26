@@ -211,13 +211,11 @@ export const analysisCopyMutations = {
 
     if (!spanIds.length && !tokenIds.length && !linkIds.length) return true;
 
-    return this._withSaving('Failed to confirm analysis', async () => {
-      await this._client.withAuditMessage('Confirm word analysis', async () => {
-        await this._client.batched(async () => {
-          tokenIds.forEach((id) => this._client.tokens.patchMetadata(id, confirm));
-          linkIds.forEach((id) => this._client.vocabLinks.patchMetadata(id, confirm));
-          spanIds.forEach((id) => this._client.spans.patchMetadata(id, confirm));
-        });
+    return this._withSaving('Failed to confirm word analysis', async () => {
+      await this._client.batched(async () => {
+        tokenIds.forEach((id) => this._client.tokens.patchMetadata(id, confirm));
+        linkIds.forEach((id) => this._client.vocabLinks.patchMetadata(id, confirm));
+        spanIds.forEach((id) => this._client.spans.patchMetadata(id, confirm));
       });
 
       const spanSet = new Set(spanIds);

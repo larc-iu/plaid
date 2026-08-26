@@ -112,3 +112,19 @@
   border-left: 3px solid var(--mantine-color-blue-2);
   background: var(--mantine-color-gray-0);
 }
+
+/* Chevron is its own button so expanding a unit doesn't select it. */
+.chevronButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: flex-start;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--mantine-radius-sm);
+}
+.chevronButton:hover {
+  background: var(--mantine-color-gray-1);
+}

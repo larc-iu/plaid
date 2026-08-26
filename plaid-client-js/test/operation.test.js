@@ -156,3 +156,29 @@ test('group params coexist with strict-mode document-version and a per-call audi
   assert.strictEqual(params.get('group-id'), id);
   assert.strictEqual(params.get('group-message'), 'Combined');
 });
+
+test('beginOperation can adopt an existing group id (service joining the requester)', () => {
+  const client = makeClient();
+  const id = client.beginOperation('outer label', { id: '11111111-2222-4333-8444-555555555555' });
+  assert.strictEqual(id, '11111111-2222-4333-8444-555555555555');
+  assert.ok(queue(client).every(p => groupIdOf(p) === id));
+});
+
+test('requestService propagates the open operation in the payload', async () => {
+  const client = makeClient();
+  let sent = null;
+  globalThis.fetch = async (url, opts) => {
+    sent = JSON.parse(opts.body);
+    return { ok: false, status: 500, statusText: 'nope' };
+  };
+  const id = client.beginOperation('Re-transcribe');
+  await assert.rejects(client.messages.requestService('P', 'svc', { documentId: 'D' }, 1000));
+  assert.deepStrictEqual(sent, {
+    'document-id': 'D',
+    'operation-group': { id, message: 'Re-transcribe' },
+  });
+  await client.endOperation();
+  sent = null;
+  await assert.rejects(client.messages.requestService('P', 'svc', { documentId: 'D' }, 1000));
+  assert.deepStrictEqual(sent, { 'document-id': 'D' }, 'no operation open → nothing injected');
+});

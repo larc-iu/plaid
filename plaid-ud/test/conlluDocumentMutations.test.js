@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
+import { withOps } from './helpers/stubClient.js';
 
 const INPUT = [
   '# text = del perro',
@@ -35,7 +36,7 @@ test('updateRelation patches locally BEFORE the server responds', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const server = deferred();
   const client = { relations: { update: () => server.promise } };
-  const doc = new ConlluDocument({ raw, client });
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
 
   const rel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det');
   const pending = doc.updateRelation(rel.id, 'nsubj');
@@ -64,7 +65,7 @@ test('updateRelation reverts via reload when the server rejects', async () => {
     // _withSaving's failure path refetches the document; serve the pristine copy.
     documents: { get: async () => structuredClone(pristine) },
   };
-  const doc = new ConlluDocument({ raw, client });
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
 
   const rel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det');
   assert.equal(await doc.updateRelation(rel.id, 'nsubj'), false);
@@ -109,7 +110,7 @@ const provClient = () => {
 test('editing a machine-made annotation verifies it (batched update + patchMetadata)', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();
-  const doc = new ConlluDocument({ raw, client });
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
 
   const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
   span.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
@@ -131,7 +132,7 @@ test('editing a machine-made annotation verifies it (batched update + patchMetad
 test('editing a human annotation stays a plain update (no metadata write)', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();
-  const doc = new ConlluDocument({ raw, client });
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
 
   const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
   assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
@@ -144,7 +145,7 @@ test('editing a human annotation stays a plain update (no metadata write)', asyn
 test('editing a machine-made relation verifies it too', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();
-  const doc = new ConlluDocument({ raw, client });
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
 
   const rel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'det');
   rel.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
@@ -163,7 +164,7 @@ test('deleteWord mirrors the server cascade locally before the round trip', asyn
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const server = deferred();
   const client = { tokens: { delete: () => server.promise } };
-  const doc = new ConlluDocument({ raw, client });
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
 
   // Delete the word "perro" — the dependency head. Its morpheme, spans, and
   // every relation touching its Lemma span must vanish locally at once.

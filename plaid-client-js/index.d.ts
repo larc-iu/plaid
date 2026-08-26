@@ -323,7 +323,7 @@ export declare class PlaidClient {
   // stamped with its group id so the audit log folds them into one entry.
   // Not atomic; nesting flattens into the outer operation.
   operationGroup: { id: string; message: string | null } | null;
-  beginOperation(message: string): string;
+  beginOperation(message: string, opts?: { id?: string }): string;
   endOperation(message?: string): Promise<void>;
   withOperation<T>(message: string, fn: (setMessage: (msg: string) => void) => Promise<T> | T): Promise<T>;
   operationGroups: OperationGroupsBundle;

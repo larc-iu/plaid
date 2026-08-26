@@ -123,6 +123,16 @@ class BaseService(ABC):
                 f"Please try again later."
             )
             return
+        # A requester with an open logical operation propagates it as
+        # ``operation_group`` (see ``request_service``); adopt it so this
+        # service's writes fold under the requester's audit-log entry. The
+        # service's own ``with client.operation(...)`` then flattens into it
+        # (outer label wins). Popped so it never reaches process_request as a
+        # stray parameter.
+        group = request_data.pop('operation_group', None) if isinstance(request_data, dict) else None
+        joined = bool(group and isinstance(group, dict) and group.get('id'))
+        if joined:
+            self.client.begin_operation(group.get('message'), group_id=group['id'])
         try:
             self.process_request(request_data, response_helper)
         except Exception as e:
@@ -131,6 +141,8 @@ class BaseService(ABC):
             traceback.print_exc()
             response_helper.error(f"{self.service_name} processing error: {str(e)}")
         finally:
+            if joined:
+                self.client.end_operation()
             self._processing_lock.release()
 
     # --- registration + lifecycle ------------------------------------------

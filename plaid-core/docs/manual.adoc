@@ -125,44 +125,53 @@ The log can be queried like so:
 for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
     time = entry["time"]
     username = entry["user"]["username"]
-    description = "; ".join([o["description"] for o in entry["ops"]])
-    print(f"{username}, {time}: {description}")
+    label = entry.get("message") or "; ".join([o["description"] for o in entry["ops"]])
+    print(f"{username}, {time}: {label} ({len(entry['ops'])} writes)")
 
 # Output:
-# Luke G, 2025-07-05T09:13:39.614Z: Create document "Document 1" in project 0f0f0574-ae5a-4060-814c-c5bbdce14d67
-# Luke G, 2025-07-09T20:27:59.611Z: Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to "New Document Name"
+# Luke G, 2025-07-05T09:13:39.614Z: Create document "Document 1" in project 0f0f0574-ae5a-4060-814c-c5bbdce14d67 (1 writes)
+# Luke G, 2025-07-09T20:27:59.611Z: Merge morphemes (4 writes)
 ----
 
-=== Custom messages
+=== Logical operations
 
-Each write's `description` is generated automatically (e.g. `Patch metadata on span …`). When a write is part of some larger, more meaningful action, you can supply your own message that replaces the auto-generated one — so the log reads `Mark machine-provided annotation as approved` instead. Set it for a scope of writes and every write inside that scope is recorded with it (including each operation of a batch):
+Each entry in the log is a **logical unit**, not necessarily a single write. Many user-meaningful actions are implemented as a run of low-level writes: "merge two morphemes" deletes tokens, creates one, moves spans, and so on. To keep the log readable, a client can declare the run as one **operation** with a human label. Every write made while the operation is open is tagged with it, and the audit endpoints fold the tagged writes into ONE entry whose `message` is your label and whose `ops` are the individual writes (each with its own auto-generated `description`):
 
 [,python]
 ----
-with c.audit_message("Mark machine-provided annotation as approved"):
-    c.spans.set_metadata(span_id, {"approved": True})
+with c.operation("Merge morphemes"):
+    c.tokens.delete(left_id)
+    c.tokens.delete(right_id)
+    c.tokens.create(...)
 ----
 
 [,javascript]
 ----
-await c.withAuditMessage("Mark machine-provided annotation as approved", () =>
-  c.spans.setMetadata(spanId, { approved: true }));
+await c.withOperation("Merge morphemes", async () => {
+  await c.tokens.delete(leftId);
+  await c.tokens.delete(rightId);
+  await c.tokens.create(...);
+});
 ----
 
-The message may template any of the endpoint's own path, query, or body parameters with `{...}` placeholders, filled in by the server. Placeholder names are matched case- and separator-insensitively, so `{spanId}`, `{span-id}`, and `{span_id}` all refer to the same parameter — just write the parameter the way your client spells it (snake_case in Python, camelCase in JavaScript):
+A manual form exists too (`c.begin_operation(msg)` / `c.end_operation()`, `c.beginOperation(msg)` / `c.endOperation()`) for an operation whose end is not lexically scoped, for example one that spans a UI interaction. Ending an operation is purely local unless you pass a refined label (`c.end_operation("Merged 3 morphemes")`, or `op.set_message(...)` / `setMessage(...)` inside the scoped form), which relabels the entry now that the outcome is known.
 
-[,python]
-----
-with c.audit_message("Approve span {span_id}"):
-    c.spans.set_metadata(span_id, {"approved": True})
-# logged as: Approve span 35424d64-a077-4a29-8006-5a0c3b76aedb
-----
+Things to know:
 
-For a single write you can skip the scope and pass the message as the last argument to any write method instead:
+* **An operation is not a transaction.** If the third of five writes fails, the first two stay committed and appear in the log under the operation. Use a batch (`c.batched()`) inside the operation for any step that must be all-or-nothing. A batch that is not inside an operation is still shown as one entry (its writes share a `batch_id`), just without a label.
+* **Nesting flattens.** Opening an operation while one is open joins the outer one; the outer label wins. This lets composed actions call each other without worrying about it.
+* **Services join automatically.** A request to a service made while an operation is open carries the operation with it, and the service's writes fold under your entry, so "re-transcribe" can be one entry covering both the client's cleanup writes and everything the ASR service created.
+* **Time travel targets.** Each entry carries `time` (its first write) and `end_time` (its last). To view the document as it was after a whole operation, pass `end_time` as `as_of`; each `ops[i].time` addresses the state right after that individual write.
+* The label is client-supplied free text for readability only. The structured forensic record (the operation type and the per-row images) is unchanged.
+
+=== Custom messages for single writes
+
+For a single write, you can replace its auto-generated `description` by passing a message as the `audit_message` / last argument of any write method:
 
 [,python]
 ----
 c.spans.set_metadata(span_id, {"approved": True}, audit_message="Approve span {span_id}")
+# logged as: Approve span 35424d64-a077-4a29-8006-5a0c3b76aedb
 ----
 
 [,javascript]
@@ -170,7 +179,7 @@ c.spans.set_metadata(span_id, {"approved": True}, audit_message="Approve span {s
 await c.spans.setMetadata(spanId, { approved: true }, "Approve span {spanId}");
 ----
 
-A placeholder that names no parameter of the request is left as-is. The message is stored verbatim, so do not template a parameter that may carry a secret (e.g. a password) into the log. Custom messages only affect this human-readable description; the structured forensic record (the operation type and the per-row before/after images) is unchanged.
+The message may template any of the endpoint's own path, query, or body parameters with `{...}` placeholders, filled in by the server. Placeholder names are matched case- and separator-insensitively, so `{spanId}`, `{span-id}`, and `{span_id}` all refer to the same parameter: just write the parameter the way your client spells it (snake_case in Python, camelCase in JavaScript). A placeholder that names no parameter of the request is left as-is. The message is stored verbatim, so do not template a parameter that may carry a secret (e.g. a password) into the log. To label a run of several writes, use an operation (above) rather than repeating a message on each write.
 
 == Real-time Messaging
 Plaid offers a simple system for real-time communication on a per-project basis.

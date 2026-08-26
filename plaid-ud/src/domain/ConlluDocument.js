@@ -37,6 +37,14 @@ const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 // morphemes), owns the optimistic-update logic that used to live in
 // TextEditor / useAnnotationHandlers, and exposes a version-counted
 // subscription so React (or anything else) can re-render on change.
+// Audit-log label for a mutation, derived from its "Failed to <verb phrase>"
+// error label: "Failed to create relation" → "Create relation". Keeps every
+// mutation a labeled logical operation without a second string per call site.
+export function operationLabel(errorLabel) {
+  const s = String(errorLabel).replace(/^Failed to\s+/i, '');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export class ConlluDocument {
   constructor({ raw, client = null, projectId = null }) {
     this._raw = raw;
@@ -545,13 +553,18 @@ export class ConlluDocument {
   // error at the start, capture and surface errors, refetch the document
   // from the server on failure. Returns true on success / false otherwise
   // so callers can branch on outcome.
-  async _withSaving(label, fn) {
+  // Every mutation also runs as ONE logical operation in the audit log
+  // (`client.withOperation`): however many writes/batches it makes show up in
+  // the History drawer as a single expandable entry labeled `operation`
+  // (derived from the "Failed to …" error label unless given explicitly).
+  // Nested mutations flatten into the outer operation.
+  async _withSaving(label, fn, operation = operationLabel(label)) {
     if (this._isSaving) return false;
     this._isSaving = true;
     this._error = '';
     this._emit();
     try {
-      await fn();
+      await this._client.withOperation(operation, fn);
       return true;
     } catch (err) {
       console.error(`${label}:`, err);
@@ -850,7 +863,16 @@ export class ConlluDocument {
   // would discard the just-loaded doc). A single-flight guard plus the editor's
   // per-document gate keep StrictMode's double-invoke from double-healing (which
   // would otherwise seed duplicate syntactic-words).
+  // Every heal write folds under one "Reconcile layers on open" audit entry
+  // (no entry at all when nothing needed healing — groups are created lazily
+  // by the first write).
   async reconcileOnOpen() {
+    return this._client.withOperation('Reconcile layers on open', () =>
+      this._reconcileOnOpenImpl(),
+    );
+  }
+
+  async _reconcileOnOpenImpl() {
     const ZERO = {
       deletedRelations: 0,
       createdSyntacticWords: 0,
@@ -1479,72 +1501,70 @@ export class ConlluDocument {
   async confirmTokens(tokenIds) {
     const idSet = new Set(tokenIds || []);
     if (idSet.size === 0) return false;
-    return this._withSaving('Failed to confirm annotations', async () => {
-      const info = this.layerInfo;
-      const spanLayers = [
-        info.lemmaLayer,
-        info.uposLayer,
-        info.xposLayer,
-        info.featuresLayer,
-      ].filter(Boolean);
+    return this._withSaving(
+      'Failed to confirm annotations',
+      async () => {
+        const info = this.layerInfo;
+        const spanLayers = [
+          info.lemmaLayer,
+          info.uposLayer,
+          info.xposLayer,
+          info.featuresLayer,
+        ].filter(Boolean);
 
-      // Machine-unverified spans on the target tokens.
-      const spanPatchById = new Map();
-      for (const layer of spanLayers) {
-        for (const span of layer.spans || []) {
-          if (Array.isArray(span.tokens) && span.tokens.some((t) => idSet.has(t))) {
-            const verify = verifyOnEdit(span.metadata);
-            if (verify) spanPatchById.set(span.id, verify);
+        // Machine-unverified spans on the target tokens.
+        const spanPatchById = new Map();
+        for (const layer of spanLayers) {
+          for (const span of layer.spans || []) {
+            if (Array.isArray(span.tokens) && span.tokens.some((t) => idSet.has(t))) {
+              const verify = verifyOnEdit(span.metadata);
+              if (verify) spanPatchById.set(span.id, verify);
+            }
           }
         }
-      }
 
-      // Incoming dependency relations: the dependent is the relation's TARGET
-      // lemma span, so map target span → its tokens and match against the set.
-      const lemmaTokensBySpan = new Map(
-        (info.lemmaLayer?.spans || []).map((s) => [s.id, s.tokens || []]),
-      );
-      const relPatchById = new Map();
-      for (const rel of info.relationLayer?.relations || []) {
-        const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
-        if (targetTokens.some((t) => idSet.has(t))) {
-          const verify = verifyOnEdit(rel.metadata);
-          if (verify) relPatchById.set(rel.id, verify);
-        }
-      }
-
-      if (spanPatchById.size === 0 && relPatchById.size === 0) return; // nothing to confirm
-
-      // Optimistic: stamp confirmed locally so the inferred styling clears now.
-      this._applyRawPatch((next, infoNext) => {
-        for (const layer of [
-          infoNext.lemmaLayer,
-          infoNext.uposLayer,
-          infoNext.xposLayer,
-          infoNext.featuresLayer,
-        ]) {
-          for (const span of layer?.spans || []) {
-            const patch = spanPatchById.get(span.id);
-            if (patch) span.metadata = { ...(span.metadata || {}), ...patch };
+        // Incoming dependency relations: the dependent is the relation's TARGET
+        // lemma span, so map target span → its tokens and match against the set.
+        const lemmaTokensBySpan = new Map(
+          (info.lemmaLayer?.spans || []).map((s) => [s.id, s.tokens || []]),
+        );
+        const relPatchById = new Map();
+        for (const rel of info.relationLayer?.relations || []) {
+          const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
+          if (targetTokens.some((t) => idSet.has(t))) {
+            const verify = verifyOnEdit(rel.metadata);
+            if (verify) relPatchById.set(rel.id, verify);
           }
         }
-        for (const rel of infoNext.relationLayer?.relations || []) {
-          const patch = relPatchById.get(rel.id);
-          if (patch) rel.metadata = { ...(rel.metadata || {}), ...patch };
-        }
-      });
 
-      const count = spanPatchById.size + relPatchById.size;
-      await this._client.withAuditMessage(
-        `Confirm ${count} predicted annotation${count === 1 ? '' : 's'}`,
-        async () => {
-          await this._client.batched(async () => {
-            for (const [id, patch] of spanPatchById) this._client.spans.patchMetadata(id, patch);
-            for (const [id, patch] of relPatchById) this._client.relations.patchMetadata(id, patch);
-          });
-        },
-      );
-    });
+        if (spanPatchById.size === 0 && relPatchById.size === 0) return; // nothing to confirm
+
+        // Optimistic: stamp confirmed locally so the inferred styling clears now.
+        this._applyRawPatch((next, infoNext) => {
+          for (const layer of [
+            infoNext.lemmaLayer,
+            infoNext.uposLayer,
+            infoNext.xposLayer,
+            infoNext.featuresLayer,
+          ]) {
+            for (const span of layer?.spans || []) {
+              const patch = spanPatchById.get(span.id);
+              if (patch) span.metadata = { ...(span.metadata || {}), ...patch };
+            }
+          }
+          for (const rel of infoNext.relationLayer?.relations || []) {
+            const patch = relPatchById.get(rel.id);
+            if (patch) rel.metadata = { ...(rel.metadata || {}), ...patch };
+          }
+        });
+
+        await this._client.batched(async () => {
+          for (const [id, patch] of spanPatchById) this._client.spans.patchMetadata(id, patch);
+          for (const [id, patch] of relPatchById) this._client.relations.patchMetadata(id, patch);
+        });
+      },
+      'Confirm predicted annotations',
+    );
   }
 
   // ============================================================

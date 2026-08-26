@@ -238,6 +238,12 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
     }
+    # Propagate an open logical operation (client.begin_operation) to the
+    # service: its writes then fold under the requester's audit-log entry
+    # (BaseService adopts the id around process_request).
+    group = getattr(client, '_operation_group', None)
+    if group is not None and isinstance(data, dict):
+        data = {**data, 'operation_group': {'id': group['id'], 'message': group['message']}}
     body = transform_request(data) if data is not None else None
     try:
         resp = requests.post(url, headers=headers, json=body, stream=True, timeout=(10, None))

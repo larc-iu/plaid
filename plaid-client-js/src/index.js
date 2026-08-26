@@ -1599,15 +1599,19 @@ class PlaidClient {
    * labeled in the log.
    *
    * @param {string} message - Human label for the operation.
+   * @param {object} [opts]
+   * @param {string} [opts.id] - Adopt an existing group id instead of minting
+   *   one (a service joining the requester's operation — see
+   *   `requestService`, which propagates the open operation to the service).
    * @returns {string} The operation's group id.
    */
-  beginOperation(message) {
+  beginOperation(message, { id } = {}) {
     if (this.operationGroup) {
       this.operationGroup.depth += 1;
       return this.operationGroup.id;
     }
     this.operationGroup = {
-      id: crypto.randomUUID(),
+      id: id || crypto.randomUUID(),
       message: message == null ? null : String(message),
       depth: 1,
       written: false,

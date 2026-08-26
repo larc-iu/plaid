@@ -2077,7 +2077,7 @@ class PlaidClient:
         """Exit strict mode and stop tracking document versions for writes."""
         self.strict_mode_document_id = None
 
-    def begin_operation(self, message: str) -> str:
+    def begin_operation(self, message: str | None, *, group_id: str | None = None) -> str:
         """Begin a LOGICAL OPERATION: a user-meaningful action ("Merge
         morphemes", "Re-transcribe") implemented as many low-level writes,
         possibly across several batches and even a service round-trip. Until
@@ -2099,13 +2099,16 @@ class PlaidClient:
         still labeled in the log.
 
         Prefer the ``operation()`` context manager; this is the manual form.
+        ``group_id`` adopts an existing group instead of minting one (a service
+        joining the requester's operation — see ``BaseService``, which does this
+        automatically from the propagated ``operation_group`` request field).
         Returns the operation's group id.
         """
         if self._operation_group is not None:
             self._operation_group['depth'] += 1
             return self._operation_group['id']
         self._operation_group = {
-            'id': str(uuid.uuid4()),
+            'id': str(group_id) if group_id else str(uuid.uuid4()),
             'message': None if message is None else str(message),
             'depth': 1,
             'written': False,
