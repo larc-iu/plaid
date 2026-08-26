@@ -98,7 +98,7 @@ export const useTimelineOperations = (mediaOps) => {
   // Get authenticated media URL with proper token
   const getAuthenticatedMediaUrl = useCallback((serverUrl) => {
     if (!serverUrl) return serverUrl;
-    return `${serverUrl}?token=${localStorage.getItem('token')}`;
+    return serverUrl;
   }, []);
 
   // Local timeline state
@@ -538,7 +538,9 @@ export const useTimelineOperations = (mediaOps) => {
 
       try {
         const authenticatedMediaUrl = getAuthenticatedMediaUrl(doc.document.mediaUrl);
-        const response = await fetch(authenticatedMediaUrl);
+        const response = await fetch(authenticatedMediaUrl, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        });
         const arrayBuffer = await response.arrayBuffer();
 
         // Generate hash from audio data for caching
