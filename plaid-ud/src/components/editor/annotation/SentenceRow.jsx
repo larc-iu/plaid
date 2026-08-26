@@ -245,15 +245,31 @@ const EditableCell = React.memo(
               lastGlobalTabPress = now;
               return;
             }
+            if (e.key === 'Enter') {
+              // Ctrl/Cmd+Enter is the per-token accept gesture (container
+              // handler): let it bubble and keep focus here.
+              if (e.ctrlKey || e.metaKey) return;
+              // Commit via blur, like the plain-input cells — but DEFERRED:
+              // Mantine's own keydown runs after ours and applies a highlighted
+              // option via onOptionSubmit → onChange (setLocalValue). A macrotask
+              // lands after that and after React's flush, so handleBlur commits
+              // the picked option (or, with nothing highlighted, the typed text)
+              // rather than a stale prefix.
+              setTimeout(() => inputRef.current?.blur(), 0);
+              return;
+            }
             if (e.key === 'Escape') {
               setLocalValue(value || '');
               inputRef.current?.blur();
               return;
             }
-            // Grid navigation, like the plain-input cells — but only while the
-            // dropdown is closed (open, the arrows highlight options). Escape
-            // closes the dropdown first, then arrows navigate.
-            const dropdownOpen = e.target.getAttribute('aria-expanded') === 'true';
+            // Grid navigation, like the plain-input cells — until the user has
+            // TYPED into this cell: focusing opens the full list, and arrows on
+            // a pristine cell keep moving through the grid; once typing has
+            // filtered the list, the arrows highlight options (Enter picks).
+            // NB: Mantine's Combobox never sets aria-expanded on the input (only
+            // with withExpandedAttribute); data-expanded is the reliable signal.
+            const dropdownOpen = !pristine && e.target.getAttribute('data-expanded') === 'true';
             if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
               if (
                 !dropdownOpen &&
@@ -422,8 +438,12 @@ const FeaturesCell = React.memo(
       // highlighted when the open dropdown has a [data-combobox-selected] item —
       // set by BOTH arrow nav and auto-highlight (selectFirstOptionOnChange).
       // (aria-activedescendant only tracks arrow nav, so relying on it would let
-      // Enter both commit the typed text AND submit the auto-highlighted option.)
-      const dropdownOpen = e.target.getAttribute('aria-expanded') === 'true';
+      // Enter both commit the typed text AND submit the auto-highlighted option.
+      // And Mantine never sets aria-expanded on the input — read data-expanded.)
+      // An EMPTY input counts as closed: focusing opens the key list, but arrows
+      // on an untouched cell should keep moving through the grid, like the
+      // UPOS/XPOS cells; typing is what hands the arrows to the dropdown.
+      const dropdownOpen = !empty && e.target.getAttribute('data-expanded') === 'true';
       const optionActive = dropdownOpen && !!document.querySelector('[data-combobox-selected]');
 
       if (e.key === 'Enter') {
@@ -627,6 +647,7 @@ const TokenColumn = React.memo(
     // survives the trip up across the dependency tree's SVG (which otherwise drops
     // a pure-CSS column hover before you can reach it).
     const wordInferred =
+      isInferredSpan(data.form) ||
       isInferredSpan(data.lemma) ||
       isInferredSpan(data.xpos) ||
       isInferredSpan(data.upos) ||
@@ -681,9 +702,15 @@ const TokenColumn = React.memo(
             </ActionIcon>
           </Tooltip>
         )}
-        {/* Token form (baseline) */}
+        {/* Token form (baseline). A machine-made Form span (MWT components from
+            the parser) gets the same unverified styling as the cells. */}
         <div
-          className="token-form"
+          className={`token-form${isInferredSpan(data.form) ? ' token-form--inferred' : ''}`}
+          title={
+            provState(data.form?.metadata) === PROV_STATES.HUMAN
+              ? undefined
+              : provCellTitle('Form', data.form.metadata)
+          }
           ref={(el) => {
             if (el) {
               tokenRefs.current.set(data.token.id, el);
@@ -1001,10 +1028,11 @@ export const SentenceRow = React.memo(
 
     // Provenance review (see ConlluDocument.confirmTokens): show an "Accept
     // predictions" affordance only when this sentence still has machine-made,
-    // unverified material — on a span (lemma/xpos/upos/feats) or a relation.
+    // unverified material — on a span (form/lemma/xpos/upos/feats) or a relation.
     const hasInferred = useMemo(() => {
       const spanInferred = tokenData.some(
         (d) =>
+          isInferredSpan(d.form) ||
           isInferredSpan(d.lemma) ||
           isInferredSpan(d.xpos) ||
           isInferredSpan(d.upos) ||
