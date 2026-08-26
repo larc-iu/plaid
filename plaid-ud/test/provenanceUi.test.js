@@ -71,15 +71,15 @@ test('provCellTitle describes machine-made annotations and passes humans through
   assert.equal(provCellTitle('Edit upos', {}), 'Edit upos');
   assert.equal(
     provCellTitle('Edit upos', MACHINE_META),
-    'Edit upos — machine-made, unverified (service:my-parser · my-parser==2.1 · en · p=0.84)',
+    'Edit upos: machine-made, unverified (service:my-parser · my-parser==2.1 · en · p=0.84)',
   );
   assert.equal(
     provCellTitle('Edit upos', { ...MACHINE_META, provConfirmed: true }),
-    'Edit upos — machine-made, human-verified (service:my-parser · my-parser==2.1 · en · p=0.84)',
+    'Edit upos: machine-made, human-verified (service:my-parser · my-parser==2.1 · en · p=0.84)',
   );
   // Sparse record: just the source.
   assert.equal(
     provCellTitle('deprel', { prov: 'inferred', provSource: 'service:p' }),
-    'deprel — machine-made, unverified (service:p)',
+    'deprel: machine-made, unverified (service:p)',
   );
 });
