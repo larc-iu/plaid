@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Auto-format staged plaid-igt files with Prettier so nobody has to think about
+# it. Version-controlled + shared via `core.hooksPath = .githooks` (see the
+# repo README / run `git config core.hooksPath .githooks` after a fresh clone).
+#
+# Scope: only plaid-igt *.js/*.jsx/*.css (the sole subproject with Prettier).
+# Other subprojects (plaid-core Clojure, etc.) pass through untouched.
+#
+# Behavior: formats the working-tree copy of each staged file and re-stages it,
+# so the commit includes the formatting. If Prettier isn't installed it warns
+# and lets the commit through rather than blocking work.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+prettier="$repo_root/plaid-igt/node_modules/.bin/prettier"
+
+# Staged (added/copied/modified) plaid-igt code files, NUL-safe.
+mapfile -d '' staged < <(
+  git diff --cached --name-only --diff-filter=ACM -z -- \
+    'plaid-igt/**/*.js' 'plaid-igt/**/*.jsx' 'plaid-igt/**/*.css'
+)
+[ ${#staged[@]} -eq 0 ] && exit 0
+
+if [ ! -x "$prettier" ]; then
+  echo "pre-commit: Prettier not found at plaid-igt/node_modules/.bin/prettier" >&2
+  echo "pre-commit: run 'npm install' in plaid-igt; skipping auto-format." >&2
+  exit 0
+fi
+
+# Prettier is invoked from plaid-igt so it picks up .prettierrc.json +
+# .prettierignore; strip the leading 'plaid-igt/' from each path.
+rel=()
+for f in "${staged[@]}"; do rel+=("${f#plaid-igt/}"); done
+
+# --ignore-unknown + .prettierignore mean ignored files are skipped silently.
+( cd "$repo_root/plaid-igt" && "$prettier" --write --ignore-unknown "${rel[@]}" >/dev/null )
+
+# Re-stage whatever formatting changed.
+git -C "$repo_root" add -- "${staged[@]}"
+exit 0
