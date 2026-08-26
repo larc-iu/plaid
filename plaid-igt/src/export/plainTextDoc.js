@@ -70,7 +70,12 @@ export function sentenceTierLines(sentence, selection) {
 
 /** One sentence as column-aligned plain text (code-point padding). */
 export function formatSentencePlain(sentence, selection) {
-  const lines = sentenceTierLines(sentence, selection);
+  const lines = sentenceTierLines(sentence, selection)
+    // Drop a tier that has no values in THIS sentence (e.g. an enabled-but-
+    // unused orthography), so it doesn't render as a run of blank lines. The
+    // anchor word-forms line (index 0) is always kept.
+    .filter((l, i) => i === 0 || l.kind !== 'cells'
+      || l.cells.some((c) => (c ?? '').trim() !== ''));
   const cellLines = lines.filter((l) => l.kind === 'cells');
   const n = cellLines[0]?.cells.length ?? 0;
   const widths = Array.from({ length: n }, (_, i) =>

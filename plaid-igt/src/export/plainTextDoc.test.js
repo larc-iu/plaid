@@ -41,6 +41,23 @@ describe('formatSentencePlain', () => {
     const out = formatSentencePlain(s, { morphFields: ['Gloss'], sentFields: ['Translation'] });
     expect(out.split('\n')).toEqual(['𝕒𝕒  b', 'x   yy', 'Translation: ok']);
   });
+
+  it('drops tiers with no values in this sentence (no blank lines)', () => {
+    // IPA + Cyrillic orthographies enabled but unset on every token, and a
+    // Gloss word field that only one token fills. The empty orthography tiers
+    // must not render as blank lines; the partially-filled Gloss tier stays.
+    const s = makeSentence({
+      begin: 0, end: 3,
+      tokens: [
+        { content: 'ab', annotations: { Gloss: { value: 'x' } }, orthographies: {}, morphemes: [] },
+        { content: 'c', annotations: {}, orthographies: {}, morphemes: [] },
+      ],
+    });
+    const out = formatSentencePlain(s, {
+      orthographies: ['IPA', 'Cyrillic'], wordFields: ['Gloss'], segmentMorphemes: false,
+    });
+    expect(out.split('\n')).toEqual(['ab  c', 'x']);
+  });
 });
 
 describe('serializeDocumentPlain', () => {
