@@ -7,3 +7,8 @@
 
 # Format all Clojure source with cljfmt 0.16.4
 48d22fcf763bc666406d9e0e6f94190092934110
+
+# chore(igt): adopt Prettier; format this session's files
+03b02f017ca2b6cafde3dc1c701eaed99499524d
+# style(igt): whole-project Prettier sweep of plaid-igt
+127fffb680ffcc8f4d0dad1cdc02330286b17ce9
