@@ -1599,10 +1599,7 @@ class PlaidClient {
    * labeled in the log.
    *
    * @param {string} message - Human label for the operation.
-   * @param {object} [opts]
-   * @param {string} [opts.id] - Adopt an existing group id instead of minting
-   *   one (a service joining the requester's operation — see
-   *   `requestService`, which propagates the open operation to the service).
+   * @param {object} [opts] - Optional `{ id }`: adopt an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically).
    * @returns {string} The operation's group id.
    */
   beginOperation(message, { id } = {}) {
@@ -1660,7 +1657,7 @@ class PlaidClient {
    *   });
    *
    * @param {string} message - Human label for the operation.
-   * @param {(setMessage: (msg: string) => void) => (Promise<any>|any)} fn
+   * @param {function} fn - The work to run; receives `setMessage(msg)` to refine the label once the outcome is known.
    * @returns {Promise<any>} Whatever `fn` resolves to.
    */
   async withOperation(message, fn) {

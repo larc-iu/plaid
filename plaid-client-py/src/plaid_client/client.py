@@ -2099,10 +2099,15 @@ class PlaidClient:
         still labeled in the log.
 
         Prefer the ``operation()`` context manager; this is the manual form.
-        ``group_id`` adopts an existing group instead of minting one (a service
-        joining the requester's operation — see ``BaseService``, which does this
-        automatically from the propagated ``operation_group`` request field).
-        Returns the operation's group id.
+
+        Args:
+            message: Human label for the operation (shown as the audit-log entry).
+            group_id: Optional. Adopt an existing group id instead of minting one
+                (a service joining the requester's operation; ``BaseService`` does
+                this automatically from the propagated ``operation_group`` field).
+
+        Returns:
+            The operation's group id.
         """
         if self._operation_group is not None:
             self._operation_group['depth'] += 1
@@ -2123,6 +2128,9 @@ class PlaidClient:
         that sends one PATCH, skipped if the operation never wrote anything. A
         refine from a nested (flattened) ``end_operation`` is ignored; the
         outer label wins.
+
+        Args:
+            message: Optional. A refined label for the finished operation.
         """
         group = self._operation_group
         if group is None:
@@ -2152,6 +2160,14 @@ class PlaidClient:
                 with client.batched():
                     ...
                 op.set_message(f'Merged {n} morphemes')
+
+        Not atomic (see ``begin_operation``): use ``batched()`` inside for any
+        step that must be all-or-nothing. A service request made inside the
+        block carries the operation to the service, whose writes then fold
+        under this entry.
+
+        Args:
+            message: Human label for the operation (shown as the audit-log entry).
         """
         self.begin_operation(message)
         group = self._operation_group

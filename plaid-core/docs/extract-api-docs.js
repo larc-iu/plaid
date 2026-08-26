@@ -3,6 +3,87 @@
 const fs = require('fs');
 const path = require('path');
 
+
+// ---- shared rendering helpers -------------------------------------------
+// Docstrings/JSDoc are rendered in FULL (every paragraph, code blocks, and
+// multi-line parameter descriptions), not just their first line, so the
+// generated reference carries everything the source comment says.
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+// Escape, then turn `code` spans and ``rst code`` spans into <code>.
+function inlineCode(s) {
+  return escapeHtml(s).replace(/``([^`]+)``/g, '<code>$1</code>').replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+// Render comment lines (comment/docstring syntax already stripped, relative
+// indentation kept) as HTML: blank-line-separated paragraphs; a paragraph whose
+// lines are all indented, or one following a line ending in "::" (RST literal
+// block), renders as <pre>.
+function renderDescription(rawLines) {
+  const lines = rawLines.map((l) => l.replace(/\s+$/, ''));
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  if (!lines.length) return '';
+  const base = Math.min(...lines.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length));
+  const rel = lines.map((l) => (l.trim() ? l.slice(base) : ''));
+  const paras = [];
+  let cur = [];
+  for (const l of rel) {
+    if (!l.trim()) {
+      if (cur.length) { paras.push(cur); cur = []; }
+    } else {
+      cur.push(l);
+    }
+  }
+  if (cur.length) paras.push(cur);
+  let html = '';
+  let literalNext = false;
+  for (const p of paras) {
+    const indented = p.every((l) => /^\s{2,}/.test(l));
+    if (indented || literalNext) {
+      const dedent = Math.min(...p.map((l) => l.match(/^\s*/)[0].length));
+      html += `<pre>${escapeHtml(p.map((l) => l.slice(dedent)).join('\n'))}</pre>`;
+      literalNext = false;
+      continue;
+    }
+    let text = p.join(' ');
+    if (text.endsWith('::')) { text = text.slice(0, -2) + ':'; literalNext = true; }
+    html += `<p>${inlineCode(text)}</p>`;
+  }
+  return html;
+}
+// JSDoc: the description is everything before the first @tag.
+function jsDescription(lines) {
+  const out = [];
+  for (const l of lines) {
+    if (/^\s*@\w+/.test(l)) break;
+    out.push(l);
+  }
+  return renderDescription(out);
+}
+// JSDoc @param entries, with continuation lines merged into the tag line.
+function jsParams(lines) {
+  const tags = [];
+  for (const l of lines) {
+    if (/^\s*@\w+/.test(l)) tags.push(l.trim());
+    else if (tags.length && l.trim()) tags[tags.length - 1] += ' ' + l.trim();
+  }
+  const params = [];
+  const re = /^@param\s+\{([^}]+)\}\s+(\[?[\w.\[\]]+\]?)\s*-?\s*(.*)/;
+  for (const t of tags) {
+    const m = t.match(re);
+    if (!m) continue;
+    const [, type, name, desc] = m;
+    params.push({
+      name: name.replace(/[\[\]]/g, ''),
+      type,
+      optional: name.includes('['),
+      description: inlineCode(desc),
+    });
+  }
+  return params;
+}
+
 // Parse JavaScript JSDoc comments
 function parseJSDoc(content) {
   const methods = [];
@@ -16,21 +97,8 @@ function parseJSDoc(content) {
     
     // Extract description and parameters
     const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
-    const description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
-    
-    const params = [];
-    const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
-    let paramMatch;
-    
-    while ((paramMatch = paramRegex.exec(docContent)) !== null) {
-      const [, type, name, desc] = paramMatch;
-      params.push({
-        name: name.replace(/[\[\]]/g, ''),
-        type: type,
-        optional: name.includes('['),
-        description: desc
-      });
-    }
+    const description = jsDescription(lines);
+    const params = jsParams(lines);
     
     methods.push({ 
       name: 'constructor', 
@@ -49,21 +117,8 @@ function parseJSDoc(content) {
     
     // Extract description and parameters
     const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
-    const description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
-    
-    const params = [];
-    const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
-    let paramMatch;
-    
-    while ((paramMatch = paramRegex.exec(docContent)) !== null) {
-      const [, type, name, desc] = paramMatch;
-      params.push({
-        name: name.replace(/[\[\]]/g, ''),
-        type: type,
-        optional: name.includes('['),
-        description: desc
-      });
-    }
+    const description = jsDescription(lines);
+    const params = jsParams(lines);
     
     methods.push({ 
       name: methodName, 
@@ -75,7 +130,11 @@ function parseJSDoc(content) {
   }
   
   // Look for specific instance methods that should be in misc
-  const miscMethods = ['enterStrictMode', 'exitStrictMode', 'setAgentName', 'beginBatch', 'submitBatch', 'abortBatch', 'isBatchMode'];
+  const miscMethods = [
+    'enterStrictMode', 'exitStrictMode',
+    'beginBatch', 'submitBatch', 'abortBatch', 'isBatchMode', 'batched',
+    'beginOperation', 'endOperation', 'withOperation',
+  ];
 
   for (const methodName of miscMethods) {
     // Try multi-line JSDoc first: /** \n * ... \n */
@@ -96,23 +155,11 @@ function parseJSDoc(content) {
 
       let description, params = [];
       if (isSingleLine) {
-        description = docContent.trim();
+        description = renderDescription([docContent.trim()]);
       } else {
         const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
-        description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
-
-        const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
-        let paramMatch;
-
-        while ((paramMatch = paramRegex.exec(docContent)) !== null) {
-          const [, type, name, desc] = paramMatch;
-          params.push({
-            name: name.replace(/[\[\]]/g, ''),
-            type: type,
-            optional: name.includes('['),
-            description: desc
-          });
-        }
+        description = jsDescription(lines);
+        params = jsParams(lines);
       }
 
       methods.push({
@@ -140,24 +187,9 @@ function parseJSDoc(content) {
     while ((methodMatch = methodRegex.exec(bundleContent)) !== null) {
       const [, docContent, methodName] = methodMatch;
       
-      // Extract description (first line that's not a param)
       const lines = docContent.split('\n').map(line => line.replace(/^\s*\*\s?/, ''));
-      const description = lines.find(line => line.trim() && !line.startsWith('@')) || '';
-      
-      // Extract parameters
-      const params = [];
-      const paramRegex = /@param\s+\{([^}]+)\}\s+(\[?[\w\[\]]+\]?)\s*-?\s*(.*)/g;
-      let paramMatch;
-      
-      while ((paramMatch = paramRegex.exec(docContent)) !== null) {
-        const [, type, name, desc] = paramMatch;
-        params.push({
-          name: name.replace(/[\[\]]/g, ''),
-          type: type,
-          optional: name.includes('['),
-          description: desc
-        });
-      }
+      const description = jsDescription(lines);
+      const params = jsParams(lines);
       
       methods.push({ 
         name: methodName, 
@@ -244,35 +276,42 @@ function parsePythonDoc(content) {
         }
         
         if (docstringEnd !== -1) {
-          // Extract docstring content
-          const docLines = lines.slice(docstringStart, docstringEnd + 1)
-            .map(line => line.trim())
-            .map(line => line.replace(/^"""/, '').replace(/"""$/, ''));
-          
-          const description = docLines.find(line => line && !line.startsWith('Args:')) || '';
-          
-          // Extract parameters from Args section
+          // Extract docstring content (relative indentation kept for code blocks)
+          const raw = lines.slice(docstringStart, docstringEnd + 1)
+            .map(line => line.replace(/^(\s*)"""/, '$1').replace(/"""\s*$/, ''));
+          const sectionRe = /^\s*(Args|Arguments|Returns|Raises|Yields|Attributes|Note|Notes|Example|Examples):\s*$/;
+          const descLines = [];
+          for (const l of raw) {
+            if (sectionRe.test(l)) break;
+            descLines.push(l);
+          }
+          const description = renderDescription(descLines);
+
+          // Args: one entry per `name: text` line; deeper-indented lines continue
+          // the previous entry.
           const params = [];
-          const argsIndex = docLines.findIndex(line => line === 'Args:');
-          
+          const argsIndex = raw.findIndex(l => /^\s*(Args|Arguments):\s*$/.test(l));
           if (argsIndex !== -1) {
-            for (let k = argsIndex + 1; k < docLines.length; k++) {
-              const paramLine = docLines[k];
-              if (!paramLine || paramLine.endsWith(':')) break;
-              
-              const paramMatch = paramLine.match(/^(\w+):\s*(.*)/);
-              if (paramMatch) {
-                const [, name, desc] = paramMatch;
-                params.push({
-                  name: name,
-                  type: 'Any',
-                  optional: desc.includes('Optional'),
-                  description: desc
-                });
+            let argIndent = null;
+            for (let k = argsIndex + 1; k < raw.length; k++) {
+              const l = raw[k];
+              if (!l.trim() || sectionRe.test(l)) break;
+              const indent = l.match(/^\s*/)[0].length;
+              const m = l.match(/^\s*(\w+)(?:\s*\([^)]*\))?:\s*(.*)$/);
+              if (m && (argIndent === null || indent <= argIndent)) {
+                argIndent = indent;
+                const [, name, desc] = m;
+                params.push({ name, type: 'Any', optional: false, description: desc });
+              } else if (params.length) {
+                params[params.length - 1].description += ' ' + l.trim();
               }
             }
+            for (const p of params) {
+              p.optional = /optional/i.test(p.description);
+              p.description = inlineCode(p.description);
+            }
           }
-          
+
           // Try to infer bundle from surrounding class context
           let bundleName = 'misc';
           
@@ -471,7 +510,7 @@ function generateHTML(title, bundles, lang) {
       return `
         <div class="method" id="${bundle}-${method.name}">
           <div class="method-sig"><code>${sig}</code>${badgesHTML}</div>
-          <p class="method-desc">${method.description}</p>
+          <div class="method-desc">${method.description}</div>
           ${paramsHTML}
         </div>
       `;
@@ -627,6 +666,9 @@ function generateHTML(title, bundles, lang) {
       font-size: 14px;
     }
     .method-desc:empty { display: none; }
+    .method-desc p { margin: 0 0 0.5em 0; }
+    .method-desc p:last-child { margin-bottom: 0; }
+    .method-desc pre { margin: 0.4em 0 0.6em 0; padding: 0.5em 0.75em; overflow-x: auto; font-size: 0.85em; }
 
     /* --- Badges --- */
     .badge {
