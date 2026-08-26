@@ -1,9 +1,10 @@
-"""Tests for the custom audit-log message support — network-free paths.
+"""Tests for the per-call custom audit-log message — network-free paths.
 
 Batch mode queues operations instead of sending them, so we can assert the
-`?audit-message=` query param is appended to each queued op's path without a
+`?audit-message=` query param is appended to a queued op's path without a
 live server. Server-side templating of `{param}` placeholders is covered by
-plaid-core's audit-message-test.
+plaid-core's audit-message-test. (Scoping a message over MANY writes is the
+job of logical operations — see test_operation.py.)
 """
 
 import os
@@ -18,57 +19,32 @@ def _client():
     return PlaidClient('http://localhost:0', 'dummy-token')
 
 
-def _queue(client):
-    """Queue two same-span metadata patches in a batch and return their paths."""
+def _queue(client, message=None):
+    """Queue one write with a per-call message and one without; return paths."""
     client.begin_batch()
-    client.spans.set_metadata('S1', {'a': 1})
+    client.spans.set_metadata('S1', {'a': 1}, audit_message=message)
     client.spans.set_metadata('S2', {'b': 2})
     paths = [op['path'] for op in client.batch_operations]
     client.abort_batch()
     return paths
 
 
-def test_context_manager_appends_to_every_op():
-    client = _client()
-    with client.audit_message('Approve {spanId}'):
-        paths = _queue(client)
-    assert all('audit-message=Approve%20%7BspanId%7D' in p for p in paths)
-
-
-def test_context_manager_restores_previous_message():
-    client = _client()
-    with client.audit_message('outer'):
-        with client.audit_message('inner'):
-            assert 'audit-message=inner' in _queue(client)[0]
-        # restored to outer after the nested block
-        assert 'audit-message=outer' in _queue(client)[0]
-    # cleared entirely after the outer block
-    assert all('audit-message' not in p for p in _queue(client))
-
-
-def test_set_and_clear_audit_message():
-    client = _client()
-    client.set_audit_message('manual')
-    assert 'audit-message=manual' in _queue(client)[0]
-    client.clear_audit_message()
-    assert all('audit-message' not in p for p in _queue(client))
+def test_per_call_audit_message_applies_to_that_op_only():
+    with_msg, without = _queue(_client(), 'Approve {span_id}')
+    assert 'audit-message=Approve%20%7Bspan_id%7D' in with_msg
+    assert 'audit-message' not in without
 
 
 def test_get_requests_never_carry_audit_message():
     client = _client()
-    with client.audit_message('msg'):
-        client.begin_batch()
-        # a GET is not a write — no audit-message even with an ambient message
-        # (batch GETs still queue), so assert it is absent.
-        client.spans.get('S1')
-        paths = [op['path'] for op in client.batch_operations]
-        client.abort_batch()
+    client.begin_batch()
+    client.spans.get('S1')
+    paths = [op['path'] for op in client.batch_operations]
+    client.abort_batch()
     assert all('audit-message' not in p for p in paths)
 
 
 def test_special_characters_are_url_encoded():
-    client = _client()
-    with client.audit_message('a & b = c'):
-        path = _queue(client)[0]
+    path = _queue(_client(), 'a & b = c')[0]
     # the raw '&'/'=' must be percent-encoded so they don't fork the query string
     assert 'a%20%26%20b%20%3D%20c' in path

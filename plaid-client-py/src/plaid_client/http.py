@@ -277,17 +277,25 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             if client.is_batching:
                 client.batch_version_stamped = True
 
-    # Custom audit-log message (overrides the auto-generated description).
-    # Per-call `audit_message` wins, else the ambient `client.audit_message`
-    # (see set_audit_message / audit_message context manager). Unlike
-    # document-version this has no OCC self-conflict, so it is stamped on EVERY
-    # queued batch op, not just the first. The server templates `{param}`
-    # placeholders against the endpoint's own path/query/body params.
-    effective_audit_message = (audit_message if audit_message is not None
-                               else getattr(client, '_audit_message', None))
-    if effective_audit_message and method != 'GET':
+    # Per-call custom audit-log message (overrides the auto-generated
+    # description of THIS write). Unlike document-version this has no OCC
+    # self-conflict, so it is stamped on every queued batch op, not just the
+    # first. The server templates `{param}` placeholders against the
+    # endpoint's own path/query/body params.
+    if audit_message and method != 'GET':
         separator = '&' if '?' in url else '?'
-        url += f'{separator}audit-message={quote(str(effective_audit_message), safe="")}'
+        url += f'{separator}audit-message={quote(str(audit_message), safe="")}'
+
+    # Logical-operation group (see client.begin_operation): stamp every write
+    # with the group id; the message rides along too so the server can label
+    # the group lazily on whichever tagged write lands first.
+    group = getattr(client, '_operation_group', None)
+    if group is not None and method != 'GET':
+        separator = '&' if '?' in url else '?'
+        url += f'{separator}group-id={quote(group["id"], safe="")}'
+        if group.get('message'):
+            url += f'&group-message={quote(str(group["message"]), safe="")}'
+        group['written'] = True
 
     # Batch mode
     if client.is_batching:

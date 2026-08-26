@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from contextlib import contextmanager
 from typing import Any
 
@@ -42,6 +43,26 @@ class _BatchContext:
 
     def __init__(self):
         self.results = []
+
+
+_UNSET_MESSAGE = object()
+
+
+class _OperationContext:
+    """Yielded by ``with client.operation(...)``; lets the block refine the
+    label (sent when the outermost operation ends)."""
+    __slots__ = ('_group',)
+
+    def __init__(self, group):
+        self._group = group
+
+    @property
+    def id(self) -> str:
+        return self._group['id']
+
+    def set_message(self, message: str | None) -> None:
+        if self._group['depth'] == 1:
+            self._group['refined'] = message
 
 
 class _Resource:
@@ -1933,6 +1954,30 @@ class BatchResource(_Resource):
         return self._request('POST', '/api/v1/batch', body=body, no_batch=True, audit_message=audit_message)
 
 
+class OperationGroupsResource(_Resource):
+    """Logical-operation groups (audit-log grouping). There is no create: a
+    group row is made lazily by the first write carrying ``?group-id=`` (see
+    ``PlaidClient.begin_operation``). Not an audited write, so no
+    ``audit_message`` parameter."""
+
+    def get(self, id: str) -> Any:
+        """Get a logical-operation group (its label + creator).
+
+        Args:
+            id: The group id
+        """
+        return self._request('GET', f'/api/v1/operation-groups/{id}')
+
+    def update(self, id: str, message: str | None) -> Any:
+        """Relabel a logical-operation group after the fact. Owner or admin only.
+
+        Args:
+            id: The group id
+            message: The new label
+        """
+        return self._request('PATCH', f'/api/v1/operation-groups/{id}', body={'message': message})
+
+
 class PlaidClient:
     def __init__(self, base_url: str, token: str, timeout: float | None = DEFAULT_TIMEOUT_S):
         """Create a new PlaidClient instance.
@@ -1950,11 +1995,11 @@ class PlaidClient:
         self.batch_operations: list[dict] = []
         self.document_versions: dict[str, str] = {}
         self.strict_mode_document_id: str | None = None
-        # Ambient custom audit-log message applied to write requests; None = use
-        # the server's auto-generated description. Private: the public surface is
-        # set_audit_message / the audit_message() context manager (a context
-        # manager method can't share the attribute's name).
-        self._audit_message: str | None = None
+        # The open logical operation (audit-log group), or None. While set, every
+        # write is stamped with ``?group-id=`` (+ ``group-message``) so the audit
+        # log folds them into ONE expandable entry. See begin_operation /
+        # operation(). Shape: {'id', 'message', 'depth', 'written', 'refined'}.
+        self._operation_group: dict | None = None
         self.session = req_lib.Session()
 
         self.vocab_links = VocabLinksResource(self)
@@ -1974,6 +2019,7 @@ class PlaidClient:
         self.relation_layers = RelationLayersResource(self)
         self.tokens = TokensResource(self)
         self.batch = BatchResource(self)
+        self.operation_groups = OperationGroupsResource(self)
 
     def query(self, body: Any) -> Any:
         """Run a query over every project you can read.
@@ -2031,48 +2077,86 @@ class PlaidClient:
         """Exit strict mode and stop tracking document versions for writes."""
         self.strict_mode_document_id = None
 
-    def set_audit_message(self, message: str | None) -> None:
-        """Set a custom audit-log message applied to every subsequent write,
-        OVERRIDING the server's auto-generated description (e.g. "Patch metadata
-        on span X").
+    def begin_operation(self, message: str) -> str:
+        """Begin a LOGICAL OPERATION: a user-meaningful action ("Merge
+        morphemes", "Re-transcribe") implemented as many low-level writes,
+        possibly across several batches and even a service round-trip. Until
+        ``end_operation()``, every write is stamped with a client-minted
+        ``?group-id=`` (and the message) so the audit log shows the whole run
+        as ONE expandable entry labeled ``message``, with each write's own
+        description underneath.
 
-        The message may template the endpoint's own path/query/body params with
-        ``{param}`` placeholders, resolved server-side — e.g.
-        ``"Approve span {span_id}"``. Placeholder names are case/separator-
-        insensitive (``{span_id}`` == ``{span-id}`` == ``{spanId}``), so use the
-        snake_case names this client uses. Applies to non-GET requests only,
-        including every operation queued in a batch.
+        Grouping is orthogonal to batches: a batch is a transaction boundary,
+        an operation is an intent boundary. An operation is NOT atomic — if
+        write 3 of 5 fails, writes 1–2 stay committed (and logged under the
+        group). Use a batch inside the operation for any step that must be
+        all-or-nothing.
 
-        Prefer the ``audit_message`` context manager for scoped use; this setter
-        is for manual ambient control. Pass ``None`` to clear.
+        Nesting flattens: a ``begin_operation`` while one is open is a no-op
+        that joins the outer operation (the outer label wins), and the
+        matching ``end_operation`` is likewise a no-op. The label is recorded
+        on the FIRST write, so an operation that is never ended (crash) is
+        still labeled in the log.
+
+        Prefer the ``operation()`` context manager; this is the manual form.
+        Returns the operation's group id.
         """
-        self._audit_message = message
+        if self._operation_group is not None:
+            self._operation_group['depth'] += 1
+            return self._operation_group['id']
+        self._operation_group = {
+            'id': str(uuid.uuid4()),
+            'message': None if message is None else str(message),
+            'depth': 1,
+            'written': False,
+            'refined': _UNSET_MESSAGE,
+        }
+        return self._operation_group['id']
 
-    def clear_audit_message(self) -> None:
-        """Clear the ambient custom audit-log message (revert to auto-generated)."""
-        self._audit_message = None
+    def end_operation(self, message: str | None | object = _UNSET_MESSAGE) -> None:
+        """End the current logical operation. With no argument this is purely
+        local (no request). Pass a refined ``message`` to relabel the group now
+        that the outcome is known (``end_operation('Merged 3 morphemes')``) —
+        that sends one PATCH, skipped if the operation never wrote anything. A
+        refine from a nested (flattened) ``end_operation`` is ignored; the
+        outer label wins.
+        """
+        group = self._operation_group
+        if group is None:
+            return
+        if group['depth'] > 1:
+            group['depth'] -= 1
+            return
+        self._operation_group = None
+        refined = message if message is not _UNSET_MESSAGE else group['refined']
+        if refined is not _UNSET_MESSAGE and group['written']:
+            try:
+                self.operation_groups.update(group['id'], refined)
+            except PlaidAPIError as e:
+                # 404: the group never materialized server-side (every tagged
+                # write failed or a batch was aborted). Nothing to relabel.
+                if e.status != 404:
+                    raise
 
     @contextmanager
-    def audit_message(self, message: str):
-        """Run the block with a custom audit-log message in effect, restoring
-        the previous message afterward (supports nesting). Use it to scope ONE
-        call (per-call precision) or MANY (a logical unit)::
+    def operation(self, message: str):
+        """Run the block as one logical operation (see ``begin_operation``),
+        ending it when the block exits — including on exception. The yielded
+        object's ``set_message(msg)`` refines the label once the outcome is
+        known::
 
-            with client.audit_message('Approve span {span_id}'):
-                client.spans.update(span_id, ...)
-
-            with client.audit_message('Import sentence'):
-                client.tokens.create(...)
-                client.spans.create(...)
-
-        See ``set_audit_message`` for the semantics of the message + templating.
+            with client.operation('Merge morphemes') as op:
+                with client.batched():
+                    ...
+                op.set_message(f'Merged {n} morphemes')
         """
-        prev = self._audit_message
-        self._audit_message = message
+        self.begin_operation(message)
+        group = self._operation_group
+        ctx = _OperationContext(group)
         try:
-            yield
+            yield ctx
         finally:
-            self._audit_message = prev
+            self.end_operation()
 
     def begin_batch(self) -> None:
         """Begin a batch of operations. Subsequent API calls will be queued."""
