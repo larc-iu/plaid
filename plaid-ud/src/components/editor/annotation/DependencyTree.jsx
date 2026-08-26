@@ -479,6 +479,18 @@ export const DependencyTree = forwardRef(
     };
 
     // Render dependency arc
+    // Commit an edited deprel label. A changed label always commits; an
+    // UNCHANGED label commits only when the human actually typed/picked it
+    // (`typed`) and the relation is a machine prediction — re-entering the
+    // machine's own label is a confirmation (provenance write contract), while
+    // merely opening the editor and leaving is not.
+    const commitLabel = (relation, v, typed) => {
+      const t = (v || '').trim();
+      if (!t) return;
+      const changed = t !== (relation.value || 'dep');
+      if (changed || (typed && isInferredRelation(relation))) onRelationUpdate(relation.id, t);
+    };
+
     const renderArc = (relation) => {
       // Check if this is a self-pointing relation (ROOT relation)
       const isSelfPointing = relation.source === relation.target;
@@ -578,9 +590,8 @@ export const DependencyTree = forwardRef(
               <DeprelEditor
                 relation={relation}
                 suggestions={deprelVocab}
-                onCommit={(v) => {
-                  const t = (v || '').trim();
-                  if (t && t !== (relation.value || 'dep')) onRelationUpdate(relation.id, t);
+                onCommit={(v, typed) => {
+                  commitLabel(relation, v, typed);
                   // Stay on this label (selected, not editing) so arrow/Tab nav
                   // continues; the refocus effect returns focus to its <text>.
                   setEditingRelation(null);
@@ -595,9 +606,8 @@ export const DependencyTree = forwardRef(
                   setEditingRelation(null);
                   setFocusedRelation(null);
                 }}
-                onTab={(v, shiftKey) => {
-                  const t = (v || '').trim();
-                  if (t && t !== (relation.value || 'dep')) onRelationUpdate(relation.id, t);
+                onTab={(v, shiftKey, typed) => {
+                  commitLabel(relation, v, typed);
                   const idx = sortedRelations.findIndex((r) => r.id === relation.id);
                   const nextIdx = shiftKey
                     ? idx > 0

@@ -394,3 +394,60 @@ test('Accept predictions (sentence) verifies the Form span too', async ({ page }
   });
   expect(span.metadata.provConfirmed).toBe(true);
 });
+
+test('re-typing the machine value (UPOS) verifies it; tabbing through does not', async ({
+  page,
+}) => {
+  await resetUpos();
+  const c = await openAnnotate(page);
+  const cell = page.locator(`[id="${S.morphIds[1]}-upos"]`);
+  // Pass through without typing: no commit.
+  await cell.focus();
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(600);
+  const span = await S.client.spans.get(S.uposDog);
+  expect(span.metadata.provConfirmed).toBeUndefined();
+  expect(apiSummary(c)).toEqual([]);
+  // Type the same value: verified.
+  await cell.focus();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('NOUN', { delay: 20 });
+  await page.keyboard.press('Enter');
+  const r = await readUpos(page, c);
+  dump('upos-retype-same', r);
+  expect(r.server.value).toBe('NOUN');
+  expect(r.server.metadata.provConfirmed).toBe(true);
+});
+
+test('re-typing the machine deprel label verifies the relation', async ({ page }) => {
+  await S.client.relations.patchMetadata(S.relNsubj, { ...MACHINE, provConfirmed: null });
+  const c = await openAnnotate(page);
+  const label = page.locator('.tree-deprel-text', { hasText: 'nsubj' }).first();
+  await label.click({ force: true });
+  const editor = page.locator('foreignObject input').first();
+  await expect(editor).toBeVisible();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('nsubj', { delay: 20 });
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1200);
+  const rel = await S.client.relations.get(S.relNsubj);
+  dump('deprel-retype-same', { server: rel.metadata, api: apiSummary(c) });
+  expect(rel.value).toBe('nsubj');
+  expect(rel.metadata.provConfirmed).toBe(true);
+});
+
+test('a word whose only machine material is its incoming relation shows the ✓', async ({
+  page,
+}) => {
+  await S.client.relations.patchMetadata(S.relDet, { ...MACHINE, provConfirmed: null });
+  await openAnnotate(page);
+  const theCol = page.locator('.token-column', {
+    has: page.locator(`[id="${S.morphIds[0]}-lemma"]`),
+  });
+  await expect(theCol.locator('.word-accept')).toHaveCount(1);
+  await page.locator(`[id="${S.morphIds[0]}-lemma"]`).focus();
+  await page.keyboard.press('Control+Enter');
+  await expect(theCol.locator('.word-accept')).toHaveCount(0, { timeout: 8000 });
+  const rel = await S.client.relations.get(S.relDet);
+  expect(rel.metadata.provConfirmed).toBe(true);
+});

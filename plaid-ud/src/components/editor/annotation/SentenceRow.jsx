@@ -74,13 +74,20 @@ const EditableCell = React.memo(
 
     const handleChange = (e) => {
       setLocalValue(e.target.value);
+      setPristine(false);
     };
 
     const handleBlur = (e) => {
       setIsEditing(false);
       const newValue = localValue.trim();
 
-      if (newValue !== (value || '')) {
+      const changed = newValue !== (value || '');
+      // Re-typing a machine prediction's value is a human confirmation
+      // (provenance write contract): commit it even though the value is the
+      // same, so the span gets verified. `pristine` guards this to actual
+      // typing — tabbing through a cell must not confirm anything.
+      const retyped = !changed && !pristine && isInferred && !!newValue;
+      if (changed || retyped) {
         onUpdate(tokenId, field, newValue || null).catch((error) => {
           console.error(`Failed to update ${field}:`, error);
           // Revert to original value on error
@@ -148,6 +155,7 @@ const EditableCell = React.memo(
 
     const handleFocus = () => {
       setIsEditing(true);
+      setPristine(true);
       // Select all text when focused
       setTimeout(() => {
         inputRef.current?.select();
@@ -639,14 +647,17 @@ const TokenColumn = React.memo(
     uposColors,
     featureInventory,
     visibleFields,
+    relationInferred,
   }) => {
-    // This word still has machine predictions a human hasn't reviewed. When so, a
+    // This word still has machine predictions a human hasn't reviewed (a span on
+    // it, or its incoming dependency relation — confirmTokens covers both). When so, a
     // ✓ reveals while you're on THIS word — discoverable at the moment, teaching
     // the Ctrl+Enter shortcut (tooltip). Keyboard focus reveals it via CSS
     // (:focus-within); mouse reveal is JS with a short close-delay so the ✓
     // survives the trip up across the dependency tree's SVG (which otherwise drops
     // a pure-CSS column hover before you can reach it).
     const wordInferred =
+      relationInferred ||
       isInferredSpan(data.form) ||
       isInferredSpan(data.lemma) ||
       isInferredSpan(data.xpos) ||
@@ -1043,6 +1054,20 @@ export const SentenceRow = React.memo(
       );
     }, [tokenData, relations]);
 
+    // Tokens whose incoming dependency relation is machine-made and unverified
+    // (the dependent is the relation's TARGET lemma span), for the per-word ✓.
+    const inferredRelTokenIds = useMemo(() => {
+      const tokenByLemma = new Map();
+      for (const d of tokenData) if (d.lemma?.id) tokenByLemma.set(d.lemma.id, d.token.id);
+      const ids = new Set();
+      for (const r of relations || []) {
+        if (provState(r.metadata) !== PROV_STATES.MACHINE) continue;
+        const tokenId = tokenByLemma.get(r.target);
+        if (tokenId) ids.add(tokenId);
+      }
+      return ids;
+    }, [tokenData, relations]);
+
     const handleConfirmSentence = useCallback(() => {
       onConfirmTokens?.(tokenData.map((d) => d.token.id));
     }, [onConfirmTokens, tokenData]);
@@ -1144,6 +1169,7 @@ export const SentenceRow = React.memo(
               uposColors={colors?.upos}
               featureInventory={vocab?.featureInventory}
               visibleFields={visibleFields}
+              relationInferred={inferredRelTokenIds.has(data.token.id)}
             />
           ))}
         </div>

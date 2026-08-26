@@ -141,6 +141,10 @@ async function openAnnotate(page) {
 }
 
 const opacityOf = (loc) => loc.evaluate((el) => getComputedStyle(el).opacity);
+const dogAccept = (page) =>
+  page
+    .locator('.token-column', { has: page.locator(`[id="${S.morphIds[1]}-lemma"]`) })
+    .locator('.word-accept');
 
 test('the sentence "Accept predictions" button is subtle, prominent on hover', async ({ page }) => {
   await openAnnotate(page);
@@ -156,8 +160,9 @@ test('the per-word ✓ is hidden by default and reveals on keyboard focus', asyn
 
   // "dog"'s UPOS is a machine prediction → rendered inferred (violet).
   await expect(page.locator('.editable-field--inferred')).toHaveCount(1);
-  const accept = page.locator('.word-accept');
-  await expect(accept).toHaveCount(1);
+  // Two ✓s: "dog" (UPOS span) and "the" (its incoming det relation is machine-made).
+  await expect(page.locator('.word-accept')).toHaveCount(2);
+  const accept = dogAccept(page);
   expect(await opacityOf(accept)).toBe('0'); // NOT always-visible
 
   // Focusing one of the word's cells reveals it (keyboard review). Use the lemma
@@ -168,7 +173,7 @@ test('the per-word ✓ is hidden by default and reveals on keyboard focus', asyn
 
 test('the per-word ✓ is reachable by mouse and accepts the word', async ({ page }) => {
   await openAnnotate(page);
-  const accept = page.locator('.word-accept');
+  const accept = dogAccept(page);
 
   await page.locator(`[id="${S.morphIds[1]}-lemma"]`).hover(); // mouse reveal
   await expect.poll(() => opacityOf(accept)).toBe('1');
@@ -176,7 +181,8 @@ test('the per-word ✓ is reachable by mouse and accepts the word', async ({ pag
   // Must survive the trip up to it (across the tree SVG) and be clickable.
   await accept.click();
   await expect(page.locator('.editable-field--inferred')).toHaveCount(0, { timeout: 8000 });
-  await expect(page.locator('.word-accept')).toHaveCount(0, { timeout: 8000 });
+  await expect(dogAccept(page)).toHaveCount(0, { timeout: 8000 });
+  await expect(page.locator('.word-accept')).toHaveCount(1); // "the" still pending
 });
 
 test('an unapproved dependency edge is violet + dashed', async ({ page }) => {

@@ -125,7 +125,10 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
         setPristine(true);
         setTimeout(() => e.target.select?.(), 0);
       }}
-      onBlur={() => once(() => onCommit(value))}
+      // The second argument tells the caller whether the human actually typed /
+      // picked (vs. just opened and left): re-entering the machine's own label
+      // is a confirmation, but merely passing through the editor is not.
+      onBlur={() => once(() => onCommit(value, !pristine))}
       // Arrow-key navigation only HIGHLIGHTS an option; it doesn't update
       // `value`. Mantine applies the highlighted option via onOptionSubmit (on
       // Enter or click) — commit *that* value. The Enter branch below handles
@@ -133,7 +136,7 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
       // deferred to a microtask so that when an option IS highlighted,
       // onOptionSubmit (which runs synchronously right after our keydown) wins
       // and `once` blocks the stale typed-value commit.
-      onOptionSubmit={(v) => once(() => onCommit(v))}
+      onOptionSubmit={(v) => once(() => onCommit(v, true))}
       onKeyDown={(e) => {
         // stopPropagation so the dependency tree's global document keydown
         // listener (Escape = bail, Ctrl+D = enter) doesn't also fire while the
@@ -142,7 +145,7 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
         if (e.key === 'Enter') {
           e.preventDefault();
           e.stopPropagation();
-          queueMicrotask(() => once(() => onCommit(value)));
+          queueMicrotask(() => once(() => onCommit(value, !pristine)));
         } else if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
@@ -154,7 +157,7 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
         } else if (e.key === 'Tab') {
           e.preventDefault();
           e.stopPropagation();
-          once(() => onTab(value, e.shiftKey));
+          once(() => onTab(value, e.shiftKey, !pristine));
         }
       }}
       filter={optionsFilter}
