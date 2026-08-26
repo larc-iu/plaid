@@ -17,7 +17,7 @@
 // outside any focused-cell interaction, so a full resync is the simple,
 // correct move (same as the service-backed auto-link path).
 
-import { stampInferred, provState, PROV, PROV_STATES } from '@larc-iu/plaid-client';
+import { stampInferred, isMachine, PROV_CONFIRMED, PROV_STATES } from '@larc-iu/plaid-client';
 import { isUnanalyzedWord } from '../analysisMemory.js';
 
 // The server caps a single atomic batch at 1000 ops (plaid-core
@@ -194,7 +194,7 @@ export const analysisCopyMutations = {
       this.setError(`Word ${wordTokenId} not found`);
       return false;
     }
-    const confirm = { [PROV.confirmedKey]: true };
+    const confirm = PROV_CONFIRMED;
     const spanIds = [];
     const tokenIds = [];
     const linkIds = [];
@@ -202,9 +202,9 @@ export const analysisCopyMutations = {
     const collect = (t, isMorph) => {
       if (t.vocabItem?.prov === PROV_STATES.MACHINE) linkIds.push(t.vocabItem.linkId);
       for (const span of Object.values(t.annotations || {})) {
-        if (span && provState(span.metadata) === PROV_STATES.MACHINE) spanIds.push(span.id);
+        if (span && isMachine(span.metadata)) spanIds.push(span.id);
       }
-      if (isMorph && provState(t.metadata) === PROV_STATES.MACHINE) tokenIds.push(t.id);
+      if (isMorph && isMachine(t.metadata)) tokenIds.push(t.id);
     };
     collect(token, false);
     for (const m of token.morphemes || []) collect(m, true);

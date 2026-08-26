@@ -1792,9 +1792,11 @@ export {
 export {
   PROV,
   PROV_STATES,
+  PROV_CONFIRMED,
   stampInferred,
   confirmedInferred,
   provState,
+  isMachine,
   isProtected,
   verifyOnEdit,
   serviceSource,

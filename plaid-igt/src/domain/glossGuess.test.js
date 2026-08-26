@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { docFrequencyGuessSource, confirmedGuessProvenance, PROV } from './glossGuess.js';
+import { docFrequencyGuessSource } from './glossGuess.js';
 
 const sent = (tokens) => [{ tokens }];
 const word = (content, annotations = {}, morphemes = []) => ({
@@ -56,15 +56,5 @@ describe('docFrequencyGuessSource', () => {
     expect(g.guessFor('word', 'se', 'POS')?.value).toBe('PRON');
     expect(g.guessFor('morpheme', 'se', 'Gloss')).toBeNull(); // empty value never counted
     expect(g.guessFor('morpheme', 'se', 'POS')).toBeNull(); // kind-scoped
-  });
-});
-
-describe('confirmedGuessProvenance', () => {
-  it('produces the flat provenance keys', () => {
-    expect(confirmedGuessProvenance('gloss:doc-frequency')).toEqual({
-      [PROV.key]: 'inferred',
-      [PROV.sourceKey]: 'gloss:doc-frequency',
-      [PROV.confirmedKey]: true,
-    });
   });
 });

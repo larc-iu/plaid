@@ -658,12 +658,35 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(doc.alignmentTokens[0].metadata.timeBegin).toBe(0);
     const ok = await doc.updateAlignmentBounds('a-1', { timeBegin: 5, timeEnd: 6 });
     expect(ok).toBe(true);
-    // PATCH (merge), not setMetadata (replace) — preserves prov; a human boundary
-    // edit also stamps provConfirmed per the cross-app provenance convention.
+    // PATCH (merge), not setMetadata (replace). A human-made segment stays
+    // human: no prov keys appear (verifyOnEdit only stamps machine material).
     expect(kinds(doc.client)).toContain('tokens.patchMetadata');
-    expect(doc.alignmentTokens[0].metadata.timeBegin).toBe(5);
-    expect(doc.alignmentTokens[0].metadata.timeEnd).toBe(6);
-    expect(doc.alignmentTokens[0].metadata.provConfirmed).toBe(true);
+    expect(doc.alignmentTokens[0].metadata).toEqual({ timeBegin: 5, timeEnd: 6 });
+  });
+
+  it('updateAlignmentBounds verifies a machine-made segment (write-contract rule 3)', async () => {
+    const machine = { prov: 'inferred', provSource: 'service:asr', provDetail: { model: 'x' } };
+    const raw = buildRawDoc({
+      alignmentTokens: [
+        {
+          id: 'a-1',
+          text: 'text-1',
+          begin: 0,
+          end: 3,
+          metadata: { timeBegin: 0, timeEnd: 1, ...machine },
+        },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    const ok = await doc.updateAlignmentBounds('a-1', { timeBegin: 5, timeEnd: 6 });
+    expect(ok).toBe(true);
+    // prov/provSource/provDetail survive the merge and provConfirmed is stamped.
+    expect(doc.alignmentTokens[0].metadata).toEqual({
+      timeBegin: 5,
+      timeEnd: 6,
+      ...machine,
+      provConfirmed: true,
+    });
   });
 
   it('deleteAlignment removes the alignment text range', async () => {

@@ -14,7 +14,7 @@
 // so measurement/slicing/search uses cpLength/cpSlice/cpIndexOf, not the UTF-16
 // `.length`/`.substring`/`.indexOf` (which mis-place tokens around astral text).
 
-import { cpLength, cpSlice, cpIndexOf } from '@larc-iu/plaid-client';
+import { cpLength, cpSlice, cpIndexOf, verifyOnEdit } from '@larc-iu/plaid-client';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
@@ -482,19 +482,14 @@ export const alignmentMutations = {
     return this._withSaving('Failed to update alignment boundaries', async () => {
       // PATCH (shallow-merge), not setMetadata (full replace): a manual boundary
       // drag must preserve the segment's provenance (prov/provSource/provDetail),
-      // and per the cross-app convention "any human edit verifies" we stamp
-      // provConfirmed. setMetadata would wipe prov, recording a machine-made
-      // segment as origin-less.
-      await this._client.tokens.patchMetadata(alignmentId, {
-        timeBegin,
-        timeEnd,
-        provConfirmed: true,
-      });
+      // and per the cross-app convention "any human edit verifies" a machine-made
+      // segment picks up provConfirmed (write-contract rule 3). setMetadata would
+      // wipe prov, recording a machine-made segment as origin-less.
+      const patch = { timeBegin, timeEnd, ...(verifyOnEdit(token.metadata) || {}) };
+      await this._client.tokens.patchMetadata(alignmentId, patch);
       this._applyRawPatch((next, infoNext) => {
         const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
-        if (t) {
-          t.metadata = { ...(t.metadata || {}), timeBegin, timeEnd, provConfirmed: true };
-        }
+        if (t) t.metadata = { ...(t.metadata || {}), ...patch };
       });
     });
   },

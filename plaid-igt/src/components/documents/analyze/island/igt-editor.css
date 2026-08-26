@@ -833,19 +833,19 @@
 }
 /* Inferred (auto-made, unconfirmed) links: the machine-suggestion violet, same
    color language as gloss guesses. Confirming (popover) returns them to gray. */
-.igt-vocab__hint--inferred {
+.igt-vocab__hint--machine {
   color: var(--igt-violet);
   text-decoration-color: #c4b5fd;
   font-style: italic;
 }
-.igt-vocab__hint--inferred:hover:not(:disabled),
-.igt-vocab__hint--inferred:focus-visible {
+.igt-vocab__hint--machine:hover:not(:disabled),
+.igt-vocab__hint--machine:focus-visible {
   color: var(--igt-violet);
   text-decoration-color: currentColor;
 }
 /* Active target of the Ctrl+Arrow link-review sweep: a soft violet fill (on top
    of the opener's blue focus outline) so the suggestion under review is obvious. */
-.igt-vocab__hint--inferred:focus-visible {
+.igt-vocab__hint--machine:focus-visible {
   background: #ede9fe;
   border-radius: 3px;
 }

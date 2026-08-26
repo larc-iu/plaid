@@ -6,7 +6,7 @@
 // `_vocabularies`). A token id here may be a word OR morpheme token; the
 // link/create operation is identical either way.
 
-import { stampInferred, provState, PROV, PROV_STATES } from '@larc-iu/plaid-client';
+import { stampInferred, isMachine, PROV_CONFIRMED } from '@larc-iu/plaid-client';
 
 // Link replacements emit 2 ops apiece (delete + create); 400 per batch keeps
 // each atomic batch comfortably under plaid-core's 1000-op cap.
@@ -56,7 +56,7 @@ export const vocabMutations = {
         continue;
       }
       // Replace only machine-unverified links, and only when the item changes.
-      if (provState(link.metadata) !== PROV_STATES.MACHINE) continue;
+      if (!isMachine(link.metadata)) continue;
       if (link.vocabItem?.id === item.id) continue;
       replaces.push({ tokenId: p.tokenId, item, priorLinkId: link.id });
     }
@@ -92,13 +92,13 @@ export const vocabMutations = {
   async confirmVocabLink(tokenId) {
     const { link, vocabId } = findPriorLink(this._vocabularies, tokenId);
     if (!link || !vocabId) return false;
-    if (provState(link.metadata) !== PROV_STATES.MACHINE) return false;
+    if (!isMachine(link.metadata)) return false;
 
     return this._withSaving('Failed to confirm link', async () => {
-      await this._client.vocabLinks.patchMetadata(link.id, { [PROV.confirmedKey]: true });
+      await this._client.vocabLinks.patchMetadata(link.id, PROV_CONFIRMED);
       this._applyRawPatch((next, info, vocabs) => {
         const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
-        if (l) l.metadata = { ...(l.metadata || {}), [PROV.confirmedKey]: true };
+        if (l) l.metadata = { ...(l.metadata || {}), ...PROV_CONFIRMED };
       });
     });
   },
@@ -106,7 +106,7 @@ export const vocabMutations = {
   // Link a vocab item to a token (word or morpheme). If a prior single-token
   // link exists for this token, delete it and create the new link atomically.
   // `metadata` (optional) carries provenance for machine-produced links (see
-  // domain/glossGuess.js PROV); human links from the popover pass none.
+  // the shared provenance helpers); human links from the popover pass none.
   async linkVocab(tokenId, vocabItemId, metadata = null) {
     const { vocab: targetVocab, item: vocabItem } = findVocabForItem(
       this._vocabularies,

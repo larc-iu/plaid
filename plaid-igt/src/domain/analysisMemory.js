@@ -83,7 +83,7 @@ export function extractAnalysis(token) {
   const word = { vocabItemId: null, fields: {} };
   if (token.vocabItem) {
     word.vocabItemId = token.vocabItem.id;
-    votes.push(token.vocabItem.prov ?? PROV_STATES.HUMAN);
+    votes.push(token.vocabItem.prov);
   }
   for (const [name, span] of filledAnnotations(token.annotations)) {
     word.fields[name] = span.value;
@@ -99,7 +99,7 @@ export function extractAnalysis(token) {
     };
     if (m.vocabItem) {
       entry.vocabItemId = m.vocabItem.id;
-      votes.push(m.vocabItem.prov ?? PROV_STATES.HUMAN);
+      votes.push(m.vocabItem.prov);
     }
     for (const [name, span] of filledAnnotations(m.annotations)) {
       entry.fields[name] = span.value;

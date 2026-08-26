@@ -23,6 +23,8 @@
 // that produces [{ tokenId, vocabItemId }] proposals (including a service-
 // backed provider) can feed IgtDocument.bulkLinkVocab the same way.
 
+import { PROV_STATES } from '@larc-iu/plaid-client';
+
 export const AUTO_LINK_SOURCE = 'rule:precedent-or-unique';
 
 const morphFormOf = (m) => {
@@ -115,12 +117,14 @@ function resolveForm(form, precedent, items) {
 
 // Is a word/morpheme open to (re)linking, and what does it currently point at?
 // Open when it has no link or only a machine-UNVERIFIED one; human and
-// human-confirmed (verified) links are protected. `vocabItem.inferred` is the
-// derived MACHINE flag (provState === 'machine'; see derive.js).
+// human-confirmed (verified) links are protected. `vocabItem.prov` is the
+// derived provenance state of the link (see derive.js).
 function linkTarget(entity) {
   const v = entity?.vocabItem;
   if (!v) return { open: true, currentItemId: null };
-  return v.inferred ? { open: true, currentItemId: v.id } : { open: false, currentItemId: null };
+  return v.prov === PROV_STATES.MACHINE
+    ? { open: true, currentItemId: v.id }
+    : { open: false, currentItemId: null };
 }
 
 // The built-in proposal provider: every word/morpheme open to linking whose

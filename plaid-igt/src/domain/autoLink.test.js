@@ -88,9 +88,9 @@ describe('computeAutoLinkProposals', () => {
   it('replaces a machine-unverified link when the rule resolves a different item; leaves same-item and protected links', () => {
     const precedentTable = buildPrecedentTable([res([['i-all', null, 'todos', 5]])]);
     const sentences = sentence([
-      word('w1', 'todos', { id: 'i-se1', inferred: true }), // machine, rule says i-all -> replace
-      word('w2', 'todos', { id: 'i-all', inferred: true }), // machine, already i-all -> no-op
-      word('w3', 'todos', { id: 'i-se1', inferred: false }), // human/verified -> protected, skip
+      word('w1', 'todos', { id: 'i-se1', prov: 'machine' }), // machine, rule says i-all -> replace
+      word('w2', 'todos', { id: 'i-all', prov: 'machine' }), // machine, already i-all -> no-op
+      word('w3', 'todos', { id: 'i-se1', prov: 'human' }), // human/verified -> protected, skip
     ]);
     const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedentTable });
     expect(proposals).toEqual([

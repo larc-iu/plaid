@@ -96,6 +96,16 @@ export const confirmedInferred = (source, extras = {}) => ({
 });
 
 /**
+ * The metadata fragment that verifies machine-made material:
+ * { provConfirmed: true }. Merge (PATCH) it over existing metadata so
+ * prov/provSource/provProb/provDetail survive. This is what verifyOnEdit
+ * returns for machine-unverified material; use it directly for explicit
+ * confirmation gestures (a "confirm" button, confirm-on-touch) where the
+ * caller has already checked isMachine.
+ */
+export const PROV_CONFIRMED = Object.freeze({ [PROV.confirmedKey]: true });
+
+/**
  * Classify an entity's metadata into one of PROV_STATES.
  * @param {Object|null|undefined} metadata
  * @returns {'human'|'machine'|'verified'}
@@ -106,18 +116,24 @@ export const provState = (metadata) => {
 };
 
 /**
+ * Whether this entity is machine-made and not yet human-verified — the
+ * material that still needs review, that machine writers may replace, and
+ * that a human confirmation gesture acts on. Complement of isProtected.
+ */
+export const isMachine = (metadata) => provState(metadata) === PROV_STATES.MACHINE;
+
+/**
  * Whether a machine writer must leave this entity alone (write-contract
  * rule 2): true for human-made and human-verified material.
  */
-export const isProtected = (metadata) => provState(metadata) !== PROV_STATES.MACHINE;
+export const isProtected = (metadata) => !isMachine(metadata);
 
 /**
  * The metadata fragment a HUMAN edit of this entity should merge in
- * (write-contract rule 3): { provConfirmed: true } when the entity is
- * machine-made and unverified, else null (nothing to do).
+ * (write-contract rule 3): PROV_CONFIRMED when the entity is machine-made
+ * and unverified, else null (nothing to do).
  */
-export const verifyOnEdit = (metadata) =>
-  (provState(metadata) === PROV_STATES.MACHINE ? { [PROV.confirmedKey]: true } : null);
+export const verifyOnEdit = (metadata) => (isMachine(metadata) ? PROV_CONFIRMED : null);
 
 /** Canonical provSource for a service: 'service:<serviceId>'. */
 export const serviceSource = (serviceId) => `service:${serviceId}`;

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PROV, PROV_STATES, stampInferred, confirmedInferred, provState,
-  isProtected, verifyOnEdit, serviceSource,
+  PROV, PROV_STATES, PROV_CONFIRMED, stampInferred, confirmedInferred, provState,
+  isMachine, isProtected, verifyOnEdit, serviceSource,
 } from '../src/provenance.js';
 
 test('stampInferred produces the machine-unverified fragment', () => {
@@ -57,7 +57,21 @@ test('isProtected: human and verified are protected, machine is not', () => {
   assert.equal(isProtected({ prov: 'inferred', provConfirmed: true }), true);
 });
 
+test('isMachine is the complement of isProtected', () => {
+  for (const m of [null, {}, { prov: 'inferred' }, { prov: 'inferred', provConfirmed: true }]) {
+    assert.equal(isMachine(m), !isProtected(m));
+  }
+  assert.equal(isMachine({ prov: 'inferred', provSource: 'x' }), true);
+});
+
+test('PROV_CONFIRMED is the verifying fragment and is frozen', () => {
+  assert.deepEqual(PROV_CONFIRMED, { provConfirmed: true });
+  assert.ok(Object.isFrozen(PROV_CONFIRMED));
+  assert.equal(provState({ ...stampInferred('x'), ...PROV_CONFIRMED }), PROV_STATES.VERIFIED);
+});
+
 test('verifyOnEdit stamps only machine-unverified material', () => {
+  assert.equal(verifyOnEdit({ prov: 'inferred', provSource: 'x' }), PROV_CONFIRMED);
   assert.deepEqual(verifyOnEdit({ prov: 'inferred', provSource: 'x' }),
     { [PROV.confirmedKey]: true });
   assert.equal(verifyOnEdit(undefined), null);

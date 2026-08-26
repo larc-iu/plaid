@@ -16,14 +16,14 @@ import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
-import { provState, PROV_STATES } from '@larc-iu/plaid-client';
+import { provState, PROV_STATES, confirmedInferred } from '@larc-iu/plaid-client';
 import {
   readOrthographies,
   readIgnoredTokens,
   readVocabFields,
   isTokenIgnored,
 } from '@/domain/igtConfig';
-import { docFrequencyGuessSource, confirmedGuessProvenance } from '@/domain/glossGuess';
+import { docFrequencyGuessSource } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import { morphemeJoiner, isStemType, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
@@ -73,25 +73,23 @@ const morphFormOf = (m) =>
     ? (m.metadata.form ?? '')
     : (m.content ?? '');
 
-// Display-relevant provenance state of a filled annotation span: 'machine'
-// (unverified, violet + dashed) or 'verified' (confirmed, quiet check); null
-// for human-made values and empty cells, which render plain.
-const spanProv = (span) => {
-  if (!span || (span.value ?? '') === '') return null;
-  const s = provState(span.metadata);
-  return s === PROV_STATES.HUMAN ? null : s;
-};
-
-// Same classification for an entity's raw metadata (morpheme tokens).
-const metaProv = (metadata) => {
+// Display-relevant provenance of an entity's metadata: null for human-made
+// material (renders plain), else 'machine' (unverified: violet + dashed) or
+// 'verified' (confirmed: quiet). The state doubles as the CSS modifier suffix
+// (igt-field--machine, igt-vocab__hint--verified, igt-legend__prov--machine).
+// Empty cells are the caller's concern (_field only styles filled values).
+const provDisplay = (metadata) => {
   const s = provState(metadata);
   return s === PROV_STATES.HUMAN ? null : s;
 };
+const provClass = (base, state) => (state ? `${base}--${state}` : '');
 
 const PROV_TITLE = {
-  machine: 'machine-suggested, unverified — edit to fix, Ctrl+Enter confirms the whole word',
-  verified: 'machine-suggested, confirmed',
+  [PROV_STATES.MACHINE]:
+    'machine-suggested, unverified — edit to fix, Ctrl+Enter confirms the whole word',
+  [PROV_STATES.VERIFIED]: 'machine-suggested, confirmed',
 };
+const provTitle = (value, state) => `${value} — ${PROV_TITLE[state]}`;
 
 export class IgtEditor {
   constructor(container, doc, { readOnly = false } = {}) {
@@ -550,7 +548,7 @@ export class IgtEditor {
 
   // Inferred, actionable chips in DOM (= reading) order.
   _inferredChips() {
-    return [...this.container.querySelectorAll('button.igt-vocab__hint--inferred:not([disabled])')];
+    return [...this.container.querySelectorAll('button.igt-vocab__hint--machine:not([disabled])')];
   }
 
   // The inferred chip after ('next') / before ('prev') the current focus, or
@@ -594,7 +592,7 @@ export class IgtEditor {
     // Accept/reject the focused suggestion (Space/click still opens the popover
     // to change it). Only an inferred chip is actionable here.
     const el = document.activeElement;
-    if (!el?.classList?.contains('igt-vocab__hint--inferred')) return;
+    if (!el?.classList?.contains('igt-vocab__hint--machine')) return;
     const tokenId = el.dataset.vocabOpener;
     if (!tokenId) return;
     if (e.key === 'Enter') {
@@ -730,7 +728,8 @@ export class IgtEditor {
 
   // Commit an annotation/orthography cell on blur if its value changed. Routed
   // through the op chain so it serializes with structural edits. A value
-  // adopted from a guess (see _maybeConfirmGuess) carries provenance metadata.
+  // adopted from a guess (see _maybeConfirmGuess) carries a born-verified
+  // provenance fragment; a typed value carries none (apply(value, null)).
   _commitField(e, apply) {
     if (this.readOnly) return;
     const el = e.target;
@@ -739,13 +738,13 @@ export class IgtEditor {
       return;
     }
     const next = el.value;
-    const prov =
+    const fragment =
       el.dataset.guessConfirmed === '1' && next === el.dataset.guessValue
-        ? confirmedGuessProvenance(el.dataset.guessSource || 'unknown')
+        ? confirmedInferred(el.dataset.guessSource || 'unknown')
         : null;
     delete el.dataset.guessConfirmed;
     if (next === (el.dataset.orig ?? '')) return;
-    this._run(() => apply(next, prov));
+    this._run(() => apply(next, fragment));
   }
 
   _field({
@@ -787,7 +786,7 @@ export class IgtEditor {
     return html`<input
       class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g
         ? 'igt-field--guess'
-        : ''} ${p ? `igt-field--${p}` : ''} ${extraClass}"
+        : ''} ${provClass('igt-field', p)} ${extraClass}"
       data-cell-key=${key}
       data-guess-value=${g ? g.value : nothing}
       data-guess-source=${g ? g.source : nothing}
@@ -796,7 +795,7 @@ export class IgtEditor {
       title=${g
         ? `Guess: ${g.value} — Enter confirms, typing replaces`
         : p
-          ? `${v} — ${PROV_TITLE[p]}`
+          ? provTitle(v, p)
           : filled
             ? v
             : (ariaLabel ?? nothing)}
@@ -1587,10 +1586,10 @@ export class IgtEditor {
               ${this._field({
                 key: `wa:${token.id}:${name}`,
                 value: token.annotations?.[name]?.value ?? '',
-                apply: (v, prov) => this.doc.updateTokenSpan(token.id, name, v, prov),
+                apply: (v, meta) => this.doc.updateTokenSpan(token.id, name, v, meta),
                 ariaLabel: `${name} for ${token.content}`,
                 guess: ctx.guess?.guessFor('word', token.content, name) ?? null,
-                prov: spanProv(token.annotations?.[name]),
+                prov: provDisplay(token.annotations?.[name]?.metadata),
                 confirmWord: token.id,
               })}
             </div>`,
@@ -1655,7 +1654,7 @@ export class IgtEditor {
     const stem = isStemType(morph.vocabItem?.metadata?.morphType);
     // Machine-made segmentation (copied analyses) marks the morpheme TOKEN's
     // metadata; the form cell carries the unverified/verified styling.
-    const prov = metaProv(morph.metadata);
+    const prov = provDisplay(morph.metadata);
     return html`
       <div class="igt-morph-col">
         <div class="igt-morph-form ${stem ? 'igt-morph-form--stem' : ''}">
@@ -1663,13 +1662,13 @@ export class IgtEditor {
             html`<input
               class="igt-field igt-morph-field ${filled
                 ? 'igt-field--filled'
-                : 'igt-field--empty'} ${prov ? `igt-field--${prov}` : ''}"
+                : 'igt-field--empty'} ${provClass('igt-field', prov)}"
               data-cell-key=${`mf:${morph.id}`}
               data-word=${word.id}
               data-prec=${morph.precedence ?? 1}
               data-confirm-word=${word.id}
               aria-label=${`Morpheme form${value ? ` ${value}` : ''}`}
-              title=${prov ? `${value} — ${PROV_TITLE[prov]}` : filled ? value : nothing}
+              title=${prov ? provTitle(value, prov) : filled ? value : nothing}
               size=${this._fieldSize(value)}
               ?disabled=${this.readOnly}
               ${uncontrolledValue(value)}
@@ -1688,11 +1687,11 @@ export class IgtEditor {
               ${this._field({
                 key: `ma:${morph.id}:${name}`,
                 value: morph.annotations?.[name]?.value ?? '',
-                apply: (v, prov) => this.doc.updateMorphemeSpan(morph.id, name, v, prov),
+                apply: (v, meta) => this.doc.updateMorphemeSpan(morph.id, name, v, meta),
                 extraClass: 'igt-morph-field',
                 ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
                 guess: ctx.guess?.guessFor('morpheme', value, name) ?? null,
-                prov: spanProv(morph.annotations?.[name]),
+                prov: provDisplay(morph.annotations?.[name]?.metadata),
                 confirmWord: word.id,
               })}
             </div>
@@ -1741,15 +1740,10 @@ export class IgtEditor {
     };
     let opener = nothing;
     if (vocabItem) {
-      // Three-way provenance: human links plain, machine-unverified violet
-      // ("inferred"), machine-verified quietly marked.
-      const state = vocabItem.prov ?? PROV_STATES.HUMAN;
-      const stateClass =
-        state === PROV_STATES.MACHINE
-          ? 'igt-vocab__hint--inferred'
-          : state === PROV_STATES.VERIFIED
-            ? 'igt-vocab__hint--verified'
-            : '';
+      // Three-way provenance: human links plain, machine-unverified violet,
+      // machine-verified quietly marked. derive.js always sets vocabItem.prov.
+      const state = vocabItem.prov;
+      const stateClass = provClass('igt-vocab__hint', state === PROV_STATES.HUMAN ? null : state);
       const title =
         state === PROV_STATES.MACHINE
           ? `Auto-linked to "${vocabItem.form}" — open to confirm or change`
@@ -1893,10 +1887,10 @@ export class IgtEditor {
       ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;`
       : '';
 
-    // For an INFERRED link, selecting the linked row CONFIRMS it (the human
-    // gesture that flips provConfirmed); for a human link it unlinks (toggle),
-    // as before. The explicit "unlink" mini-action is always available.
-    const inferredCurrent = !!currentItem?.inferred;
+    // For a machine-unverified link, selecting the linked row CONFIRMS it (the
+    // human gesture that flips provConfirmed); for a human link it unlinks
+    // (toggle), as before. The explicit "unlink" mini-action is always available.
+    const inferredCurrent = currentItem?.prov === PROV_STATES.MACHINE;
     const selectActive = () => {
       if (activeIdx < limited.length) {
         const it = limited[activeIdx];

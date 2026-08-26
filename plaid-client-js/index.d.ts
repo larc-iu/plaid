@@ -442,9 +442,13 @@ export function confirmedInferred(source: string, extras?: ProvExtras):
   { prov: 'inferred'; provSource: string; provConfirmed: true; provProb?: number; provDetail?: Record<string, any> };
 /** Classify an entity's metadata into one of the three provenance states. */
 export function provState(metadata: object | null | undefined): ProvState;
-/** Whether a machine writer must leave this entity alone (human or verified). */
+/** The verifying fragment, { provConfirmed: true }: PATCH it over existing metadata. */
+export const PROV_CONFIRMED: { readonly provConfirmed: true };
+/** Machine-made and not yet human-verified (needs review, replaceable, confirmable). */
+export function isMachine(metadata: object | null | undefined): boolean;
+/** Whether a machine writer must leave this entity alone (human or verified). !isMachine. */
 export function isProtected(metadata: object | null | undefined): boolean;
-/** The fragment a HUMAN edit should merge in: { provConfirmed: true } iff machine-unverified, else null. */
-export function verifyOnEdit(metadata: object | null | undefined): { provConfirmed: true } | null;
+/** The fragment a HUMAN edit should merge in: PROV_CONFIRMED iff machine-unverified, else null. */
+export function verifyOnEdit(metadata: object | null | undefined): { readonly provConfirmed: true } | null;
 /** Canonical provSource for a service: 'service:<serviceId>'. */
 export function serviceSource(serviceId: string): string;

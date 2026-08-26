@@ -8,7 +8,7 @@
 // findSentenceForToken) are produced together so they stay in sync with
 // `sentences`.
 
-import { provState, PROV_STATES } from '@larc-iu/plaid-client';
+import { provState } from '@larc-iu/plaid-client';
 import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
 
 // Local copy of plaid-client-js's cpSlicer (spread the body into code points
@@ -276,11 +276,10 @@ function collectSingleTokenVocabLinks(vocabularies) {
         vocabId: vocab.id,
         vocabName: vocab.name,
         linkId: link.id,
-        // Provenance state ('human' | 'machine' | 'verified') — the editor
-        // renders all three distinctly. `inferred` kept as the legacy boolean
-        // (machine-made and not yet human-confirmed).
+        // Provenance state ('human' | 'machine' | 'verified') of the LINK —
+        // the editor renders all three distinctly; the auto-linker and
+        // analysis memory treat 'machine' as replaceable/unvouched.
         prov: provState(linkMeta),
-        inferred: provState(linkMeta) === PROV_STATES.MACHINE,
       };
     });
   });
