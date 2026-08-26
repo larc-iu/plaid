@@ -28,6 +28,7 @@
             [plaid.rest-api.v1.relation-layer :refer [relation-layer-routes]]
             [plaid.rest-api.v1.relation :refer [relation-routes]]
             [plaid.rest-api.v1.audit :refer [audit-routes]]
+            [plaid.rest-api.v1.operation-group :refer [operation-group-routes]]
             [plaid.rest-api.v1.batch :refer [batch-routes]]
             [plaid.rest-api.v1.vocab-layer :refer [vocab-layer-routes]]
             [plaid.rest-api.v1.vocab-item :refer [vocab-item-routes]]
@@ -100,6 +101,7 @@
              relation-routes
              relation-layer-routes
              audit-routes
+             operation-group-routes
              batch-routes
              vocab-layer-routes
              vocab-item-routes
@@ -174,6 +176,10 @@
                                        ;; templated `?audit-message=`. Runs per
                                        ;; batch sub-op (re-routed via rest-handler).
                                        prm/wrap-audit-message
+                                       ;; Binds op/*current-group-id* from
+                                       ;; `?group-id=` (logical-operation
+                                       ;; grouping). Also per batch sub-op.
+                                       prm/wrap-operation-group
                                        openapi/openapi-feature]}})
                  (ring/create-default-handler))]
     ;; Wrap handler to inject itself into requests for bulk operations

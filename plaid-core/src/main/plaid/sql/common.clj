@@ -74,7 +74,7 @@
   "SQL result keys whose schema meaning is always a UUID. Ambiguous string
   identifiers (`user_id`, `service_id`) are deliberately absent. Generated
   aliases must be declared through q's `:uuid-cols` option."
-  #{:batch_id :document_id :entity_id :op_id :parent_token_layer_id
+  #{:batch_id :document_id :entity_id :group_id :op_id :parent_token_layer_id
     :project_id :relation_layer_id :source_span_id :span_id :span_layer_id
     :target_span_id :text_id :text_layer_id :token_id :token_layer_id
     :vocab_item_id :vocab_layer_id :vocab_link_id})

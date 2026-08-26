@@ -416,24 +416,24 @@
   threat model); it just bounds pathological description bloat."
   1000)
 
-(defn- raw-audit-message-param
-  "Pull the raw `audit-message=` value out of the request's query string
+(defn- raw-query-param
+  "Pull the raw `<pname>=` value out of the request's query string
   (URL-decoded), or nil if absent. Read from the raw query string — not
-  `:parameters` — because the param is not declared in route OpenAPI
-  schemas, so reitit/malli request coercion (`:strip-extra-keys true` +
-  closed schemas) drops it before middleware would see it. Same approach
-  as `as-of`/`document-version`.
+  `:parameters` — because these audit params are not declared in route
+  OpenAPI schemas, so reitit/malli request coercion (`:strip-extra-keys
+  true` + closed schemas) drops them before middleware would see them. Same
+  approach as `as-of`/`document-version`.
 
   Takes everything after the FIRST `=` so an encoded `%3D` inside the
-  message survives. Param NAME match is case-insensitive. Falls back to
+  value survives. Param NAME match is case-insensitive. Falls back to
   the raw (still-encoded) value if URLDecoder rejects a malformed
   `%`-sequence rather than 500-ing."
-  [request]
+  [request ^String pname]
   (when-let [qs (:query-string request)]
     (some (fn [^String p]
             (let [eq (.indexOf p "=")]
               (when (and (pos? eq)
-                         (= "audit-message" (str/lower-case (subs p 0 eq))))
+                         (= pname (str/lower-case (subs p 0 eq))))
                 (let [v (subs p (inc eq))]
                   (try
                     (java.net.URLDecoder/decode v "UTF-8")
@@ -504,9 +504,38 @@
   stored verbatim — HTML-escaping for display is the audit UI's job."
   [handler]
   (fn [request]
-    (if-let [raw (raw-audit-message-param request)]
+    (if-let [raw (raw-query-param request "audit-message")]
       (binding [op/*custom-description*
                 (truncate-audit-message
                  (apply-audit-template raw (template-lookup-map request)))]
         (handler request))
+      (handler request))))
+
+(defn wrap-operation-group
+  "When a write request carries `?group-id=<uuid>` (plus an optional
+  `?group-message=<text>`), bind `plaid.sql.operation/*current-group-id*` /
+  `*current-group-message*` so the operation row is stamped with the
+  logical-operation group and the group row is lazily created on first
+  sight (see `plaid.sql.operation/ensure-group-row!`).
+
+  Registered as GLOBAL middleware (`core.clj`) so it also runs for every
+  batch sub-operation re-routed through `rest-handler` — the client stamps
+  each queued op's path. Harmless on GET.
+
+  The id is client-minted (a correlation id the client propagates across
+  however many requests make up the logical operation); it must parse as a
+  UUID, otherwise the request is rejected with 400 rather than silently
+  dropping the grouping. The message is NOT templated (it labels the whole
+  operation, not one request) and is capped like `?audit-message=`."
+  [handler]
+  (fn [request]
+    (if-let [raw (raw-query-param request "group-id")]
+      (if-let [gid (try (java.util.UUID/fromString raw)
+                        (catch IllegalArgumentException _ nil))]
+        (binding [op/*current-group-id* gid
+                  op/*current-group-message* (some-> (raw-query-param request "group-message")
+                                                     truncate-audit-message)]
+          (handler request))
+        {:status 400
+         :body {:error "group-id must be a UUID"}})
       (handler request))))

@@ -41,9 +41,11 @@ class PlaidClient {
     this.batchOperations = [];
     this.documentVersions = {};
     this.strictModeDocumentId = null;
-    // Ambient custom audit-log message applied to write requests; null = use
-    // the server's auto-generated description. See setAuditMessage / withAuditMessage.
-    this.auditMessage = null;
+    // The open logical operation (audit-log group), or null. While set, every
+    // write is stamped with `?group-id=` (+ `group-message`) so the audit log
+    // folds them into ONE expandable entry. See beginOperation / withOperation.
+    // Shape: { id, message, depth, written, refined }.
+    this.operationGroup = null;
     // Optional callback fired once (per client) when any request returns HTTP
     // 401 — i.e. the token is missing/expired/invalid. Apps use it to discard
     // the stored token and route back to login. See makeRequest in http.js.
@@ -1536,6 +1538,25 @@ class PlaidClient {
      */
     this.query = (body, auditMessage) =>
       this._request('POST', '/api/v1/query', { auditMessage, body });
+
+    // Logical-operation groups (audit-log grouping). There is no create: a
+    // group row is made lazily by the first write carrying `?group-id=`
+    // (see beginOperation). Not an audited write, so no auditMessage arg.
+    this.operationGroups = {
+      /**
+       * Get a logical-operation group (its label + creator).
+       * @param {string} id - The group id
+       */
+      get: (id) =>
+        this._request('GET', `/api/v1/operation-groups/${id}`),
+      /**
+       * Relabel a logical-operation group after the fact. Owner or admin only.
+       * @param {string} id - The group id
+       * @param {string|null} message - The new label
+       */
+      update: (id, message) =>
+        this._request('PATCH', `/api/v1/operation-groups/${id}`, { body: { message } }),
+    };
   }
 
   // --- Core methods ---
@@ -1559,51 +1580,93 @@ class PlaidClient {
   }
 
   /**
-   * Set a custom audit-log message applied to every subsequent write request,
-   * OVERRIDING the server's auto-generated description (e.g. "Patch metadata
-   * on span X"). The message may template the endpoint's own path/query/body
-   * params with `{param}` placeholders, resolved server-side — e.g.
-   * `"Approve span {spanId}"`. Placeholder names are case/separator-insensitive
-   * (`{spanId}` == `{span-id}` == `{span_id}`), so use the camelCase names this
-   * client uses. Applies to GET-less requests
-   * only, including every operation queued in a batch.
-   * @param {string} message - The custom message (template).
+   * Begin a LOGICAL OPERATION: a user-meaningful action ("Merge morphemes",
+   * "Re-transcribe") implemented as many low-level writes, possibly across
+   * several batches and even a service round-trip. Until `endOperation()`,
+   * every write is stamped with a client-minted `?group-id=` (and the message)
+   * so the audit log shows the whole run as ONE expandable entry labeled
+   * `message`, with each write's own description underneath.
+   *
+   * Grouping is orthogonal to batches: a batch is a transaction boundary, an
+   * operation is an intent boundary. An operation is NOT atomic — if write 3
+   * of 5 fails, writes 1–2 stay committed (and logged under the group). Use a
+   * batch inside the operation for any step that must be all-or-nothing.
+   *
+   * Nesting flattens: a `beginOperation` while one is open is a no-op that
+   * joins the outer operation (the outer label wins), and the matching
+   * `endOperation` is likewise a no-op. The label is recorded on the FIRST
+   * write, so an operation that is never ended (crash, closed tab) is still
+   * labeled in the log.
+   *
+   * @param {string} message - Human label for the operation.
+   * @returns {string} The operation's group id.
    */
-  setAuditMessage(message) {
-    this.auditMessage = message;
-    return this;
-  }
-
-  /** Clear the ambient custom audit-log message (revert to auto-generated). */
-  clearAuditMessage() {
-    this.auditMessage = null;
-    return this;
+  beginOperation(message) {
+    if (this.operationGroup) {
+      this.operationGroup.depth += 1;
+      return this.operationGroup.id;
+    }
+    this.operationGroup = {
+      id: crypto.randomUUID(),
+      message: message == null ? null : String(message),
+      depth: 1,
+      written: false,
+      refined: undefined,
+    };
+    return this.operationGroup.id;
   }
 
   /**
-   * Run `fn` with a custom audit-log message in effect, restoring the previous
-   * message afterward (supports nesting). Use it to scope ONE call (per-call
-   * precision) or MANY (a logical unit):
+   * End the current logical operation. With no argument this is purely local
+   * (no request). Pass a refined `message` to relabel the group now that the
+   * outcome is known (e.g. `endOperation('Merged 3 morphemes')`) — that sends
+   * one PATCH, skipped if the operation never wrote anything. A refine from a
+   * nested (flattened) `endOperation` is ignored; the outer label wins.
+   * @param {string} [message] - Optional refined label.
+   * @returns {Promise<void>}
+   */
+  async endOperation(message) {
+    const group = this.operationGroup;
+    if (!group) return;
+    if (group.depth > 1) {
+      group.depth -= 1;
+      return;
+    }
+    this.operationGroup = null;
+    const refined = message !== undefined ? message : group.refined;
+    if (refined !== undefined && group.written) {
+      try {
+        await this.operationGroups.update(group.id, refined);
+      } catch (e) {
+        // 404: the group never materialized server-side (every tagged write
+        // failed or a batch was aborted). Nothing to relabel — not an error.
+        if (e.status !== 404) throw e;
+      }
+    }
+  }
+
+  /**
+   * Run `fn` as one logical operation (see beginOperation), ending it when
+   * `fn` settles — including on throw. `fn` receives a `setMessage(msg)`
+   * callback to refine the label once the outcome is known.
    *
-   *   await client.withAuditMessage('Approve span {spanId}', () =>
-   *     client.spans.update(spanId, ...));
-   *
-   *   await client.withAuditMessage('Import sentence', async () => {
-   *     await client.tokens.create(...);
-   *     await client.spans.create(...);
+   *   await client.withOperation('Merge morphemes', async (setMessage) => {
+   *     await client.batched(() => { ... });
+   *     setMessage(`Merged ${n} morphemes`);
    *   });
    *
-   * @param {string} message - The custom message (template).
-   * @param {() => (Promise<any>|any)} fn - The work to run with the message set.
+   * @param {string} message - Human label for the operation.
+   * @param {(setMessage: (msg: string) => void) => (Promise<any>|any)} fn
    * @returns {Promise<any>} Whatever `fn` resolves to.
    */
-  async withAuditMessage(message, fn) {
-    const prev = this.auditMessage;
-    this.auditMessage = message;
+  async withOperation(message, fn) {
+    this.beginOperation(message);
+    const group = this.operationGroup;
+    const setMessage = (msg) => { if (group.depth === 1) group.refined = msg; };
     try {
-      return await fn();
+      return await fn(setMessage);
     } finally {
-      this.auditMessage = prev;
+      await this.endOperation();
     }
   }
 

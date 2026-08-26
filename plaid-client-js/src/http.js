@@ -157,16 +157,25 @@ export async function makeRequest(client, method, path, options = {}) {
     }
   }
 
-  // Custom audit-log message (overrides the auto-generated description).
-  // Per-call `auditMessage` option wins, else the ambient `client.auditMessage`
-  // (see setAuditMessage/withAuditMessage). Unlike document-version this has no
-  // OCC self-conflict, so it is stamped on EVERY queued batch op, not just the
+  // Per-call custom audit-log message (overrides the auto-generated
+  // description of THIS write). Unlike document-version this has no OCC
+  // self-conflict, so it is stamped on every queued batch op, not just the
   // first. The server templates `{param}` placeholders against the endpoint's
   // own path/query/body params.
-  const effectiveAuditMessage = auditMessage !== undefined ? auditMessage : client.auditMessage;
-  if (effectiveAuditMessage && method !== 'GET') {
+  if (auditMessage && method !== 'GET') {
     const separator = url.includes('?') ? '&' : '?';
-    url += `${separator}audit-message=${encodeURIComponent(effectiveAuditMessage)}`;
+    url += `${separator}audit-message=${encodeURIComponent(auditMessage)}`;
+  }
+
+  // Logical-operation group (see client.beginOperation): stamp every write
+  // with the group id; the message rides along too so the server can label
+  // the group lazily on whichever tagged write lands first.
+  if (client.operationGroup && method !== 'GET') {
+    const group = client.operationGroup;
+    const separator = url.includes('?') ? '&' : '?';
+    url += `${separator}group-id=${encodeURIComponent(group.id)}`;
+    if (group.message) url += `&group-message=${encodeURIComponent(group.message)}`;
+    group.written = true;
   }
 
   // Batch mode

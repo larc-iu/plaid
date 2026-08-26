@@ -88,6 +88,7 @@
 (def ^:private tables-to-truncate
   ["audit_writes"
    "operations"
+   "operation_groups"
    ;; data_migrations tracks one-time DATA-migration markers (codepoint-offsets).
    ;; Unlike schema_migrations (DDL state, kept), these are about data that IS
    ;; truncated between tests, so a stale "complete" marker must not leak and make

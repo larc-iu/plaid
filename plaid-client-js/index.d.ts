@@ -295,6 +295,11 @@ interface PlaidClientOptions {
   onAuthError?: ((error: Error) => void) | null;
 }
 
+export interface OperationGroupsBundle {
+  get(id: string): Promise<any>;
+  update(id: string, message: string | null): Promise<any>;
+}
+
 export declare class PlaidClient {
   constructor(baseUrl: string, token: string, options?: PlaidClientOptions);
   static login(baseUrl: string, userId: string, password: string, options?: PlaidClientOptions): Promise<PlaidClient>;
@@ -314,12 +319,14 @@ export declare class PlaidClient {
   enterStrictMode(documentId: string): void;
   exitStrictMode(): void;
 
-  // Custom audit-log message (overrides the auto-generated description; may
-  // template the endpoint's path/query/body params with {param} placeholders).
-  auditMessage: string | null;
-  setAuditMessage(message: string): this;
-  clearAuditMessage(): this;
-  withAuditMessage<T>(message: string, fn: () => Promise<T> | T): Promise<T>;
+  // Logical operations (audit-log grouping). While one is open every write is
+  // stamped with its group id so the audit log folds them into one entry.
+  // Not atomic; nesting flattens into the outer operation.
+  operationGroup: { id: string; message: string | null } | null;
+  beginOperation(message: string): string;
+  endOperation(message?: string): Promise<void>;
+  withOperation<T>(message: string, fn: (setMessage: (msg: string) => void) => Promise<T> | T): Promise<T>;
+  operationGroups: OperationGroupsBundle;
 
   // Query
   query(body: any, auditMessage?: string): Promise<any>;

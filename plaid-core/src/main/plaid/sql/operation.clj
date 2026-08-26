@@ -46,8 +46,27 @@
   images) is unaffected."
   nil)
 
+(def ^:dynamic *current-group-id*
+  "Client-minted correlation id of the LOGICAL operation the current request
+  belongs to (\"Merge morphemes\" = many token/span writes, possibly across
+  several batches and a service round-trip). Bound by `wrap-operation-group`
+  from `?group-id=`; goes onto each operations row as `group_id` so the
+  audit read can fold the members into one expandable entry.
+
+  Orthogonal to `*current-batch-id*`: a batch is a transaction boundary, a
+  group is a display/intent boundary. A group is NOT atomic — members that
+  committed before a failing one stay committed. Same trust model as
+  `*custom-description*`: client free text, readability only."
+  nil)
+
+(def ^:dynamic *current-group-message*
+  "Human label for `*current-group-id*` (from `?group-message=`), used only
+  when this request is the FIRST tagged op of its group and therefore
+  lazily creates the `operation_groups` row (see `ensure-group-row!`)."
+  nil)
+
 (defn- insert-operation-row!
-  [tx {:keys [id type project document description user token-id batch-id ts]}]
+  [tx {:keys [id type project document description user token-id batch-id group-id ts]}]
   (psc/execute!
    tx
    {:insert-into :operations
@@ -57,9 +76,27 @@
               :document_id document
               :description description
               :batch_id batch-id
+              :group_id group-id
               :user_id user
               :token_id token-id
               :ts ts}]}))
+
+(defn- ensure-group-row!
+  "Lazily create the `operation_groups` row for the op's group on first
+  sight, inside the op's own tx (so the label is atomic with the first
+  member and a crash can never leave an unlabeled group). Later members
+  no-op via ON CONFLICT DO NOTHING; the label is refined only through the
+  explicit PATCH /operation-groups/:id. No audit_writes row: this is
+  audit-log metadata, not domain data."
+  [tx {:keys [group-id user ts]}]
+  (when group-id
+    (psc/execute! tx {:insert-into :operation_groups
+                      :values [{:id group-id
+                                :message *current-group-message*
+                                :user_id user
+                                :created_at ts}]
+                      :on-conflict [:id]
+                      :do-nothing []})))
 
 (defn- check-locks! [op-attrs]
   (when-let [doc-id (:document op-attrs)]
@@ -301,6 +338,8 @@
                                          :id op-id
                                          :ts ts
                                          :batch-id (or (:batch-id op-attrs) *current-batch-id*)
+                                         ;; Logical-operation grouping (see *current-group-id*).
+                                         :group-id (or (:group-id op-attrs) *current-group-id*)
                                          ;; Server-authoritative: bound from the
                                          ;; validated JWT claim by wrap-api-token-id.
                                          :token-id (or (:token-id op-attrs) *token-id*)
@@ -309,6 +348,7 @@
                                          ;; See *custom-description* / wrap-audit-message.
                                          :description (or *custom-description* (:description op-attrs)))]
                     (vreset! op-record* op-record)
+                    (ensure-group-row! tx op-record)
                     (insert-operation-row! tx op-record)
                     ;; In-tx OCC check (task #108). Before the body runs,
                     ;; verify the client's expected `?document-version=`

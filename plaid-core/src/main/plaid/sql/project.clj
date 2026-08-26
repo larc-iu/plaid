@@ -583,8 +583,19 @@
                        :where [:in :id
                                {:select [:id] :from [:operations]
                                 :where [:= :project_id project-id]
-                                :limit purge-batch-size}]}))]
-    {:audit-rows audit-rows :operations operations}))
+                                :limit purge-batch-size}]}))
+        ;; Phase 3: operation_groups rows that no surviving op references
+        ;; any more. The grouped audit read folds FROM operations, so an
+        ;; orphan would never surface anyway; this just keeps the table tidy.
+        groups (drain!
+                (fn []
+                  {:delete-from :operation_groups
+                   :where [:in :id
+                           {:select [:id] :from [:operation_groups]
+                            :where [:not [:exists {:select [1] :from [:operations]
+                                                   :where [:= :operations.group_id :operation_groups.id]}]]
+                            :limit purge-batch-size}]}))]
+    {:audit-rows audit-rows :operations operations :operation-groups groups}))
 
 ;; ============================================================
 ;; Access privileges (project_users join table)
