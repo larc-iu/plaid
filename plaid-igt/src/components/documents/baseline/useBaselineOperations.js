@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess } from '@/utils/feedback';
+import { useConfirm } from '@/components/shared/ConfirmProvider';
 
 // Baseline tab operations, backed by the shared IgtDocument. The save itself
 // (texts.update with server-side token shifting, plus the create/seed paths)
@@ -9,6 +10,7 @@ import { notifySuccess } from '@/utils/feedback';
 export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
   useIgtDocument(doc);
+  const confirm = useConfirm();
 
   const body = doc.body || '';
   const primaryTextLayer = doc.layerInfo?.primaryTextLayer || null;
@@ -34,11 +36,14 @@ export const useBaselineOperations = () => {
     // current body) leaves existing tokens untouched, so only confirm otherwise.
     const tokenized = (doc.layerInfo?.primaryTokenLayer?.tokens || []).length > 0;
     const risky = tokenized && editedText !== body && !editedText.startsWith(body);
-    if (risky && !window.confirm(
-      'This document is already tokenized. Editing the baseline text here can delete or '
-      + 'mis-align existing tokens and the annotations on them in the changed or removed '
-      + 'regions. This cannot be undone. Save anyway?'
-    )) {
+    if (risky && !(await confirm({
+      title: 'Save baseline changes?',
+      description: 'This document is already tokenized. Editing the baseline text here can '
+        + 'delete or mis-align existing tokens and the annotations on them in the changed or '
+        + 'removed regions. This cannot be undone.',
+      confirmLabel: 'Save anyway',
+      destructive: true,
+    }))) {
       return;
     }
     setSaving(true);

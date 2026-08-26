@@ -14,11 +14,13 @@ import { UserProfile } from './components/auth/UserProfile';
 import { VocabularyList } from './components/vocabularies/VocabularyList';
 import { VocabularyDetail } from './components/vocabularies/VocabularyDetail';
 import { AppLayout } from './components/layout/AppLayout';
+import { ConfirmProvider } from './components/shared/ConfirmProvider';
 
 function App() {
   return (
     <HashRouter>
       <AuthProvider>
+        <ConfirmProvider>
         <Routes>
           {/* Public routes */}
           <Route path="/login" element={<LoginForm />} />
@@ -164,6 +166,7 @@ function App() {
           {/* Catch all - redirect to login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
+        </ConfirmProvider>
       </AuthProvider>
     </HashRouter>
   );

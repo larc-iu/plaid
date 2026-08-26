@@ -5,6 +5,7 @@ import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
 import { useServiceParams } from '../../documents/hooks/useServiceParams.js';
+import { useConfirm } from '@/components/shared/ConfirmProvider';
 import {
   encodeServiceSelection, readSpotDefault, resolveInitialSelection,
 } from '../../../domain/serviceDefaults.js';
@@ -24,6 +25,7 @@ const PARAMS_PREFIX = 'plaid_igt_transcribe_params_';
 export const useMediaOperations = () => {
   const { doc } = useDocumentCtx();
   useIgtDocument(doc);
+  const confirm = useConfirm();
 
   const project = doc.project;
 
@@ -185,7 +187,13 @@ export const useMediaOperations = () => {
   const handleDeleteMedia = useCallback(async () => {
     if (!doc.document.id) return;
 
-    if (!confirm('Are you sure you want to delete this media file? This action cannot be undone.')) {
+    if (!(await confirm({
+      title: 'Delete media file?',
+      description: 'This will permanently remove the audio/video from this document. '
+        + 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    }))) {
       return;
     }
 
@@ -193,7 +201,7 @@ export const useMediaOperations = () => {
     if (ok) {
       notifySuccess('Media file has been deleted successfully', 'Media Deleted');
     }
-  }, [doc]);
+  }, [doc, confirm]);
 
   // ASR operations
   const handleAsrDropdownInteraction = useCallback(async () => {
@@ -229,11 +237,14 @@ export const useMediaOperations = () => {
     // re-run must start from a clean slate. If the document already has a
     // transcript, confirm, then wipe the baseline before transcribing fresh.
     const hasExistingTranscript = !!(doc.body && doc.body.trim());
-    if (hasExistingTranscript && !confirm(
-      'This document already has a transcript. Transcribing again will REPLACE it — '
-      + 'discarding the existing text, tokens, time alignments, and any annotations on '
-      + 'them. This cannot be undone. Continue?'
-    )) {
+    if (hasExistingTranscript && !(await confirm({
+      title: 'Replace existing transcript?',
+      description: 'This document already has a transcript. Transcribing again will REPLACE it '
+        + '— discarding the existing text, tokens, time alignments, and any annotations on them. '
+        + 'This cannot be undone.',
+      confirmLabel: 'Replace',
+      destructive: true,
+    }))) {
       return;
     }
 
@@ -283,12 +294,18 @@ export const useMediaOperations = () => {
       console.error('Transcription failed:', error);
       updateProgress(0, '');
     }
-  }, [asrAlgorithm, doc, project, requestService, updateProgress, coerceParams, paramErrors]);
+  }, [asrAlgorithm, doc, project, requestService, updateProgress, coerceParams, paramErrors, confirm]);
 
   const handleClearAlignments = useCallback(async () => {
     if (!alignmentTokens.length) return;
 
-    if (!confirm('Are you sure you want to clear all time alignments? This action cannot be undone.')) {
+    if (!(await confirm({
+      title: 'Clear all time alignments?',
+      description: 'This will remove every time-alignment segment on this document. '
+        + 'This cannot be undone.',
+      confirmLabel: 'Clear alignments',
+      destructive: true,
+    }))) {
       return;
     }
 
@@ -301,7 +318,7 @@ export const useMediaOperations = () => {
     }
     setTranscriptionProgress(0);
     setCurrentOperation('');
-  }, [alignmentTokens, doc, updateProgress]);
+  }, [alignmentTokens, doc, updateProgress, confirm]);
 
   const handleAlgorithmChange = useCallback((value) => {
     setAsrAlgorithm(value);
