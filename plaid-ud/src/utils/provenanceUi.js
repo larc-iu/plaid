@@ -62,6 +62,14 @@ export function probLabel(probs, value) {
 // the entity is machine-made — producer, model/language from provDetail, and
 // provProb when present. Once verified, say so (the prediction extras
 // describe the ORIGINAL prediction, not necessarily the current value).
+/** Every reserved provenance metadata key (the convention's flat slots). */
+export const PROV_KEYS = Object.freeze(
+  new Set([PROV.key, PROV.sourceKey, PROV.confirmedKey, PROV.probKey, PROV.detailKey]),
+);
+
+/** True for a reserved provenance key — what CoNLL-U export/import must not carry. */
+export const isProvKey = (key) => PROV_KEYS.has(key);
+
 export function provCellTitle(base, metadata) {
   const state = provState(metadata);
   if (state === PROV_STATES.HUMAN) return base;

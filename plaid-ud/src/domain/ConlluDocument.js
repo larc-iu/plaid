@@ -1,4 +1,5 @@
 import { cpLength, cpSlice, utf16ToCp, verifyOnEdit } from '@larc-iu/plaid-client';
+import { isProvKey } from '../utils/provenanceUi.js';
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import {
   interSententialRelationIds,
@@ -168,7 +169,13 @@ export class ConlluDocument {
           begin: s.begin,
           end: s.end,
         };
-        if (s.metadata && Object.keys(s.metadata).length > 0) op.metadata = s.metadata;
+        // Drop reserved provenance keys: a `# prov = inferred` comment is not
+        // something a CoNLL-U file can assert (only a producer stamps it, and
+        // the exporter never emits it — see _buildConllu).
+        const meta = Object.fromEntries(
+          Object.entries(s.metadata || {}).filter(([k]) => !isProvKey(k)),
+        );
+        if (Object.keys(meta).length > 0) op.metadata = meta;
         return op;
       });
       const wordOps = [];
@@ -1275,6 +1282,26 @@ export class ConlluDocument {
       const existingSpan = spans.find(
         (span) => Array.isArray(span.tokens) && span.tokens.includes(tokenId),
       );
+      const cleared = value === null || value === undefined || value === '';
+      if (cleared && field !== 'lemma') {
+        // Clearing a UPOS/XPOS/Form cell DELETES the span (like removing a
+        // feature) rather than leaving a null-valued span behind — which would
+        // keep carrying the machine's provenance, so a value later typed from
+        // scratch by a human would read as "machine-made, human-verified".
+        // Lemma is the exception: dependency relations hang off lemma spans,
+        // so a cleared lemma keeps its (null-valued) span.
+        if (!existingSpan) return;
+        this._applyRawPatch((next, infoNext) => {
+          const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
+            layer.spans?.some((span) => span.id === existingSpan.id),
+          );
+          if (targetLayerDoc?.spans) {
+            targetLayerDoc.spans = targetLayerDoc.spans.filter((s) => s.id !== existingSpan.id);
+          }
+        });
+        await this._client.spans.delete(existingSpan.id);
+        return;
+      }
       if (existingSpan) {
         // A human edit of a machine-made, unverified span VERIFIES it
         // (provenance write contract): merge provConfirmed alongside the
@@ -1493,7 +1520,7 @@ export class ConlluDocument {
 
   // Confirm machine-made (unverified) predictions on the given tokens WITHOUT
   // changing their values: stamp { provConfirmed: true } on every inferred span
-  // (lemma/upos/xpos/features) and incoming dependency relation, so a later
+  // (form/lemma/upos/xpos/features) and incoming dependency relation, so a later
   // re-parse's protect-guard leaves the reviewed material alone. Human-made and
   // already-verified annotations are skipped (verifyOnEdit returns null for
   // them). Used by the editor's per-token Ctrl+Enter and per-sentence
@@ -1506,6 +1533,7 @@ export class ConlluDocument {
       async () => {
         const info = this.layerInfo;
         const spanLayers = [
+          info.formLayer,
           info.lemmaLayer,
           info.uposLayer,
           info.xposLayer,
@@ -1542,6 +1570,7 @@ export class ConlluDocument {
         // Optimistic: stamp confirmed locally so the inferred styling clears now.
         this._applyRawPatch((next, infoNext) => {
           for (const layer of [
+            infoNext.formLayer,
             infoNext.lemmaLayer,
             infoNext.uposLayer,
             infoNext.xposLayer,
@@ -1628,12 +1657,14 @@ export class ConlluDocument {
       // Emit arbitrary `# k = v` metadata sorted alphabetically. If metadata
       // carries `text`, the loop emits it; otherwise we fall back to the
       // sentence's substring of the document body. Skip `sent_id` (emitted
-      // above) so it doesn't double-emit.
+      // above) so it doesn't double-emit, and the reserved provenance keys
+      // (the parser stamps sentence tokens too; `# prov = inferred` /
+      // `# provDetail = [object Object]` are not CoNLL-U content).
       let hasTextMetadata = false;
       Object.keys(sentMeta)
         .sort()
         .forEach((key) => {
-          if (key === 'sent_id') return;
+          if (key === 'sent_id' || isProvKey(key)) return;
           const value = sentMeta[key];
           if (key === 'text') hasTextMetadata = true;
           if (value === true) output.push(`# ${key}`);
