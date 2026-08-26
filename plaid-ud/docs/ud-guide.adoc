@@ -215,6 +215,8 @@ A built-in syntax reference with more examples is available on the search screen
 
 Every change is recorded.
 From a document's Annotate tab, you can open its **history** and select an earlier point to view the document exactly as it was then.
+Each entry is one action as you performed it (for example "Update upos", "Create relation", or a parser run), even when it was made up of several underlying changes.
+Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change.
 Historical views are **read-only**. Return to the latest state to resume editing.
 
 == Sharing and Permissions

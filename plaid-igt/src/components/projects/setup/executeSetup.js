@@ -25,7 +25,16 @@ import {
   findAlignmentTokenLayer,
 } from '../../../domain/igtConfig.js';
 
-export async function executeProjectSetup({
+// The whole setup (project + layers + config + vocabularies) is ONE logical
+// operation in the audit log; each write keeps its own description underneath.
+export async function executeProjectSetup(args) {
+  const name = args.setupData?.basicInfo?.projectName?.trim();
+  return args.client.withOperation(name ? `Set up project "${name}"` : 'Set up project', () =>
+    executeProjectSetupImpl(args),
+  );
+}
+
+async function executeProjectSetupImpl({
   client,
   isNewProject,
   resumeProjectId,

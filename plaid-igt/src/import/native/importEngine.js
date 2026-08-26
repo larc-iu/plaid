@@ -471,7 +471,14 @@ export async function importNativeDocument({
  * marked imported; deletes and redoes half-imported ones. Returns
  * { imported, skipped, redone, warnings }.
  */
-export async function runNativeImport({ client, projectId, archive, onProgress, shouldStop }) {
+// The whole import is ONE logical operation in the audit log (vocabulary +
+// every document); each write keeps its own description underneath. Resumable
+// retries start a fresh operation, which is the honest reading of the log.
+export async function runNativeImport(args) {
+  return args.client.withOperation('Import Plaid IGT archive', () => runNativeImportImpl(args));
+}
+
+async function runNativeImportImpl({ client, projectId, archive, onProgress, shouldStop }) {
   const project = await client.projects.get(projectId);
   const targets = resolveNativeTargets(project, archive.manifest);
   const warnings = [];

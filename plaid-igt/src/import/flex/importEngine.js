@@ -438,7 +438,14 @@ export async function importDocument({
  * imported; deletes and redoes half-imported ones. onProgress receives
  * {phase: 'lexicon'|'document'|'done', ...} updates throughout.
  */
-export async function runImport({
+// The whole import is ONE logical operation in the audit log (vocabulary +
+// every document); each write keeps its own description underneath. Resumable
+// retries start a fresh operation, which is the honest reading of the log.
+export async function runImport(args) {
+  return args.client.withOperation('Import FLEx project', () => runImportImpl(args));
+}
+
+async function runImportImpl({
   client,
   projectId,
   build,

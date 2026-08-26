@@ -139,6 +139,7 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
       batch = null;
       return out;
     },
+    withOperation: async (_message, fn) => fn(() => {}),
     batched: async (fn) => {
       batch = [];
       await fn();

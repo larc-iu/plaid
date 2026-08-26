@@ -207,6 +207,9 @@ Click a result to jump straight to that word in the Analyze tab.
 In Plaid IGT, all changes are recorded with a meaningful message and the identity of the user that performed the change.
 Additionally, past states of any document are viewable on a read-only basis.
 Open a document's **history** from the rail at the left edge and pick an earlier point to view the document as it was then.
+Each entry is one action as you performed it (for example "Merge morphemes" or "Tokenize"), even when it was made up of several underlying changes.
+Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change.
+Actions performed by a service (transcription, tokenization) show up the same way, under the service's name, or under your own action when you triggered it.
 
 = Sharing and Permissions
 

@@ -191,6 +191,7 @@ function makeFakeClient({ existingDocs = [], existingItems = [] } = {}) {
       batch = null;
       return Promise.resolve(out);
     },
+    withOperation: async (_message, fn) => fn(() => {}),
     batched: async (fn) => {
       batch = [];
       await fn();

@@ -214,12 +214,11 @@ export const ProjectImportExport = () => {
         const chunk = chunks[c];
         const name = chunk.id || (chunks.length > 1 ? `${base} (${c + 1})` : base);
         try {
-          const { importWarnings } = await ConlluDocument.importFromConllu(
-            client,
-            projectId,
-            name,
-            chunk.text,
-            layerInfo,
+          // One audit-log operation per imported document (text + tokens +
+          // annotations), labeled with the document name.
+          const { importWarnings } = await client.withOperation(
+            `Import CoNLL-U document "${name}"`,
+            () => ConlluDocument.importFromConllu(client, projectId, name, chunk.text, layerInfo),
           );
           push({
             key: `${i}-${c}`,

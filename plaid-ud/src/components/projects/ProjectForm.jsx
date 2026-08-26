@@ -34,9 +34,17 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
     ['Features', UD_SPAN_CONFIG_KEYS.features],
   ];
 
+  // The whole bootstrap (project + 8 layer/config batches) is ONE logical
+  // operation in the audit log; the best-effort rollback delete on failure
+  // lands under it too, which is the honest reading.
   const createProjectWithLayers = async () => {
     const client = getClient();
+    return client.withOperation(`Create UD project "${projectName.trim()}"`, () =>
+      createProjectWithLayersImpl(client),
+    );
+  };
 
+  const createProjectWithLayersImpl = async (client) => {
     // B1: project (alone; textLayer needs project.id)
     const project = await client.projects.create(projectName);
     const projectId = project.id;
