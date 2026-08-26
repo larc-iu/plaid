@@ -44,11 +44,32 @@
       (log/info "Created media directory:" media-dir))
     media-dir))
 
+(def ^:private canonical-media-type
+  "Tika reports some formats under IANA/vendor MIME names that browser <audio>/
+  <video> elements refuse to play (`canPlayType` returns \"\"). Map those to the
+  canonical, widely-supported spelling so an uploaded file actually loads. Keyed
+  by the detected subtype after stripping any parameters. Affects both the served
+  Content-Type AND the on-disk extension (both derive from this)."
+  {"audio/vnd.wave" "audio/wav"       ; Tika's name for WAV — unplayable as-is
+   "audio/wave" "audio/wav"
+   "audio/x-wav" "audio/wav"
+   "audio/vorbis" "audio/ogg"          ; bare Vorbis stream name → its Ogg container
+   "audio/x-flac" "audio/flac"})
+
+(defn canonicalize-content-type
+  "Normalize a detected MIME type to a browser-playable canonical form. Nil-safe;
+  lower-cases and strips parameters before lookup, passes through unknowns."
+  [content-type]
+  (when content-type
+    (let [base (-> content-type (str/split #";") first str/trim str/lower-case)]
+      (get canonical-media-type base base))))
+
 (defn detect-content-type
-  "Use Apache Tika to detect actual content type from file content"
+  "Use Apache Tika to detect actual content type from file content, normalized to
+  a browser-playable canonical MIME type (see `canonical-media-type`)."
   [file-path-or-stream]
   (try
-    (.detect tika-instance file-path-or-stream)
+    (canonicalize-content-type (.detect tika-instance file-path-or-stream))
     (catch Exception e
       (log/warn "Failed to detect content type:" (.getMessage e))
       nil)))
