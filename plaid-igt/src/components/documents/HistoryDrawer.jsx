@@ -1,24 +1,24 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { X, History, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-
-const ITEM_HEIGHT = 120; // Height of each row in pixels
-const BUFFER_SIZE = 5; // Number of rows to render outside visible area
 
 // The audit log arrives already folded into logical units by the server: a
 // labeled operation ("Merge morphemes"), else an atomic batch, else a lone
 // write. `entry.ops` is the unit's full membership (oldest first); `time` is
 // the head op's time and `endTime` the last member's — the state AFTER the
 // whole operation, which is what selecting a unit travels to.
+//
+// Rows size to their content (no fixed-height virtualization): a lone write
+// is two short lines, a multi-op unit adds a count badge and can expand.
 const unitLabel = (entry) =>
   entry.message || entry.ops?.[0]?.description || 'No description available';
 
 const formatTime = (timestamp) => new Date(timestamp).toLocaleString();
 
-const actorLine = (user, apiToken) =>
-  user ? `by ${user.username}${apiToken ? ` (via ${apiToken.name})` : ''}` : null;
+const actor = (user, apiToken) =>
+  user ? ` · by ${user.username}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
 
 // Non-modal left slide-in panel (no overlay, no focus trap) so the editor stays
 // interactive while browsing history — preserves the old Mantine Drawer's
@@ -32,50 +32,10 @@ export const HistoryDrawer = ({
   onSelectEntry,
   selectedEntry,
 }) => {
-  const [scrollTop, setScrollTop] = useState(0);
   const [expanded, setExpanded] = useState(() => new Set());
-  const scrollContainerRef = useRef(null);
 
   // Most recent first
   const reversedAuditEntries = useMemo(() => [...auditEntries].reverse(), [auditEntries]);
-
-  // Flatten units into a uniform-height row list so the virtual scroller keeps
-  // working. A unit is one row; expanding a multi-op unit splices its member
-  // ops (newest first, matching the list direction) in directly below it.
-  const rows = useMemo(() => {
-    const out = [];
-    for (const entry of reversedAuditEntries) {
-      const ops = entry.ops || [];
-      const multi = ops.length > 1;
-      const isExpanded = multi && expanded.has(entry.id);
-      out.push({ key: entry.id, type: 'unit', entry, multi, expanded: isExpanded });
-      if (isExpanded) {
-        const children = [...ops].reverse();
-        children.forEach((op, i) =>
-          out.push({
-            key: `${entry.id}:${op.id}`,
-            type: 'op',
-            entry,
-            op,
-            isLast: i === children.length - 1,
-          }),
-        );
-      }
-    }
-    return out;
-  }, [reversedAuditEntries, expanded]);
-
-  const visibleRange = useMemo(() => {
-    const actualHeight = scrollContainerRef.current?.clientHeight || 400;
-    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE);
-    const endIndex = Math.min(
-      rows.length - 1,
-      Math.ceil((scrollTop + actualHeight) / ITEM_HEIGHT) + BUFFER_SIZE,
-    );
-    return { startIndex, endIndex };
-  }, [scrollTop, rows.length]);
-
-  const handleScroll = (e) => setScrollTop(e.target.scrollTop);
 
   const toggleExpanded = (id) => {
     setExpanded((prev) => {
@@ -92,56 +52,48 @@ export const HistoryDrawer = ({
     onSelectEntry({ id: entry.id, time: entry.endTime || entry.time, label: unitLabel(entry) });
   const selectOp = (op) => onSelectEntry({ id: op.id, time: op.time, label: op.description });
 
-  const totalHeight = rows.length * ITEM_HEIGHT;
-  const offsetY = visibleRange.startIndex * ITEM_HEIGHT;
-
-  const renderRow = (row) => {
-    if (row.type === 'op') {
-      const { op, isLast } = row;
-      const isSelected = selectedEntry?.id === op.id;
-      return (
-        <div
-          key={row.key}
-          className={cn(
-            'flex cursor-pointer flex-col border-b p-3 pl-8 hover:bg-muted/50',
-            'border-l-4 border-l-primary/30 bg-muted/20',
-            isLast && 'mb-0',
-            isSelected && 'bg-accent hover:bg-accent',
-          )}
-          style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
-          onClick={() => selectOp(op)}
-        >
-          <div className="flex-1">
-            <p className="mb-3 line-clamp-2 text-sm leading-tight">{op.description}</p>
-            <div className="border-t pt-1.5">
-              <p className="text-xs text-muted-foreground">{formatTime(op.time)}</p>
-              {op.user && (
-                <p className="text-xs text-muted-foreground">{actorLine(op.user, null)}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    const { entry, multi, expanded: isExpanded } = row;
-    const isSelected = selectedEntry?.id === entry.id;
-    // Highlight a collapsed unit softly when it hides the selected member op.
-    const containsSelected =
-      !isExpanded && multi && (entry.ops || []).some((op) => op.id === selectedEntry?.id);
-    const count = entry.ops?.length || 0;
+  const renderOp = (entry, op, isLast) => {
+    const isSelected = selectedEntry?.id === op.id;
     return (
       <div
-        key={row.key}
+        key={`${entry.id}:${op.id}`}
         className={cn(
-          'flex cursor-pointer flex-col border-b p-3 hover:bg-muted/50',
+          'cursor-pointer border-b border-l-4 border-l-primary/30 bg-muted/20 py-2 pl-9 pr-3 hover:bg-muted/50',
+          isLast && 'border-b',
           isSelected && 'bg-accent hover:bg-accent',
-          containsSelected && 'bg-accent/40',
         )}
-        style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
-        onClick={() => selectUnit(entry)}
+        onClick={() => selectOp(op)}
       >
-        <div className="flex flex-1 gap-2">
+        <p className="line-clamp-2 text-sm leading-snug">{op.description}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {formatTime(op.time)}
+          {actor(op.user, null)}
+        </p>
+      </div>
+    );
+  };
+
+  const renderUnit = (entry) => {
+    const ops = entry.ops || [];
+    const multi = ops.length > 1;
+    const isExpanded = multi && expanded.has(entry.id);
+    const isSelected = selectedEntry?.id === entry.id;
+    // Highlight a collapsed unit softly when it hides the selected member op.
+    const containsSelected = !isExpanded && multi && ops.some((op) => op.id === selectedEntry?.id);
+    const range =
+      multi && entry.endTime && entry.endTime !== entry.time
+        ? `${formatTime(entry.time)} → ${formatTime(entry.endTime)}`
+        : undefined;
+    return (
+      <div key={entry.id}>
+        <div
+          className={cn(
+            'flex cursor-pointer gap-1.5 border-b px-2 py-2.5 hover:bg-muted/50',
+            isSelected && 'bg-accent hover:bg-accent',
+            containsSelected && 'bg-accent/40',
+          )}
+          onClick={() => selectUnit(entry)}
+        >
           {multi ? (
             <button
               type="button"
@@ -160,30 +112,23 @@ export const HistoryDrawer = ({
           ) : (
             <span className="w-5 shrink-0" />
           )}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <p className="mb-1 line-clamp-2 text-sm font-medium leading-tight">
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-2 text-sm font-medium leading-snug">
+              {multi && (
+                <span className="mr-1.5 inline-block rounded bg-primary/10 px-1.5 py-px align-[1px] text-[11px] font-semibold text-primary">
+                  {ops.length} actions
+                </span>
+              )}
               {unitLabel(entry)}
             </p>
-            {multi && (
-              <p className="mb-2 text-xs font-semibold text-primary">
-                {count} actions{entry.message ? '' : ` (${entry.batchId ? 'batch' : 'group'})`}
-              </p>
-            )}
-            <div className="mt-auto border-t pt-1.5">
-              <p className="text-xs text-muted-foreground">
-                {formatTime(entry.time)}
-                {multi && entry.endTime && entry.endTime !== entry.time
-                  ? ` → ${formatTime(entry.endTime)}`
-                  : ''}
-              </p>
-              {entry.user && (
-                <p className="text-xs text-muted-foreground">
-                  {actorLine(entry.user, entry.apiToken)}
-                </p>
-              )}
-            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground" title={range}>
+              {formatTime(entry.time)}
+              {actor(entry.user, entry.apiToken)}
+            </p>
           </div>
         </div>
+        {isExpanded &&
+          [...ops].reverse().map((op, i, arr) => renderOp(entry, op, i === arr.length - 1))}
       </div>
     );
   };
@@ -232,26 +177,8 @@ export const HistoryDrawer = ({
             <p className="mb-4 text-xs text-muted-foreground">
               {reversedAuditEntries.length} entries • Click to view historical state
             </p>
-
-            {/* Virtual scrolled list */}
-            <div
-              ref={scrollContainerRef}
-              className="relative flex-1 overflow-auto rounded-md border bg-background"
-              onScroll={handleScroll}
-            >
-              <div style={{ height: totalHeight, position: 'relative' }}>
-                <div
-                  style={{
-                    transform: `translateY(${offsetY}px)`,
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                  }}
-                >
-                  {rows.slice(visibleRange.startIndex, visibleRange.endIndex + 1).map(renderRow)}
-                </div>
-              </div>
+            <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-background">
+              {reversedAuditEntries.map(renderUnit)}
             </div>
           </div>
         )}

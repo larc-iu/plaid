@@ -1,19 +1,23 @@
-import { useState, useRef, useMemo } from 'react';
-import { Drawer, Loader, Text, Button, Box, Group } from '@mantine/core';
+import { useState, useMemo } from 'react';
+import { Drawer, Loader, Text, Button, Box, Group, Badge } from '@mantine/core';
 import { IconChevronRight } from '@tabler/icons-react';
 import { fullTimestamp } from '../../../utils/formatTime.js';
 import classes from './HistoryDrawer.module.css';
-
-const ITEM_HEIGHT = 116; // Height of each rendered row in pixels (card + gutter; see .cardContent)
-const BUFFER_SIZE = 5; // Number of rows to render outside visible area
 
 // The audit log arrives already folded into logical units by the server: a
 // labeled operation ("Merge morphemes"), else an atomic batch, else a lone
 // write. `entry.ops` is the unit's full membership (oldest first); `time` is
 // the head op's time and `endTime` the last member's — the state AFTER the
 // whole operation, which is what selecting a unit travels to.
+//
+// Cards size to their content (no fixed-height virtualization): a lone write
+// is a label plus one meta line, a multi-op unit adds a count badge and can
+// expand into its member ops.
 const unitLabel = (entry) =>
   entry.message || entry.ops?.[0]?.description || 'No description available';
+
+const actor = (user, apiToken) =>
+  user ? ` · by ${user.username}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
 
 export const HistoryDrawer = ({
   isOpen,
@@ -23,63 +27,10 @@ export const HistoryDrawer = ({
   onSelectEntry,
   selectedEntry,
 }) => {
-  const [scrollTop, setScrollTop] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState(() => new Set());
-  const scrollContainerRef = useRef(null);
 
   // Reverse the audit entries to show most recent first
   const reversedAuditEntries = useMemo(() => [...auditEntries].reverse(), [auditEntries]);
-
-  // Flatten the units into a uniform-height row list so the virtual scroller
-  // keeps working: every row is exactly ITEM_HEIGHT. A single-op unit is one
-  // row; a multi-op unit is a header row; expanding it splices its member ops
-  // (newest first, matching the list direction) in directly below the header.
-  const rows = useMemo(() => {
-    const out = [];
-    for (const entry of reversedAuditEntries) {
-      const ops = entry.ops || [];
-      if (ops.length <= 1) {
-        out.push({ key: entry.id, type: 'single', entry });
-        continue;
-      }
-      const expanded = expandedGroups.has(entry.id);
-      out.push({ key: `group-${entry.id}`, type: 'header', entry, expanded });
-      if (expanded) {
-        const children = [...ops].reverse();
-        children.forEach((op, i) => {
-          out.push({
-            key: `${entry.id}:${op.id}`,
-            type: 'child',
-            entry,
-            op,
-            isLast: i === children.length - 1,
-          });
-        });
-      }
-    }
-    return out;
-  }, [reversedAuditEntries, expandedGroups]);
-
-  // Selecting a unit views the document as it was AFTER the whole operation;
-  // selecting one of its member ops views the state right after that op.
-  const selectUnit = (entry) =>
-    onSelectEntry({ id: entry.id, time: entry.endTime || entry.time, label: unitLabel(entry) });
-  const selectOp = (op) => onSelectEntry({ id: op.id, time: op.time, label: op.description });
-
-  // Calculate which rows should be rendered based on scroll position
-  const visibleRange = useMemo(() => {
-    const actualHeight = scrollContainerRef.current?.clientHeight || 400;
-    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE);
-    const endIndex = Math.min(
-      rows.length - 1,
-      Math.ceil((scrollTop + actualHeight) / ITEM_HEIGHT) + BUFFER_SIZE,
-    );
-    return { startIndex, endIndex };
-  }, [scrollTop, rows.length]);
-
-  const handleScroll = (e) => {
-    setScrollTop(e.target.scrollTop);
-  };
 
   const toggleGroup = (groupId) => {
     setExpandedGroups((prev) => {
@@ -90,131 +41,94 @@ export const HistoryDrawer = ({
     });
   };
 
-  // Calculate total height and offset for virtual scrolling
-  const totalHeight = rows.length * ITEM_HEIGHT;
-  const offsetY = visibleRange.startIndex * ITEM_HEIGHT;
+  // Selecting a unit views the document as it was AFTER the whole operation;
+  // selecting one of its member ops views the state right after that op.
+  const selectUnit = (entry) =>
+    onSelectEntry({ id: entry.id, time: entry.endTime || entry.time, label: unitLabel(entry) });
+  const selectOp = (op) => onSelectEntry({ id: op.id, time: op.time, label: op.description });
 
-  // Body of a card: a description line plus the time / actor footer.
-  const renderBody = (description, time, user, apiToken) => (
-    <>
-      <div style={{ flex: 1, paddingRight: '0.5rem' }}>
-        <div className={classes.clamp}>{description}</div>
-      </div>
-      <div
-        style={{
-          flexShrink: 0,
-          paddingTop: '0.5rem',
-          borderTop: '1px solid var(--mantine-color-gray-1)',
-        }}
-      >
-        <Text size="xs" c="dimmed">
-          {fullTimestamp(time)}
-        </Text>
-        {user && (
-          <Text size="xs" c="dimmed">
-            by {user.username}
-            {apiToken ? ` (via ${apiToken.name})` : ''}
-          </Text>
-        )}
-      </div>
-    </>
+  const meta = (time, user, apiToken, title) => (
+    <Text size="xs" c="dimmed" mt={4} title={title}>
+      {fullTimestamp(time)}
+      {actor(user, apiToken)}
+    </Text>
   );
 
-  const renderRow = (row) => {
-    if (row.type === 'single') {
-      const { entry } = row;
-      const isSelected = selectedEntry?.id === entry.id;
-      return (
-        <div
-          key={row.key}
-          className={classes.entry}
-          data-selected={isSelected}
-          style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
-          onClick={() => selectUnit(entry)}
-        >
-          <div className={classes.cardContent}>
-            {renderBody(unitLabel(entry), entry.time, entry.user, entry.apiToken)}
-          </div>
-        </div>
-      );
-    }
-
-    if (row.type === 'child') {
-      const { op } = row;
-      const isSelected = selectedEntry?.id === op.id;
-      return (
-        <div
-          key={row.key}
-          className={`${classes.entry} ${classes.childEntry}`}
-          data-selected={isSelected}
-          data-last={row.isLast}
-          style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
-          onClick={() => selectOp(op)}
-        >
-          <div className={classes.cardContent}>
-            {renderBody(op.description, op.time, op.user, null)}
-          </div>
-        </div>
-      );
-    }
-
-    // Header row of a multi-op unit. Clicking the card selects the unit (the
-    // state after its last op); the chevron expands the member ops.
-    const { entry, expanded } = row;
-    const ops = entry.ops || [];
-    const isSelected = selectedEntry?.id === entry.id;
-    // Highlight the header when it hides the currently-selected member op.
-    const containsSelected = !expanded && ops.some((op) => op.id === selectedEntry?.id);
+  const renderOp = (entry, op, isLast) => {
+    const isSelected = selectedEntry?.id === op.id;
     return (
       <div
-        key={row.key}
-        className={`${classes.entry} ${classes.groupEntry}`}
-        data-expanded={expanded}
-        data-selected={isSelected || containsSelected}
-        style={{ height: ITEM_HEIGHT, minHeight: ITEM_HEIGHT }}
-        onClick={() => selectUnit(entry)}
+        key={`${entry.id}:${op.id}`}
+        className={`${classes.entry} ${classes.childEntry}`}
+        data-selected={isSelected}
+        data-last={isLast}
+        onClick={() => selectOp(op)}
       >
-        <div className={`${classes.cardContent} ${classes.groupContent}`}>
-          <div style={{ display: 'flex', gap: '0.4rem', flex: 1, minHeight: 0 }}>
-            <button
-              type="button"
-              aria-label={expanded ? 'Collapse' : 'Expand'}
-              aria-expanded={expanded}
-              className={classes.chevronButton}
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleGroup(entry.id);
-              }}
-            >
-              <IconChevronRight size={16} className={classes.chevron} />
-            </button>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className={classes.clampOne}>{unitLabel(entry)}</div>
-              <Text size="xs" fw={600} c="blue.7">
-                {ops.length} actions
-                {entry.message ? '' : entry.batchId ? ' (batch)' : ''}
-              </Text>
+        <div className={classes.cardContent}>
+          <div className={classes.clamp}>{op.description}</div>
+          {meta(op.time, op.user, null)}
+        </div>
+      </div>
+    );
+  };
+
+  const renderUnit = (entry) => {
+    const ops = entry.ops || [];
+    const multi = ops.length > 1;
+    const expanded = multi && expandedGroups.has(entry.id);
+    const isSelected = selectedEntry?.id === entry.id;
+    // Highlight a collapsed unit when it hides the currently-selected member op.
+    const containsSelected = !expanded && multi && ops.some((op) => op.id === selectedEntry?.id);
+    const range =
+      multi && entry.endTime && entry.endTime !== entry.time
+        ? `${fullTimestamp(entry.time)} → ${fullTimestamp(entry.endTime)}`
+        : undefined;
+    // Clicking the card selects the unit (the state after its last op); the
+    // chevron expands the member ops.
+    return (
+      <div key={entry.id}>
+        <div
+          className={multi ? `${classes.entry} ${classes.groupEntry}` : classes.entry}
+          data-expanded={expanded}
+          data-selected={isSelected || containsSelected}
+          onClick={() => selectUnit(entry)}
+        >
+          <div
+            className={
+              multi ? `${classes.cardContent} ${classes.groupContent}` : classes.cardContent
+            }
+          >
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              {multi && (
+                <button
+                  type="button"
+                  aria-label={expanded ? 'Collapse' : 'Expand'}
+                  aria-expanded={expanded}
+                  className={classes.chevronButton}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleGroup(entry.id);
+                  }}
+                >
+                  <IconChevronRight size={16} className={classes.chevron} />
+                </button>
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className={classes.clamp}>
+                  {multi && (
+                    <Badge size="xs" variant="light" mr={6} style={{ verticalAlign: '1px' }}>
+                      {ops.length} actions
+                    </Badge>
+                  )}
+                  {unitLabel(entry)}
+                </div>
+                {meta(entry.time, entry.user, entry.apiToken, range)}
+              </div>
             </div>
           </div>
-          <div
-            style={{
-              flexShrink: 0,
-              paddingTop: '0.35rem',
-              borderTop: '1px solid var(--mantine-color-gray-1)',
-            }}
-          >
-            <Text size="xs" c="dimmed">
-              {fullTimestamp(entry.time)}
-              {entry.endTime && entry.endTime !== entry.time
-                ? ` → ${fullTimestamp(entry.endTime)}`
-                : ''}
-            </Text>
-            <Text size="xs" c="dimmed">
-              {entry.user ? `by ${entry.user.username}` : ''}
-              {entry.apiToken ? ` (via ${entry.apiToken.name})` : ''}
-            </Text>
-          </div>
         </div>
+        {expanded &&
+          [...ops].reverse().map((op, i, arr) => renderOp(entry, op, i === arr.length - 1))}
       </div>
     );
   };
@@ -275,29 +189,8 @@ export const HistoryDrawer = ({
               <Text size="xs" c="dimmed" mb="sm">
                 {reversedAuditEntries.length} entries • Click to view historical state
               </Text>
-
-              {/* Virtual scrolled list - takes remaining space */}
-              <div
-                ref={scrollContainerRef}
-                onScroll={handleScroll}
-                style={{
-                  flex: 1,
-                  overflow: 'auto',
-                }}
-              >
-                <div style={{ height: totalHeight, position: 'relative' }}>
-                  <div
-                    style={{
-                      transform: `translateY(${offsetY}px)`,
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                    }}
-                  >
-                    {rows.slice(visibleRange.startIndex, visibleRange.endIndex + 1).map(renderRow)}
-                  </div>
-                </div>
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                {reversedAuditEntries.map(renderUnit)}
               </div>
             </Box>
           )}
@@ -308,6 +201,11 @@ export const HistoryDrawer = ({
               <Text size="sm" fw={500} c="blue.9" mb={4}>
                 Viewing Historical State
               </Text>
+              {selectedEntry.label && (
+                <Text size="xs" c="blue.9" lineClamp={2}>
+                  {selectedEntry.label}
+                </Text>
+              )}
               <Text size="xs" c="blue.7">
                 {fullTimestamp(selectedEntry.time)}
               </Text>

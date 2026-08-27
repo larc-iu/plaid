@@ -3,18 +3,12 @@
 }
 
 /* Base card shared by every row — lone entries, group headers, and expanded
-   children all sit in one of these so they read consistently. Card-to-card
-   gaps (via margin) replace the old per-row bottom border as the separator. */
-/* Card height + margins must sum to ITEM_HEIGHT (104). The roomy bottom margin
-   is the gutter the group "stack" sheets peek into — kept large enough that the
-   sheets stay fully within the row and never get clipped at the row boundary. */
+   children all sit in one of these so they read consistently. Cards size to
+   their content; the bottom margin is the gutter between cards (and the room
+   the group "stack" sheets peek into). */
 .cardContent {
-  height: calc(100% - 14px);
-  margin: 1px 2px 13px 2px;
-  padding: 0.6rem 0.75rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  margin: 1px 2px 12px 2px;
+  padding: 0.55rem 0.7rem;
   background: var(--mantine-color-white);
   border: 1px solid var(--mantine-color-gray-2);
   border-radius: var(--mantine-radius-sm);
