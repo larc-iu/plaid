@@ -123,55 +123,46 @@ export const ExportPresetsSettings = ({ projectId, client }) => {
   const deleting = presets.find((p) => p.id === deletingId);
 
   return (
-    <div className="tw flex flex-col gap-6 pt-4">
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold">Export Presets</h2>
-              <p className="text-sm text-muted-foreground">
-                A preset fixes an export format and which orthographies, fields and options it
-                includes. Documents and the project page export with one of these.
-              </p>
-            </div>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4" /> New preset
-            </Button>
-          </div>
-
-          <div className="border-t" />
-
-          {presets.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No export presets yet.</p>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {presets.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted/50"
-                >
-                  <Link
-                    to={`/projects/${projectId}/export/${p.id}`}
-                    className="flex flex-1 items-center gap-2 text-left"
-                  >
-                    <span className="font-medium">{p.name}</span>
-                    <span className="text-xs text-muted-foreground">{formatLabel(p.format)}</span>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    aria-label={`Delete ${p.name}`}
-                    onClick={() => setDeletingId(p.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
+    <div className="tw flex flex-col gap-4 pt-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold">Export Presets</h2>
+          <p className="text-sm text-muted-foreground">
+            A preset fixes an export format and which orthographies, fields and options it includes.
+            Documents and the project page export with one of these.
+          </p>
         </div>
+        <Button onClick={() => setCreateOpen(true)}>
+          <Plus className="h-4 w-4" /> New preset
+        </Button>
       </div>
+
+      {presets.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No export presets yet.</p>
+      ) : (
+        <div className="divide-y border-t">
+          {presets.map((p) => (
+            <div key={p.id} className="flex items-center gap-2 py-2 text-sm">
+              <Link
+                to={`/projects/${projectId}/export/${p.id}`}
+                className="flex flex-1 items-center gap-2 text-left hover:underline"
+              >
+                <span className="font-medium">{p.name}</span>
+                <span className="text-xs text-muted-foreground">{formatLabel(p.format)}</span>
+              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label={`Delete ${p.name}`}
+                onClick={() => setDeletingId(p.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">

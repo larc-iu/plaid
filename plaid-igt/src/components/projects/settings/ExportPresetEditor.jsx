@@ -135,65 +135,60 @@ export const ExportPresetEditor = ({ projectId, client, presetId }) => {
         </div>
       </div>
 
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="preset-name">Name</Label>
-          <Input
-            id="preset-name"
-            value={draft.name}
-            onChange={(e) => update({ name: e.target.value })}
-            className="max-w-md"
-          />
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="preset-name">Name</Label>
+        <Input
+          id="preset-name"
+          value={draft.name}
+          onChange={(e) => update({ name: e.target.value })}
+          className="max-w-md"
+        />
       </div>
 
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-4">
-          <div>
-            <h3 className="text-lg font-semibold">Contents</h3>
-            <p className="text-sm text-muted-foreground">What this preset includes when it runs.</p>
-          </div>
-          <div className="border-t" />
-          {draft.format === 'flextext' ? (
-            <FlextextOptions
-              options={draft.options || {}}
-              layers={layers}
-              onChange={(options) => update({ options })}
-            />
-          ) : draft.format === 'plaid-igt-json' ? (
-            <NativeOptions
-              options={draft.options || {}}
-              onChange={(options) => update({ options })}
-            />
-          ) : (
-            <PlainTextOptions
-              options={draft.options || {}}
-              layers={layers}
-              onChange={(options) => update({ options })}
-            />
-          )}
-          {draft.format === 'plaid-igt-json' ? (
-            <p className="border-t pt-3 text-xs text-muted-foreground">
-              This format always produces a .zip archive including all vocabularies and the project
-              configuration.
-            </p>
-          ) : (
-            hasVocabularies && (
-              <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
-                <span>
-                  <span className="font-medium">Include vocabularies as TSV files</span>
-                  <span className="block text-xs text-muted-foreground">
-                    Applies to project-wide and multi-document exports, which produce a .zip.
-                  </span>
-                </span>
-                <Switch
-                  checked={!!draft.includeVocabularies}
-                  onCheckedChange={(v) => update({ includeVocabularies: v })}
-                />
-              </label>
-            )
-          )}
+      <div className="flex flex-col gap-4 border-t pt-4">
+        <div>
+          <h3 className="text-lg font-semibold">Contents</h3>
+          <p className="text-sm text-muted-foreground">What this preset includes when it runs.</p>
         </div>
+        {draft.format === 'flextext' ? (
+          <FlextextOptions
+            options={draft.options || {}}
+            layers={layers}
+            onChange={(options) => update({ options })}
+          />
+        ) : draft.format === 'plaid-igt-json' ? (
+          <NativeOptions
+            options={draft.options || {}}
+            onChange={(options) => update({ options })}
+          />
+        ) : (
+          <PlainTextOptions
+            options={draft.options || {}}
+            layers={layers}
+            onChange={(options) => update({ options })}
+          />
+        )}
+        {draft.format === 'plaid-igt-json' ? (
+          <p className="border-t pt-3 text-xs text-muted-foreground">
+            This format always produces a .zip archive including all vocabularies and the project
+            configuration.
+          </p>
+        ) : (
+          hasVocabularies && (
+            <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
+              <span>
+                <span className="font-medium">Include vocabularies as TSV files</span>
+                <span className="block text-xs text-muted-foreground">
+                  Applies to project-wide and multi-document exports, which produce a .zip.
+                </span>
+              </span>
+              <Switch
+                checked={!!draft.includeVocabularies}
+                onCheckedChange={(v) => update({ includeVocabularies: v })}
+              />
+            </label>
+          )
+        )}
       </div>
     </div>
   );
