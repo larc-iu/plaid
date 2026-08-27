@@ -9,7 +9,7 @@ import { notifyError, notifyWarning, toast, humanizeError } from '@/utils/feedba
 import { History, FileText, Type, Mic, Play, Table, Download } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ExportDialog } from '@/components/export/ExportDialog.jsx';
+import { ExportWizard } from '@/components/export/ExportDialog.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
 import { HistoryDrawer } from './HistoryDrawer.jsx';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
@@ -89,7 +89,6 @@ const DocumentEditor = () => {
   // request an initial tab via router state or the ?tab= query param.
   const [activeTab, setActiveTab] = useState(location.state?.tab ?? tabParam ?? 'metadata');
   const [loadError, setLoadError] = useState('');
-  const [exportOpen, setExportOpen] = useState(false);
 
   const permissions = useDocumentPermissions(doc?.project);
   const history = useDocumentHistory(documentId, client);
@@ -325,22 +324,7 @@ const DocumentEditor = () => {
               <span className="text-foreground">{doc.document?.name || 'Document'}</span>
             </nav>
 
-            <div className="flex items-start justify-between gap-4">
-              <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
-              <Button variant="outline" onClick={() => setExportOpen(true)}>
-                <Download className="h-4 w-4" /> Export
-              </Button>
-            </div>
-
-            <ExportDialog
-              open={exportOpen}
-              onOpenChange={setExportOpen}
-              client={client}
-              project={doc.project}
-              defaultScope={{ type: 'document', id: doc.id, name: doc.document.name }}
-              canSavePresets={permissions.canManage && !isViewingHistorical}
-              asOf={asOf}
-            />
+            <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
 
             {isViewingHistorical && (
               <div className="mb-4 rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
@@ -377,6 +361,9 @@ const DocumentEditor = () => {
                 <TabsTrigger value="analyze">
                   <Table className="h-4 w-4" /> Analyze
                 </TabsTrigger>
+                <TabsTrigger value="export">
+                  <Download className="h-4 w-4" /> Export
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="metadata">
@@ -402,6 +389,21 @@ const DocumentEditor = () => {
               <TabsContent value="analyze">
                 <Panel active={activeTab === 'analyze'}>
                   <AnalyzeIsland />
+                </Panel>
+              </TabsContent>
+              <TabsContent value="export">
+                <Panel active={activeTab === 'export'}>
+                  <div className="tw flex flex-col gap-6 pt-4">
+                    <div className="rounded-lg border bg-card p-4">
+                      <ExportWizard
+                        client={client}
+                        project={doc.project}
+                        defaultScope={{ type: 'document', id: doc.id, name: doc.document.name }}
+                        canSavePresets={permissions.canManage && !isViewingHistorical}
+                        asOf={asOf}
+                      />
+                    </div>
+                  </div>
                 </Panel>
               </TabsContent>
             </Tabs>

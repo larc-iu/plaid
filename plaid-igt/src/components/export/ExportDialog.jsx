@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { discoverExportLayers } from '@/export/exportLayers';
@@ -26,12 +20,18 @@ const STEP_TITLES = { preset: 'Preset', options: 'Options', scope: 'Scope' };
 // under config.igt.export.presets (maintainer writes; everyone else gets
 // session-only presets and can still export).
 //
+// Lives in two places: inline as a document's Export tab (ExportWizard) and in
+// a modal on the project page (ExportDialog). `active` (re)initializes the
+// wizard each time it is shown; `onClose`, when given, adds a Close button and
+// is called after a successful export (the modal closes; the tab just returns
+// to the preset step).
+//
 // defaultScope (optional): { type: 'document', id, name } when launched from a
 // document page — preselects "this document". asOf (optional) locks the wizard
 // to that document and exports its historical state.
-export const ExportDialog = ({
-  open,
-  onOpenChange,
+export const ExportWizard = ({
+  active = true,
+  onClose = null,
   client,
   project,
   documents = null,
@@ -39,6 +39,7 @@ export const ExportDialog = ({
   canSavePresets = false,
   asOf = null,
 }) => {
+  const open = active;
   const [step, setStep] = useState('preset');
   const [presets, setPresets] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -156,7 +157,8 @@ export const ExportDialog = ({
       } else {
         notifySuccess(`Downloaded ${result.filename}`, 'Export complete');
       }
-      onOpenChange(false);
+      if (onClose) onClose();
+      else setStep('preset');
     } catch (err) {
       if (err instanceof ExportCancelled) {
         notifyWarning('Export cancelled — nothing was downloaded.', 'Export');
@@ -179,23 +181,16 @@ export const ExportDialog = ({
         : scope !== 'documents' || selectedDocIds.size > 0;
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!running) onOpenChange(o);
-      }}
-    >
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Download className="h-4 w-4" /> Export
-            <span className="text-sm font-normal text-muted-foreground">
-              — {STEP_TITLES[step]}
-              {preset && step !== 'preset' ? ` · ${preset.name}` : ''}
-            </span>
-          </DialogTitle>
-        </DialogHeader>
+    <div className="flex flex-col gap-4">
+      <h2 className="flex items-center gap-2 text-lg font-semibold">
+        <Download className="h-4 w-4" /> Export
+        <span className="text-sm font-normal text-muted-foreground">
+          — {STEP_TITLES[step]}
+          {preset && step !== 'preset' ? ` · ${preset.name}` : ''}
+        </span>
+      </h2>
 
+      <div>
         {running ? (
           <div className="flex flex-col gap-2 py-4">
             <div className="h-2 w-full rounded-full bg-muted">
@@ -273,45 +268,60 @@ export const ExportDialog = ({
             )}
           </>
         )}
+      </div>
 
-        <DialogFooter className="flex items-center">
-          {dirty && !running && (
-            <Button variant="ghost" className="mr-auto" onClick={() => persistPresets(presets)}>
-              Save presets
-            </Button>
-          )}
-          {running ? (
-            <Button
-              variant="outline"
-              onClick={() => {
-                stopRef.current = true;
-              }}
-            >
-              Cancel
-            </Button>
-          ) : (
-            <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+      <div className="flex items-center justify-end gap-2">
+        {dirty && !running && (
+          <Button variant="ghost" className="mr-auto" onClick={() => persistPresets(presets)}>
+            Save presets
+          </Button>
+        )}
+        {running ? (
+          <Button
+            variant="outline"
+            onClick={() => {
+              stopRef.current = true;
+            }}
+          >
+            Cancel
+          </Button>
+        ) : (
+          <>
+            {onClose && (
+              <Button variant="outline" onClick={onClose}>
                 Close
               </Button>
-              {stepIndex > 0 && (
-                <Button variant="outline" onClick={() => setStep(STEPS[stepIndex - 1])}>
-                  Back
-                </Button>
-              )}
-              {step !== 'scope' ? (
-                <Button onClick={() => setStep(STEPS[stepIndex + 1])} disabled={!canNext}>
-                  Next
-                </Button>
-              ) : (
-                <Button onClick={run} disabled={!canNext}>
-                  Export
-                </Button>
-              )}
-            </>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            )}
+            {stepIndex > 0 && (
+              <Button variant="outline" onClick={() => setStep(STEPS[stepIndex - 1])}>
+                Back
+              </Button>
+            )}
+            {step !== 'scope' ? (
+              <Button onClick={() => setStep(STEPS[stepIndex + 1])} disabled={!canNext}>
+                Next
+              </Button>
+            ) : (
+              <Button onClick={run} disabled={!canNext}>
+                Export
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 };
+
+// Modal wrapper for the project page (DocumentList), where the wizard exports
+// any set of the project's documents.
+export const ExportDialog = ({ open, onOpenChange, ...wizardProps }) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="max-w-xl">
+      <DialogHeader className="sr-only">
+        <DialogTitle>Export</DialogTitle>
+      </DialogHeader>
+      <ExportWizard active={open} onClose={() => onOpenChange(false)} {...wizardProps} />
+    </DialogContent>
+  </Dialog>
+);
