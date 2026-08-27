@@ -4,6 +4,7 @@ import { AccessManagement } from './AccessManagement';
 import { ProjectAccessTokens } from './ProjectAccessTokens';
 import { ServicesSettings } from './settings/ServicesSettings';
 import { ExportPresetsSettings } from './settings/ExportPresetsSettings';
+import { ExportPresetEditor } from './settings/ExportPresetEditor';
 import { ProjectSettings } from './ProjectSettings';
 
 const SECTIONS = [
@@ -24,6 +25,7 @@ export const ProjectSettingsPanel = ({
   client,
   user,
   section,
+  presetId = null,
   onSectionChange,
   onProjectUpdate,
 }) => {
@@ -66,7 +68,11 @@ export const ProjectSettingsPanel = ({
           <ServicesSettings projectId={projectId} client={client} />
         </TabsContent>
         <TabsContent value="export" className="mt-0">
-          <ExportPresetsSettings projectId={projectId} client={client} />
+          {presetId ? (
+            <ExportPresetEditor projectId={projectId} client={client} presetId={presetId} />
+          ) : (
+            <ExportPresetsSettings projectId={projectId} client={client} />
+          )}
         </TabsContent>
         <TabsContent value="settings" className="mt-0">
           <ProjectSettings project={project} projectId={projectId} client={client} />

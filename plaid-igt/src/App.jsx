@@ -5,7 +5,6 @@ import { LoginForm } from './components/auth/LoginForm';
 import { RedeemInvite } from './components/auth/RedeemInvite';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
-import { ExportPresetEditor } from './components/projects/settings/ExportPresetEditor';
 import { ProjectSetup } from './components/projects/ProjectSetup';
 import { ImportFlexProject } from './components/projects/ImportFlexProject';
 import { ImportNativeProject } from './components/projects/ImportNativeProject';
@@ -181,7 +180,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AppLayout>
-                    <ExportPresetEditor />
+                    <ProjectDetail />
                   </AppLayout>
                 </ProtectedRoute>
               }

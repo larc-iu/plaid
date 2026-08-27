@@ -28,7 +28,7 @@ const SECTION_TITLES = {
 // a left-side vertical tab group (ProjectSettingsPanel), route-backed by the
 // /access, /tokens, /services, /export, /settings suffixes.
 export const ProjectDetail = () => {
-  const { projectId } = useParams();
+  const { projectId, presetId = null } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, client, logout } = useAuth();
@@ -73,7 +73,11 @@ export const ProjectDetail = () => {
 
   // Which top-level tab is active. Documents/Search are local UI state; the
   // Settings tab is reflected in the path so its sections are deep-linkable.
-  const pathSection = SETTINGS_SECTIONS.find((s) => location.pathname.endsWith(`/${s}`)) || null;
+  // The section is the path segment after the project id; a section may carry
+  // a sub-path (e.g. /export/:presetId opens one preset's editor in place).
+  const pathSection =
+    SETTINGS_SECTIONS.find((s) => location.pathname.startsWith(`/projects/${projectId}/${s}`)) ||
+    null;
   const onSettings = pathSection !== null;
 
   // Tab title: "<Section> · <Project> · Plaid IGT" on a settings section, else
@@ -202,6 +206,7 @@ export const ProjectDetail = () => {
               client={client}
               user={user}
               section={pathSection || 'access'}
+              presetId={presetId}
               onSectionChange={(s) => navigate(`/projects/${projectId}/${s}`)}
               onProjectUpdate={() => fetchData()}
             />

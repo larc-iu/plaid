@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertTriangle, Plus, Pencil, Trash2 } from 'lucide-react';
+import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -157,15 +157,6 @@ export const ExportPresetsSettings = ({ projectId, client }) => {
                     <span className="font-medium">{p.name}</span>
                     <span className="text-xs text-muted-foreground">{formatLabel(p.format)}</span>
                   </Link>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    aria-label={`Edit ${p.name}`}
-                    onClick={() => navigate(`/projects/${projectId}/export/${p.id}`)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
