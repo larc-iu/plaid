@@ -13,7 +13,7 @@ import {
   SelectLabel,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { MATCH_TYPES, searchDomains } from './searchQueries.js';
 import { runHitsSearch, runFreqSearch } from './searchRunner.js';
@@ -68,9 +68,12 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       setResult(r);
     } catch (err) {
       console.error('Search failed:', err);
+      // The server's 400 reads ":value has an invalid regex: Unclosed group
+      // near index 1 (" — keep only the engine's own explanation.
+      const detail = humanizeError(err, '').replace(/^.*?invalid regex:\s*/i, '');
       notifyError(
         matchType === 'regex' && err?.status === 400
-          ? `Search failed — check your regex: ${err.message}`
+          ? `Check your regex: ${detail || 'the pattern is invalid.'}`
           : 'Search failed. Try again or simplify the query.',
         'Search Error',
       );

@@ -7,8 +7,19 @@ import { toast } from 'sonner';
 export const notifySuccess = (message, title) =>
   toast.success(title || message, title ? { description: message } : undefined);
 
+// Every error toast passes through here, and many callers hand over a raw
+// client `err.message` ("HTTP 400 … at http://host/api/v1/…"). Scrub the
+// transport noise once, centrally, so no toast shows an internal URL.
+const scrubTransport = (message) =>
+  typeof message === 'string'
+    ? message
+        .replace(/\s*at\s+https?:\/\/\S+/gi, '')
+        .replace(/^HTTP \d{3}\s*/i, '')
+        .trim() || message
+    : message;
+
 export const notifyError = (message, title = 'Error') =>
-  toast.error(title, { description: message });
+  toast.error(title, { description: scrubTransport(message) });
 
 export const notifyInfo = (message, title) =>
   toast(title || message, title ? { description: message } : undefined);
