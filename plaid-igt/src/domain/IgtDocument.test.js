@@ -667,6 +667,33 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     ]);
   });
 
+  it('clearSentences merges sentences into the first and deletes sentence spans (never bulk-deletes)', async () => {
+    // The word layer nests in the sentence layer (and morphemes in words), so a
+    // bulkDelete of sentence tokens would cascade-delete every word/morpheme.
+    const raw = buildRawDoc({
+      body: 'the cat',
+      sentences: [
+        { id: 's-1', begin: 0, end: 4 },
+        { id: 's-2', begin: 4, end: 7 },
+      ],
+    });
+    raw.textLayers[0].tokenLayers[0].spanLayers[0].spans = [
+      { id: 'tr-1', tokens: ['s-1'], value: 'le' },
+      { id: 'tr-2', tokens: ['s-2'], value: 'chat' },
+    ];
+    const client = makeFakeClient({ reloadDoc: raw });
+    const doc = makeDoc({ raw, client });
+    const ok = await doc.clearSentences();
+    expect(ok).toBe(true);
+    const k = kinds(doc.client);
+    expect(k).not.toContain('tokens.bulkDelete');
+    expect(k).not.toContain('tokens.bulkCreate');
+    const merges = doc.client.calls.filter((c) => c.kind === 'tokens.merge');
+    expect(merges.map((c) => c.args)).toEqual([['s-1', 's-2']]);
+    const dels = doc.client.calls.filter((c) => c.kind === 'spans.delete');
+    expect(dels.map((c) => c.args[0]).sort()).toEqual(['tr-1', 'tr-2']);
+  });
+
   it('createAlignment inserts text + creates the alignment token', async () => {
     const doc = makeDoc(); // body 'the cat', no existing alignments
     const ok = await doc.createAlignment({ text: 'hi', timeBegin: 0, timeEnd: 1 });

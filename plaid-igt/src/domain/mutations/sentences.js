@@ -2,12 +2,12 @@
 // `this` API (_withSaving, _applyRawPatch, _reload, layerInfo, body, etc.).
 //
 // The Sentences token layer is `:partitioning` — its tokens must tile
-// `[0, body.length)` with no gaps and no overlaps. Single create/delete is
-// rejected by the server, so `clearSentences` uses an atomic
-// bulkDelete + bulkCreate batch. `merge` and `split` are partition-preserving
-// and are the supported boundary edits.
+// `[0, body.length)` with no gaps and no overlaps — and it is the ROOT of the
+// token nesting (words nest in sentences, morphemes in words), so deleting a
+// sentence token cascades to every word and morpheme inside it. `merge` and
+// `split` are partition- and nesting-preserving and are the only boundary
+// edits used here; `clearSentences` is a merge of everything into the first.
 
-import { cpLength } from '@larc-iu/plaid-client';
 import { reparentSpans } from './reparent.js';
 
 export const sentenceMutations = {
@@ -76,32 +76,36 @@ export const sentenceMutations = {
     });
   },
 
+  // Reset to a single sentence spanning the whole text. Sentence tokens are
+  // merged into the first one (a bulkDelete + bulkCreate would cascade-delete
+  // every nested word and morpheme). Sentence-scope spans (translations, …)
+  // are deleted, as the confirm dialog promises — a merge would otherwise
+  // reparent them all onto the survivor.
   async clearSentences() {
     const info = this.layerInfo;
     const sentenceLayer = info.sentenceTokenLayer;
-    const textId = info.primaryTextLayer?.text?.id;
-    const sentenceTokens = sentenceLayer?.tokens || [];
-    if (!sentenceLayer?.id || !textId) {
-      this.setError('Sentence layer or text not configured');
+    const sentenceTokens = [...(sentenceLayer?.tokens || [])].sort((a, b) => a.begin - b.begin);
+    if (!sentenceLayer?.id) {
+      this.setError('Sentence layer not configured');
       return false;
     }
     if (sentenceTokens.length === 0) return false;
 
-    const bodyLen = cpLength(this.body);
-    const sentenceIds = sentenceTokens.map((s) => s.id);
+    const first = sentenceTokens[0];
+    const sentenceIds = new Set(sentenceTokens.map((s) => s.id));
+    const spanIds = (info.spanLayers?.sentence || []).flatMap((sl) =>
+      (sl.spans || [])
+        .filter((sp) => (sp.tokens || []).some((t) => sentenceIds.has(t)))
+        .map((sp) => sp.id),
+    );
 
     return this._withSaving('Failed to clear sentences', async () => {
       await this._client.batched(async () => {
-        this._client.tokens.bulkDelete(sentenceIds);
-        if (bodyLen > 0) {
-          this._client.tokens.bulkCreate([
-            {
-              tokenLayerId: sentenceLayer.id,
-              text: textId,
-              begin: 0,
-              end: bodyLen,
-            },
-          ]);
+        spanIds.forEach((id) => this._client.spans.delete(id));
+        // Sequential merges into the first sentence in begin-order; the server
+        // processes batch ops in order, so each merge sees the widened extent.
+        for (let i = 1; i < sentenceTokens.length; i++) {
+          this._client.tokens.merge(first.id, sentenceTokens[i].id);
         }
       });
       await this._reload();
