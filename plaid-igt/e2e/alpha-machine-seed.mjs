@@ -3,9 +3,12 @@ import { ROLES, stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
 import fs from 'node:fs';
 const tok = fs.readFileSync('.token','utf8').trim();
 const c = new PlaidClient('http://localhost:8085', tok);
-const DOC = '01a04095-3a41-7302-98da-663ef2880e41';
-const LEXA = '01a04095-392a-7e55-a4ee-4f64ced1542e';
+// Resolve P-MAIN / "Edge cases" / LEX-A by name so the doc can be deleted and
+// re-seeded (alpha-seed.mjs) without editing ids here.
 const roleOf = (l) => l?.config?.plaid?.role;
+const project = (await c.projects.list()).find((p) => p.name === 'P-MAIN');
+const DOC = (await c.projects.listDocuments(project.id)).find((d) => d.name === 'Edge cases').id;
+const LEXA = (await c.projects.get(project.id)).vocabs.find((v) => v.name === 'LEX-A').id;
 const raw = await c.documents.get(DOC, true);
 const tl = raw.textLayers.find(l => roleOf(l)===ROLES.BASELINE);
 const cps=[...tl.text.body];
