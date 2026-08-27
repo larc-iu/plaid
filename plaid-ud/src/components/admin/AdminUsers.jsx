@@ -17,7 +17,8 @@ import {
   Checkbox,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconPlus, IconSearch } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconLink } from '@tabler/icons-react';
+import { MintedLinkModal } from '../projects/ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import classes from '../common/listRow.module.css';
@@ -50,6 +51,10 @@ export const AdminUsers = () => {
   const [newUserForm, setNewUserForm] = useState(EMPTY_USER_FORM);
   const [createUserError, setCreateUserError] = useState('');
   const [createUserLoading, setCreateUserLoading] = useState(false);
+
+  // Admin-issued password reset link, shown once after minting.
+  const [resetCode, setResetCode] = useState(null);
+  const [resetting, setResetting] = useState(false);
 
   // Edit-user form state
   const [editingUser, setEditingUser] = useState(null);
@@ -210,6 +215,22 @@ export const AdminUsers = () => {
         }
       },
     });
+  };
+
+  // Mint a one-time link that lets the user set their own password. The point
+  // is that the admin never learns (or has to transmit) a password that then
+  // has to be trusted to get changed — the user picks their own, once.
+  const handleResetLink = async (target) => {
+    try {
+      setResetting(true);
+      const inv = await getClient().invites.create({ targetUserId: target.id });
+      setResetCode(inv.code);
+    } catch (err) {
+      console.error('Error creating reset link:', err);
+      notifyError(err.message || 'Failed to create a password reset link');
+    } finally {
+      setResetting(false);
+    }
   };
 
   const handleReactivate = async (target) => {
@@ -448,6 +469,18 @@ export const AdminUsers = () => {
                 }
               />
 
+              {!editingUser.deactivatedAt && (
+                <Button
+                  type="button"
+                  variant="light"
+                  leftSection={<IconLink size={16} />}
+                  loading={resetting}
+                  onClick={() => handleResetLink(editingUser)}
+                >
+                  Create password reset link
+                </Button>
+              )}
+
               <Group justify="space-between" pt="xs">
                 {editingUser.deactivatedAt ? (
                   <Button
@@ -482,6 +515,12 @@ export const AdminUsers = () => {
           </form>
         )}
       </Modal>
+
+      <MintedLinkModal
+        code={resetCode}
+        onClose={() => setResetCode(null)}
+        title="Password reset link created"
+      />
     </>
   );
 };

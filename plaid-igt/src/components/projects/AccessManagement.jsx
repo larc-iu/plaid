@@ -37,6 +37,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { ProjectInvites, MintedLinkDialog } from './ProjectInvites';
 
 // Mirrors plaid-ud's ProjectManagement. The full user roster isn't fetched
 // (doesn't scale + is admin-gated); instead "Members" come from the project's
@@ -84,6 +85,14 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Admin-issued password reset link, shown once after minting.
+  const [resetCode, setResetCode] = useState(null);
+  const [resetting, setResetting] = useState(false);
+
+  // Whether this user can hand out project invites. Maintainers can, which is
+  // the point: onboarding a class should not queue behind an admin.
+  const canInvite = isAdmin || (project?.maintainers || []).includes(user?.id);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 250);
@@ -225,6 +234,22 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     }
   };
 
+  // Mint a one-time link that lets someone set their own password, instead of
+  // the admin inventing a temporary one and sending it over some side channel
+  // that then has to be trusted to be cleaned up.
+  const handleResetLink = async (target) => {
+    try {
+      setResetting(true);
+      const inv = await client.invites.create({ targetUserId: target.id });
+      setResetCode(inv.code);
+    } catch (err) {
+      console.error('Error creating reset link:', err);
+      notifyError(err.message || 'Failed to create a password reset link', 'Error');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleDeleteUser = async () => {
     if (!deleteTarget) return;
     try {
@@ -326,6 +351,12 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                           <DropdownMenuItem onSelect={() => startEdit(m)}>
                             Edit user…
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={resetting}
+                            onSelect={() => handleResetLink(m)}
+                          >
+                            Create password reset link…
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -336,6 +367,13 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
           </table>
         )}
       </div>
+
+      <ProjectInvites
+        projectId={projectId}
+        projectName={project?.name}
+        client={client}
+        canManage={canInvite}
+      />
 
       {/* Add a user (server-side search) */}
       <div className="rounded-lg border bg-card">
@@ -509,6 +547,12 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
           )}
         </DialogContent>
       </Dialog>
+
+      <MintedLinkDialog
+        code={resetCode}
+        onClose={() => setResetCode(null)}
+        title="Password reset link created"
+      />
 
       {/* Delete confirm */}
       <AlertDialog

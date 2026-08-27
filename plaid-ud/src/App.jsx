@@ -3,6 +3,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
+import { RedeemInvite } from './components/auth/RedeemInvite';
 import { UserProfile } from './components/auth/UserProfile';
 import { AdminUsers } from './components/admin/AdminUsers';
 import { ProjectList } from './components/projects/ProjectList';
@@ -23,6 +24,11 @@ function App() {
         <Routes>
           {/* Public routes */}
           <Route path="/login" element={<LoginForm />} />
+          {/* Unauthenticated by necessity: whoever follows an invite link has
+              no account yet, or has lost the password to the one they have.
+              The code rides in the hash fragment, so it never reaches the
+              server as part of a URL. */}
+          <Route path="/invite/:code" element={<RedeemInvite />} />
 
           {/* Protected routes */}
           <Route

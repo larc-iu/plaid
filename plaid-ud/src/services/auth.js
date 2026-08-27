@@ -33,45 +33,70 @@ function getUserIdFromToken(token) {
   return payload?.['user/id'] || null; // Note: Clojure namespaced keyword becomes "user/id"
 }
 
+// Persist a freshly-authenticated client as the current session. Shared by
+// login and invite redemption, which differ only in how they obtained the
+// token — everything after that (identify the user, fetch their profile, write
+// localStorage) has to be identical, or a redeemed session ends up subtly
+// unlike a logged-in one.
+async function establishSession(authedClient) {
+  client = authedClient;
+  const token = client.token;
+
+  const userId = getUserIdFromToken(token);
+  if (!userId) {
+    throw new Error('Could not extract user ID from token');
+  }
+
+  const userProfile = await client.users.get(userId);
+
+  localStorage.setItem('token', token);
+  localStorage.setItem('userId', userId);
+  localStorage.setItem('username', userProfile.username);
+  // Note: PlaidClient transforms is-admin to isAdmin
+  localStorage.setItem('isAdmin', (userProfile.isAdmin || false).toString());
+
+  return {
+    success: true,
+    user: {
+      id: userId,
+      username: userProfile.username,
+      isAdmin: userProfile.isAdmin || false,
+    },
+  };
+}
+
 export const authService = {
   async login(username, password) {
     try {
       // Use PlaidClient's static login method
-      client = await PlaidClient.login(BASE_URL, username, password, {
-        onAuthError: () => authService.logout(),
-      });
-
-      // Extract token from the client
-      const token = client.token;
-
-      // Extract user ID from JWT token
-      const userId = getUserIdFromToken(token);
-      if (!userId) {
-        throw new Error('Could not extract user ID from token');
-      }
-
-      // Fetch complete user profile from server
-      const userProfile = await client.users.get(userId);
-
-      // Store token and user info
-      localStorage.setItem('token', token);
-      localStorage.setItem('userId', userId);
-      localStorage.setItem('username', userProfile.username);
-      // Note: PlaidClient transforms is-admin to isAdmin
-      localStorage.setItem('isAdmin', (userProfile.isAdmin || false).toString());
-
-      return {
-        success: true,
-        user: {
-          id: userId,
-          username: userProfile.username,
-          isAdmin: userProfile.isAdmin || false,
-        },
-      };
+      return await establishSession(
+        await PlaidClient.login(BASE_URL, username, password, {
+          onAuthError: () => authService.logout(),
+        }),
+      );
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
     }
+  },
+
+  // Describe an invite code. Deliberately NOT authenticated: whoever follows
+  // an invite link has no account yet, which is the entire point.
+  async lookupInvite(code) {
+    return PlaidClient.lookupInvite(BASE_URL, code);
+  },
+
+  // Redeem an invite and land logged in. The redeemer just chose these
+  // credentials, so sending them to the login form to retype them would be a
+  // pointless place to lose someone.
+  async redeemInvite(code, { username, password }) {
+    const { client: authed } = await PlaidClient.redeemInvite(
+      BASE_URL,
+      code,
+      { username, password },
+      { onAuthError: () => authService.logout() },
+    );
+    return establishSession(authed);
   },
 
   logout() {

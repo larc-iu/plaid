@@ -24,6 +24,7 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconPlus, IconSearch, IconDotsVertical } from '@tabler/icons-react';
+import { ProjectInvites, MintedLinkModal } from './ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
@@ -76,7 +77,30 @@ export const ProjectManagement = ({ embedded = false }) => {
   const [editUserForm, setEditUserForm] = useState(EMPTY_USER_FORM);
   const [editUserError, setEditUserError] = useState('');
 
+  // Admin-issued password reset link, shown once after minting.
+  const [resetCode, setResetCode] = useState(null);
+  const [resetting, setResetting] = useState(false);
+
   const isAdmin = user?.isAdmin || false;
+  // Whether this user can hand out project invites. Maintainers can, which is
+  // the point: onboarding a class should not queue behind an admin.
+  const canInvite = isAdmin || (project?.maintainers || []).includes(user?.id);
+
+  // Mint a one-time link that lets someone set their own password, instead of
+  // the admin inventing a temporary one and sending it over some side channel
+  // that then has to be trusted to be cleaned up.
+  const handleResetLink = async (target) => {
+    try {
+      setResetting(true);
+      const inv = await getClient().invites.create({ targetUserId: target.id });
+      setResetCode(inv.code);
+    } catch (err) {
+      console.error('Error creating reset link:', err);
+      notifyError(err.message || 'Failed to create a password reset link');
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const fetchProject = async () => {
     try {
@@ -419,6 +443,9 @@ export const ProjectManagement = ({ embedded = false }) => {
                           </Menu.Target>
                           <Menu.Dropdown>
                             <Menu.Item onClick={() => startEditingUser(m)}>Edit user…</Menu.Item>
+                            <Menu.Item disabled={resetting} onClick={() => handleResetLink(m)}>
+                              Create password reset link…
+                            </Menu.Item>
                           </Menu.Dropdown>
                         </Menu>
                       </Table.Td>
@@ -430,6 +457,19 @@ export const ProjectManagement = ({ embedded = false }) => {
           </Table.ScrollContainer>
         )}
       </Paper>
+
+      <ProjectInvites
+        projectId={projectId}
+        projectName={project?.name}
+        client={getClient()}
+        canManage={canInvite}
+      />
+
+      <MintedLinkModal
+        code={resetCode}
+        onClose={() => setResetCode(null)}
+        title="Password reset link created"
+      />
 
       {/* Add a user (server-side search) */}
       <Paper withBorder radius="md" mb="lg">

@@ -37,6 +37,20 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const redeemInvite = async (code, credentials) => {
+    try {
+      const result = await authService.redeemInvite(code, credentials);
+      setUser(result.user);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        status: error.status,
+        error: error.message || 'Could not redeem this invite',
+      };
+    }
+  };
+
   const logout = () => {
     authService.logout();
     setUser(null);
@@ -63,6 +77,7 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     login,
+    redeemInvite,
     logout,
     updateUser,
     isAuthenticated: !!user,
