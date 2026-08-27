@@ -174,6 +174,59 @@ interface ApiTokensBundle {
   revoke(userId: string, tokenId: string, auditMessage?: string): Promise<any>;
 }
 
+interface Invite {
+  id: string;
+  /** "signup" | "password-reset" */
+  kind: string;
+  /** "active" | "used" | "expired" | "revoked" */
+  status: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
+  maxUses: number;
+  uses: number;
+  revokedAt: string | null;
+  note: string | null;
+  targetUserId: string | null;
+  grantAdmin: boolean;
+  projectId: string | null;
+  projectRole: string | null;
+}
+
+interface InvitePreview {
+  /** "signup" | "password-reset" */
+  kind: string;
+  /** "active" | "used" | "expired" | "revoked" */
+  status: string;
+  expiresAt: string;
+  grantAdmin: boolean;
+  projectName?: string;
+  projectRole?: string;
+  /** Present only for a password reset: whose account the link belongs to. */
+  username?: string;
+}
+
+interface CreateInviteOptions {
+  projectId?: string;
+  /** "reader" | "writer" | "maintainer" */
+  projectRole?: string;
+  grantAdmin?: boolean;
+  /** Makes this a password reset for that user (admin only). */
+  targetUserId?: string;
+  maxUses?: number;
+  ttlDays?: number;
+  note?: string;
+}
+
+interface InvitesBundle {
+  list(opts?: { projectId?: string }): Promise<Invite[]>;
+  listPage(opts?: { projectId?: string; limit?: number; cursor?: string }): Promise<Page>;
+  iterPages(opts?: { projectId?: string; pageSize?: number }): AsyncGenerator<Invite[]>;
+  /** The `code` is returned ONCE and is not recoverable afterward. */
+  create(opts?: CreateInviteOptions, auditMessage?: string): Promise<Invite & { code: string }>;
+  revoke(id: string, auditMessage?: string): Promise<any>;
+}
+
 interface TokenLayersBundle {
   shift(tokenLayerId: string, direction: string, auditMessage?: string): Promise<any>;
   create(textLayerId: string, name: string, overlapMode?: string, parentTokenLayerId?: string, auditMessage?: string): Promise<any>;
@@ -303,6 +356,17 @@ export interface OperationGroupsBundle {
 export declare class PlaidClient {
   constructor(baseUrl: string, token: string, options?: PlaidClientOptions);
   static login(baseUrl: string, userId: string, password: string, options?: PlaidClientOptions): Promise<PlaidClient>;
+  /** Build the link to hand someone for an invite code. */
+  static inviteUrl(appUrl: string, code: string): string;
+  /** Describe an invite code with no authentication (for a signup page). */
+  static lookupInvite(baseUrl: string, code: string, options?: PlaidClientOptions): Promise<InvitePreview>;
+  /** Redeem an invite code with no authentication; resolves to a logged-in client. */
+  static redeemInvite(
+    baseUrl: string,
+    code: string,
+    credentials: { username?: string; password: string },
+    options?: PlaidClientOptions,
+  ): Promise<{ client: PlaidClient; userId: string; kind: string }>;
   timeout: number | null;
   /** Fired once on HTTP 401 (see PlaidClientOptions.onAuthError). */
   onAuthError: ((error: Error) => void) | null;
@@ -340,6 +404,7 @@ export declare class PlaidClient {
   texts: TextsBundle;
   users: UsersBundle;
   apiTokens: ApiTokensBundle;
+  invites: InvitesBundle;
   tokenLayers: TokenLayersBundle;
   documents: DocumentsBundle;
   messages: MessagesBundle;

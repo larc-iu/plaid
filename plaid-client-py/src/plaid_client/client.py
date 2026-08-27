@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from contextlib import contextmanager
 from typing import Any
+from urllib.parse import quote
 
 import requests as req_lib
 
@@ -873,6 +875,101 @@ class ApiTokensResource(_Resource):
             token_id: The token ID to revoke
         """
         return self._request('DELETE', f'/api/v1/users/{user_id}/tokens/{token_id}', audit_message=audit_message)
+
+
+class InvitesResource(_Resource):
+    """Invite links (signup) and admin-issued password reset links.
+
+    Minting, listing and revoking live here because they need a logged-in
+    client. Looking a code up and redeeming it do NOT — the redeemer has no
+    account yet — so those are classmethods on ``PlaidClient``:
+    :meth:`PlaidClient.lookup_invite` and :meth:`PlaidClient.redeem_invite`.
+    """
+
+    def list(self, *, project_id: str | None = None) -> Any:
+        """List invites you minted, oldest first.
+
+        With ``project_id``, lists that project's invites instead (including
+        ones minted by co-maintainers), which requires maintainer or admin on
+        that project. Never includes invite codes — a code is returned once,
+        by create(), and is not recoverable afterward. Transparently follows
+        server-side pagination cursors and returns the full flat list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            project_id: List this project's invites rather than your own
+        """
+        return list_all(self._client, '/api/v1/invites',
+                        query={'project-id': project_id})
+
+    def list_page(self, *, project_id: str | None = None,
+                  limit: int | None = None, cursor: str | None = None) -> Any:
+        """List one page of invites.
+
+        Args:
+            project_id: List this project's invites rather than your own
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, '/api/v1/invites', limit=limit, cursor=cursor,
+                         query={'project-id': project_id})
+
+    def iter_pages(self, *, project_id: str | None = None, page_size: int = 1000):
+        """Iterate over pages of invites, yielding each page's entries.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            project_id: List this project's invites rather than your own
+            page_size: Page size (1..1000)
+        """
+        return iter_pages(self._client, '/api/v1/invites', page_size=page_size,
+                          query={'project-id': project_id})
+
+    def create(self, *, project_id: Any = _UNSET, project_role: Any = _UNSET,
+               grant_admin: Any = _UNSET, target_user_id: Any = _UNSET,
+               max_uses: Any = _UNSET, ttl_days: Any = _UNSET,
+               note: Any = _UNSET, audit_message=None) -> Any:
+        """Mint an invite.
+
+        The returned ``code`` is shown ONLY here — it is never stored and
+        cannot be recovered, so build and hand off the link now
+        (:meth:`PlaidClient.invite_url` turns it into one).
+
+        Admins may mint anything. A project maintainer may mint role grants on
+        projects they maintain, and nothing else: no admin grant, no grantless
+        invite, no password resets.
+
+        Args:
+            project_id: Project the redeemer joins (with ``project_role``)
+            project_role: "reader", "writer" or "maintainer"
+            grant_admin: Make the new account a global admin (admin only)
+            target_user_id: Make this a password reset for that user (admin only)
+            max_uses: How many accounts this link may create (default 1)
+            ttl_days: Days until it expires (default 14, max 365)
+            note: Human label shown in your invite list
+
+        Returns:
+            The invite, plus the one-time ``code``.
+        """
+        return self._request('POST', '/api/v1/invites',
+                             body=_body_of(project_id=project_id, project_role=project_role,
+                                           grant_admin=grant_admin, target_user_id=target_user_id,
+                                           max_uses=max_uses, ttl_days=ttl_days, note=note),
+                             audit_message=audit_message)
+
+    def revoke(self, invite_id: str, audit_message=None) -> Any:
+        """Revoke an invite, killing the link immediately.
+
+        Idempotent. Allowed for the invite's creator, an admin, or a maintainer
+        of the project the invite grants access to.
+
+        Args:
+            invite_id: The invite ID
+        """
+        return self._request('DELETE', f'/api/v1/invites/{invite_id}',
+                             audit_message=audit_message)
 
 
 class TokenLayersResource(_Resource):
@@ -2010,6 +2107,7 @@ class PlaidClient:
         self.texts = TextsResource(self)
         self.users = UsersResource(self)
         self.api_tokens = ApiTokensResource(self)
+        self.invites = InvitesResource(self)
         self.token_layers = TokenLayersResource(self)
         self.documents = DocumentsResource(self)
         self.messages = MessagesResource(self)
@@ -2300,6 +2398,102 @@ class PlaidClient:
 
     def __exit__(self, *args):
         self.close()
+
+    @staticmethod
+    def invite_url(app_url: str, code: str) -> str:
+        """Build the link to hand someone for an invite code.
+
+        The server never sees an app URL, so the app that minted the invite is
+        the one that names it. Both SPAs use hash routing, so the code rides in
+        the fragment — which also keeps it out of server access logs.
+
+        Args:
+            app_url: Where the SPA lives, e.g. "https://plaid.example.org/igt/"
+            code: The code returned by ``invites.create()``
+        """
+        base = re.sub(r'#.*$', '', app_url).rstrip('/')
+        return f'{base}/#/invite/{quote(code, safe="")}'
+
+    @classmethod
+    def _anonymous_post(cls, base_url: str, path: str, body: dict,
+                        timeout: float | None = DEFAULT_TIMEOUT_S) -> Any:
+        """POST to an endpoint that takes no Authorization header.
+
+        Used by login, invite lookup and invite redemption — all of which are
+        called before any client exists, which is why they cannot go through
+        the instance request path.
+        """
+        base_url = base_url.rstrip('/')
+        url = f'{base_url}{path}'
+        try:
+            response = req_lib.post(url,
+                                    headers={'Content-Type': 'application/json'},
+                                    data=json.dumps(body),
+                                    timeout=timeout)
+        except Exception as e:
+            if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
+                raise PlaidAPIError(f'Request timed out at {url}', url=url, method='POST',
+                                    original_error=e)
+            raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method='POST',
+                                original_error=e)
+
+        if not response.ok:
+            raise build_api_error(response, url, 'POST')
+        return transform_response(response.json())
+
+    @classmethod
+    def lookup_invite(cls, base_url: str, code: str,
+                      timeout: float | None = DEFAULT_TIMEOUT_S) -> Any:
+        """Describe an invite code, with NO authentication.
+
+        This is what a signup page calls before the redeemer has an account.
+        Returns the kind of link (``"signup"`` or ``"password-reset"``), its
+        ``status`` (``"active"``, ``"used"``, ``"expired"``, ``"revoked"``),
+        and the project it grants access to, if any.
+
+        Raises ``PlaidAPIError`` with status 404 if the code is unknown. A
+        known-but-dead code returns normally with a non-active ``status``, so
+        the page can explain why rather than just saying "invalid".
+
+        Args:
+            base_url: The base URL for the API
+            code: The invite code
+            timeout: Per-request timeout in seconds
+        """
+        return cls._anonymous_post(base_url, '/api/v1/invite-codes/lookup',
+                                   {'code': code}, timeout=timeout)
+
+    @classmethod
+    def redeem_invite(cls, base_url: str, code: str, password: str,
+                      username: str | None = None,
+                      timeout: float | None = DEFAULT_TIMEOUT_S) -> tuple[PlaidClient, Any]:
+        """Redeem an invite code, with NO authentication.
+
+        For a signup invite, pass ``username`` and ``password`` to create the
+        account; the invite's grants are applied in the same transaction. For a
+        password reset link, pass ``password`` only.
+
+        Returns an authenticated client alongside the response, exactly like
+        :meth:`login` — the redeemer just chose these credentials, so there is
+        no reason to send them to a login form to retype them.
+
+        Args:
+            base_url: The base URL for the API
+            code: The invite code
+            password: Desired password (at least 8 characters)
+            username: Desired username (signup invites only)
+            timeout: Per-request timeout in seconds
+
+        Returns:
+            ``(client, result)`` where ``result`` carries ``user_id`` and ``kind``.
+        """
+        body = {'code': code, 'password': password}
+        if username is not None:
+            body['username'] = username
+        data = cls._anonymous_post(base_url, '/api/v1/invite-codes/redeem', body,
+                                   timeout=timeout)
+        client = cls(base_url.rstrip('/'), data.get('token', ''), timeout=timeout)
+        return client, data
 
     @classmethod
     def login(cls, base_url: str, user_id: str, password: str,

@@ -25,6 +25,32 @@ function bodyOf(obj) {
   return result;
 }
 
+// POST to an endpoint that takes no Authorization header (login, invite lookup
+// and redemption). Deliberately does not go through PlaidClient._request: these
+// are called before any client exists, which is the whole point.
+async function anonymousPost(baseUrl, path, body, options = {}) {
+  const base = baseUrl.replace(/\/$/, '');
+  const url = `${base}${path}`;
+  try {
+    const fetchOptions = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    };
+    const signal = timeoutSignal(options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT_MS);
+    if (signal) fetchOptions.signal = signal;
+
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      throw makeHttpError(response, await parseErrorBody(response), url, 'POST');
+    }
+    return transformResponse(await response.json());
+  } catch (error) {
+    if (error.status) throw error;
+    throw makeNetworkError(error, url, 'POST');
+  }
+}
+
 class PlaidClient {
   /**
    * Create a new PlaidClient instance
@@ -700,6 +726,74 @@ class PlaidClient {
        */
       revoke: (userId, tokenId, auditMessage) =>
         this._request('DELETE', `/api/v1/users/${userId}/tokens/${tokenId}`, { auditMessage }),
+    };
+
+    this.invites = {
+      /**
+       * List invites you minted, oldest first. With `projectId`, lists that
+       * project's invites instead (including co-maintainers'), which requires
+       * maintainer or admin on it. Never includes invite codes — the code is
+       * returned once, by create(), and is not recoverable afterward.
+       * Transparently follows pagination cursors and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
+       * @param {object} [opts]
+       * @param {string} [opts.projectId] - List this project's invites instead of your own
+       */
+      list: ({ projectId } = {}) =>
+        listAll(this, '/api/v1/invites', { query: { 'project-id': projectId } }),
+      /**
+       * Fetch a single page of invites.
+       * @param {object} [opts]
+       * @param {string} [opts.projectId] - List this project's invites instead of your own
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listPage: ({ projectId, limit, cursor } = {}) =>
+        listPage(this, '/api/v1/invites', { limit, cursor, query: { 'project-id': projectId } }),
+      /**
+       * Async-iterate invites page by page; yields each page's entries array.
+       * @param {object} [opts]
+       * @param {string} [opts.projectId] - List this project's invites instead of your own
+       * @param {number} [opts.pageSize] - Per-request page size
+       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterPages: ({ projectId, pageSize } = {}) =>
+        iterPages(this, '/api/v1/invites', { pageSize, query: { 'project-id': projectId } }),
+      /**
+       * Mint an invite. The returned `code` is shown ONLY here — it is never
+       * stored and cannot be recovered, so build and hand off the link now.
+       * Use PlaidClient.inviteUrl() to turn it into one.
+       *
+       * Admins may mint anything. A project maintainer may mint role grants on
+       * projects they maintain, and nothing else: no admin grant, no grantless
+       * invite, no password resets.
+       * @param {object} opts
+       * @param {string} [opts.projectId] - Project the redeemer joins (with projectRole)
+       * @param {string} [opts.projectRole] - "reader" | "writer" | "maintainer"
+       * @param {boolean} [opts.grantAdmin] - Make the new account a global admin (admin only)
+       * @param {string} [opts.targetUserId] - Make this a password reset for that user (admin only)
+       * @param {number} [opts.maxUses] - How many accounts this link may create (default 1)
+       * @param {number} [opts.ttlDays] - Days until it expires (default 14, max 365)
+       * @param {string} [opts.note] - Human label shown in your invite list
+       * @returns {Promise<{id: string, code: string, kind: string, status: string}>}
+       */
+      create: ({ projectId, projectRole, grantAdmin, targetUserId, maxUses, ttlDays, note } = {}, auditMessage) =>
+        this._request('POST', '/api/v1/invites', { auditMessage,
+          body: bodyOf({
+            'project-id': projectId, 'project-role': projectRole,
+            'grant-admin': grantAdmin, 'target-user-id': targetUserId,
+            'max-uses': maxUses, 'ttl-days': ttlDays, note,
+          }),
+        }),
+      /**
+       * Revoke an invite, killing the link immediately. Idempotent. Allowed for
+       * the creator, an admin, or a maintainer of the invite's project.
+       * @param {string} id - The invite ID
+       */
+      revoke: (id, auditMessage) =>
+        this._request('DELETE', `/api/v1/invites/${id}`, { auditMessage }),
     };
 
     this.tokenLayers = {
@@ -1803,6 +1897,64 @@ class PlaidClient {
    * @param {object} [options] - Client options forwarded to the constructor (e.g. { timeout })
    * @returns {Promise<PlaidClient>} - Authenticated client instance
    */
+  /**
+   * Build the link to hand someone for an invite code. The server never sees
+   * an app URL, so the app that minted the invite is the one that names it.
+   * Both SPAs use HashRouter, so the code rides in the fragment — which also
+   * keeps it out of server access logs.
+   * @param {string} appUrl - Where the SPA lives, e.g. "https://plaid.example.org/igt/"
+   * @param {string} code - The code returned by invites.create()
+   * @returns {string}
+   */
+  static inviteUrl(appUrl, code) {
+    return `${appUrl.replace(/#.*$/, '').replace(/\/$/, '')}/#/invite/${encodeURIComponent(code)}`;
+  }
+
+  /**
+   * Describe an invite code, with NO authentication — this is what a signup
+   * page calls before the redeemer has an account. Returns the kind of link
+   * ("signup" or "password-reset"), its status ("active", "used", "expired",
+   * "revoked"), and the project it grants access to, if any.
+   *
+   * Throws a 404-shaped error if the code is unknown. A known-but-dead code
+   * resolves normally with a non-"active" status, so the page can say why.
+   * @param {string} baseUrl - The API base URL
+   * @param {string} code - The invite code
+   * @param {object} [options]
+   * @returns {Promise<{kind: string, status: string, expiresAt: string, projectName?: string, projectRole?: string, username?: string, grantAdmin: boolean}>}
+   */
+  static async lookupInvite(baseUrl, code, options = {}) {
+    return anonymousPost(baseUrl, '/api/v1/invite-codes/lookup', { code }, options);
+  }
+
+  /**
+   * Redeem an invite code, with NO authentication.
+   *
+   * For a signup invite, pass `username` and `password` to create the account;
+   * the invite's grants are applied in the same transaction. For a password
+   * reset link, pass `password` only. Resolves to a logged-in client, exactly
+   * like login() — the redeemer just chose these credentials, so there is no
+   * reason to send them to a login form to retype them.
+   * @param {string} baseUrl - The API base URL
+   * @param {string} code - The invite code
+   * @param {object} credentials
+   * @param {string} [credentials.username] - Desired username (signup only)
+   * @param {string} credentials.password - Desired password (min 8 characters)
+   * @param {object} [options]
+   * @returns {Promise<{client: PlaidClient, userId: string, kind: string}>}
+   */
+  static async redeemInvite(baseUrl, code, { username, password } = {}, options = {}) {
+    const data = await anonymousPost(
+      baseUrl, '/api/v1/invite-codes/redeem',
+      bodyOf({ code, username, password }), options,
+    );
+    return {
+      client: new PlaidClient(baseUrl.replace(/\/$/, ''), data.token || '', options),
+      userId: data.userId,
+      kind: data.kind,
+    };
+  }
+
   static async login(baseUrl, userId, password, options = {}) {
     baseUrl = baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/api/v1/login`;
