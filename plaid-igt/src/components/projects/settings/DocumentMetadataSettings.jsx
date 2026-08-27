@@ -109,8 +109,8 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
   }
 
   return (
-    <div className="tw rounded-lg border bg-card p-4">
-      <p className="text-lg font-medium">Document Metadata</p>
+    <div className="tw">
+      <h2 className="text-lg font-semibold">Document Metadata</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Configure which metadata fields are available when creating or editing documents in this
         project.

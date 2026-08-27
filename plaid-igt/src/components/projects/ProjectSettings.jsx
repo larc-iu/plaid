@@ -59,7 +59,7 @@ export const ProjectSettings = ({ project, projectId, client }) => {
   const isConfirmationValid = confirmationText.toLowerCase() === project.name.toLowerCase();
 
   return (
-    <div className="tw flex flex-col gap-6 pt-4">
+    <div className="tw flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
       {/* Document Metadata Configuration */}
       <DocumentMetadataSettings projectId={projectId} client={client} />
 
@@ -72,8 +72,8 @@ export const ProjectSettings = ({ project, projectId, client }) => {
       {/* Vocabulary Configuration */}
       <VocabularySettings projectId={projectId} client={client} />
 
-      <div className="rounded-lg border border-destructive/40 p-4">
-        <h2 className="text-lg font-semibold">Danger Zone</h2>
+      <div>
+        <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>
         <p className="mb-4 mt-1 text-sm text-muted-foreground">
           These actions are irreversible. Please proceed with caution.
         </p>

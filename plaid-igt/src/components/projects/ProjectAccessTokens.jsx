@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 export const ProjectAccessTokens = () => {
   return (
     <div className="tw flex flex-col gap-6 pt-4">
-      <div className="rounded-lg border bg-card p-4">
+      <div>
         <h2 className="mb-2 text-lg font-semibold">API Access</h2>
         <p className="mb-4 text-sm text-muted-foreground">
           To access the API programmatically from external services like parsers or scripts, create

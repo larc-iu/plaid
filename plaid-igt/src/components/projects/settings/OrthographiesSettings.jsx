@@ -190,8 +190,8 @@ export const OrthographiesSettings = ({ projectId, client }) => {
   }
 
   return (
-    <div className="tw rounded-lg border bg-card p-4">
-      <p className="text-lg font-medium">Orthographies</p>
+    <div className="tw">
+      <h2 className="text-lg font-semibold">Orthographies</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Configure orthographic representations for your project. The Baseline orthography represents
         your token layer and cannot be removed. You can add additional orthographies like IPA,

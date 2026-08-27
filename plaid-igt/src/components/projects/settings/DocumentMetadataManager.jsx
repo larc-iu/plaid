@@ -189,9 +189,8 @@ export const DocumentMetadataManager = ({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Metadata Fields Table. When embedded in a settings section the parent
-          already supplies the card chrome, so don't nest another bordered card. */}
-      <div className={showTitle ? 'rounded-lg border bg-card p-4' : ''}>
+      {/* Metadata Fields Table */}
+      <div>
         {showTitle && <p className="mb-4 text-sm font-medium">Available Metadata Fields</p>}
 
         <div className="overflow-hidden rounded-md border">

@@ -267,15 +267,15 @@ export const FieldsManager = ({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Annotation Fields Section — its own card. In setup (showTitle) the step
-          supplies the lead-in text; embedded in settings the card carries its own
+      {/* Annotation Fields Section. In setup (showTitle) the step supplies the
+          lead-in text; embedded in settings the section carries its own
           title + description. */}
-      <div className="rounded-lg border bg-card p-4">
+      <div>
         {showTitle ? (
           <p className="mb-4 text-sm font-medium">Annotation Fields</p>
         ) : (
           <>
-            <p className="text-lg font-medium">Annotation Fields</p>
+            <h2 className="text-lg font-semibold">Annotation Fields</h2>
             <p className="mb-4 mt-1 text-sm text-muted-foreground">
               Configure annotation fields for your project. Word scope fields apply to words,
               Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire
@@ -390,10 +390,9 @@ export const FieldsManager = ({
         </div>
       </div>
 
-      {/* Ignored Tokens Section — its own card, separated from Annotation Fields
-          by the outer gap-8. */}
-      <div className="rounded-lg border bg-card p-4">
-        <p className={showTitle ? 'mb-4 text-sm font-medium' : 'mb-1 text-lg font-medium'}>
+      {/* Ignored Tokens Section, separated from Annotation Fields by a rule. */}
+      <div className="border-t pt-6">
+        <p className={showTitle ? 'mb-4 text-sm font-medium' : 'mb-1 text-lg font-semibold'}>
           Ignored Tokens
         </p>
         <div className="mb-6 text-sm text-muted-foreground">

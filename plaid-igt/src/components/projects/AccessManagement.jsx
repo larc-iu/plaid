@@ -268,10 +268,10 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   };
 
   return (
-    <div className="tw flex flex-col gap-6 pt-4">
+    <div className="tw flex flex-col gap-6 pt-4 [&>*+*]:border-t [&>*+*]:pt-6">
       {/* Members */}
-      <div className="rounded-lg border bg-card">
-        <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+      <div>
+        <div className="flex items-center justify-between gap-2 pb-3">
           <h2 className="text-lg font-semibold">Members</h2>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">{members.length} with access</span>
@@ -294,77 +294,79 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
           </div>
         ) : members.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-muted-foreground">
+          <p className="py-2 text-sm text-muted-foreground">
             No one has been granted access yet. Use “Add a user” below.
           </p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted-foreground">
-                <th className="px-4 py-2 font-medium">User</th>
-                <th className="px-4 py-2 font-medium">Project role</th>
-                {isAdmin && <th className="w-12 px-4 py-2" />}
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((m) => (
-                <tr key={m.id} className="border-t">
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{m.username}</span>
-                      {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
-                    </div>
-                    <span className="text-xs text-muted-foreground">{m.id}</span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <Select
-                      value={m.role}
-                      onValueChange={(v) => setRole(m.id, v)}
-                      disabled={m.id === user.id || updatingUser === m.id}
-                    >
-                      <SelectTrigger className="h-8 w-40">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ROLE_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>
-                            {o.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  {isAdmin && (
-                    <td className="px-4 py-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            aria-label="User actions"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => startEdit(m)}>
-                            Edit user…
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={resetting}
-                            onSelect={() => handleResetLink(m)}
-                          >
-                            Create password reset link…
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  )}
+          <div className="overflow-hidden rounded-md border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">User</th>
+                  <th className="px-4 py-2 font-medium">Project role</th>
+                  {isAdmin && <th className="w-12 px-4 py-2" />}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {members.map((m) => (
+                  <tr key={m.id} className="border-t">
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{m.username}</span>
+                        {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
+                      </div>
+                      <span className="text-xs text-muted-foreground">{m.id}</span>
+                    </td>
+                    <td className="px-4 py-2">
+                      <Select
+                        value={m.role}
+                        onValueChange={(v) => setRole(m.id, v)}
+                        disabled={m.id === user.id || updatingUser === m.id}
+                      >
+                        <SelectTrigger className="h-8 w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ROLE_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    {isAdmin && (
+                      <td className="px-4 py-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              aria-label="User actions"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => startEdit(m)}>
+                              Edit user…
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={resetting}
+                              onSelect={() => handleResetLink(m)}
+                            >
+                              Create password reset link…
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -376,11 +378,11 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
       />
 
       {/* Add a user (server-side search) */}
-      <div className="rounded-lg border bg-card">
-        <div className="border-b px-4 py-3">
+      <div>
+        <div className="pb-3">
           <h2 className="text-lg font-semibold">Add a user</h2>
         </div>
-        <div className="flex flex-col gap-2 px-4 py-3">
+        <div className="flex flex-col gap-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
