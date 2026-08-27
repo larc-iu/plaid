@@ -177,7 +177,13 @@ export function computeAutoLinkProposals({
       if (form) consider(m, form, LEVELS.MORPHEME);
     }
   }
+  const proposedMorphs = new Set(proposals.map((p) => p.tokenId));
   for (const t of words) {
+    // A single-morpheme word IS its morpheme: when that morpheme carries or
+    // just received a link, the word gets none (one chip, at the morpheme
+    // level), even if a different homonym would be free at the word level.
+    const ms = t.morphemes || [];
+    if (ms.length === 1 && (ms[0].vocabItem || proposedMorphs.has(ms[0].id))) continue;
     // Word forms lose edge punctuation by the project's ignore rule (the
     // same trim the popover's "+ Create" applies): `derechos.` links to
     // `derechos`. Morpheme forms are used verbatim.

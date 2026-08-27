@@ -196,6 +196,27 @@ describe('item levels (word- or morpheme-level entries, never both)', () => {
     });
     expect(proposals).toEqual([{ tokenId: 'w1', vocabItemId: 'i-se2', form: 'se', kind: 'word' }]);
   });
+  it('a single-morpheme word gets no word link when its morpheme is linked, even to a different homonym', () => {
+    // Morpheme `se` resolves to i-se2 (i-se1 is word-level elsewhere); the word
+    // `se` would be free to take i-se1, but the word IS its one morpheme.
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'se', null, [morph('m1', 'se')])]),
+      vocabularies: VOCABS,
+      precedentTable: new Map(),
+      itemLevels: new Map([['i-se1', 'word']]),
+    });
+    expect(proposals).toEqual([
+      { tokenId: 'm1', vocabItemId: 'i-se2', form: 'se', kind: 'morpheme' },
+    ]);
+    // Same when the morpheme already carries a (human) link.
+    const linked = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'se', null, [morph('m1', 'se', { id: 'i-se2' })])]),
+      vocabularies: VOCABS,
+      precedentTable: new Map(),
+      itemLevels: new Map([['i-se2', 'morpheme']]),
+    });
+    expect(linked).toEqual([]);
+  });
   it('a single-morpheme word matching a never-linked item links the morpheme only', () => {
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'todos', null, [morph('m1', 'todos')])]),
