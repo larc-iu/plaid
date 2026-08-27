@@ -41,6 +41,11 @@ const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadat
   }
 
   if (existingSpan) {
+    // Re-committing the value already there is a no-op (user decision
+    // 2026-08-26: retyping does not confirm a machine span; the editor guards
+    // this too, this keeps the rule for every caller). A caller fragment
+    // (a machine writer re-stamping) still writes.
+    if (!metadata && existingSpan.value === value) return;
     // No caller fragment = a human edit; verifying a machine span is the
     // fragment such an edit carries.
     const fragment = metadata || verifyOnEdit(existingSpan.metadata);

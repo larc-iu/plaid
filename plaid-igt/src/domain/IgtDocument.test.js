@@ -132,6 +132,23 @@ describe('span (annotation) mutations', () => {
     expect(kinds(doc.client)).not.toContain('spans.setMetadata');
   });
 
+  it('re-committing the same value on a machine span writes nothing (retyping never confirms)', async () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      {
+        id: 'sp-1',
+        tokens: ['w-1'],
+        value: 'DET',
+        metadata: { prov: 'inferred', provSource: 'service:stanza-parser' },
+      },
+    ];
+    const doc = makeDoc({ raw });
+    const ok = await doc.updateTokenSpan('w-1', 'POS', 'DET');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client).filter((k) => k.startsWith('spans.'))).toEqual([]);
+    expect(doc.sentences[0].tokens[0].annotations.POS.metadata.provConfirmed).toBeUndefined();
+  });
+
   it('a human edit of an already-verified span stays a plain update', async () => {
     const raw = buildRawDoc();
     raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
