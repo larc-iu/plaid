@@ -304,11 +304,13 @@ export class IgtEditor {
   // Position the popover (240px wide) below the opener as fixed coords, clamped
   // to the viewport — so edge columns don't overflow and the grid's overflow-x
   // scroll container can't clip it.
-  _computePopoverPos(anchorEl) {
+  // `height`: the popover's measured height once rendered (see _fitPopover);
+  // before the first paint an estimate is used.
+  _computePopoverPos(anchorEl, height = 280) {
     const r = anchorEl?.getBoundingClientRect?.();
     if (!r) return null;
     const W = 240,
-      Hest = 280,
+      Hest = height,
       pad = 8;
     let left = r.left + r.width / 2 - W / 2;
     left = Math.max(pad, Math.min(left, window.innerWidth - W - pad));
@@ -479,12 +481,28 @@ export class IgtEditor {
       Object.keys(this.doc.vocabularies || {}).length > 0,
     );
     render(this._template(), this.container);
+    this._fitPopover();
     this._restorePendingFocus();
     // Size sentence textareas to their content (uncontrolledValue may have just
     // written a programmatic value, e.g. on load / reload).
     this.container
       .querySelectorAll('textarea.igt-field--sentence')
       .forEach((el) => this._autoGrow(el));
+  }
+
+  // Re-anchor the open popover with its REAL height: the estimate that placed
+  // it may be short (rows, notes, the create editor all vary), which in a short
+  // viewport flipped it above the word and let it cover the word itself.
+  _fitPopover() {
+    if (!this._popover) return;
+    const el = this.container.querySelector('.igt-vocab-pop');
+    const opener = this.container.querySelector(`[data-vocab-opener="${this._popoverReturnId}"]`);
+    if (!el || !opener) return;
+    const pos = this._computePopoverPos(opener, el.offsetHeight || undefined);
+    if (!pos || (pos.left === this._popoverPos?.left && pos.top === this._popoverPos?.top)) return;
+    this._popoverPos = pos;
+    el.style.left = `${pos.left}px`;
+    el.style.top = `${pos.top}px`;
   }
 
   _restorePendingFocus() {
