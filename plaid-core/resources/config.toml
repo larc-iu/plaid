@@ -79,6 +79,18 @@ expose_openapi = true
 # Maximum size (in megabytes) of a single uploaded media file.
 max_file_size_mb = 200
 
+# Profile pictures. Every upload is decoded, center-cropped to a square,
+# scaled to avatar_size_px on each edge, and re-encoded before it is stored,
+# so these govern the stored result and not just what clients may send.
+# Raising avatar_size_px does not resize pictures already stored: those keep
+# the edge length they were uploaded at until they are replaced.
+avatar_size_px = 512
+
+# Largest profile-picture upload accepted, in megabytes. This bounds the file
+# that arrives, not the file that is kept: normalization takes nearly every
+# real photo well under it.
+avatar_max_upload_mb = 5
+
 # -----------------------------------------------------------------------------
 # Database (SQLite)
 # -----------------------------------------------------------------------------

@@ -164,6 +164,11 @@ interface UsersBundle {
   delete(id: string, auditMessage?: string): Promise<any>;
   activate(id: string, auditMessage?: string): Promise<any>;
   update(id: string, password?: string, username?: string, isAdmin?: boolean, auditMessage?: string): Promise<any>;
+  /** URL for a user's profile picture, usable as an <img> src. Null when avatarHash is explicitly null. */
+  avatarUrl(id: string, avatarHash?: string | null): string | null;
+  getAvatar(id: string): Promise<any>;
+  setAvatar(id: string, file: File | Blob, auditMessage?: string): Promise<any>;
+  deleteAvatar(id: string, auditMessage?: string): Promise<any>;
 }
 
 interface ApiTokensBundle {

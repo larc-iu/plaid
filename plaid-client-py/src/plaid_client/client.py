@@ -6,7 +6,7 @@ import re
 import uuid
 from contextlib import contextmanager
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import requests as req_lib
 
@@ -808,6 +808,61 @@ class UsersResource(_Resource):
         """
         return list_all(self._client, f'/api/v1/users/{user_id}/audit',
                         query={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
+
+    def get_avatar(self, id: str) -> bytes:
+        """Get a user's profile picture as raw bytes.
+
+        Raises for 404 when the user has no picture, so check the user
+        record's ``avatar_hash`` first if that is not an error for you.
+
+        Args:
+            id: The user ID
+        """
+        return self._request('GET', f'/api/v1/users/{id}/avatar',
+                             no_batch=True, binary_response=True)
+
+    def set_avatar(self, id: str, file, audit_message=None) -> Any:
+        """Upload a profile picture. Your own, or anyone's if you are an admin.
+
+        The server center-crops to a square, scales to the configured edge
+        length, and re-encodes, so no client-side resizing is needed. Accepts
+        PNG, JPEG, WebP, and GIF. Returns the updated user record, whose
+        ``avatar_hash`` is the new picture's cache key.
+
+        Args:
+            id: The user ID
+            file: The image to upload (an open binary file object or bytes)
+        """
+        return self._request('PUT', f'/api/v1/users/{id}/avatar',
+                             body={'file': file}, form_data=True, no_batch=True,
+                             audit_message=audit_message)
+
+    def delete_avatar(self, id: str, audit_message=None) -> Any:
+        """Remove a profile picture. Your own, or anyone's if you are an admin.
+
+        Args:
+            id: The user ID
+        """
+        return self._request('DELETE', f'/api/v1/users/{id}/avatar',
+                             no_batch=True, audit_message=audit_message)
+
+    def avatar_url(self, id: str, avatar_hash: str | None = None) -> str:
+        """URL for a user's profile picture, with the session token in the
+        query string so it works in contexts that cannot set an Authorization
+        header (an HTML image element, say).
+
+        Pass the user record's ``avatar_hash`` whenever you have it: the URL
+        then addresses that exact picture, so it can be cached indefinitely and
+        still picks up a replacement the moment the user changes it.
+
+        Args:
+            id: The user ID
+            avatar_hash: The user record's ``avatar_hash``
+        """
+        params = {'token': self._client.token}
+        if avatar_hash:
+            params['v'] = avatar_hash
+        return f'{self._client.base_url}/api/v1/users/{id}/avatar?{urlencode(params)}'
 
 
 class ApiTokensResource(_Resource):

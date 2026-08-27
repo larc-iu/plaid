@@ -21,6 +21,7 @@ import { IconPlus, IconSearch, IconLink } from '@tabler/icons-react';
 import { MintedLinkModal } from '../projects/ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { UserAvatar } from '../common/UserAvatar';
 import classes from '../common/listRow.module.css';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
@@ -309,23 +310,34 @@ export const AdminUsers = () => {
                     >
                       <Table.Td>
                         <Group gap="xs" wrap="nowrap">
-                          <Text size="sm" fw={500}>
-                            {u.username}
-                          </Text>
-                          {u.isAdmin && (
-                            <Badge size="xs" color="grape" variant="light">
-                              Admin
-                            </Badge>
-                          )}
-                          {isSelf && (
-                            <Badge size="xs" color="blue" variant="light">
-                              You
-                            </Badge>
-                          )}
+                          <UserAvatar
+                            client={getClient()}
+                            userId={u.id}
+                            username={u.username}
+                            avatarHash={u.avatarHash}
+                            size={26}
+                          />
+                          <div>
+                            <Group gap="xs" wrap="nowrap">
+                              <Text size="sm" fw={500}>
+                                {u.username}
+                              </Text>
+                              {u.isAdmin && (
+                                <Badge size="xs" color="grape" variant="light">
+                                  Admin
+                                </Badge>
+                              )}
+                              {isSelf && (
+                                <Badge size="xs" color="blue" variant="light">
+                                  You
+                                </Badge>
+                              )}
+                            </Group>
+                            <Text size="xs" c="dimmed">
+                              ID: {u.id}
+                            </Text>
+                          </div>
                         </Group>
-                        <Text size="xs" c="dimmed">
-                          ID: {u.id}
-                        </Text>
                       </Table.Td>
                       <Table.Td>
                         {deactivated ? (

@@ -36,7 +36,8 @@
                {:user/id               "a@b.com"
                 :user/username         "a@b.com"
                 :user/is-admin         true
-                :user/deactivated-at   nil}))))
+                :user/deactivated-at   nil
+                :user/avatar-hash      nil}))))
 
     (testing "Get non-existent user fails"
       (let [req (admin-request :get "/api/v1/users/nonexistent")

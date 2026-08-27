@@ -20,14 +20,15 @@
    :user/password-hash
    :user/password-changes
    :user/is-admin
-   :user/deactivated-at])
+   :user/deactivated-at
+   :user/avatar-hash])
 
 (def public-keys
   "The externally visible projection of a user record (no password
   fields). `:user/deactivated-at` is included deliberately: deactivated
   users stay listable/inspectable so admins can see and reactivate
   them."
-  [:user/id :user/username :user/is-admin :user/deactivated-at])
+  [:user/id :user/username :user/is-admin :user/deactivated-at :user/avatar-hash])
 
 (defn- row->user
   "Translate a `users` row (snake_case column keys) to the namespaced
@@ -43,7 +44,12 @@
                                           (not (zero? (long (:is_admin row))))))
      ;; nil = active; an ISO ts = deactivated at that moment. Users are
      ;; never hard-deleted (audit attribution must survive).
-     :user/deactivated-at   (:deactivated_at row)}))
+     :user/deactivated-at   (:deactivated_at row)
+     ;; SHA-256 of the stored profile picture, or nil for "no picture". The
+     ;; pixels live in `user_avatars`, and only this digest is on the user row, so
+     ;; clients can tell whether to render an image (and build a cache-busting
+     ;; URL) without a second request. See `plaid.media.avatar`.
+     :user/avatar-hash      (:avatar_hash row)}))
 
 ;; reads ---------------------------------------------------------------------------
 
@@ -95,6 +101,20 @@
   (row->user (psc/q1 db {:select [:*]
                          :from [:users]
                          :where [:= :username username]})))
+
+(defn get-avatar
+  "Fetch `id`'s stored profile picture as
+  `{:content-type <mime> :bytes <byte-array> :hash <hex>}`, or nil when the
+  user has none. The hash is read from `users` rather than recomputed, so it is
+  always the same value the user record advertises."
+  [db id]
+  (when-let [row (psc/q1 db {:select [:ua.content_type :ua.bytes :u.avatar_hash]
+                             :from [[:user_avatars :ua]]
+                             :join [[:users :u] [:= :u.id :ua.user_id]]
+                             :where [:= :ua.user_id id]})]
+    {:content-type (:content_type row)
+     :bytes (:bytes row)
+     :hash (:avatar_hash row)}))
 
 ;; writes --------------------------------------------------------------------------
 
@@ -239,6 +259,57 @@
                        {:password_hash    (hashers/derive password)
                         :password_changes (inc (or (:user/password-changes intern) 0))})
     eid))
+
+;; Profile pictures.
+;;
+;; Both writes below touch two tables in one operation, and only one of the two
+;; goes through the audited helpers. `users.avatar_hash` does, so the audit log
+;; records that the picture changed and who changed it. `user_avatars.bytes`
+;; does NOT: `record-audit-write!` persists the full post-image of every row it
+;; touches, so routing the BLOB through it would write a copy of the picture
+;; into `audit_writes` on every change. The digest is the durable record. The
+;; pixels are current-state only.
+
+(defn set-avatar!
+  "Store `avatar` (as produced by `plaid.media.avatar/normalize`) as `eid`'s
+  profile picture, replacing any existing one. `acting-user-id` attributes the
+  op (the user themselves, or an admin). Returns `{:success true :extra <hash>}`."
+  [db eid {:keys [content-type bytes hash]} acting-user-id]
+  (submit-operation! [tx db {:type :user/update
+                             :project nil
+                             :document nil
+                             :description (str "Set profile picture for user " eid)
+                             :user acting-user-id}]
+                     (when (nil? (get-internal tx eid))
+                       (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
+                     (psc/execute! tx {:insert-into :user_avatars
+                                       :values [{:user_id      eid
+                                                 :content_type content-type
+                                                 :bytes        bytes
+                                                 :updated_at   (psc/now-iso)}]
+                                       :on-conflict :user_id
+                                       :do-update-set [:content_type :bytes :updated_at]})
+                     (psc/update-by-id! tx :users eid {:avatar_hash hash})
+                     hash))
+
+(defn delete-avatar!
+  "Remove `eid`'s profile picture. 404s when the user has none, so a repeated
+  delete is distinguishable from a successful one. Returns `{:success true}`."
+  [db eid acting-user-id]
+  (submit-operation! [tx db {:type :user/update
+                             :project nil
+                             :document nil
+                             :description (str "Remove profile picture for user " eid)
+                             :user acting-user-id}]
+                     (let [intern (get-internal tx eid)]
+                       (when (nil? intern)
+                         (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
+                       (when (nil? (:user/avatar-hash intern))
+                         (throw (ex-info (str "User " eid " has no profile picture")
+                                         {:code 404 :id eid})))
+                       (psc/execute! tx {:delete-from :user_avatars :where [:= :user_id eid]})
+                       (psc/update-by-id! tx :users eid {:avatar_hash nil})
+                       eid)))
 
 (defn- audit-and-cascade-project-memberships!
   "For every project this user was a member of, snapshot the ACL,

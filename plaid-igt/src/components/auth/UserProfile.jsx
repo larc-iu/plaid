@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { ArrowLeft, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Copy, Check, ImagePlus } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { UserAvatar } from '@/components/shared/UserAvatar';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -40,6 +41,44 @@ export const UserProfile = () => {
   const [loading, setLoading] = useState(false);
   const [fields, setFields] = useState(EMPTY(user?.username));
   const [errors, setErrors] = useState({});
+
+  // --- Profile picture ---
+  const fileInputRef = useRef(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+
+  const handleAvatarPick = async (e) => {
+    const file = e.target.files?.[0];
+    // Clear the input so picking the same file twice still fires a change.
+    e.target.value = '';
+    if (!file) return;
+    setAvatarBusy(true);
+    try {
+      // The server crops, resizes, and re-encodes, so the raw file goes up as
+      // the user chose it.
+      const updated = await client.users.setAvatar(user.id, file);
+      updateUser({ avatarHash: updated.avatarHash });
+      notifySuccess('Profile picture updated', 'Success');
+    } catch (err) {
+      console.error('Error uploading profile picture:', err);
+      notifyError(err.message || 'Failed to upload profile picture', 'Error');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setAvatarBusy(true);
+    try {
+      await client.users.deleteAvatar(user.id);
+      updateUser({ avatarHash: null });
+      notifySuccess('Profile picture removed', 'Success');
+    } catch (err) {
+      console.error('Error removing profile picture:', err);
+      notifyError(err.message || 'Failed to remove profile picture', 'Error');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   // --- Named API tokens ---
   const [tokens, setTokens] = useState([]);
@@ -188,6 +227,50 @@ export const UserProfile = () => {
           <CardTitle className="text-xl">User Profile</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="mb-6 flex items-center gap-4">
+            <UserAvatar
+              client={client}
+              userId={user?.id}
+              username={user?.username}
+              avatarHash={user?.avatarHash}
+              className="h-20 w-20"
+              fallbackClassName="text-2xl"
+            />
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleAvatarPick}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={avatarBusy}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  {user?.avatarHash ? 'Change picture' : 'Upload picture'}
+                </Button>
+                {user?.avatarHash && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={avatarBusy}
+                    onClick={handleAvatarRemove}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                PNG, JPEG, WebP, or GIF. Cropped to a square and resized for you.
+              </p>
+            </div>
+          </div>
+
           {!isEditing ? (
             <div className="flex flex-col gap-4">
               <div>

@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 // route screens render inside <main> and must NOT inherit the scoped preflight
 // reset. Migrated screens add their own `.tw` root.
 export function AppLayout({ children }) {
-  const { user, logout } = useAuth();
+  const { user, client, logout } = useAuth();
   const location = useLocation();
 
   const navItem = (to, label, active) => (
@@ -40,7 +40,9 @@ export function AppLayout({ children }) {
               location.pathname.startsWith('/vocabularies'),
             )}
           </nav>
-          <div className="ml-auto">{user && <UserButton user={user} onLogout={logout} />}</div>
+          <div className="ml-auto">
+            {user && <UserButton user={user} client={client} onLogout={logout} />}
+          </div>
         </div>
       </header>
       <main>{children}</main>

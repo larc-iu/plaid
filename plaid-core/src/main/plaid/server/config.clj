@@ -84,6 +84,8 @@
    [["api" "expose_openapi"]              [:plaid.api :expose-openapi?]                                      identity]
 
    [["media" "max_file_size_mb"]          [:plaid.media/config :max-file-size-mb]                            identity]
+   [["media" "avatar_size_px"]            [:plaid.media/config :avatar-size-px]                              identity]
+   [["media" "avatar_max_upload_mb"]      [:plaid.media/config :avatar-max-upload-mb]                        identity]
 
    [["database" "path"]                   [:plaid.server.sql/config :main-db-path]                           identity]
    [["database" "slow_query_threshold_ms"] [:plaid.server.sql/config :slow-query-threshold-ms]              identity]

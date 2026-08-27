@@ -54,6 +54,11 @@ async function establishSession(authedClient) {
   localStorage.setItem('username', userProfile.username);
   // Note: PlaidClient transforms is-admin to isAdmin
   localStorage.setItem('isAdmin', (userProfile.isAdmin || false).toString());
+  // The profile picture's content hash, cached alongside the rest of the
+  // session so the header avatar renders on first paint instead of after a
+  // round-trip. Empty string means "no picture", which is a real state and has
+  // to survive a reload as distinctly as a hash does.
+  localStorage.setItem('avatarHash', userProfile.avatarHash || '');
 
   return {
     success: true,
@@ -61,6 +66,7 @@ async function establishSession(authedClient) {
       id: userId,
       username: userProfile.username,
       isAdmin: userProfile.isAdmin || false,
+      avatarHash: userProfile.avatarHash || null,
     },
   };
 }
@@ -105,6 +111,7 @@ export const authService = {
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
     localStorage.removeItem('isAdmin');
+    localStorage.removeItem('avatarHash');
     // HashRouter + the production '/ud/' base mean the login route lives in the
     // URL fragment; navigating to an absolute '/login' path misses the SPA (the
     // server has nothing there under /ud/). Set the fragment off the current
@@ -127,6 +134,7 @@ export const authService = {
       id: userId,
       username: username,
       isAdmin: isAdmin,
+      avatarHash: localStorage.getItem('avatarHash') || null,
     };
   },
 

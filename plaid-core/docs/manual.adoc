@@ -59,6 +59,12 @@ By default, each project is private, and one of three permissions levels is need
 
 Additionally, a global **admin** role exists, which allows the user to see and edit all data in the Plaid instance.
 
+Each user may upload a **profile picture**, which appears wherever they are named in the apps: the header, project and vocabulary rosters, and the user administration screen.
+Pictures are normalized on the server, which crops them to a square, scales them to a single configured size (`[media] avatar_size_px`), and re-encodes them.
+That last step also strips camera metadata, so GPS coordinates embedded in a phone photo are not served back out to everyone else in the instance.
+You may set or remove your own picture, and an admin may set or remove anyone's.
+A user with no picture is shown their initials instead.
+
 == Clients
 Plaid's functionality is exposed for development as a REST API.
 This allows you to use Plaid from any programming language with an HTTP client library.

@@ -3,6 +3,7 @@ import { Trash2, AlertTriangle, Search, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { UserAvatar } from '@/components/shared/UserAvatar';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 
 // Mirrors AccessManagement: the full user roster is never fetched (it doesn't
@@ -169,11 +170,22 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
                 <tr key={m.id} className="group border-t">
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{m.username}</span>
-                      {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
-                      {m.id === user.id && <Badge variant="outline">You</Badge>}
+                      <UserAvatar
+                        client={client}
+                        userId={m.id}
+                        username={m.username}
+                        avatarHash={m.avatarHash}
+                        className="h-7 w-7"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{m.username}</span>
+                          {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
+                          {m.id === user.id && <Badge variant="outline">You</Badge>}
+                        </div>
+                        <span className="text-xs text-muted-foreground">{m.id}</span>
+                      </div>
                     </div>
-                    <span className="text-xs text-muted-foreground">{m.id}</span>
                   </td>
                   <td className="w-12 px-4 py-2 text-right">
                     {m.id !== user.id && (
@@ -235,12 +247,21 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
                     key={u.id}
                     className={`flex items-center justify-between gap-2 py-2 ${i ? 'border-t' : ''}`}
                   >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium">{u.username}</span>
-                        {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <UserAvatar
+                        client={client}
+                        userId={u.id}
+                        username={u.username}
+                        avatarHash={u.avatarHash}
+                        className="h-7 w-7"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-medium">{u.username}</span>
+                          {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+                        </div>
+                        <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
                       </div>
-                      <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
                     </div>
                     <Button
                       size="sm"

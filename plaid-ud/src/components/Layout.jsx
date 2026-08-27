@@ -1,9 +1,10 @@
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Box, Container, Group, Title, Button } from '@mantine/core';
 import { useAuth } from '../contexts/AuthContext';
+import { UserAvatar } from './common/UserAvatar';
 
 export const Layout = () => {
-  const { user, logout } = useAuth();
+  const { user, getClient, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -41,8 +42,23 @@ export const Layout = () => {
                     Users
                   </Button>
                 )}
-                <Button component={Link} to="/profile" variant="subtle" color="gray" size="sm">
-                  👤 {user.username}
+                <Button
+                  component={Link}
+                  to="/profile"
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  leftSection={
+                    <UserAvatar
+                      client={getClient()}
+                      userId={user.id}
+                      username={user.username}
+                      avatarHash={user.avatarHash}
+                      size={22}
+                    />
+                  }
+                >
+                  {user.username}
                 </Button>
                 <Button onClick={handleLogout} variant="subtle" color="gray" size="sm">
                   Logout

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Stack,
   Paper,
@@ -16,7 +16,8 @@ import {
   Box,
 } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
-import { confirmDelete, notifySuccess } from '../../utils/feedback.jsx';
+import { UserAvatar } from '../common/UserAvatar';
+import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { timeAgo } from '../../utils/formatTime.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
@@ -32,6 +33,44 @@ export const UserProfile = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // --- Profile picture ---
+  const fileInputRef = useRef(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+
+  const handleAvatarPick = async (e) => {
+    const file = e.target.files?.[0];
+    // Clear the input so picking the same file twice still fires a change.
+    e.target.value = '';
+    if (!file) return;
+    setAvatarBusy(true);
+    try {
+      // The server crops, resizes, and re-encodes, so the raw file goes up as
+      // the user chose it.
+      const updated = await getClient().users.setAvatar(user.id, file);
+      updateUser({ avatarHash: updated.avatarHash });
+      notifySuccess('Profile picture updated');
+    } catch (err) {
+      console.error('Error uploading profile picture:', err);
+      notifyError(err.message || 'Failed to upload profile picture');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setAvatarBusy(true);
+    try {
+      await getClient().users.deleteAvatar(user.id);
+      updateUser({ avatarHash: null });
+      notifySuccess('Profile picture removed');
+    } catch (err) {
+      console.error('Error removing profile picture:', err);
+      notifyError(err.message || 'Failed to remove profile picture');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   // --- API token management state ---
   const [tokens, setTokens] = useState([]);
@@ -233,6 +272,49 @@ export const UserProfile = () => {
         <Title order={3} mb="lg">
           User Profile
         </Title>
+
+        <Group gap="md" mb="lg" align="center">
+          <UserAvatar
+            client={getClient()}
+            userId={user?.id}
+            username={user?.username}
+            avatarHash={user?.avatarHash}
+            size={80}
+          />
+          <Stack gap={6}>
+            <Group gap="xs">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                style={{ display: 'none' }}
+                onChange={handleAvatarPick}
+              />
+              <Button
+                size="xs"
+                variant="default"
+                loading={avatarBusy}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {user?.avatarHash ? 'Change picture' : 'Upload picture'}
+              </Button>
+              {user?.avatarHash && (
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  disabled={avatarBusy}
+                  onClick={handleAvatarRemove}
+                >
+                  Remove
+                </Button>
+              )}
+            </Group>
+            <Text size="xs" c="dimmed">
+              PNG, JPEG, WebP, or GIF. Cropped to a square and resized for you.
+            </Text>
+          </Stack>
+        </Group>
 
         {!isEditing ? (
           <Stack gap="md" align="flex-start">

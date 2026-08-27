@@ -104,6 +104,11 @@
    ;; users, both NO ACTION, so a leftover row would block deleting the
    ;; per-test user that minted it) and before projects (invites.project_id).
    "invites"
+   ;; user_avatars: FK-cascades off users, so the per-test user wipe below
+   ;; would clear these anyway. It is listed explicitly because the STANDING
+   ;; test users survive that wipe, and a profile picture one deftest sets on
+   ;; admin@example.com must not be visible to the next.
+   "user_avatars"
    "entity_metadata"
    "vocab_link_tokens"
    "vocab_links"
@@ -140,7 +145,10 @@
     ;; Wipe per-test users; keep the standing ones.
     (let [placeholders (clojure.string/join ", " (repeat (count preserved-test-users) "?"))
           sql (str "DELETE FROM users WHERE id NOT IN (" placeholders ")")]
-      (jdbc/execute! tx (into [sql] preserved-test-users)))))
+      (jdbc/execute! tx (into [sql] preserved-test-users)))
+    ;; The standing users survive the wipe above, so their avatar_hash has to
+    ;; be cleared by hand to match the now-empty user_avatars table.
+    (jdbc/execute! tx ["UPDATE users SET avatar_hash = NULL"])))
 
 (defn- reset-in-memory-state!
   "Reset every in-process atom that survives between deftests inside a

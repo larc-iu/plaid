@@ -64,6 +64,9 @@ export const AuthProvider = ({ children }) => {
       if ('isAdmin' in updates) {
         localStorage.setItem('isAdmin', (updates.isAdmin || false).toString());
       }
+      if ('avatarHash' in updates) {
+        localStorage.setItem('avatarHash', updates.avatarHash || '');
+      }
     }
   };
 

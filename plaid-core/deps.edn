@@ -55,6 +55,14 @@
         ;; file type detection
         org.apache.tika/tika-core {:mvn/version "3.3.1"}
 
+        ;; image normalization (profile pictures). Both are pure Java with no
+        ;; native dependencies. Thumbnailator gives us EXIF-aware orientation
+        ;; and progressive downscaling, which a single bicubic ImageIO pass
+        ;; does not. imageio-webp registers a WebP reader through the ImageIO
+        ;; SPI, so "save image as" WebP files are uploadable like any other.
+        net.coobird/thumbnailator {:mvn/version "0.4.20"}
+        com.twelvemonkeys.imageio/imageio-webp {:mvn/version "3.12.0"}
+
         ;; TOML — operator-facing config format (parse-only; the template is static)
         org.tomlj/tomlj {:mvn/version "1.1.1"}}
 

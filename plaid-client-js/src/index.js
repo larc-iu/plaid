@@ -674,6 +674,60 @@ class PlaidClient {
         this._request('PATCH', `/api/v1/users/${id}`, { auditMessage,
           body: bodyOf({ password, username, 'is-admin': isAdmin }),
         }),
+      /**
+       * Build a URL for a user's profile picture, suitable for use directly as
+       * an `<img>` src. An image element cannot send an Authorization header,
+       * so the session token rides in the query string, the same way document
+       * media does.
+       *
+       * Pass the user record's `avatarHash` as the second argument whenever you
+       * have it: the URL then addresses that exact picture, so the browser can
+       * cache it indefinitely and still pick up a replacement the moment the
+       * user changes it. Returns null when the user has no picture, so callers
+       * can fall back to initials without a wasted request.
+       * @param {string} id - The user ID
+       * @param {string} [avatarHash] - The user record's `avatarHash`
+       * @returns {string|null}
+       */
+      avatarUrl: (id, avatarHash) => {
+        if (avatarHash === null) return null;
+        const params = new URLSearchParams({ token: this.token });
+        if (avatarHash) params.set('v', avatarHash);
+        return `${this.baseUrl}/api/v1/users/${id}/avatar?${params}`;
+      },
+      /**
+       * Fetch a user's profile picture as raw bytes. Most callers want
+       * avatarUrl() instead. This one is for non-browser consumers.
+       * @param {string} id - The user ID
+       */
+      getAvatar: (id) =>
+        this._request('GET', `/api/v1/users/${id}/avatar`, {
+          noBatch: true,
+          binaryResponse: true,
+        }),
+      /**
+       * Upload a profile picture. Your own, or anyone's if you are an admin.
+       * The server center-crops to a square, scales to the configured edge
+       * length, and re-encodes, so no client-side resizing is needed. Accepts
+       * PNG, JPEG, WebP, and GIF. Resolves to the updated user record.
+       * @param {string} id - The user ID
+       * @param {File} file - The image to upload
+       */
+      setAvatar: (id, file, auditMessage) => {
+        const fd = new FormData();
+        fd.append('file', file);
+        return this._request('PUT', `/api/v1/users/${id}/avatar`, { auditMessage,
+          body: fd, formData: true, noBatch: true,
+        });
+      },
+      /**
+       * Remove a profile picture. Your own, or anyone's if you are an admin.
+       * @param {string} id - The user ID
+       */
+      deleteAvatar: (id, auditMessage) =>
+        this._request('DELETE', `/api/v1/users/${id}/avatar`, { auditMessage,
+          noBatch: true,
+        }),
     };
 
     this.apiTokens = {

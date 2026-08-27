@@ -26,6 +26,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { IconPlus, IconSearch, IconDotsVertical } from '@tabler/icons-react';
 import { ProjectInvites, MintedLinkModal } from './ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
+import { UserAvatar } from '../common/UserAvatar';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 
@@ -408,18 +409,29 @@ export const ProjectManagement = ({ embedded = false }) => {
                   <Table.Tr key={m.id}>
                     <Table.Td>
                       <Group gap="xs" wrap="nowrap">
-                        <Text size="sm" fw={500}>
-                          {m.username}
-                        </Text>
-                        {m.isAdmin && (
-                          <Badge size="xs" color="grape" variant="light">
-                            Admin
-                          </Badge>
-                        )}
+                        <UserAvatar
+                          client={getClient()}
+                          userId={m.id}
+                          username={m.username}
+                          avatarHash={m.avatarHash}
+                          size={26}
+                        />
+                        <div>
+                          <Group gap="xs" wrap="nowrap">
+                            <Text size="sm" fw={500}>
+                              {m.username}
+                            </Text>
+                            {m.isAdmin && (
+                              <Badge size="xs" color="grape" variant="light">
+                                Admin
+                              </Badge>
+                            )}
+                          </Group>
+                          <Text size="xs" c="dimmed">
+                            ID: {m.id}
+                          </Text>
+                        </div>
                       </Group>
-                      <Text size="xs" c="dimmed">
-                        ID: {m.id}
-                      </Text>
                     </Table.Td>
                     <Table.Td>
                       <Select
@@ -505,21 +517,30 @@ export const ProjectManagement = ({ embedded = false }) => {
                     py="xs"
                     style={{ borderTop: i ? '1px solid var(--mantine-color-gray-1)' : undefined }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <Group gap="xs" wrap="nowrap">
-                        <Text size="sm" fw={500} truncate>
-                          {u.username}
+                    <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                      <UserAvatar
+                        client={getClient()}
+                        userId={u.id}
+                        username={u.username}
+                        avatarHash={u.avatarHash}
+                        size={26}
+                      />
+                      <div style={{ minWidth: 0 }}>
+                        <Group gap="xs" wrap="nowrap">
+                          <Text size="sm" fw={500} truncate>
+                            {u.username}
+                          </Text>
+                          {u.isAdmin && (
+                            <Badge size="xs" color="grape" variant="light">
+                              Admin
+                            </Badge>
+                          )}
+                        </Group>
+                        <Text size="xs" c="dimmed" truncate>
+                          ID: {u.id}
                         </Text>
-                        {u.isAdmin && (
-                          <Badge size="xs" color="grape" variant="light">
-                            Admin
-                          </Badge>
-                        )}
-                      </Group>
-                      <Text size="xs" c="dimmed" truncate>
-                        ID: {u.id}
-                      </Text>
-                    </div>
+                      </div>
+                    </Group>
                     <Menu position="bottom-end" withinPortal>
                       <Menu.Target>
                         <Button
