@@ -94,6 +94,9 @@ test.afterAll(async () => {
 });
 
 async function openAnalyze(page) {
+  // A goto to the SAME hash URL is a same-document navigation (no reload), so
+  // bounce through about:blank to guarantee a fresh load of the document.
+  if (page.url() !== 'about:blank') await page.goto('about:blank');
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });

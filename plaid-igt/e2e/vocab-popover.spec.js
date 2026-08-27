@@ -72,6 +72,9 @@ test.beforeAll(async () => {
   };
   // `hum`'s morpheme gets the form `ko` (B5-08); `the`'s morpheme an empty form (B5-09).
   await client.tokens.patchMetadata(ids.m[W.hum], { form: 'ko' });
+  // A second morpheme on `hum` so an affix type has a joiner to render (B8-03).
+  const hum = wl.tokens.find((t) => t.id === ids.w[W.hum]);
+  ids.hum2 = (await client.tokens.create(MORPH.id, TEXT, hum.begin, hum.end, 2, { form: 'x' })).id;
   await client.tokens.patchMetadata(ids.m[W.the], { form: '' });
 });
 
@@ -84,6 +87,9 @@ test.afterAll(async () => {
 });
 
 async function openAnalyze(page) {
+  // A goto to the SAME hash URL is a same-document navigation (no reload), so
+  // bounce through about:blank to guarantee a fresh load of the document.
+  if (page.url() !== 'about:blank') await page.goto('about:blank');
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
@@ -267,4 +273,122 @@ test('B4-03/04 + B6-05: unlink mini-action, relink in one batch, cross-vocab rep
   // B6-02: reopening on a token linked in LEX-A shows LEX-A active.
   await open(page, ids.w[W.the]);
   await expect(page.locator('.igt-vocab-pop__vocabtab.is-active')).toContainText(lexA.name);
+});
+
+test('B1-02/03/04/09: opener toggles, outside click closes, Escape returns focus, one at a time', async ({
+  page,
+}) => {
+  await openAnalyze(page);
+  const a = ids.w[W.hola];
+  const b = ids.w[W.dogs];
+  await opener(page, a).click();
+  await expect(pop(page)).toHaveCount(1);
+  await opener(page, a).click();
+  await expect(pop(page)).toHaveCount(0);
+  await opener(page, a).click();
+  await expect(pop(page)).toHaveCount(1);
+  await page.locator('h1').first().click();
+  await expect(pop(page)).toHaveCount(0);
+  await expect(opener(page, a)).not.toBeFocused();
+  await opener(page, a).click();
+  await expect(page.locator('.igt-vocab-pop__search')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(pop(page)).toHaveCount(0);
+  await expect(opener(page, a)).toBeFocused();
+  await opener(page, a).click();
+  await opener(page, b).click();
+  await expect(pop(page)).toHaveCount(1);
+  // The open popover belongs to B: its create row names B's form.
+  await expect(createRow(page)).toHaveText(/dog's/);
+  await page.keyboard.press('Escape');
+});
+
+test('B3-01/04: arrows move the highlight and clamp; Tab stays in the search box', async ({
+  page,
+}) => {
+  await openAnalyze(page);
+  await open(page, ids.w[W.hum], lexB.name);
+  const active = () => page.locator('.igt-vocab-pop .is-active').first();
+  await expect(rows(page).first()).toHaveClass(/is-active/);
+  await page.keyboard.press('ArrowDown');
+  await expect(rows(page).nth(1)).toHaveClass(/is-active/);
+  await page.keyboard.press('ArrowDown', { delay: 10 });
+  for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowDown');
+  await expect(createRow(page)).toHaveClass(/is-active/);
+  await page.keyboard.press('ArrowDown');
+  await expect(createRow(page)).toHaveClass(/is-active/);
+  for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowUp');
+  await expect(rows(page).first()).toHaveClass(/is-active/);
+  await expect(active()).toHaveCount(1);
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.igt-vocab-pop__search')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('.igt-vocab-pop__search')).toBeFocused();
+  await page.keyboard.press('Escape');
+});
+
+test('B7-03/04: deleting or renaming a homonym renumbers the rest', async ({ page }) => {
+  // Self-seeding: make sure LEX-B holds at least three `ser` entries.
+  while (
+    (await client.vocabLayers.get(lexB.id, true)).items.filter((it) => it.form === 'ser').length < 3
+  ) {
+    await client.vocabItems.create(lexB.id, 'ser');
+  }
+  const sers = (await client.vocabLayers.get(lexB.id, true)).items.filter(
+    (it) => it.form === 'ser',
+  );
+  await client.vocabItems.delete(sers[0].id);
+  await openAnalyze(page);
+  await open(page, ids.w[W.emoji], lexB.name);
+  await page.locator('.igt-vocab-pop__search').fill('ser');
+  const serRows = rows(page).filter({
+    has: page.locator('.igt-vocab-pop__form', { hasText: /^ser/ }),
+  });
+  await expect(serRows).toHaveCount(sers.length - 1);
+  await expect(serRows.nth(0).locator('.igt-vocab-pop__sub')).toHaveText('1');
+  await page.keyboard.press('Escape');
+  // Rename all but one `ser`: the survivor loses its subscript.
+  const rest = (await client.vocabLayers.get(lexB.id, true)).items.filter(
+    (it) => it.form === 'ser',
+  );
+  for (const it of rest.slice(1)) await client.vocabItems.update(it.id, `estar-${it.id.slice(-4)}`);
+  await openAnalyze(page);
+  await open(page, ids.w[W.emoji], lexB.name);
+  await page.locator('.igt-vocab-pop__search').fill('ser');
+  const forms = await rowForms(page);
+  const apiForms = (await client.vocabLayers.get(lexB.id, true)).items.map((it) => it.form);
+  const one = rows(page).filter({
+    has: page.locator('.igt-vocab-pop__form', { hasText: /^ser$/ }),
+  });
+  await expect(one, `rows: ${JSON.stringify(forms)} api: ${JSON.stringify(apiForms)}`).toHaveCount(
+    1,
+  );
+  await expect(one.locator('.igt-vocab-pop__sub')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+});
+
+test('B8-03/04: the morpheme Type select stores morphType and toggles the affix joiner', async ({
+  page,
+}) => {
+  await openAnalyze(page);
+  const m = ids.hum2;
+  const joiner = page.locator('.igt-morph-joiner').first();
+  await expect(joiner).toHaveText('-');
+  await open(page, m);
+  const sel = page.locator('.igt-vocab-pop select');
+  await expect(sel).toHaveCount(1);
+  await sel.selectOption('enclitic');
+  await page.waitForLoadState('networkidle');
+  await expect.poll(async () => (await client.tokens.get(m)).metadata?.morphType).toBe('enclitic');
+  await expect(joiner).toHaveText('=');
+  // The token also verifies nothing here (a human change on a human morpheme).
+  expect((await client.tokens.get(m)).metadata?.prov).toBeUndefined();
+  await page.keyboard.press('Escape');
+  await open(page, m);
+  await page.locator('.igt-vocab-pop select').selectOption('');
+  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(async () => 'morphType' in ((await client.tokens.get(m)).metadata || {}))
+    .toBe(false);
+  await expect(joiner).toHaveText('-');
 });
