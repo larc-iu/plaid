@@ -771,3 +771,53 @@ describe('confirmWordAnalysis', () => {
     expect(kinds(doc.client)).not.toContain('tokens.patchMetadata');
   });
 });
+
+describe('vocab item levels (word- or morpheme-level, never both)', () => {
+  const vocabularies = () => ({
+    v1: {
+      id: 'v1',
+      items: [{ id: 'i-1', form: 'foo' }],
+      vocabLinks: [{ id: 'l1', tokens: ['m-1'], vocabItem: { id: 'i-1', form: 'foo' } }],
+    },
+  });
+
+  it('refuses to link a word to an item already linked from a morpheme (local link)', async () => {
+    const doc = makeDoc({ vocabularies: vocabularies() });
+    expect(doc.itemLevels.get('i-1')).toBe('morpheme');
+    const ok = await doc.linkVocab('w-1', 'i-1');
+    expect(ok).toBe(false);
+    expect(doc.error).toMatch(/morpheme-level/);
+    expect(kinds(doc.client)).not.toContain('vocabLinks.create');
+  });
+
+  it('honors project-wide (remote) levels and lets same-kind links through', async () => {
+    const remote = new Map([['i-1', new Set(['word'])]]);
+    const doc = new IgtDocument({
+      raw: buildRawDoc(),
+      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
+      vocabularies: { v1: { id: 'v1', items: [{ id: 'i-1', form: 'foo' }], vocabLinks: [] } },
+      client: makeFakeClient(),
+      projectId: 'proj-1',
+      itemLevels: remote,
+    });
+    expect(doc.itemLevels.get('i-1')).toBe('word');
+    expect(await doc.linkVocab('m-1', 'i-1')).toBe(false);
+    expect(await doc.linkVocab('w-1', 'i-1')).toBe(true);
+  });
+
+  it('bulkLinkVocab drops proposals that would mix levels and claims never-linked items once', async () => {
+    const doc = makeDoc({
+      vocabularies: { v1: { id: 'v1', items: [{ id: 'i-1', form: 'foo' }], vocabLinks: [] } },
+    });
+    const n = await doc.bulkLinkVocab(
+      [
+        { tokenId: 'm-1', vocabItemId: 'i-1' },
+        { tokenId: 'w-1', vocabItemId: 'i-1' }, // same item, other kind -> dropped
+      ],
+      'rule:test',
+    );
+    expect(n).toBe(1);
+    const bulk = doc.client.calls.find((c) => c.kind === 'vocabLinks.bulkCreate');
+    expect(bulk.args[0].map((l) => l.tokens[0])).toEqual(['m-1']);
+  });
+});

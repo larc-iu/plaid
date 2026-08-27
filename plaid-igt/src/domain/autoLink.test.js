@@ -77,11 +77,13 @@ describe('computeAutoLinkProposals', () => {
       ]),
     ]);
     const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedentTable });
+    // Morphemes resolve first; 'i-all' (never linked) is claimed by m2 at the
+    // morpheme level, so w1's casefold match to the same item is dropped (an
+    // entry is word- or morpheme-level, never both).
     expect(proposals).toEqual([
-      { tokenId: 'w1', vocabItemId: 'i-all', form: 'Todos', kind: 'word' },
-      { tokenId: 'w2', vocabItemId: 'i-se1', form: 'se', kind: 'word' },
       { tokenId: 'm1', vocabItemId: 'i-prec', form: 'nac', kind: 'morpheme' },
       { tokenId: 'm2', vocabItemId: 'i-all', form: 'todos', kind: 'morpheme' },
+      { tokenId: 'w2', vocabItemId: 'i-se1', form: 'se', kind: 'word' },
     ]);
   });
 
@@ -167,5 +169,50 @@ describe('auto-link trims edge punctuation off word forms by the ignore rule', (
     );
     expect(table.get('derechos')).toBe('i-a');
     expect(table.has('derechos.')).toBe(false);
+  });
+});
+
+describe('item levels (word- or morpheme-level entries, never both)', () => {
+  it('a word-level item is invisible to morphemes and falls through to the next candidate', () => {
+    const sentences = sentence([word('w5', 'whole', null, [morph('m1', 'se')])]);
+    const itemLevels = new Map([['i-se1', 'word']]);
+    const proposals = computeAutoLinkProposals({
+      sentences,
+      vocabularies: VOCABS,
+      precedentTable: new Map(),
+      itemLevels,
+    });
+    expect(proposals).toEqual([
+      { tokenId: 'm1', vocabItemId: 'i-se2', form: 'se', kind: 'morpheme' },
+    ]);
+  });
+  it('precedent pointing at an incompatible item is skipped, not followed', () => {
+    const precedentTable = buildPrecedentTable([res([['i-se1', null, 'se', 9]])]);
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'se')]),
+      vocabularies: VOCABS,
+      precedentTable,
+      itemLevels: new Map([['i-se1', 'morpheme']]),
+    });
+    expect(proposals).toEqual([{ tokenId: 'w1', vocabItemId: 'i-se2', form: 'se', kind: 'word' }]);
+  });
+  it('a single-morpheme word matching a never-linked item links the morpheme only', () => {
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'todos', null, [morph('m1', 'todos')])]),
+      vocabularies: VOCABS,
+      precedentTable: new Map(),
+    });
+    expect(proposals).toEqual([
+      { tokenId: 'm1', vocabItemId: 'i-all', form: 'todos', kind: 'morpheme' },
+    ]);
+  });
+  it('mixed items are never proposed', () => {
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'todos')]),
+      vocabularies: VOCABS,
+      precedentTable: new Map(),
+      itemLevels: new Map([['i-all', 'mixed']]),
+    });
+    expect(proposals).toEqual([]);
   });
 });

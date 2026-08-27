@@ -36,6 +36,7 @@ import { notifySuccess, notifyError, notifyWarning, isPermissionError } from '@/
 import { FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
+import { levelQueries } from '@/domain/vocabLevels';
 import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
@@ -113,6 +114,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const paneWrapRef = useRef(null);
   const [paneMaxH, setPaneMaxH] = useState(null);
   const [usageCounts, setUsageCounts] = useState(null); // {itemId: n} | null
+  const [usageLevels, setUsageLevels] = useState(null); // {itemId: 'word'|'morpheme'|'mixed'} | null
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -162,22 +164,30 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     }
   };
 
-  // One grouped aggregate query: links per item across every readable project.
+  // One grouped aggregate query: links per item AND per token-layer role
+  // across every readable project. The role gives each entry its level
+  // (word / morpheme, see domain/vocabLevels.js): an entry is linked from one
+  // kind of token only, and 'mixed' flags a violation worth cleaning up.
   const fetchUsageCounts = async () => {
     try {
-      const res = await client.query({
-        where: [
-          ['vocab', '?v', { layer: vocabularyId }],
-          ['vocab-link', '?t', '?v'],
-        ],
-        return: { group: ['?v'], aggregates: [['count']] },
-      });
+      const res = await client.query(levelQueries([vocabularyId])[0]);
       const counts = {};
-      for (const [itemId, n] of res?.results || []) counts[itemId] = n;
+      const kinds = {};
+      for (const [itemId, role, n] of res?.results || []) {
+        counts[itemId] = (counts[itemId] || 0) + n;
+        const kind = role === 'word' || role === 'morpheme' ? role : null;
+        if (kind) (kinds[itemId] ||= new Set()).add(kind);
+      }
+      const levels = {};
+      for (const [itemId, set] of Object.entries(kinds)) {
+        levels[itemId] = set.size > 1 ? 'mixed' : [...set][0];
+      }
       setUsageCounts(counts);
+      setUsageLevels(levels);
     } catch (err) {
       console.error('Usage-count query failed:', err);
       setUsageCounts(null);
+      setUsageLevels(null);
       if (!isPermissionError(err)) {
         notifyWarning('Usage counts could not be loaded.', 'Usage counts unavailable');
       }
@@ -719,6 +729,24 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                   <div className="text-right text-xs text-muted-foreground">
                     {(usageCounts?.[selectedItem.id] ?? 0).toLocaleString()} use
                     {(usageCounts?.[selectedItem.id] ?? 0) === 1 ? '' : 's'}
+                    {usageLevels?.[selectedItem.id] && (
+                      <span
+                        className={cn(
+                          'ml-1.5',
+                          usageLevels[selectedItem.id] === 'mixed' && 'font-medium text-amber-700',
+                        )}
+                        title={
+                          usageLevels[selectedItem.id] === 'mixed'
+                            ? 'Linked from both words and morphemes. An entry should be one or the other; unlink one side.'
+                            : `Linked from ${usageLevels[selectedItem.id]}s only`
+                        }
+                      >
+                        ·{' '}
+                        {usageLevels[selectedItem.id] === 'mixed'
+                          ? '⚠ mixed word/morpheme'
+                          : `${usageLevels[selectedItem.id]}-level`}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

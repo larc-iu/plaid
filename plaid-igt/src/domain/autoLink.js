@@ -26,6 +26,7 @@
 import { PROV_STATES } from '@larc-iu/plaid-client';
 
 import { trimIgnoredEdges } from './igtConfig.js';
+import { isLevelCompatible, LEVELS } from './vocabLevels.js';
 
 export const AUTO_LINK_SOURCE = 'rule:precedent-or-unique';
 
@@ -110,17 +111,21 @@ export function buildItemIndex(vocabularies) {
 // Resolution tiers, first hit wins: exact precedent > exact item > casefolded
 // precedent > casefolded item. Among multiple items sharing a form, the
 // lexicographically smallest id is taken (precedent ties are already broken in
-// buildPrecedentTable). Returns null only when nothing matches at any tier.
+// buildPrecedentTable). Every tier is filtered by LEVEL compatibility: an item
+// linked from the other kind of token elsewhere is invisible to this `kind`
+// (see vocabLevels.js). Returns null only when nothing matches at any tier.
 const smallestId = (ids) => (ids && ids.length ? ids.reduce((a, b) => (b < a ? b : a)) : null);
-function resolveForm(form, precedent, items) {
-  const p = precedent.get(form);
+function resolveForm(form, kind, precedent, items, levels) {
+  const ok = (id) => (id && isLevelCompatible(levels.get(id), kind) ? id : null);
+  const pick = (ids) => smallestId((ids || []).filter((id) => ok(id)));
+  const p = ok(precedent.get(form));
   if (p) return p;
-  const exact = smallestId(items.exact.get(form));
+  const exact = pick(items.exact.get(form));
   if (exact) return exact;
   const lower = form.toLowerCase();
-  const pf = precedent.get(lower);
+  const pf = ok(precedent.get(lower));
   if (pf) return pf;
-  return smallestId(items.folded.get(lower));
+  return pick(items.folded.get(lower));
 }
 
 // Is a word/morpheme open to (re)linking, and what does it currently point at?
@@ -139,32 +144,44 @@ function linkTarget(entity) {
 // form resolves to an item the rule would set. A form that resolves to the
 // current (machine) link is a no-op and skipped; a protected or unresolvable
 // link yields no proposal.
+//
+// Levels: `itemLevels` (itemId -> 'word' | 'morpheme' | 'mixed' | null, see
+// vocabLevels.js) is copied and updated as proposals claim never-linked items,
+// so one pass never proposes an item at both levels. MORPHEMES ARE RESOLVED
+// FIRST (user decision 2026-08-26): a single-morpheme word whose form matches
+// a never-linked item at both levels links the morpheme only, and the word is
+// left alone.
 export function computeAutoLinkProposals({
   sentences,
   vocabularies,
   precedentTable,
   ignoredCfg = null,
+  itemLevels = null,
 }) {
   const items = buildItemIndex(vocabularies);
+  const levels = new Map(itemLevels || []);
   const proposals = [];
   const consider = (entity, form, kind) => {
     const { open, currentItemId } = linkTarget(entity);
     if (!open) return;
-    const itemId = resolveForm(form ?? '', precedentTable, items);
+    const itemId = resolveForm(form ?? '', kind, precedentTable, items, levels);
     if (!itemId || itemId === currentItemId) return;
+    if (levels.get(itemId) == null) levels.set(itemId, kind); // first link fixes the level
     proposals.push({ tokenId: entity.id, vocabItemId: itemId, form, kind });
   };
-  for (const s of sentences || []) {
-    for (const t of s.tokens || []) {
-      // Word forms lose edge punctuation by the project's ignore rule (the
-      // same trim the popover's "+ Create" applies): `derechos.` links to
-      // `derechos`. Morpheme forms are used verbatim.
-      consider(t, trimIgnoredEdges(t.content ?? '', ignoredCfg), 'word');
-      for (const m of t.morphemes || []) {
-        const form = morphFormOf(m);
-        if (form) consider(m, form, 'morpheme');
-      }
+  const words = [];
+  for (const s of sentences || []) for (const t of s.tokens || []) words.push(t);
+  for (const t of words) {
+    for (const m of t.morphemes || []) {
+      const form = morphFormOf(m);
+      if (form) consider(m, form, LEVELS.MORPHEME);
     }
+  }
+  for (const t of words) {
+    // Word forms lose edge punctuation by the project's ignore rule (the
+    // same trim the popover's "+ Create" applies): `derechos.` links to
+    // `derechos`. Morpheme forms are used verbatim.
+    consider(t, trimIgnoredEdges(t.content ?? '', ignoredCfg), LEVELS.WORD);
   }
   return proposals;
 }
