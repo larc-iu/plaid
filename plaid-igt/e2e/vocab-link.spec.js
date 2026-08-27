@@ -17,17 +17,23 @@ test('link then unlink a lexicon item on a word', async ({ page }) => {
   await seedAuth(page);
   await openAnalyze(page, projectId, documentId);
 
-  // Open the popover on the first word and link the item "the".
+  // Open the popover on the first word and link the first OFFERED entry. Which
+  // entries are offered depends on the level rule (an entry linked from
+  // morphemes elsewhere in the project is hidden for a word), so read the form
+  // off the row instead of hard-coding one.
   await page.locator('.igt-token-form .igt-vocab__opener').first().click();
   await page.locator('.igt-vocab-pop').first().waitFor({ state: 'visible' });
-  await page.locator('.igt-vocab-pop__item', { hasText: 'the' }).first().click();
+  const row = page.locator('.igt-vocab-pop__item').first();
+  const form = (await row.locator('.igt-vocab-pop__form').innerText()).trim();
+  expect(form, 'an offered entry').not.toBe('');
+  await row.click();
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(300);
-  await expect(page.locator('.igt-token-form .igt-vocab__hint').first()).toHaveText('the');
+  await expect(page.locator('.igt-token-form .igt-vocab__hint').first()).toHaveText(form);
 
   // Persists across a full reload.
   await openAnalyze(page, projectId, documentId);
-  await expect(page.locator('.igt-token-form .igt-vocab__hint').first()).toHaveText('the');
+  await expect(page.locator('.igt-token-form .igt-vocab__hint').first()).toHaveText(form);
 
   // Unlink via the popover (click the linked item again).
   await page.locator('.igt-token-form .igt-vocab__hint').first().click();
