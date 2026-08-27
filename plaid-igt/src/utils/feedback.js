@@ -47,7 +47,9 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
     case 404:
       return 'That item could not be found.';
     case 409:
-      return 'This changed elsewhere since you loaded it — reload to get the latest, then try again.';
+      // Document mutations auto-resync after a conflict (IgtDocument._withSaving
+      // reloads), so don't tell the user to reload by hand.
+      return 'This changed elsewhere since you loaded it — it has been refreshed to the latest version, so redo your edit.';
     case 423:
       return 'This document is being edited right now (by another user or a service). Try again in a moment.';
     default:
