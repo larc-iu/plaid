@@ -929,6 +929,8 @@
   border-radius: 6px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
   text-align: left;
+  /* Anchored inside the word-form cell, which is nowrap: notes must wrap. */
+  white-space: normal;
 }
 .igt-vocab-pop__search {
   width: 100%;
