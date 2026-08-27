@@ -24,7 +24,7 @@ SUMMARY = """\
 Segments text into **sentences** with NLTK's pretrained *Punkt* model, then
 splits each sentence into **words** with the Treebank word tokenizer.
 
-- Sentence segmentation is language-specific — pick the closest **Language**.
+- Sentence segmentation is language-specific. Pick the closest **Language**.
 - Word tokenization uses the same Treebank rules across languages; best for
   whitespace-delimited, Latin-script text.
 - **Overwrite human-edited annotations**: re-segmenting sentences deletes

@@ -14,11 +14,11 @@ from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_
 
 
 WHISPER_MODEL_SIZES = [
-    ('tiny', 'Tiny — fastest, least accurate'),
+    ('tiny', 'Tiny: fastest, least accurate'),
     ('base', 'Base'),
     ('small', 'Small'),
     ('medium', 'Medium'),
-    ('large', 'Large — slowest, most accurate'),
+    ('large', 'Large: slowest, most accurate'),
 ]
 
 SUMMARY = """\
