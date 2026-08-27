@@ -702,6 +702,9 @@ export class IgtEditor {
 
   _basicKeydown = (e) => {
     if (this._maybeConfirmWord(e)) return;
+    // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
+    // it alone so the chip hop wins over cell navigation.
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
     if (e.key === 'Enter') this._maybeConfirmGuess(e.target);
     if (e.key === 'Enter') {
       // Commit and advance to the next cell in the same tier (the "fill a row
@@ -905,6 +908,9 @@ export class IgtEditor {
   // translations top to bottom), falling through to the default at the end;
   // Escape reverts.
   _sentenceKeydown = (e) => {
+    // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
+    // it alone so the chip hop wins over cell navigation.
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       e.target.blur();
@@ -951,6 +957,8 @@ export class IgtEditor {
         return;
       }
       if (this._maybeConfirmWord(e)) return;
+      // Ctrl/Cmd+Arrow belongs to the review sweep (container listener).
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         if (!this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.target.blur();
