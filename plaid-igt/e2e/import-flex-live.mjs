@@ -18,7 +18,9 @@ import { deriveImportConfig, runImport } from '../src/import/flex/importEngine.j
 import { executeProjectSetup } from '../src/components/projects/setup/executeSetup.js';
 import { IgtDocument } from '../src/domain/IgtDocument.js';
 
-const BACKUP = '/home/luke/local/plaid/Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
+const BACKUP =
+  process.env.PLAID_FWBACKUP ||
+  '/home/luke/Downloads/Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
 const KEEP = process.argv.includes('--keep');
 const SMALL = process.argv.includes('--small');
 

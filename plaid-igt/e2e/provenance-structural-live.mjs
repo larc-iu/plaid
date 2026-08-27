@@ -10,6 +10,10 @@
 import PlaidClient, { ROLES, stampInferred, cpLength } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../src/domain/IgtDocument.js';
 import { readToken } from './fixtures.js';
+import { discoverExportLayers } from '../src/export/exportLayers.js';
+import { newPreset } from '../src/export/presets.js';
+import { runExport } from '../src/export/runExport.js';
+import { validateIgtDocument } from '../src/domain/validate.js';
 
 const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const client = new PlaidClient(CORE, readToken().token);
@@ -46,6 +50,7 @@ const item = (form) => items[form];
 const BODY = 'alpha beta gamma delta epsilon zeta';
 const created = await client.documents.create(project.id, `prov-struct ${Date.now()}`);
 const DOC = created.id;
+let DOC2 = null;
 try {
   await client.texts.create(textLayer.id, DOC, BODY);
   const raw = await client.documents.get(DOC, true);
@@ -63,6 +68,22 @@ try {
     bodyWords.map((w) => ({ tokenLayerId: L.MORPHEME, text: TEXT, ...w, precedence: 1 })),
   );
 
+  const seedDoc = async (docName, body) => {
+    const c = await client.documents.create(project.id, docName);
+    await client.texts.create(textLayer.id, c.id, body);
+    const r = await client.documents.get(c.id, true);
+    const tid = r.textLayers.find((l) => roleOf(l) === ROLES.BASELINE).text.id;
+    const ws = [];
+    for (const m of body.matchAll(/\S+/g)) ws.push({ begin: m.index, end: m.index + m[0].length });
+    await client.tokens.bulkCreate([
+      { tokenLayerId: L.SENTENCE, text: tid, begin: 0, end: cpLength(body) },
+    ]);
+    await client.tokens.bulkCreate(ws.map((w) => ({ tokenLayerId: L.WORD, text: tid, ...w })));
+    await client.tokens.bulkCreate(
+      ws.map((w) => ({ tokenLayerId: L.MORPHEME, text: tid, ...w, precedence: 1 })),
+    );
+    return c.id;
+  };
   const load = () => IgtDocument.load(client, project.id, DOC);
   // Fresh-from-server view of a word by its (current) content, morphemes sorted.
   const words = (d) => d.sentences.flatMap((s) => s.tokens);
@@ -504,8 +525,81 @@ try {
     !W('zeta') && (await linksOf(zz.id)).length === 0 && (await linksOf(zm)).length === 0,
     'B10-05 word delete cascades its word + morpheme links',
   );
+  // ================= A8-04 / B9-01 =================
+  section('A8-04 export, B9-01 item delete');
+  // A8-04 plain-text export prints machine and human values alike (no marker).
+  DOC2 = await seedDoc(`prov-struct-2 ${Date.now()}`, 'kappa lambda mu nu');
+  d = await IgtDocument.load(client, project.id, DOC2);
+  const withMorphs = words(d).filter((t) => t.morphemes.length);
+  const gW = withMorphs[0];
+  await client.spans.create(
+    gl.id,
+    [gW.morphemes[0].id],
+    'MACHGLOSS',
+    stampInferred('service:test'),
+  );
+  const nextW = withMorphs[1];
+  await client.spans.create(gl.id, [nextW.morphemes[0].id], 'HUMGLOSS');
+  const projFull = await client.projects.get(project.id);
+  const preset = newPreset('plaintext', discoverExportLayers(projFull), 'ps');
+  const exported = await runExport({
+    client,
+    project: projFull,
+    preset,
+    scope: { type: 'document', id: DOC2 },
+  });
+  const text = await exported.blob.text();
+  check(
+    text.includes('MACHGLOSS') && text.includes('HUMGLOSS'),
+    'A8-04 plain text carries machine and human glosses',
+    text.slice(0, 200),
+  );
+  const lineOf = (v) => text.split('\n').find((l) => l.includes(v)) || '';
+  check(
+    !/[*?~]MACHGLOSS|MACHGLOSS[*?~]/.test(lineOf('MACHGLOSS')),
+    'A8-04 machine value exported without a marker',
+    lineOf('MACHGLOSS'),
+  );
+
+  // B9-01 deleting a vocab item with links removes the links (server cascade).
+  const doomed = await client.vocabItems.create(vocab.id, `doomed-${stamp}`);
+  const targets = withMorphs.slice(0, 3).map((t) => t.morphemes[0].id);
+  for (const tid of targets) await client.vocabLinks.create(doomed.id, [tid]);
+  d = await IgtDocument.load(client, project.id, DOC2);
+  check(
+    targets.every((tid) =>
+      words(d).some(
+        (t) => t.morphemes[0]?.id === tid && t.morphemes[0].vocabItem?.id === doomed.id,
+      ),
+    ),
+    'B9-01 three morphemes linked to the item',
+    JSON.stringify(
+      words(d).map((t) => [
+        t.content,
+        t.morphemes[0]?.id === targets[0],
+        t.morphemes[0]?.vocabItem?.form ?? null,
+      ]),
+    ) +
+      ' links:' +
+      JSON.stringify(Object.values(d._vocabularies).map((v) => (v.vocabLinks || []).length)),
+  );
+  await client.vocabItems.delete(doomed.id);
+  d = await IgtDocument.load(client, project.id, DOC2);
+  check(
+    targets.every(
+      (tid) => !words(d).some((t) => t.morphemes[0]?.id === tid && t.morphemes[0].vocabItem),
+    ),
+    'B9-01 links gone after the item is deleted',
+  );
+  const findings = validateIgtDocument(d.layerInfo, [], d._vocabularies);
+  check(
+    !findings.some((f) => f.severity === 'error'),
+    'B9-01 validator quiet afterwards',
+    JSON.stringify(findings),
+  );
 } finally {
   await client.documents.delete(DOC).catch(() => {});
+  if (DOC2) await client.documents.delete(DOC2).catch(() => {});
   for (const it of Object.values(items)) await client.vocabItems.delete(it.id).catch(() => {});
 }
 console.log(failures ? `\n${failures} failure(s)` : '\nall passed');
