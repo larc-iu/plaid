@@ -435,6 +435,42 @@ describe('word-token structural ops', () => {
     expect(toks[0].vocabItem?.form).toBe('CAT');
   });
 
+  it("mergeTokens keeps the survivor's own vocab link and deletes the reparented one", async () => {
+    // Both words are linked (word-level). The server reparents w-2's link onto
+    // w-1, which would leave two links on one token — invisible and un-unlinkable
+    // in the editor — so the merge dedups: the survivor's own link wins.
+    const raw = buildRawDoc({
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+      ],
+      morphemes: [],
+      body: 'the cat',
+      wordVocabs: [
+        {
+          id: 'v1',
+          name: 'Lexicon',
+          vocabLinks: [
+            { id: 'lk-2', tokens: ['w-2'], vocabItem: { id: 'vi-2', form: 'CAT', metadata: {} } },
+            { id: 'lk-1', tokens: ['w-1'], vocabItem: { id: 'vi-1', form: 'THE', metadata: {} } },
+          ],
+        },
+      ],
+    });
+    const doc = makeDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: [], vocabLinks: [] } },
+    });
+    await doc.mergeTokens(['w-1', 'w-2']);
+    const toks = doc.sentences[0].tokens;
+    expect(toks).toHaveLength(1);
+    expect(toks[0].vocabItem?.form).toBe('THE');
+    const dels = doc.client.calls.filter((c) => c.kind === 'vocabLinks.delete');
+    expect(dels.map((c) => c.args[0])).toEqual(['lk-2']);
+    expect(doc.vocabularies.v1.vocabLinks.map((l) => l.id)).toEqual(['lk-1']);
+  });
+
   it('deleteToken cascades to coincident morphemes and their spans', async () => {
     const raw = buildRawDoc({
       words: [

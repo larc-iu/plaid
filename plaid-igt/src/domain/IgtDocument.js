@@ -1,6 +1,11 @@
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
-import { planMorphemeReconcile, planSpanDedup } from './igtReconcile.js';
+import {
+  planMorphemeReconcile,
+  planSpanDedup,
+  planVocabLinkDedup,
+  applyVocabLinkDedup,
+} from './igtReconcile.js';
 import { validateIgtDocument } from './validate.js';
 import { deriveDocumentData, deriveSentences, deriveAlignmentTokens } from './derive.js';
 
@@ -432,6 +437,7 @@ export class IgtDocument {
       deleted: 0,
       deletedAnnotatedOrphans: 0,
       dedupedSpans: 0,
+      dedupedLinks: 0,
       findings: [],
     };
     // Single-flight: a concurrent re-entry (StrictMode double-invoke, a rapid
@@ -443,6 +449,7 @@ export class IgtDocument {
       const { wordsNeedingMorpheme, orphanMorphemeIds, deletedAnnotatedOrphans } =
         planMorphemeReconcile(info);
       const dedupPlans = planSpanDedup(info);
+      const linkPlans = planVocabLinkDedup(this._vocabularies);
 
       const morphemeLayer = info.morphemeTokenLayer;
       const textId = info.primaryTextLayer?.text?.id;
@@ -450,7 +457,7 @@ export class IgtDocument {
         morphemeLayer?.id && textId && (wordsNeedingMorpheme.length || orphanMorphemeIds.length),
       );
 
-      if (morphemeWork || dedupPlans.length) {
+      if (morphemeWork || dedupPlans.length || linkPlans.length) {
         const results = await this._client.batched(async () => {
           if (morphemeWork && orphanMorphemeIds.length)
             this._client.tokens.bulkDelete(orphanMorphemeIds);
@@ -464,6 +471,9 @@ export class IgtDocument {
             if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
             p.deleteSpanIds.forEach((id) => this._client.spans.delete(id));
           });
+          linkPlans.forEach((p) => {
+            p.deleteLinks.forEach((l) => this._client.vocabLinks.delete(l.linkId));
+          });
         });
         // Op order: the optional bulkDelete first, then one create per bare word.
         const createOffset = morphemeWork && orphanMorphemeIds.length ? 1 : 0;
@@ -472,7 +482,8 @@ export class IgtDocument {
         const newIds = createResults.map((r) => r?.body?.id ?? r?.id);
         const removed = new Set(orphanMorphemeIds);
 
-        this._applyRawPatch((next, infoNext) => {
+        this._applyRawPatch((next, infoNext, vocabs) => {
+          if (linkPlans.length) applyVocabLinkDedup(vocabs, linkPlans);
           if (morphemeWork) {
             const layer = infoNext.morphemeTokenLayer;
             if (layer) {
@@ -527,6 +538,7 @@ export class IgtDocument {
         deleted: morphemeWork ? orphanMorphemeIds.length : 0,
         deletedAnnotatedOrphans,
         dedupedSpans: dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0),
+        dedupedLinks: linkPlans.reduce((n, p) => n + p.deleteLinks.length, 0),
         findings,
       };
     } catch (err) {

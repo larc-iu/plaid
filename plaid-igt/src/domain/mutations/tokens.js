@@ -9,7 +9,7 @@ import {
   validateTokenization,
 } from '../../utils/tokenizationUtils.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
-import { planSpanDedup } from '../igtReconcile.js';
+import { planSpanDedup, planVocabLinkDedup, applyVocabLinkDedup } from '../igtReconcile.js';
 
 const findCoincidentMorphemeIds = (morphemeTokens, targets) => {
   if (!Array.isArray(morphemeTokens) || morphemeTokens.length === 0) return [];
@@ -40,6 +40,17 @@ export const tokenMutations = {
       const firstToken = toMerge[0];
       const lastToken = toMerge[toMerge.length - 1];
       const coincident = findCoincidentMorphemeIds(info.morphemeTokenLayer?.tokens || [], toMerge);
+      // The survivor's own pre-merge link wins the link dedup below.
+      const ownLinkIds = new Set(
+        Object.values(this._vocabularies || {}).flatMap((v) =>
+          (v.vocabLinks || [])
+            .filter(
+              (l) =>
+                Array.isArray(l.tokens) && l.tokens.length === 1 && l.tokens[0] === firstToken.id,
+            )
+            .map((l) => l.id),
+        ),
+      );
 
       await this._client.batched(async () => {
         if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
@@ -100,6 +111,18 @@ export const tokenMutations = {
             }
           }
         });
+      }
+
+      // Same for vocab links: the reparent leaves the survivor with one link per
+      // merged word that had one, and the editor shows/unlinks only one. Keep
+      // the survivor's own link (else the earliest merged word's), delete the rest.
+      const linkPlans = planVocabLinkDedup(this._vocabularies, ownLinkIds);
+      if (linkPlans.length > 0) {
+        await this._client.batched(() => {
+          for (const p of linkPlans)
+            p.deleteLinks.forEach((l) => this._client.vocabLinks.delete(l.linkId));
+        });
+        this._applyRawPatch((next, infoNext, vocabs) => applyVocabLinkDedup(vocabs, linkPlans));
       }
     });
   },

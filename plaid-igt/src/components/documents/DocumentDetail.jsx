@@ -150,6 +150,7 @@ const DocumentEditor = () => {
           deleted = 0,
           deletedAnnotatedOrphans = 0,
           dedupedSpans = 0,
+          dedupedLinks = 0,
           findings = [],
           error,
         } = await doc.reconcileOnOpen();
@@ -167,7 +168,7 @@ const DocumentEditor = () => {
         // Don't assert "another app" — the most common trigger is IGT's own
         // word merge (which reparents both words' spans onto the survivor); only
         // make the toast sticky when real annotation data was dropped.
-        if (deleted + dedupedSpans > 0) {
+        if (deleted + dedupedSpans + dedupedLinks > 0) {
           const parts = [];
           if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
           if (deleted) {
@@ -180,6 +181,11 @@ const DocumentEditor = () => {
           if (dedupedSpans) {
             parts.push(
               `merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} from a token merge (values joined with ' | ' — review them)`,
+            );
+          }
+          if (dedupedLinks) {
+            parts.push(
+              `removed ${dedupedLinks} extra vocabulary link${dedupedLinks === 1 ? '' : 's'} left on a merged word (a word links one entry — kept the first)`,
             );
           }
           const droppedData = deletedAnnotatedOrphans > 0;

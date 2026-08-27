@@ -125,3 +125,50 @@ export const planSpanDedup = (layerInfo) => {
     ...(buckets.sentence || []).flatMap((sl) => planLayerSpanDedup(sl, 'sentence')),
   ];
 };
+
+/**
+ * Heal plan for tokens carrying more than one single-token vocab link (across
+ * all of the project's vocabs). IGT's contract: at most ONE link per token —
+ * the popover, derive.js and the level rule all assume it, and linking from a
+ * second vocab replaces the first. Duplicates arise exactly like duplicate
+ * spans: a token merge reparents the dying token's link onto the survivor
+ * (server tokens.merge), leaving a link the editor neither shows nor unlinks.
+ *
+ * Keep one link per token: a link in `preferLinkIds` when present (the merge
+ * passes the survivor's own pre-merge link), else the first one seen; delete
+ * the rest. Returns [{tokenId, keepLinkId, deleteLinks: [{vocabId, linkId}]}].
+ */
+export const planVocabLinkDedup = (vocabularies, preferLinkIds = new Set()) => {
+  const byToken = new Map();
+  for (const vocab of Object.values(vocabularies || {})) {
+    for (const link of vocab.vocabLinks || []) {
+      if (!Array.isArray(link.tokens) || link.tokens.length !== 1) continue;
+      const tid = link.tokens[0];
+      if (!byToken.has(tid)) byToken.set(tid, []);
+      byToken.get(tid).push({ vocabId: vocab.id, linkId: link.id });
+    }
+  }
+  const plans = [];
+  byToken.forEach((links, tokenId) => {
+    if (links.length < 2) return;
+    const keep = links.find((l) => preferLinkIds.has(l.linkId)) || links[0];
+    plans.push({
+      tokenId,
+      keepLinkId: keep.linkId,
+      deleteLinks: links.filter((l) => l !== keep),
+    });
+  });
+  return plans;
+};
+
+// Apply a planVocabLinkDedup plan to a vocabularies map in place (optimistic
+// patch mirror of the server deletes).
+export const applyVocabLinkDedup = (vocabularies, plans) => {
+  for (const p of plans) {
+    for (const { vocabId, linkId } of p.deleteLinks) {
+      const v = vocabularies?.[vocabId];
+      if (v && Array.isArray(v.vocabLinks))
+        v.vocabLinks = v.vocabLinks.filter((l) => l.id !== linkId);
+    }
+  }
+};

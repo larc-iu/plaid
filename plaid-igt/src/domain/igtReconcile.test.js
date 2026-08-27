@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
-import { planMorphemeReconcile, planSpanDedup } from './igtReconcile.js';
+import { planMorphemeReconcile, planSpanDedup, planVocabLinkDedup } from './igtReconcile.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 
 const makeDoc = (raw, client) =>
@@ -263,5 +263,76 @@ describe('IgtDocument.reconcileOnOpen', () => {
     const glossSpans = doc.layerInfo.morphemeTokenLayer.spanLayers[0].spans;
     expect(glossSpans.length).toBe(1);
     expect(glossSpans[0].value).toBe('the | THE');
+  });
+});
+
+describe('planVocabLinkDedup', () => {
+  const vocabs = {
+    v1: {
+      id: 'v1',
+      vocabLinks: [
+        { id: 'lk-a', tokens: ['w-1'], vocabItem: { id: 'i1' } },
+        { id: 'lk-b', tokens: ['w-1'], vocabItem: { id: 'i2' } },
+        { id: 'lk-c', tokens: ['w-2'], vocabItem: { id: 'i1' } },
+      ],
+    },
+    v2: { id: 'v2', vocabLinks: [{ id: 'lk-d', tokens: ['w-1'], vocabItem: { id: 'i9' } }] },
+  };
+
+  it('keeps the first link per token across vocabs, deletes the rest', () => {
+    expect(planVocabLinkDedup(vocabs)).toEqual([
+      {
+        tokenId: 'w-1',
+        keepLinkId: 'lk-a',
+        deleteLinks: [
+          { vocabId: 'v1', linkId: 'lk-b' },
+          { vocabId: 'v2', linkId: 'lk-d' },
+        ],
+      },
+    ]);
+  });
+
+  it("prefers a link from preferLinkIds (the merge survivor's own link)", () => {
+    const [plan] = planVocabLinkDedup(vocabs, new Set(['lk-d']));
+    expect(plan.keepLinkId).toBe('lk-d');
+    expect(plan.deleteLinks.map((l) => l.linkId)).toEqual(['lk-a', 'lk-b']);
+  });
+
+  it('is empty when every token has at most one link', () => {
+    expect(
+      planVocabLinkDedup({ v1: { id: 'v1', vocabLinks: vocabs.v1.vocabLinks.slice(2) } }),
+    ).toEqual([]);
+  });
+});
+
+describe('reconcileOnOpen vocab-link dedup', () => {
+  it('removes extra links on a token and reports dedupedLinks', async () => {
+    const raw = buildRawDoc();
+    const client = makeFakeClient();
+    const doc = new IgtDocument({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: {} },
+      vocabularies: {
+        v1: {
+          id: 'v1',
+          name: 'Lexicon',
+          items: [],
+          vocabLinks: [
+            { id: 'lk-1', tokens: ['w-1'], vocabItem: { id: 'i1', form: 'one', metadata: {} } },
+            { id: 'lk-2', tokens: ['w-1'], vocabItem: { id: 'i2', form: 'two', metadata: {} } },
+          ],
+        },
+      },
+      client,
+      projectId: 'proj-1',
+    });
+
+    const res = await doc.reconcileOnOpen();
+
+    expect(res.dedupedLinks).toBe(1);
+    const dels = client.calls.filter((c) => c.kind === 'vocabLinks.delete');
+    expect(dels.map((c) => c.args[0])).toEqual(['lk-2']);
+    expect(doc.vocabularies.v1.vocabLinks.map((l) => l.id)).toEqual(['lk-1']);
+    expect(doc.sentences[0].tokens[0].vocabItem?.form).toBe('one');
   });
 });
