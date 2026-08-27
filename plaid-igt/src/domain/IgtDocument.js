@@ -328,7 +328,9 @@ export class IgtDocument {
     } catch (err) {
       console.error(`${label}:`, err);
       this._error = `${label}: ${err.message || 'Unknown error'}`;
-      if (this.onError) this.onError(this._error);
+      // The raw error rides along so the UI can humanize it (statuses, network
+      // failures) while keeping the "Failed to …" label.
+      if (this.onError) this.onError(this._error, err, label);
       try {
         await this._reload();
       } catch (reloadErr) {

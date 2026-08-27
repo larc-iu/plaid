@@ -107,7 +107,8 @@ const DocumentEditor = () => {
       try {
         const d = await IgtDocument.load(client, projectId, documentId, asOf);
         if (cancelled) return;
-        d.onError = (msg) => notifyError(humanizeError(msg, msg));
+        d.onError = (msg, err, label) =>
+          notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
         setDoc(d);
       } catch (e) {
         if (cancelled) return;

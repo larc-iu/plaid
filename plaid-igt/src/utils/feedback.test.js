@@ -31,6 +31,22 @@ describe('notifyError', () => {
 });
 
 describe('humanizeError', () => {
+  it('explains an unreachable server in one way', () => {
+    const want = /Could not reach the server/;
+    expect(humanizeError({ status: 0, message: 'Failed to fetch' })).toMatch(want);
+    expect(
+      humanizeError({ status: 503, message: 'HTTP 503 Service Unavailable at http://x' }),
+    ).toMatch(want);
+    expect(
+      humanizeError({ status: 500, message: 'HTTP 500 Unable to read error response at http://x' }),
+    ).toMatch(want);
+    expect(humanizeError(new TypeError('Failed to fetch'))).toMatch(want);
+  });
+  it('keeps a real 500 distinct', () => {
+    expect(humanizeError({ status: 500, message: 'HTTP 500 boom at http://x' })).toMatch(
+      /unexpected error/,
+    );
+  });
   it('maps known statuses', () => {
     expect(humanizeError({ status: 403 })).toMatch(/permission/);
   });

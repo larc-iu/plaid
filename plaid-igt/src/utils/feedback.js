@@ -49,7 +49,17 @@ export const isPermissionError = (error) => {
 // Turn a raw client/HTTP error into a user-facing message: map known statuses to
 // friendly text, and otherwise scrub internal API URLs and bare UUIDs so we never
 // surface stack-trace-like internals (e.g. "… at http://localhost:8080/api/v1/…").
+const UNREACHABLE = 'Could not reach the server. Check your connection and try again.';
+const isUnreachable = (error) => {
+  const s = statusOf(error);
+  if (s === 0 || s === 502 || s === 503 || s === 504) return true;
+  const msg = String((error && error.message) || error || '');
+  // fetch's TypeError, an aborted/timed-out request, or the dev proxy's bodyless 500.
+  return /Failed to fetch|NetworkError|timed out|Unable to read error response/i.test(msg);
+};
+
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
+  if (isUnreachable(error)) return UNREACHABLE;
   switch (statusOf(error)) {
     case 401:
       return 'Your session has expired — please sign in again.';
@@ -63,6 +73,8 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
       return 'This changed elsewhere since you loaded it — it has been refreshed to the latest version, so redo your edit.';
     case 423:
       return 'This document is being edited right now (by another user or a service). Try again in a moment.';
+    case 500:
+      return 'The server hit an unexpected error. Try again in a moment.';
     default:
       break;
   }
