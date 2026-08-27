@@ -1046,7 +1046,7 @@
 /* Inline editor inside the create row (single click / Enter): the typed text
    becomes the entry's form. */
 .igt-vocab-pop__create-input {
-  width: calc(100% - 64px);
+  width: calc(100% - 84px);
   margin-left: 4px;
   padding: 1px 4px;
   border: 1px solid #93c5fd;

@@ -356,8 +356,16 @@ export class IgtEditor {
     window.dispatchEvent(new CustomEvent('igt:auto-link-open'));
   }
 
+  // After any popover action the re-render replaces the opener/chip node, so
+  // the synchronous focus return in _closePopover is lost; _pendingFocus
+  // re-affirms it on the chip after the data render (E2: focus never lost).
+  _focusChipAfter(tokenId) {
+    this._pendingFocus = { vocabOpener: tokenId };
+  }
+
   _confirmLink(tokenId, returnFocus = false) {
     this._closePopover(returnFocus);
+    this._focusChipAfter(tokenId);
     this._run(() => this.doc.confirmVocabLink(tokenId));
   }
 
@@ -366,6 +374,7 @@ export class IgtEditor {
   // itself, and only writes it — with provenance — when the user confirms.)
   async _toggleVocab(tokenId, item, isLinked, returnFocus = false) {
     this._closePopover(returnFocus);
+    this._focusChipAfter(tokenId);
     if (isLinked) {
       await this._run(() => this.doc.unlinkVocab(tokenId));
     } else {
@@ -405,6 +414,7 @@ export class IgtEditor {
   async _createVocab(tokenId, vocabId, form, returnFocus = false) {
     this._closePopover(returnFocus);
     if (!form) return;
+    this._focusChipAfter(tokenId);
     await this._run(() => this.doc.createAndLinkVocabItem(tokenId, vocabId, form));
   }
 
