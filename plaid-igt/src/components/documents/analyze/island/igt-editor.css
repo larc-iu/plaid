@@ -580,6 +580,17 @@
 .igt-token-form--clickable {
   cursor: pointer;
 }
+/* Machine-made word tokens (tokenizer-service provenance): same violet /
+   dashed vocabulary as machine cells and chips. */
+.igt-token-form--machine {
+  color: var(--igt-violet);
+  font-style: italic;
+  box-shadow: inset 0 -2px 0 0 #c4b5fd;
+  border-bottom: 1px dashed #c4b5fd;
+}
+.igt-token-form--verified {
+  box-shadow: inset 0 -2px 0 0 #c4b5fd;
+}
 
 /* ---- gap column ----
    Baseline text not covered by any word token (punctuation, stray characters).
@@ -1031,6 +1042,22 @@
 .igt-vocab-pop__create:focus-visible {
   outline: 2px solid var(--igt-blue);
   outline-offset: 1px;
+}
+/* Inline editor inside the create row (single click / Enter): the typed text
+   becomes the entry's form. */
+.igt-vocab-pop__create-input {
+  width: calc(100% - 64px);
+  margin-left: 4px;
+  padding: 1px 4px;
+  border: 1px solid #93c5fd;
+  border-radius: 3px;
+  background: #fff;
+  color: #1e3a8a;
+  font: inherit;
+}
+.igt-vocab-pop__create-input:focus {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 0;
 }
 /* Thin lexicon selector at the bottom: each chip scopes the whole popover to
    one vocab; the active chip is a link to the full vocab view (new tab). */

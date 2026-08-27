@@ -246,6 +246,9 @@ export class IgtEditor {
     this._popoverSearch = '';
     this._popoverActiveIndex = 0;
     this._popoverVocabId = null; // re-default to the linked item's vocab each open
+    this._popoverCreateEdit = null; // string while the "+ Create" row is being edited
+    clearTimeout(this._createClickTimer);
+    this._createClickTimer = null;
     this._popoverReturnId = tokenId;
     this._popoverPos = this._computePopoverPos(anchorEl);
     this._render(true);
@@ -327,6 +330,9 @@ export class IgtEditor {
     this._popoverPos = null;
     this._popoverSearch = '';
     this._popoverActiveIndex = 0;
+    this._popoverCreateEdit = null;
+    clearTimeout(this._createClickTimer);
+    this._createClickTimer = null;
     this._popoverReturnId = null;
     this._render(true);
     if (returnFocus && returnId != null) {
@@ -366,6 +372,36 @@ export class IgtEditor {
       await this._run(() => this.doc.linkVocab(tokenId, item.id));
     }
   }
+  // Turn the "+ Create" row into an inline editor prefilled with `form`
+  // (selected, so typing replaces): single click / Enter edit first, a second
+  // Enter creates. Double-click creates immediately without the editor.
+  _openCreateEdit(form) {
+    this._popoverCreateEdit = form ?? '';
+    this._render(true);
+    const input = this.container.querySelector('.igt-vocab-pop__create-input');
+    if (input) {
+      try {
+        input.focus();
+        input.select();
+      } catch {
+        /* noop */
+      }
+    }
+  }
+
+  _cancelCreateEdit() {
+    this._popoverCreateEdit = null;
+    this._render(true);
+    const search = this.container.querySelector('.igt-vocab-pop__search');
+    if (search) {
+      try {
+        search.focus();
+      } catch {
+        /* noop */
+      }
+    }
+  }
+
   async _createVocab(tokenId, vocabId, form, returnFocus = false) {
     this._closePopover(returnFocus);
     if (!form) return;
@@ -1595,9 +1631,19 @@ export class IgtEditor {
     if (isTokenIgnored(token.content, ctx.ignoredCfg)) {
       return this._inertCol(token.content, `${token.content} — excluded from annotation`);
     }
+    // Machine-made word tokens (a tokenizer service stamps prov on token
+    // metadata) show the same violet/dashed treatment on the form band;
+    // Ctrl+Enter on the word confirms the token along with its analysis.
+    const wp = provDisplay(token.metadata);
+    const wpTitle =
+      wp === PROV_STATES.MACHINE
+        ? `${token.content} — machine-tokenized, unverified — Ctrl+Enter confirms the whole word`
+        : wp === PROV_STATES.VERIFIED
+          ? `${token.content} — machine-tokenized, confirmed`
+          : token.content;
     return html`
       <div class="igt-token-col">
-        <div class="igt-token-form" title=${token.content}>
+        <div class="igt-token-form ${provClass('igt-token-form', wp)}" title=${wpTitle}>
           ${this._vocabFace(token.content, {
             id: token.id,
             vocabItem: token.vocabItem,
@@ -1918,12 +1964,16 @@ export class IgtEditor {
     // writer who can link may still not create — hide the row instead of
     // letting it 403.
     const canCreate = !!(createForm && activeVocab && this.canWriteVocab(activeVocab));
+    // While the row is being edited the entry's form is whatever is typed.
+    const editingCreate = canCreate && this._popoverCreateEdit != null;
+    const effectiveForm = editingCreate ? this._popoverCreateEdit.trim() : createForm;
     // If the form already exists in the active vocab, the new item would be a
     // homonym — preview the subscript it would get (existing count + 1) and
     // say so, since a duplicate is usually a mis-click on the existing entry.
-    const newFormDupes = canCreate
-      ? (activeVocab.items || []).filter((it) => it.form === createForm).length
-      : 0;
+    const newFormDupes =
+      canCreate && effectiveForm
+        ? (activeVocab.items || []).filter((it) => it.form === effectiveForm).length
+        : 0;
     const newFormSub = newFormDupes >= 1 ? newFormDupes + 1 : null;
     // Rows the keyboard can land on: every item plus the create row.
     const total = limited.length + (canCreate ? 1 : 0);
@@ -1937,15 +1987,54 @@ export class IgtEditor {
     // human gesture that flips provConfirmed); for a human link it unlinks
     // (toggle), as before. The explicit "unlink" mini-action is always available.
     const inferredCurrent = currentItem?.prov === PROV_STATES.MACHINE;
-    const selectActive = () => {
+    const selectActive = (immediate = false) => {
       if (activeIdx < limited.length) {
         const it = limited[activeIdx];
         const linked = currentItem && it.id === currentItem.id;
         if (linked && inferredCurrent) this._confirmLink(tokenId, true);
         else this._toggleVocab(tokenId, it, linked, true);
       } else if (canCreate) {
-        this._createVocab(tokenId, activeVocab.id, createForm, true);
+        // Enter on the create row opens the inline editor (edit the form
+        // first); Ctrl/Cmd+Enter creates as-is, like a double-click.
+        if (immediate) this._createVocab(tokenId, activeVocab.id, createForm, true);
+        else this._openCreateEdit(createForm);
       }
+    };
+    // Inline create editor keys: Enter creates (non-empty), Escape goes back
+    // to the search box, Tab stays trapped in the dialog.
+    const onCreateEditKey = (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = (e.target.value || '').trim();
+        if (v) this._createVocab(tokenId, activeVocab.id, v, true);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this._cancelCreateEdit();
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+      }
+    };
+    // Click on the create row: a single click opens the editor, a double
+    // click (second click within 250ms) creates immediately. While editing,
+    // a click on the row acts as the "create" button for the typed form.
+    const onCreateClick = (e) => {
+      e.stopPropagation();
+      if (editingCreate) {
+        const v = effectiveForm;
+        if (v) this._createVocab(tokenId, activeVocab.id, v);
+        return;
+      }
+      if (this._createClickTimer) {
+        clearTimeout(this._createClickTimer);
+        this._createClickTimer = null;
+        this._createVocab(tokenId, activeVocab.id, createForm);
+        return;
+      }
+      this._createClickTimer = setTimeout(() => {
+        this._createClickTimer = null;
+        if (this._popover) this._openCreateEdit(createForm);
+      }, 250);
     };
     const onSearchKey = (e) => {
       if (e.key === 'Escape') {
@@ -1959,7 +2048,7 @@ export class IgtEditor {
         this._movePopoverActive(-1, total);
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        selectActive();
+        selectActive(e.ctrlKey || e.metaKey);
       } else if (e.key === 'Tab') {
         e.preventDefault();
       } // trap focus in the search box
@@ -2053,18 +2142,33 @@ export class IgtEditor {
                   this._render(true);
                 }
               }}
-              @click=${(e) => {
-                e.stopPropagation();
-                this._createVocab(tokenId, activeVocab.id, createForm);
-              }}
+              title=${editingCreate
+                ? 'Enter creates the entry as typed · Esc cancels'
+                : 'Click to edit the form before creating · double-click creates as is'}
+              @click=${onCreateClick}
             >
-              + Create
-              "${createForm}${newFormSub != null
-                ? html`<sub class="igt-vocab-pop__sub">${newFormSub}</sub>`
-                : nothing}"
+              ${editingCreate
+                ? html`+ Create
+                    <input
+                      class="igt-vocab-pop__create-input"
+                      aria-label="New entry form"
+                      .value=${live(this._popoverCreateEdit)}
+                      @click=${(e) => e.stopPropagation()}
+                      @input=${(e) => {
+                        this._popoverCreateEdit = e.target.value;
+                        this._render(true);
+                      }}
+                      @keydown=${onCreateEditKey}
+                    />${newFormSub != null
+                      ? html`<sub class="igt-vocab-pop__sub">${newFormSub}</sub>`
+                      : nothing}`
+                : html`+ Create
+                  "${createForm}${newFormSub != null
+                    ? html`<sub class="igt-vocab-pop__sub">${newFormSub}</sub>`
+                    : nothing}"`}
               ${newFormSub != null
                 ? html`<span class="igt-vocab-pop__note"
-                    >“${createForm}” already exists — this adds a separate sense</span
+                    >“${effectiveForm}” already exists — this adds a separate sense</span
                   >`
                 : nothing}
             </button>`

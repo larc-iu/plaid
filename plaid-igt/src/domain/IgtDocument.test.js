@@ -742,3 +742,32 @@ describe('clearing an annotation cell', () => {
     expect(kinds(doc.client)).not.toContain('spans.create');
   });
 });
+
+describe('confirmWordAnalysis', () => {
+  it('confirms the machine word token itself along with its morphemes, links and spans', async () => {
+    const raw = buildRawDoc();
+    const machine = { prov: 'inferred', provSource: 'service:punkt' };
+    raw.textLayers[0].tokenLayers[1].tokens[0].metadata = { ...machine };
+    raw.textLayers[0].tokenLayers[2].tokens[0].metadata = { form: 'ng', ...machine };
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-1'], value: 'DET', metadata: { ...machine } },
+    ];
+    const doc = makeDoc({ raw });
+    const ok = await doc.confirmWordAnalysis('w-1');
+    expect(ok).toBe(true);
+    const tokenPatches = doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
+    expect(tokenPatches).toHaveLength(2); // word + its morpheme
+    expect(kinds(doc.client)).toContain('spans.patchMetadata');
+    const w = doc.sentences[0].tokens[0];
+    expect(w.metadata.provConfirmed).toBe(true);
+    expect(w.morphemes[0].metadata.provConfirmed).toBe(true);
+    expect(w.annotations.POS.metadata.provConfirmed).toBe(true);
+  });
+
+  it('is a no-op when nothing on the word is machine-unverified', async () => {
+    const doc = makeDoc();
+    const ok = await doc.confirmWordAnalysis('w-1');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('tokens.patchMetadata');
+  });
+});

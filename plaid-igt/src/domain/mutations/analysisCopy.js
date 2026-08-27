@@ -199,15 +199,17 @@ export const analysisCopyMutations = {
     const tokenIds = [];
     const linkIds = [];
 
-    const collect = (t, isMorph) => {
+    const collect = (t) => {
       if (t.vocabItem?.prov === PROV_STATES.MACHINE) linkIds.push(t.vocabItem.linkId);
       for (const span of Object.values(t.annotations || {})) {
         if (span && isMachine(span.metadata)) spanIds.push(span.id);
       }
-      if (isMorph && isMachine(t.metadata)) tokenIds.push(t.id);
+      // Morpheme tokens (a copied segmentation) AND the word token itself (a
+      // tokenizer service stamps prov on word tokens) confirm together.
+      if (isMachine(t.metadata)) tokenIds.push(t.id);
     };
-    collect(token, false);
-    for (const m of token.morphemes || []) collect(m, true);
+    collect(token);
+    for (const m of token.morphemes || []) collect(m);
 
     if (!spanIds.length && !tokenIds.length && !linkIds.length) return true;
 
@@ -222,9 +224,11 @@ export const analysisCopyMutations = {
       const tokenSet = new Set(tokenIds);
       const linkSet = new Set(linkIds);
       this._applyRawPatch((next, infoNext, vocabs) => {
-        (infoNext.morphemeTokenLayer?.tokens || []).forEach((t) => {
-          if (tokenSet.has(t.id)) t.metadata = { ...(t.metadata || {}), ...confirm };
-        });
+        for (const layer of [infoNext.primaryTokenLayer, infoNext.morphemeTokenLayer]) {
+          (layer?.tokens || []).forEach((t) => {
+            if (tokenSet.has(t.id)) t.metadata = { ...(t.metadata || {}), ...confirm };
+          });
+        }
         for (const scope of ['word', 'morpheme']) {
           (infoNext.spanLayers?.[scope] || []).forEach((sl) => {
             (sl.spans || []).forEach((s) => {
