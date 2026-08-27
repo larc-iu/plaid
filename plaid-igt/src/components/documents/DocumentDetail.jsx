@@ -28,6 +28,7 @@ const Panel = ({ active, children }) => (active ? children : null);
 // [Copy details] action that drops the lot onto the clipboard for a bug report.
 // Findings are things we could NOT auto-repair; healed repairs get their own
 // "Document repaired" toast separately.
+const INTEGRITY_TOAST_ID = 'igt-integrity-findings';
 const reportIntegrityFindings = (findings, documentId) => {
   if (!findings?.length) return;
   console.group(`[plaid-igt] Document integrity findings (${findings.length})`);
@@ -41,9 +42,10 @@ const reportIntegrityFindings = (findings, documentId) => {
   const reason =
     headline.length === 1
       ? headline[0].message
-      : `${headline.length} issues found — see the browser console for details.`;
+      : `${headline.length} issues found. See the browser console for details.`;
   const detail = formatFindingsForClipboard(findings, { documentId });
   toast.warning('Data integrity issue detected', {
+    id: INTEGRITY_TOAST_ID,
     description: reason,
     duration: Infinity,
     action: {
@@ -172,20 +174,19 @@ const DocumentEditor = () => {
           const parts = [];
           if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
           if (deleted) {
-            let s = `removed ${deleted} orphaned morpheme${deleted === 1 ? '' : 's'} (matching no word)`;
-            if (deletedAnnotatedOrphans) {
-              s += ` — ${deletedAnnotatedOrphans} carried annotations, recoverable via document history`;
-            }
-            parts.push(s);
+            const note = deletedAnnotatedOrphans
+              ? `matching no word, ${deletedAnnotatedOrphans} carrying annotations that are recoverable via document history`
+              : 'matching no word';
+            parts.push(`removed ${deleted} orphaned morpheme${deleted === 1 ? '' : 's'} (${note})`);
           }
           if (dedupedSpans) {
             parts.push(
-              `merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} from a token merge (values joined with ' | ' — review them)`,
+              `merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} from a token merge (values joined with ' | ', so review them)`,
             );
           }
           if (dedupedLinks) {
             parts.push(
-              `removed ${dedupedLinks} extra vocabulary link${dedupedLinks === 1 ? '' : 's'} left on a merged word (a word links one entry — kept the first)`,
+              `removed ${dedupedLinks} extra vocabulary link${dedupedLinks === 1 ? '' : 's'} left on a merged word (a word links one entry, so the first was kept)`,
             );
           }
           const droppedData = deletedAnnotatedOrphans > 0;
@@ -212,6 +213,11 @@ const DocumentEditor = () => {
       if (isInitial && reconciledDocRef.current === doc) reconciledDocRef.current = null;
     };
   }, [doc, asOf, permissions?.canWrite, activeTab]);
+
+  // The integrity toast is sticky (duration Infinity) so it isn't missed, but
+  // it is about THIS document: drop it when the user leaves for another
+  // document or page instead of letting it follow them around the app.
+  useEffect(() => () => toast.dismiss(INTEGRITY_TOAST_ID), [documentId]);
 
   // The built-in analysis helpers (copy prior analyses + auto-link) no longer
   // run automatically — they were disruptive mid-editing. They run on demand
