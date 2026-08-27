@@ -1,4 +1,4 @@
-import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
+import PlaidClient, { ROLES, cpLength, stampInferred } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 
 // TEST_PLAN A1: gloss guesses are placeholder suggestions from the document's
@@ -59,8 +59,39 @@ test.beforeAll(async () => {
   await client.spans.create(pos.id, [ids.w[0]], 'DET');
 });
 
+// Extra throwaway documents for the tie / Shift+Enter / machine-source rows.
+const extraDocs = [];
+async function mkdoc(body) {
+  const full = await client.projects.get(projectId);
+  const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
+  const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
+  const d = await client.documents.create(projectId, `guess-spec-x ${Date.now()}`);
+  extraDocs.push(d.id);
+  await client.texts.create(textLayer.id, d.id, body);
+  const raw = await client.documents.get(d.id, true);
+  const TEXT = raw.textLayers.find((l) => roleOf(l) === ROLES.BASELINE).text.id;
+  const words = [...body.matchAll(/\S+/g)].map((m) => ({
+    begin: m.index,
+    end: m.index + m[0].length,
+  }));
+  await client.tokens.bulkCreate([
+    { tokenLayerId: layer(ROLES.SENTENCE).id, text: TEXT, begin: 0, end: cpLength(body) },
+  ]);
+  await client.tokens.bulkCreate(
+    words.map((w) => ({ tokenLayerId: layer(ROLES.WORD).id, text: TEXT, ...w })),
+  );
+  await client.tokens.bulkCreate(
+    words.map((w) => ({ tokenLayerId: layer(ROLES.MORPHEME).id, text: TEXT, ...w, precedence: 1 })),
+  );
+  const seeded = await client.documents.get(d.id, true);
+  const tl = seeded.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
+  const ml = tl.tokenLayers.find((l) => roleOf(l) === ROLES.MORPHEME);
+  return { id: d.id, m: words.map((x) => ml.tokens.find((t) => t.begin === x.begin).id) };
+}
+
 test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
+  for (const id of extraDocs) await client.documents.delete(id).catch(() => {});
 });
 
 async function openAnalyze(page) {
@@ -160,4 +191,64 @@ test('A1-10: word-scope fields guess the same way', async ({ page }) => {
   await expect(
     page.locator(`.igt-field[data-cell-key="wa:${ids.w[4]}:Part of Speech"]`),
   ).not.toHaveClass(/igt-field--guess/);
+});
+
+test('A1-06/09: Escape leaves a guessed cell empty; Shift+Enter adopts and moves back', async ({
+  page,
+}) => {
+  const d = await mkdoc('los los los');
+  await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${d.id}?tab=analyze`);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+  const seen = writes(page);
+  const c1 = page.locator(`.igt-field[data-cell-key="ma:${d.m[1]}:Gloss"]`);
+  const c2 = page.locator(`.igt-field[data-cell-key="ma:${d.m[2]}:Gloss"]`);
+  await expect(c2).toHaveClass(/igt-field--guess/);
+  await c2.click();
+  await page.keyboard.press('Escape');
+  await expect(c2).not.toBeFocused();
+  await expect(c2).toHaveValue('');
+  await page.waitForTimeout(400);
+  expect(seen).toEqual([]);
+  // Shift+Enter adopts the guess (Enter semantics) and moves to the previous cell.
+  await c2.click();
+  await page.keyboard.press('Shift+Enter');
+  await expect(c2).toHaveValue('DET.PL');
+  await expect(c2).toHaveClass(/igt-field--verified/);
+  await expect(c1).toBeFocused();
+  await page.waitForLoadState('networkidle');
+  expect(seen).toEqual(['POST /api/v1/spans']);
+});
+
+test('A1-07: a tie yields no guess; breaking the tie brings it back', async ({ page }) => {
+  const d = await mkdoc('los los los los');
+  await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
+  await client.spans.create(ids.gloss, [d.m[1]], 'the.PL');
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${d.id}?tab=analyze`);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+  const c2 = page.locator(`.igt-field[data-cell-key="ma:${d.m[2]}:Gloss"]`);
+  const c3 = page.locator(`.igt-field[data-cell-key="ma:${d.m[3]}:Gloss"]`);
+  await expect(c2).not.toHaveClass(/igt-field--guess/);
+  await expect(c3).not.toHaveClass(/igt-field--guess/);
+  // Break the tie by glossing the third `los` by hand: the fourth now gets a guess.
+  await c2.click();
+  await page.keyboard.type('DET.PL');
+  await page.keyboard.press('Enter');
+  await expect(c3).toHaveClass(/igt-field--guess/);
+  await expect(c3).toHaveAttribute('data-guess-value', 'DET.PL');
+});
+
+test('A1-11: a guess is offered even when its only source is machine-unverified', async ({
+  page,
+}) => {
+  const d = await mkdoc('sol sol');
+  await client.spans.create(ids.gloss, [d.m[0]], 'SUN', stampInferred('service:test'));
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${d.id}?tab=analyze`);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+  const c1 = page.locator(`.igt-field[data-cell-key="ma:${d.m[1]}:Gloss"]`);
+  await expect(c1).toHaveClass(/igt-field--guess/);
+  await expect(c1).toHaveAttribute('data-guess-value', 'SUN');
 });
