@@ -11,13 +11,14 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
-const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'settings'];
+const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'export', 'settings'];
 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
   access: 'Access Management',
   tokens: 'Access Tokens',
   services: 'Services',
+  export: 'Export',
   settings: 'Settings',
 };
 
@@ -25,7 +26,7 @@ const SECTION_TITLES = {
 // and (for maintainers) a Settings tab. Settings is a real panel in this tab
 // group — selecting it stays on the page and renders project administration as
 // a left-side vertical tab group (ProjectSettingsPanel), route-backed by the
-// /access, /tokens, /services, /settings suffixes.
+// /access, /tokens, /services, /export, /settings suffixes.
 export const ProjectDetail = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();

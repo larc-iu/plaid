@@ -353,7 +353,7 @@ export const DocumentList = ({
         client={client}
         project={project}
         documents={documents}
-        canSavePresets={canManage}
+        canManage={canManage}
       />
 
       <Dialog open={open} onOpenChange={setOpen}>

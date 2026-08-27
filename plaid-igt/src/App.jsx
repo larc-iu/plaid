@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
+import { RedeemInvite } from './components/auth/RedeemInvite';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
 import { ProjectSetup } from './components/projects/ProjectSetup';
@@ -24,6 +25,11 @@ function App() {
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<LoginForm />} />
+            {/* Unauthenticated by necessity: whoever follows an invite link
+                has no account yet, or has lost the password to the one they
+                have. The code rides in the hash fragment, so it never reaches
+                the server as part of a URL. */}
+            <Route path="/invite/:code" element={<RedeemInvite />} />
 
             {/* Protected routes */}
             <Route
@@ -151,6 +157,16 @@ function App() {
             />
             <Route
               path="/projects/:projectId/services"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:projectId/export"
               element={
                 <ProtectedRoute>
                   <AppLayout>

@@ -9,7 +9,7 @@ import { notifyError, notifyWarning, toast, humanizeError } from '@/utils/feedba
 import { History, FileText, Type, Mic, Play, Table, Download } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ExportWizard } from '@/components/export/ExportDialog.jsx';
+import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
 import { HistoryDrawer } from './HistoryDrawer.jsx';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
@@ -395,11 +395,11 @@ const DocumentEditor = () => {
                 <Panel active={activeTab === 'export'}>
                   <div className="tw flex flex-col gap-6 pt-4">
                     <div className="rounded-lg border bg-card p-4">
-                      <ExportWizard
+                      <ExportRunner
                         client={client}
                         project={doc.project}
                         defaultScope={{ type: 'document', id: doc.id, name: doc.document.name }}
-                        canSavePresets={permissions.canManage && !isViewingHistorical}
+                        canManage={permissions.canManage}
                         asOf={asOf}
                       />
                     </div>
