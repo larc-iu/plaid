@@ -100,6 +100,10 @@
    ;; api_tokens: after operations (operations.token_id → api_tokens) and
    ;; before the users wipe below (api_tokens.user_id → users).
    "api_tokens"
+   ;; invites: before the users wipe (invites.created_by / .target_user_id →
+   ;; users, both NO ACTION, so a leftover row would block deleting the
+   ;; per-test user that minted it) and before projects (invites.project_id).
+   "invites"
    "entity_metadata"
    "vocab_link_tokens"
    "vocab_links"

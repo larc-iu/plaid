@@ -681,7 +681,15 @@
             post-image (assoc proj-row :vocabs post-vocabs)]
         (psc/record-audit-write! tx :projects project-id :update pre-image post-image)))))
 
-(defn- add-role!
+(defn add-role!
+  "Grant `role` on `project-id` to `user-id`, clearing any role they already
+  hold there (roles are mutually exclusive). Emits the synthetic project ACL
+  audit row. Must run inside `submit-operation!`.
+
+  PUBLIC because invite redemption (plaid.sql.invite/redeem!) applies the
+  invite's project grant in the same tx that creates the account — going
+  through `add-writer` and friends would open a second operation, which could
+  leave the account existing without its grant if that second op failed."
   [tx project-id user-id role]
   (assert-user-and-project! tx project-id user-id)
   ;; Snapshot the role-set BEFORE we mutate so the synthetic audit row

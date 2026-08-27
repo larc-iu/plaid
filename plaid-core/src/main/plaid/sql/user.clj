@@ -125,8 +125,12 @@
             (recur (.getCause t))))
       :else (recur (.getCause t)))))
 
-(defn- insert-user-row!
-  "Insert a fresh user row inside a tx. Relies on the users table's
+(defn insert-user-row!
+  "Insert a fresh user row inside a tx. PUBLIC because invite redemption
+  (plaid.sql.invite/redeem!) creates the account inside its own
+  `:invite/redeem` op, alongside the project grant and the use-count bump,
+  so all three commit or none do. Callers MUST already be inside
+  `submit-operation!` (psc/insert! asserts it). Relies on the users table's
   PRIMARY KEY (id) + UNIQUE (username) constraints — racing
   SELECT-then-INSERT was wrong inside SAVEPOINTs (no BEGIN IMMEDIATE
   lock), so we let the DB enforce uniqueness and translate ONLY the
@@ -213,6 +217,28 @@
                          (when (seq attrs)
                            (psc/update-by-id! tx :users eid attrs))
                          eid))))
+
+(defn set-password-in-tx!
+  "Set `eid`'s password to `password` and bump `password_changes`, inside the
+  caller's already-open operation tx. Bumping the counter is what makes every
+  JWT the user currently holds stop validating, so a password reset genuinely
+  ends whatever sessions the old password was protecting.
+
+  This is the in-tx twin of `(merge db eid {:password ...} actor)`. Invite
+  redemption needs it because the reset has to be atomic with consuming the
+  invite: opening a second operation would allow a password change that the
+  invite's use-count bump never recorded, leaving a single-use reset link
+  live after it had already worked.
+
+  404s if the user is missing. Returns `eid`."
+  [tx eid password]
+  (let [intern (get-internal tx eid)]
+    (when (nil? intern)
+      (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
+    (psc/update-by-id! tx :users eid
+                       {:password_hash    (hashers/derive password)
+                        :password_changes (inc (or (:user/password-changes intern) 0))})
+    eid))
 
 (defn- audit-and-cascade-project-memberships!
   "For every project this user was a member of, snapshot the ACL,

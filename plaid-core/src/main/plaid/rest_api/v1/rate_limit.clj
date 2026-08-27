@@ -33,6 +33,15 @@
   username) limit so a single legitimate user mistyping their password
   on a shared corporate NAT can't lock out their whole office."
   100)
+(def ^:private max-invite-failures
+  "Per-IP cap on failed invite lookups/redemptions. Deliberately its own
+  bucket rather than a reuse of the login buckets: the motivating case for
+  invites is a whole class behind one NAT, all pasting links from the same
+  address, and folding them into the 10-failure login bucket would let one
+  student with an expired link lock out everyone else in the room. 30 in 15
+  minutes still leaves brute force (160-bit codes) nowhere to go."
+  30)
+
 (def ^:private max-bucket-entries
   "Hard cap on the size of each bucket map. Prevents an attacker who
   rotates BOTH IP and username from growing the maps without bound."
@@ -62,6 +71,15 @@
            :doc "Fallback atom for `ip-buckets` (#111)."}
   fallback-ip-atom (atom {}))
 
+(defstate ^{:doc "Map of ip -> vector of failed invite-attempt timestamps (ms)."}
+  invite-buckets
+  :start (atom {})
+  :stop (reset! invite-buckets {}))
+
+(defonce ^{:private true
+           :doc "Fallback atom for `invite-buckets`."}
+  fallback-invite-atom (atom {}))
+
 (defonce ^{:private true
            :doc "Timestamp of the last global inactive-bucket sweep."}
   last-global-prune-at (atom nil))
@@ -81,6 +99,12 @@
   (if (instance? clojure.lang.IAtom ip-buckets)
     ip-buckets
     fallback-ip-atom))
+
+(defn- invite-buckets-atom
+  []
+  (if (instance? clojure.lang.IAtom invite-buckets)
+    invite-buckets
+    fallback-invite-atom))
 
 (defn- prune-bucket
   "Drop timestamps older than `now - window-ms` from a single bucket
@@ -117,7 +141,8 @@
 (defn- maybe-prune-all! [now]
   (when (claim-global-prune! now)
     (swap! (buckets-atom) prune-all! now)
-    (swap! (ip-buckets-atom) prune-all! now)))
+    (swap! (ip-buckets-atom) prune-all! now)
+    (swap! (invite-buckets-atom) prune-all! now)))
 
 (defn- enforce-size-cap
   "If `m` is over the entry cap, evict the bucket whose newest timestamp
@@ -210,6 +235,7 @@
   []
   (reset! (buckets-atom) {})
   (reset! (ip-buckets-atom) {})
+  (reset! (invite-buckets-atom) {})
   (reset! last-global-prune-at nil))
 
 (defn wrap-login-rate-limit
@@ -226,3 +252,40 @@
         {:status 429
          :body {:error "Too many login attempts, retry later"}}
         (handler request)))))
+
+;; ----------------------------------------------------------------
+;; Invite lookup / redemption (unauthenticated, so IP is all we have)
+;; ----------------------------------------------------------------
+
+(defn record-invite-failure!
+  "Record one failed invite lookup or redemption against the per-IP invite
+  bucket. Only genuine credential failures count — an unknown, expired,
+  revoked, or spent code. A redemption rejected for a taken username or a
+  too-short password is a valid code hitting a form-validation error, and
+  counting it would punish the exact user the link was minted for."
+  ([request] (record-invite-failure! request (System/currentTimeMillis)))
+  ([request now]
+   (let [ip (client-ip request)]
+     (maybe-prune-all! now)
+     (swap! (invite-buckets-atom)
+            (fn [m]
+              (let [bucket (or (prune-bucket now (clojure.core/get m ip [])) [])
+                    next-m (assoc m ip (conj bucket now))]
+                (enforce-size-cap next-m ip)))))))
+
+(defn over-invite-limit?
+  ([request] (over-invite-limit? request (System/currentTimeMillis)))
+  ([request now]
+   (let [bucket (clojure.core/get @(invite-buckets-atom) (client-ip request) [])]
+     (>= (bucket-count-live now bucket) max-invite-failures))))
+
+(defn wrap-invite-rate-limit
+  "Reitit middleware: 429 once this IP has burned through its invite-failure
+  budget. The handler is responsible for calling `record-invite-failure!`
+  when a code turns out to be bad."
+  [handler]
+  (fn [request]
+    (if (over-invite-limit? request)
+      {:status 429
+       :body {:error "Too many invite attempts, retry later"}}
+      (handler request))))

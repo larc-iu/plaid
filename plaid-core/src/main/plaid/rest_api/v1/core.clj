@@ -16,6 +16,7 @@
             [plaid.rest-api.v1.auth :as pra :refer [authentication-routes logout-routes]]
             [plaid.rest-api.v1.user :refer [user-routes]]
             [plaid.rest-api.v1.api-token :refer [api-token-routes]]
+            [plaid.rest-api.v1.invite :refer [invite-routes public-invite-routes]]
             [plaid.rest-api.v1.project :refer [project-routes]]
             [plaid.rest-api.v1.message :refer [message-routes]]
             [plaid.rest-api.v1.document :refer [document-routes]]
@@ -72,6 +73,11 @@
 
            health-routes
            authentication-routes
+           ;; Unauthenticated by design: whoever holds an invite code has no
+           ;; account yet (or has lost the password to the one they have), so
+           ;; these sit outside wrap-login-required alongside /login. They
+           ;; carry their own IP rate limiter.
+           public-invite-routes
 
            ;; Login required
            [""
@@ -90,6 +96,7 @@
              logout-routes
              user-routes
              api-token-routes
+             invite-routes
              project-routes
              message-routes
              text-routes

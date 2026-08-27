@@ -65,6 +65,21 @@
              :token/api? true}
             secret-key))
 
+(defn issue-session-token!
+  "Sign a session JWT for `user-id`, reading the user's current
+  `password_changes` so the `:version` claim matches (a mismatch is exactly
+  what `wrap-read-jwt` rejects on). Returns nil if the user is missing.
+
+  Public so invite redemption can hand back a live session: the redeemer
+  just chose a username and password on the signup page, and bouncing them
+  to a login form to retype both is a needless place to lose someone. This
+  is the same token /login issues, by the same function that issues it."
+  [db secret-key user-id]
+  (when-let [account (user/get-internal db user-id)]
+    (sign-user-token secret-key
+                     (:user/id account)
+                     (:user/password-changes account))))
+
 (defn issue-api-token!
   "Mint + persist a named API token and return the signed JWT — the ONLY time
   the signed credential is ever produced (show-once). `owner` is the user the
