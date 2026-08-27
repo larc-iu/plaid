@@ -402,12 +402,18 @@
   than the flatly unhelpful `invalid`."
   [db code]
   (when-let [row (find-by-code db code)]
-    (let [project (when (:project_id row) (psc/fetch-by-id db :projects (:project_id row)))]
+    (let [project (when (:project_id row) (psc/fetch-by-id db :projects (:project_id row)))
+          ;; The CURRENT username, not `target_user_id`. The two start out
+          ;; equal, but a rename changes only `username` — showing the stale
+          ;; one would tell the redeemer this link belongs to a name they no
+          ;; longer use.
+          target (when (:target_user_id row) (user/get-internal db (:target_user_id row)))]
       (cond-> {:kind (if (:target_user_id row) "password-reset" "signup")
                :status (name (status row (psc/now-iso)))
                :expires-at (:expires_at row)
                :grant-admin (->bool (:grant_admin row))}
-        (:target_user_id row) (assoc :username (:target_user_id row))
+        (:target_user_id row) (assoc :username (or (:user/username target)
+                                                   (:target_user_id row)))
         (:project_id row)     (assoc :project-role (:project_role row)
                                      :project-name (:name project))))))
 
@@ -452,6 +458,21 @@
                            (throw (ex-info (str "Password must be at least "
                                                 min-password-length " characters")
                                            {:code 400})))
+                         ;; Checked here, not just at mint: the target could
+                         ;; have been deactivated in between. Without this the
+                         ;; reset would "succeed" and hand back a token that
+                         ;; wrap-read-jwt rejects on the very next request,
+                         ;; which reads as the app being broken rather than as
+                         ;; the account being closed.
+                         (when reset?
+                           (let [target (user/get-internal tx (:target_user_id row))]
+                             (when (nil? target)
+                               (throw (ex-info "That account no longer exists."
+                                               {:code 410})))
+                             (when (some? (:user/deactivated-at target))
+                               (throw (ex-info (str "That account has been deactivated. "
+                                                    "Ask an administrator to reactivate it.")
+                                               {:code 403})))))
                          (let [user-id
                                (if reset?
                                  (user/set-password-in-tx! tx (:target_user_id row) password)

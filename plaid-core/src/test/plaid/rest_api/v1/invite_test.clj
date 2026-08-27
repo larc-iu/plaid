@@ -387,6 +387,32 @@
       (testing "a reset link is single-use"
         (assert-status 410 (redeem! {:code code :password "yet-another-password"}))))))
 
+(deftest a-reset-link-dies-if-the-target-is-deactivated
+  ;; The target can be closed between minting and redemption. Without the
+  ;; in-tx check the reset would "succeed" and hand back a token that
+  ;; wrap-read-jwt rejects on the next request.
+  (let [[target _] (throwaway-user! "closed@example.com")
+        code (-> (mint! admin-request {:target-user-id target}) :body :code)]
+    (api-call admin-request {:method :delete :path (str "/api/v1/users/" target)})
+    (let [r (redeem! {:code code :password "a-brand-new-password"})]
+      (assert-forbidden r)
+      (is (re-find #"deactivated" (-> r :body :error))))
+    (testing "and works again once the account is reactivated"
+      (api-call admin-request {:method :post :path (str "/api/v1/users/" target "/activate")})
+      (assert-ok (redeem! {:code code :password "a-brand-new-password"}))
+      (is (= 200 (:status (login! target "a-brand-new-password")))))))
+
+(deftest a-reset-preview-follows-a-rename
+  ;; `target_user_id` is the immutable user id; a rename changes only
+  ;; `username`. The preview has to show what the person is called now, or it
+  ;; tells them the link belongs to a name they no longer use.
+  (let [[target _] (throwaway-user! "before@example.com")
+        code (-> (mint! admin-request {:target-user-id target}) :body :code)]
+    (assert-ok (api-call admin-request {:method :patch
+                                        :path (str "/api/v1/users/" target)
+                                        :body {:username "after@example.com"}}))
+    (is (= "after@example.com" (-> (lookup! code) :body :username)))))
+
 (deftest password-reset-links-grant-nothing-else
   (let [pid (h/create-test-project admin-request "P")]
     (testing "a reset cannot be combined with grants or made multi-use"
