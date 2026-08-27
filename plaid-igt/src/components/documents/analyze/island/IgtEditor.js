@@ -2068,6 +2068,11 @@ export class IgtEditor {
       }, 250);
     };
     const onSearchKey = (e) => {
+      // Popover keys must not bubble to the container's review-sweep handler:
+      // Enter here selects a row, which moves focus onto a chip, and the same
+      // keydown would then be read as "Enter on a focused chip" (a stray
+      // confirm + focus hop to the next suggestion).
+      e.stopPropagation();
       if (e.key === 'Escape') {
         e.preventDefault();
         this._closePopover(true);
