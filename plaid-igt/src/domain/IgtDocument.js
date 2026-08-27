@@ -413,9 +413,17 @@ export class IgtDocument {
   // (no entry at all when nothing needed healing — groups are created lazily
   // by the first write).
   async reconcileOnOpen() {
-    return this._client.withOperation('Reconcile layers on open', () =>
-      this._reconcileOnOpenImpl(),
-    );
+    // Concurrent callers (React StrictMode's dev double-invoke, a quick tab
+    // switch) share ONE in-flight pass and its results; a bare single-flight
+    // gate handed the second caller an empty result, which is what the UI
+    // reported, so integrity findings were never toasted in dev.
+    if (this._reconcilePromise) return this._reconcilePromise;
+    this._reconcilePromise = this._client
+      .withOperation('Reconcile layers on open', () => this._reconcileOnOpenImpl())
+      .finally(() => {
+        this._reconcilePromise = null;
+      });
+    return this._reconcilePromise;
   }
 
   async _reconcileOnOpenImpl() {

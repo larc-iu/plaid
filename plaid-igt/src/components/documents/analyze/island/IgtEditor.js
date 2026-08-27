@@ -1959,7 +1959,9 @@ export class IgtEditor {
     // The token's current entry always stays visible (unlink/confirm).
     const levels = this.doc.itemLevels;
     const offered = (it) => it.id === currentItem?.id || isLevelCompatible(levels.get(it.id), kind);
-    const hiddenByLevel = items.filter((it) => !offered(it)).length;
+    const hidden = items.filter((it) => !offered(it));
+    const hiddenByLevel = hidden.length;
+    const hiddenMixed = hidden.filter((it) => levels.get(it.id) === 'mixed').length;
     items = items.filter(offered);
 
     // Rank against the active query: the typed search if any, else the
@@ -2179,8 +2181,8 @@ export class IgtEditor {
                 class="igt-vocab-pop__more"
                 title="An entry is linked from words or from morphemes, never both"
               >
-                ${hiddenByLevel} ${otherLevel(kind)}-level
-                ${hiddenByLevel === 1 ? 'entry' : 'entries'} not offered
+                ${hiddenByLevel} ${hiddenByLevel === 1 ? 'entry' : 'entries'} not offered: linked
+                from ${otherLevel(kind)}s${hiddenMixed ? ' (or from both kinds)' : ''} elsewhere
               </div>`
             : nothing}
         </div>

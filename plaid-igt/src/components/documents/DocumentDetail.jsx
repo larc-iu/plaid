@@ -199,6 +199,11 @@ const DocumentEditor = () => {
     })();
     return () => {
       cancelled = true;
+      // If this pass was cancelled before it could report (StrictMode's dev
+      // double-invoke, a quick tab switch), let the next run count as the
+      // initial one again, or the integrity findings toast is never shown.
+      // reconcileOnOpen itself is idempotent, so re-running is cheap.
+      if (isInitial && reconciledDocRef.current === doc) reconciledDocRef.current = null;
     };
   }, [doc, asOf, permissions?.canWrite, activeTab]);
 
