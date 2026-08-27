@@ -59,6 +59,13 @@
            (let [value (.read input)]
              (when-not (= -1 value) (swap! remaining dec))
              value)))
+        ;; read(byte[]) is what servers (http-kit) actually call when
+        ;; streaming a body; without this arity every Range request 500'd
+        ;; ("Wrong number of args (2)") and browsers, which always ask for
+        ;; `bytes=0-`, could never play media.
+        ([buffer]
+         (let [^bytes b buffer]
+           (.read ^InputStream this b 0 (alength b))))
         ([buffer offset requested]
          (if (zero? @remaining)
            -1

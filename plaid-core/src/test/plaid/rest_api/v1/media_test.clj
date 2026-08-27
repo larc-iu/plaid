@@ -25,6 +25,16 @@
       (testing "open-ended range"
         (is (= "hij" (body-string
                       (media/stream-file-response file "text/plain" 10 "bytes=7-")))))
+      (testing "read(byte[]) — the arity http-kit streams a body with"
+        ;; Browsers always send `Range: bytes=0-`; the proxy stream used to
+        ;; lack this arity and every ranged media request 500'd.
+        (with-open [body (:body (media/stream-file-response file "text/plain" 10 "bytes=0-"))]
+          (let [buf (byte-array 4)
+                n (.read body buf)]
+            (is (= 4 n))
+            (is (= "abcd" (String. buf 0 n StandardCharsets/UTF_8)))
+            (is (= 6 (.read body (byte-array 100))))
+            (is (= -1 (.read body (byte-array 100)))))))
       (testing "suffix range"
         (is (= "ij" (body-string
                      (media/stream-file-response file "text/plain" 10 "bytes=-2")))))
