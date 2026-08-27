@@ -50,18 +50,22 @@ try {
   await client.texts.create(textLayer.id, DOC, BODY);
   const raw = await client.documents.get(DOC, true);
   const TEXT = raw.textLayers.find((l) => roleOf(l) === ROLES.BASELINE).text.id;
-  const words = [];
-  for (const m of BODY.matchAll(/\S+/g)) words.push({ begin: m.index, end: m.index + m[0].length });
+  const bodyWords = [];
+  for (const m of BODY.matchAll(/\S+/g))
+    bodyWords.push({ begin: m.index, end: m.index + m[0].length });
   await client.tokens.bulkCreate([
     { tokenLayerId: L.SENTENCE, text: TEXT, begin: 0, end: cpLength(BODY) },
   ]);
-  await client.tokens.bulkCreate(words.map((w) => ({ tokenLayerId: L.WORD, text: TEXT, ...w })));
   await client.tokens.bulkCreate(
-    words.map((w) => ({ tokenLayerId: L.MORPHEME, text: TEXT, ...w, precedence: 1 })),
+    bodyWords.map((w) => ({ tokenLayerId: L.WORD, text: TEXT, ...w })),
+  );
+  await client.tokens.bulkCreate(
+    bodyWords.map((w) => ({ tokenLayerId: L.MORPHEME, text: TEXT, ...w, precedence: 1 })),
   );
 
   const load = () => IgtDocument.load(client, project.id, DOC);
   // Fresh-from-server view of a word by its (current) content, morphemes sorted.
+  const words = (d) => d.sentences.flatMap((s) => s.tokens);
   const fresh = async () => {
     const d = await load();
     const W = (content) => d.sentences[0].tokens.find((t) => t.content === content) || null;
@@ -451,6 +455,44 @@ try {
     merged.morphemes[0].vocabItem?.form === item('the').form && !merged.morphemes[1].vocabItem,
     'B10-08 left keeps the link, right unlinked',
   );
+  // A8-01 merge where the merged-away word carries a VERIFIED word-level link
+  // and a word span: the survivor's own link wins; the reparented link's
+  // metadata is not what survives (dedup keeps the survivor's), word spans dedup.
+  ({ d, W } = await fresh());
+  const dl1 = W('delta');
+  const ep1 = W('epsilon');
+  const epLink = await client.vocabLinks.create(item('be.born').id, [ep1.id], {
+    ...stampInferred('rule:precedent-or-unique'),
+    provConfirmed: true,
+  });
+  await client.spans.create(posLayer.id, [ep1.id], 'ADJ');
+  d = await load();
+  await d.mergeTokens([dl1.id, ep1.id]);
+  ({ d, W } = await fresh());
+  const dm = W('delta epsilon');
+  check(
+    !!dm,
+    'A8-01 merged word exists',
+    words(d)
+      .map((t) => t.content)
+      .join('|'),
+  );
+  const dmLinks = dm ? await linksOf(dm.id) : [];
+  check(
+    dmLinks.length <= 1,
+    'A8-01 at most one word link after the merge',
+    JSON.stringify(dmLinks.map((l) => l.id)),
+  );
+  check(!(await linksOf(ep1.id)).length, 'A8-01 nothing left on the merged-away token');
+  check(
+    dm && Object.values(dm.annotations).filter(Boolean).length >= 1,
+    'A8-01 word span survives on the merged word',
+  );
+  check(
+    !dm || !dmLinks.some((l) => l.id === epLink.id) || dmLinks[0].metadata?.provConfirmed === true,
+    'A8-01 a reparented link keeps its metadata',
+  );
+
   // B10-05 delete a word with links: links cascade
   const zz = W('zeta');
   const zm = zz.morphemes[0].id;
