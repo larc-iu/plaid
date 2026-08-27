@@ -250,19 +250,36 @@ export const VocabularyManager = ({
                   onClick={() => handleVocabToggle(record.id, !record.enabled)}
                 >
                   <td className="px-3 py-2">
-                    {record.enabled ? (
-                      <Check className="h-[18px] w-[18px] text-green-600" />
-                    ) : (
-                      <X className="h-[18px] w-[18px] text-gray-400" />
-                    )}
+                    {/* The whole row toggles on click; this real button is the
+                        keyboard / screen-reader path to the same action. */}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={record.enabled}
+                      aria-label={`${record.enabled ? 'Unlink' : 'Link'} ${record.name}`}
+                      className="flex rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleVocabToggle(record.id, !record.enabled);
+                      }}
+                    >
+                      {record.enabled ? (
+                        <Check className="h-[18px] w-[18px] text-green-600" aria-hidden="true" />
+                      ) : (
+                        <X className="h-[18px] w-[18px] text-gray-400" aria-hidden="true" />
+                      )}
+                    </button>
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className={cn(record.enabled ? '' : 'italic text-muted-foreground')}>
                         {record.name}
                         {nameCounts.get(record.name) > 1 && record.id && (
-                          <span className="ml-1.5 font-mono text-xs text-muted-foreground">
-                            {String(record.id).slice(-6)}
+                          <span
+                            className="ml-1.5 font-mono text-xs text-muted-foreground"
+                            title="Two vocabularies share this name; this is the end of its id"
+                          >
+                            · {String(record.id).slice(-6)}
                           </span>
                         )}
                       </span>

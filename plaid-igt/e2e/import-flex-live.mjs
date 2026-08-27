@@ -36,7 +36,9 @@ const { name, xml } = readFwbackup(new Uint8Array(readFileSync(BACKUP)));
 const ir = parseFwdata(xml);
 const build = buildDocuments(ir);
 if (SMALL) {
-  build.documents = [...build.documents].sort((a, b) => a.words.length - b.words.length).slice(0, 3);
+  build.documents = [...build.documents]
+    .sort((a, b) => a.words.length - b.words.length)
+    .slice(0, 3);
 }
 const config = {
   ...deriveImportConfig(ir, build),
@@ -50,15 +52,37 @@ const projectName = `flex-import-e2e-${Date.now() % 1e7}`;
 const vocabName = `${projectName} Lexicon`;
 const setupData = {
   basicInfo: { projectName },
-  orthographies: { orthographies: [{ name: 'Baseline', isBaseline: true }, ...config.orthographies.map((o) => ({ name: o.name }))] },
+  orthographies: {
+    orthographies: [
+      { name: 'Baseline', isBaseline: true },
+      ...config.orthographies.map((o) => ({ name: o.name })),
+    ],
+  },
   fields: {
     fields: config.fields.map((f) => ({ name: f.name, scope: f.scope, isCustom: true })),
-    ignoredTokens: { mode: 'unicode-punctuation', unicodePunctuationExceptions: [], explicitIgnoredTokens: [] },
+    ignoredTokens: {
+      mode: 'unicode-punctuation',
+      unicodePunctuationExceptions: [],
+      explicitIgnoredTokens: [],
+    },
   },
-  vocabulary: { vocabularies: [{ id: 'new-flex', name: vocabName, enabled: true, isCustom: true }] },
-  documentMetadata: { enabledFields: config.documentMetadata.map((m) => ({ name: m.name, enabled: true, isCustom: true })) },
+  vocabulary: {
+    vocabularies: [{ id: 'new-flex', name: vocabName, enabled: true, isCustom: true }],
+  },
+  documentMetadata: {
+    enabledFields: config.documentMetadata.map((m) => ({
+      name: m.name,
+      enabled: true,
+      isCustom: true,
+    })),
+  },
 };
-const setup = await executeProjectSetup({ client, isNewProject: true, resumeProjectId: null, setupData });
+const setup = await executeProjectSetup({
+  client,
+  isNewProject: true,
+  resumeProjectId: null,
+  setupData,
+});
 check(setup.failures.length === 0, 'setup completed', setup.failures.join('; '));
 const projectId = setup.projectId;
 const vocabId = setup.resources.vocabularies[0].id;
@@ -71,7 +95,12 @@ try {
   let cancelled = false;
   try {
     await runImport({
-      client, projectId, build, lexicon: ir.lexicon, config, vocabId,
+      client,
+      projectId,
+      build,
+      lexicon: ir.lexicon,
+      config,
+      vocabId,
       shouldStop: () => docsDone >= stopAfter,
       onProgress: (p) => {
         if (p.phase === 'document' && p.step === 'Linking lexicon') docsDone += 1;
@@ -85,85 +114,144 @@ try {
 
   const t1 = Date.now();
   const res = await runImport({
-    client, projectId, build, lexicon: ir.lexicon, config, vocabId,
+    client,
+    projectId,
+    build,
+    lexicon: ir.lexicon,
+    config,
+    vocabId,
     onProgress: (p) => {
       if (p.phase === 'document' && p.step === 'Starting') {
-        process.stdout.write(`\r  importing ${p.index + 1}/${p.total} ${p.doc.slice(0, 40).padEnd(42)}`);
+        process.stdout.write(
+          `\r  importing ${p.index + 1}/${p.total} ${p.doc.slice(0, 40).padEnd(42)}`,
+        );
       }
     },
   });
-  console.log(`\nresume finished in ${((Date.now() - t1) / 1000).toFixed(1)}s:`, JSON.stringify(res));
+  console.log(
+    `\nresume finished in ${((Date.now() - t1) / 1000).toFixed(1)}s:`,
+    JSON.stringify(res),
+  );
   check(res.skipped >= stopAfter - 1, 'resume skipped completed documents', JSON.stringify(res));
   check(res.imported + res.skipped === build.documents.length, 'all documents accounted for');
 
   // ---- verify ----
   const docs = await client.projects.listDocuments(projectId);
-  check(docs.length === build.documents.length, `document count = ${build.documents.length}`, `got ${docs.length}`);
+  check(
+    docs.length === build.documents.length,
+    `document count = ${build.documents.length}`,
+    `got ${docs.length}`,
+  );
 
   const vocab = await client.vocabLayers.get(vocabId, true);
-  const expectItems = ir.lexicon.reduce((n, e) => n + Math.max(1, e.senses.length), 0)
-    - ir.lexicon.filter((e) => !(e.forms?.[build.baselineWs] ?? Object.values(e.forms ?? {})[0])).length;
-  check(Math.abs((vocab.items?.length ?? 0) - expectItems) <= 2,
-    `lexicon items ≈ ${expectItems}`, `got ${vocab.items?.length}`);
+  const expectItems =
+    ir.lexicon.reduce((n, e) => n + Math.max(1, e.senses.length), 0) -
+    ir.lexicon.filter((e) => !(e.forms?.[build.baselineWs] ?? Object.values(e.forms ?? {})[0]))
+      .length;
+  check(
+    Math.abs((vocab.items?.length ?? 0) - expectItems) <= 2,
+    `lexicon items ≈ ${expectItems}`,
+    `got ${vocab.items?.length}`,
+  );
 
   // Deep-check the Sea Princess via the editor's own read path
-  const target = build.documents.find((d) => d.names?.en === 'The Sea Princess') ?? build.documents[0];
+  const target =
+    build.documents.find((d) => d.names?.en === 'The Sea Princess') ?? build.documents[0];
   const docEntry = docs.find((d) => d.name === target.name);
   check(!!docEntry, `document "${target.name}" exists`);
   const doc = await IgtDocument.load(client, projectId, docEntry.id);
 
   check(doc.body === target.body, 'body round-trips exactly');
   const sentences = doc.sortedSentences;
-  check(sentences.length === target.sentences.length, `sentence count = ${target.sentences.length}`, `got ${sentences.length}`);
+  check(
+    sentences.length === target.sentences.length,
+    `sentence count = ${target.sentences.length}`,
+    `got ${sentences.length}`,
+  );
 
   const s0 = sentences[0];
   const tokens = s0.tokens;
   const expected = target.words.filter((w) => w.begin < target.sentences[0].end);
-  check(tokens.length === expected.length, `sentence 1 has ${expected.length} words`, `got ${tokens.length}`);
-  check(tokens.every((t, i) => cpSlice(doc.body, t.begin, t.end) === cpSlice(target.body, expected[i].begin, expected[i].end)),
-    'sentence 1 word extents match');
+  check(
+    tokens.length === expected.length,
+    `sentence 1 has ${expected.length} words`,
+    `got ${tokens.length}`,
+  );
+  check(
+    tokens.every(
+      (t, i) =>
+        cpSlice(doc.body, t.begin, t.end) ===
+        cpSlice(target.body, expected[i].begin, expected[i].end),
+    ),
+    'sentence 1 word extents match',
+  );
 
   if (target.names?.en === 'The Sea Princess') {
     check(tokens[0].content === 'За', 'first word surface "За"');
-    check(tokens[0].annotations?.Gloss?.value === 'I-ERG', 'word gloss I-ERG', JSON.stringify(tokens[0].annotations));
-    check(tokens[0].orthographies?.Translit === 'za', 'renamed orthography Translit=za', JSON.stringify(tokens[0].orthographies));
+    check(
+      tokens[0].annotations?.Gloss?.value === 'I-ERG',
+      'word gloss I-ERG',
+      JSON.stringify(tokens[0].annotations),
+    );
+    check(
+      tokens[0].orthographies?.Translit === 'za',
+      'renamed orthography Translit=za',
+      JSON.stringify(tokens[0].orthographies),
+    );
     const m0 = tokens[0].morphemes?.[0];
     check(m0?.metadata?.form === 'за', 'morpheme form metadata');
     check(m0?.metadata?.morphType === 'stem', 'morpheme morphType metadata');
     check(m0?.annotations?.Gloss?.value === '1sg-ERG', 'morpheme gloss');
     check(m0?.annotations?.POS?.value != null, 'morpheme POS present');
     check(!!m0?.vocabItem, 'morpheme linked to lexicon item');
-    check(s0.annotations?.Translation?.value?.includes('Sea Princess'), 'free translation on sentence');
+    check(
+      s0.annotations?.Translation?.value?.includes('Sea Princess'),
+      'free translation on sentence',
+    );
     const noteOk = sentences.some((s) => s.annotations?.Note?.value);
     check(noteOk, 'at least one sentence note imported');
   }
 
   // morphType-driven affix joints reachable from the island's data
-  const anyClitic = sentences.flatMap((s) => s.tokens).flatMap((t) => t.morphemes ?? [])
+  const anyClitic = sentences
+    .flatMap((s) => s.tokens)
+    .flatMap((t) => t.morphemes ?? [])
     .some((m) => (m.metadata?.morphType ?? '').includes('clitic'));
   console.log(`  (clitic morphemes present in this document: ${anyClitic})`);
 
   // the IGT invariant should hold without healing
   const heal = await doc.reconcileOnOpen();
-  check(heal.created === 0 && heal.deleted === 0, 'reconcileOnOpen heals nothing', JSON.stringify(heal));
+  check(
+    heal.created === 0 && heal.deleted === 0,
+    'reconcileOnOpen heals nothing',
+    JSON.stringify(heal),
+  );
 
   // every imported vocab link is provenance-confirmed
   const links = doc.layerInfo?.primaryTokenLayer ? null : null; // links live under vocabs in raw
   void links;
-  const rawLinks = (doc.raw?.textLayers ?? []).flatMap((tl) => tl.tokenLayers ?? [])
-    .flatMap((tkl) => tkl.vocabs ?? []).flatMap((v) => v.vocabLinks ?? []);
+  const rawLinks = (doc.raw?.textLayers ?? [])
+    .flatMap((tl) => tl.tokenLayers ?? [])
+    .flatMap((tkl) => tkl.vocabs ?? [])
+    .flatMap((v) => v.vocabLinks ?? []);
   check(rawLinks.length > 0, 'document has vocab links', String(rawLinks.length));
-  check(rawLinks.every((l) => l.metadata?.prov === 'inferred' && l.metadata?.provSource === 'flex-import'),
-    'all links stamped flex-import');
+  check(
+    rawLinks.every(
+      (l) => l.metadata?.prov === 'inferred' && l.metadata?.provSource === 'flex-import',
+    ),
+    'all links stamped flex-import',
+  );
   const confirmedLinks = rawLinks.filter((l) => l.metadata?.provConfirmed === true).length;
   check(confirmedLinks > 0, 'human-approved analyses imported as confirmed links');
-  console.log(`  (links: ${confirmedLinks} confirmed / ${rawLinks.length - confirmedLinks} parser-guess unconfirmed)`);
+  console.log(
+    `  (links: ${confirmedLinks} confirmed / ${rawLinks.length - confirmedLinks} parser-guess unconfirmed)`,
+  );
 
   console.log(`\ntotal ${((Date.now() - t0) / 1000).toFixed(1)}s; ${failures.length} failure(s)`);
 } finally {
   if (!KEEP) {
-    await client.projects.delete(projectId).catch((e) => console.log('cleanup failed:', e.message));
-    console.log('project deleted (use --keep to keep it)');
+    await deleteProjectWithVocabs(projectId);
+    console.log('project + its vocabs deleted (use --keep to keep it)');
   } else {
     console.log(`kept project ${projectId} (${projectName})`);
   }
@@ -172,4 +260,19 @@ try {
 if (failures.length) {
   console.error('FAILURES:', failures);
   process.exit(1);
+}
+
+// Delete a project AND the vocabs linked to it (vocabs are project-independent,
+// so deleting the project alone leaves orphan lexicons behind).
+async function deleteProjectWithVocabs(id) {
+  const vocabIds = await client.projects
+    .get(id)
+    .then((p) => (p.vocabs || []).map((v) => v.id))
+    .catch(() => []);
+  await client.projects.delete(id).catch((e) => console.log('cleanup failed:', e.message));
+  for (const vid of vocabIds) {
+    await client.vocabLayers
+      .delete(vid)
+      .catch((e) => console.log('vocab cleanup failed:', e.message));
+  }
 }
