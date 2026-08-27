@@ -508,6 +508,11 @@ export class IgtEditor {
       if (chip) chip.focus();
       return;
     }
+    if (pf.cellKey != null) {
+      const cell = this.container.querySelector(`[data-cell-key="${pf.cellKey}"]`);
+      if (cell) cell.focus();
+      return;
+    }
     let el = null;
     if (pf.wordId != null && pf.precedence != null) {
       el = this.container.querySelector(
@@ -582,7 +587,15 @@ export class IgtEditor {
     if (!wordId || this.readOnly) return false;
     e.preventDefault();
     this._run(() => this.doc.confirmWordAnalysis(wordId));
-    if (!this._advanceToNextWord(e.target, wordId)) e.target.blur();
+    if (!this._advanceToNextWord(e.target, wordId)) {
+      // Last word on the page: commit (blur) but keep the caret here rather
+      // than dropping focus to <body> (E2). Re-affirmed after the re-render.
+      const key = e.target.dataset.cellKey;
+      e.target.blur();
+      this._pendingFocus = { cellKey: key };
+      const same = key ? this.container.querySelector(`[data-cell-key="${key}"]`) : null;
+      if (same) same.focus();
+    }
     return true;
   }
 

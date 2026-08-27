@@ -25,6 +25,8 @@
 
 import { PROV_STATES } from '@larc-iu/plaid-client';
 
+import { trimIgnoredEdges } from './igtConfig.js';
+
 export const AUTO_LINK_SOURCE = 'rule:precedent-or-unique';
 
 const morphFormOf = (m) => {
@@ -50,11 +52,17 @@ export function precedentQueries(vocabIds) {
 // Merge precedent rows into form -> itemId: the most-linked (form, item)
 // pairing across the project. A tie on count breaks to the lexicographically
 // smallest item id — ties are rare; pick one deterministically rather than skip.
-export function buildPrecedentTable(resultsPerVocab) {
+// `ignoredCfg` (the word layer's ignored-tokens config) trims edge punctuation
+// off WORD values the same way the popover's "+ Create" does, so `derechos.`
+// and `derechos` pool their precedent (morpheme forms are never trimmed).
+export function buildPrecedentTable(resultsPerVocab, ignoredCfg = null) {
   const tally = new Map(); // form -> Map<itemId, n>
   for (const res of resultsPerVocab) {
     for (const [itemId, value, morphForm, n] of res?.results || []) {
-      const form = (morphForm ?? value ?? '').toString();
+      const form =
+        morphForm != null && morphForm !== ''
+          ? String(morphForm)
+          : trimIgnoredEdges((value ?? '').toString(), ignoredCfg);
       if (!form) continue;
       let m = tally.get(form);
       if (!m) tally.set(form, (m = new Map()));
@@ -131,7 +139,12 @@ function linkTarget(entity) {
 // form resolves to an item the rule would set. A form that resolves to the
 // current (machine) link is a no-op and skipped; a protected or unresolvable
 // link yields no proposal.
-export function computeAutoLinkProposals({ sentences, vocabularies, precedentTable }) {
+export function computeAutoLinkProposals({
+  sentences,
+  vocabularies,
+  precedentTable,
+  ignoredCfg = null,
+}) {
   const items = buildItemIndex(vocabularies);
   const proposals = [];
   const consider = (entity, form, kind) => {
@@ -143,7 +156,10 @@ export function computeAutoLinkProposals({ sentences, vocabularies, precedentTab
   };
   for (const s of sentences || []) {
     for (const t of s.tokens || []) {
-      consider(t, t.content, 'word');
+      // Word forms lose edge punctuation by the project's ignore rule (the
+      // same trim the popover's "+ Create" applies): `derechos.` links to
+      // `derechos`. Morpheme forms are used verbatim.
+      consider(t, trimIgnoredEdges(t.content ?? '', ignoredCfg), 'word');
       for (const m of t.morphemes || []) {
         const form = morphFormOf(m);
         if (form) consider(m, form, 'morpheme');

@@ -131,3 +131,41 @@ describe('buildItemIndex', () => {
     expect(idx.folded.get('se')).toEqual(['i-se1', 'i-se2']);
   });
 });
+
+describe('auto-link trims edge punctuation off word forms by the ignore rule', () => {
+  const cfg = { type: 'unicodePunctuation', whitelist: [] };
+  const vocabularies = { v1: { id: 'v1', items: [{ id: 'i-der', form: 'derechos' }] } };
+  it('links `derechos.` to the `derechos` item when a unicodePunctuation config is given', () => {
+    const sentences = [
+      { tokens: [{ id: 'w1', content: 'derechos.', vocabItem: null, morphemes: [] }] },
+    ];
+    const withCfg = computeAutoLinkProposals({
+      sentences,
+      vocabularies,
+      precedentTable: new Map(),
+      ignoredCfg: cfg,
+    });
+    expect(withCfg.map((p) => [p.tokenId, p.vocabItemId])).toEqual([['w1', 'i-der']]);
+    const without = computeAutoLinkProposals({
+      sentences,
+      vocabularies,
+      precedentTable: new Map(),
+    });
+    expect(without).toEqual([]);
+  });
+  it('pools precedent for `derechos.` and `derechos` under the trimmed form', () => {
+    const table = buildPrecedentTable(
+      [
+        {
+          results: [
+            ['i-a', 'derechos.', null, 2],
+            ['i-b', 'derechos', null, 1],
+          ],
+        },
+      ],
+      cfg,
+    );
+    expect(table.get('derechos')).toBe('i-a');
+    expect(table.has('derechos.')).toBe(false);
+  });
+});

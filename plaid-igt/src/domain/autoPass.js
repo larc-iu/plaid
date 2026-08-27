@@ -124,11 +124,13 @@ async function runLinkPhase(doc) {
   const vocabIds = Object.keys(doc.vocabularies || {});
   if (!vocabIds.length) return 0;
   const results = await Promise.all(precedentQueries(vocabIds).map((q) => doc.client.query(q)));
-  const precedentTable = buildPrecedentTable(results);
+  const ignoredCfg = readIgnoredTokens(doc.layerInfo.primaryTokenLayer?.config);
+  const precedentTable = buildPrecedentTable(results, ignoredCfg);
   const proposals = computeAutoLinkProposals({
     sentences: doc.sentences,
     vocabularies: doc.vocabularies,
     precedentTable,
+    ignoredCfg,
   });
   if (!proposals.length) return 0;
   return doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE);
