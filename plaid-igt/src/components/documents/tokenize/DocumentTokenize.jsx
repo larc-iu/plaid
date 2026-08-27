@@ -144,7 +144,7 @@ export function DocumentTokenize() {
                     <p className="text-sm font-medium">No sentence partition</p>
                     <p className="text-sm text-muted-foreground">
                       {text?.body
-                        ? 'This document has baseline text but no sentence partition yet. Re-save the text on the Baseline tab to create one — word tokens must live inside a sentence.'
+                        ? 'This document has baseline text but no sentence partition yet. Re-save the text on the Baseline tab to create one. Word tokens must live inside a sentence.'
                         : 'Add baseline text on the Baseline tab first. Saving it creates the sentence partition that word tokens live inside.'}
                     </p>
                   </div>
@@ -370,7 +370,7 @@ export function DocumentTokenize() {
               ? ` and ${ops.pendingDelete.links} vocabulary link${ops.pendingDelete.links === 1 ? '' : 's'}`
               : ''}
           </strong>{' '}
-          on it — including any from other apps on this project (e.g. UD annotations) that are not
+          on it, including any from other apps on this project (e.g. UD annotations) that are not
           visible here. This cannot be undone.
         </p>
       </ConfirmDeleteDialog>
@@ -398,7 +398,7 @@ export function DocumentTokenize() {
               ? ` and ${ops.pendingStructural.links} vocabulary link${ops.pendingStructural.links === 1 ? '' : 's'}`
               : ''}
           </strong>{' '}
-          at the morpheme level — including any from other apps on this project that aren’t visible
+          at the morpheme level, including any from other apps on this project that aren’t visible
           here. Word-level annotations are kept. This cannot be undone.
         </p>
       </ConfirmDeleteDialog>
@@ -425,7 +425,7 @@ export function DocumentTokenize() {
               ? ` and ${ops.pendingTokenize.links} vocabulary link${ops.pendingTokenize.links === 1 ? '' : 's'}`
               : ''}
           </strong>{' '}
-          (word, morpheme, and sentence level) — including any from other apps on this project that
+          (word, morpheme, and sentence level), including any from other apps on this project that
           aren’t visible here. This cannot be undone.
         </p>
       </ConfirmDeleteDialog>

@@ -370,7 +370,7 @@ export const alignmentMutations = {
       const existsAnywhere = cpIndexOf(fullText, trimmed) !== -1;
       this.setError(
         existsAnywhere
-          ? 'The selected text lies outside the range available for this time slot — a neighboring alignment would be out of temporal order. Adjust the time range or the neighboring alignments.'
+          ? 'The selected text lies outside the range available for this time slot. A neighboring alignment would be out of temporal order. Adjust the time range or the neighboring alignments.'
           : 'Selected text not found in the baseline.',
       );
       return false;

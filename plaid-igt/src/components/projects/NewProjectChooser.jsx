@@ -18,14 +18,14 @@ const OPTIONS = [
     icon: FileUp,
     title: 'Import from FieldWorks',
     description:
-      'Create a project from a FLEx backup (.fwbackup) — texts, glosses, morpheme analyses, translations, and the full lexicon.',
+      'Create a project from a FLEx backup (.fwbackup): texts, glosses, morpheme analyses, translations, and the full lexicon.',
   },
   {
     to: '/projects/import-archive',
     icon: Archive,
     title: 'Import a Plaid IGT archive',
     description:
-      'Recreate a project from a "Plaid IGT JSON" export (.zip) — texts, analyses, vocabularies, time alignment, media, and provenance.',
+      'Recreate a project from a "Plaid IGT JSON" export (.zip): texts, analyses, vocabularies, time alignment, media, and provenance.',
   },
 ];
 

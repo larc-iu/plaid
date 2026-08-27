@@ -43,7 +43,9 @@ describe('readNativeArchive', () => {
 
   it('rejects non-zips, foreign zips, and unsupported versions', () => {
     expect(() => readNativeArchive(new Uint8Array([1, 2, 3]))).toThrow(ArchiveError);
-    expect(() => readNativeArchive(zipOf({ 'x.txt': 'hi' }))).toThrow(/project\.json is missing/);
+    expect(() => readNativeArchive(zipOf({ 'x.txt': 'hi' }))).toThrow(
+      /project\.json file is missing/,
+    );
     expect(() => readNativeArchive(zipOf({ 'project.json': '{"format":"other"}' }))).toThrow(
       /Unrecognized format/,
     );

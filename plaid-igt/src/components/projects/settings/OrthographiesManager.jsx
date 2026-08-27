@@ -337,7 +337,7 @@ export const OrthographiesManager = ({
             ))}
         </p>
         <p className="mt-1 text-muted-foreground">
-          Existing values are hidden, not deleted — re-adding an orthography with the same name
+          Existing values are hidden, not deleted. Re-adding an orthography with the same name
           restores them.
         </p>
       </ConfirmDeleteDialog>

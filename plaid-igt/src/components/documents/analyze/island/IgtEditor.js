@@ -88,10 +88,10 @@ const provClass = (base, state) => (state ? `${base}--${state}` : '');
 
 const PROV_TITLE = {
   [PROV_STATES.MACHINE]:
-    'machine-suggested, unverified — edit to fix, Ctrl+Enter confirms the whole word',
+    'machine-suggested, unverified. Edit to fix, Ctrl+Enter confirms the whole word',
   [PROV_STATES.VERIFIED]: 'machine-suggested, confirmed',
 };
-const provTitle = (value, state) => `${value} — ${PROV_TITLE[state]}`;
+const provTitle = (value, state) => `${value}: ${PROV_TITLE[state]}`;
 
 export class IgtEditor {
   constructor(container, doc, { readOnly = false, canWriteVocab = null } = {}) {
@@ -900,7 +900,7 @@ export class IgtEditor {
       data-confirm-word=${confirmWord ?? nothing}
       aria-label=${ariaLabel ?? nothing}
       title=${g
-        ? `Guess: ${g.value} — Enter confirms, typing replaces`
+        ? `Guess: ${g.value}. Enter confirms, typing replaces`
         : p
           ? provTitle(v, p)
           : filled
@@ -1393,7 +1393,7 @@ export class IgtEditor {
             ? html`<button
                 type="button"
                 class="igt-toolbar__btn"
-                title="Link words and morphemes to the lexicon — choose the built-in rule or a linking service. Auto-links show in violet until you confirm them."
+                title="Link words and morphemes to the lexicon. Choose the built-in rule or a linking service. Auto-links show in violet until you confirm them."
                 @click=${(e) => {
                   e.stopPropagation();
                   this._openAutoLink();
@@ -1459,7 +1459,7 @@ export class IgtEditor {
         <div class="igt-legend__row">
           <strong>Guesses</strong>
           <span
-            >violet italic values are guesses from matching forms — <kbd>↵</kbd> confirms, typing
+            >violet italic values are guesses from matching forms. <kbd>↵</kbd> confirms, typing
             replaces, leaving the cell discards</span
           >
         </div>
@@ -1478,17 +1478,16 @@ export class IgtEditor {
           <strong>Lexicon</strong>
           <span
             >hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry ·
-            <em>Auto-link</em> links everything that follows project precedent or matches one entry
-            — violet links are auto-made; open one and click it (or <em>confirm</em>) to
-            approve</span
+            <em>Auto-link</em> links everything that follows project precedent or matches one entry.
+            Violet links are auto-made; open one and click it (or <em>confirm</em>) to approve</span
           >
         </div>
         <div class="igt-legend__row">
           <strong>Review links</strong>
           <span
             ><kbd>Ctrl</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between suggested (violet) links · on
-            one: <kbd>↵</kbd> confirm · <kbd>⌫</kbd> remove · <kbd>Space</kbd> change — each jumps
-            to the next</span
+            one: <kbd>↵</kbd> confirm · <kbd>⌫</kbd> remove · <kbd>Space</kbd> change. Each jumps to
+            the next</span
           >
         </div>
       </div>
@@ -1566,7 +1565,7 @@ export class IgtEditor {
         <button
           type="button"
           class="igt-copy__btn"
-          title=${`Copy as IGT — ${favLabel}`}
+          title=${`Copy as IGT: ${favLabel}`}
           @click=${() => this._copySentence(sentence, ctx, fav)}
         >
           ${copied ? 'Copied ✓' : 'Copy'}
@@ -1679,7 +1678,7 @@ export class IgtEditor {
     // lexicon link, and no morpheme is healed onto them (see igtReconcile). They
     // render like a gap: in the text, but plainly not glossed.
     if (isTokenIgnored(token.content, ctx.ignoredCfg)) {
-      return this._inertCol(token.content, `${token.content} — excluded from annotation`);
+      return this._inertCol(token.content, `${token.content}: excluded from annotation`);
     }
     // Machine-made word tokens (a tokenizer service stamps prov on token
     // metadata) show the same violet/dashed treatment on the form band;
@@ -1687,9 +1686,9 @@ export class IgtEditor {
     const wp = provDisplay(token.metadata);
     const wpTitle =
       wp === PROV_STATES.MACHINE
-        ? `${token.content} — machine-tokenized, unverified — Ctrl+Enter confirms the whole word`
+        ? `${token.content}: machine-tokenized, unverified. Ctrl+Enter confirms the whole word`
         : wp === PROV_STATES.VERIFIED
-          ? `${token.content} — machine-tokenized, confirmed`
+          ? `${token.content}: machine-tokenized, confirmed`
           : token.content;
     return html`
       <div class="igt-token-col">
@@ -1750,7 +1749,7 @@ export class IgtEditor {
   // characters, anything between or around tokens.
   _gapCol(piece) {
     const text = (piece.content || '').trim();
-    return this._inertCol(text, `${text} — not part of any word`);
+    return this._inertCol(text, `${text}: not part of any word`);
   }
 
   _morphemes(token, ctx) {
@@ -1879,10 +1878,10 @@ export class IgtEditor {
       const stateClass = provClass('igt-vocab__hint', state === PROV_STATES.HUMAN ? null : state);
       const title =
         state === PROV_STATES.MACHINE
-          ? `Auto-linked to "${vocabItem.form}" — open to confirm or change`
+          ? `Auto-linked to "${vocabItem.form}": open to confirm or change`
           : state === PROV_STATES.VERIFIED
-            ? `Linked to "${vocabItem.form}" — auto-linked, confirmed${canLink ? ' · manage' : ''}`
-            : `Linked to "${vocabItem.form}"${canLink ? ' — manage' : ''}`;
+            ? `Linked to "${vocabItem.form}": auto-linked, confirmed${canLink ? ' · manage' : ''}`
+            : `Linked to "${vocabItem.form}"${canLink ? ' · manage' : ''}`;
       const sub = this._homonymSub(vocabItem);
       opener = html`<button
         type="button"
@@ -2192,7 +2191,7 @@ export class IgtEditor {
               })
             : html`<div class="igt-vocab-pop__empty">No matches</div>`}
           ${truncated > 0
-            ? html`<div class="igt-vocab-pop__more">+ ${truncated} more — type to narrow</div>`
+            ? html`<div class="igt-vocab-pop__more">+ ${truncated} more. Type to narrow</div>`
             : nothing}
           ${hiddenByLevel > 0
             ? html`<div
@@ -2241,7 +2240,7 @@ export class IgtEditor {
                     : nothing}"`}
               ${newFormSub != null
                 ? html`<span class="igt-vocab-pop__note"
-                    >“${effectiveForm}” already exists — this adds a separate sense</span
+                    >“${effectiveForm}” already exists. This adds a separate sense</span
                   >`
                 : nothing}
             </button>`

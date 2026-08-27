@@ -48,7 +48,7 @@ export const ScopeStep = ({
     return (
       <div className="flex flex-col gap-2">
         <Label>Scope</Label>
-        {radio('document', `This document — ${defaultDocument?.name}`)}
+        {radio('document', `This document: ${defaultDocument?.name}`)}
         <p className="text-xs text-muted-foreground">
           You are viewing a historical state, so the export covers this document as of that moment.
           Project-wide export is available outside of history view.
@@ -67,7 +67,7 @@ export const ScopeStep = ({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label>Scope</Label>
-        {defaultDocument && radio('document', `This document — ${defaultDocument.name}`)}
+        {defaultDocument && radio('document', `This document: ${defaultDocument.name}`)}
         {radio('project', `Whole project (${documents?.length ?? 0} documents)`)}
         {radio('documents', 'Selected documents')}
       </div>

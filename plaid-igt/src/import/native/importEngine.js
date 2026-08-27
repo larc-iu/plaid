@@ -97,14 +97,14 @@ export function deriveSetupData(manifest, projectName) {
  */
 export function resolveNativeTargets(project, manifest) {
   const textLayer = findBaselineTextLayer(project.textLayers || []);
-  if (!textLayer) throw new Error('No baseline text layer — project setup incomplete');
+  if (!textLayer) throw new Error('No baseline text layer. Project setup incomplete');
   const tokenLayers = textLayer.tokenLayers || [];
   const sentenceLayer = findSentenceTokenLayer(tokenLayers);
   const wordLayer = findWordTokenLayer(tokenLayers);
   const morphemeLayer = findMorphemeTokenLayer(tokenLayers);
   const alignmentLayer = findAlignmentTokenLayer(tokenLayers);
   if (!sentenceLayer || !wordLayer || !morphemeLayer) {
-    throw new Error('Substrate token layers missing — project setup incomplete');
+    throw new Error('Substrate token layers missing. Project setup incomplete');
   }
   const spanLayerByScopeName = new Map();
   for (const tl of tokenLayers) {
@@ -121,7 +121,7 @@ export function resolveNativeTargets(project, manifest) {
     for (const f of schema.fields?.[scopeKey] || []) {
       if (!spanLayerByScopeName.has(`${scope}:${f.name}`)) {
         throw new Error(
-          `Annotation field "${f.name}" (${scope}) missing — project setup incomplete`,
+          `Annotation field "${f.name}" (${scope}) missing. Project setup incomplete`,
         );
       }
     }
@@ -325,7 +325,7 @@ export async function importNativeDocument({
         );
       } else {
         warnings.push(
-          `"${docData.name}": ${alignment.length} time alignment(s) skipped — no alignment layer`,
+          `"${docData.name}": ${alignment.length} time alignment(s) skipped because there is no alignment layer`,
         );
       }
     }
@@ -451,7 +451,7 @@ export async function importNativeDocument({
     } catch (err) {
       mediaFailed = true;
       warnings.push(
-        `"${docData.name}": media upload failed — document left unfinished so re-importing retries it: ${err?.message ?? err}`,
+        `"${docData.name}": media upload failed. Document left unfinished so re-importing retries it: ${err?.message ?? err}`,
       );
     }
   }
@@ -498,7 +498,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     const target = projectVocabs.find((v) => v.name === vocab.name);
     if (!target) {
       warnings.push(
-        `Vocabulary "${vocab.name}" has no same-named target in the project — items skipped`,
+        `Vocabulary "${vocab.name}" has no same-named target in the project. Items skipped`,
       );
       continue;
     }

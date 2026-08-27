@@ -139,7 +139,7 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
           );
         if (copied) parts.push(`copied analyses onto ${copied} word${copied === 1 ? '' : 's'}`);
         const msg = parts.length
-          ? `${parts.join(' and ')} — shown in violet until confirmed.`
+          ? `${parts.join(' and ')}. Shown in violet until confirmed.`
           : 'Nothing new to apply.';
         notifySuccess(msg.charAt(0).toUpperCase() + msg.slice(1), 'Auto-link');
         onOpenChange(false);
@@ -175,7 +175,7 @@ export const AutoLinkDialog = ({ open, onOpenChange, doc }) => {
       }
     } catch (err) {
       console.error('Auto-link failed:', err);
-      notifyError('Auto-link failed — try again.', 'Auto-link');
+      notifyError('Auto-link failed. Try again.', 'Auto-link');
     } finally {
       setBusy(false);
     }

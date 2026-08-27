@@ -100,10 +100,10 @@ export const ExportRunner = ({
       if (onDone) onDone();
     } catch (err) {
       if (err instanceof ExportCancelled) {
-        notifyWarning('Export cancelled — nothing was downloaded.', 'Export');
+        notifyWarning('Export cancelled. Nothing was downloaded.', 'Export');
       } else {
         console.error('Export failed:', err);
-        notifyError(err?.message || 'Export failed — try again.', 'Export failed');
+        notifyError(err?.message || 'Export failed. Try again.', 'Export failed');
       }
     } finally {
       setRunning(false);
@@ -129,9 +129,10 @@ export const ExportRunner = ({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
-          <Download className="h-4 w-4" /> Export
+          <Download className="h-4 w-4" />
+          <span>Export{defaultScope ? ':' : ''}</span>
           {defaultScope && (
-            <span className="text-sm font-normal text-muted-foreground">— {defaultScope.name}</span>
+            <span className="text-sm font-normal text-muted-foreground">{defaultScope.name}</span>
           )}
         </h2>
         {settingsLink}
@@ -149,7 +150,7 @@ export const ExportRunner = ({
           </div>
           <span className="text-sm text-muted-foreground">
             {progress?.total
-              ? `Document ${Math.min(progress.done + 1, progress.total)} of ${progress.total}${progress.name ? ` — ${progress.name}` : ''}`
+              ? `Document ${Math.min(progress.done + 1, progress.total)} of ${progress.total}${progress.name ? `: ${progress.name}` : ''}`
               : 'Preparing…'}
           </span>
         </div>

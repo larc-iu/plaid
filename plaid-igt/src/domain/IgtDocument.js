@@ -382,7 +382,7 @@ export class IgtDocument {
         this._remoteItemLevels = await loadItemLevels(this._client, this._project);
         if (failedCount > 0 && this.onError) {
           this.onError(
-            `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed — vocab links may display stale values. Reload the page if they look wrong.`,
+            `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed. Vocab links may display stale values. Reload the page if they look wrong.`,
           );
         }
       } catch (err) {
@@ -391,7 +391,7 @@ export class IgtDocument {
         console.warn('Vocab reload failed:', err);
         if (this.onError)
           this.onError(
-            'Vocabulary data could not be refreshed — vocab links may display stale values. Reload the page if they look wrong.',
+            'Vocabulary data could not be refreshed. Vocab links may display stale values. Reload the page if they look wrong.',
           );
       }
     }

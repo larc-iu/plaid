@@ -16,7 +16,7 @@ export const NativeOptions = ({ options, onChange }) => (
       />
     </label>
     <p className="text-xs text-muted-foreground">
-      Large media can make the export slow or exceed browser memory — disable to produce a data-only
+      Large media can make the export slow or exceed browser memory. Disable to produce a data-only
       archive (time alignments are kept either way).
     </p>
   </div>

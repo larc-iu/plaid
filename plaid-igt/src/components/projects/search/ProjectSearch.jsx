@@ -184,7 +184,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           <p className="text-sm text-muted-foreground">
             {result.totalHits.toLocaleString()} hit{result.totalHits === 1 ? '' : 's'} in{' '}
             {result.totalDocs} document{result.totalDocs === 1 ? '' : 's'}
-            {result.truncated ? ' (capped — refine your search for exact totals)' : ''}
+            {result.truncated ? ' (capped, so refine your search for exact totals)' : ''}
           </p>
           {result.groups.map((g) => (
             <div key={g.docId} className="rounded-lg border bg-card">
@@ -225,7 +225,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                 {g.rows.length === 0 && (
                   <p className="px-4 py-2 text-xs text-muted-foreground">
                     Hits in this document could not be located (it may have changed since the
-                    search) — open it to look.
+                    search). Open it to look.
                   </p>
                 )}
               </div>
@@ -235,7 +235,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             <p className="text-sm text-muted-foreground">
               … plus {result.remainingHits.toLocaleString()} more hit
               {result.remainingHits === 1 ? '' : 's'} in {result.remainingDocs} more document
-              {result.remainingDocs === 1 ? '' : 's'} — refine your search to see them.
+              {result.remainingDocs === 1 ? '' : 's'}. Refine your search to see them.
             </p>
           )}
           {result.totalHits === 0 && (

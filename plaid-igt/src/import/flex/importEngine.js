@@ -89,13 +89,13 @@ export function deriveImportConfig(ir, build, opts = {}) {
  */
 export function resolveTargets(project, config) {
   const textLayer = findBaselineTextLayer(project.textLayers || []);
-  if (!textLayer) throw new Error('No baseline text layer — run project setup first');
+  if (!textLayer) throw new Error('No baseline text layer. Run project setup first');
   const tokenLayers = textLayer.tokenLayers || [];
   const sentenceLayer = findSentenceTokenLayer(tokenLayers);
   const wordLayer = findWordTokenLayer(tokenLayers);
   const morphemeLayer = findMorphemeTokenLayer(tokenLayers);
   if (!sentenceLayer || !wordLayer || !morphemeLayer) {
-    throw new Error('Substrate token layers missing — run project setup first');
+    throw new Error('Substrate token layers missing. Run project setup first');
   }
   const spanLayerByScopeName = new Map();
   for (const tl of tokenLayers) {
@@ -107,9 +107,7 @@ export function resolveTargets(project, config) {
   for (const f of config.fields) {
     const sl = spanLayerByScopeName.get(`${f.scope}:${f.name}`);
     if (!sl)
-      throw new Error(
-        `Annotation field "${f.name}" (${f.scope}) missing — run project setup first`,
-      );
+      throw new Error(`Annotation field "${f.name}" (${f.scope}) missing. Run project setup first`);
     fieldLayers.set(f, sl.id);
   }
   return {

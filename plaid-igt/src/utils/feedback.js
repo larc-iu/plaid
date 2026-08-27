@@ -62,7 +62,7 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnreachable(error)) return UNREACHABLE;
   switch (statusOf(error)) {
     case 401:
-      return 'Your session has expired — please sign in again.';
+      return 'Your session has expired. Please sign in again.';
     case 403:
       return "You don't have permission to do that.";
     case 404:
@@ -70,7 +70,7 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
     case 409:
       // Document mutations auto-resync after a conflict (IgtDocument._withSaving
       // reloads), so don't tell the user to reload by hand.
-      return 'This changed elsewhere since you loaded it — it has been refreshed to the latest version, so redo your edit.';
+      return 'This changed elsewhere since you loaded it. It has been refreshed to the latest version, so redo your edit.';
     case 423:
       return 'This document is being edited right now (by another user or a service). Try again in a moment.';
     case 500:

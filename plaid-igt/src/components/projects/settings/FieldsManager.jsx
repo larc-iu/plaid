@@ -498,7 +498,7 @@ export const FieldsManager = ({
         <p className="mt-1 text-muted-foreground">
           {pendingDelete?.count === undefined && 'Counting existing annotations…'}
           {pendingDelete?.count === null &&
-            'The number of existing annotations could not be determined — the field may still contain data.'}
+            'The number of existing annotations could not be determined. The field may still contain data.'}
           {typeof pendingDelete?.count === 'number' &&
             (pendingDelete.count === 0 ? (
               'This field has no annotations yet.'

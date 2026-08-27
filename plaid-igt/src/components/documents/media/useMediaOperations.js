@@ -258,8 +258,8 @@ export const useMediaOperations = () => {
       !(await confirm({
         title: 'Replace existing transcript?',
         description:
-          'This document already has a transcript. Transcribing again will REPLACE it ' +
-          '— discarding the existing text, tokens, time alignments, and any annotations on them. ' +
+          'This document already has a transcript. Transcribing again will REPLACE it, ' +
+          'discarding the existing text, tokens, time alignments, and any annotations on them. ' +
           'This cannot be undone.',
         confirmLabel: 'Replace',
         destructive: true,

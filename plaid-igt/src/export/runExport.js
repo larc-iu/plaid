@@ -209,7 +209,7 @@ export async function runExport({
   onProgress({ done: docIds.length, total: docIds.length, name: null });
   if (!docFiles.length) {
     throw new Error(
-      warnings.length ? `Nothing exported — ${warnings.join('; ')}` : 'Nothing to export',
+      warnings.length ? `Nothing exported. ${warnings.join('; ')}` : 'Nothing to export',
     );
   }
 

@@ -23,7 +23,7 @@ export function readNativeArchive(bytes) {
     throw new ArchiveError('Not a zip archive');
   }
   if (!entries['project.json']) {
-    throw new ArchiveError('Not a Plaid IGT archive — project.json is missing');
+    throw new ArchiveError('Not a Plaid IGT archive. The project.json file is missing');
   }
   const json = (path) => {
     if (!entries[path]) throw new ArchiveError(`Archive entry missing: ${path}`);
@@ -37,14 +37,14 @@ export function readNativeArchive(bytes) {
   const manifest = json('project.json');
   if (manifest.format !== 'plaid-igt') {
     throw new ArchiveError(
-      `Unrecognized format ${JSON.stringify(manifest.format)} — expected "plaid-igt"`,
+      `Unrecognized format ${JSON.stringify(manifest.format)}. Expected "plaid-igt"`,
     );
   }
   // Per the spec's versioning policy, additive changes don't bump the version,
   // so only a different MAJOR (integer) version is unreadable.
   if (manifest.formatVersion !== 1) {
     throw new ArchiveError(
-      `Unsupported formatVersion ${manifest.formatVersion} — this build reads version 1`,
+      `Unsupported formatVersion ${manifest.formatVersion}. This build reads version 1`,
     );
   }
 

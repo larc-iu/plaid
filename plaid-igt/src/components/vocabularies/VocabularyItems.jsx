@@ -450,7 +450,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       );
     } catch (err) {
       console.error('Bulk add failed:', err);
-      notifyError('Bulk add failed — no items were created.', 'Error');
+      notifyError('Bulk add failed. No items were created.', 'Error');
     } finally {
       setBulkBusy(false);
     }
@@ -882,8 +882,8 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                           })}
                           {g.rows.length === 0 && (
                             <p className="px-3 py-2 text-xs text-muted-foreground">
-                              Uses in this document could not be located (it may have changed) —
-                              open it to look.
+                              Uses in this document could not be located (it may have changed). Open
+                              it to look.
                             </p>
                           )}
                         </div>
@@ -988,8 +988,8 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                         {usageCounts[selectedItem.id]} word
                         {usageCounts[selectedItem.id] === 1 ? '' : 's'}/morpheme
                         {usageCounts[selectedItem.id] === 1 ? '' : 's'}
-                      </strong>{' '}
-                      — those links will be removed.{' '}
+                      </strong>
+                      . Those links will be removed.{' '}
                     </>
                   ) : null}
                   This action cannot be undone.

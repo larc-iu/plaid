@@ -71,7 +71,7 @@ export const ImportNativeProject = () => {
             projectIdRef.current = id;
           },
         });
-        if (setup.failures.length > 0) throw new Error(setup.failures.join(' — '));
+        if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
         projectIdRef.current = setup.projectId;
         setupDoneRef.current = true;
       }
@@ -91,7 +91,7 @@ export const ImportNativeProject = () => {
             });
           } else if (p.phase === 'document') {
             setProgress({
-              label: `${p.doc}${p.step ? ` — ${p.step}` : ''} (${(p.index ?? 0) + 1}/${p.total ?? totalDocs})`,
+              label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${(p.index ?? 0) + 1}/${p.total ?? totalDocs})`,
               pct: 30 + (((p.index ?? 0) + 1) / (p.total ?? totalDocs)) * 70,
             });
           }
@@ -146,7 +146,7 @@ export const ImportNativeProject = () => {
         <div>
           <h1 className="text-2xl font-bold">Import a Plaid IGT archive</h1>
           <p className="text-sm text-muted-foreground">
-            Recreate a project from a “Plaid IGT JSON” export — texts, analyses, vocabularies, time
+            Recreate a project from a “Plaid IGT JSON” export: texts, analyses, vocabularies, time
             alignment, media, and provenance.
           </p>
         </div>

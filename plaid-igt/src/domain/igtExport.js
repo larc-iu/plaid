@@ -20,9 +20,9 @@ import { joinMorphemes } from './affixMarkers.js';
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
   { id: 'tsv', label: 'Tab-separated (spreadsheet)' },
-  { id: 'gb4e', label: 'LaTeX — gb4e' },
-  { id: 'expex', label: 'LaTeX — ExPex' },
-  { id: 'leipzig', label: 'HTML — leipzig.js' },
+  { id: 'gb4e', label: 'LaTeX: gb4e' },
+  { id: 'expex', label: 'LaTeX: ExPex' },
+  { id: 'leipzig', label: 'HTML: leipzig.js' },
 ];
 
 export const COPY_FORMAT_STORAGE_KEY = 'plaid_igt_copy_format';

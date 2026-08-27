@@ -61,7 +61,7 @@ export const ConfirmationStep = ({
 
       if (result.alreadyInitialized) {
         notifyError(
-          'This project is already initialized with Plaid IGT. Re-running setup is not supported — create a new project instead.',
+          'This project is already initialized with Plaid IGT. Re-running setup is not supported. Create a new project instead.',
           'Project Already Initialized',
         );
         return;
@@ -73,7 +73,7 @@ export const ConfirmationStep = ({
         setErrors(result.failures);
         notifyError(
           `${result.failures.length} setup step${result.failures.length === 1 ? '' : 's'} failed. ` +
-            'The project has NOT been marked ready — fix the issue or use Retry Setup to finish.',
+            'The project has NOT been marked ready. Fix the issue or use Retry Setup to finish.',
           'Setup Incomplete',
         );
         return;

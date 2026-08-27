@@ -163,7 +163,7 @@ export const ImportFlexProject = () => {
           },
         });
         if (setup.failures.length > 0) {
-          throw new Error(setup.failures.join(' — '));
+          throw new Error(setup.failures.join('. '));
         }
         projectIdRef.current = setup.projectId;
         vocabIdRef.current = setup.resources.vocabularies?.[0]?.id ?? null;
@@ -195,7 +195,7 @@ export const ImportFlexProject = () => {
             });
           } else if (p.phase === 'document') {
             setProgress({
-              label: `${p.doc}${p.step ? ` — ${p.step}` : ''} (${(p.index ?? 0) + 1}/${p.total ?? totalDocs})`,
+              label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${(p.index ?? 0) + 1}/${p.total ?? totalDocs})`,
               pct: 30 + (((p.index ?? 0) + 1) / (p.total ?? totalDocs)) * 70,
             });
           }
@@ -318,7 +318,7 @@ export const ImportFlexProject = () => {
                 <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
                   <p className="font-medium text-orange-800">
                     {irWarnings.length} reference{irWarnings.length === 1 ? '' : 's'} in the backup
-                    could not be resolved — some data may be missing from the import:
+                    could not be resolved. Some data may be missing from the import:
                   </p>
                   <ul className="mt-1 list-disc pl-5 text-orange-700">
                     {irWarningSamples.map((w, i) => (
@@ -405,7 +405,7 @@ export const ImportFlexProject = () => {
               <div className="rounded-lg border bg-card p-4">
                 <p className="mb-1 font-medium">Analysis languages</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Glosses and translations exist in these languages — each selected one gets its own
+                  Glosses and translations exist in these languages. Each selected one gets its own
                   annotation fields.
                 </p>
                 <div className="flex flex-wrap gap-4">
@@ -436,8 +436,8 @@ export const ImportFlexProject = () => {
                 <p className="mb-1 font-medium">Orthographies</p>
                 <p className="mb-3 text-sm text-muted-foreground">
                   The first vernacular writing system ({parsed.build.baselineWs}) becomes the
-                  baseline text. Other writing systems on words become orthographies — rename them
-                  if you like.
+                  baseline text. Other writing systems on words become orthographies. Rename them if
+                  you like.
                 </p>
                 <div className="flex flex-col gap-2">
                   {liveConfig.orthographies.map((o) => (
@@ -484,7 +484,7 @@ export const ImportFlexProject = () => {
                     <span className="mt-0.5 block text-muted-foreground">
                       Turn the {parsed.build.stats.puncts.toLocaleString()} punctuation mark
                       {parsed.build.stats.puncts === 1 ? '' : 's'} FLEx tracks into word tokens,
-                      excluded from glossing. Leave off to keep them in the baseline text only —
+                      excluded from glossing. Leave off to keep them in the baseline text only.
                       punctuation shows in the interlinear either way; this just controls whether it
                       becomes a token.
                     </span>
@@ -506,7 +506,7 @@ export const ImportFlexProject = () => {
                     )}
                     {projectIdRef.current && (
                       <p className="mt-1 text-muted-foreground">
-                        Progress so far is kept — importing again resumes where it stopped.
+                        Progress so far is kept. Importing again resumes where it stopped.
                       </p>
                     )}
                   </div>

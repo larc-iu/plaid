@@ -273,7 +273,7 @@ export const UserProfile = () => {
           <p className="text-sm text-muted-foreground">
             Create named tokens to access the API from external services (parsers, scripts, the
             Python <code>PlaidClient</code>). Each token carries your permissions, never expires,
-            and survives password changes — revoke one to cut off access. Actions taken with a token
+            and survives password changes. Revoke one to cut off access. Actions taken with a token
             are labelled by its name in the audit history.
           </p>
 
@@ -282,7 +282,7 @@ export const UserProfile = () => {
             <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
               <p className="text-sm font-medium">Token &ldquo;{mintedToken.name}&rdquo; created</p>
               <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
-                Copy it now — you won&apos;t be able to see it again.
+                Copy it now. You won&apos;t be able to see it again.
               </p>
               <div className="flex items-center gap-2">
                 <code className="min-w-0 flex-1 break-all rounded bg-background px-2 py-1 text-xs">
