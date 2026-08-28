@@ -3,7 +3,7 @@
 //
 // Three steps, because the realistic import is a few thousand rows from a
 // dictionary kept in another tool against a vocabulary already built from
-// texts: nobody can eyeball that, so the merge has to be planned, summarized,
+// texts. Nobody can eyeball that, so the merge has to be planned, summarized,
 // and reviewable (see import/vocabBulk.js for the merge rules) before a single
 // write goes out.
 
@@ -58,7 +58,7 @@ const selectClass =
 
 const n = (x) => x.toLocaleString();
 
-// Morph types are a controlled vocabulary; accept any casing an external
+// Morph types are a controlled vocabulary. Accept any casing an external
 // dictionary uses, and drop what isn't in the inventory rather than storing a
 // value the interlinear renderer can't interpret.
 const MORPH_BY_KEY = new Map(
@@ -115,7 +115,7 @@ export const BulkAddDialog = ({
   const raw = file ? file.text : pasted;
   const { delimiter, rows } = useMemo(() => parseTable(raw), [raw]);
 
-  // Re-guess the shape whenever the source text changes; the user's manual
+  // Re-guess the shape whenever the source text changes. The user's manual
   // edits to the mapping live on until then.
   useEffect(() => {
     const guess = guessColumns(rows, fieldNames, humanizeFieldName);
@@ -167,7 +167,7 @@ export const BulkAddDialog = ({
   const setColumn = (index, target) =>
     setMapping((prev) => {
       const next = [...prev];
-      // The form comes from exactly one column; claiming it releases the old one.
+      // The form comes from exactly one column, so claiming it releases the old one.
       if (target === FORM) next.forEach((m, i) => (next[i] = m === FORM ? IGNORE : m));
       next[index] = target;
       return next;
@@ -297,8 +297,8 @@ export const BulkAddDialog = ({
             className="font-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
-            One entry per line, columns separated by tabs — paste straight from a spreadsheet. The
-            first row may be a header naming the columns; you'll confirm that next.
+            One entry per line, columns separated by tabs, so you can paste straight from a
+            spreadsheet. The first row may be a header naming the columns, which you confirm next.
             {rows.length > 0 && (
               <>
                 {' '}
@@ -342,9 +342,9 @@ export const BulkAddDialog = ({
                   <td className="px-2 py-1.5">
                     <span className="text-xs text-muted-foreground">{i + 1}.</span>{' '}
                     {hasHeader ? (
-                      <span className="font-medium">{rows[0]?.cells?.[i] || '—'}</span>
+                      <span className="font-medium">{rows[0]?.cells?.[i] || '(blank)'}</span>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground">(no header)</span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -392,14 +392,17 @@ export const BulkAddDialog = ({
               <dt className="inline font-medium">Form</dt>
               <dd className="inline text-muted-foreground">
                 {' '}
-                — required. The entry as it appears in the text; it's what a token gets linked to.
-                Repeating a form is allowed (a homonym is a separate entry).
+                is required. The entry as it appears in the text, which is what a token gets linked
+                to. Repeating a form is allowed, since a homonym is a separate entry.
               </dd>
             </div>
             {fieldNames.map((f) => (
               <div key={f}>
                 <dt className="inline font-medium">{humanizeFieldName(f)}</dt>
-                <dd className="inline text-muted-foreground"> — optional. {fieldDescription(f)}</dd>
+                <dd className="inline text-muted-foreground">
+                  {' '}
+                  is optional. {fieldDescription(f)}
+                </dd>
               </div>
             ))}
             {ignoredColumns > 0 && (
@@ -407,8 +410,8 @@ export const BulkAddDialog = ({
                 <dt className="inline font-medium">Don't import</dt>
                 <dd className="inline text-muted-foreground">
                   {' '}
-                  — the column is left out. To keep one of these, add a field to this vocabulary on
-                  the Fields tab first.
+                  leaves the column out. To keep one of these, add a field to this vocabulary on the
+                  Fields tab first.
                 </dd>
               </div>
             )}
@@ -428,7 +431,7 @@ export const BulkAddDialog = ({
           <Bucket
             tone="muted"
             count={counts.identical}
-            label="rows are already in the vocabulary, with nothing to add — skipped"
+            label="rows are already in the vocabulary, with nothing to add, so they are skipped"
           />
           <Bucket
             tone="good"
@@ -447,7 +450,7 @@ export const BulkAddDialog = ({
           <Bucket
             tone="warn"
             count={counts.conflict}
-            label="rows disagree with an entry that has the same form — often a second sense, sometimes a correction"
+            label="rows disagree with an entry that has the same form, often a second sense and sometimes a correction"
           >
             <select
               className={selectClass}
@@ -473,7 +476,11 @@ export const BulkAddDialog = ({
               <option value={AMBIGUOUS_NEW}>Add each as a separate entry</option>
             </select>
           </Bucket>
-          <Bucket tone="muted" count={counts.blank} label="rows have no form — skipped" />
+          <Bucket
+            tone="muted"
+            count={counts.blank}
+            label="rows have no form, so they are skipped"
+          />
         </div>
 
         <label className="flex items-center gap-2 text-sm">
@@ -489,7 +496,7 @@ export const BulkAddDialog = ({
           <p className="flex items-start gap-1.5 text-xs text-amber-600">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             {n(rejectedRows)} row{rejectedRows === 1 ? ' has a' : 's have an'} unrecognized Morph
-            Type; that value is left out and the rest of the row still imports.
+            Type. That value is left out and the rest of the row still imports.
           </p>
         )}
 
@@ -533,24 +540,24 @@ export const BulkAddDialog = ({
         </p>
         <p className="text-sm text-muted-foreground">
           {n(failure.created)} added and {n(failure.updated)} updated before it stopped. Running the
-          same import again is safe — what already landed will show up as already present.
+          same import again is safe, because what already landed will show up as already present.
         </p>
       </div>
     ) : (
       <div className="flex items-center justify-center gap-3 py-8">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
         <p className="text-sm text-muted-foreground">
-          {progress?.phase === 'updating' ? 'Filling in entries' : 'Adding entries'} —{' '}
+          {progress?.phase === 'updating' ? 'Filling in entries' : 'Adding entries'}:{' '}
           {n(progress?.done ?? 0)} of {n(progress?.total ?? 0)}
         </p>
       </div>
     );
 
   const TITLES = {
-    source: 'Bulk Add — paste or upload',
-    columns: 'Bulk Add — what the columns hold',
-    review: 'Bulk Add — review the merge',
-    running: failure ? 'Bulk Add — stopped' : 'Bulk Add — importing',
+    source: 'Bulk Add: paste or upload',
+    columns: 'Bulk Add: what the columns hold',
+    review: 'Bulk Add: review the merge',
+    running: failure ? 'Bulk Add: stopped' : 'Bulk Add: importing',
   };
 
   return (

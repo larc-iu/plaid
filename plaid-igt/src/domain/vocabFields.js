@@ -60,8 +60,8 @@ export const humanizeFieldName = (name) => {
 
 /**
  * One line saying what a field is for, shown where a user has to decide what
- * belongs in it — currently the bulk-import column mapper. Every field is
- * optional on an entry; only the form is required.
+ * belongs in it, currently the bulk-import column mapper. Every field is
+ * optional on an entry. Only the form is required.
  */
 const FIELD_DESCRIPTIONS = {
   morphType:

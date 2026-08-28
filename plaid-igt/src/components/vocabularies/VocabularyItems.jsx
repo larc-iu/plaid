@@ -160,7 +160,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
 
   // A bulk import can fill in the very item the detail editor has open, which
   // would leave its draft showing pre-import values (and looking dirty against
-  // the refreshed item). Re-seed the draft from what came back — unless the
+  // the refreshed item). Re-seed the draft from what came back, unless the
   // user really does have unsaved edits, which stay theirs.
   const handleImported = async () => {
     const wasDirty = dirty;

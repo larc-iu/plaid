@@ -3,7 +3,7 @@
 // are already there.
 //
 // The merge planner exists because the realistic import is not "an empty
-// vocabulary gets N rows" — it's "a vocabulary built up from texts meets a
+// vocabulary gets N rows". It is "a vocabulary built up from texts meets a
 // dictionary the same person kept elsewhere", with heavy overlap. Blindly
 // creating every row would bury the curated entries under near-duplicates, and
 // blindly skipping every form collision would throw away the dictionary's
@@ -16,14 +16,14 @@
 //              it has a value, and the row fills a blank
 //   conflict   entries with this form all disagree with    → skip / new sense /
 //              the row on some value                          overwrite
-//   ambiguous  several entries could be enriched; there's  → skip / new sense
-//              no safe single target
+//   ambiguous  several entries could be enriched and     → skip / new sense
+//              there is no safe single target
 //
 // Homonyms are legitimate here (the same form can be a separate entry), which
-// is exactly why "same form" alone can't mean "duplicate" — the field values
+// is exactly why "same form" alone cannot mean "duplicate". The field values
 // are what separate a duplicate from a second sense.
 //
-// Everything in this module is pure and synchronous; the dialog owns the I/O.
+// Everything in this module is pure and synchronous. The dialog owns the I/O.
 
 /** Mapping sentinels: a column becomes the item's form, or is left out. */
 export const FORM = '__form__';
@@ -53,10 +53,10 @@ export const DEFAULT_STRATEGIES = {
 // ---------------------------------------------------------------------------
 
 /**
- * Pick the delimiter from the text itself. A tab anywhere wins — spreadsheets
- * paste as TSV, and a TSV cell may well contain a comma — then semicolon (the
- * separator Excel uses in comma-decimal locales), then comma. Text with no
- * separator at all parses as a single Form column.
+ * Pick the delimiter from the text itself. A tab anywhere wins, because
+ * spreadsheets paste as TSV and a TSV cell may well contain a comma. Then
+ * semicolon (the separator Excel uses in comma-decimal locales), then comma.
+ * Text with no separator at all parses as a single Form column.
  */
 export const detectDelimiter = (text) => {
   const sample = String(text ?? '').slice(0, 64 * 1024);
@@ -198,8 +198,8 @@ export const positionalMapping = (colCount, fieldNames) =>
 
 /**
  * Guess whether row 0 is a header and what each column holds. A header is
- * recognized when at least half of its non-blank cells name something we know
- * — so `Form<TAB>Gloss` is a header but `perro<TAB>dog` is data.
+ * recognized when at least half of its non-blank cells name something we know,
+ * so `Form<TAB>Gloss` is a header but `perro<TAB>dog` is data.
  *
  * @returns {{hasHeader: boolean, mapping: string[]}}
  */
@@ -216,7 +216,7 @@ export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
   if (!hasHeader) return { hasHeader: false, mapping: positionalMapping(colCount, fieldNames) };
 
   const mapping = Array.from({ length: colCount }, (_, i) => matches[i] ?? IGNORE);
-  // A field claimed twice keeps only its first column; the later one is left
+  // A field claimed twice keeps only its first column. The later one is left
   // out rather than silently overwriting.
   const used = new Set();
   for (let i = 0; i < mapping.length; i++) {
@@ -235,7 +235,7 @@ export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
  * Apply a column mapping to the parsed rows.
  *
  * `normalizeValue(field, raw)` may clean a value up or reject it by returning
- * '' — the dialog uses it to drop morph types outside the controlled
+ * ''. The dialog uses it to drop morph types outside the controlled
  * vocabulary, which are reported per entry as `rejected` rather than stored.
  *
  * @returns {{line: number, form: string, values: object, rejected: {field, value}[]}[]}
@@ -399,7 +399,7 @@ export const planVocabImport = ({
     }
 
     // Compatible: disagrees nowhere, so the row only adds. Anything else is a
-    // real disagreement — very often a second sense rather than a correction.
+    // real disagreement, very often a second sense rather than a correction.
     const compatible = candidates.filter((c) =>
       fields.every((f) => blank(c.values[f]) || norm(c.values[f]) === norm(entry.values[f])),
     );
@@ -423,8 +423,8 @@ export const planVocabImport = ({
       }
       Object.assign(target.values, patch);
       if (target.id == null) {
-        // Filling in an entry this same import is about to create — fold the
-        // values into that pending create instead of writing twice.
+        // Filling in an entry this same import is about to create, so fold
+        // the values into that pending create instead of writing twice.
         Object.assign(target.pending.metadata, patch);
         decisions.push({
           line: entry.line,
@@ -520,7 +520,7 @@ export const countRejected = (entries) =>
   entries.reduce((n, e) => n + (e.rejected?.length ? 1 : 0), 0);
 
 /**
- * The whole plan as a TSV the user can open in a spreadsheet — the only
+ * The whole plan as a TSV the user can open in a spreadsheet, the only
  * practical way to check a few thousand rows before or after committing them.
  */
 export const serializeImportReport = (decisions) => {
