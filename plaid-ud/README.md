@@ -54,7 +54,7 @@ projects, which must be reconfigured.
 hierarchy (sentences, words, morphemes, annotations, dependencies) for a document:
 
 ```bash
-python services/ud_parse_stanza.py            # serve every accessible project (default)
+python services/ud_parse_stanza.py            # serve every accessible project, existing and future (default)
 python services/ud_parse_stanza.py PROJECT_ID  # serve one project
 python services/ud_parse_stanza.py --url http://localhost:8085  # default is 8080
 ```

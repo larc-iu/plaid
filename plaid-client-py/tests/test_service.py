@@ -157,6 +157,101 @@ def test_base_service_assembles_extras_and_forwards_them():
     assert captured['extras']['tasks'] == ['tokenize']
 
 
+class _FakeRegistration:
+    def __init__(self):
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+    def is_running(self):
+        return not self.stopped
+
+
+def _make_sync_service(serve=None):
+    """A BaseService wired to a fake client whose project list is mutable
+    (``svc.client.projects.current``) for exercising _sync_served_projects."""
+
+    class FakeMessages:
+        def __init__(self):
+            self.serve = serve or (lambda project_id, service_info, handler, extras:
+                                   _FakeRegistration())
+
+    class FakeProjects:
+        def __init__(self):
+            self.current = []
+            self.fail = False
+
+        def list(self):
+            if self.fail:
+                raise RuntimeError('connection refused')
+            return self.current
+
+    class FakeClient:
+        def __init__(self):
+            self.messages = FakeMessages()
+            self.projects = FakeProjects()
+
+    class MyService(BaseService):
+        def process_request(self, request_data, response_helper):
+            pass
+
+    svc = MyService('tok:test', 'Test', 'short', tasks=[TASKS.TOKENIZE])
+    svc.client = FakeClient()
+    return svc
+
+
+def test_sync_served_projects_follows_the_project_set():
+    svc = _make_sync_service()
+    svc.client.projects.current = [{'id': 'p1', 'name': 'One'}]
+    svc._sync_served_projects()
+    assert set(svc._registrations_by_project) == {'p1'}
+
+    # A project created after launch is registered on the next pass.
+    svc.client.projects.current = [{'id': 'p1', 'name': 'One'}, {'id': 'p2'}]
+    svc._sync_served_projects()
+    assert set(svc._registrations_by_project) == {'p1', 'p2'}
+    reg1 = svc._registrations_by_project['p1']
+    reg2 = svc._registrations_by_project['p2']
+
+    # A deleted project's registration is stopped and dropped everywhere.
+    svc.client.projects.current = [{'id': 'p2'}]
+    svc._sync_served_projects()
+    assert set(svc._registrations_by_project) == {'p2'}
+    assert reg1.stopped and not reg2.stopped
+    assert svc.service_registrations == [reg2]
+
+    # A failure to LIST projects leaves the served set untouched.
+    svc.client.projects.fail = True
+    svc._sync_served_projects()
+    assert set(svc._registrations_by_project) == {'p2'}
+    assert not reg2.stopped
+
+
+def test_sync_served_projects_retries_failed_registrations():
+    state = {'fail': True}
+
+    def serve(project_id, service_info, handler, extras):
+        if state['fail']:
+            raise RuntimeError('409: already connected')
+        return _FakeRegistration()
+
+    svc = _make_sync_service(serve=serve)
+    svc.client.projects.current = [{'id': 'p1', 'name': 'One'}]
+
+    # Registration failing (e.g. another live instance holds the service id)
+    # is non-fatal and does not poison the served set…
+    svc._sync_served_projects()
+    assert svc._registrations_by_project == {}
+    assert svc.service_registrations == []
+
+    # …and the next pass retries and succeeds.
+    state['fail'] = False
+    svc._sync_served_projects()
+    assert set(svc._registrations_by_project) == {'p1'}
+    assert svc._sync_failed_projects == set()
+
+
 if __name__ == '__main__':
     test_param_builders_and_options_normalize()
     test_build_extras_assembles_standard_shape()
@@ -167,4 +262,6 @@ if __name__ == '__main__':
     test_required_zero_false_satisfy_empty_does_not()
     test_coerce_invalid_enum_falls_back_and_flags_required()
     test_base_service_assembles_extras_and_forwards_them()
+    test_sync_served_projects_follows_the_project_set()
+    test_sync_served_projects_retries_failed_registrations()
     print('ok')
