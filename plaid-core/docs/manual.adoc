@@ -75,7 +75,7 @@ Here is an example of how to use the Python client:
 
 [,python]
 ----
-client = PlaidClient("http://localhost:8085", "<SECRET_TOKEN>")
+client = PlaidClient("http://localhost:8080", "<SECRET_TOKEN>")
 
 projects = client.projects.list()
 print("Available projects:", projects)
@@ -94,7 +94,7 @@ The same, in JavaScript:
 
 [,javascript]
 ----
-client = PlaidClient("http://localhost:8085", "<SECRET_TOKEN>")
+client = PlaidClient("http://localhost:8080", "<SECRET_TOKEN>")
 
 projects = client.projects.list()
 console.log("Available projects:", projects)

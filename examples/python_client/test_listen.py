@@ -20,7 +20,7 @@ from datetime import datetime
 
 from plaid_client import PlaidClient
 
-BASE_URL = 'http://localhost:8085'
+BASE_URL = 'http://localhost:8080'
 LISTEN_SECONDS = 30
 
 

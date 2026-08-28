@@ -1,4 +1,4 @@
-= Plaid Manual
+= Plaid Development
 :lang: en
 :encoding: UTF-8
 :doctype: book
@@ -6,34 +6,156 @@
 :toclevels: 3
 :sectlinks:
 :sectanchors:
-:leveloffset: 1
 :sectnums:
 :hide-uri-scheme: 1
 :source-highlighter: coderay
 
-= Development
+// Mobile-friendliness: shrink code blocks and let them wrap instead of
+// scrolling horizontally on narrow screens.
+++++
+<style>
+.listingblock pre, .literalblock pre { font-size: 0.8em; }
+@media screen and (max-width: 640px) {
+  .listingblock pre, .literalblock pre {
+    font-size: 0.72em;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+</style>
+++++
 
-* `clojure -X:dev`: start development server by typing `(start)`. See <http://localhost:8085>
-* `clojure -M:test`: run tests
-* `clojure -M:outdated`: find outdated dependencies
-* `clojure -X:uberjar`: compile to a single `.jar` for production
-* `clojure -M:nrepl`: start nREPL server (for Clojure MCP)
+This page is for people working on Plaid itself.
+If you only want to *run* Plaid, download `plaid.jar` from https://github.com/larc-iu/plaid/releases[the releases page] and follow the link:index.html[Quick Start] instead. You do not need any of the tooling below.
 
-NOTE: Client libraries are maintained separately in `plaid-client-js/` and `plaid-client-py/`.
+== Ports
 
-== OpenAPI Support
-* See playground at <http://localhost:8085/api/v1/docs/index.html#/>
-* See JSON at <http://localhost:8085/api/v1/openapi.json>
+Plaid listens on **8080** by default. Everything in the documentation assumes that port.
 
-== Database Access (pgwire)
-XTDB v2 exposes a PostgreSQL wire-compatible interface on port 5433.
-You can connect with `psql` or any PostgreSQL-compatible client such as DataGrip:
+The one exception is the development server (`clojure -X:dev`), which listens on **8085** so that it does not collide with a release jar running on the same machine.
+That override lives in `plaid-core/resources/config.dev.toml` and is never written to `data/config.toml`.
+
+To change the port a release jar uses, edit `[server] port` in `data/config.toml` (written automatically on first launch) and restart:
+
+[,toml]
+----
+[server]
+port = 9090
+----
+
+== Repository Layout
+
+Plaid is a monorepo:
+
+[cols="1,3"]
+|===
+| `plaid-core/` | The Clojure server: REST API, data model, storage, audit log, query engine. Also holds this documentation under `docs/`.
+| `plaid-ud/` | The bundled Universal Dependencies editor (a Vite/React SPA), served from the jar at `/ud/`.
+| `plaid-igt/` | The bundled interlinear glossed text editor (a Vite SPA), served from the jar at `/igt/`.
+| `plaid-client-js/` | The official JavaScript client, published to npm as `plaid-client`.
+| `plaid-client-py/` | The official Python client, published to PyPI as `plaid-client`.
+| `examples/` | Small standalone demos built against the clients.
+| `bb/`, `bb.edn` | The babashka task runner that drives builds, tests, and releases.
+|===
+
+== Building From Source
+
+Builds are driven by https://babashka.org/[babashka] tasks defined in `bb.edn`, which reproduce the release workflow (`.github/workflows/release.yml`) locally, everything except publishing.
+Run every task from the repository root.
+
+=== Prerequisites
+
+* https://www.oracle.com/java/technologies/downloads/[JDK 21 or later]
+* https://clojure.org/guides/install_clojure[Clojure CLI tools]
+* https://github.com/babashka/babashka#installation[babashka] (`bb`)
+* Node.js **20 or later**, for the two bundled SPAs. If you use `nvm`, activate it first (e.g. `nvm use 24`). The build fails fast with a hint if the active Node is too old.
+* Python 3, only if you want to build the Python client. Activate the environment you want it built into (e.g. `mamba activate base`) before running, since the build cannot activate one for you. Otherwise skip it with `--skip-clients`.
+
+=== Build
 
 [,bash]
 ----
-psql -h localhost -p 5433 -d xtdb
+bb build
 ----
 
-In DataGrip, create a new PostgreSQL data source with host `localhost`, port `5433`, and database `xtdb` (no username/password required).
+This builds both SPAs, bundles them and the official services into `plaid-core/resources/`, compiles the uberjar, boot-smoke-tests it against `/health` on port 8080, and packs the npm tarball plus the Python sdist and wheel.
+Artifacts land in `dist-artifacts/`:
 
-NOTE: Column names for nested keys use the `$` separator (e.g. `project$name`). This interface is read-only from the application's perspective.
+[,bash]
+----
+java -jar dist-artifacts/plaid-0.0.0-alpha.0.jar
+----
+
+The version defaults to `0.0.0-alpha.0` and may be given as an argument (`bb build 0.2.0-alpha.1`).
+In CI the git tag is the sole source of truth for the version. Locally it is just an argument.
+
+Useful flags:
+
+* `--skip-clients`: build only the jar (skips npm and Python packaging, and their toolchain requirements).
+* `--no-smoke`: skip the jar boot test. Needed if something else already answers on port 8080.
+
+NOTE: `bb build` leaves the built SPAs, services, and `version.edn` inside `plaid-core/resources/` (all gitignored). Run `bb clean` to remove them before starting a plain development server, or the dev server will serve the stale bundled SPAs.
+
+=== Other Tasks
+
+[cols="1,3"]
+|===
+| `bb test` | Run the full `plaid-core` test suite, the same gate CI runs before building.
+| `bb ci` | `bb test` followed by `bb build`: the whole non-publishing release pipeline.
+| `bb docs` | Build this documentation site into `_site/` for local preview. Requires `gem install asciidoctor coderay`.
+| `bb clean` | Remove all local build outputs.
+| `bb release <version>` | Tag and push a release, and CI does the rest. Requires a clean tree on `master`.
+|===
+
+Run `bb tasks` for the full list.
+
+== Working on plaid-core
+
+* `clojure -X:dev`: start a REPL, then type `(start)` to bring up the development server. See <http://localhost:8085>
+* `clojure -M:test`: run the tests
+* `clojure -M:outdated`: find outdated dependencies
+* `clojure -X:uberjar`: compile the jar alone (without the SPA bundling `bb build` does)
+* `clojure -M:nrepl`: start an nREPL server
+* `clojure -M:format fix`: apply `cljfmt`, the project's formatter
+
+NOTE: The client libraries are maintained separately in `plaid-client-js/` and `plaid-client-py/`, each with its own tests.
+
+=== OpenAPI Support
+
+* Playground: <http://localhost:8085/api/v1/docs/index.html#/>
+* JSON: <http://localhost:8085/api/v1/openapi.json>
+
+(On a release jar, substitute port 8080.)
+
+== Working on the SPAs
+
+Each SPA is an ordinary Vite project. From `plaid-ud/` or `plaid-igt/`:
+
+[,bash]
+----
+npm install
+npm run dev
+----
+
+The dev servers proxy API requests to the development server on port 8085. See each project's `vite.config.js`.
+JavaScript, JSX, and CSS in both projects are formatted by Prettier, enforced by the hook in `githooks/`.
+
+== Database Access
+
+Plaid stores everything in a single SQLite database at `data/plaid.db` (configurable via `[database] path`).
+You can inspect it with any SQLite client:
+
+[,bash]
+----
+sqlite3 data/plaid.db
+----
+
+The database runs in WAL mode, so a plain file copy misses un-checkpointed writes in the `-wal` sidecar.
+For an ad-hoc backup of a running server, use the SQLite backup API:
+
+[,bash]
+----
+sqlite3 data/plaid.db ".backup /path/to/backup-$(date +%F).db"
+----
+
+The server also takes automatic nightly snapshots. See the `[backup]` section of `data/config.toml`.

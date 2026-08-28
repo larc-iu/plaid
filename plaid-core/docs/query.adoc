@@ -57,7 +57,7 @@ are built from the same handful of basic clauses.
 ----
 from plaid_client import PlaidClient
 client = PlaidClient.login(
-    "http://localhost:8085", "you@example.com", "password")
+    "http://localhost:8080", "you@example.com", "password")
 
 # every NOUN immediately followed by a VERB, across all readable projects
 result = client.query({

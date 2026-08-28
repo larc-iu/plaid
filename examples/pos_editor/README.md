@@ -15,7 +15,7 @@ A React-based Part-of-Speech (POS) tagging editor that demonstrates the capabili
 ## Prerequisites
 
 - Node.js (v16 or higher)
-- A running Plaid API server (default: http://localhost:8085)
+- A running Plaid API server (default: http://localhost:8080)
 
 ## Installation
 
@@ -39,7 +39,7 @@ A React-based Part-of-Speech (POS) tagging editor that demonstrates the capabili
 ## Usage
 
 ### 1. Login
-- Enter your Plaid server URL (default: http://localhost:8085)
+- Enter your Plaid server URL (default: http://localhost:8080)
 - Provide your username and password
 - Click "Login" to authenticate
 

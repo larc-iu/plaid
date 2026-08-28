@@ -4,14 +4,17 @@ A React-based demo application for editing Universal Dependencies trees using th
 
 ## Prerequisites
 
-- Node.js 16+ installed
-- Plaid server running on port 8085 (default)
+- Node.js 20+ installed
+- A Plaid server running on port **8085**. That is the port of the
+  `clojure -X:dev` development server, which is what `npm run dev` proxies
+  `/api` to (see `vite.config.js`). A release `java -jar plaid.jar` listens on
+  8080 instead, so point the proxy at 8080 if that is what you are running.
 
 ## Quick Start
 
-1. Make sure Plaid server is running:
+1. Make sure a Plaid server is running. From `plaid-core/`:
    ```bash
-   java -jar plaid.jar
+   clojure -X:dev   # then type (start) at the REPL
    ```
 
 2. Install dependencies:
@@ -53,5 +56,5 @@ hierarchy (sentences, words, morphemes, annotations, dependencies) for a documen
 ```bash
 python services/ud_parse_stanza.py            # serve every accessible project (default)
 python services/ud_parse_stanza.py PROJECT_ID  # serve one project
-python services/ud_parse_stanza.py --url http://localhost:8085
+python services/ud_parse_stanza.py --url http://localhost:8085  # default is 8080
 ```

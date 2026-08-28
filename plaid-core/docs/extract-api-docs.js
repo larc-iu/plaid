@@ -739,7 +739,7 @@ function generateHTML(title, bundles, lang) {
       <h2>Quick Start</h2>
       <pre><code>import PlaidClient from 'plaid-client';
 
-const client = await PlaidClient.login('http://localhost:8085', 'user@example.com', 'password');
+const client = await PlaidClient.login('http://localhost:8080', 'user@example.com', 'password');
 
 // Create a project
 const project = await client.projects.create('My Project');
@@ -760,7 +760,7 @@ const results = await client.submitBatch();</code></pre>
       <h2>Quick Start</h2>
       <pre><code>from plaid_client import PlaidClient
 
-client = PlaidClient.login("http://localhost:8085", "user@example.com", "password")
+client = PlaidClient.login("http://localhost:8080", "user@example.com", "password")
 
 # Create a project
 project = client.projects.create("My Project")

@@ -2,7 +2,7 @@ import getpass
 from plaid_client import PlaidClient
 
 def main():
-    client = PlaidClient.login("http://localhost:8085", input("Username: "), getpass.getpass("Password: "))
+    client = PlaidClient.login("http://localhost:8080", input("Username: "), getpass.getpass("Password: "))
 
     projects = client.projects.list()
     print("Projects:", projects)

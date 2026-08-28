@@ -49,13 +49,15 @@ Read more:
 
 == Quick Start
 
-Follow the instructions below to quickly set up a local development server using the latest Plaid release.
+Follow the instructions below to quickly set up a local Plaid server using the latest release.
 
 1. Find the latest release and download `plaid.jar`: <https://github.com/larc-iu/plaid/releases>
 2. With https://www.oracle.com/java/technologies/downloads/[JDK 21 or later], use `java` to run the JAR: `java -jar plaid.jar`
 3. Enter an admin username and password when prompted.
 4. Visit <http://localhost:8080/api/v1/docs/> to ensure the server is running.
 5. Try one of the bundled apps in your browser: the UD editor at <http://localhost:8080/ud/> or the IGT editor at <http://localhost:8080/igt/>.
+
+NOTE: Plaid listens on port 8080. On first launch it writes `data/config.toml` next to the JAR with every setting at its default, so to use a different port, set `[server] port` there and restart. (Plaid's own development server runs on 8085 instead, so that it does not collide with a release JAR on the same machine. See the link:dev.html[development guide] if you are building Plaid from source.)
 
 == Learn More
 
@@ -91,6 +93,10 @@ If you are interested in learning more about Plaid's core concepts or using one 
   <a href="api-py.html">
     <span class="ico badge">Py</span>
     <div class="txt"><b>Python Client</b><span>API reference for the Python client library.</span></div>
+  </a>
+  <a href="dev.html">
+    <span class="ico"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+    <div class="txt"><b>Development Guide</b><span>Build Plaid from source and work on the server or the bundled apps.</span></div>
   </a>
 </div>
 ++++

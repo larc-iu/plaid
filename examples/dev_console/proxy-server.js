@@ -4,8 +4,9 @@ const fs = require('fs');
 const path = require('path');
 
 const PROXY_PORT = 8086;
-const TARGET_HOST = 'localhost';
-const TARGET_PORT = 8085;
+const TARGET_HOST = process.env.PLAID_HOST || 'localhost';
+// The released jar listens on 8080; a `clojure -X:dev` server listens on 8085.
+const TARGET_PORT = Number(process.env.PLAID_PORT) || 8080;
 
 // Resolve the plaid-client-js package relative to this file
 const CLIENT_PKG = path.resolve(__dirname, '../../plaid-client-js');
