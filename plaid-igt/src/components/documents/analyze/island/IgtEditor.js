@@ -144,10 +144,17 @@ export class IgtEditor {
     this._copyMenu = null;
     this._copiedFlash = null;
     this._copiedTimer = null;
+    // Which annotation rows are minimized, and whether the row menu is open.
+    // Minimizing is a per-project VIEW preference (a field methods course cares
+    // about two of twelve rows at a time), so it lives in localStorage rather
+    // than project config: it is per-person, not per-project-wide.
+    this._collapsedRows = this._loadCollapsedRows();
+    this._rowMenu = false;
     // Any click outside an opener/popover/menu (those stopPropagation) closes it.
     this._onDocClick = () => {
       this._closePopover();
       this._closeCopyMenu();
+      this._closeRowMenu();
     };
     document.addEventListener('click', this._onDocClick);
     // The popover is position:fixed; scrolling the page or the grid, or
@@ -1837,29 +1844,158 @@ export class IgtEditor {
     `;
   }
 
+  // ---- minimized rows ------------------------------------------------------
+  // A row is identified by scope+name (matching the field key convention in
+  // igtConfig), so renaming a field retires its old preference rather than
+  // silently minimizing an unrelated new one.
+  _rowStorageKey() {
+    return `plaid_igt_collapsed_rows:${this.doc?.project?.id ?? 'unknown'}`;
+  }
+
+  _loadCollapsedRows() {
+    try {
+      const raw = localStorage.getItem(this._rowStorageKey());
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      // Private mode / blocked storage: minimizing still works for this
+      // session, it just will not be remembered.
+      return new Set();
+    }
+  }
+
+  _saveCollapsedRows() {
+    try {
+      localStorage.setItem(this._rowStorageKey(), JSON.stringify([...this._collapsedRows]));
+    } catch {
+      /* storage unavailable — keep the in-session state */
+    }
+  }
+
+  // Every minimizable row, in the order it appears in the grid. The word-form
+  // and sentence rows are deliberately absent: the word forms ARE the text, and
+  // hiding them would leave columns with nothing to align against.
+  _rows(ctx) {
+    const rows = [
+      ...ctx.orthographies.map((name) => ({ key: `orth:${name}`, name, scope: 'orthography' })),
+      ...ctx.wordFields.map((name) => ({ key: `word:${name}`, name, scope: 'word' })),
+    ];
+    if (ctx.hasMorphemes) {
+      rows.push({ key: 'morphform', name: 'Morphemes', scope: 'morpheme' });
+      rows.push(
+        ...ctx.morphFields.map((name) => ({ key: `morph:${name}`, name, scope: 'morpheme' })),
+      );
+    }
+    return rows;
+  }
+
+  _isCollapsed(key) {
+    return this._collapsedRows.has(key);
+  }
+
+  // Class suffix shared by a row's label and all of its cells.
+  _rowCls(key) {
+    return this._isCollapsed(key) ? ' is-row-collapsed' : '';
+  }
+
+  _toggleRow(key) {
+    if (this._collapsedRows.has(key)) this._collapsedRows.delete(key);
+    else this._collapsedRows.add(key);
+    this._saveCollapsedRows();
+    this._render(true);
+  }
+
+  _setAllRows(ctx, collapsed) {
+    this._collapsedRows = collapsed ? new Set(this._rows(ctx).map((r) => r.key)) : new Set();
+    this._saveCollapsedRows();
+    this._render(true);
+  }
+
+  _closeRowMenu() {
+    if (!this._rowMenu) return;
+    this._rowMenu = false;
+    this._render(true);
+  }
+
+  _rowMenuPanel(ctx) {
+    const rows = this._rows(ctx);
+    const anyCollapsed = rows.some((r) => this._isCollapsed(r.key));
+    return html`
+      <div class="igt-rowmenu" role="menu" @click=${(e) => e.stopPropagation()}>
+        <div class="igt-rowmenu__head">
+          <span>Rows</span>
+          <button
+            type="button"
+            class="igt-rowmenu__all"
+            @click=${() => this._setAllRows(ctx, !anyCollapsed)}
+          >
+            ${anyCollapsed ? 'Expand all' : 'Minimize all'}
+          </button>
+        </div>
+        ${rows.map((r) => {
+          const collapsed = this._isCollapsed(r.key);
+          return html`
+            <label class="igt-rowmenu__item" title=${`${r.name} (${r.scope})`}>
+              <input
+                type="checkbox"
+                .checked=${!collapsed}
+                @change=${() => this._toggleRow(r.key)}
+              />
+              <span class="igt-rowmenu__name">${r.name}</span>
+              <span class="igt-rowmenu__scope">${r.scope}</span>
+            </label>
+          `;
+        })}
+        <div class="igt-rowmenu__hint">minimized rows stay as a thin stripe</div>
+      </div>
+    `;
+  }
+
   _labels(ctx) {
     // Each label is truncated with an ellipsis (see .igt-row-label__text) so a
     // long field/orthography name can't spill into the token grid; the row's
     // title attr keeps the full name available on hover.
-    const lbl = (cls, name, scope) =>
-      html` <div class="igt-row-label ${cls}" title=${`${name} (${scope})`}>
+    // Clicking any label opens the row menu (minimize / expand). The whole label
+    // is the hit target rather than a separate affordance: the column is narrow,
+    // and a 6px minimized row has no room for an icon.
+    const openMenu = (e) => {
+      e.stopPropagation();
+      this._rowMenu = !this._rowMenu;
+      this._render(true);
+    };
+    const lbl = (cls, name, scope, key) => {
+      const collapsed = this._isCollapsed(key);
+      return html` <div
+        class="igt-row-label ${cls}${this._rowCls(key)}"
+        data-row=${key}
+        title=${collapsed ? `${name} (${scope}) — minimized` : `${name} (${scope})`}
+        role="button"
+        tabindex="0"
+        aria-expanded=${collapsed ? 'false' : 'true'}
+        @click=${openMenu}
+        @keydown=${(e) => {
+          if (e.key === 'Enter' || e.key === ' ') openMenu(e);
+        }}
+      >
         <span class="igt-row-label__text">${name}</span>
       </div>`;
+    };
     return html`
       <div class="igt-labels">
-        <div class="igt-row-label igt-row-label--spacer"></div>
-        ${ctx.orthographies.map((n) => lbl('igt-row-label--orth', n, 'orthography'))}
-        ${ctx.wordFields.map((n) => lbl('igt-row-label--word', n, 'word'))}
+        <div class="igt-row-label igt-row-label--spacer">
+          ${this._rowMenu ? this._rowMenuPanel(ctx) : nothing}
+        </div>
+        ${ctx.orthographies.map((n) => lbl('igt-row-label--orth', n, 'orthography', `orth:${n}`))}
+        ${ctx.wordFields.map((n) => lbl('igt-row-label--word', n, 'word', `word:${n}`))}
         ${ctx.hasMorphemes
-          ? html`<div
-              class="igt-row-label igt-row-label--morph igt-row-label--morphform"
-              title="Morphemes"
-            >
-              <span class="igt-row-label__text">Morphemes</span>
-            </div>`
+          ? lbl(
+              'igt-row-label--morph igt-row-label--morphform',
+              'Morphemes',
+              'morpheme',
+              'morphform',
+            )
           : nothing}
         ${ctx.hasMorphemes
-          ? ctx.morphFields.map((n) => lbl('igt-row-label--morph', n, 'morpheme'))
+          ? ctx.morphFields.map((n) => lbl('igt-row-label--morph', n, 'morpheme', `morph:${n}`))
           : nothing}
       </div>
     `;
@@ -1901,7 +2037,7 @@ export class IgtEditor {
         </div>
         ${ctx.orthographies.map(
           (name) => html`
-            <div class="igt-cell">
+            <div class="igt-cell${this._rowCls(`orth:${name}`)}" data-row=${`orth:${name}`}>
               ${this._field({
                 key: `or:${token.id}:${name}`,
                 value: token.orthographies?.[name] ?? '',
@@ -1913,7 +2049,7 @@ export class IgtEditor {
         )}
         ${ctx.wordFields.map(
           (name) =>
-            html`<div class="igt-cell">
+            html`<div class="igt-cell${this._rowCls(`word:${name}`)}" data-row=${`word:${name}`}>
               ${this._field({
                 key: `wa:${token.id}:${name}`,
                 value: token.annotations?.[name]?.value ?? '',
@@ -1985,7 +2121,10 @@ export class IgtEditor {
     const prov = provDisplay(morph.metadata);
     return html`
       <div class="igt-morph-col">
-        <div class="igt-morph-form ${stem ? 'igt-morph-form--stem' : ''}">
+        <div
+          class="igt-morph-form ${stem ? 'igt-morph-form--stem' : ''}${this._rowCls('morphform')}"
+          data-row="morphform"
+        >
           ${this._vocabFace(
             html`<input
               class="igt-field igt-morph-field ${filled
@@ -2011,7 +2150,7 @@ export class IgtEditor {
         </div>
         ${ctx.morphFields.map(
           (name) => html`
-            <div class="igt-morph-cell">
+            <div class="igt-morph-cell${this._rowCls(`morph:${name}`)}" data-row=${`morph:${name}`}>
               ${this._field({
                 key: `ma:${morph.id}:${name}`,
                 value: morph.annotations?.[name]?.value ?? '',

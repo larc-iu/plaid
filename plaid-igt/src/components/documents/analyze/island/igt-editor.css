@@ -1172,3 +1172,139 @@
   font-style: italic;
   color: #92400e;
 }
+
+/* ---- minimized rows ------------------------------------------------------
+   Clicking any row label opens the row menu; unchecking a row shrinks it to a
+   stripe. The point of keeping ~6px rather than removing the row outright is
+   that a hidden row is indistinguishable from a row that was never configured,
+   and someone who minimized "Gloss (ru)" last week needs a way to notice it is
+   still there. The label keeps its scope color at low opacity so the stripe
+   reads as "something is folded here", not as a divider. */
+.igt-labels .igt-row-label.is-row-collapsed,
+.igt-token-col .igt-cell.is-row-collapsed,
+.igt-morph-col .igt-morph-form.is-row-collapsed,
+.igt-morph-col .igt-morph-cell.is-row-collapsed {
+  height: 6px;
+  min-height: 6px;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+/* Hide the contents rather than the box: the box still has to occupy its 6px in
+   every column so the label column and the token columns stay in lockstep. */
+.igt-row-label.is-row-collapsed .igt-row-label__text,
+.igt-cell.is-row-collapsed > *,
+.igt-morph-form.is-row-collapsed > *,
+.igt-morph-cell.is-row-collapsed > * {
+  display: none;
+}
+/* The faded stripe. The label already carries a 3px scope-colored left border;
+   at 35% it stays legible as a cue without competing with live rows. */
+.igt-row-label.is-row-collapsed {
+  opacity: 0.35;
+  cursor: pointer;
+}
+.igt-row-label.is-row-collapsed:hover {
+  opacity: 0.7;
+}
+/* A minimized row still needs to read as a band across the grid, so give the
+   data cells a hairline of the same neutral the grid uses elsewhere. */
+.igt-cell.is-row-collapsed,
+.igt-morph-cell.is-row-collapsed,
+.igt-morph-form.is-row-collapsed {
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.16) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+/* Labels are interactive now — make that discoverable without adding chrome. */
+.igt-row-label[role='button'] {
+  cursor: pointer;
+}
+.igt-row-label[role='button']:hover .igt-row-label__text {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+.igt-row-label[role='button']:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: -2px;
+}
+
+/* ---- row menu ---- */
+.igt-rowmenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 40;
+  min-width: 220px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #d5dae1;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  font-weight: 400;
+  cursor: default;
+}
+/* The spacer cell is the menu's positioning context (it fronts the label
+   column and is the one row that is never minimized). */
+.igt-row-label--spacer {
+  position: relative;
+  overflow: visible;
+}
+.igt-rowmenu__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 6px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+.igt-rowmenu__all {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--igt-blue);
+  cursor: pointer;
+}
+.igt-rowmenu__all:hover {
+  text-decoration: underline;
+}
+.igt-rowmenu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.igt-rowmenu__item:hover {
+  background: #f1f5f9;
+}
+.igt-rowmenu__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.igt-rowmenu__scope {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #94a3b8;
+}
+.igt-rowmenu__hint {
+  padding: 6px 6px 2px;
+  font-size: 10px;
+  color: #94a3b8;
+}
