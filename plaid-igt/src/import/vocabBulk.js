@@ -293,6 +293,27 @@ export const OVERRIDE_VALUES = {
 };
 
 /**
+ * When several entries share the form there is no single "the entry", so the
+ * answer has to name one: `overwrite:2` replaces the second, `fill:2` fills its
+ * blanks. The number is a 1-based position in the decision's `matches`, which
+ * is what the reviewer sees listed. The policy alone still means "the only
+ * candidate", which is all a single-match row ever needs.
+ */
+export const targetedAnswer = (policy, index) => `${policy}:${index + 1}`;
+
+/** The policy each kind targets at one entry out of several. */
+export const TARGETED_POLICY = {
+  conflict: CONFLICT_OVERWRITE,
+  ambiguous: ENRICH_FILL,
+};
+
+const parseAnswer = (raw) => {
+  const [policy, position] = String(raw ?? '').split(':');
+  const index = position ? Number(position) - 1 : null;
+  return { policy, index: Number.isInteger(index) && index >= 0 ? index : null };
+};
+
+/**
  * Plan a bulk import against the vocabulary's current contents.
  *
  * Every decision carries what a reviewer needs to second-guess it: the row's
@@ -335,10 +356,17 @@ export const planVocabImport = ({
 
   // The row's own answer wins over its bucket's, as long as it still makes
   // sense for how the row classified this time round.
-  const policyFor = (kind, line) => {
-    const own = overrides?.[line];
-    return own && OVERRIDE_VALUES[kind]?.includes(own) ? own : policies[kind];
+  // The row's own answer wins over its bucket's, as long as it still makes
+  // sense for how the row classified this time round. A targeted answer also
+  // has to still point at a candidate that exists.
+  const answerFor = (kind, line, candidates = []) => {
+    const { policy, index } = parseAnswer(overrides?.[line]);
+    const targeted = index != null && TARGETED_POLICY[kind] === policy;
+    if (targeted && index < candidates.length) return { policy, index };
+    if (!index && OVERRIDE_VALUES[kind]?.includes(policy)) return { policy, index: null };
+    return { policy: policies[kind], index: null };
   };
+  const policyFor = (kind, line) => answerFor(kind, line).policy;
 
   // Candidate pool, keyed by form. Entries created by earlier rows of this same
   // import join the pool, so a repeated row lands as `identical` instead of
@@ -386,11 +414,14 @@ export const planVocabImport = ({
 
   // A candidate frozen at decision time. Pool values are mutated as later rows
   // fill blanks in, so a live reference would show a reviewer the wrong thing.
-  const snapshot = (c, target) => ({
+  // `canTarget` is false for a candidate that cannot receive this row: an
+  // ambiguous row can only expand an entry it agrees with.
+  const snapshot = (c, target, canTarget = true) => ({
     form: c.form,
     values: { ...c.values },
     pending: c.id == null,
     target: !!target,
+    canTarget,
   });
 
   const record = (entry, d) =>
@@ -471,7 +502,7 @@ export const planVocabImport = ({
         changes,
       };
       if (policyFor('enrich', entry.line) !== ENRICH_FILL) {
-        record(entry, { ...base, action: 'skip', detail: `could fill in ${added}` });
+        record(entry, { ...base, action: 'skip', detail: `could add ${added}` });
         continue;
       }
       Object.assign(target.values, patch);
@@ -484,18 +515,41 @@ export const planVocabImport = ({
       } else {
         addUpdate(target.id, patch);
       }
-      record(entry, { ...base, action: 'update', detail: `fills in ${added}` });
+      record(entry, { ...base, action: 'update', detail: `adds ${added}` });
       continue;
     }
 
     if (compatible.length > 1) {
       counts.ambiguous += 1;
       const detail = `${compatible.length} entries share this form`;
+      const { policy, index } = answerFor('ambiguous', entry.line, candidates);
+      // A reviewer looking at the entries can often tell which one the row
+      // describes, so a targeted answer names it. Only a compatible candidate
+      // can be expanded: the others contradict the row somewhere.
+      const chosen = index != null ? candidates[index] : null;
+      if (chosen && compatible.includes(chosen)) {
+        const changes = diffAgainst(chosen, entry, fields);
+        const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
+        Object.assign(chosen.values, patch);
+        if (chosen.id == null) Object.assign(chosen.pending.metadata, patch);
+        else addUpdate(chosen.id, patch);
+        record(entry, {
+          kind: 'ambiguous',
+          action: 'update',
+          targetId: chosen.id,
+          targetForm: chosen.form,
+          candidates: candidates.length,
+          matches: candidates.map((c) => snapshot(c, c === chosen, compatible.includes(c))),
+          changes,
+          detail: `adds ${changes.map((c) => c.field).join(', ')}`,
+        });
+        continue;
+      }
       const extra = {
         candidates: candidates.length,
-        matches: candidates.map((c) => snapshot(c, false)),
+        matches: candidates.map((c) => snapshot(c, false, compatible.includes(c))),
       };
-      if (policyFor('ambiguous', entry.line) === AMBIGUOUS_NEW) {
+      if (policy === AMBIGUOUS_NEW) {
         createFrom(entry, fields, 'ambiguous', `${detail}, so added separately`, extra);
       } else {
         record(entry, {
@@ -513,8 +567,11 @@ export const planVocabImport = ({
     // only sensible target when there is exactly one, and the clearest
     // illustration of the clash when there are several.
     counts.conflict += 1;
-    const mode = policyFor('conflict', entry.line);
-    const first = candidates[0];
+    const { policy: mode, index: chosenIndex } = answerFor('conflict', entry.line, candidates);
+    // Diff against whichever entry the answer names, falling back to the first,
+    // which is the only sensible target when there is one and the clearest
+    // illustration of the clash when there are several.
+    const first = candidates[chosenIndex ?? 0];
     const changes = diffAgainst(first, entry, fields);
     const clashed = changes
       .filter((c) => c.from !== '')
@@ -525,7 +582,9 @@ export const planVocabImport = ({
       targetId: first.id,
       targetForm: first.form,
       candidates: candidates.length,
-      matches: candidates.map((c) => snapshot(c, c === first && candidates.length === 1)),
+      matches: candidates.map((c) =>
+        snapshot(c, c === first && (candidates.length === 1 || chosenIndex != null)),
+      ),
       changes,
     };
 
@@ -538,7 +597,7 @@ export const planVocabImport = ({
       });
       continue;
     }
-    if (mode === CONFLICT_OVERWRITE && candidates.length === 1) {
+    if (mode === CONFLICT_OVERWRITE && (candidates.length === 1 || chosenIndex != null)) {
       const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
       const replaced = Object.keys(patch).join(', ');
       Object.assign(first.values, patch);
@@ -590,7 +649,7 @@ export const serializeImportReport = (decisions) => {
   const cell = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
   const outcome = (d) => {
     if (d.action === 'create') return 'Added';
-    if (d.action === 'update') return d.kind === 'conflict' ? 'Replaced' : 'Updated';
+    if (d.action === 'update') return d.kind === 'conflict' ? 'Replaced' : 'Expanded';
     return 'Skipped';
   };
   const lines = ['Line\tForm\tOutcome\tWhy\tValues'];

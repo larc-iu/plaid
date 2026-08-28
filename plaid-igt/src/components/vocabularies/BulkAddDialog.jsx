@@ -26,15 +26,10 @@ import { downloadBlob, sanitizeFilename } from '@/export/files';
 import {
   FORM,
   IGNORE,
-  ENRICH_FILL,
-  ENRICH_SKIP,
-  CONFLICT_SKIP,
-  CONFLICT_NEW,
-  CONFLICT_OVERWRITE,
-  AMBIGUOUS_SKIP,
-  AMBIGUOUS_NEW,
   DEFAULT_STRATEGIES,
   OVERRIDE_VALUES,
+  TARGETED_POLICY,
+  targetedAnswer,
   parseTable,
   delimiterName,
   guessColumns,
@@ -72,8 +67,7 @@ const SAMPLE_VALUES = 3;
 // saying it differently for the two only invites the question why.
 const actionLabel = (d) => {
   if (d.action === 'create') return 'will be added';
-  if (d.action === 'update')
-    return d.kind === 'conflict' ? 'will be replaced' : 'will be filled in';
+  if (d.action === 'update') return d.kind === 'conflict' ? 'will be replaced' : 'will be expanded';
   return 'skipped';
 };
 const actionTone = (d) => {
@@ -85,28 +79,29 @@ const actionTone = (d) => {
 // Short labels for the per-row choice. The bucket dropdowns say the same thing
 // at length, since there the subject is a whole pile of rows.
 const ROW_CHOICES = {
-  fill: 'Fill in blanks',
+  fill: 'Expand',
   skip: 'Skip',
   new: 'Add',
   overwrite: 'Replace existing',
 };
 
-// The same choices spelled out for the bucket dropdowns, where the subject is
-// a whole pile of rows rather than one.
-const BUCKET_CHOICES = {
-  enrich: [
-    [ENRICH_FILL, 'Fill in the blank fields'],
-    [ENRICH_SKIP, 'Leave the existing entry alone'],
-  ],
-  conflict: [
-    [CONFLICT_SKIP, "Skip them, keep what's here"],
-    [CONFLICT_NEW, 'Add each as a separate entry'],
-    [CONFLICT_OVERWRITE, 'Replace the existing values'],
-  ],
-  ambiguous: [
-    [AMBIGUOUS_SKIP, 'Skip them'],
-    [AMBIGUOUS_NEW, 'Add each as a separate entry'],
-  ],
+/**
+ * The answers offered on one row. When several entries share the form there is
+ * no single "the entry", so the targeting policy splits into one numbered
+ * option per entry, matching the numbers on the comparison below it.
+ */
+const rowChoices = (d) => {
+  const base = OVERRIDE_VALUES[d.kind] ?? [];
+  const targeted = TARGETED_POLICY[d.kind];
+  if (!targeted || d.matches.length < 2) {
+    return base.map((v) => ({ value: v, label: ROW_CHOICES[v] }));
+  }
+  const out = base.filter((v) => v !== targeted).map((v) => ({ value: v, label: ROW_CHOICES[v] }));
+  d.matches.forEach((m, i) => {
+    if (m.canTarget === false) return;
+    out.push({ value: targetedAnswer(targeted, i), label: `${ROW_CHOICES[targeted]} ${i + 1}` });
+  });
+  return out;
 };
 
 // Views over the plan. "Needs a decision" is first and is the default whenever
@@ -120,10 +115,31 @@ const FILTERS = {
   changes: { label: 'Will change something', match: (d) => d.action !== 'skip' },
   all: { label: 'Every row', match: () => true },
   new: { label: 'New entries', match: (d) => d.kind === 'new' },
-  enrich: { label: 'Fills in blanks', match: (d) => d.kind === 'enrich' },
+  enrich: { label: 'Expand an entry', match: (d) => d.kind === 'enrich' },
+  conflict: { label: 'Disagree with an entry', match: (d) => d.kind === 'conflict' },
+  ambiguous: { label: 'Could belong to several', match: (d) => d.kind === 'ambiguous' },
   identical: { label: 'Already present', match: (d) => d.kind === 'identical' },
   blank: { label: 'No form', match: (d) => d.kind === 'blank' },
 };
+
+// The summary, in order. Counts only: every control lives with the rows it acts
+// on, in the list above, so nothing is offered in two places.
+const SUMMARY = [
+  { kind: 'new', tone: 'good', label: 'new entries will be added' },
+  { kind: 'enrich', tone: 'good', label: 'rows expand existing entries' },
+  { kind: 'conflict', tone: 'warn', label: 'rows disagree with an entry that has the same form' },
+  {
+    kind: 'ambiguous',
+    tone: 'warn',
+    label: 'rows could belong to more than one entry sharing that form',
+  },
+  {
+    kind: 'identical',
+    tone: 'muted',
+    label: 'rows are already in the vocabulary, so nothing to do',
+  },
+  { kind: 'blank', tone: 'muted', label: 'rows have no form, so they are skipped' },
+];
 
 const selectClass =
   'h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60';
@@ -138,28 +154,6 @@ const MORPH_BY_KEY = new Map(
 );
 const normalizeValue = (field, raw) =>
   field === 'morphType' ? (MORPH_BY_KEY.get(raw.toLowerCase().replace(/[\s_-]+/g, '')) ?? '') : raw;
-
-// A summary row in the review step: count, what it means, and the choice (if
-// any) the user has about it.
-const Bucket = ({ tone, count, label, children }) =>
-  count === 0 ? null : (
-    <div className="flex items-start gap-3 border-b py-2 last:border-b-0">
-      <span
-        className={cn(
-          'min-w-[4.5rem] text-right text-sm font-semibold tabular-nums',
-          tone === 'good' && 'text-emerald-600',
-          tone === 'warn' && 'text-amber-600',
-          tone === 'muted' && 'text-muted-foreground',
-        )}
-      >
-        {n(count)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm">{label}</p>
-        {children && <div className="mt-1.5">{children}</div>}
-      </div>
-    </div>
-  );
 
 // Whether two values are the same as far as the merge is concerned. Mirrors the
 // planner's comparison so the highlighting agrees with the decision.
@@ -230,9 +224,9 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
               value={override ?? fallback}
               onChange={(e) => onChoose(e.target.value)}
             >
-              {OVERRIDE_VALUES[d.kind].map((v) => (
-                <option key={v} value={v}>
-                  {ROW_CHOICES[v]}
+              {rowChoices(d).map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
                 </option>
               ))}
             </select>
@@ -263,7 +257,13 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
               const clash = clashWith(m);
               return (
                 <tr key={i}>
-                  <td className="px-2 py-0.5 align-top text-muted-foreground">
+                  <td
+                    className={cn(
+                      'px-2 py-0.5 align-top text-muted-foreground',
+                      m.target && 'font-medium text-foreground',
+                    )}
+                  >
+                    {d.matches.length > 1 && `${i + 1}. `}
                     {m.pending ? 'Earlier in file' : 'Already here'}
                     {/* The form only earns space when it isn't the row's own,
                         which happens under case-insensitive matching. */}
@@ -649,30 +649,7 @@ export const BulkAddDialog = ({
     );
   };
 
-  // A bucket's policy. Row answers that now agree with it are dropped, so the
-  // "N row choices" count only ever means rows that differ from their bucket.
-  const bucketSelect = (kind) => (
-    <select
-      className={selectClass}
-      value={strategies[kind]}
-      onChange={(e) => {
-        const value = e.target.value;
-        setStrategies((prev) => ({ ...prev, [kind]: value }));
-        setOverrides((prev) =>
-          Object.fromEntries(Object.entries(prev).filter(([, v]) => v !== value)),
-        );
-      }}
-    >
-      {BUCKET_CHOICES[kind].map(([v, label]) => (
-        <option key={v} value={v}>
-          {label}
-        </option>
-      ))}
-    </select>
-  );
-
   const renderReview = () => {
-    const { counts } = plan;
     const rows = plan.decisions.filter(FILTERS[filter].match);
     const visible = rows.slice(0, shownRows);
     // Columns are shared by every row on screen, so the same field sits in the
@@ -681,24 +658,54 @@ export const BulkAddDialog = ({
     const columns = fieldNames.filter((f) =>
       visible.some((d) => has(d.values, f) || d.matches.some((m) => has(m.values, f))),
     );
+    // One answer for everything the filter has selected. Offered only where it
+    // means the same thing for every row: the answers common to the classes on
+    // screen, which for a mixed view is their overlap and for new or already
+    // present rows is nothing at all.
+    const kinds = [...new Set(rows.map((d) => d.kind))];
+    const bulk = kinds.length
+      ? kinds.map((k) => OVERRIDE_VALUES[k] ?? []).reduce((a, b) => a.filter((v) => b.includes(v)))
+      : [];
+
     return (
       <div className="flex flex-col gap-3">
-        {/* The rows come first: the decisions are the thing being reviewed, and
-            the bucket levers below are what you reach for once you have seen
-            what they are doing. */}
         <div className="rounded-md border">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2 py-1.5">
-            <select
-              className={selectClass}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            >
-              {Object.entries(FILTERS).map(([key, f]) => (
-                <option key={key} value={key}>
-                  {f.label} ({n(plan.decisions.filter(f.match).length)})
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                className={selectClass}
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              >
+                {Object.entries(FILTERS).map(([key, f]) => (
+                  <option key={key} value={key}>
+                    {f.label} ({n(plan.decisions.filter(f.match).length)})
+                  </option>
+                ))}
+              </select>
+              {bulk.length > 0 && rows.length > 1 && (
+                <select
+                  className={selectClass}
+                  value=""
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (!value) return;
+                    setOverrides((prev) => {
+                      const next = { ...prev };
+                      for (const d of rows) next[d.line] = value;
+                      return next;
+                    });
+                  }}
+                >
+                  <option value="">Set all {n(rows.length)} to…</option>
+                  {bulk.map((v) => (
+                    <option key={v} value={v}>
+                      {ROW_CHOICES[v]}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
             <div className="flex items-center gap-1">
               {overrideCount > 0 && (
                 <Button
@@ -707,7 +714,7 @@ export const BulkAddDialog = ({
                   className="h-6 text-xs"
                   onClick={() => setOverrides({})}
                 >
-                  Clear {n(overrideCount)} row choice{overrideCount === 1 ? '' : 's'}
+                  Reset {n(overrideCount)} choice{overrideCount === 1 ? '' : 's'}
                 </Button>
               )}
               <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={downloadReport}>
@@ -730,8 +737,8 @@ export const BulkAddDialog = ({
                   onChoose={(value) =>
                     setOverrides((prev) => {
                       const next = { ...prev };
-                      // Falling back to the bucket's answer is the same as
-                      // having no answer of your own.
+                      // Falling back to the default is the same as having no
+                      // answer of your own.
                       if (value === strategies[d.kind]) delete next[d.line];
                       else next[d.line] = value;
                       return next;
@@ -761,39 +768,35 @@ export const BulkAddDialog = ({
           </p>
         )}
 
+        {/* Counts, and a way to get to the rows behind them. No controls: the
+            answers live on the rows, and offering them twice invites the
+            question of which one wins. */}
         <div className="rounded-md border px-3 py-1">
-          <Bucket tone="good" count={counts.new} label="new entries will be added" />
-          <Bucket
-            tone="muted"
-            count={counts.identical}
-            label="rows are already in the vocabulary, with nothing to add, so they are skipped"
-          />
-          <Bucket
-            tone="good"
-            count={counts.enrich}
-            label="rows fill in blanks on an entry that's already here"
-          >
-            {bucketSelect('enrich')}
-          </Bucket>
-          <Bucket
-            tone="warn"
-            count={counts.conflict}
-            label="rows disagree with an entry that has the same form, often a second sense and sometimes a correction"
-          >
-            {bucketSelect('conflict')}
-          </Bucket>
-          <Bucket
-            tone="warn"
-            count={counts.ambiguous}
-            label="rows could belong to more than one entry sharing that form"
-          >
-            {bucketSelect('ambiguous')}
-          </Bucket>
-          <Bucket
-            tone="muted"
-            count={counts.blank}
-            label="rows have no form, so they are skipped"
-          />
+          {SUMMARY.map(({ kind, tone, label }) =>
+            plan.counts[kind] === 0 ? null : (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setFilter(kind)}
+                className={cn(
+                  'flex w-full items-center gap-3 border-b py-1.5 text-left last:border-b-0 hover:bg-muted/50',
+                  filter === kind && 'font-medium',
+                )}
+              >
+                <span
+                  className={cn(
+                    'min-w-[4.5rem] text-right text-sm font-semibold tabular-nums',
+                    tone === 'good' && 'text-emerald-600',
+                    tone === 'warn' && 'text-amber-600',
+                    tone === 'muted' && 'text-muted-foreground',
+                  )}
+                >
+                  {n(plan.counts[kind])}
+                </span>
+                <span className="min-w-0 flex-1 text-sm">{label}</span>
+              </button>
+            ),
+          )}
         </div>
 
         <label className="flex items-center gap-2 text-sm">

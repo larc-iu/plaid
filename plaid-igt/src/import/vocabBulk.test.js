@@ -16,6 +16,7 @@ import {
   planVocabImport,
   serializeImportReport,
   describeChange,
+  targetedAnswer,
   OVERRIDE_VALUES,
   CONFLICT_SKIP,
   ENRICH_FILL,
@@ -405,8 +406,20 @@ describe('matched entries on a decision', () => {
     const p = plan([entry(1, 'kan', { definition: 'an opening' })], homonyms);
     expect(p.decisions[0].kind).toBe('ambiguous');
     expect(p.decisions[0].matches).toEqual([
-      { form: 'kan', values: { gloss: 'house', pos: 'N' }, pending: false, target: false },
-      { form: 'kan', values: { gloss: 'mouth', pos: 'N' }, pending: false, target: false },
+      {
+        form: 'kan',
+        values: { gloss: 'house', pos: 'N' },
+        pending: false,
+        target: false,
+        canTarget: true,
+      },
+      {
+        form: 'kan',
+        values: { gloss: 'mouth', pos: 'N' },
+        pending: false,
+        target: false,
+        canTarget: true,
+      },
     ]);
   });
 
@@ -419,7 +432,7 @@ describe('matched entries on a decision', () => {
     const p = plan([entry(1, 'yalu', { gloss: 'fire' }), entry(2, 'yalu', { gloss: 'wood' })], []);
     expect(p.decisions[1]).toMatchObject({ kind: 'conflict' });
     expect(p.decisions[1].matches).toEqual([
-      { form: 'yalu', values: { gloss: 'fire' }, pending: true, target: true },
+      { form: 'yalu', values: { gloss: 'fire' }, pending: true, target: true, canTarget: true },
     ]);
   });
 
@@ -437,6 +450,72 @@ describe('matched entries on a decision', () => {
   it('carries the row own values for display', () => {
     const p = plan([entry(1, 'kan', { definition: 'an opening' })], homonyms);
     expect(p.decisions[0].values).toEqual({ definition: 'an opening' });
+  });
+});
+
+describe('naming which entry an answer targets', () => {
+  const homonyms = [
+    { id: 'k1', form: 'kan', metadata: { gloss: 'house', pos: 'N' } },
+    { id: 'k2', form: 'kan', metadata: { gloss: 'mouth', pos: 'N' } },
+  ];
+
+  it('expands the entry the answer names, out of several sharing the form', () => {
+    const row = [entry(1, 'kan', { definition: 'an opening' })];
+    expect(plan(row, homonyms).counts.ambiguous).toBe(1);
+    expect(plan(row, homonyms, { overrides: { 1: targetedAnswer('fill', 1) } }).updates).toEqual([
+      { id: 'k2', patch: { definition: 'an opening' } },
+    ]);
+    expect(plan(row, homonyms, { overrides: { 1: targetedAnswer('fill', 0) } }).updates).toEqual([
+      { id: 'k1', patch: { definition: 'an opening' } },
+    ]);
+  });
+
+  it('replaces the entry the answer names, out of several sharing the form', () => {
+    const p = plan([entry(1, 'kan', { gloss: 'foot' })], homonyms, {
+      overrides: { 1: targetedAnswer('overwrite', 1) },
+    });
+    expect(p.updates).toEqual([{ id: 'k2', patch: { gloss: 'foot' } }]);
+    expect(p.decisions[0]).toMatchObject({ kind: 'conflict', action: 'update' });
+  });
+
+  it('marks the named entry so the comparison can point at it', () => {
+    const p = plan([entry(1, 'kan', { definition: 'an opening' })], homonyms, {
+      overrides: { 1: targetedAnswer('fill', 1) },
+    });
+    expect(p.decisions[0].matches.map((m) => m.target)).toEqual([false, true]);
+  });
+
+  it('will not offer an entry the row contradicts as a target', () => {
+    const three = [
+      { id: 'a', form: 'kan', metadata: { pos: 'N' } },
+      { id: 'b', form: 'kan', metadata: { pos: 'N' } },
+      { id: 'c', form: 'kan', metadata: { gloss: 'hand', pos: 'N' } },
+    ];
+    // The row fits the first two, which have no gloss, and contradicts the
+    // third, so only the first two can receive it.
+    const p = plan([entry(1, 'kan', { gloss: 'foot' })], three);
+    expect(p.decisions[0].kind).toBe('ambiguous');
+    expect(p.decisions[0].matches.map((m) => m.canTarget)).toEqual([true, true, false]);
+    expect(
+      plan([entry(1, 'kan', { gloss: 'foot' })], three, {
+        overrides: { 1: targetedAnswer('fill', 2) },
+      }).updates,
+    ).toEqual([]);
+  });
+
+  it('ignores a target that is out of range', () => {
+    const p = plan([entry(1, 'kan', { definition: 'an opening' })], homonyms, {
+      overrides: { 1: targetedAnswer('fill', 9) },
+    });
+    expect(p.updates).toEqual([]);
+    expect(p.decisions[0].action).toBe('skip');
+  });
+
+  it('ignores a target naming a policy the classification does not take', () => {
+    const p = plan([entry(1, 'kan', { definition: 'an opening' })], homonyms, {
+      overrides: { 1: targetedAnswer('overwrite', 1) },
+    });
+    expect(p.updates).toEqual([]);
   });
 });
 
@@ -497,7 +576,7 @@ describe('serializeImportReport', () => {
     expect(serializeImportReport(p.decisions).split('\n')).toEqual([
       'Line\tForm\tOutcome\tWhy\tValues',
       '1\tlobo\tAdded\tnew entry\tgloss: wolf',
-      '2\tperro\tUpdated\tfills in pos\tpos: N',
+      '2\tperro\tExpanded\tadds pos\tpos: N',
       '',
     ]);
   });
