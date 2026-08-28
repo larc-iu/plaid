@@ -1,4 +1,4 @@
-// Built-in vocab linking (run ON DEMAND from the Auto-link dialog — not
+// Built-in vocab linking (run ON DEMAND from the Auto-analyze dialog — not
 // automatically; see [[plaid-igt-provenance]] and the roadmap's P6). Policy:
 //   PRECEDENT FIRST — follow the most-linked same-form item across the project;
 //   a tie on count breaks to the lexicographically smallest item id. With no

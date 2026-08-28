@@ -44,13 +44,13 @@ const SPOTS = [
   {
     key: TASKS.LINK_VOCAB,
     label: 'Auto-link vocabulary',
-    description: 'Proposes vocabulary links for unlinked words/morphemes (the Auto-link dialog).',
+    description: 'Proposes vocabulary links for unlinked words/morphemes (Auto-analyze, step 3).',
     builtins: [{ name: BUILTIN_LINK_PRECEDENT, label: 'Follow precedent & unique matches' }],
   },
   {
     key: TASKS.ANALYZE,
     label: 'Analysis (segmentation + glosses)',
-    description: 'Proposes morpheme segmentation and glosses for words (the Auto-analyze dialog).',
+    description: 'Proposes morpheme segmentation and glosses for words (Auto-analyze, step 2).',
     builtins: [],
   },
 ];
@@ -123,7 +123,7 @@ function CheckRow({ id, label, hint, checked, disabled, onChange, indent = false
 // The built-in link rule's own options, shown inline when it's the selected
 // default in the Auto-link spot — the built-in is just another method in that
 // list, so its options live with it rather than in a card of their own. These
-// seed the Auto-link dialog's "copy previous analyses" opt-in
+// seed the Auto-analyze dialog's "copy previous analyses" step
 // (config.igt.autoAnalysis); the built-in never runs on its own, and everything
 // a copy writes is marked unverified (violet) until a person confirms or edits it.
 function BuiltinLinkOptions({ draft, onChange }) {
@@ -134,7 +134,7 @@ function BuiltinLinkOptions({ draft, onChange }) {
       <CheckRow
         id="auto-analysis-copy"
         label="Also copy analyses by default"
-        hint="Pre-checks the Auto-link dialog's option to copy a word's prior full analysis (uncontested project-wide majority) onto identical unanalyzed words. Only words with no analysis at all are touched."
+        hint="Pre-checks the Auto-analyze dialog's step that copies a word's prior full analysis (uncontested project-wide majority) onto identical unanalyzed words. Only words with no analysis at all are touched."
         checked={draft.copyAnalyses}
         onChange={set('copyAnalyses')}
       />

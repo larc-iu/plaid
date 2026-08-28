@@ -3,7 +3,7 @@ import { test, expect, seedAuth, readToken } from './fixtures.js';
 
 // TEST_PLAN surrounding-workflow rows driven end to end on one throwaway
 // document: Baseline save (C3-01 append without a confirm, C3-02 destructive
-// edit with the confirm modal), the built-in tokenizer (C4-01), the Auto-link
+// edit with the confirm modal), the built-in tokenizer (C4-01), the Auto-analyze
 // dialog (B15-01/02/03), Copy as IGT (C5-09), and rename/delete from the
 // Metadata tab (C2-02). Lives in "E2E IGT Fixture"; the document is deleted by
 // the last test (and again in afterAll, harmlessly).
@@ -81,19 +81,21 @@ test('C3 first save creates the sentence partition; C4-01 the built-in tokenizer
   await expect(page.locator('[title=",: not part of any word"]')).toHaveCount(1);
 });
 
-test('B15-01/02/03: the Auto-link dialog cancels cleanly and links on Run', async ({ page }) => {
+test('B15-01/02/03: the Auto-analyze dialog cancels cleanly and links on Run', async ({ page }) => {
   await openTab(page, 'analyze');
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
   const openDialog = async () => {
-    await page.getByRole('button', { name: /Auto-link/ }).click();
+    await page.getByRole('button', { name: /Auto-analyze/ }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('Auto-link');
+    await expect(dialog).toContainText('Auto-analyze');
     return dialog;
   };
   let dialog = await openDialog();
+  // Three step toggles; the linking method select shows for step 3 (the
+  // fixture project has a lexicon and no analysis service is online).
+  await expect(dialog.getByRole('checkbox')).toHaveCount(3);
   await expect(dialog.getByRole('combobox')).toBeVisible();
-  await expect(dialog.getByRole('checkbox')).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   dialog = await openDialog();
@@ -119,7 +121,7 @@ test('B15-01/02/03: the Auto-link dialog cancels cleanly and links on Run', asyn
   clearInterval(poll);
   toasts.push(...seenToasts);
   expect(
-    toasts.some((t) => /Auto-link/.test(t) && /Linked 3/.test(t)),
+    toasts.some((t) => /Auto-analyze/.test(t) && /linked 3/i.test(t)),
     JSON.stringify(toasts),
   ).toBe(true);
 });

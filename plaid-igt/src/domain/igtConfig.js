@@ -110,7 +110,7 @@ export const readVocabFields = (config) => readIgt(config, 'fields') ?? null;
 
 /**
  * Project defaults for the on-demand built-in analysis helpers, run from the
- * Auto-link dialog (they no longer run automatically). Machine output is
+ * Auto-analyze dialog (they no longer run automatically). Machine output is
  * stamped with provenance and rendered as unverified, so the safety story is
  * the visual distinction + verify-on-edit.
  *   copyAnalyses     — pre-check the dialog's "copy previous analyses" opt-in

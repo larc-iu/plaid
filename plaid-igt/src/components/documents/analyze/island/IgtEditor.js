@@ -374,13 +374,14 @@ export class IgtEditor {
     }
   }
   // ---- auto-linking ----
-  // The toolbar button opens the React AutoLinkDialog (rendered by the
-  // AnalyzeIsland shell), which offers the built-in precedent-or-unique rule
-  // plus any registered service advertising the link-vocab task — the same
-  // service-selection idiom as the Media/Tokenize tabs. The island only
-  // dispatches the open request; results land via the shared doc's reload.
-  _openAutoLink() {
-    window.dispatchEvent(new CustomEvent('igt:auto-link-open'));
+  // The toolbar button opens the React AutoAnalyzeDialog (rendered by the
+  // AnalyzeIsland shell): copy previous analyses → an `analyze` service
+  // proposes segmentation + glosses → link to the lexicon (built-in rule or a
+  // link-vocab service) — the same service-selection idiom as the
+  // Media/Tokenize tabs. The island only dispatches the open request; results
+  // land via the shared doc's reload.
+  _openAutoAnalyze() {
+    window.dispatchEvent(new CustomEvent('igt:auto-analyze-open'));
   }
 
   // After any popover action the re-render replaces the opener/chip node, so
@@ -1476,17 +1477,17 @@ export class IgtEditor {
                 </span>
               `
             : nothing}
-          ${!this.readOnly && Object.keys(this.doc.vocabularies || {}).length > 0
+          ${!this.readOnly
             ? html`<button
                 type="button"
                 class="igt-toolbar__btn"
-                title="Link words and morphemes to the lexicon. Choose the built-in rule or a linking service. Auto-links show in violet until you confirm them."
+                title="Analyze the document automatically: copy previous analyses, have a service propose segmentation and glosses, and link to the lexicon. Proposals show in violet until you confirm them."
                 @click=${(e) => {
                   e.stopPropagation();
-                  this._openAutoLink();
+                  this._openAutoAnalyze();
                 }}
               >
-                Auto-link…
+                Auto-analyze…
               </button>`
             : nothing}
         </div>
@@ -1566,8 +1567,9 @@ export class IgtEditor {
           <strong>Lexicon</strong>
           <span
             >hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry ·
-            <em>Auto-link</em> links everything that follows project precedent or matches one entry.
-            Violet links are auto-made; open one and click it (or <em>confirm</em>) to approve</span
+            <em>Auto-analyze</em> copies previous analyses, lets a service propose segmentation and
+            glosses, and links what follows project precedent or matches one entry. Violet links are
+            auto-made; open one and click it (or <em>confirm</em>) to approve</span
           >
         </div>
         <div class="igt-legend__row">

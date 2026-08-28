@@ -229,7 +229,7 @@ const DocumentEditor = () => {
 
   // The built-in analysis helpers (copy prior analyses + auto-link) no longer
   // run automatically — they were disruptive mid-editing. They run on demand
-  // from the interlinear Auto-link dialog (see AutoLinkDialog + autoPass.js).
+  // from the interlinear Auto-analyze dialog (see AutoAnalyzeDialog + autoPass.js).
 
   // The interlinear island is framework-agnostic; its empty-state CTA asks to
   // switch tabs via a DOM event rather than reaching into the router.

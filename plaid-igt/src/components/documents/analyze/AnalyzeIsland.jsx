@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { IgtEditor } from './island/IgtEditor.js';
-import { AutoLinkDialog } from './AutoLinkDialog.jsx';
+import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 
@@ -16,14 +16,14 @@ export const AnalyzeIsland = () => {
   const { doc, readOnly } = useDocumentCtx();
   const hostRef = useRef(null);
   const editorRef = useRef(null);
-  // The island's Auto-link toolbar button requests this React-side modal
+  // The island's Auto-analyze toolbar button requests this React-side modal
   // (service discovery + param forms are React machinery) via a window event.
-  const [autoLinkOpen, setAutoLinkOpen] = useState(false);
+  const [autoAnalyzeOpen, setAutoAnalyzeOpen] = useState(false);
 
   useEffect(() => {
-    const onOpen = () => setAutoLinkOpen(true);
-    window.addEventListener('igt:auto-link-open', onOpen);
-    return () => window.removeEventListener('igt:auto-link-open', onOpen);
+    const onOpen = () => setAutoAnalyzeOpen(true);
+    window.addEventListener('igt:auto-analyze-open', onOpen);
+    return () => window.removeEventListener('igt:auto-analyze-open', onOpen);
   }, []);
 
   // Vocab-entry creation needs vocab-maintainer rights (linking needs less);
@@ -54,7 +54,9 @@ export const AnalyzeIsland = () => {
     <div className="igt-analyze-mount" style={{ paddingTop: 16 }}>
       {!doc && <div style={{ padding: 24, color: '#6b7280' }}>Loading interlinear editor…</div>}
       <div ref={hostRef} className="igt-island" style={{ display: doc ? 'block' : 'none' }} />
-      {doc && <AutoLinkDialog open={autoLinkOpen} onOpenChange={setAutoLinkOpen} doc={doc} />}
+      {doc && (
+        <AutoAnalyzeDialog open={autoAnalyzeOpen} onOpenChange={setAutoAnalyzeOpen} doc={doc} />
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-// The built-in analysis pass, run ON DEMAND from the Auto-link dialog — NOT
+// The built-in analysis pass, run ON DEMAND from the Auto-analyze dialog — NOT
 // automatically. Two built-in helpers over the open document:
 //   1. analysis copies (optional, opt-in per run): unanalyzed words whose form
 //      has an uncontested prior full analysis project-wide get that analysis
