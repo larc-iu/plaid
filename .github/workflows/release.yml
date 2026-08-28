@@ -156,8 +156,10 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+      # Pinned to the 11 line: npm@latest became 12, which refuses Node 20/22
+      # (EBADENGINE) and broke the v0.2.0-alpha.1 publish job.
       - name: Upgrade npm (trusted publishing / OIDC needs npm >= 11.5.1)
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
       - name: Publish npm client (keyless via trusted publishing; skip if exists)
         run: |
           PKG="@larc-iu/plaid-client"
