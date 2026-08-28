@@ -4,7 +4,8 @@
 //
 // Note the EXPECTED text is not byte-identical to the INPUT — the exporter has
 // deliberate conventions: it emits `# newdoc id` from the document name,
-// synthesizes `# sent_id` (the parser drops incoming ones), and fills DEPS
+// synthesizes a `# sent_id` when the sentence carries none (INPUT here has
+// none; an imported one is kept and re-emitted verbatim), and fills DEPS
 // with `head:deprel`. Everything annotation-bearing must survive: the MWT
 // bracket line with its surface form, per-row LEMMA/UPOS/XPOS/FEATS, heads
 // and deprels (root encoded as a Lemma-span self-loop).
@@ -42,4 +43,24 @@ test('CoNLL-U survives the parse → document → export round trip', () => {
 test('export is a fixpoint: re-importing the export reproduces it', () => {
   const doc = new ConlluDocument({ raw: rawDocFromConllu(EXPECTED, 'rt-doc') });
   assert.equal(doc.toConllu(), EXPECTED);
+});
+
+test('an incoming `# sent_id` survives import and is re-emitted verbatim', () => {
+  // The synthesized id for this sentence would be `rt-doc-1`; a stored one
+  // must win, which is what lets a caller join a second layer of data onto an
+  // already-imported treebank by sent_id.
+  const withSentId = conllu([
+    '# sent_id = ud-train-4217',
+    '# text = del perro',
+    '1-2\tdel\t_\t_\t_\t_\t_\t_\t_\t_',
+    '1\tde\tde\tADP\t_\t_\t3\tcase\t_\t_',
+    '2\tel\tel\tDET\t_\tDefinite=Def|PronType=Art\t3\tdet\t_\t_',
+    '3\tperro\tperro\tNOUN\tNN\tGender=Masc|Number=Sing\t0\troot\t_\t_',
+  ]);
+  const doc = new ConlluDocument({ raw: rawDocFromConllu(withSentId, 'rt-doc') });
+  const out = doc.toConllu();
+  assert.ok(out.includes('# sent_id = ud-train-4217'), out);
+  assert.ok(!out.includes('# sent_id = rt-doc-1'), out);
+  // And it stays put on a second pass.
+  assert.equal(new ConlluDocument({ raw: rawDocFromConllu(out, 'rt-doc') }).toConllu(), out);
 });

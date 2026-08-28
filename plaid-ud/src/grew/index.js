@@ -4,7 +4,7 @@
 //     -> { query, warnings, impossible }
 //
 // `query` is ready to hand to `client.query()`. `warnings` are non-fatal notes
-// to surface to the user (e.g. `sent_id` won't match imported data).
+// to surface to the user (e.g. a MISC constraint, which imports never store).
 // `impossible` is true when a constraint was constant-folded to "never matches"
 // (e.g. `global { is_cyclic }` against the UD tree invariant) — the caller
 // should report zero results without calling the server.

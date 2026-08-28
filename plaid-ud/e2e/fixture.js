@@ -125,7 +125,7 @@ async function ensureFixture() {
   }
 
   // 6. Document. Reuse by name. If we create it, also seed a text body.
-  const docs = await client.projects.get(projectId, true).then((p) => p.documents || []);
+  const docs = await client.projects.listDocuments(projectId);
   let doc = docs.find((d) => d.name === DOC_NAME) || null;
   if (!doc) {
     const created = await client.documents.create(projectId, DOC_NAME);

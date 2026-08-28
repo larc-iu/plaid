@@ -761,11 +761,6 @@ class Compiler {
       this.where.push(['token', '?S', cm]);
       return;
     }
-    if (lower === 'sent_id') {
-      this.warnings.push(
-        '`sent_id` is not stored on import, so this constraint will not match imported data.',
-      );
-    }
     if (op === 'undefined') {
       throw new GrewUnsupportedError(
         'global-meta-undefined',

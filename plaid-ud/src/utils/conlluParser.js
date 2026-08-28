@@ -65,8 +65,16 @@ export function parseCoNLLU(text) {
 
     // Handle metadata lines
     if (trimmedLine.startsWith('#')) {
-      // Skip newdoc id and sent_id as requested
-      if (trimmedLine.startsWith('# newdoc id') || trimmedLine.startsWith('# sent_id')) {
+      // `# newdoc id` is the DOCUMENT's name, not sentence metadata:
+      // splitConlluByNewdoc has already lifted it out, so drop it here rather
+      // than let it land on the first sentence of the block.
+      //
+      // `# sent_id` is kept and lands in sentence metadata like any other
+      // `# k = v` comment. It is the stable key callers join on when they
+      // bring a second layer of data onto an already-imported treebank, and
+      // the exporter has always preferred a sentence's stored `sent_id` over
+      // a synthesized one, so retaining it is what makes that round trip real.
+      if (trimmedLine.startsWith('# newdoc id')) {
         continue;
       }
 

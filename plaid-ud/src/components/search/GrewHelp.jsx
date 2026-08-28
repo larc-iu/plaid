@@ -81,8 +81,8 @@ export const GrewHelp = ({ onPick }) => (
           </List>
           <Text size="sm" c="dimmed">
             Not supported (these report a clear error): grew lexicons & cluster-by, enhanced
-            dependencies, <Code>sent_id</Code> (dropped on import), and very large linear distances.{' '}
-            <Code>is_tree</Code>/<Code>is_cyclic</Code> assume well-formed UD trees.
+            dependencies, and very large linear distances. <Code>is_tree</Code>/
+            <Code>is_cyclic</Code> assume well-formed UD trees.
           </Text>
         </Stack>
       </Accordion.Panel>
