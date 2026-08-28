@@ -35,7 +35,12 @@ export function UserAvatar({
   const src = client && userId ? client.users.avatarUrl(userId, avatarHash) : null;
 
   return (
-    <Avatar className={cn('h-9 w-9', className)} {...props}>
+    // `key` remounts the root whenever the picture changes or goes away. Radix
+    // tracks image load status on the root and does NOT reset it when the
+    // AvatarImage unmounts, so without this, removing your picture leaves the
+    // status stuck at "loaded" and the fallback suppressed: an empty circle
+    // where the initials belong.
+    <Avatar key={src || 'initials'} className={cn('h-9 w-9', className)} {...props}>
       {src && <AvatarImage src={src} alt="" />}
       {/* The initials do not scale with the avatar on their own, so anything
           much larger than the default needs to say so. */}
