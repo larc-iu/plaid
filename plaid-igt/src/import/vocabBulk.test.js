@@ -233,8 +233,8 @@ describe('planVocabImport', () => {
     );
     expect(p.creates).toEqual([{ form: 'yalu', metadata: { gloss: 'firewood' } }]);
     expect(p.updates).toEqual([]);
-    expect(p.decisions[1]).toMatchObject({ action: 'merge' });
-    expect(p.decisions[1].detail).toContain('replaced gloss');
+    expect(p.decisions[1]).toMatchObject({ action: 'update' });
+    expect(p.decisions[1].detail).toContain('replaces gloss');
   });
 
   it('says why a replace could not apply instead of looking like a no-op', () => {
@@ -294,7 +294,7 @@ describe('planVocabImport', () => {
     const p = plan([entry(1, 'lobo', { gloss: 'wolf' }), entry(2, 'lobo', { pos: 'N' })], []);
     expect(p.creates).toEqual([{ form: 'lobo', metadata: { gloss: 'wolf', pos: 'N' } }]);
     expect(p.updates).toEqual([]);
-    expect(p.decisions[1].action).toBe('merge');
+    expect(p.decisions[1].action).toBe('update');
   });
 
   it('keeps a second sense in the same file distinct from the first', () => {

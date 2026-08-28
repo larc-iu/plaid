@@ -312,7 +312,8 @@ export const OVERRIDE_VALUES = {
  * @param {object} [opts.overrides] - `{[line]: policy}`, one row's answer overriding its bucket
  * @returns {{
  *   decisions: {
- *     line, form, values, kind, action, detail,
+ *     line, form, values, kind, detail,
+ *     action: 'create' | 'update' | 'skip',
  *     targetId, targetForm, candidates,
  *     matches: {form, values, pending, target}[],
  *     changes: {field, from, to}[],
@@ -475,18 +476,15 @@ export const planVocabImport = ({
       }
       Object.assign(target.values, patch);
       if (target.id == null) {
-        // Filling in an entry this same import is about to create, so fold
-        // the values into that pending create instead of writing twice.
+        // Filling in an entry this same import is about to create, so fold the
+        // values into that pending create instead of writing twice. Same
+        // outcome as patching a stored entry, so it reports the same way: the
+        // difference is which call we make, which is no business of the reader.
         Object.assign(target.pending.metadata, patch);
-        record(entry, {
-          ...base,
-          action: 'merge',
-          detail: `added ${added}`,
-        });
       } else {
         addUpdate(target.id, patch);
-        record(entry, { ...base, action: 'update', detail: `fills in ${added}` });
       }
+      record(entry, { ...base, action: 'update', detail: `fills in ${added}` });
       continue;
     }
 
@@ -549,15 +547,10 @@ export const planVocabImport = ({
         // up, so the replacement lands on that pending entry. Dropping it here
         // (there is no id to patch) would ignore the answer without saying so.
         Object.assign(first.pending.metadata, patch);
-        record(entry, {
-          ...base,
-          action: 'merge',
-          detail: `replaced ${replaced}`,
-        });
       } else {
         addUpdate(first.id, patch);
-        record(entry, { ...base, action: 'update', detail: `replaces ${replaced}` });
       }
+      record(entry, { ...base, action: 'update', detail: `replaces ${replaced}` });
       continue;
     }
     // Overwrite is the one answer that can fail to apply, and only for want of
@@ -597,7 +590,6 @@ export const serializeImportReport = (decisions) => {
   const cell = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
   const outcome = (d) => {
     if (d.action === 'create') return 'Added';
-    if (d.action === 'merge') return 'Merged into a new entry';
     if (d.action === 'update') return d.kind === 'conflict' ? 'Replaced' : 'Updated';
     return 'Skipped';
   };

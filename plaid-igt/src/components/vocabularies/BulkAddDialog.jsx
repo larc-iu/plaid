@@ -67,10 +67,11 @@ const SAMPLE_VALUES = 3;
 
 // How each outcome reads in the row list. A replace is called out separately
 // from a fill: one adds to an entry, the other overwrites what somebody put
-// there by hand, and the amber says which.
+// there by hand, and the amber says which. Whether the entry being changed is
+// stored or one this import is about to insert makes no difference here, and
+// saying it differently for the two only invites the question why.
 const actionLabel = (d) => {
   if (d.action === 'create') return 'will be added';
-  if (d.action === 'merge') return 'folded into a new entry above';
   if (d.action === 'update')
     return d.kind === 'conflict' ? 'will be replaced' : 'will be filled in';
   return 'skipped';
@@ -87,7 +88,8 @@ const ROW_CHOICES = {
   fill: 'Fill in blanks',
   skip: 'Skip',
   new: 'Add',
-  overwrite: 'Replace values',
+  // "Replace values" named neither side: replace whose, with what?
+  overwrite: "Use the file's values",
 };
 
 // The same choices spelled out for the bucket dropdowns, where the subject is
@@ -100,7 +102,7 @@ const BUCKET_CHOICES = {
   conflict: [
     [CONFLICT_SKIP, "Skip them, keep what's here"],
     [CONFLICT_NEW, 'Add each as a separate entry'],
-    [CONFLICT_OVERWRITE, 'Replace the existing values'],
+    [CONFLICT_OVERWRITE, "Replace the entry's values with the file's"],
   ],
   ambiguous: [
     [AMBIGUOUS_SKIP, 'Skip them'],
@@ -218,7 +220,7 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
           <span className={actionTone(d)}>{actionLabel(d)}</span>
           <span className="text-muted-foreground"> ({d.detail})</span>
         </div>
-        <div className="w-32 shrink-0">
+        <div className="w-40 shrink-0">
           {OVERRIDE_VALUES[d.kind] && (
             <select
               className={cn(
@@ -243,7 +245,7 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
         <table className="mt-1 w-full table-fixed rounded bg-muted/40 text-xs">
           <thead>
             <tr>
-              <th className="w-32" />
+              <th className="w-28" />
               {columns.map((f) => (
                 <th key={f} className="px-1 pt-1 text-left font-normal text-muted-foreground">
                   {humanizeFieldName(f)}
@@ -253,7 +255,7 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
           </thead>
           <tbody>
             <tr>
-              <td className="px-2 py-0.5 align-top text-muted-foreground">In this file</td>
+              <td className="px-2 py-0.5 align-top text-muted-foreground">This row</td>
               {columns.map((f) => (
                 <ValueCell key={f} value={d.values[f]} clash={rowClash.has(f)} add={added.has(f)} />
               ))}
@@ -263,11 +265,10 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
               return (
                 <tr key={i}>
                   <td className="px-2 py-0.5 align-top text-muted-foreground">
-                    {i === 0 && 'Already here'}
+                    {m.pending ? 'Earlier in file' : 'Already here'}
                     {/* The form only earns space when it isn't the row's own,
                         which happens under case-insensitive matching. */}
                     {m.form !== d.form && <div className="text-foreground">{m.form}</div>}
-                    {m.pending && <div>(added by this file)</div>}
                   </td>
                   {columns.map((f) => (
                     <ValueCell key={f} value={m.values[f]} clash={clash.has(f)} />
