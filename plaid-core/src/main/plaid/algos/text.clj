@@ -281,6 +281,109 @@
                                affected-tokens))
            :deleted (mapv :token/id deleted-tokens)})))))
 
+;; ---------------------------------------------------------------------------
+;; Delete normalization
+;;
+;; The diff is a minimal edit script over characters and knows nothing about
+;; tokens, so when a deleted stretch is followed by text that repeats its
+;; edge it may keep the "wrong" copy: deleting `¿Qué? ` from `¿Qué? ? dog's`
+;; can come out as delete `¿Qué`, keep `?`, delete ` ?` — same resulting
+;; string, but the kept `?` is the tail of the `¿Qué?` token, which survives
+;; as a one-character sliver (with its annotations and links) while the real
+;; `?` token is deleted. When two deletes straddle a kept run that equals an
+;; edge of the neighbouring deleted text, the pair is equivalent to ONE
+;; contiguous delete; prefer that form whenever it cuts fewer tokens.
+
+(defn- ops->edits
+  "Sequential running-coordinate ops -> edits in OLD-body coordinates:
+  {:kind :delete :start s :end e} / {:kind :insert :at a :value v}."
+  [ops]
+  (loop [ops ops del 0 ins 0 out []]
+    (if-let [{:keys [type index value]} (first ops)]
+      (let [type (if (keyword? type) type (keyword type))
+            old-pos (+ index del (- ins))]
+        (case type
+          :delete (recur (rest ops) (+ del value) ins
+                         (conj out {:kind :delete :start old-pos :end (+ old-pos value)}))
+          :insert (recur (rest ops) del (+ ins (cp/cp-count value))
+                         (conj out {:kind :insert :at old-pos :value value}))))
+      out)))
+
+(defn- edits->ops
+  "Old-coordinate edits, in their original (position-monotone) order ->
+  sequential running-coordinate ops. An edit at old position p is shifted by
+  the inserts before it and by the deletes that START strictly before p (a
+  delete starting AT p removes text after p and doesn't move p)."
+  [edits]
+  (loop [edits edits dels [] ins 0 out []]
+    (if-let [e (first edits)]
+      (let [p (or (:start e) (:at e))
+            del-before (reduce + 0 (map second (filter #(< (first %) p) dels)))
+            running (+ p (- del-before) ins)]
+        (case (:kind e)
+          :delete (let [n (- (:end e) (:start e))]
+                    (recur (rest edits) (conj dels [(:start e) n]) ins
+                           (conj out (delete-op running n))))
+          :insert (recur (rest edits) dels (+ ins (cp/cp-count (:value e)))
+                         (conj out (insert-op running (:value e))))))
+      out)))
+
+(defn- cut-count
+  "How many (non-empty) tokens the delete ranges overlap only PARTIALLY."
+  [tokens ranges]
+  (count (filter (fn [{:token/keys [begin end]}]
+                   (and (< begin end)
+                        (some (fn [[s e]]
+                                (and (< s end) (> e begin)
+                                     (not (and (<= s begin) (<= end e)))))
+                              ranges)))
+                 tokens)))
+
+(defn normalize-deletes
+  "Rewrite `ops` (as produced by `diff` for `old`) so that two deletes
+  separated by a kept run equal to an edge of the adjacent deleted text
+  become one contiguous delete when that cuts fewer of `tokens` (old-body
+  code-point offsets). The reconstructed string is unchanged."
+  [ops old tokens]
+  (let [edits (ops->edits ops)
+        ranges-of (fn [edits] (keep #(when (= (:kind %) :delete) [(:start %) (:end %)]) edits))
+        cp-sub (fn [s e] (cp/cp-subs old s e))
+        step (fn [edits]
+               (let [v (vec edits)]
+                 (loop [i 0]
+                   (when (< (inc i) (count v))
+                     (let [a (v i) b (v (inc i))]
+                       (if (and (= (:kind a) :delete) (= (:kind b) :delete)
+                                (< (:end a) (:start b)))
+                         (let [m (- (:start b) (:end a))
+                               k (cp-sub (:end a) (:start b))
+                               candidates
+                               (cond-> []
+                                 ;; kept run == tail of the second delete: delete [a.start, b.end-m)
+                                 (and (<= m (- (:end b) (:start b)))
+                                      (= k (cp-sub (- (:end b) m) (:end b))))
+                                 (conj {:kind :delete :start (:start a) :end (- (:end b) m)})
+                                 ;; kept run == head of the first delete: delete [a.start+m, b.end)
+                                 (and (<= m (- (:end a) (:start a)))
+                                      (= k (cp-sub (:start a) (+ (:start a) m))))
+                                 (conj {:kind :delete :start (+ (:start a) m) :end (:end b)}))
+                               before (cut-count tokens (ranges-of v))
+                               best (->> candidates
+                                         (map (fn [c] [(cut-count tokens (ranges-of (assoc v i c (inc i) nil))) c]))
+                                         (filter (fn [[n _]] (< n before)))
+                                         (sort-by first)
+                                         first)]
+                           (if best
+                             (into (subvec v 0 i) (into [(second best)] (subvec v (+ i 2))))
+                             (recur (inc i))))
+                         (recur (inc i))))))))]
+    (loop [edits edits merged? false]
+      (if-let [next (step edits)]
+        (recur (vec (remove nil? next)) true)
+        ;; Untouched input when nothing merged: the caller's ops are already
+        ;; valid, so don't risk a lossy round trip.
+        (if merged? (edits->ops edits) ops)))))
+
 (defn apply-text-edits [ops text tokens]
   (loop [accum {:deleted [] :text text :tokens tokens}
          op (first ops)

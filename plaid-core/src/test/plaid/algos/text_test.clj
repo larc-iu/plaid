@@ -182,3 +182,52 @@
     (is (= [:b] deleted))
     (is (= [[:a 0 1] [:c 1 2]]
            (mapv (juxt :token/id :token/begin :token/end) result-tokens)))))
+
+;; ---------------------------------------------------------------------------
+;; normalize-deletes: a kept run that repeats the edge of a neighbouring delete
+;; is folded into ONE contiguous delete when that cuts fewer tokens.
+
+(defn- apply-all [ops body tokens]
+  (ta/apply-text-edits ops {:text/body body} tokens))
+
+(deftest normalize-deletes-merges-across-a-repeated-edge
+  (let [old "Todos los derechos. ¿Qué? ? dog's"
+        new "Todos los derechos. ? dog's"
+        ;; word tokens: Todos los derechos. ¿Qué? ? dog's
+        tokens [(tok :todos 0 5) (tok :los 6 9) (tok :derechos 10 19)
+                (tok :que 20 25) (tok :q 26 27) (tok :dogs 28 33)]
+        raw (ta/diff old new)
+        norm (ta/normalize-deletes raw old tokens)]
+    (testing "both op lists rebuild the same body"
+      (is (= new (get-in (apply-all raw old tokens) [:text :text/body])))
+      (is (= new (get-in (apply-all norm old tokens) [:text :text/body]))))
+    (testing "the normalized form deletes the whole ¿Qué? token and keeps the real ?"
+      (let [{:keys [tokens deleted]} (apply-all norm old tokens)]
+        (is (= [:que] deleted))
+        (is (= [{:token/id :q :token/begin 20 :token/end 21}]
+               (filter #(= :q (:token/id %)) tokens)))
+        (is (not-any? #(= :que (:token/id %)) tokens))))))
+
+(deftest normalize-deletes-leaves-unambiguous-edits-alone
+  (let [old "aa bb cc"
+        tokens [(tok :a 0 2) (tok :b 3 5) (tok :c 6 8)]]
+    (testing "a plain middle deletion is untouched"
+      (let [ops (ta/diff old "aa cc")]
+        (is (= ops (ta/normalize-deletes ops old tokens)))))
+    (testing "an append is untouched"
+      (let [ops (ta/diff old "aa bb cc dd")]
+        (is (= ops (ta/normalize-deletes ops old tokens)))))
+    (testing "explicit ops with no delete pairs pass through"
+      (let [ops [(ta/insert-op 2 "X") (ta/delete-op 4 1)]]
+        (is (= ops (ta/normalize-deletes ops old tokens)))))))
+
+(deftest normalize-deletes-never-worsens-token-cuts
+  (let [old "xa xa xa"
+        new "xa xa"
+        tokens [(tok :t1 0 2) (tok :t2 3 5) (tok :t3 6 8)]
+        raw (ta/diff old new)
+        norm (ta/normalize-deletes raw old tokens)
+        cut (fn [ops] (let [{:keys [tokens]} (apply-all ops old tokens)]
+                        (count (filter #(< 0 (- (:token/end %) (:token/begin %)) 2) tokens))))]
+    (is (= new (get-in (apply-all norm old tokens) [:text :text/body])))
+    (is (<= (cut norm) (cut raw)))))

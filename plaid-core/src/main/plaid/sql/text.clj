@@ -231,13 +231,16 @@
          (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
        (let [old-body (:body text-row)
              text-map (row->text text-row)
-             ops (if (string? new-body-or-ops)
-                   (ta/diff old-body new-body-or-ops)
-                   (vec new-body-or-ops))
              token-rows (psc/q tx {:select [:*]
                                    :from [:tokens]
                                    :where [:= :text_id eid]})
              tokens (mapv row->token token-rows)            ; code-point offsets
+             ;; A diffed body gets its deletes snapped to token boundaries
+             ;; where the edit script left an equivalent choice open (see
+             ;; ta/normalize-deletes); explicit client ops are applied as sent.
+             ops (if (string? new-body-or-ops)
+                   (ta/normalize-deletes (ta/diff old-body new-body-or-ops) old-body tokens)
+                   (vec new-body-or-ops))
              indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
              {new-text :text new-tokens :tokens deleted-ids :deleted}
              (ta/apply-text-edits ops text-map tokens)
