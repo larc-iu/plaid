@@ -51,6 +51,15 @@ const CREATE_CHUNK = 1000;
 // One metadata patch is one batch op, and plaid-core caps a batch at 1000.
 const UPDATE_CHUNK = 500;
 
+// The three steps a person walks. `running` is an outcome, not a step, so it
+// carries its own title and no counter.
+const STEPS = {
+  source: { title: 'Bulk Add Items', n: 1 },
+  columns: { title: 'Map Columns', n: 2 },
+  review: { title: 'Review Changes', n: 3 },
+};
+const WIZARD_STEPS = Object.keys(STEPS).length;
+
 const PREVIEW_ROWS = 25;
 // Entries sharing a form, beyond which the list just says how many more.
 const MAX_MATCHES = 4;
@@ -75,7 +84,7 @@ const ACTION_TONE = {
 const ROW_CHOICES = {
   fill: 'Fill in blanks',
   skip: 'Skip',
-  new: 'Add separately',
+  new: 'Add',
   overwrite: 'Replace values',
 };
 
@@ -159,40 +168,37 @@ const sameValue = (a, b) =>
     .trim()
     .normalize('NFC');
 
-// One entry's values on a line: `Gloss dog  POS N`. `clash` names the fields
-// that disagree with the other side, `add` the ones this side alone supplies.
-const ValueLine = ({ values, fieldNames, clash, add }) => {
-  const present = fieldNames.filter((f) => String(values?.[f] ?? '').trim() !== '');
-  if (!present.length) return <span className="italic text-muted-foreground">no values</span>;
-  return present.map((f) => (
-    <span key={f} className="mr-3 inline-block">
-      <span className="text-muted-foreground">{humanizeFieldName(f)}</span>{' '}
-      <span
-        className={cn(
-          clash?.has(f) && 'font-semibold text-amber-700',
-          add?.has(f) && 'font-semibold text-emerald-700',
-        )}
-      >
-        {values[f]}
-      </span>
+// One entry's value for one field, tinted by how it relates to the other side:
+// amber where the two disagree, green where this side alone supplies it.
+const ValueCell = ({ value, clash, add }) => (
+  <td className="break-words px-1 align-top">
+    <span
+      className={cn(
+        clash && 'font-semibold text-amber-700',
+        add && 'font-semibold text-emerald-700',
+      )}
+    >
+      {value || ''}
     </span>
-  ));
-};
+  </td>
+);
 
 // One decision, laid out so the judgement is possible: what the file says, what
-// is already in the vocabulary that it collided with, and the choice. Showing
-// the matched entries is the whole point. "differs on gloss" is not something
-// you can act on without seeing the entry it differs from.
-const DecisionRow = ({ d, fieldNames, override, fallback, onChoose }) => {
-  const rowFields = fieldNames.filter((f) => String(d.values?.[f] ?? '').trim() !== '');
+// is already in the vocabulary that it collided with, and the choice. The two
+// sides share a column per field so they can be read down rather than
+// re-scanned across. Showing the matched entries at all is the whole point.
+// "differs on gloss" is not something you can act on without seeing the entry
+// it differs from.
+const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
+  const has = (values, f) => String(values?.[f] ?? '').trim() !== '';
   // A field the file supplies that no matched entry has: new information.
   const added = new Set(
-    rowFields.filter((f) => d.matches.every((m) => String(m.values?.[f] ?? '').trim() === '')),
+    columns.filter((f) => has(d.values, f) && d.matches.every((m) => !has(m.values, f))),
   );
   const clashWith = (m) =>
     new Set(
-      rowFields.filter(
-        (f) => String(m.values?.[f] ?? '').trim() !== '' && !sameValue(m.values[f], d.values[f]),
+      columns.filter(
+        (f) => has(m.values, f) && has(d.values, f) && !sameValue(m.values[f], d.values[f]),
       ),
     );
   // Against the row, every disagreement across the matches it was weighed on.
@@ -205,49 +211,12 @@ const DecisionRow = ({ d, fieldNames, override, fallback, onChoose }) => {
         <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
           {d.line}
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-xs">
-            <span className="font-medium">{d.form || <em>(no form)</em>}</span>{' '}
-            <span className={ACTION_TONE[d.action]}>{ACTION_LABEL[d.action]}</span>
-            <span className="text-muted-foreground"> ({d.detail})</span>
-          </div>
-
-          <div className="mt-1 flex flex-col gap-0.5 rounded bg-muted/40 px-2 py-1 text-xs">
-            <div className="flex gap-2">
-              <span className="w-28 shrink-0 text-muted-foreground">In this file</span>
-              <span className="min-w-0 flex-1">
-                <ValueLine values={d.values} fieldNames={fieldNames} clash={rowClash} add={added} />
-              </span>
-            </div>
-            {shownMatches.map((m, i) => (
-              <div key={i} className="flex gap-2">
-                <span className="w-28 shrink-0 text-muted-foreground">
-                  {i === 0 ? 'Already here' : ''}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="mr-2 font-medium">{m.form}</span>
-                  <ValueLine values={m.values} fieldNames={fieldNames} clash={clashWith(m)} />
-                  {m.pending && (
-                    <span className="ml-1 text-muted-foreground">(added by this file)</span>
-                  )}
-                  {m.target && d.matches.length > 1 && (
-                    <span className="ml-1 text-muted-foreground">(the one it would change)</span>
-                  )}
-                </span>
-              </div>
-            ))}
-            {d.matches.length > shownMatches.length && (
-              <div className="flex gap-2">
-                <span className="w-28 shrink-0" />
-                <span className="text-muted-foreground">
-                  and {d.matches.length - shownMatches.length} more with this form
-                </span>
-              </div>
-            )}
-          </div>
+        <div className="min-w-0 flex-1 text-xs">
+          <span className="font-medium">{d.form || <em>(no form)</em>}</span>{' '}
+          <span className={ACTION_TONE[d.action]}>{ACTION_LABEL[d.action]}</span>
+          <span className="text-muted-foreground"> ({d.detail})</span>
         </div>
-
-        <div className="w-36 shrink-0">
+        <div className="w-32 shrink-0">
           {OVERRIDE_VALUES[d.kind] && (
             <select
               className={cn(
@@ -267,10 +236,56 @@ const DecisionRow = ({ d, fieldNames, override, fallback, onChoose }) => {
           )}
         </div>
       </div>
+
+      {columns.length > 0 && (
+        <table className="mt-1 w-full table-fixed rounded bg-muted/40 text-xs">
+          <thead>
+            <tr>
+              <th className="w-32" />
+              {columns.map((f) => (
+                <th key={f} className="px-1 pt-1 text-left font-normal text-muted-foreground">
+                  {humanizeFieldName(f)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="px-2 py-0.5 align-top text-muted-foreground">In this file</td>
+              {columns.map((f) => (
+                <ValueCell key={f} value={d.values[f]} clash={rowClash.has(f)} add={added.has(f)} />
+              ))}
+            </tr>
+            {shownMatches.map((m, i) => {
+              const clash = clashWith(m);
+              return (
+                <tr key={i}>
+                  <td className="px-2 py-0.5 align-top text-muted-foreground">
+                    {i === 0 && 'Already here'}
+                    {/* The form only earns space when it isn't the row's own,
+                        which happens under case-insensitive matching. */}
+                    {m.form !== d.form && <div className="text-foreground">{m.form}</div>}
+                    {m.pending && <div>(added by this file)</div>}
+                  </td>
+                  {columns.map((f) => (
+                    <ValueCell key={f} value={m.values[f]} clash={clash.has(f)} />
+                  ))}
+                </tr>
+              );
+            })}
+            {d.matches.length > shownMatches.length && (
+              <tr>
+                <td className="px-2 py-0.5 text-muted-foreground" colSpan={columns.length + 1}>
+                  and {d.matches.length - shownMatches.length} more with this form
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 };
-
 // "Gloss (optional): The short meaning ..."
 const LegendEntry = ({ name, note, children }) => (
   <div>
@@ -658,6 +673,12 @@ export const BulkAddDialog = ({
     const { counts } = plan;
     const rows = plan.decisions.filter(FILTERS[filter].match);
     const visible = rows.slice(0, shownRows);
+    // Columns are shared by every row on screen, so the same field sits in the
+    // same place all the way down. Fields nobody on screen uses are left out.
+    const has = (values, f) => String(values?.[f] ?? '').trim() !== '';
+    const columns = fieldNames.filter((f) =>
+      visible.some((d) => has(d.values, f) || d.matches.some((m) => has(m.values, f))),
+    );
     return (
       <div className="flex flex-col gap-3">
         {/* The rows come first: the decisions are the thing being reviewed, and
@@ -701,7 +722,7 @@ export const BulkAddDialog = ({
                 <DecisionRow
                   key={d.line}
                   d={d}
-                  fieldNames={fieldNames}
+                  columns={columns}
                   override={overrides[d.line]}
                   fallback={strategies[d.kind]}
                   onChoose={(value) =>
@@ -807,13 +828,6 @@ export const BulkAddDialog = ({
       </div>
     );
 
-  const TITLES = {
-    source: 'Bulk Add: paste or upload',
-    columns: 'Bulk Add: what the columns hold',
-    review: 'Bulk Add: review the merge',
-    running: failure ? 'Bulk Add: stopped' : 'Bulk Add: importing',
-  };
-
   return (
     <Dialog
       open={open}
@@ -821,9 +835,17 @@ export const BulkAddDialog = ({
         if (!o && step !== 'running') close();
       }}
     >
-      <DialogContent className="max-w-2xl">
+      {/* The review step carries a column per field and earns the extra width. */}
+      <DialogContent className={step === 'review' ? 'max-w-4xl' : 'max-w-2xl'}>
         <DialogHeader>
-          <DialogTitle>{TITLES[step]}</DialogTitle>
+          <DialogTitle>
+            {step === 'running' ? (failure ? 'Import Stopped' : 'Importing') : STEPS[step].title}
+            {STEPS[step] && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                Step {STEPS[step].n} of {WIZARD_STEPS}
+              </span>
+            )}
+          </DialogTitle>
         </DialogHeader>
 
         {step === 'source' && renderSource()}
