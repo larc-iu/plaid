@@ -302,24 +302,30 @@ class PolyGlossModel:
         return d
 
     def predict(self, prompts: List[str], on_batch=None) -> List[Tuple[str, bool]]:
-        """-> [(text, truncated)] in input order."""
+        """-> [(text, truncated)] in input order.
+
+        Prompts are batched by length (longest first) rather than in document
+        order: a batch decodes until its longest output finishes, so mixing one
+        long sentence with short ones wastes most of the batch. Results are
+        restored to input order."""
         import torch
         self.load()
-        out: List[Tuple[str, bool]] = []
+        order = sorted(range(len(prompts)), key=lambda i: -len(prompts[i]))
+        out: List[Optional[Tuple[str, bool]]] = [None] * len(prompts)
         total = (len(prompts) + self.batch_size - 1) // self.batch_size
-        for b in range(0, len(prompts), self.batch_size):
-            batch = prompts[b:b + self.batch_size]
-            enc = self._tok(batch, return_tensors='pt', padding=True).to(self._model.device)
+        for b in range(0, len(order), self.batch_size):
+            idxs = order[b:b + self.batch_size]
+            enc = self._tok([prompts[i] for i in idxs], return_tensors='pt', padding=True).to(self._model.device)
             with torch.no_grad():
                 gen = self._model.generate(**enc, max_new_tokens=MAX_NEW_TOKENS,
                                            num_beams=self.num_beams, do_sample=False)
             texts = self._tok.batch_decode(gen, skip_special_tokens=True)
-            for row, text in zip(gen, texts):
+            for i, row, text in zip(idxs, gen, texts):
                 truncated = (row == self._tok.eos_token_id).sum().item() == 0
-                out.append((text, truncated))
+                out[i] = (text, truncated)
             if on_batch:
                 on_batch(b // self.batch_size + 1, total)
-        return out
+        return out  # type: ignore[return-value]
 
 
 # --- document derivation -----------------------------------------------------
