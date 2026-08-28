@@ -119,6 +119,32 @@ export class IgtDocument {
     return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf, itemLevels });
   }
 
+  // Re-read ONLY the document at `asOf`, reusing the project, vocabulary items
+  // and item levels already in memory. Returns a NEW IgtDocument; `this` is left
+  // untouched so the caller can keep rendering it until it swaps.
+  //
+  // Time-travel used to be a single `documents.get` with an as-of. Unifying the
+  // editor on IgtDocument (0ca1cbb) turned every history-rail click into a full
+  // four-request `load` — project, document, item-level query, and every vocab
+  // layer — measured at ~1.4s against a real project, most of it the vocab
+  // fetch. Only the document is snapshot-dependent: `load` deliberately reads
+  // project config and vocab LIVE even for a historical view (layer structure is
+  // immutable), so re-fetching those per click could not return anything new.
+  async atAsOf(asOf) {
+    const raw = await this._client.documents.get(this.id, true, asOf || undefined);
+    return new IgtDocument({
+      raw,
+      project: this._project,
+      // The constructor folds the document's links into whatever it is handed,
+      // so hand it the items with the PREVIOUS snapshot's links stripped.
+      vocabularies: rebaseVocabLinks(this._vocabularies),
+      client: this._client,
+      projectId: this._projectId,
+      asOf,
+      itemLevels: this._remoteItemLevels,
+    });
+  }
+
   // ----- read API -----
   get version() {
     return this._version;
@@ -140,6 +166,10 @@ export class IgtDocument {
   }
   get projectId() {
     return this._projectId;
+  }
+  // Which snapshot this document was read at (null = live).
+  get asOf() {
+    return this._asOf;
   }
   get project() {
     return this._project;
@@ -715,6 +745,20 @@ export async function loadProjectVocabularies(client, project, asOf) {
 // unlinked, looking deleted even though the link is still on the server. A
 // single vocab's links can be split across several token layers (e.g. word +
 // morpheme), so accumulate and dedupe by link id.
+// `vocabLayers.get` returns items but NOT links — links live on the document and
+// are folded in by mergeRawVocabLinks, which mutates the object it is given.
+// Strip those folded links so the same (expensive) item arrays can be re-folded
+// against a different snapshot. This is why `_reload` re-fetches instead of
+// re-merging: merging a second raw onto an already-merged set would keep the
+// first snapshot's links.
+function rebaseVocabLinks(vocabularies) {
+  const out = {};
+  for (const [id, v] of Object.entries(vocabularies || {})) {
+    out[id] = { ...v, vocabLinks: [] };
+  }
+  return out;
+}
+
 function mergeRawVocabLinks(raw, vocabularies) {
   const vocabs = vocabularies || {};
   const seenByVocab = new Map(); // vocabId -> Set<linkId>

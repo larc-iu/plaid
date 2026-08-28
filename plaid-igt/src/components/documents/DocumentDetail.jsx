@@ -115,7 +115,7 @@ const DocumentEditor = () => {
     setLoadError('');
     (async () => {
       try {
-        const d = await IgtDocument.load(client, projectId, documentId, asOf);
+        const d = await IgtDocument.load(client, projectId, documentId, null);
         if (cancelled) return;
         d.onError = (msg, err, label) =>
           notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
@@ -133,7 +133,45 @@ const DocumentEditor = () => {
     return () => {
       cancelled = true;
     };
-  }, [client, projectId, documentId, asOf, navigate]);
+    // NOT keyed on asOf: time-travel is handled by the snapshot effect below,
+    // which re-reads only the document. DocumentDetail is keyed by documentId,
+    // so within one mount this runs once and always at the live state.
+  }, [client, projectId, documentId, navigate]);
+
+  // Time-travel. Swaps the document to another snapshot by re-reading ONLY the
+  // document, reusing the project / vocab / item levels already loaded — see
+  // IgtDocument#atAsOf. Deliberately does NOT blank `doc`: the old full reload
+  // unmounted the whole editor to a spinner for ~1.4s on every history click,
+  // which read as a full page refresh.
+  useEffect(() => {
+    if (!doc) return undefined;
+    // Also the exit path: selecting nothing sets asOf back to null.
+    if ((doc.asOf ?? null) === (asOf ?? null)) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const next = await doc.atAsOf(asOf);
+        if (cancelled) return;
+        next.onError = doc.onError;
+        setDoc(next);
+      } catch (e) {
+        if (cancelled) return;
+        if (e.message === 'Not authenticated' || e.status === 401) {
+          logout('expired');
+          return;
+        }
+        console.error('Failed to load snapshot:', e);
+        // Keep showing what is on screen rather than blanking the editor, and
+        // put the rail back where the view actually is.
+        notifyError(humanizeError(e, 'That snapshot could not be loaded.'));
+        setAsOf(doc.asOf ?? null);
+        history.setSelectedEntry(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, asOf]);
 
   // Reconcile: heal IGT invariants in the shared substrate — every word token
   // must have a full-width morpheme, and no morpheme may be orphaned. This runs

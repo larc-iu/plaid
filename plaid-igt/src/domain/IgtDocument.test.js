@@ -753,6 +753,81 @@ describe('vocab links (read path must reflect optimistic write)', () => {
   });
 });
 
+describe('atAsOf (time-travel)', () => {
+  const project = { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } };
+  const linkOn = (tokenId, linkId, form) => ({
+    id: 'v1',
+    name: 'Lexicon',
+    vocabLinks: [
+      { id: linkId, tokens: [tokenId], vocabItem: { id: 'vi-' + linkId, form, metadata: {} } },
+    ],
+  });
+
+  // Time-travel used to re-run the whole four-request load. atAsOf re-reads only
+  // the document, so the vocabulary ITEMS must be carried over from the live doc
+  // while the LINKS must come from the snapshot being loaded.
+  it('reads only the document and reuses project, vocab items and item levels', async () => {
+    const liveRaw = buildRawDoc({ wordVocabs: [linkOn('w-1', 'lk-live', 'NOW')] });
+    const snapRaw = buildRawDoc({ wordVocabs: [linkOn('w-1', 'lk-old', 'THEN')] });
+
+    const client = makeFakeClient();
+    const asked = [];
+    client.documents = {
+      ...client.documents,
+      get: async (id, includeBody, at) => {
+        asked.push({ id, includeBody, at });
+        return snapRaw;
+      },
+    };
+    const itemLevels = new Map([['vi-1', new Set(['word'])]]);
+    const doc = new IgtDocument({
+      raw: liveRaw,
+      project,
+      vocabularies: {
+        v1: { id: 'v1', name: 'Lexicon', items: [{ id: 'vi-1', form: 'NOW' }], vocabLinks: [] },
+      },
+      client,
+      projectId: 'proj-1',
+      itemLevels,
+    });
+
+    const at = '2026-08-28T13:46:43Z';
+    const next = await doc.atAsOf(at);
+
+    // Exactly one request, and it carries the as-of.
+    expect(asked).toEqual([{ id: liveRaw.id, includeBody: true, at }]);
+    expect(next.asOf).toBe(at);
+    // Snapshot-independent state is carried over, not refetched.
+    expect(next.project).toBe(project);
+    expect(next.vocabularies.v1.items).toEqual([{ id: 'vi-1', form: 'NOW' }]);
+    // The ORIGINAL doc is untouched, so the caller can keep rendering it.
+    expect(doc.asOf).toBeNull();
+    expect(doc.sentences[0].tokens[0].vocabItem?.form).toBe('NOW');
+  });
+
+  it("shows the snapshot's vocab links, not the live document's", async () => {
+    const liveRaw = buildRawDoc({ wordVocabs: [linkOn('w-1', 'lk-live', 'NOW')] });
+    const snapRaw = buildRawDoc({ wordVocabs: [linkOn('w-1', 'lk-old', 'THEN')] });
+    const client = makeFakeClient();
+    client.documents = { ...client.documents, get: async () => snapRaw };
+    const doc = new IgtDocument({
+      raw: liveRaw,
+      project,
+      vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: [], vocabLinks: [] } },
+      client,
+      projectId: 'proj-1',
+    });
+    expect(doc.sentences[0].tokens[0].vocabItem?.form).toBe('NOW');
+
+    const next = await doc.atAsOf('2026-08-28T13:46:43Z');
+    // The snapshot's link is present...
+    expect(next.sentences[0].tokens[0].vocabItem?.form).toBe('THEN');
+    // ...and the live doc's link did NOT leak across (the reason atAsOf strips
+    // the folded links before handing the vocab table to the constructor).
+    expect(next.vocabularies.v1.vocabLinks.map((l) => l.id)).toEqual(['lk-old']);
+  });
+});
+
 describe('document-level + alignment mutations (tabs now depend on these)', () => {
   const metaProject = {
     id: 'proj-1',
