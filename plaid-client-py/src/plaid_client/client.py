@@ -67,6 +67,17 @@ class _OperationContext:
             self._group['refined'] = message
 
 
+def _layers_param(layers):
+    """Normalize a ``layers`` filter to the wire's comma-separated form.
+    Accepts a list of layer ids or a ready-made string; anything empty becomes
+    ``None`` so no ``?layers=`` is sent at all.
+    """
+    if layers is None:
+        return None
+    joined = layers if isinstance(layers, str) else ','.join(str(x) for x in layers)
+    return joined or None
+
+
 def _op_types_param(op_types):
     """Normalize an audit ``op_types`` filter to the wire's comma-separated
     form. Accepts a list of op types or a ready-made string; anything empty
@@ -1248,19 +1259,29 @@ class DocumentsResource(_Resource):
                              no_batch=True, audit_message=audit_message)
 
     def get(self, document_id: str, *, include_body: bool | None = None,
-            as_of: str | None = None) -> Any:
+            as_of: str | None = None, layers=None) -> Any:
         """Get a document.
 
         Set ``include_body`` to true to include all data contained in the
         document.
 
+        ``layers`` narrows a body read to the layers you name (ids of any
+        kind: text, token, span, or relation). A layer comes back when it is
+        named or is an ancestor of a named layer, and carries its own
+        texts/tokens/spans/relations/vocabs only when it is itself named — so
+        name the text layer too if you also want the text body. An id that is
+        not a layer of this document's project is an error, not a quietly
+        smaller response. Requires ``include_body``.
+
         Args:
             document_id: The document ID
             include_body: Include document body data
             as_of: Temporal query timestamp
+            layers: Layer ids to restrict a body read to
         """
         return self._request('GET', f'/api/v1/documents/{document_id}',
-                             query_params={'include-body': include_body, 'as-of': as_of})
+                             query_params={'include-body': include_body, 'as-of': as_of,
+                                           'layers': _layers_param(layers)})
 
     def delete(self, document_id: str, audit_message=None) -> Any:
         """Delete a document and all data contained.

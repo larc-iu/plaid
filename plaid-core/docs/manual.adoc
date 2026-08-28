@@ -638,6 +638,42 @@ A project has many **documents**, and each has a name and a unique ID:
 { id: "01d01a27", name: "Document 1", project: "1cce50df" }
 ----
 
+=== Reading part of a document
+
+Reading a document with `include_body` / `includeBody` returns every layer in the project, with all of that document's rows attached.
+That is the right default, but a project is often shared: the UD editor and the IGT editor can sit on one substrate, and each cares about a slice of it.
+Pass `layers` to read only the slice you need.
+
+[,python]
+----
+doc = client.documents.get(
+    document_id,
+    include_body=True,
+    layers=[text_layer_id, word_layer_id, pos_layer_id],
+)
+----
+
+[,javascript]
+----
+const doc = await client.documents.get(
+  documentId, true, undefined,
+  [textLayerId, wordLayerId, posLayerId],
+);
+----
+
+You may name layers of any kind — text, token, span, or relation — and two rules decide what comes back:
+
+* A layer **appears** when you named it, or when it is an **ancestor** of a layer you named. Ancestors are there so the response keeps its usual nesting: a span layer still arrives inside its token layer, inside its text layer.
+* A layer carries its own **contents** (its text, tokens, spans, relations, vocabs) only when you named it. An ancestor you did not name arrives empty.
+
+So naming just a POS span layer gives you those spans, wrapped in an empty token layer and an empty text layer. Add the token layer to get the tokens the spans point at, and the text layer to get the text body. Descendants are never implied: naming a token layer gets you its tokens, not the span layers beneath it.
+
+The filter reaches the database, so the rows you excluded are never fetched or joined against metadata. It works on time-travel reads too (`as_of` with `layers`).
+
+An id that is not a layer of this document's project is an error, not a quietly smaller response: a stale or mistyped layer id would otherwise be indistinguishable from that layer being empty.
+
+NOTE: The response keeps its nested shape. If you want flat rows across a document (or across a project), that is what the link:query.html[query language] is for.
+
 == Texts
 
 For each **text layer**, each document may have at most one **text**, which consists of a single string.

@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.document
-  (:require [plaid.rest-api.v1.auth :as pra]
+  (:require [clojure.string]
+            [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.media :as media]
@@ -37,6 +38,44 @@
 (defn get-document-id [{params :parameters}]
   (-> params :path :document-id))
 
+;; ---------------------------------------------------------------------------
+;; ?layers= (issue #57)
+;;
+;; A deep read otherwise returns every layer in the document's project. An app
+;; that touches only a couple of them pays for and parses all of it. `?layers=`
+;; is a comma-separated list of layer ids of ANY kind (text / token / span /
+;; relation); `doc/prune-to-layers` defines what survives.
+;;
+;; An id that is not a layer of this document's project is a 400 rather than a
+;; silently smaller response: a typo'd or stale layer id would otherwise look
+;; exactly like "that layer is empty", which is the worst possible failure for
+;; a caller using this to decide what to render.
+;; ---------------------------------------------------------------------------
+
+(defn- parse-layer-ids
+  "Split the comma-separated `?layers=` value into a set of UUIDs. Returns
+  `{:layers #{...}}` (nil layers meaning no filter) or `{:invalid \"tok\"}`."
+  [raw]
+  (if-let [raw (not-empty (some-> raw clojure.string/trim))]
+    (let [tokens (->> (clojure.string/split raw #",")
+                      (map clojure.string/trim)
+                      (remove empty?)
+                      distinct)]
+      (reduce (fn [acc t]
+                (if-let [u (try (java.util.UUID/fromString t) (catch Exception _ nil))]
+                  (update acc :layers (fnil conj #{}) u)
+                  (reduced {:invalid t})))
+              {:layers nil}
+              tokens))
+    {:layers nil}))
+
+(defn- unknown-layers
+  "Ids in `layers` that are not layers of `deep-doc`'s project, sorted for a
+  stable error message."
+  [deep-doc layers]
+  (let [known (->> (doc/layer-ids-by-kind deep-doc) vals (reduce into #{}))]
+    (sort (map str (remove known layers)))))
+
 (def document-routes
   ["/documents"
 
@@ -62,11 +101,19 @@
    ["/:document-id"
     {:parameters {:path [:map [:document-id :uuid]]}}
 
-    ["" {:get {:summary "Get a document. Set <query>include-body</query> to true in order to include all data contained in the document."
+    ["" {:get {:summary (str "Get a document. Set <query>include-body</query> to true in order to "
+                             "include all data contained in the document. With a body read, "
+                             "<query>layers</query> takes a comma-separated list of layer ids "
+                             "(of any kind) and returns only those layers' contents: a layer "
+                             "survives when it is named or is an ancestor of a named layer, and "
+                             "carries its own texts/tokens/spans/relations/vocabs only when it "
+                             "is itself named.")
                :middleware [[pra/wrap-reader-required get-project-id]]
-               :parameters {:query [:map [:include-body {:optional true} boolean?]]}
+               :parameters {:query [:map
+                                    [:include-body {:optional true} boolean?]
+                                    [:layers {:optional true} string?]]}
                :handler (fn [{{{:keys [document-id]} :path
-                               {:keys [include-body]} :query} :parameters
+                               {:keys [include-body layers]} :query} :parameters
                               db :db
                               as-of-ts :as-of-ts}]
                           ;; `wrap-route-as-of` injects :as-of-ts when ?as-of=
@@ -75,24 +122,48 @@
                           ;; shape is the contract on both sides. The version
                           ;; header is OLTP-only — at-time reads can't usefully
                           ;; advise OCC against the current row.
-                          (let [document (cond
-                                           (and as-of-ts include-body)
-                                           (hread/get-with-layer-data-at db document-id as-of-ts)
-                                           as-of-ts
-                                           (hread/get-at db document-id as-of-ts)
-                                           include-body
-                                           (doc/get-with-layer-data db document-id)
-                                           :else
-                                           (doc/get db document-id))]
-                            (if (some? document)
-                              (if as-of-ts
-                                {:status 200 :body document}
-                                (prm/assoc-document-version-in-header
-                                 {:status 200
-                                  :body document}
-                                 db document-id))
-                              {:status 404
-                               :body {:error "Document not found"}})))}
+                          (let [{:keys [invalid] named :layers} (parse-layer-ids layers)]
+                            (cond
+                              invalid
+                              {:status 400
+                               :body {:error (str "Invalid layer id " (pr-str invalid)
+                                                  ". ?layers= is a comma-separated list of layer UUIDs.")}}
+
+                              (and named (not include-body))
+                              {:status 400
+                               :body {:error "?layers= selects which layers a body read returns, so it requires include-body=true."}}
+
+                              :else
+                              (let [document (cond
+                                               (and as-of-ts include-body)
+                                               (hread/get-with-layer-data-at db document-id as-of-ts)
+                                               as-of-ts
+                                               (hread/get-at db document-id as-of-ts)
+                                               ;; The `named` arg only narrows which rows are
+                                               ;; fetched; prune-to-layers below is what shapes
+                                               ;; the response, on this path and the as-of one
+                                               ;; alike.
+                                               include-body
+                                               (doc/get-with-layer-data db document-id named)
+                                               :else
+                                               (doc/get db document-id))
+                                    bad (when (and named document) (unknown-layers document named))]
+                                (cond
+                                  (nil? document)
+                                  {:status 404 :body {:error "Document not found"}}
+
+                                  (seq bad)
+                                  {:status 400
+                                   :body {:error (str "No such layer in this document's project: "
+                                                      (clojure.string/join ", " bad))}}
+
+                                  :else
+                                  (let [body (doc/prune-to-layers document named)]
+                                    (if as-of-ts
+                                      {:status 200 :body body}
+                                      (prm/assoc-document-version-in-header
+                                       {:status 200 :body body}
+                                       db document-id))))))))}
          :patch {:summary "Update a document. Supported keys:\n\n<body>name</body>: update a document's name."
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]

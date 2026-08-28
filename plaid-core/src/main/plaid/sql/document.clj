@@ -6,6 +6,7 @@
 
   Public API mirrors the xtdb2 surface."
   (:require [clojure.data.json :as json]
+            [clojure.string]
             [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
@@ -155,6 +156,8 @@
       (assoc m :metadata meta-map)
       m)))
 
+(declare deep-read)
+
 (defn get-with-layer-data
   "Deep document read: document + text-layers + token-layers + spans +
   relations + vocabs. Result shape is exactly the v2 shape so the same
@@ -164,10 +167,26 @@
   O(layers × kinds + rows) round trips). Token-id arrays for spans
   and vocab-links are aggregated via SQLite `json_group_array` then
   parsed Clojure-side. The layer tree is built in-Clojure from flat
-  rows grouped by parent-id."
-  [db id]
+  rows grouped by parent-id.
+
+  The 3-arity takes `named` — a set of layer ids from `?layers=` — and
+  narrows the row queries to those layers, so the rows `prune-to-layers`
+  would drop are never fetched or metadata-joined. It does NOT prune the
+  layer tree; the caller still applies `prune-to-layers`, which is the
+  single definition of the response shape."
+  ([db id] (get-with-layer-data db id nil))
+  ([db id named]
+   (deep-read db id (not-empty (some-> named set)))))
+
+(defn- deep-read [db id named]
   (when-let [doc (get db id)]
     (let [prj-id (:document/project doc)
+          ;; With `?layers=` active, only NAMED layers contribute rows —
+          ;; `prune-to-layers` empties every other layer's content anyway, so
+          ;; fetching them (and their entity_metadata) is pure waste. `keep-ids`
+          ;; narrows a layer-id list to the named ones; without a filter it is
+          ;; the identity.
+          keep-ids (if named (fn [ids] (filterv named ids)) identity)
           ;; --- 1. Layer skeleton (4 queries, keyed off project_id). ---
           text-layer-rows (if (nil? prj-id)
                             []
@@ -197,13 +216,14 @@
                                            :where [:in :span_layer_id sl-ids]
                                            :order-by [:order_idx]}))
           ;; --- 2. All texts for this doc (typically 1 per text-layer). ---
-          text-rows (if (empty? tl-ids)
+          text-tl-ids (keep-ids tl-ids)
+          text-rows (if (empty? text-tl-ids)
                       []
                       (psc/q db {:select [:id :body :document_id :text_layer_id]
                                  :from [:texts]
                                  :where [:and
                                          [:= :document_id id]
-                                         [:in :text_layer_id tl-ids]]}))
+                                         [:in :text_layer_id text-tl-ids]]}))
           ;; --- 3. All tokens for this doc — one query, group Clojure-side. ---
           ;; ORDER BY: the canonical token order is (begin, precedence, end, id)
           ;; with precedence NULLS LAST — precedence OUTRANKS extent (task #101,
@@ -211,13 +231,17 @@
           ;; plaid.sql.query.compile). The post-group sort via
           ;; `sort-token-records` preserves this order (its keys are a prefix of
           ;; the SQL key).
-          token-rows (psc/q db {:select [:*]
-                                :from [:tokens]
-                                :where [:= :document_id id]
-                                :order-by [[:begin :asc]
-                                           [:precedence :asc-nulls-last]
-                                           [:end_ :asc]
-                                           [:id :asc]]})
+          token-tokl-ids (keep-ids tokl-ids)
+          token-rows (if (empty? token-tokl-ids)
+                       []
+                       (psc/q db {:select [:*]
+                                  :from [:tokens]
+                                  :where (cond-> [:and [:= :document_id id]]
+                                           named (conj [:in :token_layer_id token-tokl-ids]))
+                                  :order-by [[:begin :asc]
+                                             [:precedence :asc-nulls-last]
+                                             [:end_ :asc]
+                                             [:id :asc]]}))
           ;; --- 4. All spans + their ordered token-id arrays, one query.
           ;; LEFT JOIN + FILTER keeps spans with no span_tokens rows
           ;; (json_group_array of zero rows would be the literal "[null]"
@@ -229,24 +253,40 @@
           ;; parity test doesn't rely on coincidental row order matching
           ;; across SQLite and XTDB v2 (neither guarantees one without
           ;; an explicit ORDER BY).
-          span-rows (psc/q db ["SELECT s.id, s.span_layer_id, s.document_id, s.value,
+          span-sl-ids (keep-ids sl-ids)
+          span-rows (if (empty? span-sl-ids)
+                      []
+                      (let [in-sql (when named
+                                     (str " AND s.span_layer_id IN ("
+                                          (clojure.string/join ", " (repeat (count span-sl-ids) "?"))
+                                          ")"))]
+                        (psc/q db (into [(str "SELECT s.id, s.span_layer_id, s.document_id, s.value,
                                        json_group_array(st.token_id ORDER BY st.order_idx)
                                          FILTER (WHERE st.token_id IS NOT NULL)
                                          AS token_ids
                                   FROM spans s
                                   LEFT JOIN span_tokens st ON st.span_id = s.id
-                                  WHERE s.document_id = ?
+                                  WHERE s.document_id = ?" in-sql "
                                   GROUP BY s.id
-                                  ORDER BY s.id"
-                               id])
+                                  ORDER BY s.id")
+                                         id]
+                                        (when named (map str span-sl-ids))))))
           ;; --- 5. All relations for this doc. ---
-          relation-rows (psc/q db {:select [:*]
-                                   :from [:relations]
-                                   :where [:= :document_id id]
-                                   :order-by [:id]})
+          relation-rl-ids (keep-ids (mapv :id relation-layer-rows))
+          relation-rows (if (empty? relation-rl-ids)
+                          []
+                          (psc/q db {:select [:*]
+                                     :from [:relations]
+                                     :where (cond-> [:and [:= :document_id id]]
+                                              named (conj [:in :relation_layer_id relation-rl-ids]))
+                                     :order-by [:id]}))
           ;; --- 6. Vocab links scoped to this doc + their token arrays,
           ;; one query. Same Postgres-shape note as above. ---
-          vl-rows (psc/q db ["SELECT vl.id, vl.vocab_item_id, vl.document_id,
+          ;; Vocab links hang off the TOKEN layers their tokens live in, so with
+          ;; no fetched tokens there is nothing for them to attach to.
+          vl-rows (if (and named (empty? token-rows))
+                    []
+                    (psc/q db ["SELECT vl.id, vl.vocab_item_id, vl.document_id,
                                      json_group_array(vlt.token_id ORDER BY vlt.order_idx)
                                        FILTER (WHERE vlt.token_id IS NOT NULL)
                                        AS token_ids
@@ -255,7 +295,7 @@
                                        ON vlt.vocab_link_id = vl.id
                                 WHERE vl.document_id = ?
                                 GROUP BY vl.id"
-                             id])
+                               id]))
           ;; --- 7. Vocab item / vocab layer / maintainers hydration. ---
           vi-ids (->> vl-rows (map :vocab_item_id) distinct vec)
           vi-rows (if (empty? vi-ids)
@@ -443,6 +483,91 @@
                :text-layer/text text
                :text-layer/token-layers tls}))]
       (assoc doc :document/text-layers (mapv build-text-layer text-layer-rows)))))
+
+;; ============================================================
+;; Layer subsetting (issue #57)
+;;
+;; A deep read normally returns EVERY layer in the document's project.
+;; An app that only touches, say, one token layer and one span layer
+;; pays for and parses all of it. `?layers=` names the layers it wants.
+;;
+;; The contract, defined once by `prune-to-layers` below and applied to
+;; both the OLTP and the ?as-of= read:
+;;
+;;   * A layer node survives iff it is NAMED or is an ANCESTOR of a named
+;;     layer. Ancestors survive as scaffolding so the response keeps its
+;;     usual shape — a token layer still arrives inside its text layer.
+;;   * A layer's own content (`text`, `tokens`, `spans`, `relations`,
+;;     `vocabs`) survives iff that layer is NAMED. Scaffolding ancestors
+;;     come back empty. "Only in those layers" means only their content:
+;;     name the text layer too if you also want the text body.
+;;
+;; `get-with-layer-data` additionally narrows its row queries to the
+;; named layers, so the rows the pruner would drop are never fetched.
+;; That is a pure optimization: pruning a narrowed read and pruning a
+;; full read produce the same tree (asserted in document-layer-subset-test).
+;; ============================================================
+
+(defn layer-ids-by-kind
+  "Every layer id in `deep-doc` (the result of a deep read), grouped as
+  `{:text #{} :token #{} :span #{} :relation #{}}`. Used to validate a
+  caller's `?layers=` list and to resolve ancestors."
+  [deep-doc]
+  (reduce
+   (fn [acc txtl]
+     (reduce
+      (fn [acc tokl]
+        (reduce
+         (fn [acc sl]
+           (-> acc
+               (update :span conj (:span-layer/id sl))
+               (update :relation into (map :relation-layer/id)
+                       (:span-layer/relation-layers sl))))
+         (update acc :token conj (:token-layer/id tokl))
+         (:token-layer/span-layers tokl)))
+      (update acc :text conj (:text-layer/id txtl))
+      (:text-layer/token-layers txtl)))
+   {:text #{} :token #{} :span #{} :relation #{}}
+   (:document/text-layers deep-doc)))
+
+(defn prune-to-layers
+  "Restrict a deep-read result to `named` (a set of layer ids of any kind).
+  nil/empty `named` returns `deep-doc` untouched. See the block comment
+  above for the retention rule."
+  [deep-doc named]
+  (if (or (empty? named) (nil? deep-doc))
+    deep-doc
+    (let [named (set named)
+          named? #(contains? named %)
+          ;; A node is kept when it is named or when some descendant is.
+          keep-relation-layer (fn [rl] (named? (:relation-layer/id rl)))
+          prune-span-layer
+          (fn [sl]
+            (let [rls (filterv keep-relation-layer (:span-layer/relation-layers sl))
+                  self? (named? (:span-layer/id sl))]
+              (when (or self? (seq rls))
+                (assoc sl
+                       :span-layer/relation-layers rls
+                       :span-layer/spans (if self? (:span-layer/spans sl) [])))))
+          prune-token-layer
+          (fn [tokl]
+            (let [sls (into [] (keep prune-span-layer) (:token-layer/span-layers tokl))
+                  self? (named? (:token-layer/id tokl))]
+              (when (or self? (seq sls))
+                (assoc tokl
+                       :token-layer/span-layers sls
+                       :token-layer/tokens (if self? (:token-layer/tokens tokl) [])
+                       :token-layer/vocabs (if self? (:token-layer/vocabs tokl) [])))))
+          prune-text-layer
+          (fn [txtl]
+            (let [tokls (into [] (keep prune-token-layer) (:text-layer/token-layers txtl))
+                  self? (named? (:text-layer/id txtl))]
+              (when (or self? (seq tokls))
+                (assoc txtl
+                       :text-layer/token-layers tokls
+                       :text-layer/text (when self? (:text-layer/text txtl))))))]
+      (assoc deep-doc :document/text-layers
+             (into [] (keep prune-text-layer) (:document/text-layers deep-doc))))))
 
 ;; ============================================================
 ;; Writes

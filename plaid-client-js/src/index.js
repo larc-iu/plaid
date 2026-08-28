@@ -16,6 +16,15 @@ import {
   requestService,
 } from './services.js';
 
+// Helper: normalize a document-read `layers` filter to the wire's
+// comma-separated form. Accepts an array of layer ids or a ready-made string;
+// anything empty becomes undefined so no `?layers=` is sent at all.
+function layersParam(layers) {
+  if (layers === undefined || layers === null) return undefined;
+  const joined = Array.isArray(layers) ? layers.join(',') : String(layers);
+  return joined.length > 0 ? joined : undefined;
+}
+
 // Helper: normalize an audit `opTypes` filter to the wire's comma-separated
 // form. Accepts an array of op types or a ready-made string; anything empty
 // becomes undefined so no `?op-types=` is sent at all.
@@ -1039,13 +1048,26 @@ class PlaidClient {
         }),
       /**
        * Get a document. Set `includeBody` to true to include all data.
+       *
+       * `layers` narrows a body read to the layers you name (ids of any kind:
+       * text, token, span, or relation). A layer comes back when it is named
+       * or is an ancestor of a named layer, and carries its own
+       * texts/tokens/spans/relations/vocabs only when it is itself named — so
+       * name the text layer too if you also want the text body. An id that is
+       * not a layer of this document's project is an error, not a quietly
+       * smaller response. Requires `includeBody`.
        * @param {string} documentId - The document ID
        * @param {boolean} [includeBody] - Include document body data
        * @param {string} [asOf] - Temporal query timestamp
+       * @param {string[]|string} [layers] - Layer ids to restrict a body read to
        */
-      get: (documentId, includeBody, asOf) =>
+      get: (documentId, includeBody, asOf, layers) =>
         this._request('GET', `/api/v1/documents/${documentId}`, {
-          queryParams: { 'include-body': includeBody, 'as-of': asOf },
+          queryParams: {
+            'include-body': includeBody,
+            'as-of': asOf,
+            layers: layersParam(layers),
+          },
         }),
       /**
        * Delete a document and all data contained.
