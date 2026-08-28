@@ -16,6 +16,7 @@ import {
   Box,
 } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
+import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
 import { UserAvatar } from '../common/UserAvatar';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { timeAgo } from '../../utils/formatTime.js';
@@ -162,6 +163,12 @@ export const UserProfile = () => {
 
     try {
       const client = getClient();
+
+      if (!isEmail(formData.username)) {
+        setError(EMAIL_INVALID_MESSAGE);
+        setLoading(false);
+        return;
+      }
 
       // Validate passwords if changing password
       if (formData.newPassword) {
@@ -320,7 +327,7 @@ export const UserProfile = () => {
           <Stack gap="md" align="flex-start">
             <div>
               <Text size="sm" fw={500} c="dimmed">
-                Username
+                Email address
               </Text>
               <Text>{user?.username}</Text>
             </div>
@@ -332,7 +339,8 @@ export const UserProfile = () => {
               {error && <Alert color="red">{error}</Alert>}
 
               <TextInput
-                label="Username"
+                label="Email address"
+                type="email"
                 name="username"
                 value={formData.username}
                 onChange={handleInputChange}

@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ArrowLeft, Copy, Check, ImagePlus } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
+import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '@/utils/email';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -159,7 +160,8 @@ export const UserProfile = () => {
 
   const validate = () => {
     const er = {};
-    if (!fields.username.trim()) er.username = 'Username is required';
+    if (!fields.username.trim()) er.username = EMAIL_REQUIRED_MESSAGE;
+    else if (!isEmail(fields.username)) er.username = EMAIL_INVALID_MESSAGE;
     if (fields.newPassword && fields.newPassword.length < 6)
       er.newPassword = 'Password must be at least 6 characters long';
     if (fields.newPassword && fields.confirmPassword !== fields.newPassword)
@@ -274,7 +276,7 @@ export const UserProfile = () => {
           {!isEditing ? (
             <div className="flex flex-col gap-4">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Username</p>
+                <p className="text-sm font-medium text-muted-foreground">Email address</p>
                 <p className="text-lg">{user?.username}</p>
               </div>
               <Button className="self-start" onClick={() => setIsEditing(true)}>
@@ -284,12 +286,13 @@ export const UserProfile = () => {
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username">Email address</Label>
                 <Input
                   id="username"
+                  type="email"
                   value={fields.username}
                   onChange={set('username')}
-                  placeholder="Enter username"
+                  placeholder="you@example.com"
                 />
                 {fieldError('username')}
               </div>

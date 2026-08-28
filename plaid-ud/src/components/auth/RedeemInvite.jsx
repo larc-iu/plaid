@@ -15,6 +15,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { authService } from '../../services/auth';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '../../utils/email';
 
 // Matches the server's minimum. Stated up front rather than only on rejection:
 // this is the one password the user will have to remember, and finding out the
@@ -74,8 +75,8 @@ export const RedeemInvite = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!isReset && !username.trim()) return setError('Choose a username');
-    if (!isReset && /\s/.test(username.trim())) return setError('Username cannot contain spaces');
+    if (!isReset && !username.trim()) return setError(EMAIL_REQUIRED_MESSAGE);
+    if (!isReset && !isEmail(username)) return setError(EMAIL_INVALID_MESSAGE);
     if (password.length < MIN_PASSWORD)
       return setError(`Password must be at least ${MIN_PASSWORD} characters`);
     if (password !== confirm) return setError('Passwords do not match');
@@ -95,7 +96,7 @@ export const RedeemInvite = () => {
     // but the user's question is "what do I type instead".
     setError(
       result.status === 409
-        ? 'That username is already taken. Try a different one.'
+        ? 'An account already exists for that email address.'
         : result.error || 'Could not redeem this invite.',
     );
   };
@@ -108,7 +109,7 @@ export const RedeemInvite = () => {
       ? `Choose a new password for ${preview.username}.`
       : preview?.projectName
         ? `You have been invited to join ${preview.projectName} as a ${preview.projectRole}.`
-        : 'Choose a username and password to get started.';
+        : 'Choose an email address and password to get started.';
 
   return (
     <Center mih="100vh" bg="gray.0" p="md">
@@ -161,12 +162,13 @@ export const RedeemInvite = () => {
 
                 {!isReset && (
                   <TextInput
-                    label="Choose a username"
-                    placeholder="e.g. jsmith"
+                    label="Your email address"
+                    type="email"
+                    placeholder="e.g. jsmith@example.com"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     disabled={submitting}
-                    autoComplete="username"
+                    autoComplete="email"
                     data-autofocus
                     required
                   />

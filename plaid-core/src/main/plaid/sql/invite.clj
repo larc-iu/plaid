@@ -476,14 +476,12 @@
                          (let [user-id
                                (if reset?
                                  (user/set-password-in-tx! tx (:target_user_id row) password)
-                                 (do
-                                   (psc/valid-name? username)
-                                   (when (re-find #"\s" username)
-                                     (throw (ex-info "Username may not contain whitespace"
-                                                     {:code 400 :username username})))
-                                   (user/insert-user-row! tx username
-                                                          (->bool (:grant_admin row))
-                                                          password)))]
+                                 ;; Shape checks (non-blank, length, email) live in
+                                 ;; `user/insert-user-row!` so every account-creating
+                                 ;; path enforces exactly one rule.
+                                 (user/insert-user-row! tx username
+                                                        (->bool (:grant_admin row))
+                                                        password))]
                            (when (and (not reset?) (:project_id row))
                              (prj/add-role! tx (:project_id row) user-id (:project_role row)))
                            (let [post (update row :uses inc)]

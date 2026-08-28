@@ -173,8 +173,11 @@
         code (-> (mint! admin-request {:project-id pid :project-role "reader"}) :body :code)]
     (testing "a short password is refused"
       (assert-bad-request (redeem! {:code code :username "x@example.com" :password "short"})))
-    (testing "a username with whitespace is refused"
-      (assert-bad-request (redeem! {:code code :username "has space" :password good-password})))
+    (testing "a username that is not an email address is refused"
+      ;; Usernames ARE email addresses instance-wide; redemption is one of the
+      ;; three account-creating paths, so it enforces the same rule.
+      (doseq [bad ["has space" "jsmith" "no@dot"]]
+        (assert-bad-request (redeem! {:code code :username bad :password good-password}))))
     (testing "a taken username is a 409, not a 500"
       (assert-status 409 (redeem! {:code code :username "user1@example.com"
                                    :password good-password})))

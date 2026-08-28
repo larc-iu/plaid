@@ -24,6 +24,7 @@ import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.
 import { UserAvatar } from '../common/UserAvatar';
 import classes from '../common/listRow.module.css';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
 
 const PAGE_SIZE = 100;
 const EMPTY_USER_FORM = { username: '', password: '', confirmPassword: '', isAdmin: false };
@@ -120,6 +121,10 @@ export const AdminUsers = () => {
     e.preventDefault();
     setCreateUserError('');
 
+    if (!isEmail(newUserForm.username)) {
+      setCreateUserError(EMAIL_INVALID_MESSAGE);
+      return;
+    }
     if (newUserForm.password !== newUserForm.confirmPassword) {
       setCreateUserError('Passwords do not match');
       return;
@@ -143,9 +148,7 @@ export const AdminUsers = () => {
     } catch (err) {
       console.error('Error creating user:', err);
       if (err.status === 409 || (err.message && err.message.includes('409'))) {
-        setCreateUserError(
-          `A user with the ID "${newUserForm.username}" already exists. Please choose a different user ID.`,
-        );
+        setCreateUserError(`An account for "${newUserForm.username}" already exists.`);
       } else {
         setCreateUserError('Failed to create user: ' + (err.message || 'Unknown error'));
       }
@@ -169,6 +172,10 @@ export const AdminUsers = () => {
     e.preventDefault();
     setEditUserError('');
 
+    if (!isEmail(editUserForm.username)) {
+      setEditUserError(EMAIL_INVALID_MESSAGE);
+      return;
+    }
     if (editUserForm.password && editUserForm.password !== editUserForm.confirmPassword) {
       setEditUserError('Passwords do not match');
       return;
@@ -393,9 +400,10 @@ export const AdminUsers = () => {
             {createUserError && <Alert color="red">{createUserError}</Alert>}
 
             <TextInput
-              label="User ID"
-              description="Unique identifier for this user (cannot be changed later)"
-              placeholder="e.g., john.doe"
+              label="Email address"
+              type="email"
+              description="Their email address doubles as the username they sign in with"
+              placeholder="e.g., john.doe@example.com"
               value={newUserForm.username}
               onChange={(e) => setNewUserForm((prev) => ({ ...prev, username: e.target.value }))}
               required
@@ -448,7 +456,8 @@ export const AdminUsers = () => {
               {editUserError && <Alert color="red">{editUserError}</Alert>}
 
               <TextInput
-                label="Username"
+                label="Email address"
+                type="email"
                 value={editUserForm.username}
                 onChange={(e) => setEditUserForm((prev) => ({ ...prev, username: e.target.value }))}
                 required

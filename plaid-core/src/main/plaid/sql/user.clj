@@ -145,6 +145,33 @@
             (recur (.getCause t))))
       :else (recur (.getCause t)))))
 
+(def ^:private email-pattern
+  "Deliberately permissive: one @, no whitespace around it, and a dot in the
+  domain. Anything stricter starts turning away addresses that genuinely
+  deliver (RFC 5322 allows quoted local parts, and new TLDs keep arriving),
+  and the only thing this check is really here to catch is someone typing a
+  bare name into a field the whole instance treats as an email."
+  #"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+(defn assert-valid-username!
+  "Usernames ARE email addresses in Plaid. Every account-creating surface
+  already collects one (`PLAID_ADMIN_EMAIL` at bootstrap, the admin's
+  POST /users form, invite redemption), so the rule lives here at the single
+  chokepoint they all pass through rather than being restated, and drifting,
+  at each caller.
+
+  Enforced on create and rename ONLY. An account made before this rule keeps
+  working: login looks the username up, it never revalidates it.
+
+  Throws ex-info with :code 400. Callers must already be inside
+  `submit-operation!`, which is what projects that into a 400 response."
+  [username]
+  (psc/valid-name? username)
+  (when-not (re-matches email-pattern username)
+    (throw (ex-info "Username must be an email address"
+                    {:code 400 :username username})))
+  true)
+
 (defn insert-user-row!
   "Insert a fresh user row inside a tx. PUBLIC because invite redemption
   (plaid.sql.invite/redeem!) creates the account inside its own
@@ -159,6 +186,7 @@
   re-thrown so the outer submit-operation* catch projects it to 500
   with the original SQLException message — important for diagnostics."
   [tx id is-admin password]
+  (assert-valid-username! id)
   (let [password-hash (hashers/derive password)
         row {:id               id
              :username         id
@@ -207,7 +235,7 @@
                              :description (str "Update user " eid)
                              :user acting-user-id}]
                      (when-let [n (:user/username m)]
-                       (psc/valid-name? n))
+                       (assert-valid-username! n))
                      (let [intern (get-internal tx eid)]
                        (when (nil? intern)
                          (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))

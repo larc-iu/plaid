@@ -109,6 +109,41 @@
         ;; Same generic message — must not leak that the user doesn't exist.
         (is (= body {:error "Invalid credentials"}))))))
 
+(deftest usernames-must-be-email-addresses
+  ;; Usernames ARE email addresses instance-wide. One rule, enforced at the
+  ;; single chokepoint every account-creating path goes through
+  ;; (`plaid.sql.user/assert-valid-username!`), so this covers POST /users and
+  ;; the rename on PATCH; invite redemption is exercised in invite-test.
+  (let [create (fn [username]
+                 (rest-handler (-> (admin-request :post "/api/v1/users")
+                                   (mock/json-body {:username username
+                                                    :password "correcthorsebatterystaple"
+                                                    :is-admin false}))))
+        rename (fn [id username]
+                 (rest-handler (-> (admin-request :patch (str "/api/v1/users/" id))
+                                   (mock/json-body {:username username}))))]
+
+    (testing "a bare name is refused at creation"
+      (doseq [bad ["jsmith" "has space@example.com" "no@dot" "@example.com" "trailing@"]]
+        ;; `parse-response-body` slurps the body stream, so read it ONCE.
+        (let [resp (create bad)
+              body (parse-response-body resp)]
+          (is (= 400 (:status resp)) (str "expected 400 for " (pr-str bad)))
+          (is (re-find #"email" (:error body))
+              (str "error should name the rule, got: " (pr-str body))))))
+
+    (testing "an email address is accepted"
+      (is (= 201 (:status (create "valid.user+tag@example.co.uk")))))
+
+    (testing "a rename to a non-email is refused, and the old username survives"
+      (is (= 201 (:status (create "renamer@example.com"))))
+      (is (= 400 (:status (rename "renamer@example.com" "renamer"))))
+      (let [body (parse-response-body (rest-handler (admin-request :get "/api/v1/users/renamer@example.com")))]
+        (is (= "renamer@example.com" (:user/username body)))))
+
+    (testing "a rename to another email is allowed"
+      (is (= 200 (:status (rename "renamer@example.com" "renamed@example.com")))))))
+
 (deftest user-deactivation-lifecycle
   ;; Users are never hard-deleted (operations.user_id / token_id FKs +
   ;; audit attribution must survive). DELETE deactivates; POST

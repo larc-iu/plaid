@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { authService } from '../../services/auth';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { notifySuccess } from '@/utils/feedback';
+import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '@/utils/email';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -67,8 +68,8 @@ export const RedeemInvite = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!isReset && !username.trim()) return setError('Choose a username');
-    if (!isReset && /\s/.test(username.trim())) return setError('Username cannot contain spaces');
+    if (!isReset && !username.trim()) return setError(EMAIL_REQUIRED_MESSAGE);
+    if (!isReset && !isEmail(username)) return setError(EMAIL_INVALID_MESSAGE);
     if (password.length < MIN_PASSWORD)
       return setError(`Password must be at least ${MIN_PASSWORD} characters`);
     if (password !== confirm) return setError('Passwords do not match');
@@ -92,7 +93,7 @@ export const RedeemInvite = () => {
     // but the user's question is "what do I type instead".
     setError(
       result.status === 409
-        ? 'That username is already taken. Try a different one.'
+        ? 'An account already exists for that email address.'
         : result.error || 'Could not redeem this invite.',
     );
   };
@@ -113,7 +114,7 @@ export const RedeemInvite = () => {
                 ? `Choose a new password for ${preview.username}.`
                 : preview?.projectName
                   ? `You have been invited to join ${preview.projectName} as a ${preview.projectRole}.`
-                  : 'Choose a username and password to get started.'}
+                  : 'Choose an email address and password to get started.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -166,14 +167,15 @@ export const RedeemInvite = () => {
 
               {!isReset && (
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="invite-username">Choose a username</Label>
+                  <Label htmlFor="invite-username">Your email address</Label>
                   <Input
                     id="invite-username"
-                    placeholder="e.g. jsmith"
+                    type="email"
+                    placeholder="e.g. jsmith@example.com"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     disabled={submitting}
-                    autoComplete="username"
+                    autoComplete="email"
                     autoFocus
                   />
                 </div>
