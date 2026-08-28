@@ -1,10 +1,11 @@
 """Unit tests for the pure parts of the PolyGloss service (no model, no server).
-Run: pytest plaid-igt/services/test_igt_analyze_polygloss.py"""
+Run: pytest plaid-igt/services/tests
+(Lives under tests/ because bb/pipeline.clj bundles every services/*.py into the jar.)"""
 import importlib.util
 import pathlib
 
 _spec = importlib.util.spec_from_file_location(
-    'igt_analyze_polygloss', pathlib.Path(__file__).with_name('igt_analyze_polygloss.py'))
+    'igt_analyze_polygloss', pathlib.Path(__file__).parent.parent / 'igt_analyze_polygloss.py')
 pg = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(pg)
 

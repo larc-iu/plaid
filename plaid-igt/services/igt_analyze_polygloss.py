@@ -26,6 +26,10 @@ monotonic edit-distance alignment allowing dropped/inserted/merged words),
 degrades unparsable words to a single morpheme carrying the joined gloss, and
 re-runs the untranscribed tail of a truncated generation. The unit of writing
 is the word: unaligned words are simply left alone and reported.
+
+Requirements (on top of plaid-client): torch, transformers (>=4.51), and
+peft only when launching with --adapter. A GPU is assumed for whole-document
+runs; CPU works but is many times slower.
 """
 
 import argparse
