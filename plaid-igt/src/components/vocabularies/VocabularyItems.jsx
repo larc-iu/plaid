@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Trash2,
@@ -203,6 +203,31 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabularyId]);
+
+  // Deep link to one entry: `?item=<id>` (the Analyze popover links here).
+  // Once the items are in, select it and narrow the list to its form so it is
+  // on screen; the param is consumed (dropped from the URL) so a later manual
+  // selection isn't fought by a re-render.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedItemId = searchParams.get('item');
+  useEffect(() => {
+    if (!linkedItemId || loading) return;
+    const item = items.find((i) => i.id === linkedItemId);
+    if (item) {
+      selectItem(item);
+      setSearch(item.form);
+      setPage(0);
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('item');
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedItemId, loading, items]);
 
   // Plan the concordance + load the first batch whenever a real item is selected.
   useEffect(() => {

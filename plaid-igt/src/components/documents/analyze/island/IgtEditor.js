@@ -2372,11 +2372,21 @@ export class IgtEditor {
                   }}
                 >
                   <span class="igt-vocab-pop__main">
-                    <span class="igt-vocab-pop__form"
-                      >${it.form}${it._sub != null
-                        ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>`
-                        : nothing}</span
-                    >
+                    ${linked
+                      ? html`<a
+                          class="igt-vocab-pop__form igt-vocab-pop__goto"
+                          href=${`#/vocabularies/${activeVocab.id}?item=${it.id}`}
+                          title="Open this entry in the lexicon"
+                          @click=${(e) => e.stopPropagation()}
+                          >${it.form}${it._sub != null
+                            ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>`
+                            : nothing}</a
+                        >`
+                      : html`<span class="igt-vocab-pop__form"
+                          >${it.form}${it._sub != null
+                            ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>`
+                            : nothing}</span
+                        >`}
                     ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
                     ${linked
                       ? html`<span

@@ -980,6 +980,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.igt-vocab-pop__goto {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.igt-vocab-pop__goto:hover {
+  text-decoration-style: solid;
+}
 .igt-vocab-pop__item:hover {
   background: #eef2ff;
 }
