@@ -247,7 +247,18 @@ export const DocumentList = ({
       ) : (
         <TooltipProvider>
           <div className="overflow-hidden rounded-md border">
-            <table className="w-full text-sm">
+            {/* table-fixed + colgroup: with `auto` layout the name column's
+                intrinsic width is the full untruncated title, so one long name
+                pushed the table past its wrapper and `overflow-hidden` clipped
+                Words and Updated out of view. Fixed layout hands the two narrow
+                columns their width first and lets the name wrap into whatever
+                is left. */}
+            <table className="w-full table-fixed text-sm">
+              <colgroup>
+                <col />
+                <col className="w-[88px]" />
+                <col className="w-[132px]" />
+              </colgroup>
               <thead className="border-b bg-muted/40">
                 <tr>
                   <th className="px-4 py-2 text-left">
@@ -285,7 +296,12 @@ export const DocumentList = ({
                       <td className="p-0">
                         <a href={href} className="block px-4 py-3">
                           <div className="min-w-0">
-                            <div className="truncate font-medium">{d.name}</div>
+                            {/* Wrap rather than truncate: a long title is the
+                                only thing distinguishing two recordings, so
+                                hiding its tail is worse than a taller row.
+                                break-words so a single very long token still
+                                cannot force the column wider. */}
+                            <div className="break-words font-medium">{d.name}</div>
                             <div className="truncate text-xs text-muted-foreground">ID: {d.id}</div>
                           </div>
                         </a>
