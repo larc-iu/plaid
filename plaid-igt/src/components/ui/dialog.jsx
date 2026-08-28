@@ -27,6 +27,13 @@ const DialogContent = React.forwardRef(({ className, children, ...props }, ref) 
       ref={ref}
       className={cn(
         'tw fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-lg',
+        // A centered `fixed` box taller than the viewport overflows off BOTH
+        // ends at once, and page scroll cannot reach either — the footer
+        // buttons simply become unclickable. Cap the height and let the
+        // dialog scroll itself. A dialog that wants a pinned header/footer
+        // overrides with `overflow-y-hidden` + grid rows and scrolls its own
+        // body instead (see AutoAnalyzeDialog).
+        'max-h-[calc(100dvh-2rem)] overflow-y-auto',
         'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
         className,
       )}

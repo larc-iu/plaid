@@ -317,14 +317,20 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
         if (!running) onOpenChange(o);
       }}
     >
-      <DialogContent className="max-w-lg">
+      {/* Three grid rows — header, scrolling body, footer — so Run/Cancel stay
+          on screen no matter how many parameters the chosen service declares.
+          `max-w-2xl` (rather than the default lg) is what lets ServiceParamForm
+          lay its fields out two-up instead of stacking them into a column
+          taller than most laptop screens. */}
+      <DialogContent className="max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-y-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" /> Auto-analyze
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-5">
+        {/* -mx-1/px-1 keeps focus rings from being clipped by the scroll box. */}
+        <div className="-mx-1 flex flex-col gap-5 overflow-y-auto px-1">
           {/* 1. copy */}
           <section className="flex flex-col gap-1.5">
             <StepHeader
