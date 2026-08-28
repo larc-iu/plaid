@@ -200,6 +200,25 @@ export class IgtEditor {
       el.scrollIntoView({ block: 'center' });
       el.classList.add('igt-sentence--flash');
       setTimeout(() => el.classList.remove('igt-sentence--flash'), 2400);
+      // Land on the hit word itself (its morpheme form cell, else any of its
+      // cells) so a long sentence doesn't leave the user hunting for the word.
+      if (typeof req.begin === 'number') {
+        const sentence = this.doc.sentences[idx];
+        const word = (sentence?.tokens || []).find(
+          (t) => t.begin <= req.begin && req.begin < t.end,
+        );
+        const cell =
+          word &&
+          (this.container.querySelector(`.igt-morph-field[data-word="${word.id}"]`) ||
+            this.container.querySelector(`.igt-field[data-confirm-word="${word.id}"]`));
+        if (cell) {
+          try {
+            cell.focus({ preventScroll: true });
+          } catch {
+            /* noop */
+          }
+        }
+      }
     });
   }
 
@@ -851,7 +870,25 @@ export class IgtEditor {
         : null;
     delete el.dataset.guessConfirmed;
     if (next === (el.dataset.orig ?? '')) return;
-    this._run(() => apply(next, fragment));
+    this._runKeepingFocus(el, next, () => apply(next, fragment));
+  }
+
+  // Run a cell commit; when it FAILS (server unreachable, conflict…) the doc
+  // reloads and re-renders, which used to drop focus to <body> and leave the
+  // user to click back. Put the typed value back into the same cell and
+  // refocus it so Enter retries (E2: focus is never lost).
+  _runKeepingFocus(el, typed, fn) {
+    const key = el.dataset.cellKey;
+    this._run(fn).then((ok) => {
+      if (ok !== false || !key) return;
+      const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
+      if (!cell) return;
+      // Focus first: the focus handler stamps dataset.orig from the current
+      // value, and `orig` must stay the SAVED value so Enter sees a change.
+      cell.focus();
+      cell.value = typed;
+      cell.dataset.orig = '';
+    });
   }
 
   _field({
@@ -971,7 +1008,12 @@ export class IgtEditor {
         const st = this._morphSplit;
         if (e.key === 'Enter' || e.key === 'Tab') st.commitKey = e.key;
         else if (e.key === 'Backspace') st.buffer = st.buffer.slice(0, -1);
-        else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) st.buffer += e.key;
+        else if (e.key === '-' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+          // A further split typed mid-flight ("ngo-ko-mi" fast): remember the
+          // boundary instead of inserting a literal hyphen, and replay it as
+          // another split once the new cell exists.
+          st.splits = [...(st.splits || []), st.buffer.length];
+        } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) st.buffer += e.key;
         // Arrows / Escape / etc. mid-flight are swallowed (no meaningful target).
         return;
       }
@@ -1106,6 +1148,12 @@ export class IgtEditor {
 
   // Flush keystrokes buffered while a split was in flight into the freshly
   // rendered + focused new morpheme cell, then honor a buffered commit key.
+  // The morpheme id behind a form cell (`data-cell-key="mf:<id>"`).
+  _morphIdOf(el) {
+    const key = el?.dataset?.cellKey ?? '';
+    return key.startsWith('mf:') ? key.slice(3) : null;
+  }
+
   _applyMorphSplitReplay(split) {
     if (!split) return;
     const el = this.container.querySelector(
@@ -1132,6 +1180,32 @@ export class IgtEditor {
         el.setSelectionRange(0, 0);
       } catch {
         /* not selectable */
+      }
+    }
+    // Further hyphens typed during the flight: split the new cell again at
+    // those buffered boundaries (a real split each, never a literal hyphen).
+    if (split.splits?.length) {
+      const text = el.value;
+      const cuts = [...new Set(split.splits.filter((c) => c > 0 && c < text.length))].sort(
+        (a, b) => a - b,
+      );
+      if (cuts.length) {
+        const segments = [];
+        let last = 0;
+        for (const c of cuts) {
+          segments.push(text.slice(last, c));
+          last = c;
+        }
+        segments.push(text.slice(last));
+        const morphId = this._morphIdOf(el);
+        el.dataset.suppressCommit = '1';
+        this._pendingFocus = {
+          wordId: split.wordId,
+          precedence: split.precedence + segments.length - 1,
+          cursor: 'end',
+        };
+        this._run(() => this.doc.splitMorphemeMulti(morphId, segments));
+        return;
       }
     }
     // A buffered Enter/Tab commits the new cell and advances (blur → commit).
@@ -1196,7 +1270,7 @@ export class IgtEditor {
     }
     const next = el.value;
     if (next === (el.dataset.orig ?? '')) return;
-    this._run(() => this.doc.updateMorphemeForm(morphId, next));
+    this._runKeepingFocus(el, next, () => this.doc.updateMorphemeForm(morphId, next));
   }
 
   // The gloss-guess source scans the WHOLE document (doc-frequency), so build
@@ -1914,6 +1988,16 @@ export class IgtEditor {
   // Homonym subscripts (form₂) for vocab items that share a form within a
   // vocab — FLEx-style sense numbering by creation order. Cached per
   // doc.dataVersion so we regroup only when the data actually changes.
+  // Browsers fire mousemove when content re-flows UNDER a stationary pointer
+  // (a popover re-render, a row growing). Only a real pointer movement should
+  // move the keyboard highlight, or Enter can land on a row the user never
+  // hovered (TEST_PLAN finding 17).
+  _pointerMoved(e) {
+    const last = this._lastPointer;
+    this._lastPointer = { x: e.clientX, y: e.clientY };
+    return !last || last.x !== e.clientX || last.y !== e.clientY;
+  }
+
   _homonymIndexFor(vocabId) {
     const dv = this.doc?.dataVersion;
     if (this._homonymCacheKey !== dv) {
@@ -2152,7 +2236,8 @@ export class IgtEditor {
                   class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${i === activeIdx
                     ? 'is-active'
                     : ''}"
-                  @mousemove=${() => {
+                  @mousemove=${(e) => {
+                    if (!this._pointerMoved(e)) return;
                     if (this._popoverActiveIndex !== i) {
                       this._popoverActiveIndex = i;
                       this._render(true);
@@ -2207,7 +2292,8 @@ export class IgtEditor {
           ? html`<button
               type="button"
               class="igt-vocab-pop__create ${activeIdx === limited.length ? 'is-active' : ''}"
-              @mousemove=${() => {
+              @mousemove=${(e) => {
+                if (!this._pointerMoved(e)) return;
                 const idx = limited.length;
                 if (this._popoverActiveIndex !== idx) {
                   this._popoverActiveIndex = idx;

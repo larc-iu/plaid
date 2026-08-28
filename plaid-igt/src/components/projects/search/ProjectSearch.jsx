@@ -89,8 +89,8 @@ export const ProjectSearch = ({ project, projectId, client }) => {
 
   // Click-through: open the document's Analyze tab focused on the hit
   // sentence. The island consumes the sessionStorage key on first paint.
-  const openHit = (docId, sentenceId) => {
-    sessionStorage.setItem('igt:focus-sentence', JSON.stringify({ docId, sentenceId }));
+  const openHit = (docId, sentenceId, begin = null) => {
+    sessionStorage.setItem('igt:focus-sentence', JSON.stringify({ docId, sentenceId, begin }));
     navigate(`/projects/${projectId}/documents/${docId}`, { state: { tab: 'analyze' } });
   };
 
@@ -200,7 +200,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                   <button
                     key={row.sentenceId}
                     type="button"
-                    onClick={() => openHit(g.docId, row.sentenceId)}
+                    onClick={() => openHit(g.docId, row.sentenceId, row.hitBegin ?? null)}
                     className="block w-full px-4 py-2 text-left hover:bg-muted/50"
                     title="Open in Analyze"
                   >

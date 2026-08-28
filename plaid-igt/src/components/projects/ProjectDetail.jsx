@@ -51,7 +51,7 @@ export const ProjectDetail = () => {
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
         // Clear the rejected token before leaving, else /login bounces back.
-        logout();
+        logout('expired');
         return;
       }
       setError('Failed to load data');

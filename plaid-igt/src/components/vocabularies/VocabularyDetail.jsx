@@ -93,7 +93,7 @@ export const VocabularyDetail = () => {
       setError('');
     } catch (err) {
       if (err.message === 'Not authenticated' || err.status === 401) {
-        logout();
+        logout('expired');
         return;
       }
       setError('Failed to load vocabulary');

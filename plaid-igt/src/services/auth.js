@@ -77,7 +77,7 @@ export const authService = {
       // Use PlaidClient's static login method
       return await establishSession(
         await PlaidClient.login(BASE_URL, username, password, {
-          onAuthError: () => authService.logout(),
+          onAuthError: () => authService.logout('expired'),
         }),
       );
     } catch (error) {
@@ -100,13 +100,19 @@ export const authService = {
       BASE_URL,
       code,
       { username, password },
-      { onAuthError: () => authService.logout() },
+      { onAuthError: () => authService.logout('expired') },
     );
     return establishSession(authed);
   },
 
-  logout() {
+  logout(reason = null) {
     client = null;
+    // Tell the login page why it is being shown (read once, then cleared).
+    try {
+      if (reason) sessionStorage.setItem('plaid:logout-reason', reason);
+    } catch {
+      /* storage unavailable */
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
@@ -151,7 +157,7 @@ export const authService = {
     if (!client && token) {
       // Recreate client from stored token
       client = new PlaidClient(BASE_URL, token, {
-        onAuthError: () => authService.logout(),
+        onAuthError: () => authService.logout('expired'),
       });
     }
     return client;

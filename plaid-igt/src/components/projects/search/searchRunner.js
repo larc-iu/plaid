@@ -108,6 +108,8 @@ export function buildContextRows(doc, domain, hitIds) {
         marks: r.marks
           .map((m) => ({ begin: m.begin - base, end: m.end - base }))
           .sort((a, b) => a.begin - b.begin),
+        // Absolute offset of the first hit, for the editor to focus that word.
+        hitBegin: r.marks.length ? Math.min(...r.marks.map((m) => m.begin)) : null,
         notes: r.notes,
         translation,
       };

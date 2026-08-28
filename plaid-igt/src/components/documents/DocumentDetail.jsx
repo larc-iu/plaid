@@ -115,7 +115,7 @@ const DocumentEditor = () => {
       } catch (e) {
         if (cancelled) return;
         if (e.message === 'Not authenticated' || e.status === 401) {
-          logout();
+          logout('expired');
           return;
         }
         console.error('Failed to load document:', e);

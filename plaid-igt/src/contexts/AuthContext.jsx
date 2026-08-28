@@ -51,8 +51,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    authService.logout();
+  // `reason` ('expired') lets the login page say why it is showing.
+  const logout = (reason = null) => {
+    authService.logout(reason);
     setUser(null);
   };
 

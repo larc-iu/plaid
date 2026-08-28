@@ -16,7 +16,17 @@ export const LoginForm = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
+  // Why the login page is showing (set by authService.logout on a 401). The
+  // flag is cleared on a successful sign-in, not on read: logout navigates to
+  // this route and then hard-reloads, so the form mounts twice.
+  const [notice] = useState(() => {
+    try {
+      const r = sessionStorage.getItem('plaid:logout-reason');
+      return r === 'expired' ? 'Your session has expired. Please sign in again.' : '';
+    } catch {
+      return '';
+    }
+  });
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -30,6 +40,11 @@ export const LoginForm = () => {
     try {
       const result = await login(username, password);
       if (result.success) {
+        try {
+          sessionStorage.removeItem('plaid:logout-reason');
+        } catch {
+          /* storage unavailable */
+        }
         notifySuccess('Login successful!', 'Success');
         navigate('/projects');
       } else {
@@ -51,6 +66,14 @@ export const LoginForm = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {notice && !error && (
+              <div
+                role="status"
+                className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+              >
+                {notice}
+              </div>
+            )}
             {error && (
               <div
                 role="alert"

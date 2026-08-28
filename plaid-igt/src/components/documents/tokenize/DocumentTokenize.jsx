@@ -178,6 +178,11 @@ export function DocumentTokenize() {
                 <div className="flex items-center gap-1.5">
                   <Label>Tokenization Algorithm</Label>
                   <ServiceSummary service={ops.selectedService} />
+                  {!ops.selectedService && (
+                    <span className="text-xs text-muted-foreground">
+                      finds words only; sentence boundaries stay as they are
+                    </span>
+                  )}
                 </div>
                 <Select value={ops.algorithm} onValueChange={ops.setAlgorithm} disabled={readOnly}>
                   <SelectTrigger style={{ width: 280 }}>
