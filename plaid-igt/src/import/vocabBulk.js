@@ -295,10 +295,13 @@ export const OVERRIDE_VALUES = {
 /**
  * Plan a bulk import against the vocabulary's current contents.
  *
- * Every decision carries the value-level `changes` behind it, because a count
- * of "74 rows disagree" is not something a person can act on. A change with an
- * empty `from` is a value the row adds, one with both sides filled is a
- * disagreement, and that difference is the whole judgement a reviewer makes.
+ * Every decision carries what a reviewer needs to second-guess it: the row's
+ * own `values`, the `matches` it was weighed against (frozen at decision time),
+ * and the value-level `changes` between them. A count of "74 rows disagree" is
+ * not something a person can act on, and neither is a diff against an entry
+ * they cannot see. A change with an empty `from` is a value the row adds, one
+ * with both sides filled is a disagreement, and telling a correction from a
+ * second sense is exactly that distinction.
  *
  * @param {object} opts
  * @param {Array} opts.entries - from rowsToEntries
@@ -308,7 +311,12 @@ export const OVERRIDE_VALUES = {
  * @param {object} [opts.strategies] - the per-classification policy, see DEFAULT_STRATEGIES
  * @param {object} [opts.overrides] - `{[line]: policy}`, one row's answer overriding its bucket
  * @returns {{
- *   decisions: {line, form, kind, action, targetId, targetForm, candidates, changes, detail}[],
+ *   decisions: {
+ *     line, form, values, kind, action, detail,
+ *     targetId, targetForm, candidates,
+ *     matches: {form, values, pending, target}[],
+ *     changes: {field, from, to}[],
+ *   }[],
  *   counts: object,
  *   creates: {form, metadata}[],
  *   updates: {id, patch}[],
@@ -375,13 +383,24 @@ export const planVocabImport = ({
       .filter((f) => norm(candidate.values[f]) !== norm(entry.values[f]))
       .map((f) => ({ field: f, from: candidate.values[f] ?? '', to: entry.values[f] }));
 
+  // A candidate frozen at decision time. Pool values are mutated as later rows
+  // fill blanks in, so a live reference would show a reviewer the wrong thing.
+  const snapshot = (c, target) => ({
+    form: c.form,
+    values: { ...c.values },
+    pending: c.id == null,
+    target: !!target,
+  });
+
   const record = (entry, d) =>
     decisions.push({
       line: entry.line,
       form: entry.form,
+      values: { ...entry.values },
       targetId: null,
       targetForm: null,
       candidates: 0,
+      matches: [],
       changes: [],
       ...d,
     });
@@ -424,6 +443,7 @@ export const planVocabImport = ({
         targetId: same.id,
         targetForm: same.form,
         candidates: candidates.length,
+        matches: candidates.map((c) => snapshot(c, c === same)),
         detail: 'already present',
       });
       continue;
@@ -446,6 +466,7 @@ export const planVocabImport = ({
         targetId: target.id,
         targetForm: target.form,
         candidates: candidates.length,
+        matches: candidates.map((c) => snapshot(c, c === target)),
         changes,
       };
       if (policyFor('enrich', entry.line) !== ENRICH_FILL) {
@@ -472,7 +493,10 @@ export const planVocabImport = ({
     if (compatible.length > 1) {
       counts.ambiguous += 1;
       const detail = `${compatible.length} entries share this form`;
-      const extra = { candidates: candidates.length };
+      const extra = {
+        candidates: candidates.length,
+        matches: candidates.map((c) => snapshot(c, false)),
+      };
       if (policyFor('ambiguous', entry.line) === AMBIGUOUS_NEW) {
         createFrom(entry, fields, 'ambiguous', `${detail}, so added separately`, extra);
       } else {
@@ -503,6 +527,7 @@ export const planVocabImport = ({
       targetId: first.id,
       targetForm: first.form,
       candidates: candidates.length,
+      matches: candidates.map((c) => snapshot(c, c === first && candidates.length === 1)),
       changes,
     };
 
@@ -511,6 +536,7 @@ export const planVocabImport = ({
         targetId: first.id,
         targetForm: first.form,
         candidates: candidates.length,
+        matches: candidates.map((c) => snapshot(c, false)),
       });
       continue;
     }

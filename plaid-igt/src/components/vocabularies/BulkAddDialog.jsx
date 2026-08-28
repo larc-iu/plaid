@@ -52,6 +52,8 @@ const CREATE_CHUNK = 1000;
 const UPDATE_CHUNK = 500;
 
 const PREVIEW_ROWS = 25;
+// Entries sharing a form, beyond which the list just says how many more.
+const MAX_MATCHES = 4;
 const SAMPLE_VALUES = 3;
 
 // How each outcome reads in the row list.
@@ -146,6 +148,138 @@ const Bucket = ({ tone, count, label, children }) =>
       </div>
     </div>
   );
+
+// Whether two values are the same as far as the merge is concerned. Mirrors the
+// planner's comparison so the highlighting agrees with the decision.
+const sameValue = (a, b) =>
+  String(a ?? '')
+    .trim()
+    .normalize('NFC') ===
+  String(b ?? '')
+    .trim()
+    .normalize('NFC');
+
+// One entry's values on a line: `Gloss dog  POS N`. `clash` names the fields
+// that disagree with the other side, `add` the ones this side alone supplies.
+const ValueLine = ({ values, fieldNames, clash, add }) => {
+  const present = fieldNames.filter((f) => String(values?.[f] ?? '').trim() !== '');
+  if (!present.length) return <span className="italic text-muted-foreground">no values</span>;
+  return present.map((f) => (
+    <span key={f} className="mr-3 inline-block">
+      <span className="text-muted-foreground">{humanizeFieldName(f)}</span>{' '}
+      <span
+        className={cn(
+          clash?.has(f) && 'font-semibold text-amber-700',
+          add?.has(f) && 'font-semibold text-emerald-700',
+        )}
+      >
+        {values[f]}
+      </span>
+    </span>
+  ));
+};
+
+// One decision, laid out so the judgement is possible: what the file says, what
+// is already in the vocabulary that it collided with, and the choice. Showing
+// the matched entries is the whole point. "differs on gloss" is not something
+// you can act on without seeing the entry it differs from.
+const DecisionRow = ({ d, fieldNames, override, fallback, onChoose }) => {
+  const rowFields = fieldNames.filter((f) => String(d.values?.[f] ?? '').trim() !== '');
+  // A field the file supplies that no matched entry has: new information.
+  const added = new Set(
+    rowFields.filter((f) => d.matches.every((m) => String(m.values?.[f] ?? '').trim() === '')),
+  );
+  const clashWith = (m) =>
+    new Set(
+      rowFields.filter(
+        (f) => String(m.values?.[f] ?? '').trim() !== '' && !sameValue(m.values[f], d.values[f]),
+      ),
+    );
+  // Against the row, every disagreement across the matches it was weighed on.
+  const rowClash = new Set(d.matches.flatMap((m) => [...clashWith(m)]));
+  const shownMatches = d.matches.slice(0, MAX_MATCHES);
+
+  return (
+    <div className="border-b px-2 py-2 last:border-b-0">
+      <div className="flex items-start gap-2">
+        <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+          {d.line}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs">
+            <span className="font-medium">{d.form || <em>(no form)</em>}</span>{' '}
+            <span className={ACTION_TONE[d.action]}>{ACTION_LABEL[d.action]}</span>
+            <span className="text-muted-foreground"> ({d.detail})</span>
+          </div>
+
+          <div className="mt-1 flex flex-col gap-0.5 rounded bg-muted/40 px-2 py-1 text-xs">
+            <div className="flex gap-2">
+              <span className="w-28 shrink-0 text-muted-foreground">In this file</span>
+              <span className="min-w-0 flex-1">
+                <ValueLine values={d.values} fieldNames={fieldNames} clash={rowClash} add={added} />
+              </span>
+            </div>
+            {shownMatches.map((m, i) => (
+              <div key={i} className="flex gap-2">
+                <span className="w-28 shrink-0 text-muted-foreground">
+                  {i === 0 ? 'Already here' : ''}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="mr-2 font-medium">{m.form}</span>
+                  <ValueLine values={m.values} fieldNames={fieldNames} clash={clashWith(m)} />
+                  {m.pending && (
+                    <span className="ml-1 text-muted-foreground">(added by this file)</span>
+                  )}
+                  {m.target && d.matches.length > 1 && (
+                    <span className="ml-1 text-muted-foreground">(the one it would change)</span>
+                  )}
+                </span>
+              </div>
+            ))}
+            {d.matches.length > shownMatches.length && (
+              <div className="flex gap-2">
+                <span className="w-28 shrink-0" />
+                <span className="text-muted-foreground">
+                  and {d.matches.length - shownMatches.length} more with this form
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="w-36 shrink-0">
+          {OVERRIDE_VALUES[d.kind] && (
+            <select
+              className={cn(
+                selectClass,
+                'h-7 w-full text-xs',
+                override && 'border-foreground/40 font-medium',
+              )}
+              value={override ?? fallback}
+              onChange={(e) => onChoose(e.target.value)}
+            >
+              {OVERRIDE_VALUES[d.kind].map((v) => (
+                <option key={v} value={v}>
+                  {ROW_CHOICES[v]}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// "Gloss (optional): The short meaning ..."
+const LegendEntry = ({ name, note, children }) => (
+  <div>
+    <dt className="inline font-medium">
+      {name} ({note}):
+    </dt>{' '}
+    <dd className="inline text-muted-foreground">{children}</dd>
+  </div>
+);
 
 export const BulkAddDialog = ({
   open,
@@ -412,11 +546,18 @@ export const BulkAddDialog = ({
 
         <div className="max-h-64 overflow-y-auto rounded-md border">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-muted/60 text-xs text-muted-foreground">
+            {/* Sticky goes on the cells, not the row: a translucent thead lets
+                the first data row show through it as the table scrolls. */}
+            <thead className="text-xs text-muted-foreground">
               <tr>
-                <th className="px-2 py-1.5 text-left font-medium">Column</th>
-                <th className="px-2 py-1.5 text-left font-medium">First values</th>
-                <th className="px-2 py-1.5 text-left font-medium">Import as</th>
+                {['Column', 'First values', 'Import as'].map((h) => (
+                  <th
+                    key={h}
+                    className="sticky top-0 z-10 border-b bg-background px-2 py-1.5 text-left font-medium"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -468,35 +609,22 @@ export const BulkAddDialog = ({
 
         <div className="rounded-md border bg-muted/30 p-3">
           <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            What the columns mean
+            Legend
           </p>
           <dl className="flex flex-col gap-1.5 text-xs">
-            <div>
-              <dt className="inline font-medium">Form</dt>
-              <dd className="inline text-muted-foreground">
-                {' '}
-                is required. The entry as it appears in the text, which is what a token gets linked
-                to. Repeating a form is allowed, since a homonym is a separate entry.
-              </dd>
-            </div>
+            <LegendEntry name="Form" note="required">
+              The entry as it appears in the text, which is what a token gets linked to. Repeating a
+              form is allowed, since a homonym is a separate entry.
+            </LegendEntry>
             {fieldNames.map((f) => (
-              <div key={f}>
-                <dt className="inline font-medium">{humanizeFieldName(f)}</dt>
-                <dd className="inline text-muted-foreground">
-                  {' '}
-                  is optional. {fieldDescription(f)}
-                </dd>
-              </div>
+              <LegendEntry key={f} name={humanizeFieldName(f)} note="optional">
+                {fieldDescription(f)}
+              </LegendEntry>
             ))}
             {ignoredColumns > 0 && (
-              <div>
-                <dt className="inline font-medium">Don't import</dt>
-                <dd className="inline text-muted-foreground">
-                  {' '}
-                  leaves the column out. To keep one of these, add a field to this vocabulary on the
-                  Fields tab first.
-                </dd>
-              </div>
+              <LegendEntry name="Don't import" note="left out">
+                To keep one of these, add a field to this vocabulary on the Fields tab first.
+              </LegendEntry>
             )}
           </dl>
         </div>
@@ -532,6 +660,84 @@ export const BulkAddDialog = ({
     const visible = rows.slice(0, shownRows);
     return (
       <div className="flex flex-col gap-3">
+        {/* The rows come first: the decisions are the thing being reviewed, and
+            the bucket levers below are what you reach for once you have seen
+            what they are doing. */}
+        <div className="rounded-md border">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2 py-1.5">
+            <select
+              className={selectClass}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            >
+              {Object.entries(FILTERS).map(([key, f]) => (
+                <option key={key} value={key}>
+                  {f.label} ({n(plan.decisions.filter(f.match).length)})
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1">
+              {overrideCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
+                  onClick={() => setOverrides({})}
+                >
+                  Clear {n(overrideCount)} row choice{overrideCount === 1 ? '' : 's'}
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={downloadReport}>
+                <Download className="h-3 w-3" /> Full plan (.tsv)
+              </Button>
+            </div>
+          </div>
+
+          {visible.length === 0 ? (
+            <p className="px-2 py-4 text-center text-xs text-muted-foreground">No rows here.</p>
+          ) : (
+            <div className="max-h-80 overflow-y-auto">
+              {visible.map((d) => (
+                <DecisionRow
+                  key={d.line}
+                  d={d}
+                  fieldNames={fieldNames}
+                  override={overrides[d.line]}
+                  fallback={strategies[d.kind]}
+                  onChoose={(value) =>
+                    setOverrides((prev) => {
+                      const next = { ...prev };
+                      // Falling back to the bucket's answer is the same as
+                      // having no answer of your own.
+                      if (value === strategies[d.kind]) delete next[d.line];
+                      else next[d.line] = value;
+                      return next;
+                    })
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+          {rows.length > visible.length && (
+            <button
+              type="button"
+              className="w-full border-t py-1.5 text-xs text-muted-foreground hover:bg-muted/50"
+              onClick={() => setShownRows((v) => v + PREVIEW_ROWS)}
+            >
+              Showing {n(visible.length)} of {n(rows.length)}. Show more
+            </button>
+          )}
+        </div>
+
+        {rejectedRows > 0 && (
+          <p className="flex items-start gap-1.5 text-xs text-amber-600">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {n(rejectedRows)} row{rejectedRows === 1 ? ' has a' : 's have an'} unrecognized Morph
+            Type. That value is left out and the rest of the row still imports.
+          </p>
+        )}
+
         <div className="rounded-md border px-3 py-1">
           <Bucket tone="good" count={counts.new} label="new entries will be added" />
           <Bucket
@@ -575,128 +781,6 @@ export const BulkAddDialog = ({
           />
           Match forms ignoring capitalization
         </label>
-
-        {rejectedRows > 0 && (
-          <p className="flex items-start gap-1.5 text-xs text-amber-600">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {n(rejectedRows)} row{rejectedRows === 1 ? ' has a' : 's have an'} unrecognized Morph
-            Type. That value is left out and the rest of the row still imports.
-          </p>
-        )}
-
-        <div className="rounded-md border">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2 py-1.5">
-            <select
-              className={selectClass}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            >
-              {Object.entries(FILTERS).map(([key, f]) => (
-                <option key={key} value={key}>
-                  {f.label} ({n(plan.decisions.filter(f.match).length)})
-                </option>
-              ))}
-            </select>
-            <div className="flex items-center gap-1">
-              {overrideCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-xs"
-                  onClick={() => setOverrides({})}
-                >
-                  Clear {n(overrideCount)} row choice{overrideCount === 1 ? '' : 's'}
-                </Button>
-              )}
-              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={downloadReport}>
-                <Download className="h-3 w-3" /> Full plan (.tsv)
-              </Button>
-            </div>
-          </div>
-
-          {visible.length === 0 ? (
-            <p className="px-2 py-4 text-center text-xs text-muted-foreground">No rows here.</p>
-          ) : (
-            <div className="max-h-72 overflow-y-auto">
-              <table className="w-full text-xs">
-                <tbody>
-                  {visible.map((d) => (
-                    <tr key={d.line} className="border-b align-top last:border-b-0">
-                      <td className="w-10 px-2 py-1.5 text-right tabular-nums text-muted-foreground">
-                        {d.line}
-                      </td>
-                      <td className="w-56 px-2 py-1.5">
-                        <div>
-                          <span className="font-medium">{d.form || <em>(no form)</em>}</span>{' '}
-                          <span className={cn('text-[0.9em]', ACTION_TONE[d.action])}>
-                            {ACTION_LABEL[d.action]}
-                          </span>
-                        </div>
-                        <div className="text-muted-foreground">{d.detail}</div>
-                      </td>
-                      <td className="px-2 py-1.5">
-                        {d.changes.map((c) => (
-                          <div key={c.field}>
-                            <span className="text-muted-foreground">
-                              {humanizeFieldName(c.field)}
-                            </span>{' '}
-                            {c.from === '' ? (
-                              <span className="text-emerald-700">{c.to}</span>
-                            ) : (
-                              <>
-                                <span className="text-muted-foreground line-through">{c.from}</span>{' '}
-                                <ArrowRight className="inline h-3 w-3 text-muted-foreground" />{' '}
-                                <span className="text-amber-700">{c.to}</span>
-                              </>
-                            )}
-                          </div>
-                        ))}
-                      </td>
-                      <td className="w-40 px-2 py-1.5">
-                        {OVERRIDE_VALUES[d.kind] && (
-                          <select
-                            className={cn(
-                              selectClass,
-                              'h-7 w-full text-xs',
-                              overrides[d.line] && 'border-foreground/40 font-medium',
-                            )}
-                            value={overrides[d.line] ?? strategies[d.kind]}
-                            onChange={(e) =>
-                              setOverrides((prev) => {
-                                const next = { ...prev };
-                                // Falling back to the bucket's answer is the
-                                // same as having no answer of your own.
-                                if (e.target.value === strategies[d.kind]) delete next[d.line];
-                                else next[d.line] = e.target.value;
-                                return next;
-                              })
-                            }
-                          >
-                            {OVERRIDE_VALUES[d.kind].map((v) => (
-                              <option key={v} value={v}>
-                                {ROW_CHOICES[v]}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {rows.length > visible.length && (
-            <button
-              type="button"
-              className="w-full border-t py-1.5 text-xs text-muted-foreground hover:bg-muted/50"
-              onClick={() => setShownRows((v) => v + PREVIEW_ROWS)}
-            >
-              Showing {n(visible.length)} of {n(rows.length)}. Show more
-            </button>
-          )}
-        </div>
       </div>
     );
   };

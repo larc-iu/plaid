@@ -369,6 +369,51 @@ describe('decision detail for review', () => {
   });
 });
 
+describe('matched entries on a decision', () => {
+  const homonyms = [
+    { id: 'a', form: 'kan', metadata: { gloss: 'house', pos: 'N' } },
+    { id: 'b', form: 'kan', metadata: { gloss: 'mouth', pos: 'N' } },
+  ];
+
+  it('carries every entry sharing the form, so a reviewer can see them', () => {
+    const p = plan([entry(1, 'kan', { definition: 'an opening' })], homonyms);
+    expect(p.decisions[0].kind).toBe('ambiguous');
+    expect(p.decisions[0].matches).toEqual([
+      { form: 'kan', values: { gloss: 'house', pos: 'N' }, pending: false, target: false },
+      { form: 'kan', values: { gloss: 'mouth', pos: 'N' }, pending: false, target: false },
+    ]);
+  });
+
+  it('marks which entry an enrichment would change', () => {
+    const p = plan([entry(1, 'kan', { gloss: 'mouth', definition: 'an opening' })], homonyms);
+    expect(p.decisions[0].matches.map((m) => m.target)).toEqual([false, true]);
+  });
+
+  it('flags a match this same import is creating', () => {
+    const p = plan([entry(1, 'yalu', { gloss: 'fire' }), entry(2, 'yalu', { gloss: 'wood' })], []);
+    expect(p.decisions[1]).toMatchObject({ kind: 'conflict' });
+    expect(p.decisions[1].matches).toEqual([
+      { form: 'yalu', values: { gloss: 'fire' }, pending: true, target: true },
+    ]);
+  });
+
+  it('freezes match values before later rows fill them in', () => {
+    const items = [{ id: 'a', form: 'tuk', metadata: { gloss: 'see' } }];
+    const p = plan(
+      [entry(1, 'tuk', { pos: 'V' }), entry(2, 'tuk', { definition: 'to see' })],
+      items,
+    );
+    // The first row's snapshot must not show the pos it is itself adding.
+    expect(p.decisions[0].matches[0].values).toEqual({ gloss: 'see' });
+    expect(p.decisions[1].matches[0].values).toEqual({ gloss: 'see', pos: 'V' });
+  });
+
+  it('carries the row own values for display', () => {
+    const p = plan([entry(1, 'kan', { definition: 'an opening' })], homonyms);
+    expect(p.decisions[0].values).toEqual({ definition: 'an opening' });
+  });
+});
+
 describe('per-row overrides', () => {
   const existing = [{ id: 'i2', form: 'gato', metadata: { gloss: 'cat', pos: 'N' } }];
   const rows = [entry(1, 'gato', { gloss: 'wildcat' }), entry(2, 'gato', { gloss: 'stray' })];
