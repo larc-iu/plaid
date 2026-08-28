@@ -88,8 +88,7 @@ const ROW_CHOICES = {
   fill: 'Fill in blanks',
   skip: 'Skip',
   new: 'Add',
-  // "Replace values" named neither side: replace whose, with what?
-  overwrite: "Use the file's values",
+  overwrite: 'Replace existing',
 };
 
 // The same choices spelled out for the bucket dropdowns, where the subject is
@@ -102,7 +101,7 @@ const BUCKET_CHOICES = {
   conflict: [
     [CONFLICT_SKIP, "Skip them, keep what's here"],
     [CONFLICT_NEW, 'Add each as a separate entry'],
-    [CONFLICT_OVERWRITE, "Replace the entry's values with the file's"],
+    [CONFLICT_OVERWRITE, 'Replace the existing values'],
   ],
   ambiguous: [
     [AMBIGUOUS_SKIP, 'Skip them'],
