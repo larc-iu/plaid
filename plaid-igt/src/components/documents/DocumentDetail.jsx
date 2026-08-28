@@ -23,6 +23,14 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 // Renders only the active tab's panel (others stay unmounted).
 const Panel = ({ active, children }) => (active ? children : null);
 
+// Tabs that get the wide column instead of the form-width one. Both are
+// horizontally scrolling views -- the interlinear editor and the media
+// timeline (whose content is `duration * pixelsPerSecond` wide, with the
+// container acting as the viewport) -- so every extra pixel is another slice
+// visible without scrolling. The form-shaped tabs stay narrow because long
+// input rows are harder to read, not easier.
+const WIDE_TABS = new Set(['analyze', 'media']);
+
 // Surface validateIgtDocument findings: full detail to the console (grouped),
 // plus ONE consolidated "Data integrity issue detected" toast with a
 // [Copy details] action that drops the lot onto the clipboard for a bug report.
@@ -316,7 +324,7 @@ const DocumentEditor = () => {
         style={{ marginLeft: history.open ? '400px' : '0', minHeight: '100vh' }}
       >
         <div
-          className={`mx-auto px-4 py-8 ${activeTab === 'analyze' ? 'max-w-[1700px]' : 'max-w-5xl'}`}
+          className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'}`}
         >
           <div className="tw">
             <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
