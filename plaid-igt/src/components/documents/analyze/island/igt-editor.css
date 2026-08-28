@@ -1178,8 +1178,9 @@
    stripe. The point of keeping ~6px rather than removing the row outright is
    that a hidden row is indistinguishable from a row that was never configured,
    and someone who minimized "Gloss (ru)" last week needs a way to notice it is
-   still there. The label keeps its scope color at low opacity so the stripe
-   reads as "something is folded here", not as a divider. */
+   still there. The whole cue is a few dots in the LABEL column, on the row's
+   own scope color — enough to say "something is folded here" without putting a
+   second band of marks across the data. */
 .igt-labels .igt-row-label.is-row-collapsed,
 .igt-token-col .igt-cell.is-row-collapsed,
 .igt-morph-col .igt-morph-form.is-row-collapsed,
@@ -1198,25 +1199,29 @@
 .igt-morph-cell.is-row-collapsed > * {
   display: none;
 }
-/* The faded stripe. The label already carries a 3px scope-colored left border;
-   at 35% it stays legible as a cue without competing with live rows. */
+/* The cue lives ONLY in the label column. The data cells keep their 6px of
+   height (the columns have to stay in lockstep) but are left completely blank,
+   so a minimized row reads as a gap in the grid rather than as another band of
+   content competing with the live rows for attention. */
 .igt-row-label.is-row-collapsed {
-  opacity: 0.35;
+  opacity: 0.45;
   cursor: pointer;
 }
 .igt-row-label.is-row-collapsed:hover {
-  opacity: 0.7;
+  opacity: 0.8;
 }
-/* A minimized row still needs to read as a band across the grid, so give the
-   data cells a hairline of the same neutral the grid uses elsewhere. */
-.igt-cell.is-row-collapsed,
-.igt-morph-cell.is-row-collapsed,
-.igt-morph-form.is-row-collapsed {
-  background: repeating-linear-gradient(
-    90deg,
-    rgba(148, 163, 184, 0.16) 0 6px,
-    transparent 6px 12px
-  );
+/* Small dots where the label text would have been. Drawn rather than typed: at
+   6px a text glyph gets clipped, and a background circle can be sized exactly.
+   currentColor keeps them on the row's own scope color. */
+.igt-row-label.is-row-collapsed::after {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 100%;
+  background-image: radial-gradient(circle, currentColor 1px, transparent 1.3px);
+  background-size: 5px 5px;
+  background-position: left center;
+  background-repeat: repeat-x;
 }
 
 /* Labels are interactive now — make that discoverable without adding chrome. */
