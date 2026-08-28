@@ -14,14 +14,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -39,6 +31,7 @@ import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { levelQueries } from '@/domain/vocabLevels';
 import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
+import { BulkAddDialog } from './BulkAddDialog';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
 
 const NEW_ID = '__new__';
@@ -116,8 +109,6 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const [usageCounts, setUsageCounts] = useState(null); // {itemId: n} | null
   const [usageLevels, setUsageLevels] = useState(null); // {itemId: 'word'|'morpheme'|'mixed'} | null
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkText, setBulkText] = useState('');
-  const [bulkBusy, setBulkBusy] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   // Concordance for the selected item: a cheap plan (queries) + lazily-loaded,
@@ -153,15 +144,32 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
         throw new Error('Invalid vocabulary ID');
       }
       const vocabularyData = await client.vocabLayers.get(vocabularyId, true);
-      setItems(vocabularyData.items || []);
+      const fetched = vocabularyData.items || [];
+      setItems(fetched);
       setError('');
       fetchUsageCounts(); // not awaited
+      return fetched;
     } catch (err) {
       setError('Failed to load vocabulary items');
       console.error('Error fetching vocabulary items:', err);
+      return null;
     } finally {
       setLoading(false);
     }
+  };
+
+  // A bulk import can fill in the very item the detail editor has open, which
+  // would leave its draft showing pre-import values (and looking dirty against
+  // the refreshed item). Re-seed the draft from what came back — unless the
+  // user really does have unsaved edits, which stay theirs.
+  const handleImported = async () => {
+    const wasDirty = dirty;
+    const openId = selectedId;
+    const refreshed = await fetchItems();
+    if (wasDirty || !openId || openId === NEW_ID || !refreshed) return;
+    const item = refreshed.find((i) => i.id === openId);
+    if (item) selectItem(item);
+    else setSelectedId(null);
   };
 
   // One grouped aggregate query: links per item AND per token-layer role
@@ -422,62 +430,6 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     } catch (err) {
       console.error('Error deleting vocabulary item:', err);
       notifyError('Failed to delete vocabulary item', 'Error');
-    }
-  };
-
-  // ---- bulk add (paste one item per line; TSV = Form + fields) ----
-  // Homonyms are allowed (the same form can be a separate sense), so we DON'T
-  // skip collisions with existing items — only an identical repeated row in the
-  // paste itself (a likely accidental double-paste).
-  const parsedBulk = useMemo(() => {
-    const lines = bulkText
-      .split('\n')
-      .map((l) => l.replace(/\r$/, ''))
-      .filter((l) => l.trim() !== '');
-    const rows = [];
-    const seen = new Set();
-    let skipped = 0;
-    for (const line of lines) {
-      const cells = line.split('\t').map((c) => c.trim());
-      const form = cells[0];
-      if (!form) continue;
-      const k = cells.join('\t').toLowerCase(); // whole-row key (cells can't contain tabs)
-      if (seen.has(k)) {
-        skipped++;
-        continue;
-      }
-      seen.add(k);
-      const metadata = {};
-      fieldNames.forEach((f, i) => {
-        if (cells[i + 1]) metadata[f] = cells[i + 1];
-      });
-      rows.push({ form, metadata: Object.keys(metadata).length ? metadata : undefined });
-    }
-    return { rows, skipped };
-  }, [bulkText, fieldNames]);
-
-  const handleBulkAdd = async () => {
-    const { rows, skipped } = parsedBulk;
-    if (!rows.length) return;
-    setBulkBusy(true);
-    try {
-      await client.withOperation(`Bulk add ${rows.length} vocab items`, () =>
-        client.batched(async () => {
-          rows.forEach((r) => client.vocabItems.create(vocabularyId, r.form, r.metadata));
-        }),
-      );
-      setBulkOpen(false);
-      setBulkText('');
-      await fetchItems();
-      notifySuccess(
-        `Added ${rows.length} item${rows.length === 1 ? '' : 's'}${skipped ? ` (${skipped} duplicate${skipped === 1 ? '' : 's'} skipped)` : ''}`,
-        'Bulk Add Complete',
-      );
-    } catch (err) {
-      console.error('Bulk add failed:', err);
-      notifyError('Bulk add failed. No items were created.', 'Error');
-    } finally {
-      setBulkBusy(false);
     }
   };
 
@@ -937,53 +889,16 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
         )}
       </div>
 
-      {/* Bulk add dialog */}
-      <Dialog
+      <BulkAddDialog
         open={bulkOpen}
-        onOpenChange={(o) => {
-          if (!o && !bulkBusy) setBulkOpen(false);
-        }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Bulk Add Items</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">
-              One item per line. Columns are tab-separated (paste straight from a spreadsheet):{' '}
-              <strong>Form</strong>
-              {fieldNames.length ? <> then {fieldNames.map(humanizeFieldName).join(', ')}</> : null}
-              . The same form may repeat as a separate sense (a homonym); only identical rows are
-              skipped.
-            </p>
-            <Textarea
-              rows={10}
-              value={bulkText}
-              onChange={(e) => setBulkText(e.target.value)}
-              placeholder={
-                fieldNames.length ? `form\t${fieldNames.join('\t')}` : 'one form per line'
-              }
-              className="font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">
-              {parsedBulk.rows.length} item{parsedBulk.rows.length === 1 ? '' : 's'} to add
-              {parsedBulk.skipped
-                ? ` · ${parsedBulk.skipped} duplicate${parsedBulk.skipped === 1 ? '' : 's'} skipped`
-                : ''}
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={bulkBusy}>
-              Cancel
-            </Button>
-            <Button onClick={handleBulkAdd} disabled={!parsedBulk.rows.length || bulkBusy}>
-              {bulkBusy
-                ? 'Adding…'
-                : `Add ${parsedBulk.rows.length} item${parsedBulk.rows.length === 1 ? '' : 's'}`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onOpenChange={setBulkOpen}
+        vocabularyId={vocabularyId}
+        vocabularyName={vocabulary?.name}
+        fields={fields}
+        existingItems={items}
+        client={client}
+        onImported={handleImported}
+      />
 
       {/* Delete confirmation */}
       <AlertDialog

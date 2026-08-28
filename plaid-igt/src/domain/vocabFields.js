@@ -58,6 +58,23 @@ export const humanizeFieldName = (name) => {
   return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 };
 
+/**
+ * One line saying what a field is for, shown where a user has to decide what
+ * belongs in it — currently the bulk-import column mapper. Every field is
+ * optional on an entry; only the form is required.
+ */
+const FIELD_DESCRIPTIONS = {
+  morphType:
+    'The kind of morph this entry is (stem, prefix, enclitic, …). Decides how it joins its neighbours in the interlinear line, so only FLEx morph-type names are accepted.',
+  gloss: 'The short meaning shown under the form in the interlinear line.',
+  pos: 'Part of speech.',
+  definition: 'A fuller definition, shown in the entry detail rather than the interlinear line.',
+  lexemeForm: 'The underlying form of the lexeme, when it differs from the form as written.',
+};
+
+export const fieldDescription = (name) =>
+  FIELD_DESCRIPTIONS[name] ?? 'A custom field on this vocabulary. Free text.';
+
 /** Which input control a field uses: morphType is a controlled-vocab select. */
 export const fieldControl = (name) => (name === 'morphType' ? 'morphType' : 'text');
 
