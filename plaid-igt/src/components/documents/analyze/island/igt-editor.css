@@ -1239,12 +1239,14 @@
 }
 
 /* ---- row menu ---- */
+/* Fixed, with coords computed from the clicked label (see
+   _computeRowMenuPos). .igt-grid sets overflow-x:auto, which forces a clipping
+   overflow-y, so an absolutely-positioned menu inside the label column was cut
+   off at the bottom of the sentence band. */
 .igt-rowmenu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 40;
-  min-width: 220px;
+  position: fixed;
+  z-index: 60;
+  width: 232px;
   max-height: 60vh;
   overflow-y: auto;
   padding: 6px;
@@ -1254,12 +1256,6 @@
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
   font-weight: 400;
   cursor: default;
-}
-/* The spacer cell is the menu's positioning context (it fronts the label
-   column and is the one row that is never minimized). */
-.igt-row-label--spacer {
-  position: relative;
-  overflow: visible;
 }
 .igt-rowmenu__head {
   display: flex;

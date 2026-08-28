@@ -144,12 +144,18 @@ export class IgtEditor {
     this._copyMenu = null;
     this._copiedFlash = null;
     this._copiedTimer = null;
-    // Which annotation rows are minimized, and whether the row menu is open.
+    // Which annotation rows are minimized, and where the row menu is anchored.
     // Minimizing is a per-project VIEW preference (a field methods course cares
     // about two of twelve rows at a time), so it lives in localStorage rather
     // than project config: it is per-person, not per-project-wide.
     this._collapsedRows = this._loadCollapsedRows();
-    this._rowMenu = false;
+    // null, or {left, top} viewport coords of the label that opened it. Holding
+    // a POSITION rather than a boolean is what keeps the menu on the row that
+    // was actually clicked: the label column is re-rendered per sentence, so a
+    // boolean opened an identical copy under every sentence at once.
+    this._rowMenu = null;
+    // The label element the menu hangs off, so it can be re-anchored on scroll.
+    this._rowMenuAnchor = null;
     // Any click outside an opener/popover/menu (those stopPropagation) closes it.
     this._onDocClick = () => {
       this._closePopover();
@@ -161,7 +167,10 @@ export class IgtEditor {
     // resizing, would detach it from its column — re-anchor it to its opener
     // (rAF-throttled) instead of closing. Capture phase catches the grid's
     // own scroll. No-op when no popover is open.
-    this._onWinChange = () => this._repositionPopover();
+    this._onWinChange = () => {
+      this._repositionPopover();
+      this._repositionRowMenu();
+    };
     // Refuse to let a hard reload / tab close silently drop an uncommitted
     // cell edit or a save still in flight (the browser shows its own prompt).
     this._onBeforeUnload = (e) => {
@@ -1479,6 +1488,9 @@ export class IgtEditor {
       ignoredCfg,
       guess,
     };
+    // _computeRowMenuPos needs the row list to estimate the menu's height, and
+    // it runs from a click handler rather than from render.
+    this._lastCtx = ctx;
 
     // One page of sentences in the DOM (see PAGE_SIZE). Sentence numbering
     // stays GLOBAL; cross-page movement is handled by the pager and the search
@@ -1501,6 +1513,7 @@ export class IgtEditor {
         (s, i) => this._sentence(s, pageStart + i, ctx),
       )}
       ${pageCount > 1 ? this._pager(sentences.length, pageCount, 'bottom') : nothing}
+      ${this._rowMenu ? this._rowMenuPanel(ctx) : nothing}
     `;
   }
 
@@ -1912,15 +1925,64 @@ export class IgtEditor {
 
   _closeRowMenu() {
     if (!this._rowMenu) return;
-    this._rowMenu = false;
+    this._rowMenu = null;
+    this._rowMenuAnchor = null;
     this._render(true);
+  }
+
+  // Keep the menu glued to its label while the page or grid scrolls, the same
+  // way _repositionPopover does for the vocab popover. Patches the fixed coords
+  // directly rather than re-rendering per frame; closes only if the label left
+  // the DOM (a reload re-derived the grid, or the page changed).
+  _repositionRowMenu() {
+    if (!this._rowMenu) return;
+    const anchor = this._rowMenuAnchor;
+    if (!anchor || !anchor.isConnected) {
+      this._closeRowMenu();
+      return;
+    }
+    const pos = this._computeRowMenuPos(anchor);
+    if (!pos) return;
+    this._rowMenu = pos;
+    const el = this.container.querySelector('.igt-rowmenu');
+    if (el) {
+      el.style.left = `${pos.left}px`;
+      el.style.top = `${pos.top}px`;
+    }
+  }
+
+  // Viewport coords under the clicked label, clamped into view. `position:
+  // fixed` is not a nicety here: .igt-grid sets overflow-x:auto (which forces
+  // overflow-y to a clipping value), so an absolutely-positioned menu inside
+  // the label column gets cut off at the bottom of the sentence band. Same
+  // reason and same approach as _computePopoverPos.
+  _computeRowMenuPos(anchorEl) {
+    const r = anchorEl?.getBoundingClientRect?.();
+    if (!r) return null;
+    const W = 232;
+    const Hest = Math.min(
+      360,
+      92 +
+        this._rows(this._lastCtx ?? { orthographies: [], wordFields: [], morphFields: [] }).length *
+          26,
+    );
+    const pad = 8;
+    let left = Math.max(pad, Math.min(r.left, window.innerWidth - W - pad));
+    let top = r.bottom + 4;
+    if (top + Hest > window.innerHeight) {
+      const above = r.top - Hest - 4;
+      top = above > pad ? above : Math.max(pad, window.innerHeight - Hest - pad);
+    }
+    return { left, top };
   }
 
   _rowMenuPanel(ctx) {
     const rows = this._rows(ctx);
     const anyCollapsed = rows.some((r) => this._isCollapsed(r.key));
+    const pos = this._rowMenu;
+    const posStyle = pos ? `left:${pos.left}px;top:${pos.top}px;` : '';
     return html`
-      <div class="igt-rowmenu" role="menu" @click=${(e) => e.stopPropagation()}>
+      <div class="igt-rowmenu" style=${posStyle} role="menu" @click=${(e) => e.stopPropagation()}>
         <div class="igt-rowmenu__head">
           <span>Rows</span>
           <button
@@ -1959,7 +2021,16 @@ export class IgtEditor {
     // and a 6px minimized row has no room for an icon.
     const openMenu = (e) => {
       e.stopPropagation();
-      this._rowMenu = !this._rowMenu;
+      const anchor = e.currentTarget;
+      // Clicking the SAME label again closes; clicking a different one moves the
+      // menu there rather than making you close and reopen it.
+      if (this._rowMenu && this._rowMenuAnchor === anchor) {
+        this._rowMenu = null;
+        this._rowMenuAnchor = null;
+      } else {
+        this._rowMenu = this._computeRowMenuPos(anchor);
+        this._rowMenuAnchor = anchor;
+      }
       this._render(true);
     };
     const lbl = (cls, name, scope, key) => {
@@ -1981,9 +2052,7 @@ export class IgtEditor {
     };
     return html`
       <div class="igt-labels">
-        <div class="igt-row-label igt-row-label--spacer">
-          ${this._rowMenu ? this._rowMenuPanel(ctx) : nothing}
-        </div>
+        <div class="igt-row-label igt-row-label--spacer"></div>
         ${ctx.orthographies.map((n) => lbl('igt-row-label--orth', n, 'orthography', `orth:${n}`))}
         ${ctx.wordFields.map((n) => lbl('igt-row-label--word', n, 'word', `word:${n}`))}
         ${ctx.hasMorphemes
