@@ -1595,14 +1595,21 @@ class PlaidClient {
         createSSEConnection(this, projectId, onEvent, path),
 
       /**
-       * Send a message to project listeners
+       * Send a message to project listeners.
+       *
+       * `data` may be any JSON value and is sent VERBATIM (`rawBody`): a
+       * message payload is opaque application data, like `metadata` and
+       * `config`, so its keys must not be re-cased on the way out. Without
+       * this a key such as `case-marker` would reach listeners as
+       * `caseMarker` in JS and `case_marker` in Python. `listen` restores it
+       * verbatim on the way in.
        * @param {string} projectId - The UUID of the project to send to
        * @param {any} data - The message data to send
        * @returns {Promise<any>} Response from the send operation
        */
       sendMessage: (projectId, data, auditMessage) =>
         this._request('POST', `/api/v1/projects/${projectId}/message`, { auditMessage,
-          body: { body: data },
+          rawBody: { body: data },
         }),
 
       /**

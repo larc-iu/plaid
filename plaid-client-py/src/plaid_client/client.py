@@ -1348,6 +1348,13 @@ class MessagesResource(_Resource):
     def send_message(self, project_id: str, data: Any, audit_message=None) -> Any:
         """Send a message to project listeners.
 
+        ``data`` may be any JSON value and is sent VERBATIM (``raw_body``): a
+        message payload is opaque application data, like ``metadata`` and
+        ``config``, so its keys must not be re-cased on the way out. Without
+        this a key such as ``case-marker`` would reach listeners as
+        ``case_marker`` in Python and ``caseMarker`` in JavaScript.
+        :meth:`listen` restores it verbatim on the way in.
+
         Args:
             project_id: The UUID of the project to send to
             data: The message data to send
@@ -1356,7 +1363,7 @@ class MessagesResource(_Resource):
             Response from the send operation
         """
         return self._request('POST', f'/api/v1/projects/{project_id}/message',
-                             body={'body': data}, audit_message=audit_message)
+                             raw_body={'body': data}, audit_message=audit_message)
 
     def discover_services(self, project_id: str) -> list:
         """Discover the services seen on a project.

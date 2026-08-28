@@ -322,6 +322,25 @@
                         (str/replace #"-" "_"))]
       (str ns-part ":" name-part))))
 
+(defn wire-payload
+  "Project an internal bus event onto its public SSE `data:` payload.
+
+  The `:event/*` keys are routing metadata for the distributor, not part of
+  the contract: `:event/projects` names the projects to fan out to, and is
+  the SAME value as `:audit/projects` on an audit event. clojure.data.json
+  serializes keywords by `name`, dropping the namespace, so leaving both in
+  emitted a JSON object with the key \"projects\" twice. Drop the routing
+  keys here and re-add `type` explicitly, so the payload is exactly the
+  documented shape (see the manual's Real-time Messaging section)."
+  [event]
+  ;; array-map so `type` leads the serialized object (data.json writes in
+  ;; seq order) — the SSE `event:` name is right above it on the wire.
+  (into (array-map :type (case (:event/type event)
+                           :audit-log "audit-log"
+                           :message "message"
+                           "unknown"))
+        (dissoc event :event/type :event/projects)))
+
 ;; =============================================================================
 ;; Event Publishing and Distribution
 ;; =============================================================================

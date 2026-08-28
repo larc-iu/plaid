@@ -82,12 +82,9 @@
                                   (= ch stop-chan) nil  ; exit loop on stop signal
                                   event (do
                                           (try
-                                            (let [event-type (case (:event/type event)
-                                                               :audit-log "audit-log"
-                                                               :message "message"
-                                                               "unknown")
-                                                  event-str (str "event: " event-type "\n"
-                                                                 "data: " (json/write-str event) "\n\n")]
+                                            (let [payload (events/wire-payload event)
+                                                  event-str (str "event: " (:type payload) "\n"
+                                                                 "data: " (json/write-str payload) "\n\n")]
                                               (http-kit/send! channel event-str false))
                                             (catch Exception e
                                               (log/warn "Event send failed for client" client-id ":" (.getMessage e))))

@@ -1,6 +1,25 @@
 import { transformResponse } from './transforms.js';
 
 /**
+ * Project a parsed SSE `data:` object onto what a listener callback sees.
+ *
+ * The envelope is API surface and gets the usual `transformResponse` recasing.
+ * A `message` event's `data` is NOT: it is opaque application data (whatever
+ * `sendMessage` was handed), so its keys must survive verbatim, exactly as
+ * `metadata` and `config` do elsewhere. Without this, a key written
+ * `case-marker` reaches a JavaScript listener as `caseMarker` and a Python
+ * listener as `case_marker`, so the same broadcast reads differently depending
+ * on the reader's language.
+ */
+export function eventPayload(eventType, parsed) {
+  const payload = transformResponse(parsed);
+  if (eventType === 'message' && parsed && typeof parsed === 'object' && 'data' in parsed) {
+    payload.data = parsed.data;
+  }
+  return payload;
+}
+
+/**
  * Create an SSE connection to the listen endpoint using fetch-based streaming.
  * Automatically handles heartbeat confirmations and event parsing.
  *
@@ -124,7 +143,7 @@ export function createSSEConnection(client, projectId, onEvent, path) {
                 sendHeartbeatConfirmation();
               } else {
                 const parsedData = JSON.parse(data);
-                const shouldStop = onEvent(eventType, transformResponse(parsedData));
+                const shouldStop = onEvent(eventType, eventPayload(eventType, parsedData));
                 if (shouldStop === true) {
                   sseConnection.close();
                   return;

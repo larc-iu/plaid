@@ -53,6 +53,23 @@ def abort_response(resp):
         pass
 
 
+def event_payload(event_type, parsed):
+    """Project a parsed SSE ``data:`` object onto what a listener callback sees.
+
+    The envelope is API surface and gets the usual ``transform_response``
+    recasing. A ``message`` event's ``data`` is NOT: it is opaque application
+    data (whatever ``send_message`` was handed), so its keys must survive
+    verbatim, exactly as ``metadata`` and ``config`` do elsewhere. Without
+    this, a key written ``case-marker`` reaches a Python listener as
+    ``case_marker`` and a JavaScript listener as ``caseMarker``, so the same
+    broadcast reads differently depending on the reader's language.
+    """
+    payload = transform_response(parsed)
+    if event_type == 'message' and isinstance(parsed, dict) and 'data' in parsed:
+        payload['data'] = parsed['data']
+    return payload
+
+
 class SSEConnection:
     """SSE connection to the listen endpoint using streaming requests.
 
@@ -191,7 +208,7 @@ class SSEConnection:
                             threading.Thread(target=self._send_heartbeat, daemon=True).start()
                         else:
                             parsed = json.loads(data)
-                            should_stop = self._on_event(event_type, transform_response(parsed))
+                            should_stop = self._on_event(event_type, event_payload(event_type, parsed))
                             if should_stop is True:
                                 self.close()
                                 return

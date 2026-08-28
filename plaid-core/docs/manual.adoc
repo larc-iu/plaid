@@ -253,6 +253,104 @@ The listener's code above would print this:
 User user1@example.com performed operation `document:update` on document 35424d64-a077-4a29-8006-5a0c3b76aedb at 2025-07-09T20:27:59.616Z: 'Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to "New Document Name"'
 ----
 
+=== Event Reference
+
+`GET /api/v1/projects/{id}/listen` is an ordinary `text/event-stream`, so you can consume it without the official clients.
+Every frame is a named SSE event whose `data:` line holds one JSON object.
+Reader access to the project is required, and the connection carries the same `Authorization: Bearer` header as any other request.
+
+Four event names appear on the stream:
+
+[cols="1,4"]
+|===
+| `connected` | Sent once, immediately on connect: `{"status": "connected", "client-id": "<uuid>"}`. The `client-id` is what heartbeat confirmations quote.
+| `heartbeat` | A liveness ping, sent every 30 seconds by default. Its `data:` line is the JSON string `"ping"`. You must answer each one with `POST /api/v1/projects/{id}/heartbeat`, whose body is `{"client-id": "..."}` quoting the id from the `connected` event. After two consecutive unanswered pings the server closes the connection.
+| `message` | A payload broadcast by another client through `send_message`/`sendMessage`.
+| `audit-log` | One database write, sent automatically by Plaid.
+|===
+
+The official clients answer `connected` and `heartbeat` for you and never surface them, so a listener callback registered with `listen` sees only `message` and `audit-log`.
+
+==== message
+
+[,json]
+----
+{
+  "type": "message",
+  "id": "61094844-5c70-46e2-be8f-e65dc42f9c7e",
+  "project": "b1f2c4d6-0000-4000-8000-000000000001",
+  "user": "user1@example.com",
+  "time": "2025-07-09T20:14:36.168Z",
+  "data": {"purpose": "ping", "message": "ping"}
+}
+----
+
+`data` is whatever value was handed to `send_message`/`sendMessage`, reproduced exactly.
+It is opaque application data, so, like `metadata` and `config` elsewhere in the API, its keys are never re-cased by the clients: a key written as `case-marker` arrives as `case-marker` in both Python and JavaScript.
+The envelope around it follows the usual per-language convention.
+
+==== audit-log
+
+[,json]
+----
+{
+  "type": "audit-log",
+  "id": "01a04604-ff64-70ae-9362-8036acdca9bf",
+  "projects": ["b1f2c4d6-0000-4000-8000-000000000001"],
+  "documents": ["35424d64-a077-4a29-8006-5a0c3b76aedb"],
+  "user": "user1@example.com",
+  "time": "2025-07-09T20:27:59.616Z",
+  "ops": [
+    {
+      "id": "01a04604-ff64-70ae-9362-8036acdca9bf",
+      "type": "document:update",
+      "project": "b1f2c4d6-0000-4000-8000-000000000001",
+      "document": "35424d64-a077-4a29-8006-5a0c3b76aedb",
+      "description": "Update document 35424d64-a077-4a29-8006-5a0c3b76aedb name to \"New Document Name\""
+    }
+  ]
+}
+----
+
+* **`ops` always holds exactly one element.** Every write announces itself separately, and its `id` equals the enclosing event's `id`. An atomic batch is not folded into one event: it emits one `audit-log` event per sub-operation, all of them after the batch commits, so you never observe a state the database rolled back.
+* **`type`** on an operation is `entity:verb`, with the entity name snake_cased: `document:create`, `span:delete`, `token_layer:update`.
+* **`projects`** and **`documents`** are arrays of ids. `documents` folds in every document whose version the write bumped, which is how multi-document writes (deleting a vocab item, for instance) reach document-scoped listeners. Either may be empty: a project-level write such as `text_layer:create` carries no document, and an operation's own `project` or `document` field is `null` in the same situation.
+* **`user`** is a user id, which is the login address.
+* **`time`** is stamped when the event is published, not when the row was written. For a single write those are the same instant to within a millisecond, but a long atomic batch publishes only after it commits, so its events can be measurably later than the operations they describe. Correlate by `id`, never by `time`.
+
+==== Relationship to the audit log endpoint
+
+An `audit-log` event names the same operation that `GET /api/v1/projects/{id}/audit` reports, but the two payloads are deliberately not interchangeable.
+The event is a lightweight notification designed to be cheap to emit on every write, while the endpoint is an enriched query result.
+The differences:
+
+[cols="1,2,2"]
+|===
+| | SSE `audit-log` event | `GET .../audit` entry
+
+| Key names
+| Bare: `id`, `user`, `ops`, and on an operation `type`, `project`, `document`.
+| Namespace-prefixed: `audit/id`, `audit/user`, `audit/ops`, `op/type`, `op/project`, `op/document`.
+
+| Operation type spelling
+| `document:create` (colon, entity snake_cased)
+| `document/create` (slash, entity kebab-cased)
+
+| References
+| Bare id strings.
+| Hydrated objects, e.g. `{"user/id": ..., "user/username": ...}` and `{"document/id": ..., "document/name": ...}`.
+
+| Grouping
+| One operation per event, always.
+| Batches and labeled operations are folded into a single entry holding all their member operations, with `audit/end-time`, `audit/batch-id`, `audit/group-id`, and `audit/message` where they apply.
+
+| Extra fields
+| None.
+| `op/time`, `op/user`, `op/batch-id`, and `audit/api-token`.
+|===
+
+If you need the enriched form, treat the event as a trigger and read the endpoint, matching on `id`.
+
 == Services
 
 A **service** is an external program that registers itself on a project and performs work on request.
