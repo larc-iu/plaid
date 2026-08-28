@@ -223,6 +223,32 @@ describe('planVocabImport', () => {
     expect(p.updates).toEqual([{ id: 'i2', patch: { gloss: 'wildcat', definition: 'felis' } }]);
   });
 
+  it('replaces onto an entry this same import is adding, rather than doing nothing', () => {
+    // The only 'yalu' is the one line 1 creates, so there is no id to patch.
+    // The answer still has to land somewhere.
+    const p = plan(
+      [entry(1, 'yalu', { gloss: 'fire' }), entry(2, 'yalu', { gloss: 'firewood' })],
+      [],
+      { overrides: { 2: CONFLICT_OVERWRITE } },
+    );
+    expect(p.creates).toEqual([{ form: 'yalu', metadata: { gloss: 'firewood' } }]);
+    expect(p.updates).toEqual([]);
+    expect(p.decisions[1]).toMatchObject({ action: 'merge' });
+    expect(p.decisions[1].detail).toContain('replaced gloss');
+  });
+
+  it('says why a replace could not apply instead of looking like a no-op', () => {
+    const homonyms = [
+      { id: 'a', form: 'kap', metadata: { gloss: 'hand' } },
+      { id: 'b', form: 'kap', metadata: { gloss: 'head' } },
+    ];
+    const p = plan([entry(1, 'kap', { gloss: 'foot' })], homonyms, {
+      strategies: { conflict: CONFLICT_OVERWRITE },
+    });
+    expect(p.decisions[0].action).toBe('skip');
+    expect(p.decisions[0].detail).toContain('nothing single to replace');
+  });
+
   it('refuses to overwrite when homonyms make the target ambiguous', () => {
     const homonyms = [
       { id: 'a', form: 'kap', metadata: { gloss: 'hand' } },

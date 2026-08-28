@@ -65,18 +65,20 @@ const PREVIEW_ROWS = 25;
 const MAX_MATCHES = 4;
 const SAMPLE_VALUES = 3;
 
-// How each outcome reads in the row list.
-const ACTION_LABEL = {
-  create: 'will be added',
-  update: 'will be filled in',
-  merge: 'folded into a new entry above',
-  skip: 'skipped',
+// How each outcome reads in the row list. A replace is called out separately
+// from a fill: one adds to an entry, the other overwrites what somebody put
+// there by hand, and the amber says which.
+const actionLabel = (d) => {
+  if (d.action === 'create') return 'will be added';
+  if (d.action === 'merge') return 'folded into a new entry above';
+  if (d.action === 'update')
+    return d.kind === 'conflict' ? 'will be replaced' : 'will be filled in';
+  return 'skipped';
 };
-const ACTION_TONE = {
-  create: 'text-emerald-600',
-  update: 'text-emerald-600',
-  merge: 'text-emerald-600',
-  skip: 'text-muted-foreground',
+const actionTone = (d) => {
+  if (d.action === 'skip') return 'text-muted-foreground';
+  if (d.action === 'update' && d.kind === 'conflict') return 'text-amber-700';
+  return 'text-emerald-600';
 };
 
 // Short labels for the per-row choice. The bucket dropdowns say the same thing
@@ -213,7 +215,7 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
         </span>
         <div className="min-w-0 flex-1 text-xs">
           <span className="font-medium">{d.form || <em>(no form)</em>}</span>{' '}
-          <span className={ACTION_TONE[d.action]}>{ACTION_LABEL[d.action]}</span>
+          <span className={actionTone(d)}>{actionLabel(d)}</span>
           <span className="text-muted-foreground"> ({d.detail})</span>
         </div>
         <div className="w-32 shrink-0">

@@ -481,7 +481,7 @@ export const planVocabImport = ({
         record(entry, {
           ...base,
           action: 'merge',
-          detail: `added ${added} to a new entry above`,
+          detail: `added ${added}`,
         });
       } else {
         addUpdate(target.id, patch);
@@ -540,22 +540,33 @@ export const planVocabImport = ({
       });
       continue;
     }
-    if (mode === CONFLICT_OVERWRITE && candidates.length === 1 && first.id != null) {
+    if (mode === CONFLICT_OVERWRITE && candidates.length === 1) {
       const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
+      const replaced = Object.keys(patch).join(', ');
       Object.assign(first.values, patch);
-      addUpdate(first.id, patch);
-      record(entry, {
-        ...base,
-        action: 'update',
-        detail: `replaces ${Object.keys(patch).join(', ')}`,
-      });
+      if (first.id == null) {
+        // The only entry with this form is one this import is adding a few rows
+        // up, so the replacement lands on that pending entry. Dropping it here
+        // (there is no id to patch) would ignore the answer without saying so.
+        Object.assign(first.pending.metadata, patch);
+        record(entry, {
+          ...base,
+          action: 'merge',
+          detail: `replaced ${replaced}`,
+        });
+      } else {
+        addUpdate(first.id, patch);
+        record(entry, { ...base, action: 'update', detail: `replaces ${replaced}` });
+      }
       continue;
     }
+    // Overwrite is the one answer that can fail to apply, and only for want of
+    // a single target. Say so rather than looking like nothing happened.
     record(entry, {
       ...base,
       action: 'skip',
       detail:
-        mode === CONFLICT_OVERWRITE && candidates.length > 1
+        mode === CONFLICT_OVERWRITE
           ? `${candidates.length} entries share this form, so there is nothing single to replace`
           : `differs on ${clashed}`,
     });
@@ -584,22 +595,16 @@ export const describeChange = (c) =>
  */
 export const serializeImportReport = (decisions) => {
   const cell = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
-  const OUTCOME = {
-    create: 'Added',
-    update: 'Updated',
-    merge: 'Merged into a new entry',
-    skip: 'Skipped',
+  const outcome = (d) => {
+    if (d.action === 'create') return 'Added';
+    if (d.action === 'merge') return 'Merged into a new entry';
+    if (d.action === 'update') return d.kind === 'conflict' ? 'Replaced' : 'Updated';
+    return 'Skipped';
   };
   const lines = ['Line\tForm\tOutcome\tWhy\tValues'];
   for (const d of decisions) {
     lines.push(
-      [
-        d.line,
-        d.form,
-        OUTCOME[d.action] ?? d.action,
-        d.detail,
-        (d.changes || []).map(describeChange).join(' · '),
-      ]
+      [d.line, d.form, outcome(d), d.detail, (d.changes || []).map(describeChange).join(' · ')]
         .map(cell)
         .join('\t'),
     );
