@@ -89,9 +89,17 @@ export const ProjectSearch = ({ project, projectId, client }) => {
 
   // Click-through: open the document's Analyze tab focused on the hit
   // sentence. The island consumes the sessionStorage key on first paint.
+  //
+  // The tab + sentence go in the URL rather than in router state so the address
+  // bar describes where you actually are and the result is a link you can copy
+  // and send. `begin` stays in sessionStorage: it lands the caret on the matched
+  // WORD, which is a detail of this click-through, not something a shared link
+  // needs to reproduce.
   const openHit = (docId, sentenceId, begin = null) => {
     sessionStorage.setItem('igt:focus-sentence', JSON.stringify({ docId, sentenceId, begin }));
-    navigate(`/projects/${projectId}/documents/${docId}`, { state: { tab: 'analyze' } });
+    navigate(
+      `/projects/${projectId}/documents/${docId}?tab=analyze&focusSentence=${encodeURIComponent(sentenceId)}`,
+    );
   };
 
   const grouped = useMemo(() => {

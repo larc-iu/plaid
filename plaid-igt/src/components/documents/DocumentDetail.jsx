@@ -82,10 +82,20 @@ const DocumentEditor = () => {
   if (!focusSeededRef.current && focusParam) {
     focusSeededRef.current = true;
     try {
-      sessionStorage.setItem(
-        'igt:focus-sentence',
-        JSON.stringify({ docId: documentId, sentenceId: focusParam }),
-      );
+      // An in-app click-through (search) writes this key first, and its version
+      // carries `begin` so the caret lands on the matched word. Both paths now
+      // put the sentence in the URL, so seed only when there ISN'T already a key
+      // for this same target — otherwise the URL's sentence-only version would
+      // clobber the richer one written a moment earlier.
+      const existing = JSON.parse(sessionStorage.getItem('igt:focus-sentence') || 'null');
+      const sameTarget =
+        existing && existing.docId === documentId && existing.sentenceId === focusParam;
+      if (!sameTarget) {
+        sessionStorage.setItem(
+          'igt:focus-sentence',
+          JSON.stringify({ docId: documentId, sentenceId: focusParam }),
+        );
+      }
     } catch {
       /* noop */
     }

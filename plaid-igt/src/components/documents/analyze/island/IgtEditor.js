@@ -144,6 +144,8 @@ export class IgtEditor {
     this._copyMenu = null;
     this._copiedFlash = null;
     this._copiedTimer = null;
+    this._linkFlash = null;
+    this._linkTimer = null;
     // Which annotation rows are minimized, and where the row menu is anchored.
     // Minimizing is a per-project VIEW preference (a field methods course cares
     // about two of twelve rows at a time), so it lives in localStorage rather
@@ -269,6 +271,7 @@ export class IgtEditor {
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
     clearTimeout(this._savedTimer);
     clearTimeout(this._copiedTimer);
+    clearTimeout(this._linkTimer);
     render(nothing, this.container);
   }
 
@@ -1748,6 +1751,18 @@ export class IgtEditor {
       sentFields: ctx.sentFields,
     };
     const text = formatSentence(sentence, fields, format);
+    await this._writeClipboard(text);
+    this._copyMenu = null;
+    this._copiedFlash = sentence.id;
+    clearTimeout(this._copiedTimer);
+    this._copiedTimer = setTimeout(() => {
+      this._copiedFlash = null;
+      this._render(true);
+    }, 1400);
+    this._render(true);
+  }
+
+  async _writeClipboard(text) {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -1764,11 +1779,31 @@ export class IgtEditor {
         ta.remove();
       }
     }
-    this._copyMenu = null;
-    this._copiedFlash = sentence.id;
-    clearTimeout(this._copiedTimer);
-    this._copiedTimer = setTimeout(() => {
-      this._copiedFlash = null;
+  }
+
+  // A shareable deep link to one sentence: the Analyze tab of this document,
+  // focused on this sentence (DocumentDetail reads ?focusSentence= and the
+  // island scrolls to it and flashes it — see _consumeFocusRequest).
+  //
+  // Built off location.origin + pathname, NOT a hard-coded root: in the packaged
+  // jar the app is served under /igt/, and the routes live in the hash. Same
+  // reason PlaidClient.inviteUrl takes the app URL from the caller.
+  _sentenceLink(sentence) {
+    const { origin, pathname } = window.location;
+    const base = `${origin}${pathname}`.replace(/\/$/, '');
+    const projectId = this.doc?.project?.id ?? this.doc?._projectId;
+    return (
+      `${base}/#/projects/${projectId}/documents/${this.doc.id}` +
+      `?tab=analyze&focusSentence=${encodeURIComponent(sentence.id)}`
+    );
+  }
+
+  async _copySentenceLink(sentence) {
+    await this._writeClipboard(this._sentenceLink(sentence));
+    this._linkFlash = sentence.id;
+    clearTimeout(this._linkTimer);
+    this._linkTimer = setTimeout(() => {
+      this._linkFlash = null;
       this._render(true);
     }, 1400);
     this._render(true);
@@ -1779,8 +1814,32 @@ export class IgtEditor {
     const favLabel = COPY_FORMATS.find((f) => f.id === fav)?.label ?? fav;
     const open = this._copyMenu === sentence.id;
     const copied = this._copiedFlash === sentence.id;
+    const linked = this._linkFlash === sentence.id;
     return html`
       <div class="igt-copy" @click=${(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          class="igt-copy__link ${linked ? 'is-copied' : ''}"
+          title="Copy a link to this sentence"
+          aria-label="Copy a link to this sentence"
+          @click=${() => this._copySentenceLink(sentence)}
+        >
+          ${linked
+            ? html`<span class="igt-copy__linkok" aria-hidden="true">✓</span>`
+            : html`<svg
+                viewBox="0 0 24 24"
+                width="13"
+                height="13"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" />
+                <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5" />
+              </svg>`}
+        </button>
         <button
           type="button"
           class="igt-copy__btn"
