@@ -13,18 +13,23 @@ import {
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
 
-// Default annotation fields
+// A field's identity is its (scope, name) pair: the same name can exist at
+// two scopes (a FieldWorks import gives "Gloss" and "POS" at both Word and
+// Morpheme scope, and so do the defaults below), so nothing here may key on
+// the name alone.
+export const fieldKey = (f) => `${f.scope}:${f.name}`;
+
+// Default annotation fields: the set a FieldWorks import produces (see
+// import/flex/importEngine.js deriveImportConfig). Keep in sync with the
+// setup wizard's seed in setup/FieldsStep.jsx.
 const DEFAULT_FIELDS = [
-  {
-    name: 'Gloss',
-    scope: 'Word',
-    isCustom: false,
-  },
-  {
-    name: 'Translation',
-    scope: 'Sentence',
-    isCustom: false,
-  },
+  { name: 'Gloss', scope: 'Word', isCustom: false },
+  { name: 'POS', scope: 'Word', isCustom: false },
+  { name: 'Gloss', scope: 'Morpheme', isCustom: false },
+  { name: 'POS', scope: 'Morpheme', isCustom: false },
+  { name: 'Translation', scope: 'Sentence', isCustom: false },
+  { name: 'Literal Translation', scope: 'Sentence', isCustom: false },
+  { name: 'Note', scope: 'Sentence', isCustom: false },
 ];
 
 // Default ignored tokens configuration
@@ -130,13 +135,14 @@ export const FieldsManager = ({
       return;
     }
 
-    // Check for duplicate names (case insensitive)
+    // Check for duplicate names at the SAME scope (case insensitive)
     const isDuplicate = fields.some(
-      (field) => field.name.toLowerCase() === trimmedName.toLowerCase(),
+      (field) =>
+        field.scope === newFieldScope && field.name.toLowerCase() === trimmedName.toLowerCase(),
     );
 
     if (isDuplicate) {
-      notifyError('A field with this name already exists', 'Duplicate Field');
+      notifyError(`A ${newFieldScope} field with this name already exists`, 'Duplicate Field');
       return;
     }
 
@@ -154,39 +160,37 @@ export const FieldsManager = ({
     notifySuccess(`"${trimmedName}" has been added with ${newFieldScope} scope`, 'Field Added');
   };
 
-  const handleDeleteField = async (fieldName) => {
-    const updatedFields = fields.filter((field) => field.name !== fieldName);
+  const handleDeleteField = async (key) => {
+    const field = fields.find((f) => fieldKey(f) === key);
+    const updatedFields = fields.filter((f) => fieldKey(f) !== key);
     await saveChanges(updatedFields, ignoredTokens);
 
-    notifyInfo(`"${fieldName}" has been removed`, 'Field Removed');
+    notifyInfo(`"${field?.name ?? key}" has been removed`, 'Field Removed');
   };
 
   // Entry point for the trash button: in settings mode open the confirm
   // dialog right away and fill in the annotation count as it resolves.
-  const requestDeleteField = (fieldName) => {
+  const requestDeleteField = (key) => {
     if (!onCountFieldUsage) {
-      handleDeleteField(fieldName);
+      handleDeleteField(key);
       return;
     }
-    setPendingDelete({ name: fieldName, count: undefined });
-    const field = fields.find((f) => f.name === fieldName);
+    const field = fields.find((f) => fieldKey(f) === key);
+    const base = { key, name: field?.name ?? key, scope: field?.scope };
+    setPendingDelete({ ...base, count: undefined });
     Promise.resolve(onCountFieldUsage(field))
-      .then((n) =>
-        setPendingDelete((p) => (p?.name === fieldName ? { name: fieldName, count: n } : p)),
-      )
-      .catch(() =>
-        setPendingDelete((p) => (p?.name === fieldName ? { name: fieldName, count: null } : p)),
-      );
+      .then((n) => setPendingDelete((p) => (p?.key === key ? { ...base, count: n } : p)))
+      .catch(() => setPendingDelete((p) => (p?.key === key ? { ...base, count: null } : p)));
   };
 
   const handleConfirmDelete = async () => {
-    const fieldName = pendingDelete?.name;
+    const key = pendingDelete?.key;
     setPendingDelete(null);
-    if (fieldName) await handleDeleteField(fieldName);
+    if (key) await handleDeleteField(key);
   };
 
-  const handleMoveField = async (fieldName, direction) => {
-    const currentIndex = fields.findIndex((field) => field.name === fieldName);
+  const handleMoveField = async (key, direction) => {
+    const currentIndex = fields.findIndex((field) => fieldKey(field) === key);
     if (currentIndex === -1) return;
 
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
@@ -255,7 +259,8 @@ export const FieldsManager = ({
   // Prepare data for the table
   const tableData = fields.map((field, index) => ({
     ...field,
-    id: `${field.name}-${index}`, // Unique ID for table
+    id: `${fieldKey(field)}-${index}`, // Unique ID for table
+    key: fieldKey(field),
   }));
 
   // Color classes for scope badges (Word=blue, Morpheme=violet, Sentence=green)
@@ -298,7 +303,7 @@ export const FieldsManager = ({
                 <tr
                   key={record.id}
                   className="group hover:bg-muted/50"
-                  onMouseEnter={() => setHoveredField(record.name)}
+                  onMouseEnter={() => setHoveredField(record.key)}
                   onMouseLeave={() => setHoveredField(null)}
                 >
                   <td className="border-t px-3 py-2 align-middle">
@@ -316,9 +321,9 @@ export const FieldsManager = ({
                           className="h-7 w-7"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleMoveField(record.name, 'up');
+                            handleMoveField(record.key, 'up');
                           }}
-                          disabled={tableData.findIndex((item) => item.name === record.name) === 0}
+                          disabled={tableData.findIndex((item) => item.key === record.key) === 0}
                           title="Move up"
                         >
                           <ChevronUp className="h-3.5 w-3.5" />
@@ -329,10 +334,10 @@ export const FieldsManager = ({
                           className="h-7 w-7"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleMoveField(record.name, 'down');
+                            handleMoveField(record.key, 'down');
                           }}
                           disabled={
-                            tableData.findIndex((item) => item.name === record.name) ===
+                            tableData.findIndex((item) => item.key === record.key) ===
                             tableData.length - 1
                           }
                           title="Move down"
@@ -345,7 +350,7 @@ export const FieldsManager = ({
                           className="h-7 w-7 text-destructive hover:text-destructive"
                           onClick={(event) => {
                             event.stopPropagation();
-                            requestDeleteField(record.name);
+                            requestDeleteField(record.key);
                           }}
                           title="Remove"
                         >

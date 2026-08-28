@@ -19,9 +19,18 @@ export const FieldsStep = ({
     if (didSeedRef.current || data?.fields) return;
     didSeedRef.current = true;
     onDataChange({
+      // The same field set a FieldWorks import produces (import/flex/
+      // importEngine.js deriveImportConfig), so a blank project and an
+      // imported one look alike and services that write morpheme glosses
+      // (Auto-analyze) have their field from the start.
       fields: [
         { name: 'Gloss', scope: 'Word', isCustom: false },
+        { name: 'POS', scope: 'Word', isCustom: false },
+        { name: 'Gloss', scope: 'Morpheme', isCustom: false },
+        { name: 'POS', scope: 'Morpheme', isCustom: false },
         { name: 'Translation', scope: 'Sentence', isCustom: false },
+        { name: 'Literal Translation', scope: 'Sentence', isCustom: false },
+        { name: 'Note', scope: 'Sentence', isCustom: false },
       ],
       ignoredTokens: {
         mode: 'unicode-punctuation',

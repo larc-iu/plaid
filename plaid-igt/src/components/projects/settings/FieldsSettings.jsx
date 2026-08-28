@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { FieldsManager } from './FieldsManager';
+import { FieldsManager, fieldKey } from './FieldsManager';
 import { notifyError } from '@/utils/feedback';
 import {
   findBaselineTextLayer,
@@ -21,7 +21,7 @@ export const FieldsSettings = ({ projectId, client }) => {
 
   // Helper to check if a field is predefined
   const isPredefinedField = (fieldName) => {
-    const predefinedFields = ['Gloss', 'Translation'];
+    const predefinedFields = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
     return predefinedFields.includes(fieldName);
   };
 
@@ -71,7 +71,10 @@ export const FieldsSettings = ({ projectId, client }) => {
       const allSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers, ...morphemeSpanLayers];
 
       const scopedSpanLayers = allSpanLayers.filter((spanLayer) => readScope(spanLayer.config));
-      spanLayerIdsRef.current = Object.fromEntries(scopedSpanLayers.map((l) => [l.name, l.id]));
+      // Keyed by (scope, name) — the same name can exist at two scopes.
+      spanLayerIdsRef.current = Object.fromEntries(
+        scopedSpanLayers.map((l) => [fieldKey({ scope: readScope(l.config), name: l.name }), l.id]),
+      );
 
       const fieldsWithScope = scopedSpanLayers.map((spanLayer) => ({
         name: spanLayer.name,
@@ -184,9 +187,13 @@ export const FieldsSettings = ({ projectId, client }) => {
       // Find span layers that have plaid scope config (these are managed by us)
       const managedSpanLayers = existingSpanLayers.filter((layer) => readScope(layer.config));
 
-      // Create new span layers for new fields
+      const layerKey = (layer) => fieldKey({ scope: readScope(layer.config), name: layer.name });
+
+      // Create new span layers for new fields (identity = scope + name)
       for (const field of currentFields) {
-        const existingLayer = managedSpanLayers.find((layer) => layer.name === field.name);
+        const existingLayer = managedSpanLayers.find(
+          (layer) => layerKey(layer) === fieldKey(field),
+        );
 
         if (!existingLayer) {
           // Choose parent layer based on field scope (Morpheme fields used to
@@ -206,26 +213,18 @@ export const FieldsSettings = ({ projectId, client }) => {
           // Create new span layer
           const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
           await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
-          spanLayerIdsRef.current[field.name] = spanLayer.id;
-        } else {
-          // Update existing span layer scope if changed
-          if (readScope(existingLayer.config) !== field.scope) {
-            await client.spanLayers.setConfig(
-              existingLayer.id,
-              IGT_NAMESPACE,
-              'scope',
-              field.scope,
-            );
-          }
+          spanLayerIdsRef.current[fieldKey(field)] = spanLayer.id;
         }
       }
 
       // Delete span layers for removed fields
       for (const existingLayer of managedSpanLayers) {
-        const stillExists = currentFields.find((field) => field.name === existingLayer.name);
+        const stillExists = currentFields.find(
+          (field) => fieldKey(field) === layerKey(existingLayer),
+        );
         if (!stillExists) {
           await client.spanLayers.delete(existingLayer.id);
-          delete spanLayerIdsRef.current[existingLayer.name];
+          delete spanLayerIdsRef.current[layerKey(existingLayer)];
         }
       }
     } catch (error) {
@@ -240,7 +239,7 @@ export const FieldsSettings = ({ projectId, client }) => {
   // Count existing annotations in a field's span layer (one aggregate query).
   // null = unknown — the delete dialog warns accordingly.
   const handleCountFieldUsage = async (field) => {
-    const layerId = spanLayerIdsRef.current[field?.name];
+    const layerId = field ? spanLayerIdsRef.current[fieldKey(field)] : null;
     if (!layerId) return 0; // no backing layer yet -> nothing to lose
     const res = await client.query({
       where: [['span', '?s', { layer: layerId }]],
