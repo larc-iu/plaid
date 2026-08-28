@@ -8,7 +8,7 @@
 // write goes out.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, FileText, X, ArrowLeft, Download, AlertTriangle } from 'lucide-react';
+import { Upload, FileText, X, ArrowLeft, ArrowRight, Download, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -34,6 +34,7 @@ import {
   AMBIGUOUS_SKIP,
   AMBIGUOUS_NEW,
   DEFAULT_STRATEGIES,
+  OVERRIDE_VALUES,
   parseTable,
   delimiterName,
   guessColumns,
@@ -50,8 +51,65 @@ const CREATE_CHUNK = 1000;
 // One metadata patch is one batch op, and plaid-core caps a batch at 1000.
 const UPDATE_CHUNK = 500;
 
-const PREVIEW_ROWS = 12;
+const PREVIEW_ROWS = 25;
 const SAMPLE_VALUES = 3;
+
+// How each outcome reads in the row list.
+const ACTION_LABEL = {
+  create: 'will be added',
+  update: 'will be filled in',
+  merge: 'folded into a new entry above',
+  skip: 'skipped',
+};
+const ACTION_TONE = {
+  create: 'text-emerald-600',
+  update: 'text-emerald-600',
+  merge: 'text-emerald-600',
+  skip: 'text-muted-foreground',
+};
+
+// Short labels for the per-row choice. The bucket dropdowns say the same thing
+// at length, since there the subject is a whole pile of rows.
+const ROW_CHOICES = {
+  fill: 'Fill in blanks',
+  skip: 'Skip',
+  new: 'Add separately',
+  overwrite: 'Replace values',
+};
+
+// The same choices spelled out for the bucket dropdowns, where the subject is
+// a whole pile of rows rather than one.
+const BUCKET_CHOICES = {
+  enrich: [
+    [ENRICH_FILL, 'Fill in the blank fields'],
+    [ENRICH_SKIP, 'Leave the existing entry alone'],
+  ],
+  conflict: [
+    [CONFLICT_SKIP, "Skip them, keep what's here"],
+    [CONFLICT_NEW, 'Add each as a separate entry'],
+    [CONFLICT_OVERWRITE, 'Replace the existing values'],
+  ],
+  ambiguous: [
+    [AMBIGUOUS_SKIP, 'Skip them'],
+    [AMBIGUOUS_NEW, 'Add each as a separate entry'],
+  ],
+};
+
+// Views over the plan. "Needs a decision" is first and is the default whenever
+// it has anything in it: those are the rows the tool cannot judge on its own,
+// and they are precisely what a person is here to look at.
+const FILTERS = {
+  decide: {
+    label: 'Needs a decision',
+    match: (d) => d.kind === 'conflict' || d.kind === 'ambiguous',
+  },
+  changes: { label: 'Will change something', match: (d) => d.action !== 'skip' },
+  all: { label: 'Every row', match: () => true },
+  new: { label: 'New entries', match: (d) => d.kind === 'new' },
+  enrich: { label: 'Fills in blanks', match: (d) => d.kind === 'enrich' },
+  identical: { label: 'Already present', match: (d) => d.kind === 'identical' },
+  blank: { label: 'No form', match: (d) => d.kind === 'blank' },
+};
 
 const selectClass =
   'h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60';
@@ -109,6 +167,11 @@ export const BulkAddDialog = ({
   const [mapping, setMapping] = useState([]);
   const [caseInsensitive, setCaseInsensitive] = useState(false);
   const [strategies, setStrategies] = useState(DEFAULT_STRATEGIES);
+  // One row's own answer, keyed by source line, overriding its bucket's.
+  const [overrides, setOverrides] = useState({});
+  // null until the user picks a view, so the default can follow the plan.
+  const [filterChoice, setFilterChoice] = useState(null);
+  const [shownRows, setShownRows] = useState(PREVIEW_ROWS);
   const [progress, setProgress] = useState(null); // { done, total, phase }
   const [failure, setFailure] = useState(null); // { message, created, updated }
 
@@ -128,9 +191,26 @@ export const BulkAddDialog = ({
     [rows, mapping, hasHeader],
   );
   const plan = useMemo(
-    () => planVocabImport({ entries, existingItems, fieldNames, caseInsensitive, strategies }),
-    [entries, existingItems, fieldNames, caseInsensitive, strategies],
+    () =>
+      planVocabImport({
+        entries,
+        existingItems,
+        fieldNames,
+        caseInsensitive,
+        strategies,
+        overrides,
+      }),
+    [entries, existingItems, fieldNames, caseInsensitive, strategies, overrides],
   );
+  const overrideCount = Object.keys(overrides).length;
+  // Open on the rows that need a person. When there are none, the useful first
+  // view is what the import will actually do.
+  const needsDecision = plan.decisions.filter(FILTERS.decide.match).length;
+  const filter = filterChoice ?? (needsDecision ? 'decide' : 'changes');
+  const setFilter = (key) => {
+    setFilterChoice(key);
+    setShownRows(PREVIEW_ROWS);
+  };
 
   const rejectedRows = useMemo(() => countRejected(entries), [entries]);
   const formColumns = mapping.filter((m) => m === FORM).length;
@@ -144,6 +224,9 @@ export const BulkAddDialog = ({
     setFile(null);
     setCaseInsensitive(false);
     setStrategies(DEFAULT_STRATEGIES);
+    setOverrides({});
+    setFilterChoice(null);
+    setShownRows(PREVIEW_ROWS);
     setProgress(null);
     setFailure(null);
   };
@@ -421,9 +504,32 @@ export const BulkAddDialog = ({
     );
   };
 
+  // A bucket's policy. Row answers that now agree with it are dropped, so the
+  // "N row choices" count only ever means rows that differ from their bucket.
+  const bucketSelect = (kind) => (
+    <select
+      className={selectClass}
+      value={strategies[kind]}
+      onChange={(e) => {
+        const value = e.target.value;
+        setStrategies((prev) => ({ ...prev, [kind]: value }));
+        setOverrides((prev) =>
+          Object.fromEntries(Object.entries(prev).filter(([, v]) => v !== value)),
+        );
+      }}
+    >
+      {BUCKET_CHOICES[kind].map(([v, label]) => (
+        <option key={v} value={v}>
+          {label}
+        </option>
+      ))}
+    </select>
+  );
+
   const renderReview = () => {
     const { counts } = plan;
-    const shown = plan.decisions.filter((d) => d.action !== 'skip').slice(0, PREVIEW_ROWS);
+    const rows = plan.decisions.filter(FILTERS[filter].match);
+    const visible = rows.slice(0, shownRows);
     return (
       <div className="flex flex-col gap-3">
         <div className="rounded-md border px-3 py-1">
@@ -438,43 +544,21 @@ export const BulkAddDialog = ({
             count={counts.enrich}
             label="rows fill in blanks on an entry that's already here"
           >
-            <select
-              className={selectClass}
-              value={strategies.enrich}
-              onChange={(e) => setStrategies((s) => ({ ...s, enrich: e.target.value }))}
-            >
-              <option value={ENRICH_FILL}>Fill in the blank fields</option>
-              <option value={ENRICH_SKIP}>Leave the existing entry alone</option>
-            </select>
+            {bucketSelect('enrich')}
           </Bucket>
           <Bucket
             tone="warn"
             count={counts.conflict}
             label="rows disagree with an entry that has the same form, often a second sense and sometimes a correction"
           >
-            <select
-              className={selectClass}
-              value={strategies.conflict}
-              onChange={(e) => setStrategies((s) => ({ ...s, conflict: e.target.value }))}
-            >
-              <option value={CONFLICT_SKIP}>Skip them, keep what's here</option>
-              <option value={CONFLICT_NEW}>Add each as a separate entry</option>
-              <option value={CONFLICT_OVERWRITE}>Replace the existing values</option>
-            </select>
+            {bucketSelect('conflict')}
           </Bucket>
           <Bucket
             tone="warn"
             count={counts.ambiguous}
             label="rows could belong to more than one entry sharing that form"
           >
-            <select
-              className={selectClass}
-              value={strategies.ambiguous}
-              onChange={(e) => setStrategies((s) => ({ ...s, ambiguous: e.target.value }))}
-            >
-              <option value={AMBIGUOUS_SKIP}>Skip them</option>
-              <option value={AMBIGUOUS_NEW}>Add each as a separate entry</option>
-            </select>
+            {bucketSelect('ambiguous')}
           </Bucket>
           <Bucket
             tone="muted"
@@ -500,33 +584,119 @@ export const BulkAddDialog = ({
           </p>
         )}
 
-        {shown.length > 0 && (
-          <div className="rounded-md border">
-            <div className="flex items-center justify-between border-b px-2 py-1.5">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                First changes
-              </p>
+        <div className="rounded-md border">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2 py-1.5">
+            <select
+              className={selectClass}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            >
+              {Object.entries(FILTERS).map(([key, f]) => (
+                <option key={key} value={key}>
+                  {f.label} ({n(plan.decisions.filter(f.match).length)})
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1">
+              {overrideCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
+                  onClick={() => setOverrides({})}
+                >
+                  Clear {n(overrideCount)} row choice{overrideCount === 1 ? '' : 's'}
+                </Button>
+              )}
               <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={downloadReport}>
                 <Download className="h-3 w-3" /> Full plan (.tsv)
               </Button>
             </div>
-            <div className="max-h-44 overflow-y-auto">
+          </div>
+
+          {visible.length === 0 ? (
+            <p className="px-2 py-4 text-center text-xs text-muted-foreground">No rows here.</p>
+          ) : (
+            <div className="max-h-72 overflow-y-auto">
               <table className="w-full text-xs">
                 <tbody>
-                  {shown.map((d, i) => (
-                    <tr key={i} className="border-b last:border-b-0">
-                      <td className="w-10 px-2 py-1 text-right tabular-nums text-muted-foreground">
+                  {visible.map((d) => (
+                    <tr key={d.line} className="border-b align-top last:border-b-0">
+                      <td className="w-10 px-2 py-1.5 text-right tabular-nums text-muted-foreground">
                         {d.line}
                       </td>
-                      <td className="px-2 py-1 font-medium">{d.form}</td>
-                      <td className="px-2 py-1 text-muted-foreground">{d.detail}</td>
+                      <td className="w-56 px-2 py-1.5">
+                        <div>
+                          <span className="font-medium">{d.form || <em>(no form)</em>}</span>{' '}
+                          <span className={cn('text-[0.9em]', ACTION_TONE[d.action])}>
+                            {ACTION_LABEL[d.action]}
+                          </span>
+                        </div>
+                        <div className="text-muted-foreground">{d.detail}</div>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {d.changes.map((c) => (
+                          <div key={c.field}>
+                            <span className="text-muted-foreground">
+                              {humanizeFieldName(c.field)}
+                            </span>{' '}
+                            {c.from === '' ? (
+                              <span className="text-emerald-700">{c.to}</span>
+                            ) : (
+                              <>
+                                <span className="text-muted-foreground line-through">{c.from}</span>{' '}
+                                <ArrowRight className="inline h-3 w-3 text-muted-foreground" />{' '}
+                                <span className="text-amber-700">{c.to}</span>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </td>
+                      <td className="w-40 px-2 py-1.5">
+                        {OVERRIDE_VALUES[d.kind] && (
+                          <select
+                            className={cn(
+                              selectClass,
+                              'h-7 w-full text-xs',
+                              overrides[d.line] && 'border-foreground/40 font-medium',
+                            )}
+                            value={overrides[d.line] ?? strategies[d.kind]}
+                            onChange={(e) =>
+                              setOverrides((prev) => {
+                                const next = { ...prev };
+                                // Falling back to the bucket's answer is the
+                                // same as having no answer of your own.
+                                if (e.target.value === strategies[d.kind]) delete next[d.line];
+                                else next[d.line] = e.target.value;
+                                return next;
+                              })
+                            }
+                          >
+                            {OVERRIDE_VALUES[d.kind].map((v) => (
+                              <option key={v} value={v}>
+                                {ROW_CHOICES[v]}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+
+          {rows.length > visible.length && (
+            <button
+              type="button"
+              className="w-full border-t py-1.5 text-xs text-muted-foreground hover:bg-muted/50"
+              onClick={() => setShownRows((v) => v + PREVIEW_ROWS)}
+            >
+              Showing {n(visible.length)} of {n(rows.length)}. Show more
+            </button>
+          )}
+        </div>
       </div>
     );
   };

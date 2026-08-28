@@ -15,6 +15,11 @@ import {
   rowsToEntries,
   planVocabImport,
   serializeImportReport,
+  describeChange,
+  OVERRIDE_VALUES,
+  CONFLICT_SKIP,
+  ENRICH_FILL,
+  AMBIGUOUS_SKIP,
 } from './vocabBulk.js';
 
 const FIELDS = ['morphType', 'gloss', 'pos', 'definition'];
@@ -309,6 +314,109 @@ describe('planVocabImport', () => {
   });
 });
 
+describe('decision detail for review', () => {
+  const existing = [
+    { id: 'i1', form: 'perro', metadata: { gloss: 'dog' } },
+    { id: 'i2', form: 'gato', metadata: { gloss: 'cat', pos: 'N' } },
+  ];
+
+  it('reports an addition with an empty from side', () => {
+    const p = plan([entry(1, 'perro', { pos: 'N' })], existing);
+    expect(p.decisions[0].changes).toEqual([{ field: 'pos', from: '', to: 'N' }]);
+    expect(describeChange(p.decisions[0].changes[0])).toBe('pos: N');
+  });
+
+  it('reports a disagreement with both sides, so a reviewer can judge it', () => {
+    const p = plan([entry(1, 'gato', { gloss: 'wildcat', definition: 'felis' })], existing);
+    expect(p.decisions[0]).toMatchObject({ kind: 'conflict', targetId: 'i2', targetForm: 'gato' });
+    expect(p.decisions[0].changes).toEqual([
+      { field: 'gloss', from: 'cat', to: 'wildcat' },
+      { field: 'definition', from: '', to: 'felis' },
+    ]);
+    expect(p.decisions[0].changes.map(describeChange)).toEqual([
+      'gloss: cat > wildcat',
+      'definition: felis',
+    ]);
+  });
+
+  it('gives a new row its values as additions and no target', () => {
+    const p = plan([entry(1, 'lobo', { gloss: 'wolf' })], existing);
+    expect(p.decisions[0]).toMatchObject({ kind: 'new', targetId: null, candidates: 0 });
+    expect(p.decisions[0].changes).toEqual([{ field: 'gloss', from: '', to: 'wolf' }]);
+  });
+
+  it('counts the candidates sharing the form', () => {
+    const homonyms = [
+      { id: 'a', form: 'kap', metadata: { gloss: 'hand' } },
+      { id: 'b', form: 'kap', metadata: { gloss: 'head' } },
+    ];
+    const p = plan([entry(1, 'kap', { pos: 'N' })], homonyms);
+    expect(p.decisions[0]).toMatchObject({ kind: 'ambiguous', candidates: 2 });
+  });
+
+  it('names the matched entry even when case-insensitive matching found it', () => {
+    const p = plan(
+      [entry(1, 'perro', { pos: 'N' })],
+      [{ id: 'x', form: 'Perro', metadata: { gloss: 'dog' } }],
+      { caseInsensitive: true },
+    );
+    expect(p.decisions[0].targetForm).toBe('Perro');
+  });
+
+  it('reports nothing to change for an identical row', () => {
+    const p = plan([entry(1, 'gato', { gloss: 'cat' })], existing);
+    expect(p.decisions[0].changes).toEqual([]);
+  });
+});
+
+describe('per-row overrides', () => {
+  const existing = [{ id: 'i2', form: 'gato', metadata: { gloss: 'cat', pos: 'N' } }];
+  const rows = [entry(1, 'gato', { gloss: 'wildcat' }), entry(2, 'gato', { gloss: 'stray' })];
+
+  it('lets one conflicting row be added while its bucket stays on skip', () => {
+    const p = plan(rows, existing, { overrides: { 1: 'new' } });
+    expect(p.creates).toEqual([{ form: 'gato', metadata: { gloss: 'wildcat' } }]);
+    expect(p.decisions[0].action).toBe('create');
+    expect(p.decisions[1].action).toBe('skip');
+  });
+
+  it('lets one row be skipped while its bucket adds the rest', () => {
+    const p = plan(rows, existing, {
+      strategies: { conflict: 'new' },
+      overrides: { 2: CONFLICT_SKIP },
+    });
+    expect(p.creates).toEqual([{ form: 'gato', metadata: { gloss: 'wildcat' } }]);
+    expect(p.decisions[1].action).toBe('skip');
+  });
+
+  it('overrides one enrichment without touching the others', () => {
+    const items = [
+      { id: 'a', form: 'perro', metadata: { gloss: 'dog' } },
+      { id: 'b', form: 'lobo', metadata: { gloss: 'wolf' } },
+    ];
+    const p = plan([entry(1, 'perro', { pos: 'N' }), entry(2, 'lobo', { pos: 'N' })], items, {
+      overrides: { 1: 'skip' },
+    });
+    expect(p.updates).toEqual([{ id: 'b', patch: { pos: 'N' } }]);
+  });
+
+  it('ignores an override that is meaningless for how the row classified', () => {
+    // 'overwrite' is a conflict answer; this row came out as an enrichment.
+    const p = plan(
+      [entry(1, 'perro', { pos: 'N' })],
+      [{ id: 'a', form: 'perro', metadata: { gloss: 'dog' } }],
+      { overrides: { 1: 'overwrite' } },
+    );
+    expect(p.updates).toEqual([{ id: 'a', patch: { pos: 'N' } }]);
+  });
+
+  it('exposes the valid answers per classification', () => {
+    expect(OVERRIDE_VALUES.enrich).toContain(ENRICH_FILL);
+    expect(OVERRIDE_VALUES.ambiguous).toEqual([AMBIGUOUS_SKIP, 'new']);
+    expect(OVERRIDE_VALUES.new).toBeUndefined();
+  });
+});
+
 describe('serializeImportReport', () => {
   it('emits one line per decision with its outcome', () => {
     const p = plan(
@@ -316,9 +424,9 @@ describe('serializeImportReport', () => {
       [{ id: 'i1', form: 'perro', metadata: { gloss: 'dog' } }],
     );
     expect(serializeImportReport(p.decisions).split('\n')).toEqual([
-      'Line\tForm\tOutcome\tWhy',
-      '1\tlobo\tAdded\tnew entry',
-      '2\tperro\tUpdated\tfills in pos',
+      'Line\tForm\tOutcome\tWhy\tValues',
+      '1\tlobo\tAdded\tnew entry\tgloss: wolf',
+      '2\tperro\tUpdated\tfills in pos\tpos: N',
       '',
     ]);
   });

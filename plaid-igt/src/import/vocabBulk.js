@@ -282,16 +282,33 @@ const formKey = (form, caseInsensitive) => {
 const blank = (v) => norm(v) === '';
 
 /**
+ * Which policies each classification accepts. Used to validate a per-row
+ * override before applying it, so an override left over from an earlier
+ * classification of that line cannot pick something meaningless.
+ */
+export const OVERRIDE_VALUES = {
+  enrich: [ENRICH_FILL, ENRICH_SKIP],
+  conflict: [CONFLICT_SKIP, CONFLICT_NEW, CONFLICT_OVERWRITE],
+  ambiguous: [AMBIGUOUS_SKIP, AMBIGUOUS_NEW],
+};
+
+/**
  * Plan a bulk import against the vocabulary's current contents.
+ *
+ * Every decision carries the value-level `changes` behind it, because a count
+ * of "74 rows disagree" is not something a person can act on. A change with an
+ * empty `from` is a value the row adds, one with both sides filled is a
+ * disagreement, and that difference is the whole judgement a reviewer makes.
  *
  * @param {object} opts
  * @param {Array} opts.entries - from rowsToEntries
  * @param {Array} opts.existingItems - [{id, form, metadata}]
  * @param {string[]} opts.fieldNames - the vocabulary's fields
  * @param {boolean} [opts.caseInsensitive] - match forms ignoring capitalization
- * @param {object} [opts.strategies] - see DEFAULT_STRATEGIES
+ * @param {object} [opts.strategies] - the per-classification policy, see DEFAULT_STRATEGIES
+ * @param {object} [opts.overrides] - `{[line]: policy}`, one row's answer overriding its bucket
  * @returns {{
- *   decisions: {line, form, kind, action, targetId, detail}[],
+ *   decisions: {line, form, kind, action, targetId, targetForm, candidates, changes, detail}[],
  *   counts: object,
  *   creates: {form, metadata}[],
  *   updates: {id, patch}[],
@@ -303,8 +320,16 @@ export const planVocabImport = ({
   fieldNames = [],
   caseInsensitive = false,
   strategies = DEFAULT_STRATEGIES,
+  overrides = {},
 }) => {
-  const { enrich, conflict, ambiguous } = { ...DEFAULT_STRATEGIES, ...strategies };
+  const policies = { ...DEFAULT_STRATEGIES, ...strategies };
+
+  // The row's own answer wins over its bucket's, as long as it still makes
+  // sense for how the row classified this time round.
+  const policyFor = (kind, line) => {
+    const own = overrides?.[line];
+    return own && OVERRIDE_VALUES[kind]?.includes(own) ? own : policies[kind];
+  };
 
   // Candidate pool, keyed by form. Entries created by earlier rows of this same
   // import join the pool, so a repeated row lands as `identical` instead of
@@ -339,21 +364,36 @@ export const planVocabImport = ({
     Object.assign(updates.get(id), patch);
   };
 
-  const createFrom = (entry, kind, detail) => {
+  // Every value the row carries, as something it would add from nothing.
+  const additions = (entry, fields) =>
+    fields.map((f) => ({ field: f, from: '', to: entry.values[f] }));
+
+  // The row against one candidate, field by field: a blank `from` is an
+  // addition, a filled one is a disagreement.
+  const diffAgainst = (candidate, entry, fields) =>
+    fields
+      .filter((f) => norm(candidate.values[f]) !== norm(entry.values[f]))
+      .map((f) => ({ field: f, from: candidate.values[f] ?? '', to: entry.values[f] }));
+
+  const record = (entry, d) =>
+    decisions.push({
+      line: entry.line,
+      form: entry.form,
+      targetId: null,
+      targetForm: null,
+      candidates: 0,
+      changes: [],
+      ...d,
+    });
+
+  const createFrom = (entry, fields, kind, detail, extra = {}) => {
     // Stored as typed (trimmed only): NFC is how we COMPARE forms, not a
     // normalization we impose on the user's orthography.
     const metadata = { ...entry.values };
     const pending = { form: String(entry.form).trim(), metadata };
     creates.push(pending);
     push(entry.form, { id: null, form: pending.form, values: metadata, pending });
-    decisions.push({
-      line: entry.line,
-      form: entry.form,
-      kind,
-      action: 'create',
-      targetId: null,
-      detail,
-    });
+    record(entry, { kind, action: 'create', detail, changes: additions(entry, fields), ...extra });
   };
 
   for (const entry of entries) {
@@ -361,14 +401,7 @@ export const planVocabImport = ({
 
     if (!norm(entry.form)) {
       counts.blank += 1;
-      decisions.push({
-        line: entry.line,
-        form: '',
-        kind: 'blank',
-        action: 'skip',
-        targetId: null,
-        detail: 'no form',
-      });
+      record(entry, { form: '', kind: 'blank', action: 'skip', detail: 'no form' });
       continue;
     }
 
@@ -376,23 +409,21 @@ export const planVocabImport = ({
 
     if (!candidates.length) {
       counts.new += 1;
-      createFrom(entry, 'new', 'new entry');
+      createFrom(entry, fields, 'new', 'new entry');
       continue;
     }
 
     // Already covered: some entry with this form holds every value in the row
     // (vacuously true for a form-only row, which is then nothing new to say).
-    const same = candidates.find((c) =>
-      fields.every((f) => norm(c.values[f]) === norm(entry.values[f])),
-    );
+    const same = candidates.find((c) => !diffAgainst(c, entry, fields).length);
     if (same) {
       counts.identical += 1;
-      decisions.push({
-        line: entry.line,
-        form: entry.form,
+      record(entry, {
         kind: 'identical',
         action: 'skip',
         targetId: same.id,
+        targetForm: same.form,
+        candidates: candidates.length,
         detail: 'already present',
       });
       continue;
@@ -407,18 +438,18 @@ export const planVocabImport = ({
     if (compatible.length === 1) {
       counts.enrich += 1;
       const target = compatible[0];
-      const patch = {};
-      for (const f of fields) if (blank(target.values[f])) patch[f] = entry.values[f];
-      const added = Object.keys(patch).join(', ');
-      if (enrich !== ENRICH_FILL) {
-        decisions.push({
-          line: entry.line,
-          form: entry.form,
-          kind: 'enrich',
-          action: 'skip',
-          targetId: target.id,
-          detail: `could fill in ${added}`,
-        });
+      const changes = diffAgainst(target, entry, fields);
+      const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
+      const added = changes.map((c) => c.field).join(', ');
+      const base = {
+        kind: 'enrich',
+        targetId: target.id,
+        targetForm: target.form,
+        candidates: candidates.length,
+        changes,
+      };
+      if (policyFor('enrich', entry.line) !== ENRICH_FILL) {
+        record(entry, { ...base, action: 'skip', detail: `could fill in ${added}` });
         continue;
       }
       Object.assign(target.values, patch);
@@ -426,24 +457,14 @@ export const planVocabImport = ({
         // Filling in an entry this same import is about to create, so fold
         // the values into that pending create instead of writing twice.
         Object.assign(target.pending.metadata, patch);
-        decisions.push({
-          line: entry.line,
-          form: entry.form,
-          kind: 'enrich',
+        record(entry, {
+          ...base,
           action: 'merge',
-          targetId: null,
           detail: `added ${added} to a new entry above`,
         });
       } else {
         addUpdate(target.id, patch);
-        decisions.push({
-          line: entry.line,
-          form: entry.form,
-          kind: 'enrich',
-          action: 'update',
-          targetId: target.id,
-          detail: `fills in ${added}`,
-        });
+        record(entry, { ...base, action: 'update', detail: `fills in ${added}` });
       }
       continue;
     }
@@ -451,59 +472,66 @@ export const planVocabImport = ({
     if (compatible.length > 1) {
       counts.ambiguous += 1;
       const detail = `${compatible.length} entries share this form`;
-      if (ambiguous === AMBIGUOUS_NEW)
-        createFrom(entry, 'ambiguous', `${detail}; added separately`);
-      else
-        decisions.push({
-          line: entry.line,
-          form: entry.form,
+      const extra = { candidates: candidates.length };
+      if (policyFor('ambiguous', entry.line) === AMBIGUOUS_NEW) {
+        createFrom(entry, fields, 'ambiguous', `${detail}, so added separately`, extra);
+      } else {
+        record(entry, {
+          ...extra,
           kind: 'ambiguous',
           action: 'skip',
-          targetId: null,
+          changes: additions(entry, fields),
           detail,
         });
+      }
       continue;
     }
 
-    // Disagreement with every candidate.
+    // Disagreement with every candidate. Diff against the first, which is the
+    // only sensible target when there is exactly one, and the clearest
+    // illustration of the clash when there are several.
     counts.conflict += 1;
-    const clashes = (c) =>
-      fields.filter((f) => !blank(c.values[f]) && norm(c.values[f]) !== norm(entry.values[f]));
-    if (conflict === CONFLICT_NEW) {
-      createFrom(
-        entry,
-        'conflict',
-        `differs on ${clashes(candidates[0]).join(', ')}; added separately`,
-      );
+    const mode = policyFor('conflict', entry.line);
+    const first = candidates[0];
+    const changes = diffAgainst(first, entry, fields);
+    const clashed = changes
+      .filter((c) => c.from !== '')
+      .map((c) => c.field)
+      .join(', ');
+    const base = {
+      kind: 'conflict',
+      targetId: first.id,
+      targetForm: first.form,
+      candidates: candidates.length,
+      changes,
+    };
+
+    if (mode === CONFLICT_NEW) {
+      createFrom(entry, fields, 'conflict', `differs on ${clashed}, so added separately`, {
+        targetId: first.id,
+        targetForm: first.form,
+        candidates: candidates.length,
+      });
       continue;
     }
-    if (conflict === CONFLICT_OVERWRITE && candidates.length === 1 && candidates[0].id != null) {
-      const target = candidates[0];
-      const patch = {};
-      for (const f of fields)
-        if (norm(target.values[f]) !== norm(entry.values[f])) patch[f] = entry.values[f];
-      Object.assign(target.values, patch);
-      addUpdate(target.id, patch);
-      decisions.push({
-        line: entry.line,
-        form: entry.form,
-        kind: 'conflict',
+    if (mode === CONFLICT_OVERWRITE && candidates.length === 1 && first.id != null) {
+      const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
+      Object.assign(first.values, patch);
+      addUpdate(first.id, patch);
+      record(entry, {
+        ...base,
         action: 'update',
-        targetId: target.id,
         detail: `replaces ${Object.keys(patch).join(', ')}`,
       });
       continue;
     }
-    decisions.push({
-      line: entry.line,
-      form: entry.form,
-      kind: 'conflict',
+    record(entry, {
+      ...base,
       action: 'skip',
-      targetId: candidates[0]?.id ?? null,
       detail:
-        conflict === CONFLICT_OVERWRITE && candidates.length > 1
+        mode === CONFLICT_OVERWRITE && candidates.length > 1
           ? `${candidates.length} entries share this form, so there is nothing single to replace`
-          : `differs on ${clashes(candidates[0]).join(', ')}`,
+          : `differs on ${clashed}`,
     });
   }
 
@@ -519,9 +547,14 @@ export const planVocabImport = ({
 export const countRejected = (entries) =>
   entries.reduce((n, e) => n + (e.rejected?.length ? 1 : 0), 0);
 
+/** One change as a phrase: `pos: N` for an addition, `gloss: cat > wildcat` for a clash. */
+export const describeChange = (c) =>
+  c.from === '' ? `${c.field}: ${c.to}` : `${c.field}: ${c.from} > ${c.to}`;
+
 /**
- * The whole plan as a TSV the user can open in a spreadsheet, the only
- * practical way to check a few thousand rows before or after committing them.
+ * The whole plan as a TSV the user can open in a spreadsheet, still the way to
+ * check a few thousand rows away from the dialog or to keep a record of what a
+ * run did.
  */
 export const serializeImportReport = (decisions) => {
   const cell = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
@@ -531,9 +564,19 @@ export const serializeImportReport = (decisions) => {
     merge: 'Merged into a new entry',
     skip: 'Skipped',
   };
-  const lines = ['Line\tForm\tOutcome\tWhy'];
+  const lines = ['Line\tForm\tOutcome\tWhy\tValues'];
   for (const d of decisions) {
-    lines.push([d.line, d.form, OUTCOME[d.action] ?? d.action, d.detail].map(cell).join('\t'));
+    lines.push(
+      [
+        d.line,
+        d.form,
+        OUTCOME[d.action] ?? d.action,
+        d.detail,
+        (d.changes || []).map(describeChange).join(' · '),
+      ]
+        .map(cell)
+        .join('\t'),
+    );
   }
   return `${lines.join('\n')}\n`;
 };
