@@ -16,6 +16,15 @@ import {
   requestService,
 } from './services.js';
 
+// Helper: normalize an audit `opTypes` filter to the wire's comma-separated
+// form. Accepts an array of op types or a ready-made string; anything empty
+// becomes undefined so no `?op-types=` is sent at all.
+function opTypesParam(opTypes) {
+  if (opTypes === undefined || opTypes === null) return undefined;
+  const joined = Array.isArray(opTypes) ? opTypes.join(',') : String(opTypes);
+  return joined.length > 0 ? joined : undefined;
+}
+
 // Helper: build body object, filtering out undefined values
 function bodyOf(obj) {
   const result = {};
@@ -629,10 +638,19 @@ class PlaidClient {
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
        * @param {string} [asOf] - Temporal query timestamp
+       * @param {string[]|string} [opTypes] - Only return operations of these
+       *   types, spelled as in an entry's `op/type` (e.g.
+       *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
+       *   one of its operations matches, carrying only the ones that did.
        */
-      audit: (userId, startTime, endTime, asOf) =>
+      audit: (userId, startTime, endTime, asOf, opTypes) =>
         listAll(this, `/api/v1/users/${userId}/audit`, {
-          query: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
+          query: {
+            'start-time': startTime,
+            'end-time': endTime,
+            'as-of': asOf,
+            'op-types': opTypesParam(opTypes),
+          },
         }),
       /**
        * Get a user by ID
@@ -1005,10 +1023,19 @@ class PlaidClient {
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
        * @param {string} [asOf] - Temporal query timestamp
+       * @param {string[]|string} [opTypes] - Only return operations of these
+       *   types, spelled as in an entry's `op/type` (e.g.
+       *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
+       *   one of its operations matches, carrying only the ones that did.
        */
-      audit: (documentId, startTime, endTime, asOf) =>
+      audit: (documentId, startTime, endTime, asOf, opTypes) =>
         listAll(this, `/api/v1/documents/${documentId}/audit`, {
-          query: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
+          query: {
+            'start-time': startTime,
+            'end-time': endTime,
+            'as-of': asOf,
+            'op-types': opTypesParam(opTypes),
+          },
         }),
       /**
        * Get a document. Set `includeBody` to true to include all data.
@@ -1119,10 +1146,19 @@ class PlaidClient {
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
        * @param {string} [asOf] - Temporal query timestamp
+       * @param {string[]|string} [opTypes] - Only return operations of these
+       *   types, spelled as in an entry's `op/type` (e.g.
+       *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
+       *   one of its operations matches, carrying only the ones that did.
        */
-      audit: (projectId, startTime, endTime, asOf) =>
+      audit: (projectId, startTime, endTime, asOf, opTypes) =>
         listAll(this, `/api/v1/projects/${projectId}/audit`, {
-          query: { 'start-time': startTime, 'end-time': endTime, 'as-of': asOf },
+          query: {
+            'start-time': startTime,
+            'end-time': endTime,
+            'as-of': asOf,
+            'op-types': opTypesParam(opTypes),
+          },
         }),
       /**
        * Link a vocabulary to a project.

@@ -67,6 +67,17 @@ class _OperationContext:
             self._group['refined'] = message
 
 
+def _op_types_param(op_types):
+    """Normalize an audit ``op_types`` filter to the wire's comma-separated
+    form. Accepts a list of op types or a ready-made string; anything empty
+    becomes ``None`` so no ``?op-types=`` is sent at all.
+    """
+    if op_types is None:
+        return None
+    joined = op_types if isinstance(op_types, str) else ','.join(op_types)
+    return joined or None
+
+
 class _Resource:
     def __init__(self, client: PlaidClient):
         self._client = client
@@ -791,8 +802,9 @@ class UsersResource(_Resource):
         return self._request('PATCH', f'/api/v1/users/{id}',
                              body=_body_of(password=password, username=username, is_admin=is_admin), audit_message=audit_message)
 
-    def audit(self, user_id: str, *, start_time: str | None = None, end_time: str | None = None,
-              as_of: str | None = None) -> Any:
+    def audit(self, user_id: str, *, start_time: str | None = None,
+              end_time: str | None = None, as_of: str | None = None,
+              op_types=None) -> Any:
         """Get audit log for a user's actions.
 
         Transparently follows server-side pagination cursors and returns the
@@ -805,9 +817,15 @@ class UsersResource(_Resource):
             start_time: Start of time range
             end_time: End of time range
             as_of: Temporal query timestamp
+            op_types: Only return operations of these types, spelled as in an
+                entry's ``op/type`` (e.g.
+                ``['span-layer/create', 'span-layer/delete']``). An entry
+                appears when one of its operations matches, carrying only the
+                ones that did.
         """
         return list_all(self._client, f'/api/v1/users/{user_id}/audit',
-                        query={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
+                        query={'start-time': start_time, 'end-time': end_time,
+                               'as-of': as_of, 'op-types': _op_types_param(op_types)})
 
     def get_avatar(self, id: str) -> bytes:
         """Get a user's profile picture as raw bytes.
@@ -1310,7 +1328,8 @@ class DocumentsResource(_Resource):
                              raw_body=body, skip_response_transform=True, audit_message=audit_message)
 
     def audit(self, document_id: str, *, start_time: str | None = None,
-              end_time: str | None = None, as_of: str | None = None) -> Any:
+              end_time: str | None = None, as_of: str | None = None,
+              op_types=None) -> Any:
         """Get audit log for a document.
 
         Transparently follows server-side pagination cursors and returns the
@@ -1323,9 +1342,15 @@ class DocumentsResource(_Resource):
             start_time: Start of time range
             end_time: End of time range
             as_of: Temporal query timestamp
+            op_types: Only return operations of these types, spelled as in an
+                entry's ``op/type`` (e.g.
+                ``['span-layer/create', 'span-layer/delete']``). An entry
+                appears when one of its operations matches, carrying only the
+                ones that did.
         """
         return list_all(self._client, f'/api/v1/documents/{document_id}/audit',
-                        query={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
+                        query={'start-time': start_time, 'end-time': end_time,
+                               'as-of': as_of, 'op-types': _op_types_param(op_types)})
 
 
 class MessagesResource(_Resource):
@@ -1646,7 +1671,8 @@ class ProjectsResource(_Resource):
                              skip_response_transform=True, audit_message=audit_message)
 
     def audit(self, project_id: str, *, start_time: str | None = None,
-              end_time: str | None = None, as_of: str | None = None) -> Any:
+              end_time: str | None = None, as_of: str | None = None,
+              op_types=None) -> Any:
         """Get audit log for a project.
 
         Transparently follows server-side pagination cursors and returns the
@@ -1659,9 +1685,15 @@ class ProjectsResource(_Resource):
             start_time: Start of time range
             end_time: End of time range
             as_of: Temporal query timestamp
+            op_types: Only return operations of these types, spelled as in an
+                entry's ``op/type`` (e.g.
+                ``['span-layer/create', 'span-layer/delete']``). An entry
+                appears when one of its operations matches, carrying only the
+                ones that did.
         """
         return list_all(self._client, f'/api/v1/projects/{project_id}/audit',
-                        query={'start-time': start_time, 'end-time': end_time, 'as-of': as_of})
+                        query={'start-time': start_time, 'end-time': end_time,
+                               'as-of': as_of, 'op-types': _op_types_param(op_types)})
 
     def link_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
         """Link a vocabulary to a project.

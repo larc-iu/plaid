@@ -22,7 +22,15 @@
 
   A group is NOT a transaction: members that committed before a failing
   step stay in the log under the group. If a step needs all-or-nothing,
-  that is a batch's job (and a batch may sit inside a group)."
+  that is a batch's job (and a batch may sit inside a group).
+
+  Three things scope a read, and all three scope MEMBERS, not units: the
+  entity scope (project / document / user), the `[start end]` time window,
+  and the optional `:op-types` filter. A unit surfaces iff some member
+  survives all three, and carries only the members that did. So a batch
+  that created a span layer and fifty spans, read with
+  `:op-types` of just `span-layer/create`, comes back as that batch holding its
+  one layer-create op."
   (:require [plaid.sql.common :as psc]
             [plaid.sql.pagination :as pagination]))
 
@@ -121,6 +129,12 @@
       from (conj [:>= :ts from])
       to   (conj [:<= :ts to]))))
 
+(defn- op-type-where
+  "Restrict to operations whose `op_type` is one of `op-types` (the same
+  `entity/verb` strings the read surfaces as `:op/type`)."
+  [op-types]
+  [:in :op_type (vec op-types)])
+
 (defn- conj-where [clauses]
   (case (count clauses)
     0 nil
@@ -142,12 +156,16 @@
   - `time-range`  — `[start end]` ISO-string range; either may be nil. Applies
                     to MEMBER ops (a member outside the window is excluded and
                     the head is the earliest in-window member).
+  - `op-types`    — seq of `entity/verb` strings, or nil for no filter. Like
+                    the time window, this scopes MEMBERS: a unit surfaces iff
+                    some member matches, carrying only its matching members.
   - `eff-limit`   — already-clamped page size (in units).
   - `cursor-vals` — `[head_ts unit]` of the LAST unit on the previous page
                     (or nil for the first page)."
-  [db from-spec scope-where time-range eff-limit cursor-vals]
+  [db from-spec scope-where time-range op-types eff-limit cursor-vals]
   (let [scope (conj-where (cond-> (ts-where (first time-range) (second time-range))
-                            scope-where (conj scope-where)))
+                            scope-where (conj scope-where)
+                            (seq op-types) (conj (op-type-where op-types))))
         inner (cond-> {:select [[unit-key :unit] [[:min :ts] :head_ts]]
                        :from from-spec
                        :group-by [unit-key]}
@@ -161,27 +179,28 @@
            {:uuid-cols [:unit]})))
 
 (defn- query-members
-  "Every scoped (and in-window) operations row belonging to `units`, oldest
-  first."
-  [db from-spec scope-where time-range units]
+  "Every scoped (and in-window, and op-type-matching) operations row belonging
+  to `units`, oldest first."
+  [db from-spec scope-where time-range op-types units]
   (if (empty? units)
     []
     (psc/q db {:select [:*]
                :from from-spec
                :where (conj-where (cond-> [[:in unit-key (mapv str units)]]
                                     scope-where (conj scope-where)
+                                    (seq op-types) (conj (op-type-where op-types))
                                     :always (into (ts-where (first time-range) (second time-range)))))
                :order-by [:ts :id]})))
 
 (defn- audit-page
   "Fetch + enrich one keyset page of units into the uniform envelope
   `{:entries [...] :next-cursor [head_ts unit]-or-nil}`. `opts` carries
-  `{:limit n :cursor-vals [head_ts unit]}`; the audit log is always
-  paginated (default page 100 units, max 1000)."
-  [db from-spec scope-where time-range {:keys [limit cursor-vals]}]
+  `{:limit n :cursor-vals [head_ts unit] :op-types [...]}`; the audit log is
+  always paginated (default page 100 units, max 1000)."
+  [db from-spec scope-where time-range {:keys [limit cursor-vals op-types]}]
   (let [eff (pagination/clamp-limit limit)
-        units (query-units db from-spec scope-where time-range eff cursor-vals)
-        members (query-members db from-spec scope-where time-range (mapv :unit units))
+        units (query-units db from-spec scope-where time-range op-types eff cursor-vals)
+        members (query-members db from-spec scope-where time-range op-types (mapv :unit units))
         next-cursor (when (= (count units) eff)
                       (let [u (peek (vec units))] [(:head_ts u) (str (:unit u))]))]
     {:entries (enrich-units db units members)

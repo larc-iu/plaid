@@ -187,6 +187,36 @@ await c.spans.setMetadata(spanId, { approved: true }, "Approve span {spanId}");
 
 The message may template any of the endpoint's own path, query, or body parameters with `{...}` placeholders, filled in by the server. Placeholder names are matched case- and separator-insensitively, so `{spanId}`, `{span-id}`, and `{span_id}` all refer to the same parameter: just write the parameter the way your client spells it (snake_case in Python, camelCase in JavaScript). A placeholder that names no parameter of the request is left as-is. The message is stored verbatim, so do not template a parameter that may carry a secret (e.g. a password) into the log. To label a run of several writes, use an operation (above) rather than repeating a message on each write.
 
+=== Filtering by operation type
+
+All three audit endpoints accept `op_types` / `opTypes`, which narrows the read to the operation types you name.
+The useful case is a client that caches something derived from the project and wants a cheap way to ask whether that cache is stale, without paging the whole log:
+
+[,python]
+----
+# Has anything about the project's span layers changed since I last looked?
+changes = c.projects.audit(
+    project_id,
+    start_time=last_checked,
+    op_types=["span-layer/create", "span-layer/delete", "span-layer/update"],
+)
+----
+
+[,javascript]
+----
+const changes = await c.projects.audit(
+  projectId, lastChecked, undefined, undefined,
+  ['span-layer/create', 'span-layer/delete', 'span-layer/update'],
+);
+----
+
+Write each type exactly as it appears in an entry's `ops[i].type`, which is `entity/verb`: `span-layer/create`, `document/update`, `token/bulk-delete`.
+An op type that is not spelled that way is rejected with a 400 rather than silently matching nothing.
+
+WARNING: The SSE stream spells the same operation differently — `span_layer:create`, snake_cased and colon-separated. See <<Event Reference>>. Use the `entity/verb` form here.
+
+Filtering applies to individual **operations**, exactly the way the time window and the endpoint's own scope do. An entry appears when one of its operations matches, and carries only the operations that matched. So a batch that created a span layer and fifty spans comes back, under a `span-layer/create` filter, as that batch holding its one layer-create.
+
 == Real-time Messaging
 Plaid offers a simple system for real-time communication on a per-project basis.
 This is intended to support two purposes:
