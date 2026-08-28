@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2, AlertTriangle } from 'lucide-react';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,8 +17,40 @@ import { OrthographiesSettings } from './settings/OrthographiesSettings.jsx';
 import { FieldsSettings } from './settings/FieldsSettings.jsx';
 import { VocabularySettings } from './settings/VocabularySettings.jsx';
 
-export const ProjectSettings = ({ project, projectId, client }) => {
+export const ProjectSettings = ({ project, projectId, client, onProjectUpdate }) => {
   const navigate = useNavigate();
+  const [name, setName] = useState(project?.name ?? '');
+  const [savingName, setSavingName] = useState(false);
+
+  // Re-sync when the project reloads (including after our own rename), so the
+  // field shows what the server has rather than a stale local edit.
+  useEffect(() => {
+    setName(project?.name ?? '');
+  }, [project?.name]);
+
+  const trimmedName = name.trim();
+  const nameChanged = trimmedName !== (project?.name ?? '');
+  const nameValid = trimmedName.length > 0;
+
+  const handleRenameProject = async (event) => {
+    event.preventDefault();
+    if (!nameChanged || !nameValid || savingName) return;
+    try {
+      setSavingName(true);
+      if (!client) throw new Error('Not authenticated');
+      await client.projects.update(projectId, trimmedName);
+      notifySuccess(`Project renamed to "${trimmedName}".`, 'Project updated');
+      // The name shows in the breadcrumb, the project list and the delete
+      // confirmation, so refresh the parent rather than only this field.
+      onProjectUpdate?.();
+    } catch (err) {
+      console.error('Error renaming project:', err);
+      notifyError('Failed to rename the project. Please try again.', 'Error');
+      setName(project?.name ?? '');
+    } finally {
+      setSavingName(false);
+    }
+  };
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const [confirmationText, setConfirmationText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -60,6 +93,36 @@ export const ProjectSettings = ({ project, projectId, client }) => {
 
   return (
     <div className="tw flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
+      {/* Project name */}
+      <div>
+        <h2 className="text-lg font-semibold">Project Name</h2>
+        <p className="mb-4 mt-1 text-sm text-muted-foreground">
+          Shown in the project list, the breadcrumb, and exports.
+        </p>
+        <form className="flex max-w-md flex-col gap-2" onSubmit={handleRenameProject}>
+          <Label htmlFor="project-name" className="sr-only">
+            Project name
+          </Label>
+          <div className="flex items-start gap-2">
+            <div className="flex flex-1 flex-col gap-1">
+              <Input
+                id="project-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                disabled={savingName}
+                placeholder="Project name"
+              />
+              {nameChanged && !nameValid && (
+                <p className="text-xs text-destructive">Project name cannot be empty</p>
+              )}
+            </div>
+            <Button type="submit" disabled={!nameChanged || !nameValid || savingName}>
+              {savingName ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        </form>
+      </div>
+
       {/* Document Metadata Configuration */}
       <DocumentMetadataSettings projectId={projectId} client={client} />
 

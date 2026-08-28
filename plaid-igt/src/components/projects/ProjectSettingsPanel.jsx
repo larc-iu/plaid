@@ -75,7 +75,12 @@ export const ProjectSettingsPanel = ({
           )}
         </TabsContent>
         <TabsContent value="settings" className="mt-0">
-          <ProjectSettings project={project} projectId={projectId} client={client} />
+          <ProjectSettings
+            project={project}
+            projectId={projectId}
+            client={client}
+            onProjectUpdate={onProjectUpdate}
+          />
         </TabsContent>
       </div>
     </Tabs>
