@@ -201,6 +201,80 @@ export const analysisCopyMutations = {
       : false;
   },
 
+  // Discard every machine-unverified piece of one word's analysis at once —
+  // the mirror of confirmWordAnalysis for a proposal that is wrong wholesale
+  // (Ctrl/Cmd+Backspace in the editor). Machine links and spans on the word
+  // and its surviving morphemes are deleted; machine morphemes after the
+  // first are deleted outright (their spans/links cascade server-side, so
+  // they are NOT queued separately — a double delete would fail the batch);
+  // a machine first morpheme is reset to the healed default state (form,
+  // morphType and prov keys dropped). Human and verified pieces are left
+  // alone, so a mixed word keeps its human parts; survivors are renumbered so
+  // precedence stays gap-free. Ends with a reload (several entity families
+  // change at once). No-op (true) when nothing is unverified.
+  async discardWordAnalysis(wordTokenId) {
+    const token = this.tokenLookup.get(wordTokenId);
+    if (!token) {
+      this.setError(`Word ${wordTokenId} not found`);
+      return false;
+    }
+    const linkIds = [];
+    const spanIds = [];
+    const morphIds = [];
+    let resetFirst = null;
+    const collectAttached = (t) => {
+      if (t.vocabItem?.prov === PROV_STATES.MACHINE) linkIds.push(t.vocabItem.linkId);
+      for (const span of Object.values(t.annotations || {})) {
+        if (span && isMachine(span.metadata)) spanIds.push(span.id);
+      }
+    };
+    collectAttached(token);
+    const morphs = [...(token.morphemes || [])].sort(
+      (a, b) => (a.precedence ?? 0) - (b.precedence ?? 0),
+    );
+    const survivors = [];
+    morphs.forEach((m, i) => {
+      if (isMachine(m.metadata) && i > 0) {
+        morphIds.push(m.id); // spans/links cascade with the token
+        return;
+      }
+      survivors.push(m);
+      collectAttached(m);
+      if (isMachine(m.metadata)) resetFirst = m.id;
+    });
+    const renumber = survivors
+      .map((m, i) => ({ id: m.id, precedence: i + 1 }))
+      .filter(
+        ({ id, precedence }) => (morphs.find((m) => m.id === id)?.precedence ?? 1) !== precedence,
+      );
+
+    if (!linkIds.length && !spanIds.length && !morphIds.length && !resetFirst) return true;
+
+    return this._withSaving('Failed to discard word analysis', async () => {
+      await this._client.batched(async () => {
+        linkIds.forEach((id) => this._client.vocabLinks.delete(id));
+        spanIds.forEach((id) => this._client.spans.delete(id));
+        morphIds.forEach((id) => this._client.tokens.delete(id));
+        if (resetFirst) {
+          // patch semantics: null deletes the key
+          this._client.tokens.patchMetadata(resetFirst, {
+            form: null,
+            morphType: null,
+            prov: null,
+            provSource: null,
+            provDetail: null,
+            provProb: null,
+            provConfirmed: null,
+          });
+        }
+        renumber.forEach(({ id, precedence }) =>
+          this._client.tokens.update(id, undefined, undefined, precedence),
+        );
+      });
+      await this._reload();
+    });
+  },
+
   // Confirm every machine-unverified piece of one word's analysis at once —
   // the deliberate "this whole word looks right" gesture (Ctrl/Cmd+Enter in
   // the editor): the word's link + spans, and each morpheme's token metadata

@@ -248,7 +248,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
         if (linkEffective === BUILTIN_LINK) {
           const { linked, ok } = await runBuiltinAnalysis(doc, { link: true, copy: false });
           if (!ok) return;
-          if (linked) parts.push(`linked ${plural(linked, 'word/morpheme')}`);
+          if (linked)
+            parts.push(
+              `linked ${linked} word${linked === 1 ? '' : 's'}/morpheme${linked === 1 ? '' : 's'}`,
+            );
         } else {
           await requestService(
             project.id,

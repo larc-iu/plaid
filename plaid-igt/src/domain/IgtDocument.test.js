@@ -895,6 +895,66 @@ describe('confirmWordAnalysis', () => {
   });
 });
 
+describe('discardWordAnalysis', () => {
+  const machine = { prov: 'inferred', provSource: 'service:polygloss-analyzer' };
+
+  it('deletes machine morphemes/spans/links and resets a machine first morpheme', async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'ab', ...machine } },
+        { id: 'm-2', begin: 0, end: 3, precedence: 2, metadata: { form: 'c', ...machine } },
+      ],
+      body: 'abc',
+    });
+    raw.textLayers[0].tokenLayers[2].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['m-1'], value: 'X', metadata: { ...machine } },
+      { id: 'sp-2', tokens: ['m-2'], value: 'Y', metadata: { ...machine } },
+    ];
+    const doc = makeDoc({ raw });
+    const ok = await doc.discardWordAnalysis('w-1');
+    expect(ok).toBe(true);
+    const calls = doc.client.calls;
+    // m-2 is deleted as a token (its span cascades — NOT deleted separately)
+    expect(calls.filter((c) => c.kind === 'tokens.delete').map((c) => c.args[0])).toEqual(['m-2']);
+    expect(calls.filter((c) => c.kind === 'spans.delete').map((c) => c.args[0])).toEqual(['sp-1']);
+    const reset = calls.find((c) => c.kind === 'tokens.patchMetadata');
+    expect(reset.args[0]).toBe('m-1');
+    expect(reset.args[1]).toMatchObject({
+      form: null,
+      morphType: null,
+      prov: null,
+      provSource: null,
+    });
+    expect(kinds(doc.client)).not.toContain('tokens.update');
+  });
+
+  it('keeps human pieces and renumbers survivors', async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'a' } },
+        { id: 'm-2', begin: 0, end: 3, precedence: 2, metadata: { form: 'b', ...machine } },
+        { id: 'm-3', begin: 0, end: 3, precedence: 3, metadata: { form: 'c' } },
+      ],
+      body: 'abc',
+    });
+    const doc = makeDoc({ raw });
+    expect(await doc.discardWordAnalysis('w-1')).toBe(true);
+    const calls = doc.client.calls;
+    expect(calls.filter((c) => c.kind === 'tokens.delete').map((c) => c.args[0])).toEqual(['m-2']);
+    const upd = calls.filter((c) => c.kind === 'tokens.update');
+    expect(upd.map((c) => [c.args[0], c.args[3]])).toEqual([['m-3', 2]]);
+    expect(kinds(doc.client)).not.toContain('tokens.patchMetadata');
+  });
+
+  it('is a no-op when nothing on the word is machine-unverified', async () => {
+    const doc = makeDoc();
+    expect(await doc.discardWordAnalysis('w-1')).toBe(true);
+    expect(doc.client.calls.filter((c) => c.kind.endsWith('.delete'))).toHaveLength(0);
+  });
+});
+
 describe('vocab item levels (word- or morpheme-level, never both)', () => {
   const vocabularies = () => ({
     v1: {

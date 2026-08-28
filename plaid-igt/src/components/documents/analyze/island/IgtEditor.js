@@ -643,6 +643,94 @@ export class IgtEditor {
     return true;
   }
 
+  // Ctrl/Cmd+Backspace (or Delete) on any cell of a word column: discard the
+  // WHOLE word's machine-unverified proposal — the mirror of Ctrl+Enter for a
+  // proposal that is wrong wholesale (a model's segmentation and glosses
+  // together). Human and verified pieces survive. Then hops to the next word
+  // on the same tier like confirm does, so "Ctrl+Enter, Ctrl+Enter,
+  // Ctrl+Backspace, Ctrl+Enter" reads a sentence's proposals left to right.
+  // The reload that follows re-renders the island; the hop target is
+  // re-affirmed through _pendingFocus.
+  _maybeDiscardWord(e) {
+    if ((e.key !== 'Backspace' && e.key !== 'Delete') || !(e.ctrlKey || e.metaKey)) return false;
+    const wordId = e.target.dataset.confirmWord;
+    if (!wordId || this.readOnly) return false;
+    e.preventDefault();
+    e.target.dataset.suppressCommit = '1';
+    this._run(() => this.doc.discardWordAnalysis(wordId));
+    if (this._advanceToNextWord(e.target, wordId)) {
+      const key = document.activeElement?.dataset?.cellKey;
+      if (key) this._pendingFocus = { cellKey: key };
+    } else {
+      e.target.blur();
+    }
+    return true;
+  }
+
+  // The words on this page with any machine-unverified material (cells or
+  // link chips), each represented by its first such element in DOM order:
+  // the review sweep's "next word that needs a look" targets.
+  _unverifiedWordAnchors() {
+    const anchors = [];
+    const seen = new Set();
+    const els = this.container.querySelectorAll(
+      '.igt-field--machine, .igt-token-form--machine, button.igt-vocab__hint--machine:not([disabled])',
+    );
+    for (const el of els) {
+      const col = el.closest('[data-word-col]');
+      const wordId = col?.dataset.wordCol;
+      if (!wordId || seen.has(wordId)) continue;
+      seen.add(wordId);
+      // Prefer a machine CELL in the column (where Ctrl+Enter / Ctrl+Backspace
+      // act on the word); a column whose only machine material is a link
+      // lands on the chip.
+      const target =
+        col.querySelector('.igt-field--machine') ||
+        (el.matches('input, button') ? el : col.querySelector('button.igt-vocab__hint--machine'));
+      if (target) anchors.push({ wordId, el: target });
+    }
+    return anchors;
+  }
+
+  // Jump to the next/previous word with unverified material, relative to the
+  // word the focus is in (or from the top/bottom when focus is elsewhere).
+  _jumpToUnverifiedWord(dir) {
+    const anchors = this._unverifiedWordAnchors();
+    if (!anchors.length) return false;
+    const active = document.activeElement;
+    const curWord = active?.closest?.('[data-word-col]')?.dataset.wordCol ?? null;
+    let idx = anchors.findIndex((a) => a.wordId === curWord);
+    let target;
+    if (idx === -1) {
+      if (!active || !this.container.contains(active)) {
+        target = dir === 'next' ? anchors[0] : anchors[anchors.length - 1];
+      } else {
+        // Focus is in a word without unverified material: the next anchor in
+        // document order after (or before) it.
+        target =
+          dir === 'next'
+            ? anchors.find(
+                (a) => active.compareDocumentPosition(a.el) & Node.DOCUMENT_POSITION_FOLLOWING,
+              )
+            : [...anchors]
+                .reverse()
+                .find(
+                  (a) => active.compareDocumentPosition(a.el) & Node.DOCUMENT_POSITION_PRECEDING,
+                );
+      }
+    } else {
+      target = anchors[dir === 'next' ? idx + 1 : idx - 1];
+    }
+    if (!target) return false;
+    target.el.focus();
+    try {
+      target.el.select?.();
+    } catch {
+      /* not selectable */
+    }
+    return true;
+  }
+
   // Focus the first cell after `el` (DOM order) that sits on the same tier but
   // belongs to a different word column. Words missing the tier (and inert
   // punctuation columns) are skipped naturally; sentence boundaries are
@@ -709,6 +797,13 @@ export class IgtEditor {
 
   _predictionKeydown = (e) => {
     if (this.readOnly) return;
+    // Ctrl/Cmd+Shift+Arrow: hop between WORDS with unverified material (a
+    // model's proposals, copied analyses, auto-links) — the whole-word review
+    // sweep that pairs with Ctrl+Enter (confirm) and Ctrl+Backspace (discard).
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      if (this._jumpToUnverifiedWord(e.key === 'ArrowDown' ? 'next' : 'prev')) e.preventDefault();
+      return;
+    }
     // Navigate between suggestions from anywhere in the grid. Only claim the
     // chord when suggestions exist (else leave Cmd+Arrow's default scroll alone).
     if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -724,6 +819,16 @@ export class IgtEditor {
     if (!el?.classList?.contains('igt-vocab__hint--machine')) return;
     const tokenId = el.dataset.vocabOpener;
     if (!tokenId) return;
+    // Ctrl/Cmd+Backspace on a chip discards the WHOLE word's proposal, like
+    // on a cell (cells handle it themselves and mark the event consumed).
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'Backspace' || e.key === 'Delete')) {
+      if (e.defaultPrevented) return;
+      const wordId = el.closest('[data-word-col]')?.dataset.wordCol;
+      if (!wordId) return;
+      e.preventDefault();
+      this._run(() => this.doc.discardWordAnalysis(wordId));
+      return;
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       this._reviewLink(() => this.doc.confirmVocabLink(tokenId));
@@ -746,6 +851,7 @@ export class IgtEditor {
 
   _basicKeydown = (e) => {
     if (this._maybeConfirmWord(e)) return;
+    if (this._maybeDiscardWord(e)) return;
     // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
     // it alone so the chip hop wins over cell navigation.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
@@ -1024,6 +1130,7 @@ export class IgtEditor {
         return;
       }
       if (this._maybeConfirmWord(e)) return;
+      if (this._maybeDiscardWord(e)) return;
       // Ctrl/Cmd+Arrow belongs to the review sweep (container listener).
       if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
       if (e.key === 'Enter') {
@@ -1559,8 +1666,10 @@ export class IgtEditor {
             machine-made, unverified ·
             <span class="igt-legend__prov igt-legend__prov--verified">violet underline</span> =
             machine-made, confirmed by a person · plain = made by a person · editing a value
-            confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> confirms a whole word and jumps to the
-            next</span
+            confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> confirms a whole word and jumps to the next ·
+            <kbd>Ctrl</kbd>+<kbd>⌫</kbd> discards a word's unverified proposal ·
+            <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between words with unverified
+            proposals</span
           >
         </div>
         <div class="igt-legend__row">
@@ -1781,7 +1890,7 @@ export class IgtEditor {
           ? `${token.content}: machine-tokenized, confirmed`
           : token.content;
     return html`
-      <div class="igt-token-col">
+      <div class="igt-token-col" data-word-col=${token.id}>
         <div class="igt-token-form ${provClass('igt-token-form', wp)}" title=${wpTitle}>
           ${this._vocabFace(token.content, {
             id: token.id,

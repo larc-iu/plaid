@@ -240,6 +240,8 @@ To write such a program, see the link:api-py.html[Python client] and link:api-js
 | **Backspace** | At the start of a morpheme form, merge it into the previous one.
 | **Alt** + **-** / **Alt** + **=** | Enter a literal hyphen or equals sign in a morpheme form.
 | **Ctrl/Cmd+Enter** | Confirm the current word's whole analysis and jump to the next.
+| **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays.
+| **Ctrl/Cmd+Shift** + arrow | Jump to the next or previous word that still has unverified proposals.
 | **Ctrl/Cmd** + arrow | Move between auto-made vocabulary-link suggestions.
 | **Escape** | Close an open popover or menu.
 |===
