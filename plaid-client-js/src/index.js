@@ -849,12 +849,19 @@ class PlaidClient {
        *
        * Admins may mint anything. A project maintainer may mint role grants on
        * projects they maintain, and nothing else: no admin grant, no grantless
-       * invite, no password resets.
-       * @param {object} opts
-       * @param {string} [opts.projectId] - Project the redeemer joins (with projectRole)
-       * @param {string} [opts.projectRole] - "reader" | "writer" | "maintainer"
+       * invite, no password resets — so for a non-admin, projectId/projectRole
+       * are required in practice (403 without them).
+       *
+       * EVERY option is optional; `create()` with no arguments mints a
+       * single-use signup link granting nothing but an account. Two pairing
+       * rules the server enforces with a 400: projectId and projectRole must be
+       * given TOGETHER, and targetUserId may not be combined with projectId,
+       * grantAdmin, or a maxUses above 1.
+       * @param {object} [opts]
+       * @param {string} [opts.projectId] - Project the redeemer joins (requires projectRole)
+       * @param {string} [opts.projectRole] - "reader" | "writer" | "maintainer" (requires projectId)
        * @param {boolean} [opts.grantAdmin] - Make the new account a global admin (admin only)
-       * @param {string} [opts.targetUserId] - Make this a password reset for that user (admin only)
+       * @param {string} [opts.targetUserId] - Password reset for that user instead of a signup; admin only, single-use, grants nothing
        * @param {number} [opts.maxUses] - How many accounts this link may create (default 1)
        * @param {number} [opts.ttlDays] - Days until it expires (default 14, max 365)
        * @param {string} [opts.note] - Human label shown in your invite list

@@ -1023,13 +1023,21 @@ class InvitesResource(_Resource):
 
         Admins may mint anything. A project maintainer may mint role grants on
         projects they maintain, and nothing else: no admin grant, no grantless
-        invite, no password resets.
+        invite, no password resets — so for a non-admin, ``project_id`` and
+        ``project_role`` are required in practice (403 without them).
+
+        EVERY argument is optional; ``create()`` with none mints a single-use
+        signup link granting nothing but an account. Two pairing rules the
+        server enforces with a 400: ``project_id`` and ``project_role`` must be
+        given TOGETHER, and ``target_user_id`` may not be combined with
+        ``project_id``, ``grant_admin``, or a ``max_uses`` above 1.
 
         Args:
-            project_id: Project the redeemer joins (with ``project_role``)
-            project_role: "reader", "writer" or "maintainer"
+            project_id: Project the redeemer joins (requires ``project_role``)
+            project_role: "reader", "writer" or "maintainer" (requires ``project_id``)
             grant_admin: Make the new account a global admin (admin only)
-            target_user_id: Make this a password reset for that user (admin only)
+            target_user_id: Password reset for that user instead of a signup;
+                admin only, single-use, grants nothing
             max_uses: How many accounts this link may create (default 1)
             ttl_days: Days until it expires (default 14, max 365)
             note: Human label shown in your invite list
