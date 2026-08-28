@@ -30,6 +30,8 @@ class TASKS:
     TRANSCRIBE = 'transcribe'
     # Propose/create vocab links for unlinked tokens.
     LINK_VOCAB = 'link-vocab'
+    # Propose an interlinear analysis (morpheme segmentation + glosses) for words.
+    ANALYZE = 'analyze'
 
 
 def _normalize_options(options):

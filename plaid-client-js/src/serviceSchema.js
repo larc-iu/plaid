@@ -48,6 +48,8 @@ export const TASKS = Object.freeze({
   TRANSCRIBE: 'transcribe',
   /** Create vocab links for unlinked tokens. */
   LINK_VOCAB: 'link-vocab',
+  /** Propose an interlinear analysis (morpheme segmentation + glosses) for words. */
+  ANALYZE: 'analyze',
 });
 
 /**

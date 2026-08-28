@@ -47,6 +47,12 @@ const SPOTS = [
     description: 'Proposes vocabulary links for unlinked words/morphemes (the Auto-link dialog).',
     builtins: [{ name: BUILTIN_LINK_PRECEDENT, label: 'Follow precedent & unique matches' }],
   },
+  {
+    key: TASKS.ANALYZE,
+    label: 'Analysis (segmentation + glosses)',
+    description: 'Proposes morpheme segmentation and glosses for words (the Auto-analyze dialog).',
+    builtins: [],
+  },
 ];
 
 const lastSeenText = (svc) => {
