@@ -24,7 +24,7 @@ import {
   isTokenIgnored,
   trimIgnoredEdges,
 } from '@/domain/igtConfig';
-import { docFrequencyGuessSource } from '@/domain/glossGuess';
+import { defaultGuessSource } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import {
   morphemeJoiner,
@@ -131,8 +131,9 @@ export class IgtEditor {
     this._page = 0;
     // Pluggable gloss-guess source (see domain/glossGuess.js): assign a
     // different (sentences, fields) => { id, guessFor } factory to swap the
-    // algorithm (e.g. a service-backed one).
-    this.guessSourceFactory = docFrequencyGuessSource;
+    // algorithm (e.g. a service-backed one). The default asks the linked
+    // lexicon entry first, then same-form frequency in the document.
+    this.guessSourceFactory = defaultGuessSource;
     this._onChange = () => {
       this._syncStatus();
       this._scheduleRender();
@@ -1677,8 +1678,8 @@ export class IgtEditor {
         <div class="igt-legend__row">
           <strong>Guesses</strong>
           <span
-            >violet italic values are guesses from matching forms. <kbd>↵</kbd> confirms, typing
-            replaces, leaving the cell discards</span
+            >violet italic values are guesses from the linked entry or from matching forms.
+            <kbd>↵</kbd> confirms, typing replaces, leaving the cell discards</span
           >
         </div>
         <div class="igt-legend__row">
@@ -2182,7 +2183,10 @@ export class IgtEditor {
                 value: token.annotations?.[name]?.value ?? '',
                 apply: (v, meta) => this.doc.updateTokenSpan(token.id, name, v, meta),
                 ariaLabel: `${name} for ${token.content}`,
-                guess: ctx.guess?.guessFor('word', token.content, name) ?? null,
+                guess:
+                  ctx.guess?.guessFor('word', token.content, name, {
+                    vocabItem: token.vocabItem,
+                  }) ?? null,
                 prov: provDisplay(token.annotations?.[name]?.metadata),
                 confirmWord: token.id,
               })}
@@ -2284,7 +2288,9 @@ export class IgtEditor {
                 apply: (v, meta) => this.doc.updateMorphemeSpan(morph.id, name, v, meta),
                 extraClass: 'igt-morph-field',
                 ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
-                guess: ctx.guess?.guessFor('morpheme', value, name) ?? null,
+                guess:
+                  ctx.guess?.guessFor('morpheme', value, name, { vocabItem: morph.vocabItem }) ??
+                  null,
                 prov: provDisplay(morph.annotations?.[name]?.metadata),
                 confirmWord: word.id,
               })}

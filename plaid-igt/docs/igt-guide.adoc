@@ -146,7 +146,7 @@ A project links to one or more of them, and while you analyze you connect a word
 In the link popover, the linked entry's form is a link: click it to open the entry in its vocabulary.
 An entry can carry a morpheme **type** (stem, suffix, enclitic, and so on, the FieldWorks inventory). A linked morpheme takes its type from the entry, which decides how it attaches to its neighbors (`=` for clitics, `-` otherwise) in the grid and in exports; an unlinked morpheme keeps a type of its own. Only a vocabulary's maintainers can change an entry's type.
 
-Linking keeps the same item analyzed the same way everywhere it appears, and an entry can fill in its gloss for you.
+Linking keeps the same item analyzed the same way everywhere it appears, and a linked entry offers its gloss (and any other field that shares a name with one of your annotation fields) as a guess in the grid, which you accept with Enter.
 Because a vocabulary is shared, editing an entry updates every document linked to it.
 Vocabularies have their own area in the app, where you browse and edit entries, define the fields an entry carries, and manage who maintains them.
 Which vocabularies a project draws on is part of the project's settings.
@@ -157,12 +157,12 @@ Every entry has a **Form**, its reference form (the headword), which is required
 Beyond the form, an entry carries a set of fields, and a new vocabulary starts with a few built in:
 
 * **Morph Type**: whether the entry is a stem, a prefix, a suffix, and so on. The editor uses it to render affixes, such as the joining hyphens on the form and gloss lines. Required.
-* **Gloss**: the entry's gloss, which can fill in the gloss for you when you link to it. Required.
+* **Gloss**: the entry's gloss, offered as a guess for the Gloss field of anything linked to it. Required.
 * **POS**: the entry's part of speech.
 * **Definition**: a fuller definition or note.
 
 You can add your own fields, reorder them, and remove any except Form, Morph Type, and Gloss.
-Each field can be marked **inline**, which shows it both as a column in the vocabulary table and in the interlinear view when an entry is linked.
+Each field can be marked **inline**, which shows it both as a column in the vocabulary table and on each entry's row in the link popover.
 Other fields stay available on the entry's own edit form.
 
 = Services

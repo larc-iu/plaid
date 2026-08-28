@@ -41,6 +41,13 @@ export const isValidMorphType = (t) => t == null || FLEX_MORPH_TYPES.includes(t)
 export const isClitic = (morphType) =>
   typeof morphType === 'string' && morphType.toLowerCase().includes('clitic');
 
+/**
+ * Is this morph type a bound form (an affix or a clitic)? Bound forms only
+ * occur as pieces of a word, so a whole-word token never links to one.
+ */
+export const isBoundType = (morphType) =>
+  typeof morphType === 'string' && (isClitic(morphType) || /fix$/.test(morphType.toLowerCase()));
+
 /** Is this morph type in the stem/root (lexical) group of the inventory? */
 export const isStemType = (morphType) =>
   typeof morphType === 'string' &&

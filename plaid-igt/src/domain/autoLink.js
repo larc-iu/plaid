@@ -8,7 +8,10 @@
 //   the lexicographically smallest id wins. Ties are rare, and the result is
 //   stamped unverified for review, so an arbitrary-but-deterministic pick beats
 //   refusing to link. An entry may be linked from words AND morphemes (a stem
-//   is a morpheme in `dog-s` and the whole word in `dog`); the kind only ranks.
+//   is a morpheme in `dog-s` and the whole word in `dog`); the kind only ranks,
+//   with one exception: a WORD never auto-links to a bound form (an entry
+//   whose metadata.morphType is an affix or clitic), since a whole word is
+//   not an affix. Such entries are skipped at every tier for word tokens.
 //   Case: exact form first, then a casefolded fallback (sentence-initial
 //   capitals are everywhere in word tokens).
 // Links are created with { prov: 'inferred', provSource } and NO provConfirmed
@@ -29,6 +32,7 @@
 import { PROV_STATES, ROLES } from '@larc-iu/plaid-client';
 
 import { trimIgnoredEdges } from './igtConfig.js';
+import { isBoundType } from './affixMarkers.js';
 
 export const AUTO_LINK_SOURCE = 'rule:precedent-or-unique';
 
@@ -123,10 +127,12 @@ const precedentFor = (table, form, kind) => {
 };
 
 // form -> [itemIds] over the loaded vocab tables (exact), plus a casefolded
-// variant for the fallback tier.
+// variant for the fallback tier, plus the set of bound-form item ids (affix
+// or clitic morphType) that word tokens must not take.
 export function buildItemIndex(vocabularies) {
   const exact = new Map();
   const folded = new Map();
+  const bound = new Set();
   const add = (map, key, id) => {
     const list = map.get(key);
     if (list) {
@@ -138,26 +144,29 @@ export function buildItemIndex(vocabularies) {
       if (!it.form) continue;
       add(exact, it.form, it.id);
       add(folded, it.form.toLowerCase(), it.id);
+      if (isBoundType(it.metadata?.morphType)) bound.add(it.id);
     }
   }
-  return { exact, folded };
+  return { exact, folded, bound };
 }
 
 // Resolution tiers, first hit wins: exact precedent (same kind, then any) >
 // exact item > casefolded precedent > casefolded item. Among multiple items
 // sharing a form, the lexicographically smallest id is taken (precedent ties
-// are already broken in buildPrecedentTable). Returns null only when nothing
-// matches at any tier.
+// are already broken in buildPrecedentTable). A word token sees no bound-form
+// entry at any tier. Returns null only when nothing matches at any tier.
 const smallestId = (ids) => (ids && ids.length ? ids.reduce((a, b) => (b < a ? b : a)) : null);
 function resolveForm(form, kind, precedent, items) {
-  const p = precedentFor(precedent, form, kind);
+  const ok = (id) => (id && !(kind === KINDS.WORD && items.bound.has(id)) ? id : null);
+  const pick = (ids) => smallestId((ids || []).filter((id) => ok(id)));
+  const p = ok(precedentFor(precedent, form, kind));
   if (p) return p;
-  const exact = smallestId(items.exact.get(form));
+  const exact = pick(items.exact.get(form));
   if (exact) return exact;
   const lower = form.toLowerCase();
-  const pf = precedentFor(precedent, lower, kind);
+  const pf = ok(precedentFor(precedent, lower, kind));
   if (pf) return pf;
-  return smallestId(items.folded.get(lower));
+  return pick(items.folded.get(lower));
 }
 
 // Is a word/morpheme open to (re)linking, and what does it currently point at?

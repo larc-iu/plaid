@@ -188,6 +188,37 @@ describe('auto-link trims edge punctuation off word forms by the ignore rule', (
   });
 });
 
+describe('a word never auto-links to a bound form', () => {
+  const vocabs = {
+    v1: {
+      id: 'v1',
+      items: [
+        { id: 'i-s-affix', form: 's', metadata: { morphType: 'suffix' } },
+        { id: 'i-s-word', form: 's', metadata: { morphType: 'stem' } },
+        { id: 'i-le', form: 'le', metadata: { morphType: 'enclitic' } },
+      ],
+    },
+  };
+  it('skips affix and clitic entries for word tokens at every tier, morphemes still take them', () => {
+    const precedentTable = buildPrecedentTable([res([['i-s-affix', 's', null, 'word', 4]])]);
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([
+        word('w1', 's'),
+        word('w2', 'le'),
+        word('w3', 'whole', null, [morph('m1', 's'), morph('m2', 'le')]),
+      ]),
+      vocabularies: vocabs,
+      precedentTable,
+    });
+    expect(proposals.map((p) => [p.tokenId, p.vocabItemId])).toEqual([
+      ['m1', 'i-s-affix'], // smallest id among the two `s` entries
+      ['m2', 'i-le'],
+      ['w1', 'i-s-word'], // precedent points at the suffix: skipped, next candidate
+      // w2: `le` only exists as an enclitic, so no word link at all
+    ]);
+  });
+});
+
 describe('same-kind precedent ranks homonyms; an entry may serve both kinds', () => {
   it('a word follows what words linked, a morpheme what morphemes linked', () => {
     const precedentTable = buildPrecedentTable([
