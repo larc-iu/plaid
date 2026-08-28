@@ -1,46 +1,25 @@
-// Idempotent UD fixture builder. Creates a project + 3-layer token hierarchy
-// (sentences:partitioning > words:non-overlapping > morphemes:any) with the
-// five UD span layers + dependency relation layer + one document. Reuses by
-// name on subsequent runs so the harness is fast and your dev DB grows a
-// known-good fixture you can also poke at by hand.
+// Idempotent UD fixture builder: a project with the full layer configuration
+// plus one document with a text body. Reuses by name on subsequent runs so the
+// harness is fast and your dev DB grows a known-good fixture you can also poke
+// at by hand.
+//
+// The layer configuration comes from `createUdProject` — the SAME function the
+// New Project modal calls. This file used to build the layers itself, and that
+// copy silently rotted: the substrate moved from `config.ud.*` flags to shared
+// `config.plaid.role` tags and the copy kept writing the old flags, so every
+// project it built read as completely unconfigured. Never re-inline it.
 
-import PlaidClient from 'plaid-client';
+import PlaidClient from '@larc-iu/plaid-client';
+import { createUdProject } from '../src/domain/udProjectSetup.js';
+import { getUdLayerInfo, missingUdLayerLabels } from '../src/utils/udLayerUtils.js';
 import { readToken } from './fixtures.js';
 
-const NS = 'ud';
 const PROJECT_NAME = 'E2E UD Fixture';
-const TEXT_LAYER_NAME = 'Text';
 const DOC_NAME = 'Doc 1';
 const SAMPLE_TEXT =
   'The quick brown fox jumps over the lazy dog. She sells sea shells by the sea shore.';
 
-const TOKEN_LAYER_PLAN = [
-  { name: 'Sentences', configKey: 'sentenceTokenLayer', overlapMode: 'partitioning', parent: null },
-  {
-    name: 'Words',
-    configKey: 'wordTokenLayer',
-    overlapMode: 'non-overlapping',
-    parent: 'Sentences',
-  },
-  { name: 'Morphemes', configKey: 'morphemeTokenLayer', overlapMode: 'any', parent: 'Words' },
-];
-const SPAN_LAYER_PLAN = [
-  { name: 'Form', configKey: 'form' },
-  { name: 'Lemma', configKey: 'lemma' },
-  { name: 'UPOS', configKey: 'upos' },
-  { name: 'XPOS', configKey: 'xpos' },
-  { name: 'Features', configKey: 'features' },
-];
-
 const BASE_URL = 'http://localhost:8085';
-
-function flag(config, key) {
-  return config?.[NS]?.[key] === true;
-}
-
-function findFlagged(layers, key) {
-  return (layers || []).find((l) => flag(l.config, key)) || null;
-}
 
 async function findProjectByName(client, name) {
   const projects = await client.projects.list();
@@ -51,80 +30,29 @@ async function ensureFixture() {
   const { token } = readToken();
   const client = new PlaidClient(BASE_URL, token);
 
-  // 1. Project
+  // 1. Project + layers. A project by this name is reused only if it is still
+  // fully configured; a stale one is reported rather than patched. Healing an
+  // old shape in place would mean carrying a second definition of the layout,
+  // which is the exact thing that rotted here before.
   let project = await findProjectByName(client, PROJECT_NAME);
-  if (!project) {
-    const created = await client.projects.create(PROJECT_NAME);
-    project = await client.projects.get(created.id);
-  } else {
-    // Refetch to pick up any layers added on prior runs.
+  if (project) {
     project = await client.projects.get(project.id);
+    const info = getUdLayerInfo(project);
+    if (!info.isConfigured) {
+      throw new Error(
+        `Project "${PROJECT_NAME}" (${project.id}) exists but is missing: ` +
+          `${missingUdLayerLabels(info.missingLayers).join(', ')}. ` +
+          `Delete it and re-run to rebuild the fixture from scratch.`,
+      );
+    }
+  } else {
+    const created = await createUdProject(client, PROJECT_NAME);
+    project = await client.projects.get(created.id);
   }
   const projectId = project.id;
+  const { textLayer } = getUdLayerInfo(project);
 
-  // 2. Text layer
-  let textLayer =
-    (project.textLayers || []).find((l) => flag(l.config, 'textLayer')) ||
-    (project.textLayers || []).find((l) => l.name === TEXT_LAYER_NAME) ||
-    null;
-  if (!textLayer) {
-    const created = await client.textLayers.create(projectId, TEXT_LAYER_NAME);
-    await client.textLayers.setConfig(created.id, NS, 'textLayer', true);
-    project = await client.projects.get(projectId);
-    textLayer = project.textLayers.find((l) => l.id === created.id);
-  } else if (!flag(textLayer.config, 'textLayer')) {
-    await client.textLayers.setConfig(textLayer.id, NS, 'textLayer', true);
-  }
-
-  // 3. Token-layer hierarchy
-  const tokenLayersByConfigKey = {};
-  for (const step of TOKEN_LAYER_PLAN) {
-    let layer = findFlagged(textLayer.tokenLayers, step.configKey);
-    if (!layer) {
-      const parentId = step.parent
-        ? tokenLayersByConfigKey[TOKEN_LAYER_PLAN.find((s) => s.name === step.parent).configKey].id
-        : undefined;
-      const created = await client.tokenLayers.create(
-        textLayer.id,
-        step.name,
-        step.overlapMode,
-        parentId,
-      );
-      await client.tokenLayers.setConfig(created.id, NS, step.configKey, true);
-      layer = { id: created.id, name: step.name, config: { [NS]: { [step.configKey]: true } } };
-    }
-    tokenLayersByConfigKey[step.configKey] = layer;
-  }
-
-  // Refetch text-layer to get the morpheme layer's full tree (span layers etc.)
-  project = await client.projects.get(projectId);
-  textLayer = project.textLayers.find((l) => l.id === textLayer.id);
-  const morphemeLayer = findFlagged(textLayer.tokenLayers, 'morphemeTokenLayer');
-
-  // 4. Span layers under morpheme
-  const spanLayersByConfigKey = {};
-  for (const step of SPAN_LAYER_PLAN) {
-    let layer = findFlagged(morphemeLayer.spanLayers, step.configKey);
-    if (!layer) {
-      const created = await client.spanLayers.create(morphemeLayer.id, step.name);
-      await client.spanLayers.setConfig(created.id, NS, step.configKey, true);
-      layer = { id: created.id };
-    }
-    spanLayersByConfigKey[step.configKey] = layer;
-  }
-
-  // 5. Dependency relation layer hangs off Lemma
-  project = await client.projects.get(projectId);
-  textLayer = project.textLayers.find((l) => l.id === textLayer.id);
-  const morphemeLayerFresh = findFlagged(textLayer.tokenLayers, 'morphemeTokenLayer');
-  const lemmaLayer = findFlagged(morphemeLayerFresh.spanLayers, 'lemma');
-  const existingRelLayer = findFlagged(lemmaLayer.relationLayers, 'dependency');
-  if (!existingRelLayer) {
-    const created = await client.relationLayers.create(lemmaLayer.id, 'Dependency Relations');
-    await client.relationLayers.setConfig(created.id, NS, 'dependency', true);
-  }
-
-  // 6. Document. Reuse by name. If we create it, also seed a text body.
+  // 2. Document. Reuse by name. If we create it, also seed a text body.
   const docs = await client.projects.listDocuments(projectId);
   let doc = docs.find((d) => d.name === DOC_NAME) || null;
   if (!doc) {
@@ -151,7 +79,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       process.exit(0);
     })
     .catch((err) => {
-      console.error(err);
+      console.error(err.message || err);
       process.exit(1);
     });
 }
