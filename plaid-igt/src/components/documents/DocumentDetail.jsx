@@ -161,10 +161,19 @@ const DocumentEditor = () => {
           deletedAnnotatedOrphans = 0,
           dedupedSpans = 0,
           dedupedLinks = 0,
+          syncedMorphTypes = 0,
           findings = [],
           error,
         } = await doc.reconcileOnOpen();
         if (cancelled) return;
+        // Cached morph types re-synced from their lexicon entries: routine
+        // (an entry's type changed, or an import's allomorph type differed),
+        // so it stays out of the toast.
+        if (syncedMorphTypes) {
+          console.info(
+            `Reconcile: synced ${syncedMorphTypes} morpheme type(s) from lexicon entries`,
+          );
+        }
         if (error) {
           notifyError(
             'Could not finish auto-repairing this document; some morphemes may be missing or out of sync. Try reloading.',

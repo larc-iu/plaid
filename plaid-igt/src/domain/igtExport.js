@@ -46,7 +46,10 @@ export const morphFormOf = (m) => {
 export const joinMorphemeTexts = (morphemes, texts) =>
   texts.some((t) => (t ?? '').trim() !== '')
     ? joinMorphemes(
-        texts.map((t, i) => ({ text: t, morphType: morphemes[i]?.metadata?.morphType })),
+        texts.map((t, i) => ({
+          text: t,
+          morphType: morphemes[i]?.morphType ?? morphemes[i]?.metadata?.morphType,
+        })),
       )
     : '';
 

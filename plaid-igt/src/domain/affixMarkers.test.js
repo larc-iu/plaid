@@ -9,7 +9,7 @@ import {
   cliticTypesForChain,
   splitChainText,
 } from './affixMarkers.js';
-import { formatPlain } from './igtExport.js';
+import { formatPlain, joinMorphemeTexts } from './igtExport.js';
 
 describe('affix markers', () => {
   it('carries FLEx exact 19-type MoMorphType inventory', () => {
@@ -107,6 +107,16 @@ describe('clitic side of a "=" boundary', () => {
     expect(splitChainText('-a--b= ')).toEqual({ segments: ['a', 'b'], joiners: ['-'] });
     expect(splitChainText(' x ')).toEqual({ segments: ['x'], joiners: [] });
     expect(splitChainText('')).toEqual({ segments: [], joiners: [] });
+  });
+});
+
+describe('joinMorphemeTexts prefers the effective (entry) type', () => {
+  it('uses morpheme.morphType over metadata.morphType', () => {
+    const ms = [
+      { metadata: { form: 'a', morphType: 'stem' }, morphType: 'stem' },
+      { metadata: { form: 'b', morphType: 'suffix' }, morphType: 'enclitic' },
+    ];
+    expect(joinMorphemeTexts(ms, ['a', 'b'])).toBe('a=b');
   });
 });
 

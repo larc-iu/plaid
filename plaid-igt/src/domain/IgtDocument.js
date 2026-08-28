@@ -5,6 +5,7 @@ import {
   planSpanDedup,
   planVocabLinkDedup,
   applyVocabLinkDedup,
+  planMorphTypeSync,
 } from './igtReconcile.js';
 import { validateIgtDocument } from './validate.js';
 import { deriveDocumentData, deriveSentences, deriveAlignmentTokens } from './derive.js';
@@ -440,6 +441,7 @@ export class IgtDocument {
       deletedAnnotatedOrphans: 0,
       dedupedSpans: 0,
       dedupedLinks: 0,
+      syncedMorphTypes: 0,
       findings: [],
     };
     // Single-flight: a concurrent re-entry (StrictMode double-invoke, a rapid
@@ -452,6 +454,7 @@ export class IgtDocument {
         planMorphemeReconcile(info);
       const dedupPlans = planSpanDedup(info);
       const linkPlans = planVocabLinkDedup(this._vocabularies);
+      const typePlans = planMorphTypeSync(this.sentences);
 
       const morphemeLayer = info.morphemeTokenLayer;
       const textId = info.primaryTextLayer?.text?.id;
@@ -459,7 +462,7 @@ export class IgtDocument {
         morphemeLayer?.id && textId && (wordsNeedingMorpheme.length || orphanMorphemeIds.length),
       );
 
-      if (morphemeWork || dedupPlans.length || linkPlans.length) {
+      if (morphemeWork || dedupPlans.length || linkPlans.length || typePlans.length) {
         const results = await this._client.batched(async () => {
           if (morphemeWork && orphanMorphemeIds.length)
             this._client.tokens.bulkDelete(orphanMorphemeIds);
@@ -476,6 +479,10 @@ export class IgtDocument {
           linkPlans.forEach((p) => {
             p.deleteLinks.forEach((l) => this._client.vocabLinks.delete(l.linkId));
           });
+          // Cached morph types that drifted from their lexicon entry's.
+          typePlans.forEach((p) => {
+            this._client.tokens.patchMetadata(p.morphemeId, { morphType: p.morphType });
+          });
         });
         // Op order: the optional bulkDelete first, then one create per bare word.
         const createOffset = morphemeWork && orphanMorphemeIds.length ? 1 : 0;
@@ -486,6 +493,12 @@ export class IgtDocument {
 
         this._applyRawPatch((next, infoNext, vocabs) => {
           if (linkPlans.length) applyVocabLinkDedup(vocabs, linkPlans);
+          if (typePlans.length) {
+            const byId = new Map(typePlans.map((p) => [p.morphemeId, p.morphType]));
+            (infoNext.morphemeTokenLayer?.tokens || []).forEach((m) => {
+              if (byId.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: byId.get(m.id) };
+            });
+          }
           if (morphemeWork) {
             const layer = infoNext.morphemeTokenLayer;
             if (layer) {
@@ -541,6 +554,7 @@ export class IgtDocument {
         deletedAnnotatedOrphans,
         dedupedSpans: dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0),
         dedupedLinks: linkPlans.reduce((n, p) => n + p.deleteLinks.length, 0),
+        syncedMorphTypes: typePlans.length,
         findings,
       };
     } catch (err) {

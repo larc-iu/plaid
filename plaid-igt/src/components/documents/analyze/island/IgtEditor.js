@@ -1961,10 +1961,7 @@ export class IgtEditor {
           morphemes,
           (m) => m.id,
           (m, i) => {
-            const joiner =
-              i > 0
-                ? morphemeJoiner(morphemes[i - 1]?.metadata?.morphType, m.metadata?.morphType)
-                : null;
+            const joiner = i > 0 ? morphemeJoiner(morphemes[i - 1]?.morphType, m.morphType) : null;
             return html`
               ${joiner
                 ? html`<span class="igt-morph-joiner" aria-hidden="true">${joiner}</span>`
@@ -1982,7 +1979,7 @@ export class IgtEditor {
     const filled = value !== '';
     // Chips linked to a stem/root lexicon entry keep the lavender accent —
     // a coverage cue for lexical identification; everything else stays quiet.
-    const stem = isStemType(morph.vocabItem?.metadata?.morphType);
+    const stem = !!morph.vocabItem && isStemType(morph.morphType);
     // Machine-made segmentation (copied analyses) marks the morpheme TOKEN's
     // metadata; the form cell carries the unverified/verified styling.
     const prov = provDisplay(morph.metadata);
@@ -2456,7 +2453,7 @@ export class IgtEditor {
                 : nothing}
             </button>`
           : nothing}
-        ${kind === 'morpheme' ? this._morphTypeRow(tokenId) : nothing}
+        ${kind === 'morpheme' ? this._morphTypeRow(tokenId, currentItem) : nothing}
         ${vocabs.length
           ? html`<div class="igt-vocab-pop__vocabsel" role="tablist" aria-label="Choose lexicon">
               ${vocabs.map((v) => {
@@ -2501,20 +2498,35 @@ export class IgtEditor {
   // exact inventory, or "—" for untyped. Pure metadata — geometry, precedence,
   // and the form are untouched; the display-only affix joints ("-"/"=") react
   // immediately.
-  _morphTypeRow(morphemeId) {
+  // A LINKED morpheme's type lives on its lexicon entry (the entry overrides
+  // the token's cached type, see derive.js), so the row edits the entry —
+  // for vocab maintainers; others see it read-only. Unlinked: the token's own.
+  _morphTypeRow(morphemeId, currentItem) {
     const morph = (this.doc.layerInfo.morphemeTokenLayer?.tokens || []).find(
       (m) => m.id === morphemeId,
     );
-    const current = morph?.metadata?.morphType ?? '';
+    const linked = !!currentItem?.vocabId;
+    const vocab = linked ? this.doc.vocabularies?.[currentItem.vocabId] : null;
+    const fromItem = currentItem?.metadata?.morphType;
+    const current = (linked && fromItem ? fromItem : morph?.metadata?.morphType) ?? '';
+    const canEditEntry = linked && !!vocab && this.canWriteVocab(vocab);
+    const disabled = this.readOnly || (linked && !canEditEntry);
+    const title = linked
+      ? canEditEntry
+        ? 'Type of the linked lexicon entry (applies to every morpheme linked to it)'
+        : 'Type comes from the linked lexicon entry; only its maintainers can change it'
+      : 'Type of this morpheme';
     return html`
-      <label class="igt-vocab-pop__type" @click=${(e) => e.stopPropagation()}>
-        <span>Type</span>
+      <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
+        <span>${linked ? 'Type (entry)' : 'Type'}</span>
         <select
-          ?disabled=${this.readOnly}
-          aria-label="Morpheme type"
+          ?disabled=${disabled}
+          aria-label=${linked ? 'Lexicon entry morpheme type' : 'Morpheme type'}
           @change=${(e) => {
             e.stopPropagation();
-            this.doc.setMorphemeType(morphemeId, e.target.value || null);
+            const value = e.target.value || null;
+            if (linked) this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value);
+            else this.doc.setMorphemeType(morphemeId, value);
           }}
         >
           <option value="" ?selected=${current === ''}>—</option>

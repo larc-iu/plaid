@@ -250,6 +250,7 @@ export function makeFakeClient(opts = {}) {
     },
     vocabItems: {
       create: op('vocabItems.create', () => ({ id: nextId('vitem') })),
+      patchMetadata: op('vocabItems.patchMetadata', () => ({})),
     },
     texts: {
       create: op('texts.create', () => ({ id: nextId('text') })),

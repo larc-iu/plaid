@@ -143,6 +143,7 @@ The exact editing gestures are collected under <<_keyboard_shortcuts>>.
 A **vocabulary** is a shared lexicon, a list of entries (words or morphemes) that carry their own fields, such as a gloss or a part of speech.
 A vocabulary lives outside any single project.
 A project links to one or more of them, and while you analyze you connect a word or morpheme to an entry, by hand with **+ link** or in bulk with **Auto-analyze**.
+An entry can carry a morpheme **type** (stem, suffix, enclitic, and so on, the FieldWorks inventory). A linked morpheme takes its type from the entry, which decides how it attaches to its neighbors (`=` for clitics, `-` otherwise) in the grid and in exports; an unlinked morpheme keeps a type of its own. Only a vocabulary's maintainers can change an entry's type.
 
 Linking keeps the same item analyzed the same way everywhere it appears, and an entry can fill in its gloss for you.
 Because a vocabulary is shared, editing an entry updates every document linked to it.

@@ -263,6 +263,91 @@ describe('morpheme type', () => {
   });
 });
 
+describe('morph type from the linked lexicon entry', () => {
+  const linkedDoc = (itemType, tokenType = 'suffix') =>
+    makeDoc({
+      raw: buildRawDoc({
+        words: [{ id: 'w-1', begin: 0, end: 3 }],
+        morphemes: [
+          { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'ab' } },
+          {
+            id: 'm-2',
+            begin: 0,
+            end: 3,
+            precedence: 2,
+            metadata: { form: 'c', morphType: tokenType },
+          },
+        ],
+        body: 'abc',
+      }),
+      vocabularies: {
+        v1: {
+          id: 'v1',
+          name: 'Lexicon',
+          items: [{ id: 'i1', form: 'c', metadata: itemType ? { morphType: itemType } : {} }],
+          vocabLinks: [
+            {
+              id: 'lk-1',
+              tokens: ['m-2'],
+              vocabItem: { id: 'i1', form: 'c', metadata: itemType ? { morphType: itemType } : {} },
+            },
+          ],
+        },
+      },
+    });
+
+  it('the entry type overrides the token cache in the derived view', () => {
+    const doc = linkedDoc('enclitic');
+    const ms = doc.sentences[0].tokens[0].morphemes;
+    expect(ms[1].morphType).toBe('enclitic');
+    expect(ms[1].metadata.morphType).toBe('suffix'); // the cache is untouched by derive
+    expect(ms[0].morphType).toBeNull();
+  });
+
+  it('an entry without a type does not override', () => {
+    const doc = linkedDoc(null);
+    expect(doc.sentences[0].tokens[0].morphemes[1].morphType).toBe('suffix');
+  });
+
+  it('reconcileOnOpen re-syncs a drifted cache from the entry', async () => {
+    const doc = linkedDoc('enclitic');
+    const res = await doc.reconcileOnOpen();
+    expect(res.syncedMorphTypes).toBe(1);
+    const call = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
+    expect(call.args).toEqual(['m-2', { morphType: 'enclitic' }]);
+    expect(doc.sentences[0].tokens[0].morphemes[1].metadata.morphType).toBe('enclitic');
+    // idempotent
+    doc.client.calls.length = 0;
+    const again = await doc.reconcileOnOpen();
+    expect(again.syncedMorphTypes).toBe(0);
+    expect(doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
+  });
+
+  it('setVocabItemMorphType patches the entry AND the linked morphemes in one batch', async () => {
+    const doc = linkedDoc('enclitic');
+    const ok = await doc.setVocabItemMorphType('v1', 'i1', 'proclitic');
+    expect(ok).toBe(true);
+    const k = kinds(doc.client);
+    expect(k).toContain('vocabItems.patchMetadata');
+    const tokPatch = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
+    expect(tokPatch.args).toEqual(['m-2', { morphType: 'proclitic' }]);
+    expect(k.indexOf('submitBatch')).toBeGreaterThan(k.indexOf('vocabItems.patchMetadata'));
+    const m = doc.sentences[0].tokens[0].morphemes[1];
+    expect(m.morphType).toBe('proclitic');
+    expect(m.vocabItem.metadata.morphType).toBe('proclitic');
+    expect(doc.vocabularies.v1.items[0].metadata.morphType).toBe('proclitic');
+  });
+
+  it('clearing the entry type stops overriding and leaves the cache alone', async () => {
+    const doc = linkedDoc('enclitic');
+    await doc.setVocabItemMorphType('v1', 'i1', null);
+    expect(doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
+    const m = doc.sentences[0].tokens[0].morphemes[1];
+    expect(m.vocabItem.metadata.morphType).toBeUndefined();
+    expect(m.morphType).toBe('suffix');
+  });
+});
+
 describe('morpheme structural ops', () => {
   it('createMorpheme appends with precedence = count + 1', async () => {
     const doc = makeDoc();

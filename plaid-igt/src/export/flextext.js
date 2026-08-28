@@ -61,7 +61,7 @@ const item = (indent, type, lang, value) => {
 };
 
 function morphXml(indent, m, options) {
-  const morphType = m?.metadata?.morphType;
+  const morphType = m?.morphType ?? m?.metadata?.morphType;
   const typeAttr = FLEX_MORPH_TYPES.includes(morphType) ? ` type="${xmlEscape(morphType)}"` : '';
   const lines = [`${indent}<morph${typeAttr}>`];
   lines.push(...item(`${indent}  `, 'txt', baselineLang(options), morphFormOf(m)));

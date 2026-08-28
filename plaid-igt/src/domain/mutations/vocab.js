@@ -8,6 +8,7 @@
 
 import { stampInferred, isMachine, PROV_CONFIRMED } from '@larc-iu/plaid-client';
 import { isLevelCompatible } from '../vocabLevels.js';
+import { isValidMorphType } from '../affixMarkers.js';
 
 // Link replacements emit 2 ops apiece (delete + create); 400 per batch keeps
 // each atomic batch comfortably under plaid-core's 1000-op cap.
@@ -202,6 +203,60 @@ export const vocabMutations = {
   // Create a brand-new vocab item in `vocabId` and link it to `tokenId`,
   // replacing any prior link for that token. The item is created OUTSIDE the
   // batch so the batched delete+create can reference its id.
+  // Set (or clear, null) a lexicon entry's morph type — the source of truth
+  // for every morpheme linked to it (derive.js reads the entry's type over the
+  // token's cached metadata.morphType). The entry patch and a cache patch on
+  // each morpheme of THIS document linked to the entry go in one batch, so the
+  // grid is right immediately rather than on the next reconcile-on-open.
+  async setVocabItemMorphType(vocabId, itemId, morphType) {
+    if (!isValidMorphType(morphType)) {
+      this.setError(`Unknown morpheme type "${morphType}"`);
+      return false;
+    }
+    const vocab = this._vocabularies[vocabId];
+    if (!vocab) {
+      this.setError(`Vocabulary ${vocabId} not found`);
+      return false;
+    }
+    const morphemeIds = new Set((this.layerInfo.morphemeTokenLayer?.tokens || []).map((m) => m.id));
+    const linkedMorphemes = (vocab.vocabLinks || [])
+      .filter((l) => l.vocabItem?.id === itemId && Array.isArray(l.tokens) && l.tokens.length === 1)
+      .map((l) => l.tokens[0])
+      .filter((id) => morphemeIds.has(id));
+
+    return this._withSaving('Failed to set entry type', async () => {
+      await this._client.batched(async () => {
+        this._client.vocabItems.patchMetadata(itemId, { morphType: morphType ?? null });
+        // A cleared entry type stops overriding; the cache keeps its last value.
+        if (morphType != null) {
+          linkedMorphemes.forEach((id) => this._client.tokens.patchMetadata(id, { morphType }));
+        }
+      });
+      const setType = (meta) => {
+        const next = { ...(meta || {}) };
+        if (morphType == null) delete next.morphType;
+        else next.morphType = morphType;
+        return next;
+      };
+      this._applyRawPatch((next, info, vocabs) => {
+        const v = vocabs[vocabId];
+        if (!v) return;
+        (v.items || []).forEach((it) => {
+          if (it.id === itemId) it.metadata = setType(it.metadata);
+        });
+        (v.vocabLinks || []).forEach((l) => {
+          if (l.vocabItem?.id === itemId) l.vocabItem.metadata = setType(l.vocabItem.metadata);
+        });
+        if (morphType != null) {
+          const linked = new Set(linkedMorphemes);
+          (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
+            if (linked.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType };
+          });
+        }
+      });
+    });
+  },
+
   async createAndLinkVocabItem(tokenId, vocabId, form, metadata = {}) {
     if (!this._vocabularies[vocabId]) {
       this.setError(`Vocabulary ${vocabId} not found`);

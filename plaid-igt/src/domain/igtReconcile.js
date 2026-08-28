@@ -68,6 +68,30 @@ export const planMorphemeReconcile = (layerInfo) => {
   return { wordsNeedingMorpheme, orphanMorphemeIds, deletedAnnotatedOrphans };
 };
 
+/**
+ * Morph-type sync plan: a morpheme linked to a lexicon entry takes the entry's
+ * morphType (the entry is the source of truth; the token's metadata.morphType
+ * is a cache for unlinked morphemes and for consumers that don't load the
+ * lexicon). Every morpheme whose cached type differs from its entry's gets a
+ * metadata patch. Entries without a type never override. Takes the DERIVED
+ * sentences (morphemes carry `vocabItem` + `metadata`).
+ * @returns {Array<{morphemeId: string, morphType: string}>}
+ */
+export const planMorphTypeSync = (sentences) => {
+  const plans = [];
+  for (const s of sentences || []) {
+    for (const t of s.tokens || []) {
+      for (const m of t.morphemes || []) {
+        const fromItem = m.vocabItem?.metadata?.morphType;
+        if (typeof fromItem !== 'string' || fromItem === '') continue;
+        if ((m.metadata?.morphType ?? null) === fromItem) continue;
+        plans.push({ morphemeId: m.id, morphType: fromItem });
+      }
+    }
+  }
+  return plans;
+};
+
 // One layer's dedup plan: at most ONE span per token in a layer (derive.js
 // renders the FIRST span per token per layer at EVERY scope, so any extra is
 // invisible and immortal). Heal LOSSLESSLY — concatenate the distinct values

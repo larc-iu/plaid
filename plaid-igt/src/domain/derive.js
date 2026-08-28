@@ -115,6 +115,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
     (morphemeTokenLayer.tokens || []).forEach((m) => {
       const parent = wordKey.get(`${m.begin}-${m.end}`);
       if (!parent) return;
+      const vocabItem = vocabLinksByToken[m.id] || null;
       const entry = {
         id: m.id,
         text: m.text,
@@ -124,7 +125,13 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         content: sliceBody(m.begin, m.end),
         metadata: m.metadata || {},
         annotations: annotationsFor(m.id, morphSpanMaps),
-        vocabItem: vocabLinksByToken[m.id] || null,
+        vocabItem,
+        // Effective morph type: a linked lexicon entry's type overrides the
+        // token's own metadata.morphType (the token copy is a cache for
+        // unlinked morphemes and for consumers that don't see the lexicon;
+        // reconcile-on-open keeps it in sync). Read THIS everywhere in the
+        // app — joiners, exports, the popover's Type row, the stem chip.
+        morphType: effectiveMorphType(m.metadata, vocabItem),
       };
       if (!morphemesByWord.has(parent.id)) morphemesByWord.set(parent.id, []);
       morphemesByWord.get(parent.id).push(entry);
@@ -200,6 +207,13 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
     findSentenceForToken,
   };
 }
+
+/** A morpheme's effective type: the linked entry's, else the token's own. */
+export const effectiveMorphType = (tokenMetadata, vocabItem) => {
+  const fromItem = vocabItem?.metadata?.morphType;
+  if (typeof fromItem === 'string' && fromItem !== '') return fromItem;
+  return tokenMetadata?.morphType ?? null;
+};
 
 function collectOrthographies(token, primaryTokenLayer) {
   const out = {};
