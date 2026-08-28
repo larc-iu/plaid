@@ -12,34 +12,45 @@ describe('buildPrecedentTable', () => {
   it('uses morphForm over token value and takes the majority item', () => {
     const t = buildPrecedentTable([
       res([
-        ['item-a', 'perros', null, 3], // word token: form = value
-        ['item-a', 'whole', 's', 4], // morpheme token: form = metadata.form
-        ['item-b', 'whole', 's', 2], // minority for "s"
+        ['item-a', 'perros', null, 'word', 3], // word token: form = value
+        ['item-a', 'whole', 's', 'morpheme', 4], // morpheme token: form = metadata.form
+        ['item-b', 'whole', 's', 'morpheme', 2], // minority for "s"
       ]),
     ]);
-    expect(t.get('perros')).toBe('item-a');
-    expect(t.get('s')).toBe('item-a'); // 4 > 2
+    expect(t.get('perros').any).toBe('item-a');
+    expect(t.get('s').any).toBe('item-a'); // 4 > 2
   });
 
   it('breaks count ties to the lexicographically smaller id', () => {
     const t = buildPrecedentTable([
       res([
-        ['item-b', null, 'la', 2],
-        ['item-a', null, 'la', 2],
+        ['item-b', null, 'la', 'morpheme', 2],
+        ['item-a', null, 'la', 'morpheme', 2],
       ]),
     ]);
-    expect(t.get('la')).toBe('item-a'); // tie -> 'item-a' < 'item-b'
+    expect(t.get('la').any).toBe('item-a'); // tie -> 'item-a' < 'item-b'
   });
 
   it('merges counts across vocabs', () => {
     const t = buildPrecedentTable([
-      res([['item-a', null, 'se', 1]]),
+      res([['item-a', null, 'se', 'morpheme', 1]]),
       res([
-        ['item-a', null, 'se', 2],
-        ['item-b', null, 'se', 2],
+        ['item-a', null, 'se', 'morpheme', 2],
+        ['item-b', null, 'se', 'morpheme', 2],
       ]),
     ]);
-    expect(t.get('se')).toBe('item-a'); // 3 > 2
+    expect(t.get('se').any).toBe('item-a'); // 3 > 2
+  });
+
+  it('keeps a per-kind majority next to the overall one', () => {
+    const t = buildPrecedentTable([
+      res([
+        ['item-w', 'se', null, 'word', 5],
+        ['item-m', 'whole', 'se', 'morpheme', 2],
+        ['item-x', 'se', null, 'other-app', 9], // another app's layer: overall only
+      ]),
+    ]);
+    expect(t.get('se')).toEqual({ any: 'item-x', word: 'item-w', morpheme: 'item-m' });
   });
 });
 
@@ -65,7 +76,7 @@ const morph = (id, form, vocabItem = null) => ({ id, metadata: { form }, vocabIt
 
 describe('computeAutoLinkProposals', () => {
   it('links via precedent, item match, and casefold — breaking ties to the smaller id, skipping human-linked', () => {
-    const precedentTable = buildPrecedentTable([res([['i-prec', null, 'nac', 2]])]);
+    const precedentTable = buildPrecedentTable([res([['i-prec', null, 'nac', 'morpheme', 2]])]);
     const sentences = sentence([
       word('w1', 'Todos'), // casefold item match -> i-all
       word('w2', 'se'), // two items share 'se' -> smaller id i-se1
@@ -77,18 +88,18 @@ describe('computeAutoLinkProposals', () => {
       ]),
     ]);
     const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedentTable });
-    // Morphemes resolve first; 'i-all' (never linked) is claimed by m2 at the
-    // morpheme level, so w1's casefold match to the same item is dropped (an
-    // entry is word- or morpheme-level, never both).
+    // Morphemes resolve first; the same item may be linked from a word and a
+    // morpheme (w1 and m2 both take 'i-all').
     expect(proposals).toEqual([
       { tokenId: 'm1', vocabItemId: 'i-prec', form: 'nac', kind: 'morpheme' },
       { tokenId: 'm2', vocabItemId: 'i-all', form: 'todos', kind: 'morpheme' },
+      { tokenId: 'w1', vocabItemId: 'i-all', form: 'Todos', kind: 'word' },
       { tokenId: 'w2', vocabItemId: 'i-se1', form: 'se', kind: 'word' },
     ]);
   });
 
   it('replaces a machine-unverified link when the rule resolves a different item; leaves same-item and protected links', () => {
-    const precedentTable = buildPrecedentTable([res([['i-all', null, 'todos', 5]])]);
+    const precedentTable = buildPrecedentTable([res([['i-all', null, 'todos', 'word', 5]])]);
     const sentences = sentence([
       word('w1', 'todos', { id: 'i-se1', prov: 'machine' }), // machine, rule says i-all -> replace
       word('w2', 'todos', { id: 'i-all', prov: 'machine' }), // machine, already i-all -> no-op
@@ -103,8 +114,8 @@ describe('computeAutoLinkProposals', () => {
   it('a precedent tie breaks to the lexicographically smaller item id', () => {
     const precedentTable = buildPrecedentTable([
       res([
-        ['i-se1', null, 'todos', 1],
-        ['i-all', null, 'todos', 1],
+        ['i-se1', null, 'todos', 'word', 1],
+        ['i-all', null, 'todos', 'word', 1],
       ]),
     ]);
     const proposals = computeAutoLinkProposals({
@@ -122,7 +133,12 @@ describe('precedentQueries', () => {
   it('emits one grouped query per vocab', () => {
     const qs = precedentQueries(['v1', 'v2']);
     expect(qs).toHaveLength(2);
-    expect(qs[0].return.group).toEqual(['?v', '?t.value', '?t.metadata.form']);
+    expect(qs[0].return.group).toEqual([
+      '?v',
+      '?t.value',
+      '?t.metadata.form',
+      '?tl.config.plaid.role',
+    ]);
   });
 });
 
@@ -160,64 +176,54 @@ describe('auto-link trims edge punctuation off word forms by the ignore rule', (
       [
         {
           results: [
-            ['i-a', 'derechos.', null, 2],
-            ['i-b', 'derechos', null, 1],
+            ['i-a', 'derechos.', null, 'word', 2],
+            ['i-b', 'derechos', null, 'word', 1],
           ],
         },
       ],
       cfg,
     );
-    expect(table.get('derechos')).toBe('i-a');
+    expect(table.get('derechos').any).toBe('i-a');
     expect(table.has('derechos.')).toBe(false);
   });
 });
 
-describe('item levels (word- or morpheme-level entries, never both)', () => {
-  it('a word-level item is invisible to morphemes and falls through to the next candidate', () => {
-    const sentences = sentence([word('w5', 'whole', null, [morph('m1', 'se')])]);
-    const itemLevels = new Map([['i-se1', 'word']]);
-    const proposals = computeAutoLinkProposals({
-      sentences,
-      vocabularies: VOCABS,
-      precedentTable: new Map(),
-      itemLevels,
-    });
-    expect(proposals).toEqual([
-      { tokenId: 'm1', vocabItemId: 'i-se2', form: 'se', kind: 'morpheme' },
+describe('same-kind precedent ranks homonyms; an entry may serve both kinds', () => {
+  it('a word follows what words linked, a morpheme what morphemes linked', () => {
+    const precedentTable = buildPrecedentTable([
+      res([
+        ['i-se2', 'se', null, 'word', 3],
+        ['i-se1', 'whole', 'se', 'morpheme', 9],
+      ]),
     ]);
-  });
-  it('precedent pointing at an incompatible item is skipped, not followed', () => {
-    const precedentTable = buildPrecedentTable([res([['i-se1', null, 'se', 9]])]);
     const proposals = computeAutoLinkProposals({
-      sentences: sentence([word('w1', 'se')]),
+      sentences: sentence([word('w1', 'se'), word('w2', 'whole', null, [morph('m1', 'se')])]),
       vocabularies: VOCABS,
       precedentTable,
-      itemLevels: new Map([['i-se1', 'morpheme']]),
-    });
-    expect(proposals).toEqual([{ tokenId: 'w1', vocabItemId: 'i-se2', form: 'se', kind: 'word' }]);
-  });
-  it('a single-morpheme word gets no word link when its morpheme is linked, even to a different homonym', () => {
-    // Morpheme `se` resolves to i-se2 (i-se1 is word-level elsewhere); the word
-    // `se` would be free to take i-se1, but the word IS its one morpheme.
-    const proposals = computeAutoLinkProposals({
-      sentences: sentence([word('w1', 'se', null, [morph('m1', 'se')])]),
-      vocabularies: VOCABS,
-      precedentTable: new Map(),
-      itemLevels: new Map([['i-se1', 'word']]),
     });
     expect(proposals).toEqual([
-      { tokenId: 'm1', vocabItemId: 'i-se2', form: 'se', kind: 'morpheme' },
+      { tokenId: 'm1', vocabItemId: 'i-se1', form: 'se', kind: 'morpheme' },
+      { tokenId: 'w1', vocabItemId: 'i-se2', form: 'se', kind: 'word' },
     ]);
-    // Same when the morpheme already carries a (human) link.
-    const linked = computeAutoLinkProposals({
-      sentences: sentence([word('w1', 'se', null, [morph('m1', 'se', { id: 'i-se2' })])]),
-      vocabularies: VOCABS,
-      precedentTable: new Map(),
-      itemLevels: new Map([['i-se2', 'morpheme']]),
-    });
-    expect(linked).toEqual([]);
   });
-  it('a single-morpheme word matching a never-linked item links the morpheme only', () => {
+  it('falls back to precedent of any kind, then to the smallest-id homonym', () => {
+    const fromMorphemes = buildPrecedentTable([res([['i-se2', 'whole', 'se', 'morpheme', 9]])]);
+    expect(
+      computeAutoLinkProposals({
+        sentences: sentence([word('w1', 'se')]),
+        vocabularies: VOCABS,
+        precedentTable: fromMorphemes,
+      }),
+    ).toEqual([{ tokenId: 'w1', vocabItemId: 'i-se2', form: 'se', kind: 'word' }]);
+    expect(
+      computeAutoLinkProposals({
+        sentences: sentence([word('w1', 'se')]),
+        vocabularies: VOCABS,
+        precedentTable: new Map(),
+      }),
+    ).toEqual([{ tokenId: 'w1', vocabItemId: 'i-se1', form: 'se', kind: 'word' }]);
+  });
+  it('a single-morpheme word gets no word link when its morpheme is linked (one chip, not two)', () => {
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'todos', null, [morph('m1', 'todos')])]),
       vocabularies: VOCABS,
@@ -226,14 +232,24 @@ describe('item levels (word- or morpheme-level entries, never both)', () => {
     expect(proposals).toEqual([
       { tokenId: 'm1', vocabItemId: 'i-all', form: 'todos', kind: 'morpheme' },
     ]);
-  });
-  it('mixed items are never proposed', () => {
-    const proposals = computeAutoLinkProposals({
-      sentences: sentence([word('w1', 'todos')]),
+    // Same when the morpheme already carries a (human) link.
+    const linked = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'se', null, [morph('m1', 'se', { id: 'i-se2' })])]),
       vocabularies: VOCABS,
       precedentTable: new Map(),
-      itemLevels: new Map([['i-all', 'mixed']]),
     });
-    expect(proposals).toEqual([]);
+    expect(linked).toEqual([]);
+  });
+  it('a multi-morpheme word may link the same entry as one of its morphemes', () => {
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'todos', null, [morph('m1', 'todos'), morph('m2', 'se')])]),
+      vocabularies: VOCABS,
+      precedentTable: new Map(),
+    });
+    expect(proposals.map((p) => [p.tokenId, p.vocabItemId])).toEqual([
+      ['m1', 'i-all'],
+      ['m2', 'i-se1'],
+      ['w1', 'i-all'],
+    ]);
   });
 });

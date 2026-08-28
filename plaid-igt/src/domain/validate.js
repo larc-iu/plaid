@@ -18,39 +18,13 @@
 // caller logs the lot and surfaces one consolidated toast. Never throws.
 
 import { planMorphemeReconcile, planSpanDedup } from './igtReconcile.js';
-import { buildLocalLevels } from './vocabLevels.js';
 
 export const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
 
-export function validateIgtDocument(layerInfo, alignmentTokens = [], vocabularies = null) {
+export function validateIgtDocument(layerInfo, alignmentTokens = []) {
   const findings = [];
   const add = (severity, code, message, context = {}) =>
     findings.push({ severity, code, message, context });
-
-  // --- (0) Vocab-item level rule: an entry is linked from words or morphemes,
-  // never both (vocabLevels.js). Only this document's links are visible here;
-  // the project-wide picture is in IgtDocument.itemLevels.
-  if (vocabularies) {
-    try {
-      const mixed = [...buildLocalLevels(layerInfo, vocabularies)]
-        .filter(([, kinds]) => kinds.size > 1)
-        .map(([id]) => id);
-      if (mixed.length) {
-        add(
-          SEVERITY.WARNING,
-          'vocab-item-mixed-levels',
-          `${mixed.length} vocabulary entr${mixed.length === 1 ? 'y is' : 'ies are'} linked from both words and morphemes in this document; an entry should be one or the other.`,
-          { items: mixed },
-        );
-      }
-    } catch (err) {
-      add(
-        SEVERITY.WARNING,
-        'level-check-failed',
-        `Vocab level check crashed: ${err?.message || err}`,
-      );
-    }
-  }
 
   // --- (1) Heal-residue tripwires (should all be empty post-reconcile) ---
   try {

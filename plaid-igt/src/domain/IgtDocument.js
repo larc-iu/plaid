@@ -15,7 +15,6 @@ import { tokenMutations } from './mutations/tokens.js';
 import { sentenceMutations } from './mutations/sentences.js';
 import { morphemeMutations } from './mutations/morphemes.js';
 import { vocabMutations } from './mutations/vocab.js';
-import { levelQueries, buildRemoteLevels, buildItemLevels, tokenKindOf } from './vocabLevels.js';
 import { documentMutations } from './mutations/document.js';
 import { alignmentMutations } from './mutations/alignment.js';
 import { analysisCopyMutations } from './mutations/analysisCopy.js';
@@ -52,11 +51,7 @@ export class IgtDocument {
     client = null,
     projectId = null,
     asOf = null,
-    itemLevels = null,
   }) {
-    // Project-wide vocab-item levels (itemId -> Set<'word'|'morpheme'>) from
-    // loadItemLevels; merged with this document's own links in `itemLevels`.
-    this._remoteItemLevels = itemLevels || new Map();
     this._raw = raw;
     this._project = project;
     // Fold the document-embedded vocab-links (under raw's token layers) into the
@@ -92,9 +87,6 @@ export class IgtDocument {
     this._sentencesBundleCacheVersion = -1;
     this._alignmentTokensCache = null;
     this._alignmentTokensCacheVersion = -1;
-    this._itemLevelsCache = null;
-    this._itemLevelsCacheVersion = -1;
-    this._itemLevelsCacheRemote = null;
   }
 
   // Convenience factory: fetch document + project + project vocabularies and
@@ -112,15 +104,12 @@ export class IgtDocument {
       client.documents.get(documentId, true, at),
       client.projects.get(projectId),
     ]);
-    const [{ vocabularies }, itemLevels] = await Promise.all([
-      loadProjectVocabularies(client, project),
-      loadItemLevels(client, project),
-    ]);
-    return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf, itemLevels });
+    const { vocabularies } = await loadProjectVocabularies(client, project);
+    return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf });
   }
 
-  // Re-read ONLY the document at `asOf`, reusing the project, vocabulary items
-  // and item levels already in memory. Returns a NEW IgtDocument; `this` is left
+  // Re-read ONLY the document at `asOf`, reusing the project and vocabulary
+  // items already in memory. Returns a NEW IgtDocument; `this` is left
   // untouched so the caller can keep rendering it until it swaps.
   //
   // Time-travel used to be a single `documents.get` with an as-of. Unifying the
@@ -141,7 +130,6 @@ export class IgtDocument {
       client: this._client,
       projectId: this._projectId,
       asOf,
-      itemLevels: this._remoteItemLevels,
     });
   }
 
@@ -174,29 +162,6 @@ export class IgtDocument {
   get project() {
     return this._project;
   }
-  // itemId -> 'word' | 'morpheme' | 'mixed' | null (see vocabLevels.js):
-  // project-wide links plus this document's live ones.
-  get itemLevels() {
-    if (
-      this._itemLevelsCacheVersion !== this._dataVersion ||
-      this._itemLevelsCacheRemote !== this._remoteItemLevels
-    ) {
-      this._itemLevelsCache = buildItemLevels({
-        layerInfo: this.layerInfo,
-        vocabularies: this._vocabularies,
-        remote: this._remoteItemLevels,
-      });
-      this._itemLevelsCacheVersion = this._dataVersion;
-      this._itemLevelsCacheRemote = this._remoteItemLevels;
-    }
-    return this._itemLevelsCache;
-  }
-
-  // 'word' | 'morpheme' | null for a token id of this document.
-  tokenKind(tokenId) {
-    return tokenKindOf(this.layerInfo, tokenId);
-  }
-
   get vocabularies() {
     return this._vocabularies;
   }
@@ -410,7 +375,6 @@ export class IgtDocument {
           at,
         );
         this._vocabularies = mergeRawVocabLinks(updated, reloaded);
-        this._remoteItemLevels = await loadItemLevels(this._client, this._project);
         if (failedCount > 0 && this.onError) {
           this.onError(
             `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed. Vocab links may display stale values. Reload the page if they look wrong.`,
@@ -572,11 +536,7 @@ export class IgtDocument {
       // Validate AFTER healing — whether or not anything was healed — so a heal
       // that silently failed, or an un-healable app-contract violation, still
       // surfaces. validate is pure + read-only; the caller logs + toasts.
-      const findings = validateIgtDocument(
-        this.layerInfo,
-        this.alignmentTokens,
-        this._vocabularies,
-      );
+      const findings = validateIgtDocument(this.layerInfo, this.alignmentTokens);
 
       return {
         created: morphemeWork ? wordsNeedingMorpheme.length : 0,
@@ -686,23 +646,6 @@ export class IgtDocument {
         }
       });
     });
-  }
-}
-
-// ----- helper: project-wide vocab-item levels -----
-// One aggregate query per linked vocab (see vocabLevels.js). A failure yields
-// an empty map (every item then looks never-linked to this session): logged,
-// not fatal, the server still has the data. Exported for callers that build
-// IgtDocuments from parts.
-export async function loadItemLevels(client, project) {
-  const vocabIds = (project?.vocabs || []).map((v) => v.id);
-  if (!client || vocabIds.length === 0) return new Map();
-  try {
-    const results = await Promise.all(levelQueries(vocabIds).map((q) => client.query(q)));
-    return buildRemoteLevels(results);
-  } catch (err) {
-    console.warn('Vocab item levels could not be loaded:', err);
-    return new Map();
   }
 }
 

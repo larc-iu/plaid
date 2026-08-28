@@ -17,10 +17,8 @@ test('link then unlink a lexicon item on a word', async ({ page }) => {
   await seedAuth(page);
   await openAnalyze(page, projectId, documentId);
 
-  // Open the popover on the first word and link the first OFFERED entry. Which
-  // entries are offered depends on the level rule (an entry linked from
-  // morphemes elsewhere in the project is hidden for a word), so read the form
-  // off the row instead of hard-coding one.
+  // Open the popover on the first word and link the first offered entry,
+  // reading the form off the row instead of hard-coding one.
   await page.locator('.igt-token-form .igt-vocab__opener').first().click();
   await page.locator('.igt-vocab-pop').first().waitFor({ state: 'visible' });
   const row = page.locator('.igt-vocab-pop__item').first();

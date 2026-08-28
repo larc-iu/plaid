@@ -33,7 +33,6 @@ import {
   splitChainText,
 } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
-import { isLevelCompatible, otherLevel } from '@/domain/vocabLevels';
 import { humanizeError } from '@/utils/feedback';
 
 // Small Levenshtein for ranking lexicon items by similarity to a token's form.
@@ -2444,16 +2443,6 @@ export class IgtEditor {
       _detail: this._vocabItemDetail(it, activeVocab),
       _sub: homIdx ? homIdx.get(it.id) : null,
     }));
-    // Level rule (vocabLevels.js): entries linked from the OTHER kind of token
-    // anywhere in the project can't be linked here, so they're not offered.
-    // The token's current entry always stays visible (unlink/confirm).
-    const levels = this.doc.itemLevels;
-    const offered = (it) => it.id === currentItem?.id || isLevelCompatible(levels.get(it.id), kind);
-    const hidden = items.filter((it) => !offered(it));
-    const hiddenByLevel = hidden.length;
-    const hiddenMixed = hidden.filter((it) => levels.get(it.id) === 'mixed').length;
-    items = items.filter(offered);
-
     // Rank against the active query: the typed search if any, else the
     // word/morpheme's own form. Tiers (exact > prefix > substring on the form
     // > match in the detail text > fuzzy), Levenshtein within a tier. While
@@ -2676,15 +2665,6 @@ export class IgtEditor {
             : html`<div class="igt-vocab-pop__empty">No matches</div>`}
           ${truncated > 0
             ? html`<div class="igt-vocab-pop__more">+ ${truncated} more. Type to narrow</div>`
-            : nothing}
-          ${hiddenByLevel > 0
-            ? html`<div
-                class="igt-vocab-pop__more"
-                title="An entry is linked from words or from morphemes, never both"
-              >
-                ${hiddenByLevel} ${hiddenByLevel === 1 ? 'entry' : 'entries'} not offered: linked
-                from ${otherLevel(kind)}s${hiddenMixed ? ' (or from both kinds)' : ''} elsewhere
-              </div>`
             : nothing}
         </div>
         ${canCreate

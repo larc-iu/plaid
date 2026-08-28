@@ -19,7 +19,6 @@
 
 import { stampInferred, isMachine, PROV_CONFIRMED, PROV_STATES } from '@larc-iu/plaid-client';
 import { isUnanalyzedWord } from '../analysisMemory.js';
-import { isLevelCompatible, LEVELS } from '../vocabLevels.js';
 
 // The server caps a single atomic batch at 1000 ops (plaid-core
 // rest_api/v1/batch.clj). A copy emits several ops per word, so pack words into
@@ -72,16 +71,6 @@ export const analysisCopyMutations = {
     if (!todo.length) return 0;
 
     const stamp = stampInferred(provSource);
-    // Level guard (vocabLevels.js): copied links come from same-kind precedent,
-    // but an item may have been re-linked at the other level since; skip
-    // rather than create a mixed entry.
-    const levels = new Map(this.itemLevels);
-    const claim = (item, kind) => {
-      if (!item) return null;
-      if (!isLevelCompatible(levels.get(item.id), kind)) return null;
-      if (levels.get(item.id) == null) levels.set(item.id, kind);
-      return item;
-    };
 
     // A large unanalyzed document can emit far more than one batch's worth of
     // ops (this runs unattended from the auto-analysis pass). Pack words into
@@ -110,7 +99,7 @@ export const analysisCopyMutations = {
         let opIdx = 0;
         const pendingMorphs = []; // { slot, opIdx } — created morphemes needing batch-2 links/spans
         const queueLinkAndSpans = (tokenId, slot) => {
-          const item = claim(findVocabItem(this._vocabularies, slot.vocabItemId), LEVELS.MORPHEME);
+          const item = findVocabItem(this._vocabularies, slot.vocabItemId);
           if (item) {
             this._client.vocabLinks.create(item.id, [tokenId], stamp);
             opIdx++;
@@ -154,10 +143,7 @@ export const analysisCopyMutations = {
               opIdx++;
             });
             // Word-level link + fields.
-            const wordItem = claim(
-              findVocabItem(this._vocabularies, analysis.word?.vocabItemId),
-              LEVELS.WORD,
-            );
+            const wordItem = findVocabItem(this._vocabularies, analysis.word?.vocabItemId);
             if (wordItem) {
               this._client.vocabLinks.create(wordItem.id, [token.id], stamp);
               opIdx++;
@@ -180,10 +166,7 @@ export const analysisCopyMutations = {
         if (second.length) {
           await this._client.batched(async () => {
             for (const { slot, id } of second) {
-              const item = claim(
-                findVocabItem(this._vocabularies, slot.vocabItemId),
-                LEVELS.MORPHEME,
-              );
+              const item = findVocabItem(this._vocabularies, slot.vocabItemId);
               if (item) this._client.vocabLinks.create(item.id, [id], stamp);
               for (const [name, value] of Object.entries(slot.fields || {})) {
                 const layer = morphLayersByName.get(name);

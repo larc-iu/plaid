@@ -131,7 +131,6 @@ async function runLinkPhase(doc) {
     vocabularies: doc.vocabularies,
     precedentTable,
     ignoredCfg,
-    itemLevels: doc.itemLevels,
   });
   if (!proposals.length) return 0;
   return doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE);

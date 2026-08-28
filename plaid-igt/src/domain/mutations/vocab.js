@@ -7,7 +7,6 @@
 // link/create operation is identical either way.
 
 import { stampInferred, isMachine, PROV_CONFIRMED } from '@larc-iu/plaid-client';
-import { isLevelCompatible } from '../vocabLevels.js';
 import { isValidMorphType } from '../affixMarkers.js';
 
 // Link replacements emit 2 ops apiece (delete + create); 400 per batch keeps
@@ -49,17 +48,9 @@ export const vocabMutations = {
   async bulkLinkVocab(proposals, provSource) {
     const creates = []; // { tokenId, item }
     const replaces = []; // { tokenId, item, priorLinkId }
-    // Level guard (vocabLevels.js): an item is linked from words or from
-    // morphemes, never both. Proposals are expected to respect it already
-    // (computeAutoLinkProposals), this is the belt to that suspenders, and a
-    // never-linked item is claimed by the first proposal that takes it.
-    const levels = new Map(this.itemLevels);
     for (const p of proposals || []) {
       const { item } = findVocabForItem(this._vocabularies, p.vocabItemId);
       if (!item) continue;
-      const kind = this.tokenKind(p.tokenId);
-      if (!kind || !isLevelCompatible(levels.get(item.id), kind)) continue;
-      if (levels.get(item.id) == null) levels.set(item.id, kind);
       const { link } = findPriorLink(this._vocabularies, p.tokenId);
       if (!link) {
         creates.push({ tokenId: p.tokenId, item });
@@ -127,17 +118,6 @@ export const vocabMutations = {
       return false;
     }
     const targetVocabId = targetVocab.id;
-    // Level guard: never mix word and morpheme links on one entry.
-    const kind = this.tokenKind(tokenId);
-    const level = this.itemLevels.get(vocabItemId);
-    if (kind && !isLevelCompatible(level, kind)) {
-      this.setError(
-        level === 'mixed'
-          ? `"${vocabItem.form}" already has both word and morpheme links elsewhere; clean those up in the vocabulary before linking it again`
-          : `"${vocabItem.form}" is a ${level}-level entry (it is linked from ${level}s elsewhere), so it can't be linked to a ${kind}`,
-      );
-      return false;
-    }
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
 
     return this._withSaving('Failed to link vocab item', async () => {
