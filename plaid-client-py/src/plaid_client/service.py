@@ -58,6 +58,12 @@ class BaseService(ABC):
         # projects' requests could enter :meth:`process_request` (and the shared
         # client's batch state) concurrently.
         self.service_registrations: List[Any] = []
+        # Serve-all bookkeeping: which project each registration covers, so the
+        # periodic sync pass can diff against the live project list. Failed
+        # project ids are remembered only to keep the retry loop from
+        # re-printing the same error every pass.
+        self._registrations_by_project: Dict[str, Any] = {}
+        self._sync_failed_projects: set = set()
         self._processing_lock = threading.Lock()
 
     # --- client bootstrap ---------------------------------------------------
@@ -147,6 +153,11 @@ class BaseService(ABC):
 
     # --- registration + lifecycle ------------------------------------------
 
+    #: Serve-all mode: how often (seconds) to re-list projects so projects
+    #: created after launch get registered on and deleted ones get dropped.
+    #: Override on a subclass or instance to tune.
+    PROJECT_SYNC_INTERVAL_S = 30.0
+
     def register_service(self, project_id: str):
         """Open the inbound request channel on one project (which registers the
         service for discovery) and start handling work. The standardized
@@ -161,13 +172,70 @@ class BaseService(ABC):
             project_id, service_info, self.handle_service_request, self.extras
         )
         self.service_registrations.append(registration)
+        self._registrations_by_project[project_id] = registration
         return registration
 
-    def run_service_loop(self) -> None:
-        """Block until every registration stops or Ctrl+C, then stop them all."""
+    def _sync_served_projects(self) -> None:
+        """One serve-all reconciliation pass: make the served set match the
+        accessible set.
+
+        Registers on every accessible project not already served — including
+        projects created (or shared with this token) after launch — and stops
+        registrations whose project is gone (deleted, or access revoked) so
+        their supervisors stop retrying a dead channel. Per-project failures
+        (e.g. another live instance already holds this service id there) are
+        non-fatal; the next pass retries them. A failure to list projects
+        leaves the current set untouched."""
         try:
-            while any(reg.is_running() for reg in self.service_registrations):
-                time.sleep(1)
+            projects = self.client.projects.list()
+        except Exception as e:
+            print(f"Failed to list projects (will retry): {e}")
+            return
+        current = {p['id']: p.get('name', p['id']) for p in projects}
+
+        for pid in [pid for pid in self._registrations_by_project if pid not in current]:
+            registration = self._registrations_by_project.pop(pid)
+            try:
+                registration.stop()
+            except Exception:
+                pass
+            try:
+                self.service_registrations.remove(registration)
+            except ValueError:
+                pass
+            print(f"  No longer serving project {pid} (deleted or access revoked)")
+
+        for pid, pname in current.items():
+            if pid in self._registrations_by_project:
+                continue
+            try:
+                self.register_service(pid)
+            except Exception as e:
+                if pid not in self._sync_failed_projects:
+                    self._sync_failed_projects.add(pid)
+                    print(f"  Cannot serve project {pname} ({pid}) yet, will keep retrying: {e}")
+                continue
+            self._sync_failed_projects.discard(pid)
+            print(f"  Serving project {pname} ({pid})")
+
+    def run_service_loop(self, project_sync_interval_s: Optional[float] = None) -> None:
+        """Block until every registration stops or Ctrl+C, then stop them all.
+
+        With ``project_sync_interval_s`` set (serve-all mode), also re-runs
+        :meth:`_sync_served_projects` on that interval — registering on
+        projects created after launch, dropping deleted ones — and keeps
+        running even while zero projects are served."""
+        try:
+            if project_sync_interval_s:
+                next_sync = time.monotonic() + project_sync_interval_s
+                while True:
+                    time.sleep(1)
+                    if time.monotonic() >= next_sync:
+                        self._sync_served_projects()
+                        next_sync = time.monotonic() + project_sync_interval_s
+            else:
+                while any(reg.is_running() for reg in self.service_registrations):
+                    time.sleep(1)
         except KeyboardInterrupt:
             print(f"\nStopping {self.service_name}...")
         finally:
@@ -184,15 +252,18 @@ class BaseService(ABC):
         """Add the args every service needs (project id + API url).
 
         The project id is OPTIONAL: omit it (or pass ``--all``) and the service
-        registers on EVERY project the token can access, so it's discoverable
+        registers on EVERY project the token can access — existing and future,
+        since the run loop keeps re-listing projects — so it's discoverable
         everywhere without a launch per project. Pass a single id for the old
         one-project behavior."""
         parser.add_argument('project_id', nargs='?', default=None,
                             help='Target project ID. Omit (or pass --all) to '
-                                 'serve every accessible project.')
+                                 'serve every accessible project, existing and '
+                                 'future.')
         parser.add_argument('--all', action='store_true',
-                            help='Serve every project the token can access (the '
-                                 'default when no project ID is given).')
+                            help='Serve every project the token can access, '
+                                 'including ones created later (the default '
+                                 'when no project ID is given).')
         parser.add_argument('--url', default='http://localhost:8080',
                             help='Plaid API URL (default: http://localhost:8080)')
 
@@ -220,50 +291,53 @@ class BaseService(ABC):
         """Main entry point: parse args, init client, set up, register on the
         target project(s), loop.
 
-        With no project id (or ``--all``) the service fans out one registration
-        per project the token can access. That gives universal coverage: server
-        side, registration is project-scoped (one SSE channel per project), so
-        being discoverable everywhere means registering everywhere. Every
-        registration shares this instance's client and single-flight lock, so
-        requests are still handled one at a time across all served projects.
+        With no project id (or ``--all``) the service serves EVERY project the
+        token can access — existing and future. Server side, registration is
+        project-scoped (one SSE channel per project), so universal coverage
+        means one registration per project; the run loop re-lists projects
+        every ``PROJECT_SYNC_INTERVAL_S`` seconds to register on projects
+        created after launch (and to drop deleted ones), so new projects are
+        covered without a restart. Every registration shares this instance's
+        client and single-flight lock, so requests are still handled one at a
+        time across all served projects.
         """
         parser = self.create_argument_parser()
         parsed_args = parser.parse_args(args)
         self.client = self.get_client(parsed_args.url)
 
-        # Resolve the target project set (fail fast before any expensive setup()).
         serve_all = getattr(parsed_args, 'all', False) or not parsed_args.project_id
         if serve_all:
+            # Fail fast on connectivity/auth before any expensive setup().
+            # Zero accessible projects is NOT fatal: the sync loop registers on
+            # projects that appear later.
             try:
-                projects = self.client.projects.list()
+                self.client.projects.list()
             except Exception as e:
                 print(f"Failed to list projects: {e}")
                 raise SystemExit(1)
-            targets = [(p['id'], p.get('name', p['id'])) for p in projects]
-            if not targets:
-                print("Token has access to no projects; nothing to serve.")
-                raise SystemExit(1)
-        else:
-            targets = [(parsed_args.project_id, parsed_args.project_id)]
 
         self.setup(parsed_args)
 
         print(f"Registering {self.service_name} (service_id={self.service_id}, "
-              f"tasks={self.extras.get('tasks')}) on {len(targets)} project(s)…")
-        for pid, pname in targets:
+              f"tasks={self.extras.get('tasks')})…")
+        if serve_all:
+            # Initial registration is just the first pass of the same
+            # reconciliation the run loop repeats.
+            self._sync_served_projects()
+            if not self.service_registrations:
+                print("  No projects served yet; waiting for projects to appear…")
+            print(f"{self.service_name} serving {len(self.service_registrations)} "
+                  f"project(s); syncing with the project list every "
+                  f"{self.PROJECT_SYNC_INTERVAL_S:g}s. Waiting for requests… "
+                  f"(Press Ctrl+C to stop.)")
+            self.run_service_loop(project_sync_interval_s=self.PROJECT_SYNC_INTERVAL_S)
+        else:
             try:
-                self.register_service(pid)
-                print(f"  Serving project {pname} ({pid})")
+                self.register_service(parsed_args.project_id)
             except Exception as e:
-                # A project the token can list but not register on (e.g. another
-                # live instance already holds this service id) shouldn't take
-                # down coverage of the rest.
-                print(f"  Skipping project {pid}: failed to register: {e}")
-
-        if not self.service_registrations:
-            print("No services registered; exiting.")
-            raise SystemExit(1)
-
-        print(f"{self.service_name} registered on {len(self.service_registrations)} "
-              f"project(s). Waiting for requests… (Press Ctrl+C to stop.)")
-        self.run_service_loop()
+                print(f"Failed to register on project {parsed_args.project_id}: {e}")
+                raise SystemExit(1)
+            print(f"{self.service_name} registered on project "
+                  f"{parsed_args.project_id}. Waiting for requests… "
+                  f"(Press Ctrl+C to stop.)")
+            self.run_service_loop()

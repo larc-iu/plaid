@@ -795,8 +795,8 @@ class StanzaParserService(BaseService):
 
 if __name__ == '__main__':
     # CLI (handled by BaseService.run):
-    #   python ud_parse_stanza.py                → serve ALL accessible projects
-    #   python ud_parse_stanza.py --all          → serve ALL accessible projects
+    #   python ud_parse_stanza.py                → serve ALL accessible projects (existing + future)
+    #   python ud_parse_stanza.py --all          → serve ALL accessible projects (existing + future)
     #   python ud_parse_stanza.py PROJECT_ID     → serve one project
     #   --url URL                                → Plaid API URL (default :8080)
     StanzaParserService().run()
