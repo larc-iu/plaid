@@ -26,7 +26,12 @@ import {
 } from '@/domain/igtConfig';
 import { docFrequencyGuessSource } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
-import { morphemeJoiner, isStemType, FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
+import {
+  morphemeJoiner,
+  isStemType,
+  FLEX_MORPH_TYPES,
+  splitChainText,
+} from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { isLevelCompatible, otherLevel } from '@/domain/vocabLevels';
 import { humanizeError } from '@/utils/feedback';
@@ -1008,11 +1013,11 @@ export class IgtEditor {
         const st = this._morphSplit;
         if (e.key === 'Enter' || e.key === 'Tab') st.commitKey = e.key;
         else if (e.key === 'Backspace') st.buffer = st.buffer.slice(0, -1);
-        else if (e.key === '-' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        else if ((e.key === '-' || e.key === '=') && !e.altKey && !e.ctrlKey && !e.metaKey) {
           // A further split typed mid-flight ("ngo-ko-mi" fast): remember the
-          // boundary instead of inserting a literal hyphen, and replay it as
-          // another split once the new cell exists.
-          st.splits = [...(st.splits || []), st.buffer.length];
+          // boundary (and whether it was a clitic one) instead of inserting a
+          // literal, and replay it as another split once the new cell exists.
+          st.splits = [...(st.splits || []), { at: st.buffer.length, joiner: e.key }];
         } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) st.buffer += e.key;
         // Arrows / Escape / etc. mid-flight are swallowed (no meaningful target).
         return;
@@ -1057,14 +1062,18 @@ export class IgtEditor {
         el.focus();
       };
 
-      if (e.key === '-') {
+      // "-" splits at an affix boundary, "=" at a clitic boundary (the clitic
+      // side is typed by the shared positional rule, see affixMarkers.js).
+      // Ctrl/Cmd+- and Ctrl/Cmd+= are the browser's zoom keys: leave them.
+      if ((e.key === '-' || e.key === '=') && !e.ctrlKey && !e.metaKey) {
+        const joiner = e.key;
         if (e.altKey) {
-          // Alt+- inserts a literal hyphen (clitic / reduplication forms) rather
-          // than splitting the morpheme.
+          // Alt+- / Alt+= inserts the literal character (reduplication forms,
+          // forms that contain a hyphen) rather than splitting the morpheme.
           e.preventDefault();
           const s = el.selectionStart ?? el.value.length;
           const en = el.selectionEnd ?? s;
-          el.value = el.value.slice(0, s) + '-' + el.value.slice(en);
+          el.value = el.value.slice(0, s) + joiner + el.value.slice(en);
           const c = s + 1;
           try {
             el.setSelectionRange(c, c);
@@ -1094,7 +1103,7 @@ export class IgtEditor {
           wordId: word.id,
           precedence: (morph.precedence ?? 1) + 1,
         };
-        const ok = await this._run(() => this.doc.splitMorpheme(morph.id, left, right));
+        const ok = await this._run(() => this.doc.splitMorpheme(morph.id, left, right, joiner));
         const split = this._morphSplit;
         this._morphSplit = null;
         if (!ok) {
@@ -1182,18 +1191,23 @@ export class IgtEditor {
         /* not selectable */
       }
     }
-    // Further hyphens typed during the flight: split the new cell again at
-    // those buffered boundaries (a real split each, never a literal hyphen).
+    // Further boundaries typed during the flight: split the new cell again at
+    // those buffered positions (a real split each, never a literal; a "=" cut
+    // keeps its clitic meaning).
     if (split.splits?.length) {
       const text = el.value;
-      const cuts = [...new Set(split.splits.filter((c) => c > 0 && c < text.length))].sort(
-        (a, b) => a - b,
-      );
+      const byCut = new Map();
+      for (const { at, joiner } of split.splits) {
+        if (at > 0 && at < text.length && !byCut.has(at)) byCut.set(at, joiner);
+      }
+      const cuts = [...byCut.keys()].sort((a, b) => a - b);
       if (cuts.length) {
         const segments = [];
+        const joiners = [];
         let last = 0;
         for (const c of cuts) {
           segments.push(text.slice(last, c));
+          joiners.push(byCut.get(c));
           last = c;
         }
         segments.push(text.slice(last));
@@ -1204,7 +1218,7 @@ export class IgtEditor {
           precedence: split.precedence + segments.length - 1,
           cursor: 'end',
         };
-        this._run(() => this.doc.splitMorphemeMulti(morphId, segments));
+        this._run(() => this.doc.splitMorphemeMulti(morphId, segments, { joiners }));
         return;
       }
     }
@@ -1216,27 +1230,24 @@ export class IgtEditor {
     }
   }
 
-  // Paste-splitting: pasting text containing "-" into a morpheme form splits
-  // it into a morpheme chain at the hyphens (the bulk-entry idiom from the
-  // early single-input prototype — unambiguous here because the paste target
-  // is a single known morpheme). Hyphen-free pastes fall through to the
-  // browser default.
+  // Paste-splitting: pasting text containing "-" or "=" into a morpheme form
+  // splits it into a morpheme chain at those boundaries (the bulk-entry idiom
+  // from the early single-input prototype — unambiguous here because the paste
+  // target is a single known morpheme); "=" boundaries type their clitic side.
+  // Boundary-free pastes fall through to the browser default.
   _onMorphPaste(morph, word) {
     return async (e) => {
       if (this.readOnly) return;
       const text = e.clipboardData?.getData('text/plain') ?? '';
-      if (!text.includes('-')) return;
+      if (!/[-=]/.test(text)) return;
       e.preventDefault();
       const el = e.target;
       const s = el.selectionStart ?? el.value.length;
       const en = el.selectionEnd ?? s;
       const combined = el.value.slice(0, s) + text + el.value.slice(en);
-      const segments = combined
-        .split('-')
-        .map((x) => x.trim())
-        .filter((x) => x !== '');
+      const { segments, joiners } = splitChainText(combined);
       if (segments.length <= 1) {
-        // All hyphens were leading/trailing/doubled — just insert the cleaned text.
+        // All boundaries were leading/trailing/doubled — just insert the cleaned text.
         el.value = segments[0] ?? '';
         el.dispatchEvent(new Event('input', { bubbles: true }));
         return;
@@ -1250,7 +1261,9 @@ export class IgtEditor {
         precedence: (morph.precedence ?? 1) + segments.length - 1,
         cursor: 'end',
       };
-      const ok = await this._run(() => this.doc.splitMorphemeMulti(morph.id, segments));
+      const ok = await this._run(() =>
+        this.doc.splitMorphemeMulti(morph.id, segments, { joiners }),
+      );
       el.disabled = false;
       if (!ok) {
         el.value = orig;
@@ -1525,8 +1538,9 @@ export class IgtEditor {
           ? html` <div class="igt-legend__row">
               <strong>Morphemes</strong>
               <span
-                >type <kbd>-</kbd> to split (pasting <em>a-b-c</em> splits too) · <kbd>⌫</kbd> at
-                start merges with previous · <kbd>Alt</kbd>+<kbd>-</kbd> literal hyphen</span
+                >type <kbd>-</kbd> to split, <kbd>=</kbd> to split at a clitic (pasting
+                <em>a-b=c</em> splits too) · <kbd>⌫</kbd> at start merges with previous ·
+                <kbd>Alt</kbd>+<kbd>-</kbd> / <kbd>Alt</kbd>+<kbd>=</kbd> literal character</span
               >
             </div>`
           : nothing}

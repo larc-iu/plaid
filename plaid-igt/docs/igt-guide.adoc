@@ -234,8 +234,9 @@ To write such a program, see the link:api-py.html[Python client] and link:api-js
 | **Tab** / **Shift+Tab** | Move to the next or previous cell in the Analyze grid.
 | **Enter** / **Tab** | Accept the faint guess shown in an empty cell.
 | **-** | In a morpheme form, split the morpheme at the cursor.
+| **=** | In a morpheme form, split at the cursor as a clitic boundary. The outer piece is typed as a proclitic or enclitic, so the boundary renders as `=`.
 | **Backspace** | At the start of a morpheme form, merge it into the previous one.
-| **Alt** + **-** | Enter a literal hyphen in a morpheme form.
+| **Alt** + **-** / **Alt** + **=** | Enter a literal hyphen or equals sign in a morpheme form.
 | **Ctrl/Cmd+Enter** | Confirm the current word's whole analysis and jump to the next.
 | **Ctrl/Cmd** + arrow | Move between auto-made vocabulary-link suggestions.
 | **Escape** | Close an open popover or menu.

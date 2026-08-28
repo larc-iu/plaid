@@ -320,6 +320,49 @@ describe('morpheme structural ops', () => {
     expect(ms[0].id).toBe('m-1');
   });
 
+  it('splitMorpheme with "=" types the clitic side (right edge → enclitic on the new piece)', async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [{ id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'abc' } }],
+      body: 'abc',
+    });
+    const doc = makeDoc({ raw });
+    await doc.splitMorpheme('m-1', 'ab', 'c', '=');
+    const ms = doc.sentences[0].tokens[0].morphemes;
+    expect(ms.map((m) => m.metadata.form)).toEqual(['ab', 'c']);
+    expect(ms.map((m) => m.metadata.morphType ?? null)).toEqual([null, 'enclitic']);
+  });
+
+  it('splitMorphemeMulti joiners: left-edge "=" makes the surviving piece a proclitic', async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 4 }],
+      morphemes: [{ id: 'm-1', begin: 0, end: 4, precedence: 1, metadata: { form: 'abcd' } }],
+      body: 'abcd',
+    });
+    const doc = makeDoc({ raw });
+    await doc.splitMorphemeMulti('m-1', ['a', 'bc', 'd'], { joiners: ['=', '-'] });
+    const ms = doc.sentences[0].tokens[0].morphemes;
+    expect(ms.map((m) => m.metadata.form)).toEqual(['a', 'bc', 'd']);
+    expect(ms.map((m) => m.metadata.morphType ?? null)).toEqual(['proclitic', null, null]);
+    // the stamp rode on the same patch as the form (one op for m-1)
+    expect(kinds(doc.client).filter((x) => x === 'tokens.patchMetadata')).toHaveLength(1);
+  });
+
+  it('splitMorphemeMulti never overwrites an existing morphType', async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 2 }],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 2, precedence: 1, metadata: { form: 'ab', morphType: 'stem' } },
+      ],
+      body: 'ab',
+    });
+    const doc = makeDoc({ raw });
+    // two-morpheme word → enclitic on the right piece; the stem stays a stem
+    await doc.splitMorpheme('m-1', 'a', 'b', '=');
+    const ms = doc.sentences[0].tokens[0].morphemes;
+    expect(ms.map((m) => m.metadata.morphType ?? null)).toEqual(['stem', 'enclitic']);
+  });
+
   it('mergeMorphemes concatenates forms into predecessor and renumbers', async () => {
     const raw = buildRawDoc({
       words: [{ id: 'w-1', begin: 0, end: 3 }],

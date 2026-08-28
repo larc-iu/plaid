@@ -53,3 +53,46 @@ test('split a morpheme with "-" then merge it back', async ({ page }) => {
   for (const e of diag.errors) console.log(JSON.stringify(e));
   expect.soft(diag.failures, 'no API failures during structural ops').toEqual([]);
 });
+
+// "=" splits at a clitic boundary and types the outer piece: splitting a
+// single-morpheme word at the right edge makes the new piece an enclitic, so
+// the joint between the two renders as "=". Merged back afterwards (net-neutral).
+test('split a morpheme with "=" types an enclitic, then merge it back', async ({ page }) => {
+  const { projectId, documentId } = await getFixture();
+  const diag = collectClientErrors(page);
+  await seedAuth(page);
+  await openAnalyze(page, projectId, documentId);
+
+  const first = page.locator('.igt-morph-field[data-prec="1"]').first();
+  const word = await first.getAttribute('data-word');
+  const realSel = `.igt-morph-field[data-word="${word}"][data-prec]`;
+  const joinerSel = `.igt-morph-field[data-word="${word}"]`;
+  const origForm = await first.inputValue();
+  const before = await page.locator(realSel).count();
+
+  await first.click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('ab');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('=');
+  await expect.poll(() => page.locator(realSel).count(), { timeout: 5000 }).toBe(before + 1);
+  // The joint between the pieces renders "=" because the new piece is an enclitic.
+  const col = page
+    .locator(joinerSel)
+    .first()
+    .locator('xpath=ancestor::div[contains(@class,"igt-morphemes")]');
+  await expect(col.locator('.igt-morph-joiner').first()).toHaveText('=');
+
+  // Merge back and restore the original form.
+  await page.keyboard.press('Backspace');
+  await expect.poll(() => page.locator(realSel).count(), { timeout: 5000 }).toBe(before);
+  await expect(page.locator(realSel).first()).toHaveValue('ab');
+  const firstAgain = page.locator('.igt-morph-field[data-prec="1"]').first();
+  await firstAgain.click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type(origForm);
+  await firstAgain.press('Enter');
+  await page.waitForLoadState('networkidle');
+
+  expect.soft(diag.failures, 'no API failures during "=" split').toEqual([]);
+});

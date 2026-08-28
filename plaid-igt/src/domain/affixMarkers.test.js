@@ -5,6 +5,9 @@ import {
   isClitic,
   morphemeJoiner,
   joinMorphemes,
+  cliticSideOfBoundary,
+  cliticTypesForChain,
+  splitChainText,
 } from './affixMarkers.js';
 import { formatPlain } from './igtExport.js';
 
@@ -49,6 +52,61 @@ describe('affix markers', () => {
         { text: 'ни', morphType: 'enclitic' },
       ]),
     ).toBe('руша-кай=ни');
+  });
+});
+
+describe('clitic side of a "=" boundary', () => {
+  it('positional rule: left edge → proclitic, right edge → enclitic', () => {
+    expect(cliticSideOfBoundary({ leftIdx: 0, count: 3 })).toBe('left');
+    expect(cliticSideOfBoundary({ leftIdx: 1, count: 3 })).toBe('right');
+  });
+  it('two-morpheme word: gloss case decides, else enclitic', () => {
+    expect(cliticSideOfBoundary({ leftIdx: 0, count: 2 })).toBe('right');
+    expect(
+      cliticSideOfBoundary({ leftIdx: 0, count: 2, leftGloss: 'DET', rightGloss: 'house' }),
+    ).toBe('left');
+    expect(
+      cliticSideOfBoundary({ leftIdx: 0, count: 2, leftGloss: 'house', rightGloss: 'DET' }),
+    ).toBe('right');
+    // both caps / both lexical: no signal → default
+    expect(cliticSideOfBoundary({ leftIdx: 0, count: 2, leftGloss: 'A', rightGloss: 'B' })).toBe(
+      'right',
+    );
+  });
+  it('interior boundary: gloss case or untyped', () => {
+    expect(cliticSideOfBoundary({ leftIdx: 1, count: 4 })).toBeNull();
+    expect(cliticSideOfBoundary({ leftIdx: 1, count: 4, leftGloss: 'go', rightGloss: '3SG' })).toBe(
+      'right',
+    );
+  });
+  it('cliticTypesForChain stamps only untyped pieces, per boundary', () => {
+    // word "a=b-c" written as one chain
+    expect(
+      cliticTypesForChain({
+        joiners: ['=', '-'],
+        startIdx: 0,
+        count: 3,
+        types: [null, null, null],
+      }),
+    ).toEqual(['proclitic', null, null]);
+    // chain replacing the 2nd morpheme of a 4-morpheme word: "x" | "b=c" | "y"
+    expect(
+      cliticTypesForChain({ joiners: ['='], startIdx: 1, count: 4, types: [null, null] }),
+    ).toEqual([null, null]);
+    // right edge, existing type on the left piece is left alone
+    expect(
+      cliticTypesForChain({ joiners: ['='], startIdx: 1, count: 3, types: ['stem', null] }),
+    ).toEqual(['stem', 'enclitic']);
+    // never overwrites
+    expect(
+      cliticTypesForChain({ joiners: ['='], startIdx: 0, count: 2, types: [null, 'suffix'] }),
+    ).toEqual([null, 'suffix']);
+  });
+  it('splitChainText keeps joiners and drops empty pieces', () => {
+    expect(splitChainText('a-b=c')).toEqual({ segments: ['a', 'b', 'c'], joiners: ['-', '='] });
+    expect(splitChainText('-a--b= ')).toEqual({ segments: ['a', 'b'], joiners: ['-'] });
+    expect(splitChainText(' x ')).toEqual({ segments: ['x'], joiners: [] });
+    expect(splitChainText('')).toEqual({ segments: [], joiners: [] });
   });
 });
 

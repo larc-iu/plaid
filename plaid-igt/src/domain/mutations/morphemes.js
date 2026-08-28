@@ -13,7 +13,7 @@
 // failure paths the server is reporting.
 
 import { cpSlice, verifyOnEdit } from '@larc-iu/plaid-client';
-import { isValidMorphType } from '../affixMarkers.js';
+import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
 
 // A human edit of a machine-made, unverified morpheme verifies its
 // segmentation (provenance write-contract rule 3): merge { provConfirmed:
@@ -136,9 +136,10 @@ export const morphemeMutations = {
 
   // Split a morpheme's form into two: existing gets `leftForm`, a new one
   // with `rightForm` is inserted at the next precedence; subsequent morphemes
-  // shift +1.
-  async splitMorpheme(morphemeId, leftForm, rightForm) {
-    return this.splitMorphemeMulti(morphemeId, [leftForm, rightForm]);
+  // shift +1. `joiner` '=' marks the boundary as a clitic boundary (see
+  // splitMorphemeMulti).
+  async splitMorpheme(morphemeId, leftForm, rightForm, joiner = '-') {
+    return this.splitMorphemeMulti(morphemeId, [leftForm, rightForm], { joiners: [joiner] });
   },
 
   // N-way generalization (paste-splitting): replace one morpheme with
@@ -150,7 +151,10 @@ export const morphemeMutations = {
   // to free the target slots, then create at the freed slots. The creates
   // MUST run AFTER the shifts — if a new (begin, end, precedence) triple
   // collides with an existing morpheme's it's a server-side 409.
-  async splitMorphemeMulti(morphemeId, segments) {
+  // `joiners` (optional, one per boundary, '-' | '=') types the clitic side of
+  // each '=' boundary via cliticTypesForChain — positional rule, never
+  // overwriting a type the target morpheme already has.
+  async splitMorphemeMulti(morphemeId, segments, { joiners = [] } = {}) {
     if (!Array.isArray(segments) || segments.length < 2) {
       this.setError('splitMorphemeMulti needs at least two segments');
       return false;
@@ -176,11 +180,24 @@ export const morphemeMutations = {
         target.precedence ?? siblings.findIndex((m) => m.id === morphemeId) + 1;
       const subsequents = siblings.filter((m) => (m.precedence ?? 0) > currentPrecedence);
       const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
+      const types = cliticTypesForChain({
+        joiners: segments.slice(1).map((_, i) => joiners[i] ?? '-'),
+        startIdx: currentPrecedence - 1,
+        count: siblings.length + restForms.length,
+        types: [target.metadata?.morphType ?? null, ...restForms.map(() => null)],
+      });
+      const firstPatch = { form: firstForm };
+      if (types[0] != null && target.metadata?.morphType == null) firstPatch.morphType = types[0];
+      const restMeta = (form, i) => ({
+        ...(form ? { form } : {}),
+        ...(types[i + 1] != null ? { morphType: types[i + 1] } : {}),
+      });
+      const metaOrUndefined = (m) => (Object.keys(m).length ? m : undefined);
 
       const results = await this._client.batched(async () => {
         // patch, not set: form edits must not clobber other metadata keys
         // (morphType from the FLEx import, in particular)
-        this._client.tokens.patchMetadata(morphemeId, verified(target, { form: firstForm }));
+        this._client.tokens.patchMetadata(morphemeId, verified(target, firstPatch));
         shifted.forEach((m) => {
           this._client.tokens.update(
             m.id,
@@ -196,7 +213,7 @@ export const morphemeMutations = {
             target.begin,
             target.end,
             currentPrecedence + 1 + i,
-            form ? { form } : undefined,
+            metaOrUndefined(restMeta(form, i)),
           );
         });
       });
@@ -209,7 +226,7 @@ export const morphemeMutations = {
         const tokens = layer.tokens || [];
         const t = tokens.find((m) => m.id === morphemeId);
         if (t) {
-          t.metadata = { ...(t.metadata || {}), ...verified(target, { form: firstForm }) };
+          t.metadata = { ...(t.metadata || {}), ...verified(target, firstPatch) };
         }
         tokens.forEach((m) => {
           if (
@@ -230,7 +247,7 @@ export const morphemeMutations = {
             begin: target.begin,
             end: target.end,
             precedence: currentPrecedence + 1 + i,
-            metadata: form ? { form } : {},
+            metadata: restMeta(form, i),
           });
         });
       });
