@@ -94,7 +94,44 @@
     (testing "valid directive lists still work"
       (assert-ok (update-text admin-request text-id
                               [{:type "insert" :index 5 :value " world"}]))
-      (is (= "hello world" (-> (get-text admin-request text-id) :body :text/body))))))
+      (is (= "hello world" (-> (get-text admin-request text-id) :body :text/body))))
+    (testing "malformed replace ops are 400s"
+      (assert-bad-request (update-text admin-request text-id
+                                       [{:type "replace" :index 0 :length 2}]))
+      (assert-bad-request (update-text admin-request text-id
+                                       [{:type "replace" :index 0 :length 99 :value "x"}])))))
+
+(deftest text-replace-op-keeps-covering-token
+  ;; The whole point of :replace over delete+insert: respelling every
+  ;; character of a word keeps the word token (and so its spans) instead of
+  ;; collapsing it. Bulk orthography rewrites depend on this.
+  (let [proj (create-test-project admin-request "TextReplaceProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tkl (-> (create-token-layer admin-request tl "TKL") :body :id)
+        sl (-> (create-span-layer admin-request tkl "SL") :body :id)
+        text-id (-> (create-text admin-request tl doc "the kat sat") :body :id)
+        kat (-> (create-token admin-request tkl text-id 4 7) :body :id)
+        sat (-> (create-token admin-request tkl text-id 8 11) :body :id)
+        gloss (-> (create-span admin-request sl [kat] "cat") :body :id)]
+    (assert-ok (update-text admin-request text-id
+                            [{:type "replace" :index 4 :length 3 :value "kitten"}]))
+    (is (= "the kitten sat" (-> (get-text admin-request text-id) :body :text/body)))
+    (let [t (get-token admin-request kat)]
+      (assert-ok t)
+      (is (= 4 (-> t :body :token/begin)))
+      (is (= 10 (-> t :body :token/end))))
+    (let [t (get-token admin-request sat)]
+      (assert-ok t)
+      (is (= 11 (-> t :body :token/begin)))
+      (is (= 14 (-> t :body :token/end))))
+    (assert-ok (get-span admin-request gloss))
+    ;; The same edit as delete+insert loses the token.
+    (assert-ok (update-text admin-request text-id
+                            [{:type "delete" :index 4 :value 6}
+                             {:type "insert" :index 4 :value "cat"}]))
+    (is (= "the cat sat" (-> (get-text admin-request text-id) :body :text/body)))
+    (assert-not-found (get-token admin-request kat))))
 
 (deftest text-update-with-tokens
   (let [proj (create-test-project admin-request "TextUpdateProj")

@@ -73,7 +73,11 @@
                                "\n\n"
                                "If preferred, body can instead be a list of edit directives such as:\n"
                                "  {type: \"delete\", index: 5, value: 3} (delete 3 chars at index 5)\n"
-                               "  {type: \"insert\", index: 0, value: \"abc\"} (insert \"abc\" at the front)")
+                               "  {type: \"insert\", index: 0, value: \"abc\"} (insert \"abc\" at the front)\n"
+                               "  {type: \"replace\", index: 5, length: 3, value: \"xy\"} (swap 3 chars at index 5 for \"xy\")\n"
+                               "A replace differs from delete+insert in one way: a token covering the whole "
+                               "replaced range is resized to keep it rather than deleted, so a word can be "
+                               "respelled in place without losing its annotations. Indices are code points.")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :int]]

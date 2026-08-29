@@ -65,6 +65,12 @@
    :index index
    :value value})
 
+(defn replace-op [index length value]
+  {:type   :replace
+   :index  index
+   :length length
+   :value  value})
+
 (defn- surrogate? [cp] (<= 0xD800 (long cp) 0xDFFF))
 
 (defn- codepoint-proxy
@@ -147,9 +153,9 @@
 
 (defn apply-text-edit
   "Given an operation, a text and tokens, shift :token/begin and :token/end on a list
-  of tokens as appropriate. Operations are maps, with :type of either :delete or :insert,
-  :index indicating the position in the string, and :value for the value being inserted
-  or the number of tokens to be deleted.
+  of tokens as appropriate. Operations are maps, with :type of :delete, :insert or
+  :replace, :index indicating the position in the string, and :value for the value
+  being inserted or the number of tokens to be deleted.
 
   :index and the :delete :value count are **Unicode code-point** positions — the
   same unit as the :token/begin/:token/end of the `tokens` passed in, and as the
@@ -158,9 +164,22 @@
 
   Op examples:
 
-    {:type :insert    {:type :delete
-     :index 3          :index 4
-     :value \"is \"}   :value 3}
+    {:type :insert    {:type :delete    {:type :replace
+     :index 3          :index 4          :index 4
+     :value \"is \"}   :value 3}         :length 3
+                                         :value \"new\"}
+
+  :replace swaps the :length code points at :index for :value. It differs from
+  an equivalent delete+insert in ONE way: a token that covers the whole replaced
+  range keeps it (the token is resized by the length difference) instead of
+  collapsing when the range is its entire extent. That is what a bulk
+  orthography rewrite needs — `kat` -> `cat` must keep the word token and
+  everything hanging off it (morphemes, spans, links), and a diff-based body
+  update can't promise that when every character of a short word changes.
+  Tokens that only partially overlap the range are handled exactly as
+  delete+insert (clipped to the outside; the replacement belongs to no token),
+  as are zero-width tokens. An empty :value is a delete; a zero :length is an
+  insert.
 
   Returns a map:
    - :text contains the new text map
@@ -173,7 +192,7 @@
      :tokens ({:token/begin 0, :token/end 4, ...}, {:token/begin 5, :token/end 8, ...})
      :deleted ()}
   "
-  [{:keys [type index value] :as op} text tokens]
+  [{:keys [type index value length] :as op} text tokens]
   (let [type (or (and (keyword? type) type)
                  (and (string? type) (keyword type))
                  type)]
@@ -185,22 +204,48 @@
     ;; StringIndexOutOfBounds from cp-subs, also a 500. Both throw inside
     ;; the operation tx body, so submit-operation* projects them cleanly.
     (when-not (or (and (= type :insert) (int? index) (string? value))
-                  (and (= type :delete) (int? index) (int? value)))
+                  (and (= type :delete) (int? index) (int? value))
+                  (and (= type :replace) (int? index) (int? length) (string? value)))
       (throw (ex-info (str "Malformed text edit operation: " (pr-str op)
-                           " — expected {type: \"insert\", index: int, value: string}"
-                           " or {type: \"delete\", index: int, value: int}")
+                           " — expected {type: \"insert\", index: int, value: string},"
+                           " {type: \"delete\", index: int, value: int}"
+                           " or {type: \"replace\", index: int, length: int, value: string}")
                       {:code 400 :op op})))
     (let [len (cp/cp-count (:text/body text))]
       (when-not (case type
                   :insert (<= 0 index len)
                   :delete (and (<= 0 index)
                                (<= 0 value)
-                               (<= (+ index value) len)))
+                               (<= (+ index value) len))
+                  :replace (and (<= 0 index)
+                                (<= 0 length)
+                                (<= (+ index length) len)))
         (throw (ex-info (str "Text edit operation out of bounds: " (pr-str op)
                              " (text length is " len " code points)")
                         {:code 400 :op op :text-length len}))))
     (do
       (case type
+        :replace
+        (cond
+          (zero? length) (apply-text-edit (insert-op index value) text tokens)
+          (= value "") (apply-text-edit (delete-op index length) text tokens)
+          :else
+          (let [end-index (+ index length)
+                delta (- (cp/cp-count value) length)
+                covers? (fn [{:token/keys [begin end]}]
+                          (and (< begin end) (<= begin index) (>= end end-index)))
+                covering (filterv covers? tokens)
+                others (filterv (complement covers?) tokens)
+                ;; Everything that doesn't cover the range behaves as if the
+                ;; range were deleted and the value inserted in its place.
+                {text* :text tokens* :tokens deleted :deleted}
+                (apply-text-edit (delete-op index length) text others)
+                {text** :text tokens** :tokens}
+                (apply-text-edit (insert-op index value) text* tokens*)]
+            {:text text**
+             :tokens (into tokens** (map #(update % :token/end + delta) covering))
+             :deleted deleted}))
+
         ;; three cases:
         ;; - token opens and closes before index (no changes)
         ;; - token opens before index but closes later (expand the token)

@@ -231,3 +231,122 @@
                         (count (filter #(< 0 (- (:token/end %) (:token/begin %)) 2) tokens))))]
     (is (= new (get-in (apply-all norm old tokens) [:text :text/body])))
     (is (<= (cut norm) (cut raw)))))
+
+;; ---------------------------------------------------------------------------
+;; :replace — a delete+insert that keeps a token covering the whole range.
+
+(deftest replace-keeps-a-token-covering-the-whole-range
+  (testing "respelling an entire word keeps its token (resized)"
+    (let [text {:text/body "the kat sat"}
+          tokens [(tok :a 0 3) (tok :b 4 7) (tok :c 8 11)]
+          {:keys [text tokens deleted]}
+          (ta/apply-text-edit (ta/replace-op 4 3 "cat") text tokens)]
+      (is (= "the cat sat" (:text/body text)))
+      (is (= [] deleted))
+      (is (= #{[:a 0 3] [:b 4 7] [:c 8 11]}
+             (set (map (juxt :token/id :token/begin :token/end) tokens))))))
+
+  (testing "a longer replacement grows the token and shifts what follows"
+    (let [text {:text/body "the kat sat"}
+          tokens [(tok :a 0 3) (tok :b 4 7) (tok :c 8 11)]
+          {:keys [text tokens deleted]}
+          (ta/apply-text-edit (ta/replace-op 4 3 "kitten") text tokens)]
+      (is (= "the kitten sat" (:text/body text)))
+      (is (= [] deleted))
+      (is (= #{[:a 0 3] [:b 4 10] [:c 11 14]}
+             (set (map (juxt :token/id :token/begin :token/end) tokens))))))
+
+  (testing "a one-character word can be respelled — no interior position needed"
+    (let [text {:text/body "ʔa"}
+          tokens [(tok :g 0 1) (tok :a 1 2)]
+          {:keys [text tokens deleted]}
+          (ta/apply-text-edit (ta/replace-op 0 1 "'") text tokens)]
+      (is (= "'a" (:text/body text)))
+      (is (= [] deleted))
+      (is (= #{[:g 0 1] [:a 1 2]}
+             (set (map (juxt :token/id :token/begin :token/end) tokens))))))
+
+  (testing "an interior replacement inside a token resizes it"
+    (let [text {:text/body "abcdef"}
+          tokens [(tok :t 0 6)]
+          {:keys [text tokens]}
+          (ta/apply-text-edit (ta/replace-op 2 2 "X") text tokens)]
+      (is (= "abXef" (:text/body text)))
+      (is (= [{:token/id :t :token/begin 0 :token/end 5}] tokens))))
+
+  (testing "the equivalent delete+insert would have deleted the token"
+    (let [text {:text/body "the kat sat"}
+          tokens [(tok :b 4 7)]
+          {:keys [deleted]}
+          (ta/apply-text-edits [(ta/delete-op 4 3) (ta/insert-op 4 "cat")] text tokens)]
+      (is (= [:b] deleted)))))
+
+(deftest replace-partial-overlap-behaves-like-delete-plus-insert
+  (testing "tokens straddling the range are clipped; the replacement belongs to no token"
+    (let [text {:text/body "ab cd"}
+          tokens [(tok :x 0 2) (tok :y 3 5)]
+          {:keys [text tokens deleted]}
+          (ta/apply-text-edit (ta/replace-op 1 3 "--") text tokens)]
+      (is (= "a--d" (:text/body text)))
+      (is (= [] deleted))
+      (is (= #{[:x 0 1] [:y 3 4]}
+             (set (map (juxt :token/id :token/begin :token/end) tokens))))))
+
+  (testing "a token strictly inside the range is deleted"
+    (let [text {:text/body "a bc d"}
+          tokens [(tok :x 0 1) (tok :y 2 4) (tok :z 5 6)]
+          {:keys [text tokens deleted]}
+          (ta/apply-text-edit (ta/replace-op 1 4 "_") text tokens)]
+      (is (= "a_d" (:text/body text)))
+      (is (= [:y] deleted))
+      (is (= #{[:x 0 1] [:z 2 3]}
+             (set (map (juxt :token/id :token/begin :token/end) tokens))))))
+
+  (testing "zero-width tokens keep delete/insert pinning rules"
+    ;; Same outcome as delete [1,3) then insert at 1: the delete shifts the
+    ;; range-end token to 1, and an insert AT a zero-width token's position
+    ;; pins it there — so both boundary tokens end up before the replacement.
+    (let [text {:text/body "abcd"}
+          tokens [(tok :at-start 1 1) (tok :inside 2 2) (tok :at-end 3 3)]
+          {:keys [tokens deleted]}
+          (ta/apply-text-edit (ta/replace-op 1 2 "XYZ") text tokens)
+          via-ops (ta/apply-text-edits [(ta/delete-op 1 2) (ta/insert-op 1 "XYZ")] text
+                                       [(tok :at-start 1 1) (tok :inside 2 2) (tok :at-end 3 3)])]
+      (is (= [:inside] deleted))
+      (is (= #{[:at-start 1 1] [:at-end 1 1]}
+             (set (map (juxt :token/id :token/begin :token/end) tokens))))
+      (is (= (set tokens) (set (:tokens via-ops)))))))
+
+(deftest replace-degenerate-forms
+  (testing "empty value is a delete (a covering token collapses, as delete does)"
+    (let [text {:text/body "the kat sat"}
+          tokens [(tok :b 4 7)]
+          {:keys [text deleted]}
+          (ta/apply-text-edit (ta/replace-op 4 3 "") text tokens)]
+      (is (= "the  sat" (:text/body text)))
+      (is (= [:b] deleted))))
+
+  (testing "zero length is an insert"
+    (let [text {:text/body "the kat sat"}
+          tokens [(tok :b 4 7)]
+          {:keys [text tokens]}
+          (ta/apply-text-edit (ta/replace-op 5 0 "i") text tokens)]
+      (is (= "the kiat sat" (:text/body text)))
+      (is (= [{:token/id :b :token/begin 4 :token/end 8}] tokens))))
+
+  (testing "astral text: indices and lengths are code points"
+    (let [text {:text/body "a😀b"}
+          tokens [(tok :t 0 3)]
+          {:keys [text tokens]}
+          (ta/apply-text-edit (ta/replace-op 1 1 "😺😺") text tokens)]
+      (is (= "a😺😺b" (:text/body text)))
+      (is (= [{:token/id :t :token/begin 0 :token/end 4}] tokens))))
+
+  (testing "string type keys and validation"
+    (let [text {:text/body "abc"}]
+      (is (= "aXc" (-> (ta/apply-text-edit {:type "replace" :index 1 :length 1 :value "X"} text [])
+                       :text :text/body)))
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (ta/apply-text-edit {:type :replace :index 1 :length 5 :value "X"} text [])))
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (ta/apply-text-edit {:type :replace :index 1 :value "X"} text []))))))
