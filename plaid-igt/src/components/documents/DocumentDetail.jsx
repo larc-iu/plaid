@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
@@ -19,6 +19,7 @@ import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useTabParam } from '@/hooks/useTabParam';
 
 // Renders only the active tab's panel (others stay unmounted).
 const Panel = ({ active, children }) => (active ? children : null);
@@ -30,6 +31,10 @@ const Panel = ({ active, children }) => (active ? children : null);
 // visible without scrolling. The form-shaped tabs stay narrow because long
 // input rows are harder to read, not easier.
 const WIDE_TABS = new Set(['analyze', 'media']);
+
+// The tab bar's inventory, in display order, and the tab a document opens on.
+const TABS = ['metadata', 'baseline', 'media', 'tokenize', 'analyze', 'export'];
+const DEFAULT_TAB = 'metadata';
 
 // Surface validateIgtDocument findings: full detail to the console (grouped),
 // plus ONE consolidated "Data integrity issue detected" toast with a
@@ -66,12 +71,12 @@ const reportIntegrityFindings = (findings, documentId) => {
 const DocumentEditor = () => {
   const { projectId, documentId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
   const client = useStrictClient();
   const { logout } = useAuth();
   const [searchParams] = useSearchParams();
-  // Deep-link params (so a fresh tab — where router state isn't available —
-  // still lands on the right tab + sentence): ?tab=analyze&focusSentence=<id>.
+  // Deep-link params: ?tab=analyze&focusSentence=<id>. `tab` is read (and
+  // written) through useTabParam below, so the raw value is needed here only to
+  // tell an explicit tab request apart from the default.
   const tabParam = searchParams.get('tab');
   const focusParam = searchParams.get('focusSentence');
 
@@ -105,9 +110,10 @@ const DocumentEditor = () => {
   // selecting a history entry reloads this doc at that snapshot.
   const [doc, setDoc] = useState(null);
   const [asOf, setAsOf] = useState(null);
-  // Search/concordance click-through (and anything else navigating here) can
-  // request an initial tab via router state or the ?tab= query param.
-  const [activeTab, setActiveTab] = useState(location.state?.tab ?? tabParam ?? 'metadata');
+  // The active tab lives in ?tab=, so a reload, a bookmark, and the back button
+  // all keep the tab the user was on, and a search/concordance click-through
+  // can open the document straight onto Analyze.
+  const [activeTab, setActiveTab] = useTabParam(TABS, DEFAULT_TAB);
   const [loadError, setLoadError] = useState('');
 
   const permissions = useDocumentPermissions(doc?.project);
@@ -297,21 +303,26 @@ const DocumentEditor = () => {
     };
     window.addEventListener('igt:navigate-tab', onNav);
     return () => window.removeEventListener('igt:navigate-tab', onNav);
-  }, []);
+    // Re-subscribed when the setter changes: it closes over the current query
+    // string, and a stale one would write the tab onto an outdated URL.
+  }, [setActiveTab]);
 
   // Land on Analyze when the document is already tokenized — the work surface
   // shouldn't be buried behind Metadata. Once, on the first live load only (not
   // on time-travel reloads or after the user has navigated tabs themselves).
-  const didAutoTabRef = useRef(!!(location.state?.tab || tabParam)); // explicit tab request wins over auto-tab
+  const didAutoTabRef = useRef(!!tabParam); // explicit tab request wins over auto-tab
   useEffect(() => {
     if (!doc || asOf || didAutoTabRef.current) return;
     didAutoTabRef.current = true;
     try {
-      if ((doc.sentences || []).some((s) => s.tokens.length > 0)) setActiveTab('analyze');
+      // Replace, not push: the user did not ask for this tab, so the back
+      // button should leave the document instead of undoing the landing.
+      if ((doc.sentences || []).some((s) => s.tokens.length > 0))
+        setActiveTab('analyze', { replace: true });
     } catch {
       /* derivation not ready; leave default */
     }
-  }, [doc, asOf]);
+  }, [doc, asOf, setActiveTab]);
 
   const handleOpenHistory = () => {
     history.setOpen(true);
@@ -488,8 +499,9 @@ const DocumentEditor = () => {
 
 // Key the editor by documentId so navigating between documents remounts it with
 // fresh state — otherwise the history rail (audit log / hasLoadedAudit) and the
-// time-travel asOf/activeTab would leak from the previous document (e.g. doc B
-// loading at doc A's snapshot).
+// time-travel asOf would leak from the previous document (e.g. doc B loading at
+// doc A's snapshot). The active tab is URL state now, so it resets with the
+// query string rather than with this key.
 export const DocumentDetail = () => {
   const { documentId } = useParams();
   return <DocumentEditor key={documentId} />;

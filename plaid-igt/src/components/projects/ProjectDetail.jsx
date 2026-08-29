@@ -8,10 +8,16 @@ import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { readInitialized } from '@/domain/igtConfig';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useTabParam } from '@/hooks/useTabParam';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
 const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'export', 'settings'];
+
+// The two content tabs, which ride in `?tab=` on the project page. Settings is
+// the third tab in the bar but is path-backed (see above) because its sections
+// are pages of their own.
+const CONTENT_TABS = ['documents', 'search'];
 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
@@ -83,7 +89,9 @@ export const ProjectDetail = () => {
   // Tab title: "<Section> · <Project> · Plaid IGT" on a settings section, else
   // "<Project> · Plaid IGT". Both segments are dropped while still loading.
   useDocumentTitle(onSettings ? SECTION_TITLES[pathSection] : null, project?.name);
-  const [contentTab, setContentTab] = useState('documents');
+  // Documents/Search live in `?tab=`, so a reload or a shared link reopens the
+  // tab the user was on.
+  const [contentTab, setContentTab] = useTabParam(CONTENT_TABS, 'documents');
   const activeTab = onSettings && canManage ? 'settings' : contentTab;
 
   // A non-maintainer who lands on a settings URL has nothing to manage; bounce
@@ -164,9 +172,14 @@ export const ProjectDetail = () => {
           if (v === 'settings') {
             // Enter Settings via its default section; the path drives the panel.
             navigate(`/projects/${projectId}/access`);
-          } else {
+          } else if (onSettings) {
             // Leaving Settings means dropping the section suffix from the URL.
-            if (onSettings) navigate(`/projects/${projectId}`);
+            // Path and query move together in one navigation, since a separate
+            // query update would race with this one.
+            navigate(
+              v === 'documents' ? `/projects/${projectId}` : `/projects/${projectId}?tab=${v}`,
+            );
+          } else {
             setContentTab(v);
           }
         }}

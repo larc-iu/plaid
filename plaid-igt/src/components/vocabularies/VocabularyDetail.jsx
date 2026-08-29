@@ -34,6 +34,7 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useTabParam } from '@/hooks/useTabParam';
 
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
@@ -46,7 +47,6 @@ export const VocabularyDetail = () => {
   useDocumentTitle(isNewVocabulary ? 'New Vocabulary' : vocabulary?.name);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState(isNewVocabulary ? 'settings' : 'items');
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
   // Normalized field inventory: [{name, inline, immutable}], morphType always present.
@@ -108,6 +108,16 @@ export const VocabularyDetail = () => {
     if (!user || !vocab) return false;
     return user.isAdmin || vocab.maintainers?.includes(user.id);
   };
+
+  // The tab rides in `?tab=`, so a reload or a shared link reopens the same one.
+  // Only the tabs this user actually gets are legal values, so a maintainer's
+  // link opened by a reader falls back to the item list instead of selecting a
+  // tab that isn't there. A brand new vocabulary shows the create form with no
+  // tab bar at all, so its fallback never reaches the URL.
+  const [activeTab, setActiveTab] = useTabParam(
+    canManageVocabulary() ? ['items', 'maintainers', 'settings'] : ['items'],
+    isNewVocabulary ? 'settings' : 'items',
+  );
 
   // Lightweight update function that only updates vocabulary data without loading state
   const updateVocabulary = async () => {
