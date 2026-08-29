@@ -257,7 +257,7 @@ export const DocumentList = ({
               <colgroup>
                 <col />
                 <col className="w-[88px]" />
-                <col className="w-[132px]" />
+                <col className="w-[160px]" />
               </colgroup>
               <thead className="border-b bg-muted/40">
                 <tr>
@@ -315,7 +315,10 @@ export const DocumentList = ({
                         </a>
                       </td>
                       <td className="p-0">
-                        <a href={href} className="block px-4 py-3 text-right text-muted-foreground">
+                        <a
+                          href={href}
+                          className="block whitespace-nowrap px-4 py-3 text-right text-muted-foreground"
+                        >
                           {d.timeModified ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
