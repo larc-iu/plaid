@@ -96,10 +96,16 @@ const useRun = () => {
   const [plan, setPlan] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
 
-  const run = async (label, fn) => {
+  // `reset` drops the previous plan and selection up front, so a re-run with
+  // different input never shows stale results under the progress line.
+  const run = async (label, fn, { reset = false } = {}) => {
     if (busy) return null;
     setBusy(true);
     setProgress('');
+    if (reset) {
+      setPlan(null);
+      setSelected(new Set());
+    }
     try {
       return await fn((done, total) => setProgress(`Loading document ${done} of ${total}…`));
     } catch (err) {
@@ -321,8 +327,11 @@ const RespellPanel = ({ project, projectId, client, layerInfo }) => {
 
   const preview = async () => {
     if (!find || error) return;
-    const plan = await r.run('Preview', (onProgress) =>
-      planRespell(client, project, layerInfo, { find, matchType, apply }, onProgress),
+    const plan = await r.run(
+      'Preview',
+      (onProgress) =>
+        planRespell(client, project, layerInfo, { find, matchType, apply }, onProgress),
+      { reset: true },
     );
     if (!plan) return;
     r.setPlan({ ...plan, find, repl });
@@ -502,8 +511,10 @@ const FieldPanel = ({ project, projectId, client, layerInfo }) => {
 
   const preview = async () => {
     if (!find || error || !target) return;
-    const plan = await r.run('Preview', (onProgress) =>
-      planField(client, project, target, { find, matchType, apply }, onProgress),
+    const plan = await r.run(
+      'Preview',
+      (onProgress) => planField(client, project, target, { find, matchType, apply }, onProgress),
+      { reset: true },
     );
     if (!plan) return;
     r.setPlan({ ...plan, find, repl, target });
@@ -615,8 +626,11 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
 
   const preview = async () => {
     if (!form.trim()) return;
-    const plan = await r.run('Preview', (onProgress) =>
-      planReanalyze(client, project, layerInfo, form.trim(), onProgress),
+    setTargetSig(null);
+    const plan = await r.run(
+      'Preview',
+      (onProgress) => planReanalyze(client, project, layerInfo, form.trim(), onProgress),
+      { reset: true },
     );
     if (!plan) return;
     const candidates = tallyCandidates(plan.rows);
@@ -847,8 +861,10 @@ const MergePanel = ({ project, client }) => {
 
   const preview = async () => {
     if (!survivor || losers.length === 0) return;
-    const plan = await r.run('Preview', (onProgress) =>
-      planMerge(client, project, vocabId, losers, onProgress),
+    const plan = await r.run(
+      'Preview',
+      (onProgress) => planMerge(client, project, vocabId, losers, onProgress),
+      { reset: true },
     );
     if (plan) r.setPlan(plan);
   };
