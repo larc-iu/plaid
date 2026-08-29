@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Trash2,
@@ -123,13 +123,29 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Selection + inline edit draft (NEW_ID = unsaved new item).
-  const [selectedId, setSelectedId] = useState(null);
+  // The open entry lives in `?item=` (`new` while creating one), so a reload,
+  // the back button, and a link sent to someone all land on the same entry, and
+  // each row in the list can be a real link. The inline edit draft below
+  // follows whatever the URL points at (NEW_ID = unsaved new item).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const itemParam = searchParams.get('item');
+  const selectedId = itemParam === 'new' ? NEW_ID : itemParam;
   const [editForm, setEditForm] = useState('');
   const [editFields, setEditFields] = useState({});
   // Confirm before discarding unsaved edits on a selection switch.
   const [discardOpen, setDiscardOpen] = useState(false);
-  const [pendingTarget, setPendingTarget] = useState(null); // {type:'item', item} | {type:'new'}
+  const [pendingTarget, setPendingTarget] = useState(null); // item id | NEW_ID | null
+
+  // `?item=` for one entry, keeping whatever else is on the URL (`?tab=`).
+  const itemQuery = (id) => {
+    const next = new URLSearchParams(searchParams);
+    if (id) next.set('item', id === NEW_ID ? 'new' : id);
+    else next.delete('item');
+    const q = next.toString();
+    return q ? `?${q}` : '';
+  };
+  const itemTo = (id) => ({ search: itemQuery(id) });
+  const goItem = (id, options) => setSearchParams(itemQuery(id).replace(/^\?/, ''), options);
 
   // Left-list search, pagination, usage counts, bulk add, delete confirm.
   const [search, setSearch] = useState('');
@@ -199,11 +215,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const handleImported = async () => {
     const wasDirty = dirty;
     const openId = selectedId;
+    // Let the seeding effect re-fill the draft from what came back, unless the
+    // user really does have unsaved edits, which stay theirs.
+    if (!wasDirty) seededRef.current = undefined;
     const refreshed = await fetchItems();
     if (wasDirty || !openId || openId === NEW_ID || !refreshed) return;
-    const item = refreshed.find((i) => i.id === openId);
-    if (item) selectItem(item);
-    else setSelectedId(null);
+    if (!refreshed.some((i) => i.id === openId)) goItem(null, { replace: true });
   };
 
   // One grouped aggregate query: links per item AND per token-layer role
@@ -250,30 +267,26 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabularyId]);
 
-  // Deep link to one entry: `?item=<id>` (the Analyze popover links here).
-  // Once the items are in, select it and narrow the list to its form so it is
-  // on screen; the param is consumed (dropped from the URL) so a later manual
-  // selection isn't fought by a re-render.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const linkedItemId = searchParams.get('item');
+  // The edit draft follows the selection: seed it from the entry the URL names
+  // whenever that changes (and once its data has arrived). `seededRef` records
+  // what the draft was last filled from, so a re-fetch of the SAME entry leaves
+  // the user's typing alone; the places that do want a re-seed (a save, a bulk
+  // import) clear it first.
+  const seededRef = useRef(undefined);
   useEffect(() => {
-    if (!linkedItemId || loading) return;
-    const item = items.find((i) => i.id === linkedItemId);
-    if (item) {
-      selectItem(item);
-      setSearch(item.form);
-      setPage(0);
+    if (seededRef.current === selectedId) return;
+    if (!selectedId || selectedId === NEW_ID) {
+      seededRef.current = selectedId;
+      setEditForm('');
+      setEditFields({});
+      return;
     }
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete('item');
-        return next;
-      },
-      { replace: true },
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkedItemId, loading, items]);
+    const item = items.find((i) => i.id === selectedId);
+    if (!item) return; // not loaded yet (or gone); leave the draft as it is
+    seededRef.current = selectedId;
+    setEditForm(item.form);
+    setEditFields(item.metadata || {});
+  }, [selectedId, items]);
 
   // Plan the concordance + load the first batch whenever a real item is selected.
   useEffect(() => {
@@ -366,23 +379,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     return () => window.removeEventListener('resize', measure);
   }, []);
 
-  const selectItem = (item) => {
-    setSelectedId(item.id);
-    setEditForm(item.form);
-    setEditFields(item.metadata || {});
-  };
-
-  const startNew = () => {
-    setSelectedId(NEW_ID);
-    setEditForm('');
-    setEditFields({});
-  };
-
   const cancelEdit = () => {
     if (isNew) {
-      setSelectedId(null);
-      setEditForm('');
-      setEditFields({});
+      // Replace: cancelling a draft undoes the step that opened it, so Back
+      // should not walk into the abandoned form.
+      goItem(null, { replace: true });
     } else if (selectedItem) {
       setEditForm(selectedItem.form);
       setEditFields(selectedItem.metadata || {});
@@ -395,23 +396,22 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       (editForm.trim() !== selectedItem.form ||
         !metaEqual(editFields, selectedItem.metadata || {}));
 
-  // Switching away with unsaved edits would silently discard them — confirm first.
-  const applyTarget = (target) => {
-    if (target?.type === 'new') startNew();
-    else if (target?.type === 'item') selectItem(target.item);
-  };
-  const attemptSelect = (item) => {
-    if (item.id === selectedId) return; // already open
+  // Switching away with unsaved edits would silently discard them — confirm
+  // first. The rows are links, so this only intercepts the plain click that
+  // would lose the draft: a modified click opens a new browser tab and leaves
+  // this one (draft and all) exactly as it was.
+  const isModifiedClick = (e) => e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
+  const guardSelect = (e, id) => {
+    if (isModifiedClick(e)) return;
+    if (id === selectedId) {
+      e.preventDefault(); // already open
+      return;
+    }
     if (dirty) {
-      setPendingTarget({ type: 'item', item });
+      e.preventDefault();
+      setPendingTarget(id);
       setDiscardOpen(true);
-    } else selectItem(item);
-  };
-  const attemptNew = () => {
-    if (dirty) {
-      setPendingTarget({ type: 'new' });
-      setDiscardOpen(true);
-    } else startNew();
+    }
   };
 
   const handleSave = async () => {
@@ -428,12 +428,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
           Object.keys(metadata).length ? metadata : undefined,
         );
         await fetchItems();
-        if (created?.id) {
-          setSelectedId(created.id);
-          setEditForm(editForm.trim());
-        } else {
-          setSelectedId(null);
-        }
+        // Replace: the `?item=new` step becomes the entry it created, so Back
+        // does not return to an empty form for an entry that now exists.
+        goItem(created?.id || null, { replace: true });
+        if (created?.id) setEditForm(editForm.trim());
         notifySuccess('Vocabulary item created successfully', 'Success');
       } else {
         const item = selectedItem;
@@ -460,9 +458,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     try {
       await client.vocabItems.delete(selectedItem.id);
       setDeleteOpen(false);
-      setSelectedId(null);
-      setEditForm('');
-      setEditFields({});
+      goItem(null, { replace: true });
       await fetchItems();
       notifySuccess('Vocabulary item deleted successfully', 'Success');
     } catch (err) {
@@ -523,6 +519,32 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = 0;
   }, [currentPage]);
+
+  // Keep the selected entry findable in the list: whenever the selection moves
+  // to one that is not on the page being shown (a link from the Analyze
+  // popover, a URL someone sent, a reload, the back button), turn to its page
+  // and scroll it into view. The list itself is left alone — filtering it down
+  // to the one entry would throw away the context a reader arrived to browse —
+  // and a row that is already on screen is never nudged, so clicking through
+  // the list keeps it still. Declared after the scroll-to-top above so it runs
+  // after it in the same commit; a layout effect would be undone by that reset.
+  const positionedRef = useRef(null);
+  useEffect(() => {
+    if (!selectedId || selectedId === NEW_ID || positionedRef.current === selectedId) return;
+    const index = filteredItems.findIndex((i) => i.id === selectedId);
+    if (index < 0) return; // not loaded yet, or the search box has it filtered out
+    const wanted = Math.floor(index / PAGE_SIZE);
+    if (currentPage !== wanted) {
+      setPage(wanted);
+      return; // scroll once the right page has rendered
+    }
+    positionedRef.current = selectedId;
+    const row = listRef.current?.querySelector('[data-selected="true"]');
+    const pane = listRef.current?.getBoundingClientRect();
+    if (!row || !pane) return;
+    const r = row.getBoundingClientRect();
+    if (r.top < pane.top || r.bottom > pane.bottom) row.scrollIntoView({ block: 'center' });
+  }, [selectedId, filteredItems, currentPage]);
 
   const listCols = hasGloss
     ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]'
@@ -599,8 +621,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
               </span>
             </span>
             {canManage && (
-              <Button size="sm" className="h-7" onClick={attemptNew}>
-                <Plus className="h-3.5 w-3.5" /> New
+              <Button size="sm" className="h-7" asChild>
+                <Link to={itemTo(NEW_ID)} onClick={(e) => guardSelect(e, NEW_ID)}>
+                  <Plus className="h-3.5 w-3.5" /> New
+                </Link>
               </Button>
             )}
           </div>
@@ -639,11 +663,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
             <ul className="divide-y">
               {pageItems.map((item) => (
                 <li key={item.id}>
-                  <button
-                    type="button"
-                    onClick={() => attemptSelect(item)}
+                  <Link
+                    to={itemTo(item.id)}
+                    onClick={(e) => guardSelect(e, item.id)}
+                    data-selected={selectedId === item.id || undefined}
                     className={cn(
-                      'grid w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/40',
+                      'grid w-full items-center gap-2 px-3 py-2 text-left text-sm no-underline hover:bg-accent/40',
                       listCols,
                       selectedId === item.id && 'bg-accent/60',
                     )}
@@ -661,7 +686,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                     <span className="text-right text-xs tabular-nums text-muted-foreground">
                       {usageCounts ? (usageCounts[item.id] ?? 0) : ''}
                     </span>
-                  </button>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -1012,7 +1037,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
-                applyTarget(pendingTarget);
+                goItem(pendingTarget);
                 setDiscardOpen(false);
                 setPendingTarget(null);
               }}
