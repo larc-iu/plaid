@@ -875,7 +875,7 @@ const EntryDetail = ({ item, fields }) => {
       String(v)
     );
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+    <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-0.5 text-sm">
       {fields.map((f) => (
         <Fragment key={f.name}>
           <dt className="text-xs text-muted-foreground">{humanizeFieldName(f.name)}</dt>
@@ -1064,9 +1064,9 @@ const MergePanel = ({ project, client }) => {
 
       {items && (
         <div className="rounded-lg border bg-card">
-          <div className="grid grid-cols-[auto_auto_1fr] items-center gap-x-3 border-b bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
-            <span>Merge</span>
-            <span>Keep</span>
+          <div className="grid grid-cols-[3.5rem_3rem_1fr] items-center border-b bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+            <span className="text-center">Merge</span>
+            <span className="text-center">Keep</span>
             <span>Entry</span>
           </div>
           <div className="divide-y">
@@ -1077,11 +1077,15 @@ const MergePanel = ({ project, client }) => {
                 <div
                   key={it.id}
                   className={cn(
-                    'grid grid-cols-[auto_auto_1fr] items-center gap-x-3 px-3 py-1.5 text-sm',
+                    'grid grid-cols-[3.5rem_3rem_1fr] items-center px-3 py-1.5 text-sm',
                     on && 'bg-muted/30',
                   )}
                 >
-                  <Checkbox checked={on} onChange={(v) => pick(it.id, v)} />
+                  <Checkbox
+                    checked={on}
+                    onChange={(v) => pick(it.id, v)}
+                    className="h-4 w-4 cursor-pointer justify-self-center accent-primary"
+                  />
                   <input
                     type="radio"
                     name="bulk-survivor"
@@ -1091,7 +1095,7 @@ const MergePanel = ({ project, client }) => {
                       setSurvivor(it.id);
                       r.setPlan(null);
                     }}
-                    className="accent-primary disabled:opacity-30"
+                    className="justify-self-center accent-primary disabled:opacity-30"
                     title="Keep this entry"
                   />
                   <span className="min-w-0 truncate">
