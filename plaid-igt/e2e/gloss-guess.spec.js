@@ -1,14 +1,20 @@
 import PlaidClient, { ROLES, cpLength, stampInferred } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 
-// TEST_PLAN A1: gloss guesses are placeholder suggestions from the document's
-// own frequencies. They are written ONLY on Enter (born verified, with
+// TEST_PLAN A1: gloss guesses are placeholder suggestions from precedent (this
+// document and the rest of the project). They are written ONLY on Enter (born verified, with
 // provenance); Tab, blur and typing over them never write the guess.
 // Throwaway document in the "E2E IGT Fixture" project, deleted afterwards.
 
 const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
-const BODY = 'los los los los mesa';
+// Guesses draw on precedent across the WHOLE project, and the fixture project
+// is shared with other specs, so every form here is unique to this run.
+const NONCE = Date.now().toString(36);
+const LOS = `los${NONCE}`;
+const MESA = `mesa${NONCE}`;
+const SOL = `sol${NONCE}`;
+const BODY = `${LOS} ${LOS} ${LOS} ${LOS} ${MESA}`;
 
 let client;
 let projectId;
@@ -143,7 +149,7 @@ test('A1-01/02: a guessed cell is a placeholder; Enter adopts it born-verified a
   const span = (await glossSpans()).find((s) => s.tokens[0] === ids.m[1]);
   expect(span?.value).toBe('DET.PL');
   expect(span?.metadata?.prov).toBe('inferred');
-  expect(span?.metadata?.provSource).toMatch(/doc-frequency/);
+  expect(span?.metadata?.provSource).toBe('gloss:precedent');
   expect(span?.metadata?.provConfirmed).toBe(true);
 });
 
@@ -199,7 +205,7 @@ test('A1-10: word-scope fields guess the same way', async ({ page }) => {
 test('A1-06/09: Escape leaves a guessed cell empty; Shift+Enter adopts and moves back', async ({
   page,
 }) => {
-  const d = await mkdoc('los los los');
+  const d = await mkdoc(`${LOS} ${LOS} ${LOS}`);
   await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${d.id}?tab=analyze`);
@@ -225,7 +231,7 @@ test('A1-06/09: Escape leaves a guessed cell empty; Shift+Enter adopts and moves
 });
 
 test('A1-07: a tie yields no guess; breaking the tie brings it back', async ({ page }) => {
-  const d = await mkdoc('los los los los');
+  const d = await mkdoc(`${LOS} ${LOS} ${LOS} ${LOS}`);
   await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
   await client.spans.create(ids.gloss, [d.m[1]], 'the.PL');
   await seedAuth(page);
@@ -246,7 +252,7 @@ test('A1-07: a tie yields no guess; breaking the tie brings it back', async ({ p
 test('A1-11: a guess is offered even when its only source is machine-unverified', async ({
   page,
 }) => {
-  const d = await mkdoc('sol sol');
+  const d = await mkdoc(`${SOL} ${SOL}`);
   await client.spans.create(ids.gloss, [d.m[0]], 'SUN', stampInferred('service:test'));
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${d.id}?tab=analyze`);

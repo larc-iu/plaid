@@ -21,6 +21,7 @@
 
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { isTokenIgnored } from './igtConfig.js';
+import { pickMajority } from './precedent.js';
 
 export const ANALYSIS_COPY_SOURCE = 'rule:analysis-precedent';
 
@@ -186,19 +187,14 @@ export function mergeTallies(...tallies) {
 export function buildAnalysisTable(tally) {
   const table = new Map();
   for (const [form, bySig] of tally) {
-    let best = null;
-    let bestN = 0;
-    let second = 0;
-    for (const entry of bySig.values()) {
-      if (entry.count > bestN) {
-        second = bestN;
-        best = entry.analysis;
-        bestN = entry.count;
-      } else if (entry.count > second) second = entry.count;
-    }
+    const counts = new Map();
+    for (const [sig, entry] of bySig) counts.set(sig, entry.count);
+    const sig = pickMajority(counts);
     table.set(
       form,
-      bestN > second ? { analysis: best, contested: false } : { analysis: null, contested: true },
+      sig
+        ? { analysis: bySig.get(sig).analysis, contested: false }
+        : { analysis: null, contested: true },
     );
   }
   return table;

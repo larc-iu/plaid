@@ -36,16 +36,20 @@ import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { rankVocabItems } from '@/domain/vocabRank';
 import {
   KINDS,
-  precedentQueries,
-  tallyPrecedent,
-  tallyDocumentLinks,
+  SLOT_LINK,
+  linkPrecedentQueries,
+  valuePrecedentQueries,
+  createTally,
+  foldProject,
+  foldDocument,
   precedentCounts,
-} from '@/domain/autoLink';
+  precedentForm,
+} from '@/domain/precedent';
 import { humanizeError } from '@/utils/feedback';
 
 // Stable empty precedent results, so the tally memo does not rebuild on every
-// render while the project query is still in flight.
-const NO_PRECEDENT = Object.freeze([]);
+// render while the project queries are still in flight.
+const NO_PRECEDENT = Object.freeze({ links: [], values: [] });
 
 // ---- uncontrolledValue: set input.value only when the input is NOT focused.
 // Keeps programmatic changes (split/merge form rewrites, reloads) reflected
@@ -1411,16 +1415,21 @@ export class IgtEditor {
     this._runKeepingFocus(el, next, () => this.doc.updateMorphemeForm(morphId, next));
   }
 
-  // The gloss-guess source scans the WHOLE document (doc-frequency), so build
-  // it once per data version and reuse across the many non-data re-renders
-  // (popover open/keystroke, paging, help toggle…). Mirrors _homonymIndexFor.
-  // Rebuilds if the pluggable factory is swapped (e.g. a service-backed source).
+  // The gloss-guess source reads the precedent tally (project + this
+  // document), which is itself memoized per data version and project fetch;
+  // rebuild the source only when that tally object changes, so the many
+  // non-data re-renders (popover open/keystroke, paging, help toggle…) reuse
+  // it. Rebuilds if the pluggable factory is swapped (e.g. a service-backed
+  // source).
   _guessSource(sentences, wordFields, morphFields) {
-    const dv = this.doc.dataVersion;
-    if (this._guessCacheVersion !== dv || this._guessCacheFactory !== this.guessSourceFactory) {
-      this._guessCacheVersion = dv;
+    const precedent = this._precedentTally();
+    if (
+      this._guessCacheTally !== precedent ||
+      this._guessCacheFactory !== this.guessSourceFactory
+    ) {
+      this._guessCacheTally = precedent;
       this._guessCacheFactory = this.guessSourceFactory;
-      this._guessCache = this.guessSourceFactory(sentences, { wordFields, morphFields });
+      this._guessCache = this.guessSourceFactory({ precedent, sentences, wordFields, morphFields });
     }
     return this._guessCache;
   }
@@ -1476,8 +1485,10 @@ export class IgtEditor {
     this._ignoredCfg = ignoredCfg; // the popover trims a new entry's form by it
 
     // Gloss guesses (pluggable — see domain/glossGuess.js; assign
-    // this.guessSourceFactory to swap the algorithm). Rebuilt per data render;
+    // this.guessSourceFactory to swap the algorithm). They read project
+    // precedent, fetched once per document (re-rendering when it lands);
     // null in read-only mode so historical views never show suggestions.
+    if (!this.readOnly) this._ensurePrecedent();
     const guess = this.readOnly ? null : this._guessSource(sentences, wordFields, morphFields);
 
     const ctx = {
@@ -2182,9 +2193,14 @@ export class IgtEditor {
                 apply: (v, meta) => this.doc.updateTokenSpan(token.id, name, v, meta),
                 ariaLabel: `${name} for ${token.content}`,
                 guess:
-                  ctx.guess?.guessFor('word', token.content, name, {
-                    vocabItem: token.vocabItem,
-                  }) ?? null,
+                  ctx.guess?.guessFor(
+                    'word',
+                    this._precedentForm(token.content, KINDS.WORD),
+                    name,
+                    {
+                      vocabItem: token.vocabItem,
+                    },
+                  ) ?? null,
                 prov: provDisplay(token.annotations?.[name]?.metadata),
                 confirmWord: token.id,
               })}
@@ -2403,34 +2419,47 @@ export class IgtEditor {
     return this._homonymCache.get(vocabId);
   }
 
-  // Precedent behind the popover's ranking (see vocabRank.js): the project-
-  // wide link tally, fetched once per document + vocab set with THIS document
-  // left out, plus this document's own links tallied live from the derived
-  // sentences, so a link made a moment ago already counts and nothing is
-  // counted twice. Until the query answers, rows rank on the document's own
-  // links; the popover re-renders when it lands. A failed query ranks by
-  // form only (the popover still works).
+  // Precedent (domain/precedent.js) behind the popover's ranking and the
+  // gloss guesses: the project-wide link and annotation-value tallies,
+  // fetched once per document with THIS document left out, plus this
+  // document's own links and values folded live from the derived sentences,
+  // so a decision made a moment ago already counts and nothing is counted
+  // twice. Until the queries answer, everything ranks on the document alone;
+  // the island re-renders when they land. A failed fetch keeps it that way
+  // (popover and guesses still work).
   _ensurePrecedent() {
-    const vocabIds = Object.keys(this.doc?.vocabularies || {}).sort();
-    const key = `${this.doc?.id}|${vocabIds.join(',')}`;
+    const doc = this.doc;
+    const vocabIds = Object.keys(doc?.vocabularies || {}).sort();
+    const valueQueries = doc?.layerInfo
+      ? valuePrecedentQueries(doc.layerInfo, { excludeDocId: doc.id })
+      : [];
+    const key = `${doc?.id}|${vocabIds.join(',')}|${valueQueries
+      .map((q) => q.query.where[0][2].layer)
+      .join(',')}`;
     if (this._precedent?.key === key) return;
     const state = { key, results: null };
     this._precedent = state;
-    if (!vocabIds.length || !this.doc?.client) return;
-    Promise.all(
-      precedentQueries(vocabIds, { excludeDocId: this.doc.id }).map((q) =>
-        this.doc.client.query(q),
+    if (!doc?.client || (!vocabIds.length && !valueQueries.length)) return;
+    const client = doc.client;
+    Promise.all([
+      Promise.all(
+        linkPrecedentQueries(vocabIds, { excludeDocId: doc.id }).map((q) => client.query(q)),
       ),
-    )
-      .then((results) => {
-        state.results = results;
+      Promise.all(
+        valueQueries.map(({ kind, field, query }) =>
+          client.query(query).then((results) => ({ kind, field, results })),
+        ),
+      ),
+    ])
+      .then(([links, values]) => {
+        state.results = { links, values };
       })
       .catch((err) => {
-        console.warn('Lexicon precedent unavailable; ranking by form only:', err);
-        state.results = [];
+        console.warn('Project precedent unavailable; using this document only:', err);
+        state.results = NO_PRECEDENT;
       })
       .finally(() => {
-        if (this._precedent === state && this._popover) this._render(true);
+        if (this._precedent === state) this._render(true);
       });
   }
 
@@ -2439,8 +2468,13 @@ export class IgtEditor {
     const dv = this.doc?.dataVersion;
     const memo = this._precedentMemo;
     if (!memo || memo.results !== results || memo.dv !== dv) {
-      const tally = tallyPrecedent(results, this._ignoredCfg);
-      tallyDocumentLinks(this.doc?.sentences, this._ignoredCfg, tally);
+      const info = this.doc?.layerInfo;
+      const tally = foldProject(createTally(), results, this._ignoredCfg);
+      foldDocument(tally, this.doc?.sentences, {
+        wordFields: (info?.spanLayers?.word || []).map((l) => l.name),
+        morphFields: (info?.spanLayers?.morpheme || []).map((l) => l.name),
+        ignoredCfg: this._ignoredCfg,
+      });
       this._precedentMemo = { results, dv, tally };
     }
     return this._precedentMemo.tally;
@@ -2450,9 +2484,7 @@ export class IgtEditor {
   // ignore rule (as the auto-linker and "+ Create" do), a morpheme form is
   // taken verbatim.
   _precedentForm(formText, kind) {
-    return kind === KINDS.WORD
-      ? trimIgnoredEdges(formText || '', this._ignoredCfg)
-      : formText || '';
+    return precedentForm(formText, kind, this._ignoredCfg);
   }
 
   _homonymSub(vocabItem) {
@@ -2506,7 +2538,7 @@ export class IgtEditor {
       {
         form: formText || '',
         search,
-        precedent: precedentCounts(this._precedentTally(), precForm, kind),
+        precedent: precedentCounts(this._precedentTally(), kind, precForm, SLOT_LINK),
       },
     );
     if (currentItem) {

@@ -14,6 +14,9 @@
 //   not an affix. Such entries are skipped at every tier for word tokens.
 //   Case: exact form first, then a casefolded fallback (sentence-initial
 //   capitals are everywhere in word tokens).
+// The precedent itself is the shared tally in precedent.js (the same numbers
+// the popover ranks by and the gloss guess reads); this file is only the
+// resolution policy over it.
 // Links are created with { prov: 'inferred', provSource } and NO provConfirmed
 // — a human confirms by touching the link (popover), which patches
 // provConfirmed: true.
@@ -29,16 +32,13 @@
 // that produces [{ tokenId, vocabItemId }] proposals (including a service-
 // backed provider) can feed IgtDocument.bulkLinkVocab the same way.
 
-import { PROV_STATES, ROLES } from '@larc-iu/plaid-client';
+import { PROV_STATES } from '@larc-iu/plaid-client';
 
 import { trimIgnoredEdges } from './igtConfig.js';
 import { isBoundType } from './affixMarkers.js';
+import { KINDS, SLOT_LINK, precedentCounts, pickMajority } from './precedent.js';
 
 export const AUTO_LINK_SOURCE = 'rule:precedent-or-unique';
-
-// The two kinds of token a link can hang off. Values are the token layers'
-// shared `config.plaid.role`, which is what the precedent query groups by.
-export const KINDS = Object.freeze({ WORD: ROLES.WORD, MORPHEME: ROLES.MORPHEME });
 
 const morphFormOf = (m) => {
   const meta = m?.metadata;
@@ -46,136 +46,11 @@ const morphFormOf = (m) => {
   return m?.content ?? '';
 };
 
-// One precedent query per vocab: how often each (form, item) pairing has been
-// linked, project-wide, split by the kind of token that carries the link. Row
-// shape: [itemId, tokenValue, morphForm, role, count] — the form is morphForm
-// for morpheme tokens (their value is just the parent word's slice), tokenValue
-// otherwise; the role is the token layer's shared `config.plaid.role`.
-// `excludeDocId` leaves one document out, for a caller that tallies that
-// document's links live from its own derived state (tallyDocumentLinks) and
-// must not count them twice.
-export function precedentQueries(vocabIds, { excludeDocId = null } = {}) {
-  return vocabIds.map((vid) => ({
-    where: [
-      ['vocab', '?v', { layer: vid }],
-      ['vocab-link', '?t', '?v'],
-      ['token', '?t', { layer: '?tl' }],
-      ['token-layer', '?tl', {}],
-      ...(excludeDocId ? [['!=', '?t.doc', excludeDocId]] : []),
-    ],
-    return: {
-      group: ['?v', '?t.value', '?t.metadata.form', '?tl.config.plaid.role'],
-      aggregates: [['count']],
-    },
-  }));
-}
-
-// Pick the most-linked item out of itemId -> count. A tie on count breaks to
-// the lexicographically smallest item id — ties are rare; pick one
-// deterministically rather than skip.
-function majority(counts) {
-  let best = null;
-  let bestN = -1;
-  for (const [id, n] of counts) {
-    if (n > bestN || (n === bestN && id < best)) {
-      best = id;
-      bestN = n;
-    }
-  }
-  return best;
-}
-
-// A precedent tally: form -> { any: Map<itemId, n>, [kind]: Map<itemId, n> },
-// how many links each item has received from tokens with that form, overall
-// and per kind of linking token (a kind is absent when no token of that kind
-// ever linked the form).
-const addTally = (tally, form, itemId, kind, n) => {
-  if (!form) return;
-  let entry = tally.get(form);
-  if (!entry) tally.set(form, (entry = { any: new Map() }));
-  const id = String(itemId);
-  entry.any.set(id, (entry.any.get(id) || 0) + n);
-  if (kind === KINDS.WORD || kind === KINDS.MORPHEME) {
-    if (!entry[kind]) entry[kind] = new Map();
-    entry[kind].set(id, (entry[kind].get(id) || 0) + n);
-  }
-};
-
-// Fold precedent query rows (precedentQueries) into `tally`. `ignoredCfg`
-// (the word layer's ignored-tokens config) trims edge punctuation off WORD
-// values the same way the popover's "+ Create" does, so `derechos.` and
-// `derechos` pool their precedent (morpheme forms are never trimmed).
-export function tallyPrecedent(resultsPerVocab, ignoredCfg = null, tally = new Map()) {
-  for (const res of resultsPerVocab) {
-    for (const [itemId, value, morphForm, role, n] of res?.results || []) {
-      const form =
-        morphForm != null && morphForm !== ''
-          ? String(morphForm)
-          : trimIgnoredEdges((value ?? '').toString(), ignoredCfg);
-      addTally(tally, form, itemId, role, n);
-    }
-  }
-  return tally;
-}
-
-// Fold a derived document's own single-token links (derive.js sentences) into
-// `tally`, one per linked word or morpheme, keyed the same way as the query
-// rows. Pairs with `precedentQueries(..., { excludeDocId })`: the project
-// tally is fetched once with the open document left out, and this keeps the
-// document's share exact as links come and go without refetching.
-export function tallyDocumentLinks(sentences, ignoredCfg = null, tally = new Map()) {
-  for (const s of sentences || []) {
-    for (const t of s.tokens || []) {
-      if (t.vocabItem) {
-        addTally(
-          tally,
-          trimIgnoredEdges(t.content ?? '', ignoredCfg),
-          t.vocabItem.id,
-          KINDS.WORD,
-          1,
-        );
-      }
-      for (const m of t.morphemes || []) {
-        if (m.vocabItem) addTally(tally, morphFormOf(m), m.vocabItem.id, KINDS.MORPHEME, 1);
-      }
-    }
-  }
-  return tally;
-}
-
-// What a form's entry says to a token of `kind`: the same-kind slot when any
-// token of that kind linked the form, else the overall slot.
-const byKind = (entry, kind) => entry[kind] ?? entry.any ?? null;
-
-// The link counts behind `form` as seen by a token of `kind` (itemId -> n),
-// or null when the form has no precedent at all.
-export function precedentCounts(tally, form, kind) {
-  const entry = tally?.get(form);
-  return entry ? byKind(entry, kind) : null;
-}
-
-// Merge precedent rows into form -> { any, word, morpheme }: the most-linked
-// (form, item) pairing across the project overall and per kind of linking
-// token. See tallyPrecedent for the form keying.
-export function buildPrecedentTable(resultsPerVocab, ignoredCfg = null) {
-  const tally = tallyPrecedent(resultsPerVocab, ignoredCfg);
-  const table = new Map();
-  for (const [form, entry] of tally) {
-    const out = { any: majority(entry.any) };
-    for (const kind of Object.values(KINDS)) {
-      if (entry[kind]) out[kind] = majority(entry[kind]);
-    }
-    if (out.any != null) table.set(form, out);
-  }
-  return table;
-}
-
-// The precedent for `form` as seen by a token of `kind`: what tokens of that
-// kind linked it before, else what any token did.
-const precedentFor = (table, form, kind) => {
-  const entry = table.get(form);
-  return entry ? byKind(entry, kind) : null;
-};
+// The precedent for `form` as seen by a token of `kind`: the most-linked item
+// among what tokens of that kind linked before, else among what any token
+// did; a count tie breaks to the smallest id.
+const precedentFor = (tally, form, kind) =>
+  pickMajority(precedentCounts(tally, kind, form, SLOT_LINK), { tieBreak: 'smallest' });
 
 // form -> [itemIds] over the loaded vocab tables (exact), plus a casefolded
 // variant for the fallback tier, plus the set of bound-form item ids (affix
@@ -203,9 +78,9 @@ export function buildItemIndex(vocabularies) {
 
 // Resolution tiers, first hit wins: exact precedent (same kind, then any) >
 // exact item > casefolded precedent > casefolded item. Among multiple items
-// sharing a form, the lexicographically smallest id is taken (precedent ties
-// are already broken in buildPrecedentTable). A word token sees no bound-form
-// entry at any tier. Returns null only when nothing matches at any tier.
+// sharing a form, the lexicographically smallest id is taken. A word token
+// sees no bound-form entry at any tier. Returns null only when nothing
+// matches at any tier.
 const smallestId = (ids) => (ids && ids.length ? ids.reduce((a, b) => (b < a ? b : a)) : null);
 function resolveForm(form, kind, precedent, items) {
   const ok = (id) => (id && !(kind === KINDS.WORD && items.bound.has(id)) ? id : null);
@@ -235,7 +110,7 @@ function linkTarget(entity) {
 // The built-in proposal provider: every word/morpheme open to linking whose
 // form resolves to an item the rule would set. A form that resolves to the
 // current (machine) link is a no-op and skipped; a protected or unresolvable
-// link yields no proposal.
+// link yields no proposal. `precedent` is a precedent.js tally.
 //
 // MORPHEMES ARE RESOLVED FIRST: a single-morpheme word IS its morpheme, so
 // when the morpheme carries or just received a link the word gets none (one
@@ -244,7 +119,7 @@ function linkTarget(entity) {
 export function computeAutoLinkProposals({
   sentences,
   vocabularies,
-  precedentTable,
+  precedent,
   ignoredCfg = null,
 }) {
   const items = buildItemIndex(vocabularies);
@@ -252,7 +127,7 @@ export function computeAutoLinkProposals({
   const consider = (entity, form, kind) => {
     const { open, currentItemId } = linkTarget(entity);
     if (!open) return;
-    const itemId = resolveForm(form ?? '', kind, precedentTable, items);
+    const itemId = resolveForm(form ?? '', kind, precedent, items);
     if (!itemId || itemId === currentItemId) return;
     proposals.push({ tokenId: entity.id, vocabItemId: itemId, form, kind });
   };

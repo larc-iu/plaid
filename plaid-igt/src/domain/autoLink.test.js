@@ -1,61 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import {
-  buildPrecedentTable,
-  buildItemIndex,
-  computeAutoLinkProposals,
-  precedentQueries,
-  tallyPrecedent,
-  tallyDocumentLinks,
-  precedentCounts,
-} from './autoLink.js';
+import { buildItemIndex, computeAutoLinkProposals } from './autoLink.js';
+import { createTally, foldLinkRows } from './precedent.js';
 
 const res = (rows) => ({ results: rows });
-
-describe('buildPrecedentTable', () => {
-  it('uses morphForm over token value and takes the majority item', () => {
-    const t = buildPrecedentTable([
-      res([
-        ['item-a', 'perros', null, 'word', 3], // word token: form = value
-        ['item-a', 'whole', 's', 'morpheme', 4], // morpheme token: form = metadata.form
-        ['item-b', 'whole', 's', 'morpheme', 2], // minority for "s"
-      ]),
-    ]);
-    expect(t.get('perros').any).toBe('item-a');
-    expect(t.get('s').any).toBe('item-a'); // 4 > 2
-  });
-
-  it('breaks count ties to the lexicographically smaller id', () => {
-    const t = buildPrecedentTable([
-      res([
-        ['item-b', null, 'la', 'morpheme', 2],
-        ['item-a', null, 'la', 'morpheme', 2],
-      ]),
-    ]);
-    expect(t.get('la').any).toBe('item-a'); // tie -> 'item-a' < 'item-b'
-  });
-
-  it('merges counts across vocabs', () => {
-    const t = buildPrecedentTable([
-      res([['item-a', null, 'se', 'morpheme', 1]]),
-      res([
-        ['item-a', null, 'se', 'morpheme', 2],
-        ['item-b', null, 'se', 'morpheme', 2],
-      ]),
-    ]);
-    expect(t.get('se').any).toBe('item-a'); // 3 > 2
-  });
-
-  it('keeps a per-kind majority next to the overall one', () => {
-    const t = buildPrecedentTable([
-      res([
-        ['item-w', 'se', null, 'word', 5],
-        ['item-m', 'whole', 'se', 'morpheme', 2],
-        ['item-x', 'se', null, 'other-app', 9], // another app's layer: overall only
-      ]),
-    ]);
-    expect(t.get('se')).toEqual({ any: 'item-x', word: 'item-w', morpheme: 'item-m' });
-  });
-});
+// Project link precedent as the auto-link phase builds it.
+const precedentOf = (...results) => foldLinkRows(createTally(), results);
 
 const VOCABS = {
   v1: {
@@ -79,7 +28,7 @@ const morph = (id, form, vocabItem = null) => ({ id, metadata: { form }, vocabIt
 
 describe('computeAutoLinkProposals', () => {
   it('links via precedent, item match, and casefold — breaking ties to the smaller id, skipping human-linked', () => {
-    const precedentTable = buildPrecedentTable([res([['i-prec', null, 'nac', 'morpheme', 2]])]);
+    const precedent = precedentOf(res([['i-prec', null, 'nac', 'morpheme', 2]]));
     const sentences = sentence([
       word('w1', 'Todos'), // casefold item match -> i-all
       word('w2', 'se'), // two items share 'se' -> smaller id i-se1
@@ -90,7 +39,7 @@ describe('computeAutoLinkProposals', () => {
         morph('m2', 'todos'), // exact item match -> i-all
       ]),
     ]);
-    const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedentTable });
+    const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedent });
     // Morphemes resolve first; the same item may be linked from a word and a
     // morpheme (w1 and m2 both take 'i-all').
     expect(proposals).toEqual([
@@ -102,96 +51,33 @@ describe('computeAutoLinkProposals', () => {
   });
 
   it('replaces a machine-unverified link when the rule resolves a different item; leaves same-item and protected links', () => {
-    const precedentTable = buildPrecedentTable([res([['i-all', null, 'todos', 'word', 5]])]);
+    const precedent = precedentOf(res([['i-all', null, 'todos', 'word', 5]]));
     const sentences = sentence([
       word('w1', 'todos', { id: 'i-se1', prov: 'machine' }), // machine, rule says i-all -> replace
       word('w2', 'todos', { id: 'i-all', prov: 'machine' }), // machine, already i-all -> no-op
       word('w3', 'todos', { id: 'i-se1', prov: 'human' }), // human/verified -> protected, skip
     ]);
-    const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedentTable });
+    const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedent });
     expect(proposals).toEqual([
       { tokenId: 'w1', vocabItemId: 'i-all', form: 'todos', kind: 'word' },
     ]);
   });
 
   it('a precedent tie breaks to the lexicographically smaller item id', () => {
-    const precedentTable = buildPrecedentTable([
+    const precedent = precedentOf(
       res([
         ['i-se1', null, 'todos', 'word', 1],
         ['i-all', null, 'todos', 'word', 1],
       ]),
-    ]);
+    );
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'todos')]),
       vocabularies: VOCABS,
-      precedentTable,
+      precedent,
     });
     expect(proposals).toEqual([
       { tokenId: 'w1', vocabItemId: 'i-all', form: 'todos', kind: 'word' }, // 'i-all' < 'i-se1'
     ]);
-  });
-});
-
-describe('precedentQueries', () => {
-  it('emits one grouped query per vocab', () => {
-    const qs = precedentQueries(['v1', 'v2']);
-    expect(qs).toHaveLength(2);
-    expect(qs[0].return.group).toEqual([
-      '?v',
-      '?t.value',
-      '?t.metadata.form',
-      '?tl.config.plaid.role',
-    ]);
-    expect(qs[0].where.some((c) => c[0] === '!=')).toBe(false);
-  });
-
-  it('can leave one document out', () => {
-    const [q] = precedentQueries(['v1'], { excludeDocId: 'doc-1' });
-    expect(q.where).toContainEqual(['!=', '?t.doc', 'doc-1']);
-  });
-});
-
-describe('tallyPrecedent + tallyDocumentLinks + precedentCounts', () => {
-  const sentences = [
-    {
-      tokens: [
-        { id: 'w1', content: 'perros.', vocabItem: { id: 'item-a' }, morphemes: [] },
-        {
-          id: 'w2',
-          content: 'whole',
-          vocabItem: null,
-          morphemes: [
-            { id: 'm1', content: 'whol', metadata: {}, vocabItem: null },
-            { id: 'm2', content: 'e', metadata: { form: 's' }, vocabItem: { id: 'item-b' } },
-          ],
-        },
-      ],
-    },
-  ];
-  const ignored = { type: 'unicodePunctuation', whitelist: [] };
-
-  it("folds a document's own links onto the query rows, keyed like the rows", () => {
-    const tally = tallyPrecedent([res([['item-a', 'perros', null, 'word', 3]])], ignored);
-    tallyDocumentLinks(sentences, ignored, tally);
-    expect(precedentCounts(tally, 'perros', 'word')).toEqual(new Map([['item-a', 4]]));
-    expect(precedentCounts(tally, 's', 'morpheme')).toEqual(new Map([['item-b', 1]]));
-  });
-
-  it('a kind with no precedent of its own sees what any kind did; an unknown form sees null', () => {
-    const tally = tallyDocumentLinks(sentences, ignored);
-    expect(precedentCounts(tally, 's', 'word')).toEqual(new Map([['item-b', 1]]));
-    expect(precedentCounts(tally, 'nope', 'word')).toBeNull();
-  });
-
-  it('a form linked by both kinds answers each kind with its own counts', () => {
-    const tally = tallyPrecedent([
-      res([
-        ['item-a', 'la', null, 'word', 5],
-        ['item-b', null, 'la', 'morpheme', 2],
-      ]),
-    ]);
-    expect(precedentCounts(tally, 'la', 'word')).toEqual(new Map([['item-a', 5]]));
-    expect(precedentCounts(tally, 'la', 'morpheme')).toEqual(new Map([['item-b', 2]]));
   });
 });
 
@@ -213,31 +99,16 @@ describe('auto-link trims edge punctuation off word forms by the ignore rule', (
     const withCfg = computeAutoLinkProposals({
       sentences,
       vocabularies,
-      precedentTable: new Map(),
+      precedent: createTally(),
       ignoredCfg: cfg,
     });
     expect(withCfg.map((p) => [p.tokenId, p.vocabItemId])).toEqual([['w1', 'i-der']]);
     const without = computeAutoLinkProposals({
       sentences,
       vocabularies,
-      precedentTable: new Map(),
+      precedent: createTally(),
     });
     expect(without).toEqual([]);
-  });
-  it('pools precedent for `derechos.` and `derechos` under the trimmed form', () => {
-    const table = buildPrecedentTable(
-      [
-        {
-          results: [
-            ['i-a', 'derechos.', null, 'word', 2],
-            ['i-b', 'derechos', null, 'word', 1],
-          ],
-        },
-      ],
-      cfg,
-    );
-    expect(table.get('derechos').any).toBe('i-a');
-    expect(table.has('derechos.')).toBe(false);
   });
 });
 
@@ -253,7 +124,7 @@ describe('a word never auto-links to a bound form', () => {
     },
   };
   it('skips affix and clitic entries for word tokens at every tier, morphemes still take them', () => {
-    const precedentTable = buildPrecedentTable([res([['i-s-affix', 's', null, 'word', 4]])]);
+    const precedent = precedentOf(res([['i-s-affix', 's', null, 'word', 4]]));
     const proposals = computeAutoLinkProposals({
       sentences: sentence([
         word('w1', 's'),
@@ -261,7 +132,7 @@ describe('a word never auto-links to a bound form', () => {
         word('w3', 'whole', null, [morph('m1', 's'), morph('m2', 'le')]),
       ]),
       vocabularies: vocabs,
-      precedentTable,
+      precedent,
     });
     expect(proposals.map((p) => [p.tokenId, p.vocabItemId])).toEqual([
       ['m1', 'i-s-affix'], // smallest id among the two `s` entries
@@ -274,16 +145,16 @@ describe('a word never auto-links to a bound form', () => {
 
 describe('same-kind precedent ranks homonyms; an entry may serve both kinds', () => {
   it('a word follows what words linked, a morpheme what morphemes linked', () => {
-    const precedentTable = buildPrecedentTable([
+    const precedent = precedentOf(
       res([
         ['i-se2', 'se', null, 'word', 3],
         ['i-se1', 'whole', 'se', 'morpheme', 9],
       ]),
-    ]);
+    );
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'se'), word('w2', 'whole', null, [morph('m1', 'se')])]),
       vocabularies: VOCABS,
-      precedentTable,
+      precedent,
     });
     expect(proposals).toEqual([
       { tokenId: 'm1', vocabItemId: 'i-se1', form: 'se', kind: 'morpheme' },
@@ -291,19 +162,19 @@ describe('same-kind precedent ranks homonyms; an entry may serve both kinds', ()
     ]);
   });
   it('falls back to precedent of any kind, then to the smallest-id homonym', () => {
-    const fromMorphemes = buildPrecedentTable([res([['i-se2', 'whole', 'se', 'morpheme', 9]])]);
+    const fromMorphemes = precedentOf(res([['i-se2', 'whole', 'se', 'morpheme', 9]]));
     expect(
       computeAutoLinkProposals({
         sentences: sentence([word('w1', 'se')]),
         vocabularies: VOCABS,
-        precedentTable: fromMorphemes,
+        precedent: fromMorphemes,
       }),
     ).toEqual([{ tokenId: 'w1', vocabItemId: 'i-se2', form: 'se', kind: 'word' }]);
     expect(
       computeAutoLinkProposals({
         sentences: sentence([word('w1', 'se')]),
         vocabularies: VOCABS,
-        precedentTable: new Map(),
+        precedent: createTally(),
       }),
     ).toEqual([{ tokenId: 'w1', vocabItemId: 'i-se1', form: 'se', kind: 'word' }]);
   });
@@ -311,7 +182,7 @@ describe('same-kind precedent ranks homonyms; an entry may serve both kinds', ()
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'todos', null, [morph('m1', 'todos')])]),
       vocabularies: VOCABS,
-      precedentTable: new Map(),
+      precedent: createTally(),
     });
     expect(proposals).toEqual([
       { tokenId: 'm1', vocabItemId: 'i-all', form: 'todos', kind: 'morpheme' },
@@ -320,7 +191,7 @@ describe('same-kind precedent ranks homonyms; an entry may serve both kinds', ()
     const linked = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'se', null, [morph('m1', 'se', { id: 'i-se2' })])]),
       vocabularies: VOCABS,
-      precedentTable: new Map(),
+      precedent: createTally(),
     });
     expect(linked).toEqual([]);
   });
@@ -328,7 +199,7 @@ describe('same-kind precedent ranks homonyms; an entry may serve both kinds', ()
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'todos', null, [morph('m1', 'todos'), morph('m2', 'se')])]),
       vocabularies: VOCABS,
-      precedentTable: new Map(),
+      precedent: createTally(),
     });
     expect(proposals.map((p) => [p.tokenId, p.vocabItemId])).toEqual([
       ['m1', 'i-all'],

@@ -26,12 +26,8 @@ import {
   wordFormDocIndexQuery,
   rankSourceDocs,
 } from './analysisMemory.js';
-import {
-  AUTO_LINK_SOURCE,
-  precedentQueries,
-  buildPrecedentTable,
-  computeAutoLinkProposals,
-} from './autoLink.js';
+import { AUTO_LINK_SOURCE, computeAutoLinkProposals } from './autoLink.js';
+import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js';
 
 const MAX_SOURCE_DOCS = 25;
 
@@ -123,13 +119,14 @@ async function remoteTalliesFor(doc, wordLayerId, forms) {
 async function runLinkPhase(doc) {
   const vocabIds = Object.keys(doc.vocabularies || {});
   if (!vocabIds.length) return 0;
-  const results = await Promise.all(precedentQueries(vocabIds).map((q) => doc.client.query(q)));
+  const results = await Promise.all(linkPrecedentQueries(vocabIds).map((q) => doc.client.query(q)));
   const ignoredCfg = readIgnoredTokens(doc.layerInfo.primaryTokenLayer?.config);
-  const precedentTable = buildPrecedentTable(results, ignoredCfg);
+  // The query covers the open document too, so nothing is folded from it.
+  const precedent = foldLinkRows(createTally(), results, ignoredCfg);
   const proposals = computeAutoLinkProposals({
     sentences: doc.sentences,
     vocabularies: doc.vocabularies,
-    precedentTable,
+    precedent,
     ignoredCfg,
   });
   if (!proposals.length) return 0;

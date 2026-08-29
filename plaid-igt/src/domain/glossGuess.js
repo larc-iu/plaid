@@ -1,62 +1,37 @@
-// Pluggable gloss-guess sources for the interlinear editor. A guess source is
-// built from the derived document and answers guessFor(kind, form, field, ctx)
-// with { value, source } or null; `ctx` carries the token's derived
-// `vocabItem` (null when unlinked). The editor renders guesses as
+// Pluggable gloss-guess sources for the interlinear editor. A guess source
+// answers guessFor(kind, form, field, ctx) with { value, source } or null;
+// `form` is the token's precedent form (precedent.js: a word trimmed by the
+// ignore rule, a morpheme's form verbatim) and `ctx` carries the token's
+// derived `vocabItem` (null when unlinked). The editor renders guesses as
 // placeholder-style suggestions; a guess is only ever WRITTEN when the user
 // confirms it, and the written span carries born-verified provenance metadata
 // (the editor stamps confirmedInferred(source) from the shared provenance
 // helpers).
 //
 // The built-in default (defaultGuessSource) asks the linked lexicon entry
-// first, then the document's own frequencies. To plug in a different
-// algorithm (or a service-backed one), assign a factory with the same shape
-// to IgtEditor.guessSourceFactory: (sentences, fields) => ({ id, guessFor }).
+// first, then project precedent. To plug in a different algorithm (or a
+// service-backed one), assign a factory with the same shape to
+// IgtEditor.guessSourceFactory:
+//   ({ precedent, sentences, wordFields, morphFields }) => ({ id, guessFor })
+// where `precedent` is the precedent.js tally the editor maintains.
 
-const keyOf = (kind, form, field) => `${kind}\u0000${form}\u0000${field}`;
-const morphFormOf = (m) => {
-  const meta = m?.metadata;
-  if (meta && Object.prototype.hasOwnProperty.call(meta, 'form')) return meta.form ?? '';
-  return m?.content ?? '';
-};
+import { precedentCounts, pickMajority } from './precedent.js';
 
-// Built-in provider: most-frequent value for (kind, form, field) across the
-// current document; ties produce NO guess (ambiguous forms stay blank rather
-// than guessing wrong half the time).
-export function docFrequencyGuessSource(sentences, { wordFields = [], morphFields = [] } = {}) {
-  const counts = new Map(); // key -> Map<value, n>
-  const bump = (kind, form, field, value) => {
-    if (!form || !value) return;
-    const k = keyOf(kind, form, field);
-    let m = counts.get(k);
-    if (!m) counts.set(k, (m = new Map()));
-    m.set(value, (m.get(value) || 0) + 1);
-  };
+export const PRECEDENT_SOURCE = 'gloss:precedent';
 
-  for (const s of sentences || []) {
-    for (const t of s.tokens || []) {
-      for (const f of wordFields) bump('word', t.content, f, t.annotations?.[f]?.value);
-      for (const m of t.morphemes || []) {
-        for (const f of morphFields) bump('morpheme', morphFormOf(m), f, m.annotations?.[f]?.value);
-      }
-    }
-  }
-
+// Built-in provider: the value this form was given before for this field,
+// project-wide, when one value holds a strict majority. Ties produce NO
+// guess (ambiguous forms stay blank rather than guessing wrong half the
+// time). Machine-unverified values DO count (ruling A1-11): a guess is only
+// a placeholder, and adopting it is a human act, so there is no cascade to
+// guard against (see the policy note in precedent.js).
+export function precedentGuessSource(precedent) {
   return {
-    id: 'gloss:doc-frequency',
+    id: PRECEDENT_SOURCE,
     guessFor(kind, form, field) {
-      const m = counts.get(keyOf(kind, form, field));
-      if (!m) return null;
-      let best = null;
-      let bestN = 0;
-      let tie = false;
-      for (const [v, n] of m) {
-        if (n > bestN) {
-          best = v;
-          bestN = n;
-          tie = false;
-        } else if (n === bestN) tie = true;
-      }
-      return !tie && best ? { value: best, source: 'gloss:doc-frequency' } : null;
+      const counts = precedentCounts(precedent, kind, form, field);
+      const value = pickMajority(counts);
+      return value ? { value, source: PRECEDENT_SOURCE } : null;
     },
   };
 }
@@ -109,8 +84,7 @@ export function composeGuessSources(sources) {
   };
 }
 
-// The editor's default: the linked entry, then same-form frequency in the
-// document.
-export function defaultGuessSource(sentences, fields) {
-  return composeGuessSources([vocabEntryGuessSource(), docFrequencyGuessSource(sentences, fields)]);
+// The editor's default: the linked entry, then project precedent.
+export function defaultGuessSource({ precedent }) {
+  return composeGuessSources([vocabEntryGuessSource(), precedentGuessSource(precedent)]);
 }
