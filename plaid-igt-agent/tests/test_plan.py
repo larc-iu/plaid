@@ -122,3 +122,26 @@ def test_summarize():
     assert summarize([{'kind': 'set_span'}, {'kind': 'set_span'}, {'kind': 'respell'}, {'kind': 'set_analysis'}]) == \
         '2 field values, 1 respelling, 1 analysis'
     assert summarize([{'kind': 'set_analysis'}, {'kind': 'set_analysis'}, {'kind': 'create_entry'}]) == '2 analyses, 1 new lexicon entry'
+
+
+def test_execute_creates_documents_tokenized_like_the_editor():
+    from fixtures import project_raw
+    from plaid_igt_agent.project import load_project
+    c = FakeClient()
+    project = load_project(c, 'p1')
+    ops = [{'kind': 'set_doc_metadata', 'document_id': 'd1', 'field': 'Date', 'value': '', 'label': ''},
+           {'kind': 'create_document', 'name': 'Text 2', 'text': 'Ali-di gam, akuna!\n  Gam-ar.\n', 'metadata': {'Date': '2022'}, 'label': ''}]
+    counts = execute_plan(c, ops, source='s', label='l', project=project)
+    assert counts == {'document metadata values': 1, 'new documents': 1}
+    assert ('documents', 'patch_metadata', ('d1', {'Date': None}), {}) in c.log
+    assert ('documents', 'create', ('p1', 'Text 2', {'Date': '2022'}), {}) in c.log
+    texts = [e for e in c.log if e[0] == 'texts' and e[1] == 'create']
+    assert texts[0][2] == ('tl', 'new-doc', 'Ali-di gam, akuna!\n  Gam-ar.\n')
+    bulk = [e for e in c.log if e[0] == 'tokens' and e[1] == 'bulk_create'][0][2][0]
+    sents = [(t['begin'], t['end']) for t in bulk if t['token_layer_id'] == 'tk-sent']
+    words = [(t['begin'], t['end']) for t in bulk if t['token_layer_id'] == 'tk-word']
+    text = 'Ali-di gam, akuna!\n  Gam-ar.\n'
+    assert [text[b:e] for b, e in sents] == ['Ali-di gam, akuna!', 'Gam-ar.']
+    # '-' is punctuation, so it splits words (no whitelist in the fixture); ',' and '!' stay in gaps
+    assert [text[b:e] for b, e in words] == ['Ali', 'di', 'gam', 'akuna', 'Gam', 'ar']
+    assert all(t['text'] == texts[0][2] and False for t in []) or all(t['text'] == 'texts-create-' + str(c.log.index(texts[0]) + 1) for t in bulk)

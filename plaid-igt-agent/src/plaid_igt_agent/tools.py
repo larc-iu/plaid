@@ -18,9 +18,11 @@ import uuid
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
+import unicodedata
+
 from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, load_document, resolve,
                       render_document, render_overview, render_sentence, render_word,
-                      segmentation, word_ref)
+                      segmentation, joiner, word_ref)
 
 MAX_RESULT_CHARS = 12000
 MAX_DOCS_PER_SEARCH = 200
@@ -150,7 +152,7 @@ def entry_line(it: dict) -> str:
     if meta.get('morphType'):
         parts.append(f'type={meta["morphType"]}')
     for k, v in meta.items():
-        if k in ('morphType',) or k.startswith('prov') or v in (None, '', [], {}):
+        if k in ('morphType',) or k.startswith('prov') or k.startswith('flex') or v in (None, '', [], {}):
             continue
         if isinstance(v, (list, dict)):
             v = json.dumps(v, ensure_ascii=False)
@@ -175,6 +177,71 @@ def _matcher(pattern: str, regex: bool):
         return lambda s: bool(rx.search(s or ''))
     p = (pattern or '').casefold()
     return lambda s: p in (s or '').casefold()
+
+
+def _is_break_char(c: str, cfg) -> bool:
+    """Does this character end a word (mirrors shouldTokenizeCharacter)?
+    Unicode punctuation, or any ASCII symbol, unless whitelisted; or, under a
+    blacklist config, exactly the listed characters."""
+    cat = unicodedata.category(c)
+    punct = cat.startswith('P') or (ord(c) < 128 and cat.startswith('S'))
+    if not cfg:
+        return punct
+    if cfg.get('type') == 'unicodePunctuation':
+        return punct and c not in (cfg.get('whitelist') or [])
+    if cfg.get('type') == 'blacklist':
+        return c in (cfg.get('blacklist') or [])
+    return punct
+
+
+def split_sentences(text: str) -> List[tuple]:
+    """(begin, end) code-point ranges, one sentence per line (newline plus
+    following whitespace is the boundary), as the editor does."""
+    out = []
+    i, n = 0, len(text)
+    start = 0
+    while i <= n:
+        if i == n or text[i] == '\n':
+            if text[start:i].strip():
+                out.append((start, i))
+            i += 1
+            while i < n and text[i].isspace():
+                i += 1
+            start = i
+        else:
+            i += 1
+    return out
+
+
+def split_words(text: str, begin: int, end: int, cfg) -> List[tuple]:
+    """(begin, end) word ranges inside one sentence: whitespace and break
+    characters separate words; break characters are not tokens (they stay in
+    the gap), as in the editor."""
+    out = []
+    i = begin
+    cur = begin
+    while i < end:
+        c = text[i]
+        if c.isspace() or _is_break_char(c, cfg):
+            if i > cur and text[cur:i].strip():
+                out.append(_trimmed(text, cur, i))
+            i += 1
+            while i < end and text[i].isspace():
+                i += 1
+            cur = i
+        else:
+            i += 1
+    if cur < end and text[cur:end].strip():
+        out.append(_trimmed(text, cur, end))
+    return out
+
+
+def _trimmed(text, b, e):
+    while b < e and text[b].isspace():
+        b += 1
+    while e > b and text[e - 1].isspace():
+        e -= 1
+    return (b, e)
 
 
 def _truncate(s: str) -> str:
@@ -352,6 +419,310 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
     return _truncate('\n'.join(lines))
 
 
+def _bracket_line(w: Word, hit: Morpheme, field: Optional[str]) -> str:
+    """The word's segmentation (field=None) or one morpheme field's values,
+    joined as in the interlinear view, with the hit morpheme in [brackets]."""
+    out = ''
+    for i, m in enumerate(w.morphemes):
+        if i:
+            out += joiner(w.morphemes[i - 1].morph_type, m.morph_type)
+        if field is None:
+            piece = m.form
+        else:
+            sp = m.fields.get(field)
+            piece = sp.value if sp and sp.value != '' else '_'
+        out += f'[{piece}]' if m is hit else piece
+    return out
+
+
+def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document: Optional[str] = None,
+                  regex: bool = False, limit: int = 60) -> str:
+    """Every occurrence of a morpheme form, word form, or field value with
+    its aligned context: the containing word's segmentation and morpheme
+    glosses (hit in brackets) and the neighbouring words, plus a tally of the
+    distinct word patterns the hit occurs in. Built for morphotactic
+    questions (what precedes/follows X, does X vary by context)."""
+    if not pattern:
+        raise ToolError('Give a pattern.')
+    # Whole-form match by default (a concordance of "ar" must not include
+    # "para"); regex for anything looser.
+    if regex:
+        match = _matcher(pattern, True)
+    else:
+        key = pattern.casefold()
+        match = lambda s: (s or '').casefold() == key  # noqa: E731
+    limit = max(1, min(int(limit or 60), 300))
+    where_l = (where or 'morpheme').lower()
+    field = None
+    if where_l not in ('baseline', 'morpheme'):
+        field = ws.project.field(where)
+        if field.scope == 'Sentence':
+            raise ToolError('concordance works on words and morphemes; use search for sentence fields')
+    mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
+    docs = [ws.doc(document)] if document else ws.all_docs()
+    hits: List[str] = []
+    patterns: Counter = Counter()
+    total = 0
+    for doc in docs:
+        tag = f'"{doc.name}" ' if len(docs) > 1 else ''
+        for s in doc.sentences:
+            for wi, w in enumerate(s.words):
+                hit_morphs: List[Morpheme] = []
+                if where_l == 'baseline':
+                    if not match(w.surface):
+                        continue
+                elif where_l == 'morpheme':
+                    hit_morphs = [m for m in w.morphemes if match(m.form)]
+                    if not hit_morphs:
+                        continue
+                elif field.scope == 'Word':
+                    sp = w.fields.get(field.name)
+                    if not (sp and match(sp.value)):
+                        continue
+                else:
+                    hit_morphs = [m for m in w.morphemes
+                                  if field.name in m.fields and match(m.fields[field.name].value)]
+                    if not hit_morphs:
+                        continue
+                prev = s.words[wi - 1].surface if wi > 0 else '#'
+                nxt = s.words[wi + 1].surface if wi + 1 < len(s.words) else '#'
+                for hit in (hit_morphs or [None]):
+                    total += 1
+                    seg = _bracket_line(w, hit, None) if w.morphemes else w.surface
+                    glosses = ' | '.join(f'{f}={_bracket_line(w, hit, f)}' for f in mfields
+                                         if any(f in m.fields for m in w.morphemes))
+                    key = seg if hit is None else f'{seg}' + (f'  {glosses}' if glosses else '')
+                    patterns[key] += 1
+                    if len(hits) < limit:
+                        wf = ' | '.join(f'{f.name}={w.fields[f.name].value}' for f in ws.project.fields_by_scope('Word')
+                                        if f.name in w.fields and w.fields[f.name].value != '')
+                        hits.append(f'{tag}{word_ref(s, w)} {prev} [{w.surface}] {nxt} | seg={seg}'
+                                    + (f' | {glosses}' if glosses else '') + (f' | {wf}' if wf else '')
+                                    + f' || {s.text}')
+    if not total:
+        return f'No occurrences of "{pattern}".'
+    lines = [f'{total} occurrence{"s" if total != 1 else ""} of "{pattern}" in {where_l if not field else field.name}'
+             + (f' (showing {limit})' if total > limit else '') + '.',
+             'Word patterns (hit in [brackets]), by frequency:']
+    for key, n in patterns.most_common(25):
+        lines.append(f'  {n}\t{key}')
+    if len(patterns) > 25:
+        lines.append(f'  ... {len(patterns) - 25} more patterns')
+    lines.append('Occurrences (previous [word] next | segmentation | morpheme fields || sentence):')
+    lines.extend('  ' + h for h in hits)
+    return _truncate('\n'.join(lines))
+
+
+def t_analyses_of(ws: Workspace, form: str, document: Optional[str] = None) -> str:
+    """How a word form and/or a morpheme form has been analyzed so far: the
+    distinct analyses with counts and an example reference each. The same
+    evidence the editor's precedent ranking uses."""
+    form = (form or '').strip()
+    if not form:
+        raise ToolError('Give a form.')
+    key = form.casefold()
+    docs = [ws.doc(document)] if document else ws.all_docs()
+    mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
+    wfields = [f.name for f in ws.project.fields_by_scope('Word')]
+    word_tally: Dict[str, List[str]] = {}
+    morph_tally: Dict[str, List[str]] = {}
+    for doc in docs:
+        tag = f'"{doc.name}" ' if len(docs) > 1 else ''
+        for s in doc.sentences:
+            for w in s.words:
+                ref = f'{tag}{word_ref(s, w)}'
+                if w.surface.casefold() == key:
+                    parts = []
+                    seg = segmentation(w)
+                    if len(w.morphemes) > 1 or (w.morphemes and seg != w.surface):
+                        parts.append('seg=' + seg)
+                        for f in mfields:
+                            line = _bracket_line(w, None, f)
+                            if line.replace('_', '').replace('-', '').replace('=', ''):
+                                parts.append(f'{f}={line}')
+                        types = [m.morph_type for m in w.morphemes if m.morph_type]
+                        if types:
+                            parts.append('types=' + ','.join(m.morph_type or '?' for m in w.morphemes))
+                    for f in wfields:
+                        sp = w.fields.get(f)
+                        if sp and sp.value != '':
+                            parts.append(f'{f}={sp.value}')
+                    if w.link:
+                        parts.append(f'link={w.link.form}')
+                    mlinks = [f'm{m.index}:{m.link.form}' for m in w.morphemes if m.link]
+                    if mlinks:
+                        parts.append('mlinks=' + ' '.join(mlinks))
+                    word_tally.setdefault(' | '.join(parts) or '(unanalyzed)', []).append(ref)
+                for m in w.morphemes:
+                    if m.form.casefold() == key:
+                        parts = []
+                        if m.morph_type:
+                            parts.append(f'type={m.morph_type}')
+                        for f in mfields:
+                            sp = m.fields.get(f)
+                            if sp and sp.value != '':
+                                parts.append(f'{f}={sp.value}')
+                        if m.link:
+                            parts.append(f'link={m.link.form}')
+                        pos = 'only' if len(w.morphemes) == 1 else ('first' if m.index == 1 else
+                                                                   'last' if m.index == len(w.morphemes) else 'middle')
+                        morph_tally.setdefault((' | '.join(parts) or '(unglossed)') + f'  [{pos} in word]', []
+                                               ).append(f'{ref}.m{m.index} ({segmentation(w)})')
+    lines = []
+    for title, tally in ((f'Word "{form}"', word_tally), (f'Morpheme "{form}"', morph_tally)):
+        if not tally:
+            lines.append(f'{title}: no occurrences.')
+            continue
+        n = sum(len(v) for v in tally.values())
+        lines.append(f'{title}: {n} occurrence{"s" if n != 1 else ""}, {len(tally)} distinct analys{"es" if len(tally) != 1 else "is"}:')
+        for analysis, refs in sorted(tally.items(), key=lambda kv: -len(kv[1])):
+            lines.append(f'  {len(refs)}\t{analysis}  e.g. {", ".join(refs[:3])}')
+    return _truncate('\n'.join(lines))
+
+
+def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
+                    entry_id: Optional[str] = None, examples: int = 3) -> str:
+    """One lexicon entry in full: every field, where it is linked (words vs
+    morphemes, how many), and example occurrences."""
+    kind, target = ws.find_entry(entry_form, lexicon, entry_id)
+    if kind == 'new':
+        e = ws.new_entries[target]
+        return f'Entry "{e["form"]}" is new in this plan (not written yet): ' + entry_line({'form': e['form'], 'metadata': e['metadata']})
+    meta = target.get('metadata') or {}
+    lines = [f'Entry "{target.get("form")}" (id {target["id"]})']
+    for k, v in meta.items():
+        if k.startswith('prov') or k.startswith('flex') or v in (None, '', [], {}):
+            continue
+        lines.append(f'  {k}: {json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v}')
+    word_links, morph_links, exs = 0, 0, []
+    examples = max(0, min(int(examples or 3), 20))
+    for doc in ws.all_docs():
+        tag = f'"{doc.name}" ' if True else ''
+        for s in doc.sentences:
+            for w in s.words:
+                hit = False
+                if w.link and w.link.item_id == target['id']:
+                    word_links += 1
+                    hit = True
+                for m in w.morphemes:
+                    if m.link and m.link.item_id == target['id']:
+                        morph_links += 1
+                        hit = True
+                if hit and len(exs) < examples:
+                    exs.append(f'  {tag}{word_ref(s, w)} {render_word(w, ws.project)[len(w.ref) + 1:]} || {s.text}')
+    lines.append(f'Linked from {word_links} word{"s" if word_links != 1 else ""} and {morph_links} morpheme{"s" if morph_links != 1 else ""}.')
+    if exs:
+        lines.append('Examples:')
+        lines.extend(exs)
+    return _truncate('\n'.join(lines))
+
+
+def _norm_value(v: str) -> str:
+    v = unicodedata.normalize('NFKC', v or '').casefold()
+    return ''.join(ch for ch in v if ch.isalnum())
+
+
+def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = None) -> str:
+    """A deterministic consistency report for one field: values that are
+    spelling/case variants of each other, forms carrying several different
+    values, and items annotated in this field but not linked to the lexicon
+    (or linked but empty)."""
+    f = ws.project.field(field)
+    docs = [ws.doc(document)] if document else ws.all_docs()
+    values: Counter = Counter()
+    by_form: Dict[str, Counter] = {}
+    unlinked: List[str] = []
+    unlinked_n = 0
+    linked_empty: List[str] = []
+    linked_empty_n = 0
+    for doc in docs:
+        tag = f'"{doc.name}" ' if len(docs) > 1 else ''
+        for s in doc.sentences:
+            if f.scope == 'Sentence':
+                sp = s.fields.get(f.name)
+                if sp and sp.value != '':
+                    values[sp.value] += 1
+                continue
+            for w in s.words:
+                units = [(w, w.surface, f'{tag}{word_ref(s, w)}')] if f.scope == 'Word' else \
+                    [(m, m.form, f'{tag}{word_ref(s, w)}.m{m.index}') for m in w.morphemes]
+                for u, form, ref in units:
+                    sp = u.fields.get(f.name)
+                    val = sp.value if sp else ''
+                    if val != '':
+                        values[val] += 1
+                        by_form.setdefault(form.casefold(), Counter())[val] += 1
+                        if not u.link:
+                            unlinked_n += 1
+                            if len(unlinked) < 15:
+                                unlinked.append(f'{ref} {form} ({val})')
+                    elif u.link:
+                        linked_empty_n += 1
+                        if len(linked_empty) < 15:
+                            linked_empty.append(f'{ref} {form} → {u.link.form}')
+    lines = [f'Consistency of {f.name} ({f.scope} field): {sum(values.values())} values, {len(values)} distinct.']
+    groups: Dict[str, List[str]] = {}
+    for v in values:
+        groups.setdefault(_norm_value(v), []).append(v)
+    variants = [g for g in groups.values() if len(g) > 1]
+    if variants:
+        lines.append(f'{len(variants)} value{"s" if len(variants) != 1 else ""} spelled more than one way:')
+        for g in sorted(variants, key=lambda g: -sum(values[v] for v in g))[:40]:
+            lines.append('  ' + ' / '.join(f'{v} ({values[v]})' for v in sorted(g, key=lambda v: -values[v])))
+    else:
+        lines.append('No spelling or case variants among values.')
+    if f.scope != 'Sentence':
+        multi = {form: c for form, c in by_form.items() if len(c) > 1}
+        if multi:
+            lines.append(f'{len(multi)} {"morpheme" if f.scope == "Morpheme" else "word"} form{"s" if len(multi) != 1 else ""} with several {f.name} values (homonymy or inconsistency):')
+            for form, c in sorted(multi.items(), key=lambda kv: -sum(kv[1].values()))[:40]:
+                lines.append(f'  {form}: ' + ', '.join(f'{v} ({n})' for v, n in c.most_common()))
+        else:
+            lines.append(f'Every form carries a single {f.name} value.')
+        if ws.project.vocabs:
+            lines.append(f'{unlinked_n} annotated but not linked to the lexicon'
+                         + (': ' + '; '.join(unlinked) + (' …' if unlinked_n > len(unlinked) else '') if unlinked else '.'))
+            lines.append(f'{linked_empty_n} linked but with no {f.name} value'
+                         + (': ' + '; '.join(linked_empty) + (' …' if linked_empty_n > len(linked_empty) else '') if linked_empty else '.'))
+    return _truncate('\n'.join(lines))
+
+
+def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: int = 20) -> str:
+    """The newest entries of the audit log: who changed what, when, under
+    which operation label (the assistant's own applied plans included)."""
+    limit = max(1, min(int(limit or 20), 100))
+    ws.on_progress('Reading the change history…')
+    if document:
+        did = ws.resolve_document_id(document)
+        entries = ws.client.documents.audit(did)
+    else:
+        entries = ws.client.projects.audit(ws.project.id)
+    entries = sorted(entries or [], key=lambda e: e.get('time') or '', reverse=True)[:limit]
+    if not entries:
+        return 'No changes recorded.'
+    lines = [f'{len(entries)} most recent change{"s" if len(entries) != 1 else ""} (newest first):']
+    for e in entries:
+        who = (e.get('user') or {}).get('display_name') or (e.get('user') or {}).get('id') or '?'
+        when = (e.get('time') or '')[:16].replace('T', ' ')
+        ops = e.get('ops') or []
+        kinds: Counter = Counter(o.get('type') for o in ops)
+        what = e.get('message') or (ops[0].get('description') if len(ops) == 1 and ops else
+                                    ', '.join(f'{n}× {k}' for k, n in kinds.most_common(4)))
+        docs = ', '.join(f'"{d.get("name")}"' for d in (e.get('documents') or [])[:3])
+        lines.append(f'  {when}  {who}: {what}' + (f'  [{docs}]' if docs else '') + (f'  ({len(ops)} ops)' if len(ops) > 1 else ''))
+    return _truncate('\n'.join(lines))
+
+
+def t_plan_status(ws: Workspace) -> str:
+    if not ws.ops:
+        return 'The plan is empty.'
+    lines = [f'{len(ws.ops)} planned change{"s" if len(ws.ops) != 1 else ""} (nothing written yet):']
+    lines.extend(f'  {i + 1}. {op["label"]}' for i, op in enumerate(ws.ops[:200]))
+    if len(ws.ops) > 200:
+        lines.append(f'  ... {len(ws.ops) - 200} more')
+    return '\n'.join(lines)
+
+
 # --- write tools (plan only) ---------------------------------------------------
 
 def _need(obj, kind, ref):
@@ -516,6 +887,45 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
     return ws.planned_note(1)
 
 
+def t_set_document_metadata(ws: Workspace, document: str, field: str, value: str) -> str:
+    names = ws.project.document_metadata
+    name = next((n for n in names if n.lower() == (field or '').lower()), None)
+    if not name:
+        raise ToolError(f'No document metadata field "{field}". Fields: ' + (', '.join(names) or '(none configured)'))
+    doc = ws.doc(document)
+    old = doc.metadata.get(name, '')
+    value = '' if value is None else str(value)
+    if (old or '') == value:
+        return ws.planned_note(0)
+    ws.add_op({'kind': 'set_doc_metadata', 'document_id': doc.id, 'field': name, 'value': value,
+               'label': f'{doc.name}: {name} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"')})
+    return ws.planned_note(1)
+
+
+def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[dict] = None) -> str:
+    """PLAN: a new document from raw text. One sentence per line; words are
+    split on whitespace and punctuation the way the editor's tokenizer does."""
+    name = (name or '').strip()
+    if not name:
+        raise ToolError('name must not be empty')
+    if any((d.get('name') or '') == name for d in ws.documents()):
+        raise ToolError(f'A document named "{name}" already exists.')
+    text = (text or '').replace('\r\n', '\n')
+    if not text.strip():
+        raise ToolError('text must not be empty')
+    meta = {}
+    for k, v in (metadata or {}).items():
+        n = next((x for x in ws.project.document_metadata if x.lower() == k.lower()), None)
+        if not n:
+            raise ToolError(f'No document metadata field "{k}". Fields: ' + (', '.join(ws.project.document_metadata) or '(none)'))
+        meta[n] = '' if v is None else str(v)
+    sents = split_sentences(text)
+    words = sum(len(split_words(text, b, e, ws.project.ignored_cfg)) for b, e in sents)
+    ws.add_op({'kind': 'create_document', 'name': name, 'text': text, 'metadata': meta,
+               'label': f'New document "{name}": {len(sents)} sentence{"s" if len(sents) != 1 else ""}, {words} words'})
+    return ws.planned_note(1) + f' ({len(sents)} sentences, {words} words will be tokenized.)'
+
+
 def t_discard_plan(ws: Workspace) -> str:
     n = len(ws.ops)
     ws.ops.clear()
@@ -613,6 +1023,44 @@ TOOLS = [
         {'field': {'type': 'string'}, 'value': {'type': 'string'}, 'entry_form': {'type': 'string'},
          'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'}},
         ['field', 'value']),
+    _fn('concordance',
+        'Every occurrence of a morpheme form (default), word form, or field value (whole-form match, case-insensitive; '
+        'regex=true for partial matches), with aligned context: the '
+        'word\'s segmentation and morpheme glosses with the hit in [brackets], the neighbouring words, and a '
+        'tally of the distinct word patterns the hit appears in. Use this for morphotactic and distributional '
+        'questions (what precedes/follows X, does X vary by context) instead of reading whole documents.',
+        {'pattern': {'type': 'string'},
+         'where': {'type': 'string', 'description': '"morpheme" (default), "baseline" (word forms), or a Word/Morpheme field name.'},
+         'document': _DOC, 'regex': {'type': 'boolean'},
+         'limit': {'type': 'integer', 'description': 'Max occurrences to list (default 60); the pattern tally always covers all.'}},
+        ['pattern']),
+    _fn('analyses_of',
+        'How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, '
+        'glosses, link, position in the word): each distinct analysis with its count and example references. '
+        'Check this before proposing an analysis, and follow the majority unless there is reason not to.',
+        {'form': {'type': 'string'}, 'document': _DOC}, ['form']),
+    _fn('lexicon_entry',
+        'One lexicon entry in full: all its fields, how many words and morphemes link to it, and example occurrences.',
+        {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},
+         'examples': {'type': 'integer', 'description': 'Example occurrences to show (default 3).'}},
+        []),
+    _fn('check_consistency',
+        'A consistency report for a field: values that are case/spelling variants of one another, forms that carry '
+        'several different values, and items annotated but not linked to the lexicon (or linked but empty).',
+        {'field': {'type': 'string'}, 'document': _DOC}, ['field']),
+    _fn('recent_changes',
+        'The newest entries of the change history: who changed what and when, including plans this assistant applied.',
+        {'document': _DOC, 'limit': {'type': 'integer', 'description': 'Entries to show (default 20, max 100).'}}, []),
+    _fn('plan_status', 'List the changes planned so far in this turn.', {}, []),
+    _fn('set_document_metadata',
+        'PLAN: set one of the project\'s document metadata fields (see project_overview) on a document.',
+        {'document': _DOC, 'field': {'type': 'string'}, 'value': {'type': 'string'}}, ['document', 'field', 'value']),
+    _fn('create_document',
+        'PLAN: create a new document from raw text, one sentence per line; words are tokenized like the editor does. '
+        'metadata maps document metadata field names to values.',
+        {'name': {'type': 'string'}, 'text': {'type': 'string'},
+         'metadata': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
+        ['name', 'text']),
     _fn('discard_plan', 'Drop every change planned so far in this turn.', {}, []),
 ]
 
@@ -622,10 +1070,13 @@ _IMPL = {
     'set_field': t_set_field, 'set_analysis': t_set_analysis, 'set_orthography': t_set_orthography,
     'respell': t_respell, 'link_entry': t_link_entry, 'unlink_entry': t_unlink_entry,
     'create_entry': t_create_entry, 'set_entry_field': t_set_entry_field, 'discard_plan': t_discard_plan,
+    'concordance': t_concordance, 'analyses_of': t_analyses_of, 'lexicon_entry': t_lexicon_entry,
+    'check_consistency': t_check_consistency, 'recent_changes': t_recent_changes, 'plan_status': t_plan_status,
+    'set_document_metadata': t_set_document_metadata, 'create_document': t_create_document,
 }
 
 WRITE_TOOLS = {'set_field', 'set_analysis', 'set_orthography', 'respell', 'link_entry', 'unlink_entry',
-               'create_entry', 'set_entry_field'}
+               'create_entry', 'set_entry_field', 'set_document_metadata', 'create_document'}
 
 
 def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:

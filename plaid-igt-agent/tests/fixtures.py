@@ -105,6 +105,13 @@ class FakeClient:
         self._project = project or project_raw()
         self._documents = documents or {'d1': document_raw()}
         self._lexicon = lexicon or lexicon_raw()
+        self.audit = [
+            {'id': 'g1', 'time': '2026-08-29T18:51:47Z', 'user': {'id': 'a@b.com', 'display_name': 'Luke G'},
+             'message': 'Assistant: 2 field values', 'documents': [{'id': 'd1', 'name': 'Text 1'}],
+             'ops': [{'type': 'span/create', 'description': 'Create span'}, {'type': 'span/update', 'description': 'Update span'}]},
+            {'id': 'o2', 'time': '2026-08-28T10:00:00Z', 'user': {'id': 'x@y.z', 'display_name': 'Someone'},
+             'documents': [], 'ops': [{'type': 'project/create', 'description': 'Create project "Demo"'}]},
+        ]
         for name in ('tokens', 'spans', 'vocab_links', 'vocab_items', 'texts'):
             setattr(self, name, Recorder(self.log, name))
 
@@ -115,6 +122,9 @@ class FakeClient:
         def get(self, pid):
             return self.c._project
 
+        def audit(self, pid, **kw):
+            return self.c.audit
+
         def list_documents(self, pid):
             return [{'id': d['id'], 'name': d['name']} for d in self.c._documents.values()]
 
@@ -124,6 +134,17 @@ class FakeClient:
 
         def get(self, did, include_body=None, **kw):
             return self.c._documents[did]
+
+        def create(self, project_id, name, metadata=None, **kw):
+            self.c.log.append(('documents', 'create', (project_id, name, metadata), {}))
+            return {'id': 'new-doc'}
+
+        def patch_metadata(self, did, body, **kw):
+            self.c.log.append(('documents', 'patch_metadata', (did, body), {}))
+            return {'id': did}
+
+        def audit(self, did, **kw):
+            return [e for e in self.c.audit if any(d['id'] == did for d in e.get('documents', []))]
 
     class _VocabLayers:
         def __init__(self, c):

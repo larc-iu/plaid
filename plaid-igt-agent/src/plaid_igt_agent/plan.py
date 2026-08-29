@@ -22,6 +22,8 @@ wire's key recasing):
   unlink          {link_id}
   create_entry    {vocab_id, form, metadata, key}
   set_entry_field {item_id, field, value}
+  set_doc_metadata {document_id, field, value}
+  create_document {name, text, metadata}   (needs the project: text layer, token layers, ignored config)
 
 Each also carries a human ``label`` for the approval UI.
 """
@@ -80,10 +82,12 @@ def _created_id(r):
     return None
 
 
-def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str) -> Dict[str, int]:
+def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
-    Returns per-kind counts of what was applied."""
+    Returns per-kind counts of what was applied. ``project`` (an IgtProject)
+    is needed only by document-creating ops."""
     counts: Counter = Counter()
+    new_docs = []
 
     def stamp():
         return stamp_inferred(source)
@@ -169,6 +173,14 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str) 
                 b.add(lambda o=op: client.vocab_items.patch_metadata(o['item_id'], {o['field']: o.get('value') or None}))
                 counts['entry fields'] += 1
 
+            elif kind == 'set_doc_metadata':
+                b.add(lambda o=op: client.documents.patch_metadata(o['document_id'], {o['field']: o.get('value') or None}))
+                counts['document metadata values'] += 1
+
+            elif kind == 'create_document':
+                new_docs.append(op)  # after the batches: several dependent calls
+                counts['new documents'] += 1
+
             else:
                 raise ValueError(f'Unknown plan operation kind: {kind}')
 
@@ -193,7 +205,31 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str) 
             edits.sort(key=lambda e: -e[0])
             client.texts.update(text_id, [{'type': 'replace', 'index': bg, 'length': en - bg, 'value': v}
                                           for bg, en, v in edits])
+
+        for op in new_docs:
+            if project is None:
+                raise ValueError('create_document needs the project')
+            create_document(client, project, op['name'], op['text'], op.get('metadata') or {})
     return dict(counts)
+
+
+def create_document(client, project, name: str, text: str, metadata: Dict[str, Any]):
+    """Document + baseline text + sentence and word tokens, tokenized as the
+    editor would (one sentence per line, words split on whitespace and
+    punctuation). Returns the new document id."""
+    from .tools import split_sentences, split_words
+    doc = client.documents.create(project.id, name, metadata or None)
+    doc_id = doc['id']
+    t = client.texts.create(project.text_layer_id, doc_id, text)
+    text_id = t['id']
+    sents = split_sentences(text)
+    body = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e} for b, e in sents]
+    for b, e in sents:
+        body.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
+                    for wb, we in split_words(text, b, e, project.ignored_cfg))
+    if body:
+        client.tokens.bulk_create(body)
+    return doc_id
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
@@ -201,7 +237,9 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
     names = {'set_span': ('field value', 'field values'), 'set_analysis': ('analysis', 'analyses'),
              'set_orthography': ('orthography value', 'orthography values'), 'respell': ('respelling', 'respellings'),
              'link': ('lexicon link', 'lexicon links'), 'unlink': ('unlink', 'unlinks'),
-             'create_entry': ('new lexicon entry', 'new lexicon entries'), 'set_entry_field': ('entry field', 'entry fields')}
+             'create_entry': ('new lexicon entry', 'new lexicon entries'), 'set_entry_field': ('entry field', 'entry fields'),
+             'set_doc_metadata': ('document metadata value', 'document metadata values'),
+             'create_document': ('new document', 'new documents')}
     parts = []
     for kind, n in counts.items():
         one, many = names.get(kind, (kind, kind))

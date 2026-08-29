@@ -104,7 +104,7 @@ class AssistantService(BaseService):
                 return
             label = approve.get('label') or f'Assistant: {summarize(ops)}'
             response_helper.progress(10, 'Applying changes…')
-            counts = execute_plan(client, ops, source=service_source(self.service_id), label=label)
+            counts = execute_plan(client, ops, source=service_source(self.service_id), label=label, project=project)
             response_helper.progress(100, 'Done')
             response_helper.complete({
                 'kind': 'applied', 'applied': sum(counts.values()),

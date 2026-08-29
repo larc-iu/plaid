@@ -136,6 +136,22 @@ const describeStep = ({ name, args: a }) => {
       return `Counted ${a.field} values${where(a)}`;
     case 'read_lexicon':
       return `Read the lexicon${a.pattern ? ` for ${q(a.pattern)}` : ''}`;
+    case 'concordance':
+      return `Concordanced ${q(a.pattern)}${a.where && a.where !== 'morpheme' ? ` in ${a.where}` : ''}${where(a)}`;
+    case 'analyses_of':
+      return `Tallied the analyses of ${q(a.form)}${where(a)}`;
+    case 'lexicon_entry':
+      return `Looked up the entry ${q(a.entry_form || a.entry_id)}`;
+    case 'check_consistency':
+      return `Checked ${a.field} for consistency${where(a)}`;
+    case 'recent_changes':
+      return `Read the change history${where(a)}`;
+    case 'plan_status':
+      return 'Reviewed the plan so far';
+    case 'set_document_metadata':
+      return `Planned ${a.field} = ${q(a.value)} on document ${q(a.document)}`;
+    case 'create_document':
+      return `Planned a new document ${q(a.name)}`;
     case 'set_field':
       return `Planned ${a.field} = ${q(a.value)} on ${(a.refs || []).length} item(s)${where(a)}`;
     case 'set_analysis':
@@ -161,7 +177,9 @@ const describeStep = ({ name, args: a }) => {
 
 const summarizeSteps = (steps) => {
   const docs = new Set(steps.filter((s) => s.name === 'read_document').map((s) => s.args.document));
-  const searches = steps.filter((s) => s.name === 'search' || s.name === 'field_values').length;
+  const searches = steps.filter((s) =>
+    ['search', 'field_values', 'concordance', 'analyses_of', 'check_consistency'].includes(s.name),
+  ).length;
   const planned = steps.filter((s) => /^(set_|respell|link_|unlink_|create_)/.test(s.name)).length;
   const parts = [];
   if (docs.size) parts.push(`read ${docs.size} document${docs.size === 1 ? '' : 's'}`);

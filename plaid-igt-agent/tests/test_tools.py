@@ -148,3 +148,86 @@ def test_search_missing_lists_items_without_a_value():
     assert out.startswith('1 items') and 's2 | Gam-ar.' in out
     assert 'needs a field name' in call_tool(w, 'search', {'missing': True})
     assert 'Give a pattern' in call_tool(w, 'search', {})
+
+
+def test_concordance_brackets_hits_and_tallies_patterns():
+    w = ws()
+    out = call_tool(w, 'concordance', {'pattern': 'ar'})
+    assert out.startswith('1 occurrence of "ar" in morpheme.')
+    assert '  1\tGam=[ar]' in out  # pattern tally, clitic joiner kept
+    assert 's2.w1 # [Gam-ar] # | seg=Gam=[ar] || Gam-ar.' in out
+    out = call_tool(w, 'concordance', {'pattern': 'ERG', 'where': 'Morph Gloss'})
+    assert '1 occurrence of "ERG" in Morph Gloss' in out
+    assert 'seg=Ali-[di] | Morph Gloss=Ali-[ERG] | Gloss=Ali' in out and '# [Ali-di] gam' in out
+    out = call_tool(w, 'concordance', {'pattern': 'gam', 'where': 'baseline'})
+    assert '1 occurrence' in out and 'Ali-di [gam] akuna' in out  # whole-form: "Gam-ar" is not "gam"
+    assert '2 occurrences' in call_tool(w, 'concordance', {'pattern': '^gam', 'where': 'baseline', 'regex': True})
+    assert call_tool(w, 'concordance', {'pattern': 'zzz'}) == 'No occurrences of "zzz".'
+    assert 'sentence fields' in call_tool(w, 'concordance', {'pattern': 'x', 'where': 'Translation'})
+
+
+def test_analyses_of_tallies_word_and_morpheme_analyses():
+    out = call_tool(ws(), 'analyses_of', {'form': 'gam'})
+    assert 'Word "gam": 1 occurrence, 1 distinct analysis:' in out  # "Gam-ar" is a different surface
+    assert '  1\t(unanalyzed)  e.g. s1.w2' in out
+    assert 'Morpheme "gam": 2 occurrences' in out
+    assert '(unglossed)  [only in word]  e.g. s1.w2.m1 (gam)' in out
+    assert '[first in word]  e.g. s2.w1.m1 (Gam=ar)' in out
+    out = call_tool(ws(), 'analyses_of', {'form': 'di'})
+    assert 'Word "di": no occurrences.' in out
+    assert 'type=suffix | Morph Gloss=ERG | link=-di  [last in word]  e.g. s1.w1.m2 (Ali-di)' in out
+
+
+def test_lexicon_entry_detail_with_links_and_examples():
+    out = call_tool(ws(), 'lexicon_entry', {'entry_form': 'Ali'})
+    assert out.startswith('Entry "Ali" (id vi-ali)') and '  gloss: Ali' in out and '  pos: N' in out
+    assert 'Linked from 1 word and 0 morphemes.' in out and 's1.w1 Ali-di | seg=Ali-di' in out
+    out = call_tool(ws(), 'lexicon_entry', {'entry_form': '-di'})
+    assert 'Linked from 0 words and 1 morpheme.' in out
+    assert 'Several entries match "gam"' in call_tool(ws(), 'lexicon_entry', {'entry_form': 'gam'})
+
+
+def test_check_consistency_reports_variants_multi_values_and_link_gaps():
+    c = FakeClient()
+    doc = c._documents['d1']
+    # add a second gloss on m-2 ('gam' -> 'Fish') and a variant spelling of ERG on another morpheme
+    layer = doc['text_layers'][0]['token_layers'][2]
+    layer['span_layers'][0]['spans'] += [
+        {'id': 'sp-m2', 'value': 'fish', 'tokens': ['m-2']},
+        {'id': 'sp-m4a', 'value': 'Fish', 'tokens': ['m-4a']},
+        {'id': 'sp-m4b', 'value': 'erg', 'tokens': ['m-4b']},
+    ]
+    w = Workspace(c, load_project(c, 'p1'))
+    out = call_tool(w, 'check_consistency', {'field': 'Morph Gloss'})
+    assert 'Consistency of Morph Gloss (Morpheme field): 5 values, 5 distinct.' in out
+    assert '2 values spelled more than one way:' in out
+    assert 'fish (1) / Fish (1)' in out and 'ERG (1) / erg (1)' in out
+    assert 'gam: fish (1), Fish (1)' in out  # same form, two values
+    assert '4 annotated but not linked to the lexicon: s1.w1.m1 Ali (Ali); s1.w2.m1 gam (fish); s2.w1.m1 Gam (Fish); s2.w1.m2 ar (erg)' in out
+    out = call_tool(w, 'check_consistency', {'field': 'Translation'})
+    assert 'No spelling or case variants' in out and 'linked' not in out
+
+
+def test_recent_changes_and_plan_status():
+    w = ws()
+    out = call_tool(w, 'recent_changes', {})
+    assert out.startswith('2 most recent changes (newest first):')
+    assert '2026-08-29 18:51  Luke G: Assistant: 2 field values  ["Text 1"]  (2 ops)' in out
+    assert '2026-08-28 10:00  Someone: Create project "Demo"' in out
+    assert '1 most recent change' in call_tool(w, 'recent_changes', {'document': 'Text 1'})
+    assert call_tool(w, 'plan_status', {}) == 'The plan is empty.'
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w2', 'field': 'Gloss', 'value': 'fish'})
+    assert call_tool(w, 'plan_status', {}) == '1 planned change (nothing written yet):\n  1. Text 1 s1.w2 "gam": Gloss = "fish"'
+
+
+def test_document_metadata_and_create_document_plans():
+    w = ws()
+    assert 'No document metadata field "Speaker"' in call_tool(w, 'set_document_metadata', {'document': 'd1', 'field': 'Speaker', 'value': 'x'})
+    call_tool(w, 'set_document_metadata', {'document': 'd1', 'field': 'date', 'value': '2021'})
+    assert w.ops[-1] == {'kind': 'set_doc_metadata', 'document_id': 'd1', 'field': 'Date', 'value': '2021',
+                         'label': 'Text 1: Date "2020" → "2021"'}
+    out = call_tool(w, 'create_document', {'name': 'Text 2', 'text': 'Ali-di gam, akuna!\n  Gam-ar.\n', 'metadata': {'date': '2022'}})
+    assert out.startswith('Planned 1 change') and '(2 sentences, 6 words will be tokenized.)' in out
+    assert w.ops[-1]['kind'] == 'create_document' and w.ops[-1]['metadata'] == {'Date': '2022'}
+    assert w.ops[-1]['label'] == 'New document "Text 2": 2 sentences, 6 words'  # hyphen splits: no whitelist here
+    assert 'already exists' in call_tool(w, 'create_document', {'name': 'Text 1', 'text': 'x'})
