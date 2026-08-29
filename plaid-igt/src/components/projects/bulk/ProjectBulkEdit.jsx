@@ -39,6 +39,7 @@ import {
   tallyCandidates,
   analysisLabel,
   cardRowsFor,
+  chainText,
 } from './bulkPlan.js';
 import {
   planRespell,
@@ -312,6 +313,28 @@ const Progress = ({ text }) =>
 
 // ---- respell -------------------------------------------------------------------
 
+// Before/after for one word: the word row, and (when the word has a morpheme
+// chain of its own) the chain row beneath it, laid out on one grid so the
+// arrows line up. Column widths are shared across every row in the list.
+const RespellChange = ({ row, includeMorphemes }) => {
+  const chain = row.chain ? chainText(row.chain, includeMorphemes) : null;
+  const cell = (v) => <span className="font-mono text-sm">{v === '' ? '∅' : v}</span>;
+  const line = (label, from, to, cls) => (
+    <>
+      <span className={cn('text-xs', cls)}>{label}</span>
+      {cell(from)}
+      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+      {cell(to)}
+    </>
+  );
+  return (
+    <div className="grid w-full grid-cols-[5.5rem_1fr_auto_1fr] items-center gap-x-2 gap-y-0.5">
+      {line('Word', row.old, row.new, 'text-blue-700')}
+      {chain && line('Morphemes', chain.old, chain.new, 'text-violet-700')}
+    </div>
+  );
+};
+
 const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   const [find, setFind] = useState('');
   const [matchType, setMatchType] = useState('contains');
@@ -427,17 +450,7 @@ const RespellPanel = ({ project, projectId, client, layerInfo }) => {
             selected={r.selected}
             toggle={r.toggle}
             toggleMany={r.toggleMany}
-            renderRow={(row) => (
-              <>
-                <Change from={row.old} to={row.new} />
-                {includeMorphemes &&
-                  row.morphemes.map((m) => (
-                    <span key={m.id} className="text-xs text-violet-700">
-                      morpheme <Change from={m.old} to={m.new} />
-                    </span>
-                  ))}
-              </>
-            )}
+            renderRow={(row) => <RespellChange row={row} includeMorphemes={includeMorphemes} />}
           />
           {plan.lexiconRows.length > 0 && (
             <div className={cn('rounded-lg border bg-card', !includeLexicon && 'opacity-60')}>

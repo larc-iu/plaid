@@ -20,6 +20,7 @@
 
 import { cpSlice } from '@larc-iu/plaid-client';
 import { extractAnalysis, analysisSignature } from '../../../domain/analysisMemory.js';
+import { morphemeJoiner } from '../../../domain/affixMarkers.js';
 
 export const OPERATIONS = [
   {
@@ -112,9 +113,13 @@ const sentenceContext = (doc, s, idx, marks) => ({
 // ---- respell -----------------------------------------------------------------
 
 // Word tokens in `doc` whose surface changes under `apply`. Each row carries
-// the code-point extent (for the text replace op) and the morpheme forms that
-// should be rewritten alongside (own forms only, and only where the same
-// substitution changes them).
+// the code-point extent (for the text replace op), the morpheme forms that
+// should be rewritten alongside (`morphemes`: own forms only, and only where
+// the same substitution changes them), and the full morpheme chain for
+// display (`chain`, null when the word is a single derived morpheme, i.e. the
+// chain IS the word): [{ joiner, own, old, new }], where a derived morpheme
+// follows the baseline (its `new` is the word's) and an own form gets its own
+// rewrite or stays put.
 export function collectRespellRows(doc, apply) {
   const rows = [];
   const textId = doc.layerInfo.primaryTextLayer?.text?.id;
@@ -124,11 +129,18 @@ export function collectRespellRows(doc, apply) {
       const next = apply(t.content);
       if (next == null) continue;
       const morphemes = [];
-      for (const m of t.morphemes || []) {
-        if (!hasOwnForm(m)) continue;
-        const nf = apply(m.metadata.form);
-        if (nf != null) morphemes.push({ id: m.id, old: m.metadata.form, new: nf });
-      }
+      const chain = [];
+      const ms = t.morphemes || [];
+      ms.forEach((m, i) => {
+        const joiner = i > 0 ? morphemeJoiner(ms[i - 1]?.morphType, m.morphType) : '';
+        if (hasOwnForm(m)) {
+          const nf = apply(m.metadata.form);
+          if (nf != null) morphemes.push({ id: m.id, old: m.metadata.form, new: nf });
+          chain.push({ joiner, own: true, old: m.metadata.form, new: nf ?? m.metadata.form });
+        } else {
+          chain.push({ joiner, own: false, old: t.content, new: next });
+        }
+      });
       rows.push({
         id: t.id,
         kind: 'word',
@@ -138,11 +150,23 @@ export function collectRespellRows(doc, apply) {
         old: t.content,
         new: next,
         morphemes,
+        chain: chain.length > 1 || chain.some((c) => c.own) ? chain : null,
         ...sentenceContext(doc, s, idx, [{ begin: t.begin, end: t.end }]),
       });
     }
   });
   return rows;
+}
+
+// The morpheme chain of a respell row as before/after strings, honoring the
+// "also respell morpheme forms" choice (with it off, own forms keep their
+// spelling while derived ones still follow the word).
+export function chainText(chain, includeMorphemes) {
+  const join = (pick) => chain.map((c) => c.joiner + pick(c)).join('');
+  return {
+    old: join((c) => c.old),
+    new: join((c) => (c.own && !includeMorphemes ? c.old : c.new)),
+  };
 }
 
 // Lexicon entries whose form changes under `apply`. `vocabularies` is the

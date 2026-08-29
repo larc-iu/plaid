@@ -5,6 +5,7 @@ import {
   buildReplacer,
   collectRespellRows,
   collectLexiconRows,
+  chainText,
   respellOps,
   collectFieldRows,
   collectOccurrenceRows,
@@ -76,10 +77,17 @@ describe('collectRespellRows / respellOps', () => {
       ['w-2', 4, 8, 'kaka', 'caca'],
     ]);
     expect(rows[0].morphemes).toEqual([]);
+    expect(rows[0].chain).toBeNull(); // a single derived morpheme IS the word
     expect(rows[1].morphemes).toEqual([
       { id: 'm-2', old: 'ka', new: 'ca' },
       { id: 'm-3', old: 'ka', new: 'ca' },
     ]);
+    expect(rows[1].chain).toEqual([
+      { joiner: '', own: true, old: 'ka', new: 'ca' },
+      { joiner: '-', own: true, old: 'ka', new: 'ca' },
+    ]);
+    expect(chainText(rows[1].chain, true)).toEqual({ old: 'ka-ka', new: 'ca-ca' });
+    expect(chainText(rows[1].chain, false)).toEqual({ old: 'ka-ka', new: 'ka-ka' });
     expect(rows[0].textId).toBe('text-1');
     expect(rows[0].docId).toBe('doc-1');
     expect(rows[0].text).toBe('kat kaka');
@@ -94,6 +102,24 @@ describe('collectRespellRows / respellOps', () => {
       { type: 'replace', index: 4, length: 3, value: 'cat' },
       { type: 'replace', index: 0, length: 3, value: 'cat' },
     ]);
+  });
+
+  it('an own form the substitution leaves alone still shows in the chain', () => {
+    const doc = docOf({
+      body: 'kat',
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [
+        { id: 'm-1', text: 'text-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'ka' } },
+        { id: 'm-2', text: 'text-1', begin: 0, end: 3, precedence: 2, metadata: { form: 't' } },
+      ],
+    });
+    const { apply } = buildReplacer('t', 'exact', 'd');
+    // "kat" is not exactly "t", so no word row at all...
+    expect(collectRespellRows(doc, apply)).toEqual([]);
+    // ...but a contains match rewrites the word and only the morpheme that has a t.
+    const rows = collectRespellRows(doc, buildReplacer('t', 'contains', 'd').apply);
+    expect(rows[0].morphemes).toEqual([{ id: 'm-2', old: 't', new: 'd' }]);
+    expect(chainText(rows[0].chain, true)).toEqual({ old: 'ka-t', new: 'ka-d' });
   });
 
   it('words that do not change produce no row', () => {
