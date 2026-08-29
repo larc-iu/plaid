@@ -130,7 +130,7 @@ test('C5-09: Copy as IGT puts the interlinear text on the clipboard', async ({ p
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await openTab(page, 'analyze');
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
-  const copy = page.locator('.igt-copy button').first();
+  const copy = page.locator('.igt-copy__btn').first();
   await copy.click();
   await expect(copy).toHaveText(/Copied/);
   const text = await page.evaluate(() => navigator.clipboard.readText());
