@@ -642,6 +642,9 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
 
   const plan = r.plan;
   const target = plan?.candidates.find((c) => c.signature === targetSig) ?? null;
+  const targetName = target
+    ? `Analysis ${plan.candidates.findIndex((c) => c.signature === targetSig) + 1}`
+    : '';
   const label = (a) => analysisLabel(a, plan?.itemFormById);
 
   // Switching the target re-derives the default selection: everything that
@@ -720,7 +723,7 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
             <div className="rounded-lg border bg-card p-4">
               <p className="mb-2 text-sm font-medium">Apply this analysis</p>
               <div className="flex flex-col gap-2">
-                {plan.candidates.map((c) => (
+                {plan.candidates.map((c, i) => (
                   <label
                     key={c.signature}
                     className={cn(
@@ -733,19 +736,24 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
                       name="bulk-analysis"
                       checked={targetSig === c.signature}
                       onChange={() => chooseTarget(c.signature)}
-                      className="mt-3 accent-primary"
+                      className="mt-1 accent-primary"
                     />
-                    <div className="min-w-0 flex-1 overflow-x-auto">
-                      <AnalysisCard
-                        word={plan.form}
-                        analysis={c.analysis}
-                        rows={cardRows}
-                        itemFormById={plan.itemFormById}
-                      />
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-baseline gap-2">
+                        <span className="text-sm font-semibold">Analysis {i + 1}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {plural(c.count, 'occurrence')}
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <AnalysisCard
+                          word={plan.form}
+                          analysis={c.analysis}
+                          rows={cardRows}
+                          itemFormById={plan.itemFormById}
+                        />
+                      </div>
                     </div>
-                    <span className="shrink-0 pt-3 text-xs text-muted-foreground">
-                      {plural(c.count, 'occurrence')} already
-                    </span>
                   </label>
                 ))}
               </div>
@@ -765,8 +773,8 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
                 extra={
                   <>
                     {' '}
-                    ({plural(target.count, 'occurrence')} already {'match'}
-                    {target.count === 1 ? 'es' : ''})
+                    ({plural(target.count, 'occurrence')} {target.count === 1 ? 'has' : 'have'}{' '}
+                    {targetName})
                   </>
                 }
               />
@@ -782,7 +790,7 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
               dim={(row) => row.signature === targetSig}
               renderRow={(row) =>
                 row.signature === targetSig ? (
-                  <span className="text-xs text-muted-foreground">already has this analysis</span>
+                  <span className="text-xs text-muted-foreground">has {targetName}</span>
                 ) : (
                   <div className="min-w-0 max-w-full overflow-x-auto">
                     <AnalysisCard
