@@ -15,7 +15,11 @@
 //   ({ precedent, sentences, wordFields, morphFields }) => ({ id, guessFor })
 // where `precedent` is the precedent.js tally the editor maintains.
 
+import { PROV } from '@larc-iu/plaid-client';
 import { precedentCounts, pickMajority } from './precedent.js';
+
+const PROV_DETAIL_KEY = PROV.detailKey;
+const PROV_SOURCE_KEY = PROV.sourceKey;
 
 export const PRECEDENT_SOURCE = 'gloss:precedent';
 
@@ -87,4 +91,52 @@ export function composeGuessSources(sources) {
 // The editor's default: the linked entry, then project precedent.
 export function defaultGuessSource({ precedent }) {
   return composeGuessSources([vocabEntryGuessSource(), precedentGuessSource(precedent)]);
+}
+
+// Every value worth offering for a cell, ranked: what precedent says (with
+// counts, machine-made included as for the guess), what the linked entry
+// says, and what the cell's own producer predicted (provDetail.value, plus
+// a top-k distribution under provDetail.valueProbs when it has one). Rows
+// merge by value; `source` is the provenance source a pick is written with.
+// Rank: count, then probability, then entry-backed, then alphabetical.
+export function listAlternatives({ precedent, kind, form, field, vocabItem = null, span = null }) {
+  const rows = new Map();
+  const row = (value) => {
+    const v = String(value);
+    let r = rows.get(v);
+    if (!r) rows.set(v, (r = { value: v, count: 0, prob: null, entry: false, model: false }));
+    return r;
+  };
+  const counts = precedentCounts(precedent, kind, form, field);
+  if (counts) for (const [v, n] of counts) row(v).count += n;
+  const e = vocabEntryGuessSource().guessFor(kind, form, field, { vocabItem });
+  if (e) row(e.value).entry = true;
+  const d = span?.metadata?.[PROV_DETAIL_KEY];
+  if (d && typeof d === 'object') {
+    if (d.value != null && d.value !== '') row(d.value).model = true;
+    if (d.valueProbs && typeof d.valueProbs === 'object') {
+      for (const [v, p] of Object.entries(d.valueProbs)) {
+        if (typeof p !== 'number' || v === '') continue;
+        const r = row(v);
+        r.model = true;
+        r.prob = Math.max(r.prob ?? 0, p);
+      }
+    }
+  }
+  const list = [...rows.values()].map((r) => ({
+    ...r,
+    source: r.entry
+      ? VOCAB_ENTRY_SOURCE
+      : r.count
+        ? PRECEDENT_SOURCE
+        : span?.metadata?.[PROV_SOURCE_KEY] || PRECEDENT_SOURCE,
+  }));
+  list.sort(
+    (a, b) =>
+      b.count - a.count ||
+      (b.prob ?? -1) - (a.prob ?? -1) ||
+      Number(b.entry) - Number(a.entry) ||
+      a.value.localeCompare(b.value),
+  );
+  return list;
 }

@@ -24,7 +24,7 @@ import {
   isTokenIgnored,
   trimIgnoredEdges,
 } from '@/domain/igtConfig';
-import { defaultGuessSource } from '@/domain/glossGuess';
+import { defaultGuessSource, listAlternatives } from '@/domain/glossGuess';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import {
   morphemeJoiner,
@@ -162,7 +162,12 @@ export class IgtEditor {
       this._closePopover();
       this._closeCopyMenu();
       this._closeRowMenu();
+      this._closeAlts();
     };
+    // The alternatives list (Alt+↓ on a cell): { cellKey, active, filter,
+    // visible } while open, null otherwise; positioned like the popover.
+    this._alts = null;
+    this._altsPos = null;
     document.addEventListener('click', this._onDocClick);
     // The popover is position:fixed; scrolling the page or the grid, or
     // resizing, would detach it from its column — re-anchor it to its opener
@@ -171,6 +176,7 @@ export class IgtEditor {
     this._onWinChange = () => {
       this._repositionPopover();
       this._repositionRowMenu();
+      this._repositionAlts();
     };
     // Refuse to let a hard reload / tab close silently drop an uncommitted
     // cell edit or a save still in flight (the browser shows its own prompt).
@@ -618,7 +624,156 @@ export class IgtEditor {
     const filled = e.target.value !== '';
     e.target.classList.toggle('igt-field--filled', filled);
     e.target.classList.toggle('igt-field--empty', !filled);
+    // Typing while the alternatives list is open narrows it by prefix.
+    if (this._alts && this._alts.cellKey === e.target.dataset.cellKey) {
+      this._alts.filter = e.target.value;
+      this._alts.active = 0;
+      this._render(true);
+    }
   };
+
+  // ---- alternatives list: Alt+↓ on an annotation cell lists every value
+  // seen for the form (domain/glossGuess.js listAlternatives), ranked, with
+  // its provenance. ↑↓ move, ↵ picks, Esc closes, typing narrows. A pick goes
+  // through the guess-adoption path (data-guess-* + blur-commit), so it is
+  // written born-verified with the row's source, exactly like adopting a
+  // placeholder guess; the cell keeps focus.
+  _openAlts(el) {
+    const items = typeof el.igtAlts === 'function' ? el.igtAlts() : [];
+    if (!items.length) return;
+    this._alts = { cellKey: el.dataset.cellKey, active: 0, filter: '', visible: [] };
+    this._altsPos = this._computeAltsPos(el, items.length);
+    this._render(true);
+  }
+
+  _closeAlts() {
+    if (!this._alts) return;
+    this._alts = null;
+    this._altsPos = null;
+    this._render(true);
+  }
+
+  // Returns true when the key was handled by the list.
+  _altsKeydown(e) {
+    const el = e.target;
+    const open = !!this._alts && this._alts.cellKey === el.dataset.cellKey;
+    if (e.altKey && e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!open) this._openAlts(el);
+      return true;
+    }
+    if (!open) return false;
+    const items = this._alts.visible || [];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = items.length;
+      if (n) {
+        this._alts.active = (this._alts.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+        this._render(true);
+      }
+      return true;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const it = items[this._alts.active];
+      if (it) this._pickAlt(el, it);
+      else this._closeAlts();
+      return true;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      this._closeAlts();
+      return true;
+    }
+    if (e.key === 'Tab') this._closeAlts();
+    return false;
+  }
+
+  _pickAlt(el, item) {
+    this._alts = null;
+    this._altsPos = null;
+    el.value = item.value;
+    el.dataset.guessValue = item.value;
+    el.dataset.guessSource = item.source;
+    el.dataset.guessConfirmed = '1';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    const key = el.dataset.cellKey;
+    el.blur(); // commits via _commitField (born-verified) and re-renders
+    const same = this.container.querySelector(`[data-cell-key="${key}"]`);
+    if (same) same.focus();
+  }
+
+  _pickAltByKey(cellKey, item) {
+    const el = this.container.querySelector(`[data-cell-key="${cellKey}"]`);
+    if (el) this._pickAlt(el, item);
+  }
+
+  _computeAltsPos(el, n) {
+    const r = el?.getBoundingClientRect?.();
+    if (!r) return null;
+    const pad = 8;
+    const width = Math.max(160, r.width);
+    const H = Math.min(n, 8) * 24 + 10;
+    const left = Math.max(pad, Math.min(r.left, window.innerWidth - width - pad));
+    let top = r.bottom + 2;
+    if (top + H > window.innerHeight) {
+      const above = r.top - H - 2;
+      top = above > pad ? above : Math.max(pad, window.innerHeight - H - pad);
+    }
+    return { left, top, width };
+  }
+
+  _repositionAlts() {
+    if (!this._alts) return;
+    const el = this.container.querySelector(`[data-cell-key="${this._alts.cellKey}"]`);
+    const list = this.container.querySelector('.igt-alts');
+    if (!el || !list) return;
+    const pos = this._computeAltsPos(el, (this._alts.visible || []).length || 1);
+    if (!pos) return;
+    this._altsPos = pos;
+    list.style.left = `${pos.left}px`;
+    list.style.top = `${pos.top}px`;
+  }
+
+  _altsTemplate(items, cellKey) {
+    const a = this._alts;
+    const f = (a.filter || '').toLowerCase();
+    const visible = f ? items.filter((it) => it.value.toLowerCase().startsWith(f)) : items;
+    a.visible = visible;
+    if (a.active >= visible.length) a.active = 0;
+    const pos = this._altsPos;
+    const posStyle = pos ? `left:${pos.left}px;top:${pos.top}px;min-width:${pos.width}px;` : '';
+    const tag = (it) => {
+      const parts = [];
+      if (it.count) parts.push(`×${it.count}`);
+      if (it.entry) parts.push('entry');
+      if (it.model) parts.push(it.prob != null ? `model ${Math.round(it.prob * 100)}%` : 'model');
+      return parts.join(' · ');
+    };
+    return html`<div
+      class="igt-alts"
+      style=${posStyle}
+      role="listbox"
+      aria-label="Values seen for this form"
+      @click=${(e) => e.stopPropagation()}
+      @mousedown=${(e) => e.preventDefault()}
+    >
+      ${visible.length
+        ? visible.map(
+            (it, i) =>
+              html`<div
+                class="igt-alts__item ${i === a.active ? 'is-active' : ''}"
+                role="option"
+                aria-selected=${i === a.active}
+                @click=${() => this._pickAltByKey(cellKey, it)}
+              >
+                <span class="igt-alts__value">${it.value}</span>
+                <span class="igt-alts__tag">${tag(it)}</span>
+              </div>`,
+          )
+        : html`<div class="igt-alts__empty">No matching values</div>`}
+    </div>`;
+  }
 
   // Guess confirmation: Enter on an empty cell showing a guess adopts the
   // guess into the input value (marked confirmed so the blur-commit attaches
@@ -869,6 +1024,7 @@ export class IgtEditor {
   }
 
   _basicKeydown = (e) => {
+    if (this._altsKeydown(e)) return;
     if (this._maybeConfirmWord(e)) return;
     if (this._maybeDiscardWord(e)) return;
     // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
@@ -992,6 +1148,7 @@ export class IgtEditor {
   _commitField(e, apply) {
     if (this.readOnly) return;
     const el = e.target;
+    this._closeAlts(); // leaving the cell dismisses its alternatives list
     if (el.dataset.suppressCommit) {
       delete el.dataset.suppressCommit;
       return;
@@ -1034,6 +1191,7 @@ export class IgtEditor {
     guess = null,
     prov = null,
     confirmWord = null,
+    alternatives = null,
   }) {
     const v = value ?? '';
     const filled = v !== '';
@@ -1060,31 +1218,43 @@ export class IgtEditor {
       ></textarea>`;
     }
     const p = filled ? prov : null;
+    // Alternatives (Alt+↓): computed per render so the list and the caret
+    // affordance track the data; the thunk rides on the element for _openAlts.
+    const alts = !this.readOnly && alternatives ? alternatives() : null;
+    const nAlts = alts ? alts.length : 0;
+    const baseTitle = g
+      ? `Guess: ${g.value}. Enter confirms, typing replaces`
+      : p
+        ? provTitle(v, p)
+        : filled
+          ? v
+          : (ariaLabel ?? null);
+    const title =
+      nAlts > 1
+        ? `${baseTitle ? `${baseTitle}. ` : ''}Alt+↓ lists ${nAlts} values seen for this form`
+        : (baseTitle ?? nothing);
     return html`<input
-      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g
-        ? 'igt-field--guess'
-        : ''} ${provClass('igt-field', p)} ${extraClass}"
-      data-cell-key=${key}
-      data-guess-value=${g ? g.value : nothing}
-      data-guess-source=${g ? g.source : nothing}
-      data-confirm-word=${confirmWord ?? nothing}
-      aria-label=${ariaLabel ?? nothing}
-      title=${g
-        ? `Guess: ${g.value}. Enter confirms, typing replaces`
-        : p
-          ? provTitle(v, p)
-          : filled
-            ? v
-            : (ariaLabel ?? nothing)}
-      placeholder=${g ? g.value : nothing}
-      size=${this._fieldSize(g ? g.value : v)}
-      ?disabled=${this.readOnly}
-      ${uncontrolledValue(v)}
-      @focus=${this._onFieldFocus}
-      @input=${this._onFieldInput}
-      @keydown=${this._basicKeydown}
-      @blur=${(e) => this._commitField(e, apply)}
-    />`;
+        class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g
+          ? 'igt-field--guess'
+          : ''} ${nAlts > 1 ? 'igt-field--alts' : ''} ${provClass('igt-field', p)} ${extraClass}"
+        data-cell-key=${key}
+        data-guess-value=${g ? g.value : nothing}
+        data-guess-source=${g ? g.source : nothing}
+        data-confirm-word=${confirmWord ?? nothing}
+        aria-label=${ariaLabel ?? nothing}
+        title=${title}
+        .igtAlts=${alternatives || null}
+        placeholder=${g ? g.value : nothing}
+        size=${this._fieldSize(g ? g.value : v)}
+        ?disabled=${this.readOnly}
+        ${uncontrolledValue(v)}
+        @focus=${this._onFieldFocus}
+        @input=${this._onFieldInput}
+        @keydown=${this._basicKeydown}
+        @blur=${(e) => this._commitField(e, apply)}
+      />${this._alts && this._alts.cellKey === key && alts
+        ? this._altsTemplate(alts, key)
+        : nothing}`;
   }
 
   _onSentenceInput = (e) => {
@@ -1688,7 +1858,10 @@ export class IgtEditor {
           <strong>Guesses</strong>
           <span
             >violet italic values are guesses from the linked entry or from matching forms.
-            <kbd>↵</kbd> confirms, typing replaces, leaving the cell discards</span
+            <kbd>↵</kbd> confirms, typing replaces, leaving the cell discards · <kbd>Alt</kbd>+<kbd
+              >↓</kbd
+            >
+            lists every value seen for the form, with counts</span
           >
         </div>
         <div class="igt-legend__row">
@@ -2201,6 +2374,15 @@ export class IgtEditor {
                       vocabItem: token.vocabItem,
                     },
                   ) ?? null,
+                alternatives: () =>
+                  listAlternatives({
+                    precedent: this._precedentTally(),
+                    kind: KINDS.WORD,
+                    form: this._precedentForm(token.content, KINDS.WORD),
+                    field: name,
+                    vocabItem: token.vocabItem,
+                    span: token.annotations?.[name],
+                  }),
                 prov: provDisplay(token.annotations?.[name]?.metadata),
                 confirmWord: token.id,
               })}
@@ -2305,6 +2487,15 @@ export class IgtEditor {
                 guess:
                   ctx.guess?.guessFor('morpheme', value, name, { vocabItem: morph.vocabItem }) ??
                   null,
+                alternatives: () =>
+                  listAlternatives({
+                    precedent: this._precedentTally(),
+                    kind: KINDS.MORPHEME,
+                    form: value,
+                    field: name,
+                    vocabItem: morph.vocabItem,
+                    span: morph.annotations?.[name],
+                  }),
                 prov: provDisplay(morph.annotations?.[name]?.metadata),
                 confirmWord: word.id,
               })}

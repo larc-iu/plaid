@@ -261,3 +261,51 @@ test('A1-11: a guess is offered even when its only source is machine-unverified'
   await expect(c1).toHaveClass(/igt-field--guess/);
   await expect(c1).toHaveAttribute('data-guess-value', 'SUN');
 });
+
+test('A1-12: Alt+Down lists the values seen for the form, ranked with counts; picking writes it verified', async ({
+  page,
+}) => {
+  const d = await mkdoc(`${LOS} ${LOS} ${LOS} ${LOS}`);
+  await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
+  await client.spans.create(ids.gloss, [d.m[1]], 'DET.PL');
+  await client.spans.create(ids.gloss, [d.m[2]], 'the.PL');
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${d.id}?tab=analyze`);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+  await page.waitForLoadState('networkidle');
+  const c3 = page.locator(`.igt-field[data-cell-key="ma:${d.m[3]}:Gloss"]`);
+  await expect(c3).toHaveClass(/igt-field--guess/); // DET.PL is the strict majority
+  await expect(c3).toHaveClass(/igt-field--alts/);
+  await c3.click();
+  await page.keyboard.press('Alt+ArrowDown');
+  const rows = page.locator('.igt-alts__item');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('DET.PL');
+  await expect(rows.nth(0)).toContainText('×');
+  await expect(rows.nth(1)).toContainText('the.PL');
+  // Escape only closes the list; the cell stays focused and empty.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.igt-alts')).toHaveCount(0);
+  await expect(c3).toBeFocused();
+  await expect(c3).toHaveValue('');
+  // Reopen, move to the second row, pick it.
+  const seen = writes(page);
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(c3).toHaveValue('the.PL');
+  await expect(c3).toHaveClass(/igt-field--verified/);
+  await expect(c3).toBeFocused();
+  await page.waitForLoadState('networkidle');
+  expect(seen).toEqual(['POST /api/v1/spans']);
+  const raw = await client.documents.get(d.id, true);
+  const span = raw.textLayers
+    .flatMap((t) => t.tokenLayers)
+    .flatMap((l) => l.spanLayers || [])
+    .find((s) => s.id === ids.gloss)
+    .spans.find((s) => s.tokens[0] === d.m[3]);
+  expect(span?.value).toBe('the.PL');
+  expect(span?.metadata?.provSource).toBe('gloss:precedent');
+  expect(span?.metadata?.provConfirmed).toBe(true);
+  expect(span?.metadata?.provDetail?.value).toBe('the.PL');
+});

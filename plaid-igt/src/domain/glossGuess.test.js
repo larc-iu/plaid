@@ -3,6 +3,7 @@ import {
   precedentGuessSource,
   vocabEntryGuessSource,
   defaultGuessSource,
+  listAlternatives,
   PRECEDENT_SOURCE,
 } from './glossGuess.js';
 import { createTally, foldDocumentValues } from './precedent.js';
@@ -128,5 +129,55 @@ describe('defaultGuessSource', () => {
       value: 'PL',
       source: PRECEDENT_SOURCE,
     });
+  });
+});
+
+describe('listAlternatives', () => {
+  const precedent = tallyOf(
+    sent([
+      word('a', {}, [
+        morph('s', { Gloss: 'PL' }),
+        morph('s', { Gloss: 'PL' }),
+        morph('s', { Gloss: '3SG' }, { prov: 'inferred', provSource: 'service:x' }),
+      ]),
+    ]),
+    { morphFields: ['Gloss'] },
+  );
+
+  it('merges precedent counts, the linked entry and the producer distribution, ranked', () => {
+    const list = listAlternatives({
+      precedent,
+      kind: 'morpheme',
+      form: 's',
+      field: 'Gloss',
+      vocabItem: { metadata: { gloss: '3SG' } },
+      span: {
+        metadata: {
+          prov: 'inferred',
+          provSource: 'service:x',
+          provDetail: { value: 'PL', valueProbs: { PL: 0.7, GEN: 0.2, '3SG': 0.1 } },
+        },
+      },
+    });
+    expect(list.map((r) => [r.value, r.count, r.prob, r.entry, r.model, r.source])).toEqual([
+      ['PL', 2, 0.7, false, true, PRECEDENT_SOURCE],
+      ['3SG', 1, 0.1, true, true, 'vocab:entry'],
+      ['GEN', 0, 0.2, false, true, 'service:x'],
+    ]);
+  });
+
+  it('is empty when nothing is known, and precedent alone ranks by count then name', () => {
+    expect(listAlternatives({ precedent, kind: 'morpheme', form: 'zzz', field: 'Gloss' })).toEqual(
+      [],
+    );
+    const t = tallyOf(
+      sent([word('a', {}, [morph('la', { Gloss: 'DEF' }), morph('la', { Gloss: '3SG.F' })])]),
+      { morphFields: ['Gloss'] },
+    );
+    expect(
+      listAlternatives({ precedent: t, kind: 'morpheme', form: 'la', field: 'Gloss' }).map(
+        (r) => r.value,
+      ),
+    ).toEqual(['3SG.F', 'DEF']);
   });
 });
