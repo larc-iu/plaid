@@ -38,6 +38,7 @@ import {
   groupByDoc,
   tallyCandidates,
   analysisLabel,
+  cardRowsFor,
 } from './bulkPlan.js';
 import {
   planRespell,
@@ -49,6 +50,7 @@ import {
   planMerge,
   applyMerge,
 } from './bulkRunner.js';
+import { AnalysisCard } from './AnalysisCard.jsx';
 
 // The Bulk Edit workbench: pick an operation, describe the change, preview
 // every match as a checkbox row (grouped by document, each row a link into
@@ -609,6 +611,7 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
   const [form, setForm] = useState('');
   const [targetSig, setTargetSig] = useState(null);
   const r = useRun();
+  const cardRows = useMemo(() => cardRowsFor(layerInfo, project), [layerInfo, project]);
 
   const preview = async () => {
     if (!form.trim()) return;
@@ -702,21 +705,31 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
           ) : (
             <div className="rounded-lg border bg-card p-4">
               <p className="mb-2 text-sm font-medium">Apply this analysis</p>
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-2">
                 {plan.candidates.map((c) => (
                   <label
                     key={c.signature}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted/50"
+                    className={cn(
+                      'flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 hover:bg-muted/30',
+                      targetSig === c.signature && 'border-primary bg-primary/5',
+                    )}
                   >
                     <input
                       type="radio"
                       name="bulk-analysis"
                       checked={targetSig === c.signature}
                       onChange={() => chooseTarget(c.signature)}
-                      className="accent-primary"
+                      className="mt-3 accent-primary"
                     />
-                    <span className="font-mono">{label(c.analysis)}</span>
-                    <span className="text-xs text-muted-foreground">
+                    <div className="min-w-0 flex-1 overflow-x-auto">
+                      <AnalysisCard
+                        word={plan.form}
+                        analysis={c.analysis}
+                        rows={cardRows}
+                        itemFormById={plan.itemFormById}
+                      />
+                    </div>
+                    <span className="shrink-0 pt-3 text-xs text-muted-foreground">
                       {plural(c.count, 'occurrence')} already
                     </span>
                   </label>
@@ -757,7 +770,15 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
                 row.signature === targetSig ? (
                   <span className="text-xs text-muted-foreground">already has this analysis</span>
                 ) : (
-                  <span className="font-mono text-sm">{label(row.analysis)}</span>
+                  <div className="min-w-0 max-w-full overflow-x-auto">
+                    <AnalysisCard
+                      word={plan.form}
+                      analysis={row.analysis}
+                      rows={cardRows}
+                      itemFormById={plan.itemFormById}
+                      labels={false}
+                    />
+                  </div>
                 )
               }
             />

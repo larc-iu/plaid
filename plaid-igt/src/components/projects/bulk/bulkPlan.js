@@ -333,3 +333,13 @@ export function chunk(arr, size) {
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
+
+// The per-project row shape AnalysisCard needs, derived from IGT layer info
+// once by the caller: which annotation rows exist at each scope, whether the
+// morpheme chain shows, and whether forms carry a lexicon-link line.
+export const cardRowsFor = (layerInfo, project) => ({
+  wordFields: (layerInfo.spanLayers?.word || []).map((l) => l.name),
+  morphFields: (layerInfo.spanLayers?.morpheme || []).map((l) => l.name),
+  hasMorphemes: !!layerInfo.morphemeTokenLayer,
+  hasVocabs: (project?.vocabs || []).length > 0,
+});
