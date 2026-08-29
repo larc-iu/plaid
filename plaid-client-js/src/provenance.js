@@ -43,6 +43,17 @@
  * human edits (history is valuable), so a consumer must not present
  * provProb as confidence in the CURRENT value once the entity is verified
  * (provConfirmed is exactly the flag to check).
+ *
+ * Recommended provDetail keys, so consumers (review dashboards, ranked
+ * alternatives) can read any producer's output:
+ *   - value (spans) / form (morpheme tokens): the value the producer
+ *     wrote, mirroring the entity's own field. The entity may be edited
+ *     later; this copy is what makes "accepted as-is" vs "corrected"
+ *     answerable once the entity is verified.
+ *   - valueProbs / formProbs: a top-k {label: probability} map over the
+ *     alternatives the producer considered, the chosen label included
+ *     (provProb, when given, is that label's entry duplicated flat).
+ *   - model, and anything else (language, adapter, raw scores).
  */
 
 /** The flat metadata keys of the provenance convention. */

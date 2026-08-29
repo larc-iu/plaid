@@ -139,3 +139,49 @@ describe('bulkReplaceAnalyses', () => {
     });
   });
 });
+
+// Prediction extras: a machine copy records what it wrote (provDetail.value on
+// spans, provDetail.form on morphemes) so a later consumer can tell an
+// accepted-as-is copy from a corrected one; a human replace records nothing.
+describe('analysis prediction extras', () => {
+  const twoMorphs = {
+    word: { vocabItemId: null, fields: { POS: 'N' } },
+    morphemes: [
+      { form: 'ka', morphType: null, vocabItemId: null, fields: { Gloss: 'cat' } },
+      { form: 't', morphType: 'suffix', vocabItemId: null, fields: { Gloss: 'PL' } },
+    ],
+  };
+
+  it('bulkApplyAnalyses stamps provDetail.value on spans and provDetail.form on morphemes', async () => {
+    const client = clientFor({ reloadDoc: strippedRaw() });
+    const doc = docFor(strippedRaw(), client);
+    expect(
+      await doc.bulkApplyAnalyses([{ wordTokenId: 'w-2', analysis: twoMorphs }], 'rule:test'),
+    ).toBe(1);
+    const spans = client.calls.filter((c) => c.kind === 'spans.create');
+    expect(spans.map((c) => [c.args[2], c.args[3].provDetail])).toEqual([
+      ['cat', { value: 'cat' }],
+      ['N', { value: 'N' }],
+      ['PL', { value: 'PL' }],
+    ]);
+    for (const c of spans)
+      expect(c.args[3]).toMatchObject({ prov: 'inferred', provSource: 'rule:test' });
+    const m0 = client.calls.find((c) => c.kind === 'tokens.patchMetadata');
+    expect(m0.args[1]).toMatchObject({ form: 'ka', prov: 'inferred', provDetail: { form: 'ka' } });
+    const m1 = client.calls.find((c) => c.kind === 'tokens.create');
+    expect(m1.args[5]).toMatchObject({ form: 't', morphType: 'suffix', provDetail: { form: 't' } });
+  });
+
+  it('bulkReplaceAnalyses (a human choice) records no provenance at all', async () => {
+    const client = clientFor({ reloadDoc: strippedRaw() });
+    const doc = docFor(strippedRaw(), client);
+    expect(await doc.bulkReplaceAnalyses([{ wordTokenId: 'w-2', analysis: twoMorphs }])).toBe(1);
+    // (the strip phase resets prov keys to null, which is not a stamp)
+    const provKeyed = client.calls.filter((c) =>
+      c.args.some(
+        (a) => a && typeof a === 'object' && !Array.isArray(a) && (a.prov || a.provDetail),
+      ),
+    );
+    expect(provKeyed).toEqual([]);
+  });
+});

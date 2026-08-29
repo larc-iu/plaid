@@ -1206,6 +1206,11 @@ They are kept even after a human edits the entity—the history is valuable for 
 Of the bundled services, the Whisper transcriber records its per-segment scores this way (`provDetail.avgLogprob` / `provDetail.noSpeechProb` / `provDetail.model`—and no `provProb`, since a log-probability is not a calibrated probability), and the Stanza parser records `provDetail.model` and `provDetail.language` (its pipeline exposes no per-prediction probabilities; a parser that has them would add `provProb` plus a top-k distribution in the detail map).
 On the read side, the UD editor consumes distributions a parser records under `provDetail.uposProbs` / `provDetail.xposProbs` / `provDetail.deprelProbs` (each a flat `{label: probability}` map): the top-k floats above the rest of the vocabulary in the corresponding cell's dropdown as a "Parser suggestions" group, and machine-made cells describe their origin (producer, model, `provProb`) in their hover tooltip.
 
+Because `provDetail` is open, consumers that want to work across producers need agreed key names inside it.
+The IGT app's producers (the PolyGloss analyzer, the built-in analysis-copy rule, and a guess a person adopts in the editor) record the *predicted value itself* under `provDetail.value` on a span and `provDetail.form` on a morpheme token, mirroring the entity's own field.
+The entity's value may later be edited, so this copy is what makes "accepted as-is" and "corrected" distinguishable once an entity is verified, which is the basis of any accuracy report.
+A producer that has a distribution records it as a top-k `{label: probability}` map under `provDetail.valueProbs` (spans) or `provDetail.formProbs` (morpheme tokens), the chosen label included, with `provProb` duplicating that label's entry as the flat, queryable copy.
+
 The convention is made operational by a **write contract** that every machine writer (service, built-in algorithm, importer) is expected to follow:
 
 1. A machine writer may freely create new material and freely **replace machine-made, unverified material**—its own or another machine's. Unverified machine output is by definition replaceable.

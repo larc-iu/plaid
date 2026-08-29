@@ -982,7 +982,9 @@ export class IgtEditor {
   // Commit an annotation/orthography cell on blur if its value changed. Routed
   // through the op chain so it serializes with structural edits. A value
   // adopted from a guess (see _maybeConfirmGuess) carries a born-verified
-  // provenance fragment; a typed value carries none (apply(value, null)).
+  // provenance fragment recording the guessed value (provDetail.value, so
+  // adoptions per guess source stay countable); a typed value carries none
+  // (apply(value, null)).
   _commitField(e, apply) {
     if (this.readOnly) return;
     const el = e.target;
@@ -993,7 +995,7 @@ export class IgtEditor {
     const next = el.value;
     const fragment =
       el.dataset.guessConfirmed === '1' && next === el.dataset.guessValue
-        ? confirmedInferred(el.dataset.guessSource || 'unknown')
+        ? confirmedInferred(el.dataset.guessSource || 'unknown', { detail: { value: next } })
         : null;
     delete el.dataset.guessConfirmed;
     if (next === (el.dataset.orig ?? '')) return;

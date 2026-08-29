@@ -17,7 +17,7 @@
 // outside any focused-cell interaction, so a full resync is the simple,
 // correct move (same as the service-backed auto-link path).
 
-import { stampInferred, isMachine, PROV_CONFIRMED, PROV_STATES } from '@larc-iu/plaid-client';
+import { stampInferred, isMachine, PROV, PROV_CONFIRMED, PROV_STATES } from '@larc-iu/plaid-client';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 
 // The server caps a single atomic batch at 1000 ops (plaid-core
@@ -176,6 +176,17 @@ export const analysisCopyMutations = {
     const wordLayersByName = new Map((info.spanLayers?.word || []).map((l) => [l.name, l]));
     const morphLayersByName = new Map((info.spanLayers?.morpheme || []).map((l) => [l.name, l]));
 
+    // Prediction extras (provenance convention): when the pieces are machine-
+    // stamped, each copied span also records the value it was given as
+    // provDetail.value and each copied morpheme its segment as provDetail.form.
+    // The entity may be edited later; that copy is what tells an accepted-as-is
+    // copy from a corrected one once it is verified. A human replace (empty
+    // stamp) records nothing. Links need nothing: the item id is the guess.
+    const machine = !!stamp?.[PROV.key];
+    const withDetail = (detail) => (machine ? { ...stamp, [PROV.detailKey]: detail } : stamp);
+    const stampValue = (value) => withDetail({ value });
+    const stampForm = (form) => (form == null ? stamp : withDetail({ form }));
+
     // A large unanalyzed document can emit far more than one batch's worth of
     // ops (this runs unattended from the auto-analysis pass). Pack words into
     // chunks under the server cap; each chunk runs its own batch-1 + batch-2
@@ -211,7 +222,7 @@ export const analysisCopyMutations = {
           for (const [name, value] of Object.entries(slot.fields || {})) {
             const layer = morphLayersByName.get(name);
             if (!layer) continue;
-            this._client.spans.create(layer.id, [tokenId], value, stamp);
+            this._client.spans.create(layer.id, [tokenId], value, stampValue(value));
             opIdx++;
           }
         };
@@ -229,7 +240,7 @@ export const analysisCopyMutations = {
               const patch = {};
               if (s0.form != null && s0.form !== token.content) patch.form = s0.form;
               if (s0.morphType != null) patch.morphType = s0.morphType;
-              const merged = { ...patch, ...stamp };
+              const merged = { ...patch, ...stampForm(s0.form) };
               if (Object.keys(merged).length && (Object.keys(patch).length || slots.length > 1)) {
                 this._client.tokens.patchMetadata(m0.id, merged);
                 opIdx++;
@@ -242,7 +253,7 @@ export const analysisCopyMutations = {
               this._client.tokens.create(morphemeLayer.id, textId, token.begin, token.end, j + 2, {
                 ...(slot.form != null ? { form: slot.form } : {}),
                 ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
-                ...stamp,
+                ...stampForm(slot.form),
               });
               pendingMorphs.push({ slot, opIdx });
               opIdx++;
@@ -256,7 +267,7 @@ export const analysisCopyMutations = {
             for (const [name, value] of Object.entries(analysis.word?.fields || {})) {
               const layer = wordLayersByName.get(name);
               if (!layer) continue;
-              this._client.spans.create(layer.id, [token.id], value, stamp);
+              this._client.spans.create(layer.id, [token.id], value, stampValue(value));
               opIdx++;
             }
           }
@@ -276,7 +287,7 @@ export const analysisCopyMutations = {
               for (const [name, value] of Object.entries(slot.fields || {})) {
                 const layer = morphLayersByName.get(name);
                 if (!layer) continue;
-                this._client.spans.create(layer.id, [id], value, stamp);
+                this._client.spans.create(layer.id, [id], value, stampValue(value));
               }
             }
           });

@@ -11,7 +11,12 @@ word's existing default morpheme becomes the first slot, further slots are
 created; `metadata.form` carries the segment, `metadata.morphType` the clitic
 side of a `=` boundary) and one span per morpheme in the morpheme-scope gloss
 field. Everything is stamped machine-made (`prov`/`provSource`/`provDetail`)
-and renders as unverified in the editor until a person confirms it.
+and renders as unverified in the editor until a person confirms it. The
+prediction itself is kept in `provDetail` (`form` on each morpheme, `value` on
+each gloss span, plus the model and the `boundaries` string on the first
+morpheme) so that, after a person verifies or corrects it, what the model
+originally said is still on the row. PolyGloss decodes with a small beam and
+exposes no probabilities, so no `provProb` / `valueProbs` are written.
 
 Write contract (the provenance convention):
   * unanalyzed words are always written;
@@ -678,14 +683,16 @@ class PolyGlossService(BaseService):
                             self.client.spans.delete(sp['id'])
                             idx += 1
                     m0_stamp = dict(base)
-                    m0_stamp['provDetail'] = {**detail, 'boundaries': ''.join(a['joiners']),
+                    m0_stamp['provDetail'] = {**detail, 'form': a['segments'][0],
+                                              'boundaries': ''.join(a['joiners']),
                                               **({'surfaceMismatch': True} if a['surface_mismatch'] else {}),
                                               **({'degraded': True} if a['degraded'] else {})}
                     self.client.tokens.patch_metadata(m0['id'], {
                         'form': a['segments'][0], 'morphType': a['types'][0], **m0_stamp})
                     idx += 1
                     for j in range(1, len(a['segments'])):
-                        meta = {'form': a['segments'][j], **base}
+                        meta = {'form': a['segments'][j],
+                                **stamp_inferred(source, detail={**detail, 'form': a['segments'][j]})}
                         if a['types'][j]:
                             meta['morphType'] = a['types'][j]
                         self.client.tokens.create(morph_layer_id, text_id,
@@ -694,7 +701,8 @@ class PolyGlossService(BaseService):
                         created.append((idx, a['glosses'][j]))
                         idx += 1
                     if a['glosses'][0]:
-                        self.client.spans.create(gloss_layer_id, [m0['id']], a['glosses'][0], base)
+                        self.client.spans.create(gloss_layer_id, [m0['id']], a['glosses'][0],
+                                                 stamp_inferred(source, detail={**detail, 'value': a['glosses'][0]}))
                         idx += 1
             results = b.results
             # batch 2: glosses for the created morphemes (ids known now).
@@ -709,7 +717,8 @@ class PolyGlossService(BaseService):
             if todo:
                 with self.client.batched():
                     for mid, gloss in todo:
-                        self.client.spans.create(gloss_layer_id, [mid], gloss, stamp_inferred(source, detail=detail))
+                        self.client.spans.create(gloss_layer_id, [mid], gloss,
+                                                 stamp_inferred(source, detail={**detail, 'value': gloss}))
             written += len(chunk)
         return written
 

@@ -288,6 +288,16 @@ try {
       c0.annotations['Part of Speech'].metadata?.provSource === 'rule:analysis-precedent',
     'A6-01 everything copied is machine-unverified with the copy source',
   );
+  // Prediction extras: the copy records what it wrote, per entity.
+  check(
+    c0.morphemes[0].metadata.provDetail?.form === 'cas' &&
+      c0.morphemes[1].metadata.provDetail?.form === 'a' &&
+      c0.morphemes[0].annotations.Gloss.metadata?.provDetail?.value === 'house' &&
+      c0.morphemes[1].annotations.Gloss.metadata?.provDetail?.value === 'F' &&
+      c0.annotations['Part of Speech'].metadata?.provDetail?.value === 'N',
+    'A6-01b copied morphemes carry provDetail.form and copied spans provDetail.value',
+    JSON.stringify(c0.morphemes.map((m) => m.metadata.provDetail)),
+  );
   check(
     W(d, 'perro').morphemes.length === 1 && !W(d, 'perro').morphemes[0].metadata.form,
     'A6-02 tied form not copied',
