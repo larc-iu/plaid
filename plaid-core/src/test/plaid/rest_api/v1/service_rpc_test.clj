@@ -3,13 +3,16 @@
   the in-memory channel/in-flight routing helpers plus the non-streaming
   request paths (no-service 503, unknown-request 404, writer auth). The
   streaming SSE happy-path is exercised by the live Python E2E."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [buddy.sign.jwt :as jwt]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [mount.core :as mount]
             [plaid.fixtures :as fix
              :refer [with-db with-mount-states with-rest-handler with-admin
                      with-test-users with-clean-db api-call
                      admin-request user2-request]]
-            [plaid.server.events :as events]))
+            [plaid.rest-api.v1.auth :as auth]
+            [plaid.server.events :as events]
+            [ring.mock.request :as mock]))
 
 (defn with-rpc-state-started
   "Start the ephemeral RPC defstates the test fixture chain otherwise leaves
@@ -87,9 +90,41 @@
     (is (= 404 (:status resp)) "reporting against an unknown/expired request is a 404")))
 
 (deftest submit-requires-writer
+  ;; A plain service acts with its OWN token, so a reader driving it would be
+  ;; writing by proxy: writer required. The check is in the handler (the route
+  ;; is reader-gated so delegating services can admit readers), so a live
+  ;; non-delegating registration is needed to reach it.
+  (events/reset-state!)
   (let [pid (create-project!)]
     (grant-reader! pid "user2@example.com")
+    (events/register-service-channel! pid "x" (Object.)
+                                      {:service-name "X" :extras {:tasks ["tokenize"]}} "svc")
     (let [resp (api-call user2-request {:method :post
                                         :path (str "/api/v1/projects/" pid "/services/x/requests")
                                         :body {:doc 1}})]
-      (is (= 403 (:status resp)) "a reader cannot submit work (writer required)"))))
+      (is (= 403 (:status resp)) "a reader cannot submit work to a non-delegating service"))))
+
+(deftest delegating-service-predicate
+  (is (events/delegating-service? {:extras {:delegation true}}))
+  (is (not (events/delegating-service? {:extras {:delegation "yes"}})) "strictly boolean true")
+  (is (not (events/delegating-service? {:extras {:tasks ["assist"]}})))
+  (is (not (events/delegating-service? nil))))
+
+(deftest delegated-token-is-a-short-lived-session-token
+  ;; What the submit handler hands a delegating service: a token that
+  ;; authenticates as the requester (so the service's writes are checked
+  ;; against and attributed to them) but expires on the delegated TTL, not the
+  ;; 30-day session default.
+  (with-redefs [auth/delegated-token-ttl-seconds (constantly 60)]
+    (let [token (auth/issue-delegated-token! fix/db "fake-secret" "user2@example.com")
+          {:keys [exp] :as claims} (jwt/unsign token "fake-secret")
+          ttl (- exp (quot (System/currentTimeMillis) 1000))]
+      (is (= "user2@example.com" (:user/id claims)))
+      (is (<= 50 ttl 70) (str "expected ~60s TTL, got " ttl))
+      (testing "the token authenticates as that user"
+        (let [resp (fix/rest-handler (-> (mock/request :get "/api/v1/users/user2@example.com")
+                                         (mock/header "accept" "application/edn")
+                                         (mock/header "Authorization" (str "Bearer " token))))]
+          (is (= 200 (:status resp)))))
+      (testing "no token for an unknown user"
+        (is (nil? (auth/issue-delegated-token! fix/db "fake-secret" "nobody@example.com")))))))

@@ -80,6 +80,7 @@
    [["logging" "file"]                    [:plaid.logging/config :file]                                      identity]
 
    [["auth" "jwt_ttl_seconds"]            [:plaid.auth :jwt-ttl-seconds]                                     identity]
+   [["auth" "delegated_token_ttl_seconds"] [:plaid.auth :delegated-token-ttl-seconds]                        identity]
 
    [["api" "expose_openapi"]              [:plaid.api :expose-openapi?]                                      identity]
 

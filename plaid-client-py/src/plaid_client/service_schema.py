@@ -32,6 +32,8 @@ class TASKS:
     LINK_VOCAB = 'link-vocab'
     # Propose an interlinear analysis (morpheme segmentation + glosses) for words.
     ANALYZE = 'analyze'
+    # A conversational assistant over a project (chat turns; see plaid-igt-agent).
+    ASSIST = 'assist'
 
 
 def _normalize_options(options):
@@ -112,7 +114,7 @@ class Param:
         return p
 
 
-def build_extras(tasks, summary=None, parameters=None, extra=None):
+def build_extras(tasks, summary=None, parameters=None, extra=None, delegation=False):
     """Assemble a standardized self-description ``extras`` dict.
 
     Args:
@@ -120,11 +122,18 @@ def build_extras(tasks, summary=None, parameters=None, extra=None):
         summary: Optional rich human description (markdown).
         parameters: Optional list of :class:`Param` descriptors.
         extra: Optional dict of additional, service-specific extras to merge in.
+        delegation: Declare that the service acts on the REQUESTER's behalf.
+            The server then mints a short-lived token for whoever submits each
+            request and delivers it with the request (``delegated_token``), so
+            the service's reads and writes run under that user's permissions
+            and are attributed to them; readers may drive such a service.
     """
     extras = {'schema_version': 1, 'tasks': list(tasks or [])}
     if summary is not None:
         extras['summary'] = summary
     extras['parameters'] = list(parameters or [])
+    if delegation:
+        extras['delegation'] = True
     if extra:
         extras.update(extra)
     return extras

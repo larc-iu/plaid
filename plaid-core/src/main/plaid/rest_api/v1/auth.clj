@@ -34,21 +34,35 @@
   []
   (get-in config [:plaid.auth :jwt-ttl-seconds] default-jwt-ttl-seconds))
 
+(def ^:private default-delegated-token-ttl-seconds
+  "Default lifetime of a delegated token (see `issue-delegated-token!`):
+  one hour. Long enough for a service to finish the work a user handed it,
+  short enough that a leaked one is a bounded problem."
+  (* 60 60))
+
+(defn delegated-token-ttl-seconds
+  "Lookup the configured delegated-token TTL (`:plaid.auth
+  :delegated-token-ttl-seconds`), read at call time like `jwt-ttl-seconds`."
+  []
+  (get-in config [:plaid.auth :delegated-token-ttl-seconds] default-delegated-token-ttl-seconds))
+
 (defn- exp-seconds
   "Compute the JWT `exp` claim in unix seconds. Buddy verifies `exp`
   automatically on `unsign` — we just have to include the claim."
-  []
-  (+ (quot (System/currentTimeMillis) 1000) (jwt-ttl-seconds)))
+  ([] (exp-seconds (jwt-ttl-seconds)))
+  ([ttl-seconds] (+ (quot (System/currentTimeMillis) 1000) ttl-seconds)))
 
 (defn- sign-user-token
   "Issue a JWT for `id`. Centralized so the /login handler and any
   future re-issue paths (e.g. session refresh) produce identically
   shaped tokens — `:exp` in particular is easy to forget."
-  [secret-key id password-changes]
-  (jwt/sign {:user/id id
-             :version password-changes
-             :exp (exp-seconds)}
-            secret-key))
+  ([secret-key id password-changes]
+   (sign-user-token secret-key id password-changes (jwt-ttl-seconds)))
+  ([secret-key id password-changes ttl-seconds]
+   (jwt/sign {:user/id id
+              :version password-changes
+              :exp (exp-seconds ttl-seconds)}
+             secret-key)))
 
 (defn- sign-api-token
   "Issue a JWT for a named API token. Unlike `sign-user-token` this carries:
@@ -79,6 +93,22 @@
     (sign-user-token secret-key
                      (:user/id account)
                      (:user/password-changes account))))
+
+(defn issue-delegated-token!
+  "Sign a SHORT-LIVED session JWT for `user-id`, for a service to act on that
+  user's behalf: the server mints one when a user submits work to a
+  *delegating* service (see `plaid.rest-api.v1.message`) and hands it to the
+  service inside the request, so everything the service does for that request
+  runs under the requester's own permissions and is attributed to them in the
+  audit log. It is an ordinary session token (rides `password_changes`, so a
+  logout revokes it) with a `delegated-token-ttl-seconds` lifetime instead of
+  the session default. Returns nil if the user is missing."
+  [db secret-key user-id]
+  (when-let [account (user/get-internal db user-id)]
+    (sign-user-token secret-key
+                     (:user/id account)
+                     (:user/password-changes account)
+                     (delegated-token-ttl-seconds))))
 
 (defn issue-api-token!
   "Mint + persist a named API token and return the signed JWT — the ONLY time
@@ -325,27 +355,42 @@
    :project/writers "write for"
    :project/maintainers "maintain"})
 
+(defn privileged?
+  "Does the request's user hold at least `key` (`:project/readers`,
+  `:project/writers`, or `:project/maintainers`) on the project that
+  `get-project-id` resolves, or admin? This is the membership test behind the
+  `wrap-*-required` middlewares, exposed for a handler whose requirement
+  depends on runtime state (submitting to a service is reader-or-writer
+  depending on whether that service delegates)."
+  [{db :db :as request} key get-project-id]
+  (when-not (-> levels keys set key)
+    (throw (ex-info "Bad key" {:key key})))
+  (let [user-id (->user-id request)
+        ;; Forward :as-of-ts so doc-scoped `get-project-id` resolvers
+        ;; can fall through to audit-log reconstruction when the doc has
+        ;; been deleted from OLTP but existed at `ts`. ACL membership is
+        ;; still resolved from CURRENT OLTP (`prj/get db id` below) —
+        ;; historical-ACL is explicitly out of scope; only the
+        ;; doc→project lookup is allowed to time-travel.
+        id (get-project-id {:parameters (:parameters request)
+                            :db db
+                            :as-of-ts (:as-of-ts request)})
+        admin? (user/admin? (:user/record request))
+        project (prj/get db id)]
+    (boolean (or admin? (some #(seq ((-> project % set) user-id)) (key levels))))))
+
 (defn wrap-project-privileges-required
   [handler key get-project-id]
   (when-not (-> levels keys set key)
     (throw (ex-info "Bad key" {:key key})))
   (fn [{db :db :as request}]
-    (let [user-id (->user-id request)
-          ;; Forward :as-of-ts so doc-scoped `get-project-id` resolvers
-          ;; can fall through to audit-log reconstruction when the doc has
-          ;; been deleted from OLTP but existed at `ts`. ACL membership is
-          ;; still resolved from CURRENT OLTP (`prj/get db id` below) —
-          ;; historical-ACL is explicitly out of scope; only the
-          ;; doc→project lookup is allowed to time-travel.
-          id (get-project-id {:parameters (:parameters request)
-                              :db db
-                              :as-of-ts (:as-of-ts request)})
-          admin? (user/admin? (:user/record request))
-          project (prj/get db id)]
-      (if-not (or admin? (some #(seq ((-> project % set) user-id)) (key levels)))
+    (if-not (privileged? request key get-project-id)
+      (let [id (get-project-id {:parameters (:parameters request)
+                                :db db
+                                :as-of-ts (:as-of-ts request)})]
         {:status 403
-         :body {:error (str "User " user-id " lacks sufficient privileges to " (key verb) " project " id)}}
-        (handler request)))))
+         :body {:error (str "User " (->user-id request) " lacks sufficient privileges to " (key verb) " project " id)}})
+      (handler request))))
 
 (defn wrap-reader-required [handler get-project-id]
   (wrap-project-privileges-required handler :project/readers get-project-id))

@@ -43,13 +43,15 @@
  * without an explicit `overwrite` parameter. See the manual, "Provenance".
  */
 export const TASKS = Object.freeze({
-  TOKENIZE: 'tokenize',
-  PARSE: 'parse',
-  TRANSCRIBE: 'transcribe',
+  TOKENIZE: "tokenize",
+  PARSE: "parse",
+  TRANSCRIBE: "transcribe",
   /** Create vocab links for unlinked tokens. */
-  LINK_VOCAB: 'link-vocab',
+  LINK_VOCAB: "link-vocab",
   /** Propose an interlinear analysis (morpheme segmentation + glosses) for words. */
-  ANALYZE: 'analyze',
+  ANALYZE: "analyze",
+  /** A conversational assistant over a project (chat turns; see plaid-igt-agent). */
+  ASSIST: "assist",
 });
 
 /**
@@ -57,8 +59,8 @@ export const TASKS = Object.freeze({
  * declared `tasks` array. Drop once all services advertise `tasks`.
  */
 const LEGACY_TASK_PREFIXES = Object.freeze({
-  [TASKS.TOKENIZE]: 'tok:',
-  [TASKS.TRANSCRIBE]: 'asr:',
+  [TASKS.TOKENIZE]: "tok:",
+  [TASKS.TRANSCRIBE]: "asr:",
 });
 
 /**
@@ -74,7 +76,11 @@ export function servesTask(service, task) {
     return declared.includes(task);
   }
   const prefix = LEGACY_TASK_PREFIXES[task];
-  return !!prefix && typeof service?.serviceId === 'string' && service.serviceId.startsWith(prefix);
+  return (
+    !!prefix &&
+    typeof service?.serviceId === "string" &&
+    service.serviceId.startsWith(prefix)
+  );
 }
 
 /**
@@ -104,7 +110,7 @@ export function getParamSchema(service) {
  * @returns {string}
  */
 export function getServiceSummary(service) {
-  return service?.extras?.summary || service?.description || '';
+  return service?.extras?.summary || service?.description || "";
 }
 
 /** Valid option values for an enum/multiselect param. */
@@ -119,20 +125,25 @@ function optionValues(param) {
  */
 function defaultForParam(param) {
   const opts = optionValues(param);
-  if (param.type === 'enum') {
-    if (param.default != null && opts.includes(param.default)) return param.default;
-    return opts[0] ?? '';
+  if (param.type === "enum") {
+    if (param.default != null && opts.includes(param.default))
+      return param.default;
+    return opts[0] ?? "";
   }
-  if (param.type === 'multiselect') {
+  if (param.type === "multiselect") {
     const arr = Array.isArray(param.default) ? param.default : [];
     return opts.length ? arr.filter((x) => opts.includes(x)) : arr;
   }
-  if (param.default !== undefined && param.default !== null) return param.default;
+  if (param.default !== undefined && param.default !== null)
+    return param.default;
   switch (param.type) {
-    case 'number': return typeof param.min === 'number' ? param.min : 0;
-    case 'boolean': return false;
-    case 'string':
-    default: return '';
+    case "number":
+      return typeof param.min === "number" ? param.min : 0;
+    case "boolean":
+      return false;
+    case "string":
+    default:
+      return "";
   }
 }
 
@@ -169,43 +180,48 @@ export function coerceParamValues(schema, raw) {
     if (v === undefined) v = defaultForParam(param);
 
     switch (param.type) {
-      case 'number': {
+      case "number": {
         // Blank / nullish counts as "missing" → the param's default (matches the
         // Python client, where float('') raises and falls back to the default).
         let n;
-        if (v === '' || v == null || (typeof v === 'string' && v.trim() === '')) {
+        if (
+          v === "" ||
+          v == null ||
+          (typeof v === "string" && v.trim() === "")
+        ) {
           n = defaultForParam(param);
         } else {
-          n = typeof v === 'number' ? v : Number(v);
+          n = typeof v === "number" ? v : Number(v);
           if (Number.isNaN(n)) n = defaultForParam(param);
         }
-        if (typeof param.min === 'number') n = Math.max(param.min, n);
-        if (typeof param.max === 'number') n = Math.min(param.max, n);
+        if (typeof param.min === "number") n = Math.max(param.min, n);
+        if (typeof param.max === "number") n = Math.min(param.max, n);
         v = n;
         break;
       }
-      case 'boolean':
-        v = v === true || v === 'true';
+      case "boolean":
+        v = v === true || v === "true";
         break;
-      case 'enum': {
+      case "enum": {
         const opts = optionValues(param);
         if (opts.length && !opts.includes(v)) v = defaultForParam(param);
         break;
       }
-      case 'multiselect': {
+      case "multiselect": {
         const opts = optionValues(param);
-        const arr = Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]);
+        const arr = Array.isArray(v) ? v : v == null || v === "" ? [] : [v];
         v = opts.length ? arr.filter((x) => opts.includes(x)) : arr;
         break;
       }
-      case 'string':
+      case "string":
       default:
-        v = v == null ? '' : String(v);
+        v = v == null ? "" : String(v);
         break;
     }
 
     if (param.required) {
-      const empty = v === '' || v == null || (Array.isArray(v) && v.length === 0);
+      const empty =
+        v === "" || v == null || (Array.isArray(v) && v.length === 0);
       if (empty) errors[k] = `${param.label || k} is required`;
     }
     values[k] = v;

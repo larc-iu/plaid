@@ -265,3 +265,76 @@ if __name__ == '__main__':
     test_sync_served_projects_follows_the_project_set()
     test_sync_served_projects_retries_failed_registrations()
     print('ok')
+
+
+class _Helper:
+    def __init__(self):
+        self.errors = []
+        self.done = []
+
+    def progress(self, percent, msg=''):
+        pass
+
+    def complete(self, data=None):
+        self.done.append(data)
+
+    def error(self, err):
+        self.errors.append(str(err))
+
+
+def test_delegating_service_builds_requester_client_and_adopts_group_on_it():
+    seen = {}
+
+    class MyService(BaseService):
+        def process_request(self, request_data, response_helper):
+            seen.update(request_data)
+            response_helper.complete('ok')
+
+    svc = MyService('igt:assist', 'Assist', 'x', tasks=[TASKS.ASSIST], delegation=True)
+    assert svc.extras['delegation'] is True
+
+    class OwnClient:
+        base_url = 'http://plaid.test'
+    svc.client = OwnClient()
+    helper = _Helper()
+    svc.handle_service_request(
+        {'q': 1, 'delegated_token': 'tok-123',
+         'operation_group': {'id': 'g1', 'message': 'from requester'}}, helper)
+    assert helper.done == ['ok'] and not helper.errors
+    assert 'delegated_token' not in seen and 'operation_group' not in seen
+    rc = seen['requester_client']
+    assert rc.base_url == 'http://plaid.test' and rc.token == 'tok-123'
+    # The group was begun and ended on the REQUESTER's client, not the service's.
+    assert getattr(rc, '_operation_group', None) is None
+
+
+def test_delegating_service_refuses_request_without_token():
+    class MyService(BaseService):
+        def process_request(self, request_data, response_helper):
+            raise AssertionError('must not run')
+
+    svc = MyService('igt:assist', 'Assist', 'x', tasks=[TASKS.ASSIST], delegation=True)
+
+    class OwnClient:
+        base_url = 'http://plaid.test'
+    svc.client = OwnClient()
+    helper = _Helper()
+    svc.handle_service_request({'q': 1}, helper)
+    assert helper.errors and 'delegated token' in helper.errors[0]
+    assert not svc._processing_lock.locked()
+
+
+def test_non_delegating_service_ignores_delegation_and_stays_single_flight():
+    calls = []
+
+    class MyService(BaseService):
+        def process_request(self, request_data, response_helper):
+            calls.append(dict(request_data))
+            response_helper.complete(None)
+
+    svc = MyService('tok:x', 'Tok', 'x', tasks=[TASKS.TOKENIZE])
+    assert 'delegation' not in svc.extras
+    svc.client = object()
+    helper = _Helper()
+    svc.handle_service_request({'a': 1}, helper)
+    assert calls == [{'a': 1}] and not helper.errors

@@ -201,32 +201,53 @@
 (defn submit-request-handler
   "Client POSTs work for a service; the response is an SSE stream of that
   service's progress events ending in a result or error. 503 if no service is
-  currently connected."
+  currently connected.
+
+  Who may submit depends on the service. A plain service acts with its OWN
+  token, so driving it is a write on the project: writer required. A
+  *delegating* service (`extras.delegation`) acts on the requester's behalf:
+  the server mints a short-lived token for the requesting user and passes it
+  to the service as `delegated-token` beside the request data, so every read
+  and write the service performs for this request is checked against, and
+  attributed to, the requester. Readers may drive such a service (it can do
+  nothing for them that they could not do themselves)."
   [{{{:keys [id service-id]} :path
-     data :body} :parameters :as req}]
-  (if-not (events/get-service-channel id service-id)
-    {:status 503 :body {:error (str "No live service '" service-id "' on this project")}}
-    (let [request-id (str (java.util.UUID/randomUUID))]
-      (http-kit/as-channel
-       req
-       {:on-open
-        (fn [requester]
-          (http-kit/send! requester {:status 200 :headers sse-response-headers} false)
-          (events/track-request! request-id requester id service-id)
-          (start-keepalive! requester)
-          ;; Re-fetch the channel at push time — it may have dropped since the
-          ;; pre-check above.
-          (let [service-ch (events/get-service-channel id service-id)]
-            (when-not (and service-ch
-                           (http-kit/send! service-ch
-                                           (sse-event "service_request" {:request-id request-id :data data})
-                                           false))
-              (http-kit/send! requester (sse-event "error" {:error "Service unavailable"}) false)
-              (events/resolve-request! request-id)
-              (http-kit/close requester))))
-        :on-close
-        (fn [_ _]
-          (events/resolve-request! request-id))}))))
+     data :body} :parameters
+    db :db secret-key :secret-key :as req}]
+  (let [entry (events/get-service-entry id service-id)
+        delegating? (events/delegating-service? entry)]
+    (cond
+      (nil? entry)
+      {:status 503 :body {:error (str "No live service '" service-id "' on this project")}}
+
+      (and (not delegating?) (not (pra/privileged? req :project/writers get-project-id)))
+      {:status 403 :body {:error (str "User " (pra/->user-id req) " lacks sufficient privileges to write for project "
+                                      id " (service '" service-id "' acts with its own credentials)")}}
+
+      :else
+      (let [request-id (str (java.util.UUID/randomUUID))
+            delegated-token (when delegating?
+                              (pra/issue-delegated-token! db secret-key (pra/->user-id req)))
+            event (cond-> {:request-id request-id :data data}
+                    delegated-token (assoc :delegated-token delegated-token))]
+        (http-kit/as-channel
+         req
+         {:on-open
+          (fn [requester]
+            (http-kit/send! requester {:status 200 :headers sse-response-headers} false)
+            (events/track-request! request-id requester id service-id)
+            (start-keepalive! requester)
+            ;; Re-fetch the channel at push time — it may have dropped since the
+            ;; pre-check above.
+            (let [service-ch (events/get-service-channel id service-id)]
+              (when-not (and service-ch
+                             (http-kit/send! service-ch (sse-event "service_request" event) false))
+                (http-kit/send! requester (sse-event "error" {:error "Service unavailable"}) false)
+                (events/resolve-request! request-id)
+                (http-kit/close requester))))
+          :on-close
+          (fn [_ _]
+            (events/resolve-request! request-id))})))))
 
 (defn reply-handler
   "Service POSTs progress/result/error for an in-flight request; the server
@@ -345,8 +366,12 @@
                                 [:description {:optional true} :string]
                                 [:extras {:optional true} :string]]}
            :handler service-channel-handler}
-     :post {:summary "Client: submit work to a service; streams progress + result (SSE)."
-            :middleware [[pra/wrap-writer-required get-project-id]]
+     :post {:summary (str "Client: submit work to a service; streams progress + result (SSE). "
+                          "Writer required, or reader when the service delegates (acts on the "
+                          "requester's behalf with a short-lived token the server mints).")
+            ;; Reader here; the handler raises the bar to writer for a
+            ;; non-delegating service (see `submit-request-handler`).
+            :middleware [[pra/wrap-reader-required get-project-id]]
             :parameters {:body any?}
             :handler submit-request-handler}}]
 

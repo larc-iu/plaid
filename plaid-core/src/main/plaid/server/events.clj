@@ -263,6 +263,21 @@
   [project-id service-id]
   (get-in @service-channels [project-id service-id :channel]))
 
+(defn get-service-entry
+  "A connected service's full registry entry ({:channel :service-id
+  :service-name :description :extras :user-id}), or nil if none is connected."
+  [project-id service-id]
+  (get-in @service-channels [project-id service-id]))
+
+(defn delegating-service?
+  "Does a registry entry advertise that it acts on the REQUESTER's behalf
+  (`extras.delegation` true)? Such a service receives a short-lived token for
+  the requesting user with every request (see the submit handler) and may be
+  driven by readers, since every write it makes runs under the requester's
+  own permissions."
+  [entry]
+  (true? (get-in entry [:extras :delegation])))
+
 (defn list-live-services
   "Discovery: the connected services on a project as public metadata maps
   {:service-id :service-name :description :extras}, ordered by service-id. A

@@ -129,6 +129,12 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
     handler runs synchronously on the channel's reader thread (one request at a
     time), matching the previous behavior.
 
+    If ``extras`` declares ``delegation: True`` the server mints a short-lived
+    token for whoever submits each request and the handler's ``data`` carries
+    it as ``delegated_token``; build a ``PlaidClient`` on it to act as that
+    user (their permissions, their name in the audit log). Readers may drive a
+    delegating service; a plain one is writer-only.
+
     Args:
         client: PlaidClient instance.
         project_id: Project UUID.
@@ -174,6 +180,13 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
         if not req_id:
             return
         req_data = event_data.get('data')
+        # A delegating service (extras ``delegation: True``) gets a short-lived
+        # token for the REQUESTING user with each request; surface it beside
+        # the payload so the handler can act as that user (BaseService turns it
+        # into ``request_data['requester_client']``).
+        delegated = event_data.get('delegated_token')
+        if delegated and isinstance(req_data, dict):
+            req_data = {**req_data, 'delegated_token': delegated}
 
         class ResponseHelper:
             """Helper passed to the request handler for replying."""

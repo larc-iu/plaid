@@ -39,18 +39,28 @@ class BaseService(ABC):
         parameters: Optional list of per-request parameter descriptors
             (use ``plaid_client.Param``).
         extras: Optional dict of additional service-specific extras to merge in.
+        delegation: Act on the REQUESTER's behalf. The server mints a
+            short-lived token for whoever submits each request; this class
+            turns it into ``request_data['requester_client']``, a
+            ``PlaidClient`` authenticated as that user. Use it (not
+            ``self.client``) for everything done for the request, so the work
+            runs under the requester's permissions and is attributed to them.
+            Readers may drive a delegating service.
     """
 
     def __init__(self, service_id: str, service_name: str, description: str, *,
                  tasks: Optional[List[str]] = None,
                  summary: Optional[str] = None,
                  parameters: Optional[List[Dict[str, Any]]] = None,
-                 extras: Optional[Dict[str, Any]] = None):
+                 extras: Optional[Dict[str, Any]] = None,
+                 delegation: bool = False):
         self.service_id = service_id
         self.service_name = service_name
         self.description = description
+        self.delegation = delegation
         self.extras = build_extras(tasks=tasks or [], summary=summary,
-                                   parameters=parameters, extra=extras)
+                                   parameters=parameters, extra=extras,
+                                   delegation=delegation)
         self.client: Optional[PlaidClient] = None
         # One registration per served project (a service can serve many at once;
         # see :meth:`run`). The lock makes the instance single-flight ACROSS all
@@ -108,11 +118,21 @@ class BaseService(ABC):
 
         Args:
             request_data: The request payload. Read declared parameters under the
-                same key you put in the schema.
+                same key you put in the schema. For a delegating service it also
+                carries ``requester_client``, a ``PlaidClient`` authenticated as
+                the user who submitted the request.
             response_helper: ``.progress(percent, msg)`` / ``.complete(data)`` /
                 ``.error(msg)``.
         """
         raise NotImplementedError
+
+    #: Handle requests concurrently (each on its own thread) instead of
+    #: single-flight. Right for an I/O-bound service such as a chat assistant
+    #: waiting on a remote model; wrong for a GPU-bound one. A concurrent
+    #: service must not touch shared mutable state (including batch/operation
+    #: state on ``self.client``) from :meth:`process_request`; a delegating one
+    #: naturally works through the per-request ``requester_client``.
+    CONCURRENT = False
 
     def handle_service_request(self, request_data: Dict[str, Any], response_helper) -> None:
         """Wrap :meth:`process_request` with a single-flight lock + error reporting.
@@ -121,24 +141,51 @@ class BaseService(ABC):
         cross-project race is real. We REJECT (don't block) a second concurrent
         request: blocking could outlast the requester's response timeout, badly
         so for slow models. The work is CPU/GPU-bound anyway — one at a time is
-        the right model.
+        the right model. (:attr:`CONCURRENT` services skip the lock and handle
+        each request on a thread of its own.)
         """
+        if self.CONCURRENT:
+            threading.Thread(target=self._handle_request,
+                             args=(request_data, response_helper), daemon=True).start()
+            return
         if not self._processing_lock.acquire(blocking=False):
             response_helper.error(
                 f"{self.service_name} is currently processing another request. "
                 f"Please try again later."
             )
             return
+        try:
+            self._handle_request(request_data, response_helper)
+        finally:
+            self._processing_lock.release()
+
+    def _handle_request(self, request_data: Dict[str, Any], response_helper) -> None:
+        """One request: delegation, operation-group adoption, process, report."""
+        # Delegation: the server's per-request token for the requesting user
+        # becomes a client of their own. It is only ever minted for a service
+        # that declared ``delegation``, so its absence there is a hard error
+        # rather than a silent fall-back to the service's own credentials.
+        requester = None
+        if isinstance(request_data, dict):
+            token = request_data.pop('delegated_token', None)
+            if token:
+                requester = PlaidClient(self.client.base_url, token)
+                request_data['requester_client'] = requester
+            elif self.delegation:
+                response_helper.error(f"{self.service_name} acts on the requester's behalf but "
+                                      f"the request carried no delegated token (server too old?)")
+                return
         # A requester with an open logical operation propagates it as
         # ``operation_group`` (see ``request_service``); adopt it so this
         # service's writes fold under the requester's audit-log entry. The
         # service's own ``with client.operation(...)`` then flattens into it
         # (outer label wins). Popped so it never reaches process_request as a
-        # stray parameter.
+        # stray parameter. Adopted on whichever client does the writing.
         group = request_data.pop('operation_group', None) if isinstance(request_data, dict) else None
         joined = bool(group and isinstance(group, dict) and group.get('id'))
+        op_client = requester or self.client
         if joined:
-            self.client.begin_operation(group.get('message'), group_id=group['id'])
+            op_client.begin_operation(group.get('message'), group_id=group['id'])
         try:
             self.process_request(request_data, response_helper)
         except Exception as e:
@@ -148,8 +195,7 @@ class BaseService(ABC):
             response_helper.error(f"{self.service_name} processing error: {str(e)}")
         finally:
             if joined:
-                self.client.end_operation()
-            self._processing_lock.release()
+                op_client.end_operation()
 
     # --- registration + lifecycle ------------------------------------------
 

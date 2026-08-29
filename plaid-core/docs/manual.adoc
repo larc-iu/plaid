@@ -508,7 +508,7 @@ client.messages.serve(project_id, service_info, handle_request, extras)
 
 The standard `extras` keys are:
 
-`tasks`:: A list of the slots this service fills, drawn from a small fixed vocabulary: `tokenize`, `parse`, `transcribe`, `link-vocab`, `analyze` (propose a morpheme segmentation and glosses for words). A client offering a "tokenize" action lists exactly the services whose `tasks` include `tokenize`.
+`tasks`:: A list of the slots this service fills, drawn from a small fixed vocabulary: `tokenize`, `parse`, `transcribe`, `link-vocab`, `analyze` (propose a morpheme segmentation and glosses for words), `assist` (a conversational assistant that takes chat turns over a project). A client offering a "tokenize" action lists exactly the services whose `tasks` include `tokenize`.
 `summary`:: A longer, human-readable description (Markdown), shown on demand—use it for what the one-line `description` is too short to say.
 `parameters`:: An ordered list of the arguments a user may set per request. Each entry is a small descriptor; the client renders a form from it and sends the chosen values as part of the request data.
 
@@ -532,6 +532,14 @@ What *does* persist is the discovery record: each registration upserts a per-pro
 Each `service_id` admits **one live connection per project**: a second registration while another instance holds the id is rejected with a 409. A service reconnecting after a network blip is not penalized—if the previously-held connection is dead but not yet reaped, the newcomer simply takes it over.
 
 NOTE: Like real-time messaging, service activity is **not** recorded in the audit log—only the document changes a service makes through ordinary writes are. The writes a service performs are attributed to whatever token it authenticates with, so giving a service its own named API token makes its edits clearly identifiable in the audit history.
+
+=== Acting on the requester's behalf
+
+A service normally does its work with its **own** credentials: whoever launched it chose a token, and every edit it makes is that token's. That is the right model for a tokenizer or a parser, whose output is the same no matter who asked. It is the wrong model for a service that does arbitrary work at a user's direction—an assistant that edits whatever a user tells it to—because such a service would let any writer act with the service's (often broader) permissions, and the audit log would name the service rather than the person.
+
+A service that declares **`delegation`** in its `extras` (`build_extras(..., delegation=True)`, or `BaseService(..., delegation=True)`) instead acts on the **requester's** behalf. For each request the server mints a short-lived token for the user who submitted it (lifetime `auth.delegated_token_ttl_seconds`, one hour by default) and delivers it with the request as `delegated_token`; `BaseService` turns that into `request_data["requester_client"]`, a `PlaidClient` authenticated as that user. Everything the service does through that client is checked against the requester's own permissions and attributed to them in the audit log, exactly as if they had made the edits themselves. Because such a service can do nothing for a user that the user could not do directly, **readers** may drive it too (for read-only work such as exploratory queries), whereas a plain service accepts requests from writers only.
+
+The delegated token is an ordinary session token with a short lifetime: it is revoked by the user's logout like any other session, and it should be used for the one request it arrived with and then dropped.
 
 = Layer Types
 

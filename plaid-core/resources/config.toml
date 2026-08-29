@@ -63,6 +63,10 @@ library_level = "warn"
 # Session token (JWT) lifetime, in seconds. Default is 30 days (2592000).
 # Shorten for tighter-security deployments.
 jwt_ttl_seconds = 2592000
+# Lifetime, in seconds, of the short-lived token the server mints for a user
+# when they submit work to a service that acts on their behalf (a "delegating"
+# service such as the IGT assistant). Default is one hour.
+# delegated_token_ttl_seconds = 3600
 
 # -----------------------------------------------------------------------------
 # API surface
