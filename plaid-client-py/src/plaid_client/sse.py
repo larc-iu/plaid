@@ -70,6 +70,31 @@ def event_payload(event_type, parsed):
     return payload
 
 
+# Connection failures are reported once at WARNING and then at DEBUG while the
+# same failure repeats (a supervisor retries every few seconds, and a 409 can
+# persist for as long as another instance holds the registration). The URL's
+# query string (service metadata) is never logged.
+_last_connection_error = {}
+
+
+def _log_connection_error(e, url=None):
+    status = getattr(getattr(e, 'response', None), 'status_code', None)
+    where = (url or getattr(getattr(e, 'request', None), 'url', '') or '').split('?', 1)[0]
+    if status == 409:
+        msg = (f'service registration rejected (409) for {where}: another instance holds '
+               f'this service id on the project; will retry until it stops')
+    elif status:
+        msg = f'SSE connection error: HTTP {status} for {where}'
+    else:
+        msg = f'SSE connection error: {e}'
+    key = (where, status or str(e))
+    if _last_connection_error.get(where) == key:
+        logger.debug('%s (repeat)', msg)
+    else:
+        _last_connection_error[where] = key
+        logger.warning(msg)
+
+
 class SSEConnection:
     """SSE connection to the listen endpoint using streaming requests.
 
@@ -165,6 +190,7 @@ class SSEConnection:
     def _run(self):
         try:
             url = f'{self._client.base_url}{self._path}'
+            self._url = url
             headers = {
                 'Authorization': f'Bearer {self._client.token}',
                 'Accept': 'text/event-stream',
@@ -220,7 +246,7 @@ class SSEConnection:
 
         except Exception as e:
             if not self._is_closed:
-                logger.warning('SSE connection error: %s', e)
+                _log_connection_error(e, getattr(self, '_url', None))
         finally:
             self._is_connected = False
             self._is_closed = True

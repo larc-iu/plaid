@@ -17,6 +17,7 @@ Result data:
 """
 
 import argparse
+import re
 
 from plaid_client import BaseService, TASKS, service_source
 
@@ -48,7 +49,7 @@ class AssistantService(BaseService):
 
     def __init__(self):
         super().__init__(
-            'igt:assist-litellm', 'IGT Assistant',
+            'igt:assist', 'IGT Assistant',  # both replaced per model in setup()
             'Chat about the project and plan edits, with the operator\'s model',
             tasks=[TASKS.ASSIST], summary=SUMMARY, delegation=True)
         self.cfg: ModelConfig | None = None
@@ -62,10 +63,23 @@ class AssistantService(BaseService):
         parser.add_argument('--max-steps', type=int, default=20, help='Tool-call rounds per turn (default 20)')
         parser.add_argument('--temperature', type=float, default=None)
         parser.add_argument('--max-tokens', type=int, default=None)
+        parser.add_argument('--service-id', default=None,
+                            help='Service id (default igt:assist:<model>). Several assistants can be '
+                                 'online on one project as long as their ids differ; the Assistant tab '
+                                 'offers a picker.')
+        parser.add_argument('--service-name', default=None,
+                            help='Display name (default "IGT Assistant (<model>)")')
 
     def setup(self, args) -> None:
         self.cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key,
                                max_steps=args.max_steps, temperature=args.temperature, max_tokens=args.max_tokens)
+        # One registration per model by default, so an operator can run several
+        # assistants side by side (different models, or the same model with a
+        # different base) and users pick one in the tab. Two instances with the
+        # SAME id on a project still collide (409): that is the dedupe guard.
+        slug = re.sub(r'[^A-Za-z0-9._-]+', '-', self.cfg.model).strip('-')
+        self.service_id = args.service_id or f'igt:assist:{slug}'
+        self.service_name = args.service_name or f'IGT Assistant ({self.cfg.model})'
         # Advertised so the UI can say which model answers.
         self.extras['model'] = self.cfg.model
         print(f'Model: {self.cfg.model}' + (f' via {self.cfg.api_base}' if self.cfg.api_base else ''))

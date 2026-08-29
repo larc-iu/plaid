@@ -295,15 +295,15 @@ class BaseService(ABC):
     # --- CLI ----------------------------------------------------------------
 
     def setup_parser_common_args(self, parser: argparse.ArgumentParser) -> None:
-        """Add the args every service needs (project id + API url).
+        """Add the args every service needs (project ids + API url).
 
-        The project id is OPTIONAL: omit it (or pass ``--all``) and the service
+        Project ids are OPTIONAL: omit them (or pass ``--all``) and the service
         registers on EVERY project the token can access — existing and future,
         since the run loop keeps re-listing projects — so it's discoverable
-        everywhere without a launch per project. Pass a single id for the old
-        one-project behavior."""
-        parser.add_argument('project_id', nargs='?', default=None,
-                            help='Target project ID. Omit (or pass --all) to '
+        everywhere without a launch per project. Pass one or more ids to serve
+        just those."""
+        parser.add_argument('project_ids', nargs='*', default=[], metavar='PROJECT_ID',
+                            help='Project ID(s) to serve. Omit (or pass --all) to '
                                  'serve every accessible project, existing and '
                                  'future.')
         parser.add_argument('--all', action='store_true',
@@ -337,8 +337,8 @@ class BaseService(ABC):
         """Main entry point: parse args, init client, set up, register on the
         target project(s), loop.
 
-        With no project id (or ``--all``) the service serves EVERY project the
-        token can access — existing and future. Server side, registration is
+        With no project ids (or ``--all``) the service serves EVERY project the
+        token can access — existing and future; with ids, just those. Server side, registration is
         project-scoped (one SSE channel per project), so universal coverage
         means one registration per project; the run loop re-lists projects
         every ``PROJECT_SYNC_INTERVAL_S`` seconds to register on projects
@@ -351,7 +351,8 @@ class BaseService(ABC):
         parsed_args = parser.parse_args(args)
         self.client = self.get_client(parsed_args.url)
 
-        serve_all = getattr(parsed_args, 'all', False) or not parsed_args.project_id
+        project_ids = list(getattr(parsed_args, 'project_ids', None) or [])
+        serve_all = getattr(parsed_args, 'all', False) or not project_ids
         if serve_all:
             # Fail fast on connectivity/auth before any expensive setup().
             # Zero accessible projects is NOT fatal: the sync loop registers on
@@ -378,12 +379,14 @@ class BaseService(ABC):
                   f"(Press Ctrl+C to stop.)")
             self.run_service_loop(project_sync_interval_s=self.PROJECT_SYNC_INTERVAL_S)
         else:
-            try:
-                self.register_service(parsed_args.project_id)
-            except Exception as e:
-                print(f"Failed to register on project {parsed_args.project_id}: {e}")
-                raise SystemExit(1)
-            print(f"{self.service_name} registered on project "
-                  f"{parsed_args.project_id}. Waiting for requests… "
-                  f"(Press Ctrl+C to stop.)")
+            for pid in project_ids:
+                try:
+                    self.register_service(pid)
+                except Exception as e:
+                    print(f"Failed to register on project {pid}: {e}")
+                    raise SystemExit(1)
+            print(f"{self.service_name} registered on "
+                  + (f"project {project_ids[0]}" if len(project_ids) == 1
+                     else f"{len(project_ids)} projects")
+                  + ". Waiting for requests… (Press Ctrl+C to stop.)")
             self.run_service_loop()

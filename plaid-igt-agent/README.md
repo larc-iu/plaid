@@ -27,7 +27,14 @@ plaid-igt-agent --url http://localhost:8080 --model openai/my-model --api-base h
 
 Provider keys come from the provider's usual environment variable
 (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...) or `--api-key`. With no project
-id the service registers on every project its token can access.
+id the service registers on every project its token can access (new ones are
+picked up as they appear); pass one or more project ids to serve just those.
+
+Each instance registers as `igt:assist:<model>` (override with `--service-id`
+and `--service-name`), so several assistants with different models can be
+online on the same project; the Assistant tab shows a picker. Two instances
+with the same id on one project collide (409) and the newcomer retries until
+the other stops.
 
 The service account needs **writer** access to register on a project, but it
 does not write with its own credentials: it declares *delegation*, so Plaid

@@ -338,3 +338,24 @@ def test_non_delegating_service_ignores_delegation_and_stays_single_flight():
     helper = _Helper()
     svc.handle_service_request({'a': 1}, helper)
     assert calls == [{'a': 1}] and not helper.errors
+
+
+def test_run_registers_on_each_named_project(monkeypatch):
+    svc = _make_sync_service()
+    served = []
+    svc.client.messages.serve = (lambda project_id, service_info, handler, extras:
+                                 served.append(project_id) or _FakeRegistration())
+    monkeypatch.setattr(BaseService, 'get_client', staticmethod(lambda url: svc.client))
+    monkeypatch.setattr(svc, 'run_service_loop', lambda *a, **k: None)
+    svc.run(['p1', 'p2', '--url', 'http://x'])
+    assert served == ['p1', 'p2']
+    assert set(svc._registrations_by_project) == {'p1', 'p2'}
+
+
+def test_run_without_ids_serves_all(monkeypatch):
+    svc = _make_sync_service()
+    svc.client.projects.current = [{'id': 'a', 'name': 'A'}, {'id': 'b', 'name': 'B'}]
+    monkeypatch.setattr(BaseService, 'get_client', staticmethod(lambda url: svc.client))
+    monkeypatch.setattr(svc, 'run_service_loop', lambda *a, **k: None)
+    svc.run(['--url', 'http://x'])
+    assert set(svc._registrations_by_project) == {'a', 'b'}
