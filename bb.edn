@@ -9,7 +9,7 @@
    :task (pl/run-tests!)}
 
   build
-  {:doc "Build ALL release artifacts locally, like release.yml's build job (NO publishing). Usage: bb build [version] [--no-smoke] [--skip-clients]. version defaults to 0.0.0-alpha.0. Produces dist-artifacts/ (uberjar with the UD+IGT SPAs + services bundled, npm .tgz, Python sdist+wheel) and boot-smoke-tests the jar on :8080. Prereqs: Node >= 20 active (e.g. `nvm use 24.1.0`); for the Python client, the mamba base env active (`mamba activate base`) — or pass --skip-clients."
+  {:doc "Build ALL release artifacts locally, like release.yml's build job (NO publishing). Usage: bb build [version] [--no-smoke] [--skip-clients]. version defaults to 0.0.0-alpha.0. Produces dist-artifacts/ (uberjar with the UD+IGT SPAs + services bundled, npm .tgz, Python sdist+wheel for the client AND the IGT assistant) and boot-smoke-tests the jar on :8080. Prereqs: Node >= 20 active (e.g. `nvm use 24.1.0`); for the Python client, the mamba base env active (`mamba activate base`) — or pass --skip-clients."
    :requires ([pipeline :as pl])
    :task (pl/build-artifacts! (pl/parse-build-args *command-line-args*))}
 

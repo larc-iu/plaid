@@ -175,8 +175,10 @@ jobs:
 
       # --- PyPI ----------------------------------------------------------------
       # Keyless via OIDC trusted publishing. Configure a trusted publisher (or a
-      # pending publisher for the first release) for `larc-plaid-client` on
-      # PyPI. `skip-existing` makes re-runs idempotent.
+      # pending publisher for the first release) on PyPI for EACH Python
+      # distribution `bb build` stages: `larc-plaid-client` and
+      # `larc-plaid-igt-agent` (the publish action uploads every wheel/sdist in
+      # pydist/). `skip-existing` makes re-runs idempotent.
       - name: Collect Python dists
         run: |
           mkdir -p pydist
@@ -215,6 +217,10 @@ jobs:
           ## Clients
           - npm: \`npm install @larc-iu/plaid-client@$VER\`
           - PyPI: \`pip install --pre larc-plaid-client==$(echo "$VER" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')\`
+
+          ## IGT assistant service
+          Bring-your-own-model chat assistant for IGT projects (the Assistant tab), run by the instance operator:
+          \`pip install --pre larc-plaid-igt-agent==$(echo "$VER" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')\` then \`plaid-igt-agent --url <plaid url> --model <litellm model>\`. Python 3.11+.
 
           ## Bundled apps
           The jar serves the UD editor at \`/ud/\` and the IGT editor at \`/igt/\`.

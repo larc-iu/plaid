@@ -17,7 +17,8 @@ unverified in the editor until confirmed.
 Python 3.11+.
 
 ```sh
-pip install -e ../plaid-client-py -e .
+pip install larc-plaid-igt-agent        # from PyPI (published with each Plaid release)
+# or, from a checkout:  pip install -e ../plaid-client-py -e .
 # a named API token for the service account goes in ./.token (or you are prompted)
 plaid-igt-agent --url http://localhost:8080 --model openai/gpt-4o
 plaid-igt-agent --url http://localhost:8080 --model ollama/llama3.1

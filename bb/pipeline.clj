@@ -108,20 +108,36 @@
           (try (p/sh "pkill" "-f" (str "plaid-" version ".jar")) (catch Exception _ nil))
           (rm-rf tmp))))))
 
+(def python-packages
+  "The Python distributions a release publishes, in build order: the client,
+  then the IGT assistant service (which depends on the client at the same
+  release, so its floor is stamped alongside its version)."
+  [{:dir "plaid-client-py" :label "Python client"}
+   {:dir "plaid-igt-agent" :label "IGT assistant (plaid-igt-agent)" :pin-client? true}])
+
+(defn python-pyprojects []
+  (mapv #(str (:dir %) "/pyproject.toml") python-packages))
+
+(defn- stamp-pyproject [toml pep pin-client?]
+  (cond-> (str/replace (slurp toml)
+                       (re-pattern "(?m)^version = \"[^\"]*\"")
+                       (str "version = \"" pep "\""))
+    pin-client? (str/replace "\"larc-plaid-client\"" (str "\"larc-plaid-client>=" pep "\""))))
+
 (defn build-python! [pep art]
-  (step "Build Python client (sdist + wheel)")
-  (let [py      (python-exe)
-        toml    "plaid-client-py/pyproject.toml"
-        stamped (str/replace (slurp toml)
-                             (re-pattern "(?m)^version = \"[^\"]*\"")
-                             (str "version = \"" pep "\""))]
-    ;; Stamp the PEP440 version into pyproject, then build. The PyPA `build`
-    ;; frontend must be importable in the active env — install it if missing.
+  (let [py (python-exe)]
+    ;; The PyPA `build` frontend must be importable in the active env —
+    ;; install it if missing.
     (when-not (zero? (:exit (p/sh py "-c" "import build")))
       (println "  installing the `build` frontend into the active Python env…")
       (p/shell py "-m" "pip" "install" "--upgrade" "--quiet" "build"))
-    (spit toml stamped)
-    (p/shell {:dir "plaid-client-py"} py "-m" "build" "--outdir" (str art))))
+    (doseq [{:keys [dir label pin-client?]} python-packages]
+      (step (str "Build " label " (sdist + wheel)"))
+      ;; Stamp the PEP440 version (and, for packages that depend on the
+      ;; client, the client floor) into pyproject, then build.
+      (let [toml (str dir "/pyproject.toml")]
+        (spit toml (stamp-pyproject toml pep pin-client?))
+        (p/shell {:dir dir} py "-m" "build" "--outdir" (str art))))))
 
 ;; The whole release.yml `build` job, locally. No publishing.
 (defn build-artifacts! [{:keys [version smoke? clients?]}]
@@ -131,11 +147,11 @@
         pep      (->pep440 version)
         jar-name (str "plaid-" version ".jar")
         js-pkg   "plaid-client-js/package.json"
-        py-toml  "plaid-client-py/pyproject.toml"
-        ;; npm version + the pyproject sed mutate TRACKED files; snapshot them
-        ;; and restore in `finally` so the build leaves the tree clean.
+        py-tomls (python-pyprojects)
+        ;; npm version + the pyproject stamps mutate TRACKED files; snapshot
+        ;; them and restore in `finally` so the build leaves the tree clean.
         js-bak   (when clients? (slurp js-pkg))
-        py-bak   (when clients? (slurp py-toml))]
+        py-baks  (when clients? (mapv slurp py-tomls))]
     (println (str "\nBuilding Plaid release artifacts  (version=" version "  pep440=" pep ")"))
     (fs/create-dirs art)
     (try
@@ -205,7 +221,7 @@
       (println "      (gitignored). Run `bb clean` to drop them before plain `clojure -M:dev`.")
       (finally
         (when js-bak (spit js-pkg js-bak))
-        (when py-bak (spit py-toml py-bak))))))
+        (when py-baks (doseq [[toml bak] (map vector py-tomls py-baks)] (spit toml bak)))))))
 
 (defn parse-build-args [cli-args]
   (let [flags      (set (filter (fn [a] (str/starts-with? a "--")) cli-args))

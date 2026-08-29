@@ -541,6 +541,8 @@ A service that declares **`delegation`** in its `extras` (`build_extras(..., del
 
 The delegated token is an ordinary session token with a short lifetime: it is revoked by the user's logout like any other session, and it should be used for the one request it arrived with and then dropped.
 
+The IGT assistant (`pip install larc-plaid-igt-agent`, run as `plaid-igt-agent`) is the reference delegating service: a chat assistant over a project, backed by whatever model the operator configures, whose edits are proposed as plans the user approves and are then applied under the user's own account. Unlike the single-file services bundled in the jar, it is a package with its own dependencies, so it is distributed on PyPI rather than extracted next to the data directory.
+
 = Layer Types
 
 Each project contains a configuration of **layer**s which define a schema for all documents in the project.

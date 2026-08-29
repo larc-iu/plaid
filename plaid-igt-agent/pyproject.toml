@@ -3,10 +3,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "plaid-igt-agent"
+name = "larc-plaid-igt-agent"
 version = "0.0.0"
 description = "A bring-your-own-model LLM assistant service for Plaid IGT projects"
 requires-python = ">=3.11"
+# The client floor is stamped to the release version at build time (bb build).
 dependencies = ["larc-plaid-client", "litellm>=1.70"]
 
 [project.optional-dependencies]
