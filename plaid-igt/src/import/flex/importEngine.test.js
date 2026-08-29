@@ -169,7 +169,7 @@ const project = {
 
 // --- fake client ---------------------------------------------------------------
 
-function makeFakeClient({ existingDocs = [], existingItems = [] } = {}) {
+function makeFakeClient({ existingDocs = [], existingItems = [], existingFields = null } = {}) {
   const calls = [];
   let batch = null;
   let nextId = 0;
@@ -223,7 +223,12 @@ function makeFakeClient({ existingDocs = [], existingItems = [] } = {}) {
       bulkCreate: (body) => record('spans.bulkCreate', body, { ids: body.map(() => id('span')) }),
     },
     vocabLayers: {
-      get: () => Promise.resolve({ id: 'v1', items: existingItems }),
+      get: () =>
+        Promise.resolve({
+          id: 'v1',
+          items: existingItems,
+          config: existingFields ? { igt: { fields: existingFields } } : {},
+        }),
       setConfig: (vocabId, ns, key, value) =>
         record('vocabLayers.setConfig', { vocabId, ns, key, value }, {}),
     },
@@ -351,6 +356,23 @@ describe('importLexicon', () => {
       Plural: { inline: false },
       'Parsing Note': { inline: false },
     });
+  });
+
+  it('extending an existing lexicon keeps its field schema and appends the new keys', async () => {
+    const client = makeFakeClient({
+      existingFields: {
+        gloss: { inline: false },
+        Dialect: { inline: true },
+        morphType: { inline: false },
+      },
+    });
+    await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
+    const cfg = client.calls.find((c) => c.kind === 'vocabLayers.setConfig').args.value;
+    expect(Object.keys(cfg).slice(0, 3)).toEqual(['gloss', 'Dialect', 'morphType']);
+    expect(cfg.gloss).toEqual({ inline: false }); // the vocab's own choice survives
+    expect(cfg.Dialect).toEqual({ inline: true });
+    expect(cfg.pos).toEqual({ inline: true });
+    expect(cfg).toHaveProperty('gloss (ru)');
   });
 
   const created = (client) => client.calls.filter((c) => c.kind === 'vocabItems.create');

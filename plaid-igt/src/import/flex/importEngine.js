@@ -19,6 +19,7 @@ import {
   findWordTokenLayer,
   findMorphemeTokenLayer,
   readScope,
+  readVocabFields,
 } from '../../domain/igtConfig.js';
 import { pickEn } from './fwdataParser.js';
 
@@ -237,9 +238,12 @@ export async function importLexicon({
 
   // Declare the vocab's field schema so gloss/POS render inline in the editor
   // popover and as table columns (idempotent; cheap relative to the import).
-  const fieldsConfig = Object.fromEntries(
-    [...fieldKeys].map((n) => [n, { inline: n === 'gloss' || n === 'pos' }]),
-  );
+  // A vocab that already has a schema (an existing lexicon being extended)
+  // keeps its fields, order and inline flags; keys new to it are appended.
+  const fieldsConfig = { ...(readVocabFields(existing.config) ?? {}) };
+  for (const n of fieldKeys) {
+    if (!(n in fieldsConfig)) fieldsConfig[n] = { inline: n === 'gloss' || n === 'pos' };
+  }
   await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
 
   let done = 0;
