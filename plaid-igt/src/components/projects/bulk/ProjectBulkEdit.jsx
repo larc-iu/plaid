@@ -29,6 +29,8 @@ import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
+import { normalizeVocabFields, humanizeFieldName } from '@/domain/vocabFields';
+import { readVocabFields } from '@/domain/igtConfig';
 import { MATCH_TYPES, searchDomains } from '../search/searchQueries.js';
 import { MarkedText } from '../search/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
@@ -850,10 +852,74 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
 
 // ---- merge ----------------------------------------------------------------------
 
+// Metadata keys that are bookkeeping rather than content: import identifiers
+// and provenance. Everything else on an entry is shown when it is ticked.
+const isBookkeepingKey = (k) => k === 'flexEntry' || k === 'flexSense' || k.startsWith('prov');
+
+// The whole of one lexicon entry (minus its attestations): every configured
+// field in schema order, then any other content the entry carries (custom
+// keys, a FLEx homograph number, example sentences). Shown under a ticked row
+// so what survives and what is lost in a merge is plain to see.
+const EntryDetail = ({ item, fields }) => {
+  const meta = item.metadata || {};
+  const known = new Set(fields.map((f) => f.name));
+  const extras = Object.keys(meta).filter(
+    (k) => !known.has(k) && !isBookkeepingKey(k) && k !== 'examples' && k !== 'homograph',
+  );
+  const examples = Array.isArray(meta.examples) ? meta.examples.filter((ex) => ex?.text) : [];
+  const homograph = Number(meta.homograph) || 0;
+  const show = (v) =>
+    v == null || String(v).trim() === '' ? (
+      <span className="text-muted-foreground">—</span>
+    ) : (
+      String(v)
+    );
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+      {fields.map((f) => (
+        <Fragment key={f.name}>
+          <dt className="text-xs text-muted-foreground">{humanizeFieldName(f.name)}</dt>
+          <dd>{show(meta[f.name])}</dd>
+        </Fragment>
+      ))}
+      {extras.map((k) => (
+        <Fragment key={k}>
+          <dt className="text-xs text-muted-foreground">{humanizeFieldName(k)}</dt>
+          <dd>{show(typeof meta[k] === 'object' ? JSON.stringify(meta[k]) : meta[k])}</dd>
+        </Fragment>
+      ))}
+      {homograph > 0 && (
+        <>
+          <dt className="text-xs text-muted-foreground">FLEx homograph</dt>
+          <dd>{homograph}</dd>
+        </>
+      )}
+      {examples.length > 0 && (
+        <>
+          <dt className="text-xs text-muted-foreground">Examples</dt>
+          <dd>
+            <ul className="flex flex-col gap-0.5">
+              {examples.map((ex, i) => (
+                <li key={i}>
+                  {ex.text}
+                  {ex.translation && (
+                    <span className="block text-xs text-muted-foreground">{ex.translation}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </dd>
+        </>
+      )}
+    </dl>
+  );
+};
+
 const MergePanel = ({ project, client }) => {
   const vocabs = project.vocabs || [];
   const [vocabId, setVocabId] = useState(vocabs[0]?.id ?? '');
   const [items, setItems] = useState(null);
+  const [fields, setFields] = useState([]);
   const [filter, setFilter] = useState('');
   const [chosen, setChosen] = useState(() => new Set());
   const [survivor, setSurvivor] = useState(null);
@@ -869,7 +935,9 @@ const MergePanel = ({ project, client }) => {
     client.vocabLayers
       .get(vocabId, true)
       .then((layer) => {
-        if (!cancelled) setItems(layer.items || []);
+        if (cancelled) return;
+        setItems(layer.items || []);
+        setFields(normalizeVocabFields(readVocabFields(layer.config)));
       })
       .catch((err) => {
         console.error('Load vocabulary failed:', err);
@@ -915,11 +983,13 @@ const MergePanel = ({ project, client }) => {
   };
 
   const plan = r.plan;
-  const metaLine = (it) =>
-    Object.entries(it.metadata || {})
-      .filter(([k, v]) => v != null && String(v).trim() !== '' && !k.startsWith('prov'))
-      .slice(0, 4)
-      .map(([k, v]) => `${k}: ${v}`)
+  // The at-a-glance line for an unticked entry: its inline fields (the ones
+  // the vocabulary table shows as columns), values only.
+  const inlineLine = (it) =>
+    fields
+      .filter((f) => f.inline)
+      .map((f) => it.metadata?.[f.name])
+      .filter((v) => v != null && String(v).trim() !== '')
       .join(' · ');
 
   const doApply = async () => {
@@ -1029,10 +1099,15 @@ const MergePanel = ({ project, client }) => {
                     {idx != null && (
                       <sub className="ml-0.5 text-[0.7em] text-muted-foreground">{idx}</sub>
                     )}
-                    {metaLine(it) && (
-                      <span className="ml-2 text-xs text-muted-foreground">{metaLine(it)}</span>
+                    {!on && inlineLine(it) && (
+                      <span className="ml-2 text-xs text-muted-foreground">{inlineLine(it)}</span>
                     )}
                   </span>
+                  {on && (
+                    <div className="col-start-3 pb-1 pt-1">
+                      <EntryDetail item={it} fields={fields} />
+                    </div>
+                  )}
                 </div>
               );
             })}
