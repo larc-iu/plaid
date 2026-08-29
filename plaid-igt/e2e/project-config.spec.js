@@ -173,7 +173,7 @@ test('C2-03 + B1-10: a reader gets no Create button and a read-only editor', asy
   const auth = {
     token,
     userId: 'alpha-reader@x.com',
-    username: 'alpha-reader@x.com',
+    displayName: 'alpha-reader@x.com',
     isAdmin: false,
   };
   await seedAuth(page, auth);

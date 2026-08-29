@@ -4,7 +4,7 @@ import { test, expect } from './fixtures.js';
 // guards that the Tailwind/shadcn foundation coexists with the Mantine shell.
 test('shadcn login form authenticates and lands on projects', async ({ page }) => {
   await page.goto('/#/login');
-  await page.getByLabel('Username').fill('a@b.com');
+  await page.getByLabel('Email address').fill('a@b.com');
   await page.getByLabel('Password').fill('password');
   await page.getByRole('button', { name: 'Login' }).click();
   await page.waitForURL(/projects/, { timeout: 10000 });

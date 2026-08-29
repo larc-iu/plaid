@@ -24,21 +24,21 @@ export function readToken() {
 // Plays the role of authService.login() — primes localStorage so AuthContext
 // considers us logged in without going through the UI. Must run *before* the
 // app boots, because AuthProvider only reads localStorage in its mount effect.
-export async function seedAuth(page, { token, userId, username, isAdmin = true } = {}) {
+export async function seedAuth(page, { token, userId, displayName, isAdmin = true } = {}) {
   if (!token) {
     const fromFile = readToken();
     token = fromFile.token;
     userId = userId || fromFile.userId;
   }
-  username = username || userId;
+  displayName = displayName || userId;
   await page.addInitScript(
-    ({ token, userId, username, isAdmin }) => {
+    ({ token, userId, displayName, isAdmin }) => {
       localStorage.setItem('token', token);
       localStorage.setItem('userId', userId);
-      localStorage.setItem('username', username);
+      localStorage.setItem('displayName', displayName);
       localStorage.setItem('isAdmin', String(isAdmin));
     },
-    { token, userId, username, isAdmin },
+    { token, userId, displayName, isAdmin },
   );
 }
 

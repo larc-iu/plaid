@@ -17,7 +17,7 @@ const SEARCH_LIMIT = 25;
 export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, onDataUpdate }) => {
   const maintainerIds = useMemo(() => vocabulary?.maintainers ?? [], [vocabulary]);
 
-  const [maintainers, setMaintainers] = useState([]); // [{id, username, isAdmin}]
+  const [maintainers, setMaintainers] = useState([]); // [{id, displayName, isAdmin}]
   const [loading, setLoading] = useState(true);
   const [updatingUser, setUpdatingUser] = useState(null);
 
@@ -30,11 +30,11 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
       try {
         const resolved = await Promise.all(
           maintainerIds.map((id) =>
-            client.users.get(id).catch(() => ({ id, username: id, isAdmin: false })),
+            client.users.get(id).catch(() => ({ id, displayName: id, isAdmin: false })),
           ),
         );
         if (!cancelled) {
-          resolved.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+          resolved.sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
           setMaintainers(resolved);
         }
       } finally {
@@ -173,13 +173,13 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
                       <UserAvatar
                         client={client}
                         userId={m.id}
-                        username={m.username}
+                        displayName={m.displayName}
                         avatarHash={m.avatarHash}
                         className="h-7 w-7"
                       />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{m.username}</span>
+                          <span className="font-medium">{m.displayName}</span>
                           {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
                           {m.id === user.id && <Badge variant="outline">You</Badge>}
                         </div>
@@ -195,7 +195,7 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
                         className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
                         onClick={() => handleRemoveMaintainer(m.id)}
                         disabled={updatingUser === m.id}
-                        aria-label={`Remove ${m.username}`}
+                        aria-label={`Remove ${m.displayName}`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -251,13 +251,13 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
                       <UserAvatar
                         client={client}
                         userId={u.id}
-                        username={u.username}
+                        displayName={u.displayName}
                         avatarHash={u.avatarHash}
                         className="h-7 w-7"
                       />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="truncate font-medium">{u.username}</span>
+                          <span className="truncate font-medium">{u.displayName}</span>
                           {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
                         </div>
                         <span className="block truncate text-xs text-muted-foreground">{u.id}</span>

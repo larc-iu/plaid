@@ -16,7 +16,7 @@
 
 (def attr-keys
   [:user/id
-   :user/username
+   :user/display-name
    :user/password-hash
    :user/password-changes
    :user/is-admin
@@ -27,8 +27,12 @@
   "The externally visible projection of a user record (no password
   fields). `:user/deactivated-at` is included deliberately: deactivated
   users stay listable/inspectable so admins can see and reactivate
-  them."
-  [:user/id :user/username :user/is-admin :user/deactivated-at :user/avatar-hash])
+  them.
+
+  `:user/id` IS the user's email address: it is what `POST /login`
+  authenticates against, it is fixed at creation, and no endpoint can
+  change it. `:user/display-name` is the mutable label the apps show."
+  [:user/id :user/display-name :user/is-admin :user/deactivated-at :user/avatar-hash])
 
 (defn- row->user
   "Translate a `users` row (snake_case column keys) to the namespaced
@@ -36,7 +40,10 @@
   [row]
   (when row
     {:user/id               (:id row)
-     :user/username         (:username row)
+     ;; Free-form, NOT NULL, not unique. The `username` column the schema
+     ;; still carries is a frozen mirror of `id` that nothing reads (see the
+     ;; user-display-name migration) — deliberately not projected here.
+     :user/display-name     (:display_name row)
      :user/password-hash    (:password_hash row)
      :user/password-changes (or (:password_changes row) 0)
      ;; SQLite stores booleans as 0/1 INTEGERs.
@@ -68,39 +75,39 @@
   (boolean (:user/is-admin user-record)))
 
 (defn get-all
-  "Get all users formatted for external consumption, ordered by
-  `:username`.
+  "Get all users formatted for external consumption, ordered by display
+  name.
 
-  Bare arity `([db])` returns a plain seq of `{:user/id :user/username
-  :user/is-admin}` maps (used by admin seeding in `server/sql.clj`).
+  Bare arity `([db])` returns a plain seq of public user maps (used by
+  admin seeding in `server/sql.clj`).
 
-  Paginated arity `([db opts])` keyset-paginates on `:username` (a
-  unique column, so a sufficient total order on its own) and returns the
-  uniform `{:entries [...] :next-cursor <raw-vals-or-nil>}` envelope. An
-  optional `:q` filters to usernames containing that text (case-insensitive
-  substring) — used by the project-permissions UI to find users to grant
-  access without paging the whole roster."
+  Paginated arity `([db opts])` keyset-paginates on `(display_name, id)`
+  and returns the uniform `{:entries [...] :next-cursor <raw-vals-or-nil>}`
+  envelope. Display names are NOT unique, so the id — which is unique, and
+  is the user's email address — rides along as the tiebreaker that makes
+  the order total. Index: `idx_users_display_name_id`.
+
+  An optional `:q` filters to users whose display name OR email contains
+  that text (case-insensitive substring). Both, because the
+  project-permissions UI is used to find a colleague by whichever of the
+  two the searcher happens to know."
   ([db]
-   (->> (psc/q db {:select [:*] :from [:users] :order-by [:username]})
+   (->> (psc/q db {:select [:*] :from [:users] :order-by [:display_name :id]})
         (map row->user)
         (map #(select-keys % public-keys))))
   ([db {:keys [limit cursor-vals q]}]
    (pagination/paginate db (cond-> {:from :users
-                                    :order-by [:username]
+                                    :order-by [:display_name :id]
                                     :limit limit
                                     :cursor-vals cursor-vals
                                     :row->entity (fn [row] (-> (row->user row)
                                                                (select-keys public-keys)))}
                              (not (clojure.string/blank? q))
-                             (assoc :base-where [:like [:lower :username]
-                                                 (str "%" (clojure.string/lower-case q) "%")])))))
-
-(defn find-by-username
-  "Find a user by username. Returns full internal record."
-  [db username]
-  (row->user (psc/q1 db {:select [:*]
-                         :from [:users]
-                         :where [:= :username username]})))
+                             (assoc :base-where
+                                    (let [pat (str "%" (clojure.string/lower-case q) "%")]
+                                      [:or
+                                       [:like [:lower :display_name] pat]
+                                       [:like [:lower :id] pat]]))))))
 
 (defn get-avatar
   "Fetch `id`'s stored profile picture as
@@ -118,19 +125,21 @@
 
 ;; writes --------------------------------------------------------------------------
 
-(defn- username-unique-violation?
-  "True iff `e` (or any cause in its chain) is the specific
-  `UNIQUE constraint failed: users.username` SQLite violation. NARROW
-  on purpose: a PK collision on `users.id` or a CHECK violation on
-  `is_admin IN (0,1)` would also raise SQLState 23000 with
-  `SQLITE_CONSTRAINT` in the message, but those are NOT 'username
-  taken' — they're real server bugs that must surface as 500s with
-  their original message, not be silently re-projected to 409
-  'user already exists'. We match on the SQLite message tail
-  (`UNIQUE constraint failed: users.username`) because it's the
-  cleanest portable distinguisher across sqlite-jdbc versions; the
-  extended result code SQLITE_CONSTRAINT_UNIQUE (2067) is
-  driver-specific and not exposed uniformly.
+(defn- account-taken-violation?
+  "True iff `e` (or any cause in its chain) is the SQLite uniqueness
+  violation for an account that already exists. Two columns can report it
+  and both mean the same thing, because a row always inserts `username`
+  equal to `id`: the PK index on `users.id` and the UNIQUE index on
+  `users.username`, whichever SQLite happens to check first.
+
+  NARROW on purpose: a CHECK violation on `is_admin IN (0,1)` would also
+  raise SQLState 23000 with `SQLITE_CONSTRAINT` in the message, but that is
+  NOT 'account taken' — it's a real server bug that must surface as a 500
+  with its original message, not be silently re-projected to 409. We match
+  on the SQLite message tail because it's the cleanest portable
+  distinguisher across sqlite-jdbc versions; the extended result code
+  SQLITE_CONSTRAINT_UNIQUE (2067) is driver-specific and not exposed
+  uniformly.
 
   Walks the cause chain because next.jdbc may wrap the driver
   exception."
@@ -142,6 +151,7 @@
       (let [^SQLException sqle t
             msg (or (.getMessage sqle) "")]
         (or (.contains msg "UNIQUE constraint failed: users.username")
+            (.contains msg "UNIQUE constraint failed: users.id")
             (recur (.getCause t))))
       :else (recur (.getCause t)))))
 
@@ -153,66 +163,102 @@
   bare name into a field the whole instance treats as an email."
   #"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-(defn assert-valid-username!
-  "Usernames ARE email addresses in Plaid. Every account-creating surface
-  already collects one (`PLAID_ADMIN_EMAIL` at bootstrap, the admin's
-  POST /users form, invite redemption), so the rule lives here at the single
-  chokepoint they all pass through rather than being restated, and drifting,
-  at each caller.
+(defn assert-valid-email!
+  "A user's ID IS their email address in Plaid: it is what `POST /login`
+  authenticates against and it is fixed for the life of the account. Every
+  account-creating surface collects one (`PLAID_ADMIN_EMAIL` at bootstrap,
+  the admin's POST /users form, invite redemption), so the rule lives here at
+  the single chokepoint they all pass through rather than being restated, and
+  drifting, at each caller.
 
-  Enforced on create and rename ONLY. An account made before this rule keeps
-  working: login looks the username up, it never revalidates it.
+  Enforced on create ONLY — there is no rename. An account made before this
+  rule keeps working: login fetches by id, it never revalidates it.
 
   Throws ex-info with :code 400. Callers must already be inside
   `submit-operation!`, which is what projects that into a 400 response."
-  [username]
-  (psc/valid-name? username)
-  (when-not (re-matches email-pattern username)
-    (throw (ex-info "Username must be an email address"
-                    {:code 400 :username username})))
+  [email]
+  (psc/valid-name? email)
+  (when-not (re-matches email-pattern email)
+    (throw (ex-info "User ID must be an email address"
+                    {:code 400 :email email})))
+  true)
+
+(defn default-display-name
+  "The display name a brand-new account starts with: the local part of its
+  email address (\"alice@x.edu\" -> \"alice\"). A person can change it
+  whenever they like; this only has to be recognizable on day one. Falls back
+  to the whole string if there is no local part to take, so the NOT NULL
+  column can never end up empty."
+  [email]
+  (let [local (first (clojure.string/split (str email) #"@"))]
+    (if (clojure.string/blank? local) (str email) local)))
+
+(defn assert-valid-display-name!
+  "Display names are free-form: any non-blank string within the project-wide
+  length limits. Deliberately NOT unique and deliberately not email-shaped.
+  Throws ex-info with :code 400; call inside `submit-operation!`."
+  [display-name]
+  (psc/valid-name? display-name)
+  (when (clojure.string/blank? display-name)
+    (throw (ex-info "Display name cannot be blank" {:code 400})))
   true)
 
 (defn insert-user-row!
-  "Insert a fresh user row inside a tx. PUBLIC because invite redemption
-  (plaid.sql.invite/redeem!) creates the account inside its own
-  `:invite/redeem` op, alongside the project grant and the use-count bump,
-  so all three commit or none do. Callers MUST already be inside
-  `submit-operation!` (psc/insert! asserts it). Relies on the users table's
-  PRIMARY KEY (id) + UNIQUE (username) constraints — racing
+  "Insert a fresh user row inside a tx. `id` is the account's email address.
+  `display-name` is optional: nil takes `default-display-name`.
+
+  PUBLIC because invite redemption (plaid.sql.invite/redeem!) creates the
+  account inside its own `:invite/redeem` op, alongside the project grant and
+  the use-count bump, so all three commit or none do. Callers MUST already be
+  inside `submit-operation!` (psc/insert! asserts it). Relies on the users
+  table's PRIMARY KEY (id) + UNIQUE (username) constraints — racing
   SELECT-then-INSERT was wrong inside SAVEPOINTs (no BEGIN IMMEDIATE
   lock), so we let the DB enforce uniqueness and translate ONLY the
-  username-unique constraint exception to a 409. Any other constraint
-  violation (PK collision on id, CHECK on is_admin, etc.) is
-  re-thrown so the outer submit-operation* catch projects it to 500
-  with the original SQLException message — important for diagnostics."
-  [tx id is-admin password]
-  (assert-valid-username! id)
-  (let [password-hash (hashers/derive password)
-        row {:id               id
-             :username         id
-             :password_hash    password-hash
-             :password_changes 0
-             :is_admin         (if is-admin 1 0)}]
-    (try
-      (psc/insert! tx :users row)
-      (catch SQLException e
-        (if (username-unique-violation? e)
-          (throw (ex-info (psc/err-msg-already-exists "User" id) {:id id :code 409}))
-          (throw e))))
-    id))
+  account-taken constraint exception to a 409. Any other constraint
+  violation (CHECK on is_admin, etc.) is re-thrown so the outer
+  submit-operation* catch projects it to 500 with the original SQLException
+  message — important for diagnostics.
+
+  `username` is written equal to `id` and never read again: it survives only
+  as a UNIQUE-indexed column SQLite cannot drop without a full table rebuild.
+  See the user-display-name migration."
+  ([tx id is-admin password] (insert-user-row! tx id is-admin password nil))
+  ([tx id is-admin password display-name]
+   (assert-valid-email! id)
+   (let [display-name (or (not-empty (some-> display-name clojure.string/trim))
+                          (default-display-name id))
+         _ (assert-valid-display-name! display-name)
+         password-hash (hashers/derive password)
+         row {:id               id
+              :username         id
+              :display_name     display-name
+              :password_hash    password-hash
+              :password_changes 0
+              :is_admin         (if is-admin 1 0)}]
+     (try
+       (psc/insert! tx :users row)
+       (catch SQLException e
+         (if (account-taken-violation? e)
+           (throw (ex-info (psc/err-msg-already-exists "User" id) {:id id :code 409}))
+           (throw e))))
+     id)))
 
 (defn create
-  "Create a new user. `id` doubles as the username (matches v2 behavior).
+  "Create a new user. `id` is the account's email address, which is also what
+  they log in with and cannot be changed afterwards. `display-name` is
+  optional (nil takes the local part of the email).
   `acting-user-id` attributes the op in the audit log — nil ONLY for the
   bootstrap admin created at first startup, where no actor exists yet.
   Returns {:success true :extra id} or {:success false ...}."
-  [db id is-admin password acting-user-id]
-  (submit-operation! [tx db {:type :user/create
-                             :project nil
-                             :document nil
-                             :description (str "Create user " id)
-                             :user acting-user-id}]
-                     (insert-user-row! tx id is-admin password)))
+  ([db id is-admin password acting-user-id]
+   (create db id is-admin password acting-user-id nil))
+  ([db id is-admin password acting-user-id display-name]
+   (submit-operation! [tx db {:type :user/create
+                              :project nil
+                              :document nil
+                              :description (str "Create user " id)
+                              :user acting-user-id}]
+                      (insert-user-row! tx id is-admin password display-name))))
 
 (defn- count-other-admins
   "Count global admins OTHER than `eid`. Used to enforce the
@@ -225,17 +271,22 @@
       0))
 
 (defn merge
-  "Update mutable fields on a user. `m` may include :user/username,
+  "Update mutable fields on a user. `m` may include :user/display-name,
   :user/is-admin, and/or :password (raw, which gets hashed).
-  `acting-user-id` attributes the op (the admin or the user themselves)."
+  `acting-user-id` attributes the op (the admin or the user themselves).
+
+  There is deliberately no way to change `:user/id`: it is the address the
+  account logs in with, and rewriting it would silently lock the user out
+  (`POST /login` fetches by primary key). Correcting a mistyped address means
+  creating the right account and deactivating the wrong one."
   [db eid m acting-user-id]
   (submit-operation! [tx db {:type :user/update
                              :project nil
                              :document nil
                              :description (str "Update user " eid)
                              :user acting-user-id}]
-                     (when-let [n (:user/username m)]
-                       (assert-valid-username! n))
+                     (when-let [n (:user/display-name m)]
+                       (assert-valid-display-name! n))
                      (let [intern (get-internal tx eid)]
                        (when (nil? intern)
                          (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
@@ -257,8 +308,8 @@
                                          (assoc :password_changes (inc (or (:user/password-changes intern) 0))))
                                      attrs)
                              attrs (cond-> attrs
-                                     (some? (:user/username m))
-                                     (assoc :username (:user/username m))
+                                     (some? (:user/display-name m))
+                                     (assoc :display_name (:user/display-name m))
 
                                      (some? (:user/is-admin m))
                                      (assoc :is_admin (if (:user/is-admin m) 1 0)))]
@@ -428,7 +479,7 @@
     - strips project memberships + vocab maintainerships (audited
       synthetic rows, same as the old delete),
     - revokes all the user's API tokens (audited).
-  The username stays reserved. Reversible via `reactivate` (which does
+  The email address stays reserved. Reversible via `reactivate` (which does
   NOT restore memberships or tokens)."
   [db eid acting-user-id]
   (submit-operation! [tx db {:type :user/deactivate

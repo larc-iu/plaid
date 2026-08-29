@@ -1,69 +1,61 @@
 (ns plaid.sql.user-constraint-test
   "Regression coverage for task #57: `unique-constraint-violation?` in
   plaid.sql.user used to catch ANY SQLite constraint failure and
-  re-project it to 409 'User already exists'. That was wrong for PK
-  collisions on `users.id` and CHECK violations on `is_admin IN (0,1)`,
-  both of which carry the same SQLSTATE/`SQLITE_CONSTRAINT` text.
+  re-project it to 409 'User already exists'. That was wrong for a CHECK
+  violation on `is_admin IN (0,1)`, which carries the same
+  SQLSTATE/`SQLITE_CONSTRAINT` text but is a server bug, not a taken
+  account.
 
-  After the fix, ONLY `UNIQUE constraint failed: users.username` is
-  translated to 409; any other constraint violation propagates as a
-  SQLException and reaches submit-operation*'s generic catch, which
-  surfaces a 500."
+  Only a uniqueness failure on the account's identity is translated to 409.
+  Two columns can report that one — the PK on `users.id` and the UNIQUE on
+  `users.username`, which every row writes equal to the id — and either
+  means the same thing. Anything else propagates as a SQLException and
+  reaches submit-operation*'s generic catch, which surfaces a 500 carrying
+  the original message."
   (:require [clojure.test :refer :all]
             [plaid.sql.common :as psc]
             [plaid.sql.user :as user]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin with-clean-db]]
-            [plaid.test-helpers :refer :all]))
+            [plaid.test-helpers :refer :all])
+  (:import [java.sql SQLException]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
 
-(deftest duplicate-username-projects-to-409
-  (testing "creating a user with an id (== username) that already exists
-            surfaces as {:success false :code 409}"
-    (let [uid "dup-username-test@example.com"
+(deftest duplicate-account-projects-to-409
+  (testing "creating a user whose email/id already exists surfaces as
+            {:success false :code 409}"
+    (let [uid "dup-account-test@example.com"
           r1 (user/create db uid false "irrelevant-password" nil)]
       (is (:success r1) (str "first create succeeded: " r1))
       (let [r2 (user/create db uid false "irrelevant-password" nil)]
         (is (false? (:success r2))
-            (str "second create with same username fails: " r2))
+            (str "second create with the same email fails: " r2))
         (is (= 409 (:code r2))
-            (str "username collision projects to 409, got: " r2))))))
+            (str "the collision projects to 409, got: " r2))))))
 
-(deftest non-username-constraint-violation-does-not-mask-as-409
-  (testing "a non-username constraint violation must NOT be silently
-            re-projected to 409 'user taken' — it should surface as a
-            real error (5xx) carrying the original SQLException
-            message, so diagnostics aren't misleading."
-    ;; We force a PK collision by calling the private insert-user-row!
-    ;; directly with a duplicate id but a NEW username — that bypasses
-    ;; the username-unique path (id differs in `:username`? no: id IS
-    ;; username here). To exercise a PURE PK-only collision we INSERT
-    ;; first via the public API, then call the underlying SQL path
-    ;; with a distinct username but the same id; this trips PK on
-    ;; `users.id` while leaving `users.username` unique. Since
-    ;; `insert-user-row!` ties id == username, we instead inject a
-    ;; different username via direct SQL to set the stage, then INSERT
-    ;; via public `create` to collide on PK.
-    (let [uid "pk-collision-victim@example.com"
-          r1 (user/create db uid false "irrelevant-password" nil)]
-      (is (:success r1) (str "first create succeeded: " r1))
-      ;; Rename the row so a fresh create reuses the id but the
-      ;; username slot is free. This isolates the PK-on-id collision
-      ;; from the UNIQUE-on-username one.
-      (let [rename-res (user/merge db uid {:user/username "pk-collision-renamed@example.com"} nil)]
-        (is (:success rename-res) (str "rename succeeded: " rename-res)))
-      ;; Now create with the original id again. id is still taken
-      ;; (PK collision on users.id), but the username slot is free, so
-      ;; the FAILURE mode is exclusively the PK violation — the path
-      ;; we want to assert does NOT mask as 409.
-      (let [r2 (user/create db uid false "irrelevant-password" nil)]
-        (is (false? (:success r2))
-            (str "second create with same id (PK collision) fails: " r2))
-        (is (not= 409 (:code r2))
-            (str "PK collision must NOT be projected to 409 'user taken';"
-                 " expected non-409 (typically 500) but got " r2))))))
+(deftest other-constraint-violations-do-not-mask-as-409
+  (testing "only an identity-uniqueness failure counts as 'account taken';
+            any other SQLite constraint violation must reach the generic
+            catch (a 500 carrying its original message) rather than being
+            mislabelled 409"
+    ;; Asserted against the predicate itself. It used to be exercised by
+    ;; renaming a user so a fresh create would collide on the PK alone, but
+    ;; there is no rename any more: a user's id is their email address and
+    ;; nothing rewrites it, so `users.id` and `users.username` can no longer
+    ;; disagree, and a PK-only collision is unreachable through the API.
+    (let [taken? #'user/account-taken-violation?]
+      (is (true? (taken? (SQLException. "[SQLITE_CONSTRAINT_UNIQUE] UNIQUE constraint failed: users.username"))))
+      (is (true? (taken? (SQLException. "[SQLITE_CONSTRAINT_UNIQUE] UNIQUE constraint failed: users.id"))))
+      (is (true? (taken? (RuntimeException. "wrapped"
+                                            (SQLException. "UNIQUE constraint failed: users.id"))))
+          "walks the cause chain, since next.jdbc may wrap the driver exception")
+      (is (false? (taken? (SQLException. "[SQLITE_CONSTRAINT_CHECK] CHECK constraint failed: is_admin IN (0, 1)")))
+          "a CHECK violation is a server bug, not a taken account")
+      (is (false? (taken? (SQLException. "[SQLITE_CONSTRAINT_UNIQUE] UNIQUE constraint failed: api_tokens.id")))
+          "another table's uniqueness is not this user's problem")
+      (is (false? (taken? (RuntimeException. "not a SQLException at all")))))))
 
 ;; ============================================================
 ;; Task #59 — create+metadata emits ONE :insert (no noisy :update)

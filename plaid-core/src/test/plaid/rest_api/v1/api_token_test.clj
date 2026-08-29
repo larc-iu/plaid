@@ -42,7 +42,7 @@
   session token for it."
   [user-id password]
   (api-call admin-request {:method :post :path "/api/v1/users"
-                           :body {:username user-id :password password :is-admin false}})
+                           :body {:email user-id :password password :is-admin false}})
   (let [resp (rest-handler (-> (mock/request :post "/api/v1/login")
                                (mock/header "accept" "application/edn")
                                (mock/json-body {:user-id user-id :password password})))]

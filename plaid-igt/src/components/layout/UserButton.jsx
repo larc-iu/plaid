@@ -19,11 +19,11 @@ export function UserButton({ user, client, onLogout }) {
         <UserAvatar
           client={client}
           userId={user.id}
-          username={user.username}
+          displayName={user.displayName}
           avatarHash={user.avatarHash}
           className="h-7 w-7"
         />
-        <span className="text-sm font-medium">{user.username}</span>
+        <span className="text-sm font-medium">{user.displayName}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel>Account</DropdownMenuLabel>

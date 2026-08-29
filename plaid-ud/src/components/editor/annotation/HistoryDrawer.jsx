@@ -17,7 +17,7 @@ const unitLabel = (entry) =>
   entry.message || entry.ops?.[0]?.description || 'No description available';
 
 const actor = (user, apiToken) =>
-  user ? ` · by ${user.username}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
+  user ? ` · by ${user.displayName}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
 
 export const HistoryDrawer = ({
   isOpen,

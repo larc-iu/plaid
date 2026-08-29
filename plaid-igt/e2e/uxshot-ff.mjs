@@ -8,7 +8,7 @@ const context = await browser.newContext({ viewport: { width: 1990, height: 1170
 await context.addInitScript(({ token, userId }) => {
   localStorage.setItem('token', token);
   localStorage.setItem('userId', userId);
-  localStorage.setItem('username', userId);
+  localStorage.setItem('displayName', userId);
   localStorage.setItem('isAdmin', 'true');
 }, { token, userId });
 const page = await context.newPage();

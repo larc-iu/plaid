@@ -97,10 +97,11 @@
       (is (sequential? entries))
       ;; all 7 users present (3 standing + 4 created), none dropped by a cap
       (is (>= (count entries) 7) (str "expected the full roster, got " (count entries)))
-      (is (every? #(contains? % :user/username) entries))
-      (is (= (map :user/username entries)
-             (sort (map :user/username entries)))
-          "ordered by username"))))
+      (is (every? #(contains? % :user/display-name) entries))
+      (is (= (map (juxt :user/display-name :user/id) entries)
+             (sort-by (juxt :user/display-name :user/id)
+                      (map (juxt :user/display-name :user/id) entries)))
+          "ordered by (display name, id) — the keyset order, since display names are not unique"))))
 
 ;; ============================================================
 ;; Task #100 V4 — last maintainer / last admin guards

@@ -18,7 +18,7 @@ const unitLabel = (entry) =>
 const formatTime = (timestamp) => new Date(timestamp).toLocaleString();
 
 const actor = (user, apiToken) =>
-  user ? ` · by ${user.username}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
+  user ? ` · by ${user.displayName}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
 
 // Non-modal left slide-in panel (no overlay, no focus trap) so the editor stays
 // interactive while browsing history — preserves the old Mantine Drawer's

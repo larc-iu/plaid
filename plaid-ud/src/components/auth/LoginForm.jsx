@@ -16,7 +16,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const LoginForm = () => {
   useDocumentTitle('Sign In');
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,7 +30,7 @@ export const LoginForm = () => {
     setLoading(true);
 
     try {
-      const result = await login(username, password);
+      const result = await login(email, password);
       if (result.success) {
         navigate('/projects');
       } else {
@@ -61,9 +61,11 @@ export const LoginForm = () => {
               {error && <Alert color="red">{error}</Alert>}
 
               <TextInput
-                label="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                label="Email address"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
                 data-autofocus

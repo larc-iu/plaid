@@ -130,9 +130,9 @@ The log can be queried like so:
 ----
 for entry in c.documents.audit("35424d64-a077-4a29-8006-5a0c3b76aedb"):
     time = entry["time"]
-    username = entry["user"]["username"]
+    who = entry["user"]["display_name"]
     label = entry.get("message") or "; ".join([o["description"] for o in entry["ops"]])
-    print(f"{username}, {time}: {label} ({len(entry['ops'])} writes)")
+    print(f"{who}, {time}: {label} ({len(entry['ops'])} writes)")
 
 # Output:
 # Luke G, 2025-07-05T09:13:39.614Z: Create document "Document 1" in project 0f0f0574-ae5a-4060-814c-c5bbdce14d67 (1 writes)
@@ -368,7 +368,7 @@ The differences:
 
 | References
 | Bare id strings.
-| Hydrated objects, e.g. `{"user/id": ..., "user/username": ...}` and `{"document/id": ..., "document/name": ...}`.
+| Hydrated objects, e.g. `{"user/id": ..., "user/display-name": ...}` and `{"document/id": ..., "document/name": ...}`.
 
 | Grouping
 | One operation per event, always.

@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 // this subtree into the scoped preflight subset (see src/index.css).
 export const LoginForm = () => {
   useDocumentTitle('Sign In');
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -33,12 +33,12 @@ export const LoginForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!username) return setError('Username is required');
+    if (!email) return setError('Email address is required');
     if (!password) return setError('Password is required');
 
     setLoading(true);
     try {
-      const result = await login(username, password);
+      const result = await login(email, password);
       if (result.success) {
         try {
           sessionStorage.removeItem('plaid:logout-reason');
@@ -83,12 +83,13 @@ export const LoginForm = () => {
               </div>
             )}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">Email address</Label>
               <Input
-                id="username"
-                placeholder="Enter your username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
                 autoComplete="username"
               />

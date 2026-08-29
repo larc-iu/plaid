@@ -715,7 +715,7 @@ class UsersResource(_Resource):
         Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
 
         Args:
-            q: Filter to usernames containing this text (case-insensitive)
+            q: Filter to users whose display name or email contains this text (case-insensitive)
             as_of: Temporal query timestamp
         """
         return list_all(self._client, '/api/v1/users',
@@ -726,7 +726,7 @@ class UsersResource(_Resource):
         """List one page of users (optionally filtered by ``q``).
 
         Args:
-            q: Filter to usernames containing this text (case-insensitive)
+            q: Filter to users whose display name or email contains this text (case-insensitive)
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
             as_of: Temporal query timestamp
@@ -741,23 +741,28 @@ class UsersResource(_Resource):
         Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
 
         Args:
-            q: Filter to usernames containing this text (case-insensitive)
+            q: Filter to users whose display name or email contains this text (case-insensitive)
             page_size: Page size (1..1000)
             as_of: Temporal query timestamp
         """
         return iter_pages(self._client, '/api/v1/users',
                           page_size=page_size, query={'q': q, 'as-of': as_of})
 
-    def create(self, username: str, password: str, is_admin: bool, audit_message=None) -> Any:
+    def create(self, email: str, password: str, is_admin: bool,
+               display_name: str | None = None, audit_message=None) -> Any:
         """Create a new user.
 
         Args:
-            username: The username
+            email: The account's email address. It becomes the user's id and
+                is what they log in with; it can never be changed.
             password: The password
             is_admin: Whether the user is an admin
+            display_name: How the user is shown in the UI. Defaults to the
+                local part of the email.
         """
         return self._request('POST', '/api/v1/users',
-                             body=_body_of(username=username, password=password, is_admin=is_admin), audit_message=audit_message)
+                             body=_body_of(email=email, password=password, is_admin=is_admin,
+                                           display_name=display_name), audit_message=audit_message)
 
     def get(self, id: str, *, as_of: str | None = None) -> Any:
         """Get a user by ID.
@@ -794,24 +799,29 @@ class UsersResource(_Resource):
         """
         return self._request('POST', f'/api/v1/users/{id}/activate', audit_message=audit_message)
 
-    def update(self, id: str, *, password: Any = _UNSET, username: Any = _UNSET,
+    def update(self, id: str, *, password: Any = _UNSET, display_name: Any = _UNSET,
                is_admin: Any = _UNSET, audit_message=None) -> Any:
         """Modify a user.
 
-        Admins may change the username, password, and admin status of any
-        user. All other users may only modify their own username or password.
+        Admins may change the display name, password, and admin status of any
+        user. All other users may only modify their own display name or
+        password.
+
+        A user's id is their email address and is fixed for the life of the
+        account — it is what they log in with, so nothing can change it.
 
         Args:
-            id: The resource ID
+            id: The resource ID (the user's email address)
             password: New password. Omit to leave unchanged; pass ``None`` to
                 send JSON null.
-            username: New username. Omit to leave unchanged; pass ``None`` to
-                send JSON null.
+            display_name: New display name. Omit to leave unchanged; pass
+                ``None`` to send JSON null.
             is_admin: New admin status. Omit to leave unchanged; pass ``None``
                 to send JSON null.
         """
         return self._request('PATCH', f'/api/v1/users/{id}',
-                             body=_body_of(password=password, username=username, is_admin=is_admin), audit_message=audit_message)
+                             body=_body_of(password=password, display_name=display_name,
+                                           is_admin=is_admin), audit_message=audit_message)
 
     def audit(self, user_id: str, *, start_time: str | None = None,
               end_time: str | None = None, as_of: str | None = None,
@@ -2588,13 +2598,14 @@ class PlaidClient:
 
     @classmethod
     def redeem_invite(cls, base_url: str, code: str, password: str,
-                      username: str | None = None,
+                      email: str | None = None, display_name: str | None = None,
                       timeout: float | None = DEFAULT_TIMEOUT_S) -> tuple[PlaidClient, Any]:
         """Redeem an invite code, with NO authentication.
 
-        For a signup invite, pass ``username`` and ``password`` to create the
-        account; the invite's grants are applied in the same transaction. For a
-        password reset link, pass ``password`` only.
+        For a signup invite, pass ``email`` and ``password`` to create the
+        account (and optionally ``display_name``); the invite's grants are
+        applied in the same transaction. For a password reset link, pass
+        ``password`` only.
 
         Returns an authenticated client alongside the response, exactly like
         :meth:`login` — the redeemer just chose these credentials, so there is
@@ -2604,15 +2615,20 @@ class PlaidClient:
             base_url: The base URL for the API
             code: The invite code
             password: Desired password (at least 8 characters)
-            username: Desired username (signup invites only)
+            email: The new account's email address, which becomes its id and
+                login (signup invites only)
+            display_name: How the new user is shown in the UI; defaults to the
+                local part of the email (signup invites only)
             timeout: Per-request timeout in seconds
 
         Returns:
             ``(client, result)`` where ``result`` carries ``user_id`` and ``kind``.
         """
         body = {'code': code, 'password': password}
-        if username is not None:
-            body['username'] = username
+        if email is not None:
+            body['email'] = email
+        if display_name is not None:
+            body['display-name'] = display_name
         data = cls._anonymous_post(base_url, '/api/v1/invite-codes/redeem', body,
                                    timeout=timeout)
         client = cls(base_url.rstrip('/'), data.get('token', ''), timeout=timeout)

@@ -43,7 +43,7 @@
       (->> (psc/q db {:select [:*] :from [table] :where [:in :id ids]})
            (into {} (map (juxt :id identity)))))))
 
-(defn- select-user [u]  (when u {:user/id (:id u) :user/username (:username u)}))
+(defn- select-user [u]  (when u {:user/id (:id u) :user/display-name (:display_name u)}))
 (defn- select-proj [p]  (when p {:project/id (:id p) :project/name (:name p)}))
 (defn- select-doc  [d]  (when d {:document/id (:id d) :document/name (:name d)}))
 (defn- select-token [t] (when t {:token/id (:id t) :token/name (:name t)}))

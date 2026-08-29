@@ -38,6 +38,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { isEmail, EMAIL_INVALID_MESSAGE } from '@/utils/email';
 import { ProjectInvites, MintedLinkDialog } from './ProjectInvites';
 
 // Mirrors plaid-ud's ProjectManagement. The full user roster isn't fetched
@@ -51,7 +52,7 @@ const ROLE_OPTIONS = [
 ];
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 const SEARCH_LIMIT = 25;
-const EMPTY_USER = { username: '', password: '', isAdmin: false };
+const EMPTY_USER = { email: '', displayName: '', password: '', isAdmin: false };
 
 const roleOf = (project, userId) => {
   if (project?.maintainers?.includes(userId)) return 'maintainer';
@@ -115,11 +116,13 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
       ];
       try {
         const resolved = await Promise.all(
-          ids.map((id) => client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))),
+          ids.map((id) =>
+            client.users.get(id).catch(() => ({ id, displayName: id, isAdmin: false })),
+          ),
         );
         const rows = resolved
           .map((u) => ({ ...u, role: roleOf(project, u.id) }))
-          .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+          .sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
         if (!cancelled) setMembers(rows);
       } catch (err) {
         console.error('Error resolving members:', err);
@@ -188,21 +191,32 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   };
 
   const handleCreateUser = async () => {
-    if (!newUser.username || !newUser.password) {
-      notifyError('Please provide both a username and password', 'Missing information');
+    if (!newUser.email || !newUser.password) {
+      notifyError('Please provide both an email address and a password', 'Missing information');
+      return;
+    }
+    if (!isEmail(newUser.email)) {
+      notifyError(EMAIL_INVALID_MESSAGE, 'Check the email address');
       return;
     }
     try {
       setCreating(true);
-      await client.users.create(newUser.username, newUser.password, newUser.isAdmin);
-      notifySuccess(`User "${newUser.username}" created`, 'User created');
+      // The email becomes the account's id and login, permanently. A blank
+      // display name lets the server default it to the email's local part.
+      await client.users.create(
+        newUser.email,
+        newUser.password,
+        newUser.isAdmin,
+        newUser.displayName.trim() || undefined,
+      );
+      notifySuccess(`User "${newUser.email}" created`, 'User created');
       setNewUser(EMPTY_USER);
       setCreateOpen(false);
     } catch (err) {
       console.error('Error creating user:', err);
       const exists = err.status === 409 || (err.message && err.message.includes('409'));
       notifyError(
-        exists ? `A user "${newUser.username}" already exists.` : 'Failed to create user.',
+        exists ? `An account already exists for ${newUser.email}.` : 'Failed to create user.',
         'Error',
       );
     } finally {
@@ -211,19 +225,19 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   };
 
   const startEdit = (u) => {
-    setEditForm({ username: u.username, password: '', isAdmin: u.isAdmin || false });
+    setEditForm({ displayName: u.displayName, password: '', isAdmin: u.isAdmin || false });
     setEditingUser(u);
   };
 
   const handleUpdateUser = async () => {
     try {
       setSavingEdit(true);
-      const newUsername =
-        editForm.username !== editingUser.username ? editForm.username : undefined;
+      const newDisplayName =
+        editForm.displayName !== editingUser.displayName ? editForm.displayName : undefined;
       const newPassword = editForm.password || undefined;
       const newIsAdmin =
         editForm.isAdmin !== (editingUser.isAdmin || false) ? editForm.isAdmin : undefined;
-      await client.users.update(editingUser.id, newPassword, newUsername, newIsAdmin);
+      await client.users.update(editingUser.id, newPassword, newDisplayName, newIsAdmin);
       notifySuccess('User updated', 'Success');
       setEditingUser(null);
       await onDataUpdate();
@@ -256,7 +270,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     try {
       setDeleting(true);
       await client.users.delete(deleteTarget.id);
-      notifySuccess(`User "${deleteTarget.username}" deleted`, 'User deleted');
+      notifySuccess(`User "${deleteTarget.displayName}" deleted`, 'User deleted');
       setDeleteTarget(null);
       setEditingUser(null);
       await onDataUpdate();
@@ -316,13 +330,13 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                         <UserAvatar
                           client={client}
                           userId={m.id}
-                          username={m.username}
+                          displayName={m.displayName}
                           avatarHash={m.avatarHash}
                           className="h-7 w-7"
                         />
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{m.username}</span>
+                            <span className="font-medium">{m.displayName}</span>
                             {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
                           </div>
                           <span className="text-xs text-muted-foreground">{m.id}</span>
@@ -426,13 +440,13 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                       <UserAvatar
                         client={client}
                         userId={u.id}
-                        username={u.username}
+                        displayName={u.displayName}
                         avatarHash={u.avatarHash}
                         className="h-7 w-7"
                       />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="truncate font-medium">{u.username}</span>
+                          <span className="truncate font-medium">{u.displayName}</span>
                           {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
                         </div>
                         <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
@@ -468,12 +482,24 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label>User ID</Label>
+              <Label>Email address</Label>
               <Input
-                placeholder="e.g. john.doe"
-                value={newUser.username}
-                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                type="email"
+                placeholder="you@example.com"
+                value={newUser.email}
+                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                 autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                What they sign in with. It cannot be changed later.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Display name (optional)</Label>
+              <Input
+                placeholder="How they appear to everyone else"
+                value={newUser.displayName}
+                onChange={(e) => setNewUser({ ...newUser, displayName: e.target.value })}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -516,16 +542,23 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingUser ? `Edit User: ${editingUser.username}` : ''}</DialogTitle>
+            <DialogTitle>{editingUser ? `Edit User: ${editingUser.displayName}` : ''}</DialogTitle>
           </DialogHeader>
           {editingUser && (
             <>
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <Label>Username</Label>
+                  <Label>Email address</Label>
+                  <Input value={editingUser.id} disabled readOnly />
+                  <p className="text-xs text-muted-foreground">
+                    Fixed for the life of the account — it is what they sign in with.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Display name</Label>
                   <Input
-                    value={editForm.username}
-                    onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+                    value={editForm.displayName}
+                    onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -588,7 +621,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
           <AlertDialogHeader>
             <AlertDialogTitle>Delete user?</AlertDialogTitle>
             <AlertDialogDescription>
-              Permanently delete <strong>{deleteTarget?.username}</strong> ({deleteTarget?.id}).
+              Permanently delete <strong>{deleteTarget?.displayName}</strong> ({deleteTarget?.id}).
               This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

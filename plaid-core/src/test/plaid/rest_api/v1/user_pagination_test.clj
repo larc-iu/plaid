@@ -24,7 +24,9 @@
          qs (when (seq params) (str "?" (clojure.string/join "&" params)))]
      (api-call admin-request {:method :get :path (str "/api/v1/users" qs)}))))
 
-(defn- usernames [entries] (map :user/username entries))
+;; Identity, not display name: display names are not unique, and these
+;; assertions are about rows not repeating or vanishing across pages.
+(defn- user-ids [entries] (map :user/id entries))
 
 (defn- walk-all
   "Page through GET /users via :next-cursor, returning the concatenated
@@ -68,15 +70,15 @@
           r2 (list-users {:limit 2 :cursor cursor1})
           _ (assert-ok r2)
           entries2 (:entries (:body r2))
-          names1 (set (usernames entries1))
-          names2 (set (usernames entries2))]
+          names1 (set (user-ids entries1))
+          names2 (set (user-ids entries2))]
       (is (= 2 (count entries2)))
       (is (empty? (clojure.set/intersection names1 names2))
           "cursor pagination must not duplicate rows across pages")))
 
   (testing "Walking every page reassembles the full roster with no dupes/gaps"
-    (let [walked (usernames (walk-all 2))
-          all    (usernames (:entries (:body (list-users {:limit 1000}))))]
+    (let [walked (user-ids (walk-all 2))
+          all    (user-ids (:entries (:body (list-users {:limit 1000}))))]
       (is (= (count walked) (count (distinct walked)))
           "no duplicates across the full walk")
       (is (= (sort walked) (sort all))

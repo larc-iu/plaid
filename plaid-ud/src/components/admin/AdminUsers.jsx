@@ -27,7 +27,13 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
 
 const PAGE_SIZE = 100;
-const EMPTY_USER_FORM = { username: '', password: '', confirmPassword: '', isAdmin: false };
+const EMPTY_USER_FORM = {
+  email: '',
+  displayName: '',
+  password: '',
+  confirmPassword: '',
+  isAdmin: false,
+};
 
 // Instance-wide user administration (admin only). Unlike ProjectManagement —
 // which resolves a single project's ACL — this browses the whole directory via
@@ -121,7 +127,7 @@ export const AdminUsers = () => {
     e.preventDefault();
     setCreateUserError('');
 
-    if (!isEmail(newUserForm.username)) {
+    if (!isEmail(newUserForm.email)) {
       setCreateUserError(EMAIL_INVALID_MESSAGE);
       return;
     }
@@ -136,10 +142,13 @@ export const AdminUsers = () => {
 
     setCreateUserLoading(true);
     try {
+      // The email becomes the account's id and login, permanently. A blank
+      // display name lets the server default it to the email's local part.
       await getClient().users.create(
-        newUserForm.username,
+        newUserForm.email,
         newUserForm.password,
         newUserForm.isAdmin,
+        newUserForm.displayName.trim() || undefined,
       );
       notifySuccess('User created successfully');
       setShowCreateUserForm(false);
@@ -148,7 +157,7 @@ export const AdminUsers = () => {
     } catch (err) {
       console.error('Error creating user:', err);
       if (err.status === 409 || (err.message && err.message.includes('409'))) {
-        setCreateUserError(`An account for "${newUserForm.username}" already exists.`);
+        setCreateUserError(`An account for "${newUserForm.email}" already exists.`);
       } else {
         setCreateUserError('Failed to create user: ' + (err.message || 'Unknown error'));
       }
@@ -161,7 +170,8 @@ export const AdminUsers = () => {
     setEditUserError('');
     setEditingUser(userToEdit);
     setEditUserForm({
-      username: userToEdit.username,
+      email: userToEdit.id,
+      displayName: userToEdit.displayName,
       password: '',
       confirmPassword: '',
       isAdmin: userToEdit.isAdmin || false,
@@ -172,8 +182,8 @@ export const AdminUsers = () => {
     e.preventDefault();
     setEditUserError('');
 
-    if (!isEmail(editUserForm.username)) {
-      setEditUserError(EMAIL_INVALID_MESSAGE);
+    if (!editUserForm.displayName.trim()) {
+      setEditUserError('Enter a display name');
       return;
     }
     if (editUserForm.password && editUserForm.password !== editUserForm.confirmPassword) {
@@ -187,13 +197,13 @@ export const AdminUsers = () => {
 
     setEditUserLoading(true);
     try {
-      const newUsername =
-        editUserForm.username !== editingUser.username ? editUserForm.username : undefined;
+      const newDisplayName =
+        editUserForm.displayName !== editingUser.displayName ? editUserForm.displayName : undefined;
       const newPassword = editUserForm.password || undefined;
       const newIsAdmin =
         editUserForm.isAdmin !== (editingUser.isAdmin || false) ? editUserForm.isAdmin : undefined;
 
-      await getClient().users.update(editingUser.id, newPassword, newUsername, newIsAdmin);
+      await getClient().users.update(editingUser.id, newPassword, newDisplayName, newIsAdmin);
       notifySuccess('User updated successfully');
       setEditingUser(null);
       setEditUserForm(EMPTY_USER_FORM);
@@ -209,7 +219,7 @@ export const AdminUsers = () => {
   const handleDeactivate = (target) => {
     confirmDelete({
       title: 'Deactivate user',
-      message: `Deactivate "${target.username}"? They will be unable to log in, and their project memberships, vocab maintainerships, and API tokens will be revoked. This is reversible by reactivating, but those grants are not restored automatically.`,
+      message: `Deactivate "${target.displayName}"? They will be unable to log in, and their project memberships, vocab maintainerships, and API tokens will be revoked. This is reversible by reactivating, but those grants are not restored automatically.`,
       confirmLabel: 'Deactivate',
       onConfirm: async () => {
         try {
@@ -320,14 +330,14 @@ export const AdminUsers = () => {
                           <UserAvatar
                             client={getClient()}
                             userId={u.id}
-                            username={u.username}
+                            displayName={u.displayName}
                             avatarHash={u.avatarHash}
                             size={26}
                           />
                           <div>
                             <Group gap="xs" wrap="nowrap">
                               <Text size="sm" fw={500}>
-                                {u.username}
+                                {u.displayName}
                               </Text>
                               {u.isAdmin && (
                                 <Badge size="xs" color="grape" variant="light">
@@ -341,7 +351,7 @@ export const AdminUsers = () => {
                               )}
                             </Group>
                             <Text size="xs" c="dimmed">
-                              ID: {u.id}
+                              {u.id}
                             </Text>
                           </div>
                         </Group>
@@ -402,12 +412,20 @@ export const AdminUsers = () => {
             <TextInput
               label="Email address"
               type="email"
-              description="Their email address doubles as the username they sign in with"
+              description="What they sign in with. It cannot be changed later."
               placeholder="e.g., john.doe@example.com"
-              value={newUserForm.username}
-              onChange={(e) => setNewUserForm((prev) => ({ ...prev, username: e.target.value }))}
+              value={newUserForm.email}
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, email: e.target.value }))}
               required
               data-autofocus
+            />
+
+            <TextInput
+              label="Display name"
+              description="How they appear to everyone else. Defaults to the part before the @."
+              placeholder="e.g., John Doe"
+              value={newUserForm.displayName}
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, displayName: e.target.value }))}
             />
 
             <Checkbox
@@ -447,7 +465,7 @@ export const AdminUsers = () => {
       <Modal
         opened={!!editingUser}
         onClose={() => setEditingUser(null)}
-        title={editingUser ? `Edit User: ${editingUser.username}` : ''}
+        title={editingUser ? `Edit User: ${editingUser.displayName}` : ''}
         centered
       >
         {editingUser && (
@@ -457,9 +475,17 @@ export const AdminUsers = () => {
 
               <TextInput
                 label="Email address"
-                type="email"
-                value={editUserForm.username}
-                onChange={(e) => setEditUserForm((prev) => ({ ...prev, username: e.target.value }))}
+                description="Fixed for the life of the account — it is what they sign in with"
+                value={editUserForm.email}
+                disabled
+              />
+
+              <TextInput
+                label="Display name"
+                value={editUserForm.displayName}
+                onChange={(e) =>
+                  setEditUserForm((prev) => ({ ...prev, displayName: e.target.value }))
+                }
                 required
                 data-autofocus
               />

@@ -2,7 +2,7 @@
   "One-time, link-shaped credential grants. Two kinds share one table,
   distinguished by whether `target_user_id` is set:
 
-    signup         (target_user_id NULL)     — the redeemer picks a username
+    signup         (target_user_id NULL)     — the redeemer picks an email
                                                and password; the invite's
                                                grant columns decide what the
                                                new account gets.
@@ -403,17 +403,18 @@
   [db code]
   (when-let [row (find-by-code db code)]
     (let [project (when (:project_id row) (psc/fetch-by-id db :projects (:project_id row)))
-          ;; The CURRENT username, not `target_user_id`. The two start out
-          ;; equal, but a rename changes only `username` — showing the stale
-          ;; one would tell the redeemer this link belongs to a name they no
-          ;; longer use.
+          ;; A reset link names the account it belongs to by EMAIL, which is
+          ;; the account's id — the one thing the redeemer will type into the
+          ;; login form afterwards. (A display name would be friendlier and
+          ;; less identifying: "is this the right account?" is exactly the
+          ;; question the address answers.)
           target (when (:target_user_id row) (user/get-internal db (:target_user_id row)))]
       (cond-> {:kind (if (:target_user_id row) "password-reset" "signup")
                :status (name (status row (psc/now-iso)))
                :expires-at (:expires_at row)
                :grant-admin (->bool (:grant_admin row))}
-        (:target_user_id row) (assoc :username (or (:user/username target)
-                                                   (:target_user_id row)))
+        (:target_user_id row) (assoc :email (or (:user/id target)
+                                                (:target_user_id row)))
         (:project_id row)     (assoc :project-role (:project_role row)
                                      :project-name (:name project))))))
 
@@ -432,7 +433,7 @@
   account. `alice created user bob` is the true and useful reading, and the
   alternative (a brand-new account appearing to have authorized itself) puts
   a hole in the audit trail exactly where accounts come from."
-  [db invite-row username password]
+  [db invite-row email password display-name]
   (let [inviter (:created_by invite-row)
         reset?  (some? (:target_user_id invite-row))]
     (submit-operation! [tx db {:type :invite/redeem
@@ -441,7 +442,7 @@
                                :description (if reset?
                                               (str "Password reset via invite for user "
                                                    (:target_user_id invite-row))
-                                              (str "Create user " username " via invite"))
+                                              (str "Create user " email " via invite"))
                                :user inviter}]
                        ;; The authoritative read: under BEGIN IMMEDIATE, so two
                        ;; people racing for the last seat of a class link
@@ -479,9 +480,10 @@
                                  ;; Shape checks (non-blank, length, email) live in
                                  ;; `user/insert-user-row!` so every account-creating
                                  ;; path enforces exactly one rule.
-                                 (user/insert-user-row! tx username
+                                 (user/insert-user-row! tx email
                                                         (->bool (:grant_admin row))
-                                                        password))]
+                                                        password
+                                                        display-name))]
                            (when (and (not reset?) (:project_id row))
                              (prj/add-role! tx (:project_id row) user-id (:project_role row)))
                            (let [post (update row :uses inc)]
@@ -494,14 +496,16 @@
 (defn redeem!
   "Spend an invite.
 
-  For a signup, `username` and `password` create the account. For a password
-  reset, `username` is ignored and `password` is set on the invite's target.
+  For a signup, `email` and `password` create the account (plus an optional
+  `display-name`, which defaults to the local part of the email). For a
+  password reset, `email` and `display-name` are ignored and `password` is set
+  on the invite's target.
 
   Returns `{:success true :extra {:user-id .. :invite-id .. :reset? ..}}`.
   The REST layer signs a JWT from that so the redeemer lands logged in,
   rather than being handed straight back to a login form with credentials
   they typed fifteen seconds ago."
-  [db code {:keys [username password]}]
+  [db code {:keys [email password display-name]}]
   ;; Pre-flight OUTSIDE the operation, so a bogus or spent code is turned away
   ;; without opening a write transaction — that is the path an attacker
   ;; hammers, and it should stay cheap. The catch is what makes doing it here
@@ -520,4 +524,4 @@
                            :code (or (:code (ex-data e)) 500)
                            :error (ex-message e)}}))]
     (or (:failure pre)
-        (redeem-checked! db (:ok pre) username password))))
+        (redeem-checked! db (:ok pre) email password display-name))))

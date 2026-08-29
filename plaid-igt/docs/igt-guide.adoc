@@ -52,7 +52,7 @@ If you are running Plaid locally with the default settings, that is:
 http://localhost:8080/igt/
 ----
 
-Sign in with the username and password your project administrator gave you.
+Sign in with the email address and password your project administrator gave you.
 Your session stays signed in until the token expires or you log out.
 
 The editor has a few levels you move between:

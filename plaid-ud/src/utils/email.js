@@ -1,5 +1,5 @@
-// Usernames in Plaid ARE email addresses. The server is the authority
-// (`plaid.sql.user/assert-valid-username!`); this mirrors its rule only so the
+// A user's ID in Plaid IS their email address. The server is the authority
+// (`plaid.sql.user/assert-valid-email!`); this mirrors its rule only so the
 // person typing hears about a typo before a round trip.
 //
 // Deliberately the SAME permissive shape as the server's regex rather than

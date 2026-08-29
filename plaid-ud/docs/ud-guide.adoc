@@ -53,7 +53,7 @@ If you are running Plaid locally with the default settings, that is:
 http://localhost:8080/ud/
 ----
 
-Sign in with the username and password your project administrator gave you.
+Sign in with the email address and password your project administrator gave you.
 Your session stays signed in until the token expires or you log out.
 
 The editor has three levels you move between:
@@ -227,7 +227,7 @@ Projects are shared by adding members with a role:
 * **Writer**: can edit documents and annotations.
 * **Maintainer**: can also change project settings, manage members, and delete the project.
 
-Add members from the project's **Users & Permissions** settings by searching for a username.
+Add members from the project's **Users & Permissions** settings by searching for a name or email address.
 When you only have Reader access, the editor shows everything but its controls are inert.
 
 == Customization

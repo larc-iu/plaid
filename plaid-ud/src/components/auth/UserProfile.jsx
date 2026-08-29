@@ -16,7 +16,6 @@ import {
   Box,
 } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
-import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
 import { UserAvatar } from '../common/UserAvatar';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { timeAgo } from '../../utils/formatTime.js';
@@ -27,7 +26,7 @@ export const UserProfile = () => {
   const { user, getClient, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
-    username: user?.username || '',
+    displayName: user?.displayName || '',
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
@@ -164,8 +163,8 @@ export const UserProfile = () => {
     try {
       const client = getClient();
 
-      if (!isEmail(formData.username)) {
-        setError(EMAIL_INVALID_MESSAGE);
+      if (!formData.displayName.trim()) {
+        setError('Enter a display name');
         setLoading(false);
         return;
       }
@@ -198,9 +197,9 @@ export const UserProfile = () => {
 
       const updateData = {};
 
-      // Only include username if it changed
-      if (formData.username !== user.username) {
-        updateData.username = formData.username;
+      // Only include the display name if it changed
+      if (formData.displayName !== user.displayName) {
+        updateData.displayName = formData.displayName;
       }
 
       // Only include password if it's being changed
@@ -215,11 +214,11 @@ export const UserProfile = () => {
         return;
       }
 
-      // Call users.update with correct parameter order: (id, password, username, isAdmin)
+      // Call users.update with correct parameter order: (id, password, displayName, isAdmin)
       await client.users.update(
         user.id,
         updateData.password || undefined,
-        updateData.username || undefined,
+        updateData.displayName || undefined,
         undefined, // isAdmin - we don't change this here
       );
 
@@ -238,18 +237,18 @@ export const UserProfile = () => {
       }));
 
       // Update localStorage and auth context with complete user data
-      localStorage.setItem('username', updatedUserData.username);
+      localStorage.setItem('displayName', updatedUserData.displayName);
       // Note: PlaidClient transforms is-admin to isAdmin
       localStorage.setItem('isAdmin', (updatedUserData.isAdmin || false).toString());
 
       // Update the auth context with complete user data
       updateUser({
-        username: updatedUserData.username,
+        displayName: updatedUserData.displayName,
         isAdmin: updatedUserData.isAdmin || false,
       });
 
-      // Update form data to reflect the new username
-      setFormData((prev) => ({ ...prev, username: updatedUserData.username }));
+      // Update form data to reflect the new display name
+      setFormData((prev) => ({ ...prev, displayName: updatedUserData.displayName }));
     } catch (err) {
       setError(err.message || 'Failed to update profile');
     } finally {
@@ -260,7 +259,7 @@ export const UserProfile = () => {
   const handleCancel = () => {
     setIsEditing(false);
     setFormData({
-      username: user?.username || '',
+      displayName: user?.displayName || '',
       currentPassword: '',
       newPassword: '',
       confirmPassword: '',
@@ -284,7 +283,7 @@ export const UserProfile = () => {
           <UserAvatar
             client={getClient()}
             userId={user?.id}
-            username={user?.username}
+            displayName={user?.displayName}
             avatarHash={user?.avatarHash}
             size={80}
           />
@@ -327,9 +326,15 @@ export const UserProfile = () => {
           <Stack gap="md" align="flex-start">
             <div>
               <Text size="sm" fw={500} c="dimmed">
+                Display name
+              </Text>
+              <Text>{user?.displayName}</Text>
+            </div>
+            <div>
+              <Text size="sm" fw={500} c="dimmed">
                 Email address
               </Text>
-              <Text>{user?.username}</Text>
+              <Text>{user?.id}</Text>
             </div>
             <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
           </Stack>
@@ -339,12 +344,19 @@ export const UserProfile = () => {
               {error && <Alert color="red">{error}</Alert>}
 
               <TextInput
-                label="Email address"
-                type="email"
-                name="username"
-                value={formData.username}
+                label="Display name"
+                description="How you appear to your collaborators."
+                name="displayName"
+                value={formData.displayName}
                 onChange={handleInputChange}
                 required
+              />
+
+              <TextInput
+                label="Email address"
+                description="What you sign in with. It cannot be changed — ask an administrator if you need a different one."
+                value={user?.id ?? ''}
+                disabled
               />
 
               <Divider label="Change Password (Optional)" labelPosition="left" />

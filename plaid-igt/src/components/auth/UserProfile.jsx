@@ -4,7 +4,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ArrowLeft, Copy, Check, ImagePlus } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
-import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '@/utils/email';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,8 +26,8 @@ const timeAgo = (iso) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
 };
 
-const EMPTY = (username = '') => ({
-  username,
+const EMPTY = (displayName = '') => ({
+  displayName,
   currentPassword: '',
   newPassword: '',
   confirmPassword: '',
@@ -40,7 +39,7 @@ export const UserProfile = () => {
   const { user, client, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [fields, setFields] = useState(EMPTY(user?.username));
+  const [fields, setFields] = useState(EMPTY(user?.displayName));
   const [errors, setErrors] = useState({});
 
   // --- Profile picture ---
@@ -160,8 +159,7 @@ export const UserProfile = () => {
 
   const validate = () => {
     const er = {};
-    if (!fields.username.trim()) er.username = EMAIL_REQUIRED_MESSAGE;
-    else if (!isEmail(fields.username)) er.username = EMAIL_INVALID_MESSAGE;
+    if (!fields.displayName.trim()) er.displayName = 'Enter a display name';
     if (fields.newPassword && fields.newPassword.length < 6)
       er.newPassword = 'Password must be at least 6 characters long';
     if (fields.newPassword && fields.confirmPassword !== fields.newPassword)
@@ -181,7 +179,7 @@ export const UserProfile = () => {
       if (!user.id) throw new Error('Could not get current user ID');
 
       const updateData = {};
-      if (fields.username !== user.username) updateData.username = fields.username;
+      if (fields.displayName !== user.displayName) updateData.displayName = fields.displayName;
       if (fields.newPassword) updateData.password = fields.newPassword;
 
       if (Object.keys(updateData).length === 0) {
@@ -190,21 +188,24 @@ export const UserProfile = () => {
         return;
       }
 
-      // users.update(id, password, username, isAdmin)
+      // users.update(id, password, displayName, isAdmin)
       await client.users.update(
         user.id,
         updateData.password || undefined,
-        updateData.username || undefined,
+        updateData.displayName || undefined,
         undefined,
       );
       const updatedUserData = await client.users.get(user.id);
 
       notifySuccess('Profile updated successfully!', 'Success');
       setIsEditing(false);
-      setFields(EMPTY(updatedUserData.username));
-      localStorage.setItem('username', updatedUserData.username);
+      setFields(EMPTY(updatedUserData.displayName));
+      localStorage.setItem('displayName', updatedUserData.displayName);
       localStorage.setItem('isAdmin', (updatedUserData.isAdmin || false).toString());
-      updateUser({ username: updatedUserData.username, isAdmin: updatedUserData.isAdmin || false });
+      updateUser({
+        displayName: updatedUserData.displayName,
+        isAdmin: updatedUserData.isAdmin || false,
+      });
     } catch (err) {
       notifyError(err.message || 'Failed to update profile', 'Error');
     } finally {
@@ -214,7 +215,7 @@ export const UserProfile = () => {
 
   const handleCancel = () => {
     setIsEditing(false);
-    setFields(EMPTY(user?.username));
+    setFields(EMPTY(user?.displayName));
     setErrors({});
   };
 
@@ -233,7 +234,7 @@ export const UserProfile = () => {
             <UserAvatar
               client={client}
               userId={user?.id}
-              username={user?.username}
+              displayName={user?.displayName}
               avatarHash={user?.avatarHash}
               className="h-20 w-20"
               fallbackClassName="text-2xl"
@@ -276,8 +277,12 @@ export const UserProfile = () => {
           {!isEditing ? (
             <div className="flex flex-col gap-4">
               <div>
+                <p className="text-sm font-medium text-muted-foreground">Display name</p>
+                <p className="text-lg">{user?.displayName}</p>
+              </div>
+              <div>
                 <p className="text-sm font-medium text-muted-foreground">Email address</p>
-                <p className="text-lg">{user?.username}</p>
+                <p className="text-lg">{user?.id}</p>
               </div>
               <Button className="self-start" onClick={() => setIsEditing(true)}>
                 Edit Profile
@@ -286,15 +291,23 @@ export const UserProfile = () => {
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="username">Email address</Label>
+                <Label htmlFor="displayName">Display name</Label>
                 <Input
-                  id="username"
-                  type="email"
-                  value={fields.username}
-                  onChange={set('username')}
-                  placeholder="you@example.com"
+                  id="displayName"
+                  value={fields.displayName}
+                  onChange={set('displayName')}
+                  placeholder="How you appear to your collaborators"
                 />
-                {fieldError('username')}
+                {fieldError('displayName')}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="email">Email address</Label>
+                <Input id="email" value={user?.id ?? ''} disabled readOnly />
+                <p className="text-xs text-muted-foreground">
+                  This is what you sign in with, and it cannot be changed. Ask an administrator if
+                  you need a different one.
+                </p>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-muted-foreground">

@@ -33,7 +33,8 @@ export const RedeemInvite = () => {
   const [loading, setLoading] = useState(true);
   const [lookupError, setLookupError] = useState('');
 
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -68,15 +69,17 @@ export const RedeemInvite = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!isReset && !username.trim()) return setError(EMAIL_REQUIRED_MESSAGE);
-    if (!isReset && !isEmail(username)) return setError(EMAIL_INVALID_MESSAGE);
+    if (!isReset && !email.trim()) return setError(EMAIL_REQUIRED_MESSAGE);
+    if (!isReset && !isEmail(email)) return setError(EMAIL_INVALID_MESSAGE);
     if (password.length < MIN_PASSWORD)
       return setError(`Password must be at least ${MIN_PASSWORD} characters`);
     if (password !== confirm) return setError('Passwords do not match');
 
     setSubmitting(true);
     const result = await redeemInvite(code, {
-      username: isReset ? undefined : username.trim(),
+      email: isReset ? undefined : email.trim(),
+      // Blank lets the server default it to the email's local part.
+      displayName: isReset ? undefined : displayName.trim() || undefined,
       password,
     });
     setSubmitting(false);
@@ -111,7 +114,7 @@ export const RedeemInvite = () => {
             {loading
               ? 'Checking your invite…'
               : isReset
-                ? `Choose a new password for ${preview.username}.`
+                ? `Choose a new password for ${preview.email}.`
                 : preview?.projectName
                   ? `You have been invited to join ${preview.projectName} as a ${preview.projectRole}.`
                   : 'Choose an email address and password to get started.'}
@@ -152,7 +155,7 @@ export const RedeemInvite = () => {
                   here signed in. */}
               {user && (
                 <p className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                  You are signed in as <strong>{user.username}</strong>.{' '}
+                  You are signed in as <strong>{user.displayName}</strong>.{' '}
                   {isReset
                     ? 'Setting this password will sign you out of that account.'
                     : 'Accepting this invitation creates a separate account and signs you out of that one.'}
@@ -166,19 +169,36 @@ export const RedeemInvite = () => {
               )}
 
               {!isReset && (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="invite-username">Your email address</Label>
-                  <Input
-                    id="invite-username"
-                    type="email"
-                    placeholder="e.g. jsmith@example.com"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    disabled={submitting}
-                    autoComplete="email"
-                    autoFocus
-                  />
-                </div>
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="invite-email">Your email address</Label>
+                    <Input
+                      id="invite-email"
+                      type="email"
+                      placeholder="e.g. jsmith@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled={submitting}
+                      autoComplete="email"
+                      autoFocus
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      This is how you will sign in. It cannot be changed later.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="invite-display-name">Your name (optional)</Label>
+                    <Input
+                      id="invite-display-name"
+                      placeholder="How you appear to your collaborators"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      disabled={submitting}
+                      autoComplete="name"
+                    />
+                  </div>
+                </>
               )}
 
               <div className="flex flex-col gap-1.5">

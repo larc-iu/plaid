@@ -123,10 +123,10 @@
   (api-call admin-request {:method :delete
                            :path (str "/api/v1/" layer-path "/" id "/config/" ns* "/" key*)}))
 
-(defn- create-user! [username admin?]
+(defn- create-user! [email admin?]
   (api-call admin-request {:method :post
                            :path "/api/v1/users"
-                           :body {:username username :password "correcthorsebatterystaple"
+                           :body {:email email :password "correcthorsebatterystaple"
                                   :is-admin admin?}}))
 
 (defn- update-user! [user-id]

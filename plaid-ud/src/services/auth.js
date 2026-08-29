@@ -51,7 +51,7 @@ async function establishSession(authedClient) {
 
   localStorage.setItem('token', token);
   localStorage.setItem('userId', userId);
-  localStorage.setItem('username', userProfile.username);
+  localStorage.setItem('displayName', userProfile.displayName);
   // Note: PlaidClient transforms is-admin to isAdmin
   localStorage.setItem('isAdmin', (userProfile.isAdmin || false).toString());
   // The profile picture's content hash, cached alongside the rest of the
@@ -64,7 +64,7 @@ async function establishSession(authedClient) {
     success: true,
     user: {
       id: userId,
-      username: userProfile.username,
+      displayName: userProfile.displayName,
       isAdmin: userProfile.isAdmin || false,
       avatarHash: userProfile.avatarHash || null,
     },
@@ -72,11 +72,11 @@ async function establishSession(authedClient) {
 }
 
 export const authService = {
-  async login(username, password) {
+  async login(email, password) {
     try {
       // Use PlaidClient's static login method
       return await establishSession(
-        await PlaidClient.login(BASE_URL, username, password, {
+        await PlaidClient.login(BASE_URL, email, password, {
           onAuthError: () => authService.logout(),
         }),
       );
@@ -95,11 +95,11 @@ export const authService = {
   // Redeem an invite and land logged in. The redeemer just chose these
   // credentials, so sending them to the login form to retype them would be a
   // pointless place to lose someone.
-  async redeemInvite(code, { username, password }) {
+  async redeemInvite(code, { email, password, displayName }) {
     const { client: authed } = await PlaidClient.redeemInvite(
       BASE_URL,
       code,
-      { username, password },
+      { email, password, displayName },
       { onAuthError: () => authService.logout() },
     );
     return establishSession(authed);
@@ -109,7 +109,7 @@ export const authService = {
     client = null;
     localStorage.removeItem('token');
     localStorage.removeItem('userId');
-    localStorage.removeItem('username');
+    localStorage.removeItem('displayName');
     localStorage.removeItem('isAdmin');
     localStorage.removeItem('avatarHash');
     // HashRouter + the production '/ud/' base mean the login route lives in the
@@ -123,16 +123,18 @@ export const authService = {
   },
 
   getCurrentUser() {
-    const username = localStorage.getItem('username');
+    const displayName = localStorage.getItem('displayName');
     const userId = localStorage.getItem('userId');
     const token = localStorage.getItem('token');
     const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
-    if (!username || !userId || !token) return null;
+    if (!displayName || !userId || !token) return null;
 
     return {
+      // `id` IS the email address the user logs in with; `displayName` is the
+      // mutable label shown in the UI.
       id: userId,
-      username: username,
+      displayName,
       isAdmin: isAdmin,
       avatarHash: localStorage.getItem('avatarHash') || null,
     };

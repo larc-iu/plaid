@@ -71,7 +71,7 @@
   what `wrap-read-jwt` rejects on). Returns nil if the user is missing.
 
   Public so invite redemption can hand back a live session: the redeemer
-  just chose a username and password on the signup page, and bouncing them
+  just chose an email and password on the signup page, and bouncing them
   to a login form to retype both is a needless place to lose someone. This
   is the same token /login issues, by the same function that issues it."
   [db secret-key user-id]
@@ -98,7 +98,8 @@
 
 (def authentication-routes
   ["/login"
-   {:post {:summary (str "Authenticate with a <body>user-id</body> and <body>password</body> and get a JWT token. The token should be included "
+   {:post {:summary (str "Authenticate with a <body>user-id</body> (the account's email address) and "
+                         "<body>password</body> and get a JWT token. The token should be included "
                          "in request headers under \"Authorization: Bearer ...\" in order to prove successful "
                          "authentication to the server.")
            :middleware [rl/wrap-login-rate-limit]
@@ -106,7 +107,7 @@
            :handler (fn [{{{:keys [user-id password]} :body} :parameters
                           db :db secret-key :secret-key :as request}]
                       ;; Return the same generic error in all branches to avoid
-                      ;; leaking which usernames exist (user-enumeration via
+                      ;; leaking which accounts exist (user-enumeration via
                       ;; login) — including the deactivated case, which must be
                       ;; indistinguishable from a wrong password.
                       (let [{:user/keys [id password-changes password-hash deactivated-at]
@@ -236,7 +237,7 @@
                             (handler (cond-> (assoc request
                                                     :jwt-data token-data
                                                     :user/id (:user/id token-data)
-                                                    :user/record (select-keys user [:user/id :user/username :user/is-admin]))
+                                                    :user/record (select-keys user [:user/id :user/display-name :user/is-admin]))
                                        ;; Server-authoritative attribution: the
                                        ;; validated claim, not client input.
                                        ;; wrap-api-token-id binds this onto the

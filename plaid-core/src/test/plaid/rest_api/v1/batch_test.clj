@@ -42,7 +42,7 @@
         (is (= 200 (:status response)))
         (is (= 2 (count response-body)))
         (is (= 200 (get-in response-body [0 :status])))
-        (is (= "admin@example.com" (get-in response-body [0 :body :user/username])))
+        (is (= "admin" (get-in response-body [0 :body :user/display-name])))
         (is (= 200 (get-in response-body [1 :status])))
         (is (= "Test Project" (get-in response-body [1 :body :project/name])))))
 
@@ -62,7 +62,7 @@
         (is (= 200 (get-in response-body [0 :status])))
         (is (= "Test Project" (get-in response-body [0 :body :project/name])))
         (is (= 200 (get-in response-body [1 :status])))
-        (is (= "admin@example.com" (get-in response-body [1 :body :user/username])))
+        (is (= "admin" (get-in response-body [1 :body :user/display-name])))
         (is (= 200 (get-in response-body [2 :status])))
         (is (= "Test Document" (get-in response-body [2 :body :document/name])))))
 

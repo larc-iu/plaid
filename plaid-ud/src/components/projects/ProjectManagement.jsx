@@ -29,6 +29,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { UserAvatar } from '../common/UserAvatar';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
+import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
 
 const PERMISSION_OPTIONS = [
   { value: 'none', label: 'None' },
@@ -39,7 +40,13 @@ const PERMISSION_OPTIONS = [
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 const SEARCH_LIMIT = 25;
 
-const EMPTY_USER_FORM = { username: '', password: '', confirmPassword: '', isAdmin: false };
+const EMPTY_USER_FORM = {
+  email: '',
+  displayName: '',
+  password: '',
+  confirmPassword: '',
+  isAdmin: false,
+};
 
 // Role a given user holds on a project, from the project's ACL arrays.
 const roleOf = (project, userId) => {
@@ -123,7 +130,7 @@ export const ProjectManagement = ({ embedded = false }) => {
     fetchProject();
   }, [projectId]);
 
-  // Resolve the ACL member ids to user objects (for usernames + admin flag).
+  // Resolve the ACL member ids to user objects (for display names + admin flag).
   // The member set is project-sized, not instance-sized, so per-id GETs are fine.
   // Everyone here was EXPLICITLY granted a role — including admins who were
   // explicitly added (they get an "Admin" badge). Admins with only implicit
@@ -143,11 +150,13 @@ export const ProjectManagement = ({ embedded = false }) => {
       ];
       try {
         const resolved = await Promise.all(
-          ids.map((id) => client.users.get(id).catch(() => ({ id, username: id, isAdmin: false }))),
+          ids.map((id) =>
+            client.users.get(id).catch(() => ({ id, displayName: id, isAdmin: false })),
+          ),
         );
         const rows = resolved
           .map((u) => ({ ...u, role: roleOf(project, u.id) }))
-          .sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+          .sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
         if (!cancelled) setMembers(rows);
       } catch (err) {
         console.error('Error resolving members:', err);
@@ -219,6 +228,12 @@ export const ProjectManagement = ({ embedded = false }) => {
     setCreateUserError('');
     setCreateUserLoading(true);
 
+    if (!isEmail(newUserForm.email)) {
+      setCreateUserError(EMAIL_INVALID_MESSAGE);
+      setCreateUserLoading(false);
+      return;
+    }
+
     if (newUserForm.password !== newUserForm.confirmPassword) {
       setCreateUserError('Passwords do not match');
       setCreateUserLoading(false);
@@ -233,7 +248,14 @@ export const ProjectManagement = ({ embedded = false }) => {
 
     try {
       const client = getClient();
-      await client.users.create(newUserForm.username, newUserForm.password, newUserForm.isAdmin);
+      // The email becomes the account's id and login, permanently. A blank
+      // display name lets the server default it to the email's local part.
+      await client.users.create(
+        newUserForm.email,
+        newUserForm.password,
+        newUserForm.isAdmin,
+        newUserForm.displayName.trim() || undefined,
+      );
 
       notifySuccess('User created successfully');
       setShowCreateUserForm(false);
@@ -242,9 +264,7 @@ export const ProjectManagement = ({ embedded = false }) => {
     } catch (err) {
       console.error('Error creating user:', err);
       if (err.status === 409 || (err.message && err.message.includes('409'))) {
-        setCreateUserError(
-          `A user with the ID "${newUserForm.username}" already exists. Please choose a different user ID.`,
-        );
+        setCreateUserError(`An account for "${newUserForm.email}" already exists.`);
       } else {
         setCreateUserError('Failed to create user: ' + (err.message || 'Unknown error'));
       }
@@ -258,7 +278,8 @@ export const ProjectManagement = ({ embedded = false }) => {
     setEditUserError('');
     setEditingUser(userToEdit);
     setEditUserForm({
-      username: userToEdit.username,
+      email: userToEdit.id,
+      displayName: userToEdit.displayName,
       password: '',
       confirmPassword: '',
       isAdmin: userToEdit.isAdmin || false,
@@ -268,6 +289,11 @@ export const ProjectManagement = ({ embedded = false }) => {
   const handleUpdateUser = async (e) => {
     e.preventDefault();
     setEditUserError('');
+
+    if (!editUserForm.displayName.trim()) {
+      setEditUserError('Enter a display name');
+      return;
+    }
 
     if (editUserForm.password && editUserForm.password !== editUserForm.confirmPassword) {
       setEditUserError('Passwords do not match');
@@ -281,13 +307,13 @@ export const ProjectManagement = ({ embedded = false }) => {
 
     try {
       const client = getClient();
-      const newUsername =
-        editUserForm.username !== editingUser.username ? editUserForm.username : undefined;
+      const newDisplayName =
+        editUserForm.displayName !== editingUser.displayName ? editUserForm.displayName : undefined;
       const newPassword = editUserForm.password || undefined;
       const newIsAdmin =
         editUserForm.isAdmin !== (editingUser.isAdmin || false) ? editUserForm.isAdmin : undefined;
 
-      await client.users.update(editingUser.id, newPassword, newUsername, newIsAdmin);
+      await client.users.update(editingUser.id, newPassword, newDisplayName, newIsAdmin);
 
       notifySuccess('User updated successfully');
       setEditingUser(null);
@@ -303,7 +329,7 @@ export const ProjectManagement = ({ embedded = false }) => {
     const target = editingUser;
     confirmDelete({
       title: 'Delete user',
-      message: `Are you sure you want to delete user "${target.username}"? This action cannot be undone.`,
+      message: `Are you sure you want to delete user "${target.displayName}"? This action cannot be undone.`,
       onConfirm: async () => {
         try {
           await getClient().users.delete(target.id);
@@ -412,14 +438,14 @@ export const ProjectManagement = ({ embedded = false }) => {
                         <UserAvatar
                           client={getClient()}
                           userId={m.id}
-                          username={m.username}
+                          displayName={m.displayName}
                           avatarHash={m.avatarHash}
                           size={26}
                         />
                         <div>
                           <Group gap="xs" wrap="nowrap">
                             <Text size="sm" fw={500}>
-                              {m.username}
+                              {m.displayName}
                             </Text>
                             {m.isAdmin && (
                               <Badge size="xs" color="grape" variant="light">
@@ -428,7 +454,7 @@ export const ProjectManagement = ({ embedded = false }) => {
                             )}
                           </Group>
                           <Text size="xs" c="dimmed">
-                            ID: {m.id}
+                            {m.id}
                           </Text>
                         </div>
                       </Group>
@@ -521,14 +547,14 @@ export const ProjectManagement = ({ embedded = false }) => {
                       <UserAvatar
                         client={getClient()}
                         userId={u.id}
-                        username={u.username}
+                        displayName={u.displayName}
                         avatarHash={u.avatarHash}
                         size={26}
                       />
                       <div style={{ minWidth: 0 }}>
                         <Group gap="xs" wrap="nowrap">
                           <Text size="sm" fw={500} truncate>
-                            {u.username}
+                            {u.displayName}
                           </Text>
                           {u.isAdmin && (
                             <Badge size="xs" color="grape" variant="light">
@@ -537,7 +563,7 @@ export const ProjectManagement = ({ embedded = false }) => {
                           )}
                         </Group>
                         <Text size="xs" c="dimmed" truncate>
-                          ID: {u.id}
+                          {u.id}
                         </Text>
                       </div>
                     </Group>
@@ -582,13 +608,22 @@ export const ProjectManagement = ({ embedded = false }) => {
             {createUserError && <Alert color="red">{createUserError}</Alert>}
 
             <TextInput
-              label="User ID"
-              description="Unique identifier for this user (cannot be changed later)"
-              placeholder="e.g., john.doe"
-              value={newUserForm.username}
-              onChange={(e) => setNewUserForm((prev) => ({ ...prev, username: e.target.value }))}
+              label="Email address"
+              description="What they sign in with. It cannot be changed later."
+              type="email"
+              placeholder="e.g., john.doe@example.com"
+              value={newUserForm.email}
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, email: e.target.value }))}
               required
               data-autofocus
+            />
+
+            <TextInput
+              label="Display name"
+              description="How they appear to everyone else. Defaults to the part before the @."
+              placeholder="e.g., John Doe"
+              value={newUserForm.displayName}
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, displayName: e.target.value }))}
             />
 
             <Checkbox
@@ -628,7 +663,7 @@ export const ProjectManagement = ({ embedded = false }) => {
       <Modal
         opened={!!editingUser}
         onClose={() => setEditingUser(null)}
-        title={editingUser ? `Edit User: ${editingUser.username}` : ''}
+        title={editingUser ? `Edit User: ${editingUser.displayName}` : ''}
         centered
       >
         {editingUser && (
@@ -637,9 +672,18 @@ export const ProjectManagement = ({ embedded = false }) => {
               {editUserError && <Alert color="red">{editUserError}</Alert>}
 
               <TextInput
-                label="Username"
-                value={editUserForm.username}
-                onChange={(e) => setEditUserForm((prev) => ({ ...prev, username: e.target.value }))}
+                label="Email address"
+                description="Fixed for the life of the account — it is what they sign in with"
+                value={editUserForm.email}
+                disabled
+              />
+
+              <TextInput
+                label="Display name"
+                value={editUserForm.displayName}
+                onChange={(e) =>
+                  setEditUserForm((prev) => ({ ...prev, displayName: e.target.value }))
+                }
                 required
                 data-autofocus
               />

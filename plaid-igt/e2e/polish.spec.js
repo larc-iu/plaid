@@ -148,14 +148,14 @@ test('an expired session says so on the login page', async ({ page }) => {
   await seedAuth(page, {
     token: 'eyJhbGciOiJIUzI1NiJ9.eyJib2d1cyI6dHJ1ZX0.bad',
     userId: 'a@b.com',
-    username: 'a@b.com',
+    displayName: 'a@b.com',
     isAdmin: true,
   });
   await page.goto('/#/projects');
   await page.waitForURL(/#\/login/);
   await expect(page.getByRole('status')).toContainText('Your session has expired');
   // A real sign-in clears it.
-  await page.getByLabel(/Username/i).fill('a@b.com');
+  await page.getByLabel(/Email address/i).fill('a@b.com');
   await page.getByLabel(/Password/i).fill('wrong-password');
   await page.getByRole('button', { name: /Login|Sign in/i }).click();
   await expect(page.getByRole('alert')).toBeVisible(); // wrong password: error shown, notice yields to it

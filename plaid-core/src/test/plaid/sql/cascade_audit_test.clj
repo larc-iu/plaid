@@ -75,7 +75,7 @@
 
 (defn- create-extra-user!
   "Create a user via plaid.sql.user/create (bypassing the REST layer so
-  we don't need a token for them). The user `eid` doubles as username,
+  we don't need a token for them). The user `eid` is their email address,
   matching the v2 contract."
   [eid]
   (let [r (user/create db eid false "irrelevant-password" nil)]

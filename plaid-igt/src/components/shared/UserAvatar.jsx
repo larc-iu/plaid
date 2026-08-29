@@ -2,14 +2,14 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 
 // Initials fallback for a user with no picture. Two words give two letters
-// ("Ada Lovelace" -> AL); anything else gives one. Usernames here are often
-// email addresses, so strip the domain first or every avatar in a roster from
-// the same institution would read the same.
-export function userInitials(username) {
-  if (!username) return '?';
-  const local = username.split('@')[0];
+// ("Ada Lovelace" -> AL); anything else gives one. A display name that is
+// still an email address gets its domain stripped first, or every avatar in a
+// roster from the same institution would read the same.
+export function userInitials(displayName) {
+  if (!displayName) return '?';
+  const local = displayName.split('@')[0];
   const words = local.split(/[\s._-]+/).filter(Boolean);
-  if (words.length === 0) return username.charAt(0).toUpperCase();
+  if (words.length === 0) return displayName.charAt(0).toUpperCase();
   if (words.length === 1) return words[0].charAt(0).toUpperCase();
   return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
 }
@@ -26,7 +26,7 @@ export function userInitials(username) {
 export function UserAvatar({
   client,
   userId,
-  username,
+  displayName,
   avatarHash,
   className,
   fallbackClassName,
@@ -45,7 +45,7 @@ export function UserAvatar({
       {/* The initials do not scale with the avatar on their own, so anything
           much larger than the default needs to say so. */}
       <AvatarFallback className={cn('text-xs', fallbackClassName)}>
-        {userInitials(username)}
+        {userInitials(displayName)}
       </AvatarFallback>
     </Avatar>
   );

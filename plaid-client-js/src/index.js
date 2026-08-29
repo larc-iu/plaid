@@ -602,7 +602,7 @@ class PlaidClient {
        * returns the full flat array. Admin-or-maintainer only.
        * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {object} [opts]
-       * @param {string} [opts.q] - Filter to usernames containing this text (case-insensitive)
+       * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
        * @param {string} [opts.asOf] - Temporal query timestamp
        */
       list: ({ q, asOf } = {}) =>
@@ -610,7 +610,7 @@ class PlaidClient {
       /**
        * Fetch a single page of users (optionally filtered by `q`).
        * @param {object} [opts]
-       * @param {string} [opts.q] - Filter to usernames containing this text (case-insensitive)
+       * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @param {string} [opts.asOf] - Temporal query timestamp
@@ -621,7 +621,7 @@ class PlaidClient {
       /**
        * Async-iterate users page by page; yields each page's entries array.
        * @param {object} [opts]
-       * @param {string} [opts.q] - Filter to usernames containing this text (case-insensitive)
+       * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
        * @param {number} [opts.pageSize] - Per-request page size
        * @param {string} [opts.asOf] - Temporal query timestamp
        * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
@@ -630,14 +630,17 @@ class PlaidClient {
       iterPages: ({ q, pageSize, asOf } = {}) =>
         iterPages(this, '/api/v1/users', { pageSize, query: { q, 'as-of': asOf } }),
       /**
-       * Create a new user
-       * @param {string} username - The username
+       * Create a new user.
+       * @param {string} email - The account's email address. It becomes the
+       *   user's id and is what they log in with; it can never be changed.
        * @param {string} password - The password
        * @param {boolean} isAdmin - Whether the user is an admin
+       * @param {string} [displayName] - How the user is shown in the UI.
+       *   Defaults to the local part of the email.
        */
-      create: (username, password, isAdmin, auditMessage) =>
+      create: (email, password, isAdmin, displayName, auditMessage) =>
         this._request('POST', '/api/v1/users', { auditMessage,
-          body: bodyOf({ username, password, 'is-admin': isAdmin }),
+          body: bodyOf({ email, password, 'is-admin': isAdmin, 'display-name': displayName }),
         }),
       /**
        * Get audit log for a user's actions. Transparently follows pagination
@@ -689,17 +692,20 @@ class PlaidClient {
       activate: (id, auditMessage) =>
         this._request('POST', `/api/v1/users/${id}/activate`, { auditMessage }),
       /**
-       * Modify a user. Admins may change the username, password, and admin
-       * status of any user. All other users may only modify their own username
-       * or password.
-       * @param {string} id - The resource ID
+       * Modify a user. Admins may change the display name, password, and admin
+       * status of any user. All other users may only modify their own display
+       * name or password.
+       *
+       * A user's id is their email address and is fixed for the life of the
+       * account — it is what they log in with, so nothing can change it.
+       * @param {string} id - The resource ID (the user's email address)
        * @param {string} [password] - New password
-       * @param {string} [username] - New username
+       * @param {string} [displayName] - New display name
        * @param {boolean} [isAdmin] - New admin status
        */
-      update: (id, password, username, isAdmin, auditMessage) =>
+      update: (id, password, displayName, isAdmin, auditMessage) =>
         this._request('PATCH', `/api/v1/users/${id}`, { auditMessage,
-          body: bodyOf({ password, username, 'is-admin': isAdmin }),
+          body: bodyOf({ password, 'display-name': displayName, 'is-admin': isAdmin }),
         }),
       /**
        * Build a URL for a user's profile picture, suitable for use directly as
@@ -2047,7 +2053,7 @@ class PlaidClient {
    * @param {string} baseUrl - The API base URL
    * @param {string} code - The invite code
    * @param {object} [options]
-   * @returns {Promise<{kind: string, status: string, expiresAt: string, projectName?: string, projectRole?: string, username?: string, grantAdmin: boolean}>}
+   * @returns {Promise<{kind: string, status: string, expiresAt: string, projectName?: string, projectRole?: string, email?: string, grantAdmin: boolean}>}
    */
   static async lookupInvite(baseUrl, code, options = {}) {
     return anonymousPost(baseUrl, '/api/v1/invite-codes/lookup', { code }, options);
@@ -2056,23 +2062,27 @@ class PlaidClient {
   /**
    * Redeem an invite code, with NO authentication.
    *
-   * For a signup invite, pass `username` and `password` to create the account;
-   * the invite's grants are applied in the same transaction. For a password
-   * reset link, pass `password` only. Resolves to a logged-in client, exactly
-   * like login() — the redeemer just chose these credentials, so there is no
-   * reason to send them to a login form to retype them.
+   * For a signup invite, pass `email` and `password` to create the account
+   * (and optionally `displayName`); the invite's grants are applied in the
+   * same transaction. For a password reset link, pass `password` only.
+   * Resolves to a logged-in client, exactly like login() — the redeemer just
+   * chose these credentials, so there is no reason to send them to a login
+   * form to retype them.
    * @param {string} baseUrl - The API base URL
    * @param {string} code - The invite code
    * @param {object} credentials
-   * @param {string} [credentials.username] - Desired username (signup only)
+   * @param {string} [credentials.email] - The new account's email address,
+   *   which becomes its id and login (signup only)
+   * @param {string} [credentials.displayName] - How the new user is shown in
+   *   the UI; defaults to the local part of the email (signup only)
    * @param {string} credentials.password - Desired password (min 8 characters)
    * @param {object} [options]
    * @returns {Promise<{client: PlaidClient, userId: string, kind: string}>}
    */
-  static async redeemInvite(baseUrl, code, { username, password } = {}, options = {}) {
+  static async redeemInvite(baseUrl, code, { email, password, displayName } = {}, options = {}) {
     const data = await anonymousPost(
       baseUrl, '/api/v1/invite-codes/redeem',
-      bodyOf({ code, username, password }), options,
+      bodyOf({ code, email, password, 'display-name': displayName }), options,
     );
     return {
       client: new PlaidClient(baseUrl.replace(/\/$/, ''), data.token || '', options),

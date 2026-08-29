@@ -36,7 +36,7 @@
                                 :value "true"}]})
 
     (is (= uuid-text (:user/id (user/get db uuid-text))))
-    (is (= uuid-text (:user/username (user/get db uuid-text))))
+    (is (= "" (:user/display-name (user/get db uuid-text))))
     (let [seen (first (service-registry/list-seen db project-id))]
       (is (= uuid-text (:service-id seen)))
       (is (= uuid-text (:service-name seen)))

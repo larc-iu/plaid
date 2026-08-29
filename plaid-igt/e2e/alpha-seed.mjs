@@ -240,9 +240,10 @@ async function analyze(project, raw, content, spec, items, nth = 0) {
   if (spec.wordItem && items[spec.wordItem]) await client.vocabLinks.create(items[spec.wordItem], [word.id], Object.keys(stamp).length ? stamp : undefined);
 }
 
-async function userId(username) {
-  const u = (await client.users.list()).find((x) => x.username === username);
-  if (!u) throw new Error(`user ${username} missing`);
+async function userId(email) {
+  // A user's id IS their email address.
+  const u = (await client.users.list()).find((x) => x.id === email);
+  if (!u) throw new Error(`user ${email} missing`);
   return u.id;
 }
 

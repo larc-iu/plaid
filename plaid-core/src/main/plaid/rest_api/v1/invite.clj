@@ -75,23 +75,28 @@
 
    ["/redeem"
     {:post {:summary (str "Redeem an invite code. For a signup invite, supply "
-                          "<body>username</body> and <body>password</body> to create the "
-                          "account; the invite's grants (project role, admin) are applied in "
-                          "the same transaction. For a password reset link, supply "
-                          "<body>password</body> only and <body>username</body> is ignored. "
+                          "<body>email</body> and <body>password</body> to create the "
+                          "account (plus an optional <body>display-name</body>); the invite's "
+                          "grants (project role, admin) are applied in the same transaction. "
+                          "The email becomes the account's ID and is what they log in with. "
+                          "For a password reset link, supply <body>password</body> only and "
+                          "<body>email</body> is ignored. "
                           "Returns a session token so the caller is immediately logged in. "
-                          "409 if the username is taken, 410 if the invite is spent, expired, "
-                          "or revoked.")
+                          "409 if an account already exists for that email, 410 if the invite "
+                          "is spent, expired, or revoked.")
             :parameters {:body [:map
                                 [:code string?]
-                                [:username {:optional true} string?]
+                                [:email {:optional true} string?]
+                                [:display-name {:optional true} string?]
                                 [:password string?]]}
-            :handler (fn [{{{:keys [code username password]} :body} :parameters
+            :handler (fn [{{{:keys [code email display-name password]} :body} :parameters
                            db :db secret-key :secret-key :as request}]
                        ;; `status-code`, not `code` — the request body's :code is
                        ;; the invite code and the result's is an HTTP status.
                        (let [{:keys [success extra error] status-code :code}
-                             (invite/redeem! db code {:username username :password password})]
+                             (invite/redeem! db code {:email email
+                                                      :password password
+                                                      :display-name display-name})]
                          (if success
                            (let [user-id (:user-id extra)]
                              {:status 200
@@ -100,7 +105,7 @@
                                      :kind (if (:reset? extra) "password-reset" "signup")}})
                            (do
                              ;; Only a bad CODE counts against the limiter. A
-                             ;; taken username or a short password is the
+                             ;; taken email or a short password is the
                              ;; invited user fumbling a form, and locking their
                              ;; whole classroom's IP over it would be perverse.
                              (when (#{404 410} status-code)

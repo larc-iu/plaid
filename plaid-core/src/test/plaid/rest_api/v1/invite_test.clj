@@ -67,7 +67,7 @@
   users between deftests, so these cost nothing to leave behind."
   [user-id]
   (api-call admin-request {:method :post :path "/api/v1/users"
-                           :body {:username user-id :password good-password
+                           :body {:email user-id :password good-password
                                   :is-admin false}})
   (let [resp (login! user-id good-password)
         token (-> resp :body slurp read-string :token)]
@@ -128,7 +128,7 @@
             (is (nil? (-> pv :body :uses))))))
 
       (testing "redeeming creates the account and applies the grant atomically"
-        (let [r (redeem! {:code code :username "newbie@example.com"
+        (let [r (redeem! {:code code :email "newbie@example.com"
                           :password good-password})]
           (assert-ok r)
           (is (string? (-> r :body :token)))
@@ -151,9 +151,9 @@
           (is (nil? (:code row)))))
 
       (testing "the invite is spent only after max-uses redemptions"
-        (assert-ok (redeem! {:code code :username "b@example.com" :password good-password}))
-        (assert-ok (redeem! {:code code :username "c@example.com" :password good-password}))
-        (let [r (redeem! {:code code :username "d@example.com" :password good-password})]
+        (assert-ok (redeem! {:code code :email "b@example.com" :password good-password}))
+        (assert-ok (redeem! {:code code :email "c@example.com" :password good-password}))
+        (let [r (redeem! {:code code :email "d@example.com" :password good-password})]
           (assert-status 410 r)
           (is (re-find #"already been used" (-> r :body :error))))
         (testing "and a spent code still previews, so the page can explain itself"
@@ -162,29 +162,29 @@
 (deftest bad-codes-are-rejected
   (let [bogus "ZZZZZZZZ-ZZZZZZZZ-ZZZZZZZZ-ZZZZZZZZ"]
     (assert-not-found (lookup! bogus))
-    (assert-not-found (redeem! {:code bogus :username "x@example.com"
+    (assert-not-found (redeem! {:code bogus :email "x@example.com"
                                 :password good-password}))
     (testing "a blank code is refused rather than matching an empty digest"
-      (assert-not-found (redeem! {:code "" :username "x@example.com"
+      (assert-not-found (redeem! {:code "" :email "x@example.com"
                                   :password good-password})))))
 
 (deftest redemption-validates-without-burning-the-invite
   (let [pid (h/create-test-project admin-request "P")
         code (-> (mint! admin-request {:project-id pid :project-role "reader"}) :body :code)]
     (testing "a short password is refused"
-      (assert-bad-request (redeem! {:code code :username "x@example.com" :password "short"})))
-    (testing "a username that is not an email address is refused"
+      (assert-bad-request (redeem! {:code code :email "x@example.com" :password "short"})))
+    (testing "an id that is not an email address is refused"
       ;; Usernames ARE email addresses instance-wide; redemption is one of the
       ;; three account-creating paths, so it enforces the same rule.
       (doseq [bad ["has space" "jsmith" "no@dot"]]
-        (assert-bad-request (redeem! {:code code :username bad :password good-password}))))
-    (testing "a taken username is a 409, not a 500"
-      (assert-status 409 (redeem! {:code code :username "user1@example.com"
+        (assert-bad-request (redeem! {:code code :email bad :password good-password}))))
+    (testing "a taken email is a 409, not a 500"
+      (assert-status 409 (redeem! {:code code :email "user1@example.com"
                                    :password good-password})))
     (testing "none of those consumed a use — the invited person can retry"
       (let [lr (api-call admin-request {:method :get :path "/api/v1/invites"})]
         (is (= 0 (:uses (first (:entries (:body lr)))))))
-      (assert-ok (redeem! {:code code :username "finally@example.com"
+      (assert-ok (redeem! {:code code :email "finally@example.com"
                            :password good-password})))))
 
 (deftest expired-invites-are-refused
@@ -203,7 +203,7 @@
          db {:update :invites
              :set {:expires_at "2020-01-01T00:00:00.000000000Z"}
              :where [:= :id (-> resp :body :id)]})
-        (let [r (redeem! {:code code :username "late@example.com" :password good-password})]
+        (let [r (redeem! {:code code :email "late@example.com" :password good-password})]
           (assert-status 410 r)
           (is (re-find #"expired" (-> r :body :error))))
         (is (= "expired" (-> (lookup! code) :body :status)))))))
@@ -219,7 +219,7 @@
         iid (-> resp :body :id)]
     (assert-no-content (api-call admin-request {:method :delete
                                                 :path (str "/api/v1/invites/" iid)}))
-    (let [r (redeem! {:code code :username "nope@example.com" :password good-password})]
+    (let [r (redeem! {:code code :email "nope@example.com" :password good-password})]
       (assert-status 410 r)
       (is (re-find #"revoked" (-> r :body :error))))
     (testing "revocation is idempotent"
@@ -277,7 +277,7 @@
 
     (testing "an admin may grant admin, and the redeemed account really is one"
       (let [code (-> (mint! admin-request {:grant-admin true}) :body :code)
-            r (redeem! {:code code :username "boss@example.com" :password good-password})]
+            r (redeem! {:code code :email "boss@example.com" :password good-password})]
         (assert-ok r)
         (let [me (api-call admin-request {:method :get
                                           :path "/api/v1/users/boss@example.com"})]
@@ -310,7 +310,7 @@
                                :path (str "/api/v1/projects/" pid
                                           "/maintainers/user1@example.com")})
       (testing "and stops the moment they are demoted, without being revoked"
-        (let [r (redeem! {:code code :username "toolate@example.com"
+        (let [r (redeem! {:code code :email "toolate@example.com"
                           :password good-password})]
           (assert-forbidden r)
           (is (re-find #"does not maintain" (-> r :body :error))))))))
@@ -326,7 +326,7 @@
       ;; deactivated-actor branch only if it is checked BEFORE the
       ;; maintainer branch — which is the ordering in check-grant-authority!.
       (api-call admin-request {:method :delete :path (str "/api/v1/users/" minter)})
-      (let [r (redeem! {:code code :username "orphan@example.com" :password good-password})]
+      (let [r (redeem! {:code code :email "orphan@example.com" :password good-password})]
         (assert-forbidden r)
         (is (re-find #"deactivated" (-> r :body :error)))))))
 
@@ -371,7 +371,7 @@
         (let [pv (lookup! code)]
           (assert-ok pv)
           (is (= "password-reset" (-> pv :body :kind)))
-          (is (= target (-> pv :body :username)))
+          (is (= target (-> pv :body :email)))
           (is (nil? (-> pv :body :project-name)))))
 
       (testing "redeeming sets the new password and returns a live session"
@@ -405,16 +405,17 @@
       (assert-ok (redeem! {:code code :password "a-brand-new-password"}))
       (is (= 200 (:status (login! target "a-brand-new-password")))))))
 
-(deftest a-reset-preview-follows-a-rename
-  ;; `target_user_id` is the immutable user id; a rename changes only
-  ;; `username`. The preview has to show what the person is called now, or it
-  ;; tells them the link belongs to a name they no longer use.
-  (let [[target _] (throwaway-user! "before@example.com")
+(deftest a-reset-preview-names-the-account-by-email
+  ;; The preview shows the address the redeemer will type into the login form
+  ;; afterwards, which is the account's id — not their display name, which
+  ;; they may have changed since and which answers the wrong question ("is
+  ;; this the right account?").
+  (let [[target _] (throwaway-user! "renamed@example.com")
         code (-> (mint! admin-request {:target-user-id target}) :body :code)]
     (assert-ok (api-call admin-request {:method :patch
                                         :path (str "/api/v1/users/" target)
-                                        :body {:username "after@example.com"}}))
-    (is (= "after@example.com" (-> (lookup! code) :body :username)))))
+                                        :body {:display-name "Someone Else"}}))
+    (is (= target (-> (lookup! code) :body :email)))))
 
 (deftest password-reset-links-grant-nothing-else
   (let [pid (h/create-test-project admin-request "P")]

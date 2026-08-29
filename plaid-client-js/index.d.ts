@@ -158,12 +158,12 @@ interface UsersBundle {
   list(asOf?: string): Promise<any[]>;
   listPage(opts?: { limit?: number; cursor?: string; asOf?: string }): Promise<Page>;
   iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
-  create(username: string, password: string, isAdmin: boolean, auditMessage?: string): Promise<any>;
+  create(email: string, password: string, isAdmin: boolean, displayName?: string, auditMessage?: string): Promise<any>;
   audit(userId: string, startTime?: string, endTime?: string, asOf?: string): Promise<any[]>;
   get(id: string, asOf?: string): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
   activate(id: string, auditMessage?: string): Promise<any>;
-  update(id: string, password?: string, username?: string, isAdmin?: boolean, auditMessage?: string): Promise<any>;
+  update(id: string, password?: string, displayName?: string, isAdmin?: boolean, auditMessage?: string): Promise<any>;
   /** URL for a user's profile picture, usable as an <img> src. Null when avatarHash is explicitly null. */
   avatarUrl(id: string, avatarHash?: string | null): string | null;
   getAvatar(id: string): Promise<any>;
@@ -207,8 +207,8 @@ interface InvitePreview {
   grantAdmin: boolean;
   projectName?: string;
   projectRole?: string;
-  /** Present only for a password reset: whose account the link belongs to. */
-  username?: string;
+  /** Present only for a password reset: the email of the account it belongs to. */
+  email?: string;
 }
 
 interface CreateInviteOptions {
@@ -369,7 +369,7 @@ export declare class PlaidClient {
   static redeemInvite(
     baseUrl: string,
     code: string,
-    credentials: { username?: string; password: string },
+    credentials: { email?: string; password: string; displayName?: string },
     options?: PlaidClientOptions,
   ): Promise<{ client: PlaidClient; userId: string; kind: string }>;
   timeout: number | null;

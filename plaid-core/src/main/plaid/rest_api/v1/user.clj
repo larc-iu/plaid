@@ -34,23 +34,31 @@
     :middleware [pra/wrap-login-required]}
 
    [""
-    {:get {:summary "List/search users, keyset-paginated by username"
+    {:get {:summary "List/search users, keyset-paginated by display name"
            ;; Task #95 locked the roster down to admins (it was an account-
            ;; enumeration surface for any authenticated caller). It's now also
            ;; open to project AND vocab MAINTAINERS, who need to find users to
            ;; grant project/vocab access — see `wrap-user-directory-access`. Ordinary
-           ;; readers/writers still get 403. Optional `?q=` filters to usernames
-           ;; containing that text. Returns the uniform {:entries :next-cursor}
-           ;; envelope (default page 100, max 1000).
+           ;; readers/writers still get 403. Optional `?q=` filters to users
+           ;; whose display name OR email contains that text. Returns the
+           ;; uniform {:entries :next-cursor} envelope (default page 100, max
+           ;; 1000).
            :middleware [pra/wrap-user-directory-access]
            :parameters {:query (into [:map [:q {:optional true} string?]] pagination/query-params)}
            :handler (fn [{db :db {query :query} :parameters}]
                       (pagination/list-response query (fn [opts] (user/get-all db (assoc opts :q (:q query))))))}
-     :post {:summary "Create a new user"
+     :post {:summary (str "Create a new user. The <body>email</body> becomes the account's ID and is "
+                          "what they log in with; it can never be changed afterwards. "
+                          "<body>display-name</body> is optional and defaults to the local part of "
+                          "the email.")
             :middleware [pra/wrap-admin-required]
-            :parameters {:body {:username string? :password string? :is-admin boolean?}}
-            :handler (fn [{{{:keys [username password is-admin]} :body} :parameters db :db user-id :user/id}]
-                       (let [result (user/create db username is-admin password user-id)]
+            :parameters {:body [:map
+                                [:email string?]
+                                [:password string?]
+                                [:is-admin boolean?]
+                                [:display-name {:optional true} string?]]}
+            :handler (fn [{{{:keys [email password is-admin display-name]} :body} :parameters db :db user-id :user/id}]
+                       (let [result (user/create db email is-admin password user-id display-name)]
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
@@ -68,13 +76,16 @@
                             :body user}
                            {:status 404
                             :body {:error "User not found"}})))}
-      :patch {:summary (str "Modify a user. Admins may change the username, password, and admin status of any user. "
-                            "All other users may only modify their own username or password.")
+      :patch {:summary (str "Modify a user. Admins may change the display name, password, and admin "
+                            "status of any user. All other users may only modify their own display "
+                            "name or password. A user's ID is their email address and is fixed for "
+                            "the life of the account: it is what they log in with, so no endpoint "
+                            "changes it.")
               :parameters {:body [:map
                                   [:password {:optional true} string?]
-                                  [:username {:optional true} string?]
+                                  [:display-name {:optional true} string?]
                                   [:is-admin {:optional true} boolean?]]}
-              :handler (fn [{{{:keys [id]} :path {:keys [username password is-admin]} :body} :parameters
+              :handler (fn [{{{:keys [id]} :path {:keys [display-name password is-admin]} :body} :parameters
                              db :db
                              :as request}]
                          (let [current-user-id (pra/->user-id request)
@@ -86,7 +97,7 @@
                              (let [{:keys [success code error]} (user/merge db
                                                                             id
                                                                             {:password password
-                                                                             :user/username username
+                                                                             :user/display-name display-name
                                                                              :user/is-admin is-admin}
                                                                             current-user-id)]
                                (if success
@@ -99,7 +110,7 @@
                              (let [{:keys [success code error]} (user/merge db
                                                                             id
                                                                             {:password password
-                                                                             :user/username username}
+                                                                             :user/display-name display-name}
                                                                             current-user-id)]
                                (if success
                                  {:status 200
@@ -109,12 +120,12 @@
 
                              :else
                              {:status 403
-                              :body {:error "You can only modify your own username and password"}})))}
+                              :body {:error "You can only modify your own display name and password"}})))}
 
       :delete {:summary (str "Deactivate a user. Users are never hard-deleted (audit attribution must "
                              "survive); deactivation rejects their logins and tokens, strips their project "
                              "memberships and vocab maintainerships, and revokes their API tokens. The "
-                             "username stays reserved and the user remains visible in listings with a "
+                             "email address stays reserved and the user remains visible in listings with a "
                              "<body>deactivated-at</body> timestamp. Reversible via the activate endpoint, "
                              "which restores login only (not memberships or tokens).")
                :middleware [pra/wrap-admin-required]

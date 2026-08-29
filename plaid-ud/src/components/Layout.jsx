@@ -52,13 +52,13 @@ export const Layout = () => {
                     <UserAvatar
                       client={getClient()}
                       userId={user.id}
-                      username={user.username}
+                      displayName={user.displayName}
                       avatarHash={user.avatarHash}
                       size={22}
                     />
                   }
                 >
-                  {user.username}
+                  {user.displayName}
                 </Button>
                 <Button onClick={handleLogout} variant="subtle" color="gray" size="sm">
                   Logout
