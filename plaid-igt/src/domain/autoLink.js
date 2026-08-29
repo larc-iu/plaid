@@ -51,13 +51,17 @@ const morphFormOf = (m) => {
 // shape: [itemId, tokenValue, morphForm, role, count] — the form is morphForm
 // for morpheme tokens (their value is just the parent word's slice), tokenValue
 // otherwise; the role is the token layer's shared `config.plaid.role`.
-export function precedentQueries(vocabIds) {
+// `excludeDocId` leaves one document out, for a caller that tallies that
+// document's links live from its own derived state (tallyDocumentLinks) and
+// must not count them twice.
+export function precedentQueries(vocabIds, { excludeDocId = null } = {}) {
   return vocabIds.map((vid) => ({
     where: [
       ['vocab', '?v', { layer: vid }],
       ['vocab-link', '?t', '?v'],
       ['token', '?t', { layer: '?tl' }],
       ['token-layer', '?tl', {}],
+      ...(excludeDocId ? [['!=', '?t.doc', excludeDocId]] : []),
     ],
     return: {
       group: ['?v', '?t.value', '?t.metadata.form', '?tl.config.plaid.role'],
@@ -81,32 +85,80 @@ function majority(counts) {
   return best;
 }
 
-// Merge precedent rows into form -> { any, word, morpheme }: the most-linked
-// (form, item) pairing across the project overall and per kind of linking
-// token (a kind is absent when no token of that kind ever linked the form).
-// `ignoredCfg` (the word layer's ignored-tokens config) trims edge punctuation
-// off WORD values the same way the popover's "+ Create" does, so `derechos.`
-// and `derechos` pool their precedent (morpheme forms are never trimmed).
-export function buildPrecedentTable(resultsPerVocab, ignoredCfg = null) {
-  const tally = new Map(); // form -> { any: Map<itemId, n>, [kind]: Map<itemId, n> }
+// A precedent tally: form -> { any: Map<itemId, n>, [kind]: Map<itemId, n> },
+// how many links each item has received from tokens with that form, overall
+// and per kind of linking token (a kind is absent when no token of that kind
+// ever linked the form).
+const addTally = (tally, form, itemId, kind, n) => {
+  if (!form) return;
+  let entry = tally.get(form);
+  if (!entry) tally.set(form, (entry = { any: new Map() }));
+  const id = String(itemId);
+  entry.any.set(id, (entry.any.get(id) || 0) + n);
+  if (kind === KINDS.WORD || kind === KINDS.MORPHEME) {
+    if (!entry[kind]) entry[kind] = new Map();
+    entry[kind].set(id, (entry[kind].get(id) || 0) + n);
+  }
+};
+
+// Fold precedent query rows (precedentQueries) into `tally`. `ignoredCfg`
+// (the word layer's ignored-tokens config) trims edge punctuation off WORD
+// values the same way the popover's "+ Create" does, so `derechos.` and
+// `derechos` pool their precedent (morpheme forms are never trimmed).
+export function tallyPrecedent(resultsPerVocab, ignoredCfg = null, tally = new Map()) {
   for (const res of resultsPerVocab) {
     for (const [itemId, value, morphForm, role, n] of res?.results || []) {
       const form =
         morphForm != null && morphForm !== ''
           ? String(morphForm)
           : trimIgnoredEdges((value ?? '').toString(), ignoredCfg);
-      if (!form) continue;
-      let entry = tally.get(form);
-      if (!entry) tally.set(form, (entry = { any: new Map() }));
-      const id = String(itemId);
-      entry.any.set(id, (entry.any.get(id) || 0) + n);
-      const kind = role === KINDS.WORD || role === KINDS.MORPHEME ? role : null;
-      if (kind) {
-        if (!entry[kind]) entry[kind] = new Map();
-        entry[kind].set(id, (entry[kind].get(id) || 0) + n);
+      addTally(tally, form, itemId, role, n);
+    }
+  }
+  return tally;
+}
+
+// Fold a derived document's own single-token links (derive.js sentences) into
+// `tally`, one per linked word or morpheme, keyed the same way as the query
+// rows. Pairs with `precedentQueries(..., { excludeDocId })`: the project
+// tally is fetched once with the open document left out, and this keeps the
+// document's share exact as links come and go without refetching.
+export function tallyDocumentLinks(sentences, ignoredCfg = null, tally = new Map()) {
+  for (const s of sentences || []) {
+    for (const t of s.tokens || []) {
+      if (t.vocabItem) {
+        addTally(
+          tally,
+          trimIgnoredEdges(t.content ?? '', ignoredCfg),
+          t.vocabItem.id,
+          KINDS.WORD,
+          1,
+        );
+      }
+      for (const m of t.morphemes || []) {
+        if (m.vocabItem) addTally(tally, morphFormOf(m), m.vocabItem.id, KINDS.MORPHEME, 1);
       }
     }
   }
+  return tally;
+}
+
+// What a form's entry says to a token of `kind`: the same-kind slot when any
+// token of that kind linked the form, else the overall slot.
+const byKind = (entry, kind) => entry[kind] ?? entry.any ?? null;
+
+// The link counts behind `form` as seen by a token of `kind` (itemId -> n),
+// or null when the form has no precedent at all.
+export function precedentCounts(tally, form, kind) {
+  const entry = tally?.get(form);
+  return entry ? byKind(entry, kind) : null;
+}
+
+// Merge precedent rows into form -> { any, word, morpheme }: the most-linked
+// (form, item) pairing across the project overall and per kind of linking
+// token. See tallyPrecedent for the form keying.
+export function buildPrecedentTable(resultsPerVocab, ignoredCfg = null) {
+  const tally = tallyPrecedent(resultsPerVocab, ignoredCfg);
   const table = new Map();
   for (const [form, entry] of tally) {
     const out = { any: majority(entry.any) };
@@ -122,8 +174,7 @@ export function buildPrecedentTable(resultsPerVocab, ignoredCfg = null) {
 // kind linked it before, else what any token did.
 const precedentFor = (table, form, kind) => {
   const entry = table.get(form);
-  if (!entry) return null;
-  return entry[kind] ?? entry.any ?? null;
+  return entry ? byKind(entry, kind) : null;
 };
 
 // form -> [itemIds] over the loaded vocab tables (exact), plus a casefolded

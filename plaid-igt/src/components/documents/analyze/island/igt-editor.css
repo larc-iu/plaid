@@ -980,6 +980,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Precedent badge: how often the popover's form was linked to this entry. */
+.igt-vocab-pop__prec {
+  margin-left: auto;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #4b5563;
+  white-space: nowrap;
+}
 .igt-vocab-pop__goto {
   color: inherit;
   text-decoration: underline dotted;

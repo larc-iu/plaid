@@ -33,24 +33,19 @@ import {
   splitChainText,
 } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
+import { rankVocabItems } from '@/domain/vocabRank';
+import {
+  KINDS,
+  precedentQueries,
+  tallyPrecedent,
+  tallyDocumentLinks,
+  precedentCounts,
+} from '@/domain/autoLink';
 import { humanizeError } from '@/utils/feedback';
 
-// Small Levenshtein for ranking lexicon items by similarity to a token's form.
-function levenshtein(a, b) {
-  if (a === b) return 0;
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 0; i < a.length; i++) {
-    const cur = [i + 1];
-    for (let j = 0; j < b.length; j++) {
-      const cost = a[i] === b[j] ? 0 : 1;
-      cur[j + 1] = Math.min(cur[j] + 1, prev[j + 1] + 1, prev[j] + cost);
-    }
-    prev = cur;
-  }
-  return prev[b.length];
-}
+// Stable empty precedent results, so the tally memo does not rebuild on every
+// render while the project query is still in flight.
+const NO_PRECEDENT = Object.freeze([]);
 
 // ---- uncontrolledValue: set input.value only when the input is NOT focused.
 // Keeps programmatic changes (split/merge form rewrites, reloads) reflected
@@ -295,6 +290,7 @@ export class IgtEditor {
     this._createClickTimer = null;
     this._popoverReturnId = tokenId;
     this._popoverPos = this._computePopoverPos(anchorEl);
+    this._ensurePrecedent();
     this._render(true);
     // Focus the search box now that it's in the DOM (lit-html `autofocus` is
     // unreliable on nodes inserted by a re-render rather than initial parse).
@@ -2405,6 +2401,58 @@ export class IgtEditor {
     return this._homonymCache.get(vocabId);
   }
 
+  // Precedent behind the popover's ranking (see vocabRank.js): the project-
+  // wide link tally, fetched once per document + vocab set with THIS document
+  // left out, plus this document's own links tallied live from the derived
+  // sentences, so a link made a moment ago already counts and nothing is
+  // counted twice. Until the query answers, rows rank on the document's own
+  // links; the popover re-renders when it lands. A failed query ranks by
+  // form only (the popover still works).
+  _ensurePrecedent() {
+    const vocabIds = Object.keys(this.doc?.vocabularies || {}).sort();
+    const key = `${this.doc?.id}|${vocabIds.join(',')}`;
+    if (this._precedent?.key === key) return;
+    const state = { key, results: null };
+    this._precedent = state;
+    if (!vocabIds.length || !this.doc?.client) return;
+    Promise.all(
+      precedentQueries(vocabIds, { excludeDocId: this.doc.id }).map((q) =>
+        this.doc.client.query(q),
+      ),
+    )
+      .then((results) => {
+        state.results = results;
+      })
+      .catch((err) => {
+        console.warn('Lexicon precedent unavailable; ranking by form only:', err);
+        state.results = [];
+      })
+      .finally(() => {
+        if (this._precedent === state && this._popover) this._render(true);
+      });
+  }
+
+  _precedentTally() {
+    const results = this._precedent?.results || NO_PRECEDENT;
+    const dv = this.doc?.dataVersion;
+    const memo = this._precedentMemo;
+    if (!memo || memo.results !== results || memo.dv !== dv) {
+      const tally = tallyPrecedent(results, this._ignoredCfg);
+      tallyDocumentLinks(this.doc?.sentences, this._ignoredCfg, tally);
+      this._precedentMemo = { results, dv, tally };
+    }
+    return this._precedentMemo.tally;
+  }
+
+  // The tally key for a word/morpheme: a word loses edge punctuation by the
+  // ignore rule (as the auto-linker and "+ Create" do), a morpheme form is
+  // taken verbatim.
+  _precedentForm(formText, kind) {
+    return kind === KINDS.WORD
+      ? trimIgnoredEdges(formText || '', this._ignoredCfg)
+      : formText || '';
+  }
+
   _homonymSub(vocabItem) {
     if (!vocabItem?.vocabId) return null;
     const idx = this._homonymIndexFor(vocabItem.vocabId).get(vocabItem.id);
@@ -2441,36 +2489,24 @@ export class IgtEditor {
       null;
     this._popoverVocabId = activeVocab?.id ?? null;
 
-    const search = (this._popoverSearch || '').toLowerCase();
-    const ft = (formText || '').toLowerCase();
+    const search = this._popoverSearch || '';
     const homIdx = activeVocab ? this._homonymIndexFor(activeVocab.id) : null;
-    let items = (activeVocab?.items || []).map((it) => ({
-      ...it,
-      _detail: this._vocabItemDetail(it, activeVocab),
-      _sub: homIdx ? homIdx.get(it.id) : null,
-    }));
-    // Rank against the active query: the typed search if any, else the
-    // word/morpheme's own form. Tiers (exact > prefix > substring on the form
-    // > match in the detail text > fuzzy), Levenshtein within a tier. While
-    // searching, fuzzy-only "matches" are dropped — typing narrows.
-    const q = search || ft;
-    const tierOf = (it) => {
-      const form = (it.form || '').toLowerCase();
-      if (!q) return 4;
-      if (form === q) return 0;
-      if (form.startsWith(q)) return 1;
-      if (form.includes(q)) return 2;
-      if ((it._detail || '').toLowerCase().includes(q)) return 3;
-      return 4;
-    };
-    if (search) items = items.filter((it) => tierOf(it) < 4);
-    items.sort((a, b) => {
-      const t = tierOf(a) - tierOf(b);
-      if (t !== 0) return t;
-      return (
-        levenshtein(q, (a.form || '').toLowerCase()) - levenshtein(q, (b.form || '').toLowerCase())
-      );
-    });
+    // Ranked by vocabRank.js: what this form was linked to before comes
+    // first, then form-match tiers; a typed search ranks against the typed
+    // text alone.
+    const precForm = this._precedentForm(formText, kind);
+    const items = rankVocabItems(
+      (activeVocab?.items || []).map((it) => ({
+        ...it,
+        _detail: this._vocabItemDetail(it, activeVocab),
+        _sub: homIdx ? homIdx.get(it.id) : null,
+      })),
+      {
+        form: formText || '',
+        search,
+        precedent: precedentCounts(this._precedentTally(), precForm, kind),
+      },
+    );
     if (currentItem) {
       const i = items.findIndex((it) => it.id === currentItem.id);
       if (i > 0) {
@@ -2649,6 +2685,15 @@ export class IgtEditor {
                             ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>`
                             : nothing}</span
                         >`}
+                    ${it._prec
+                      ? html`<span
+                          class="igt-vocab-pop__prec"
+                          title=${`“${precForm}” was linked to this entry ${it._prec} time${
+                            it._prec === 1 ? '' : 's'
+                          } in this project`}
+                          >×${it._prec}</span
+                        >`
+                      : nothing}
                     ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
                     ${linked
                       ? html`<span

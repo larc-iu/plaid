@@ -4,6 +4,9 @@ import {
   buildItemIndex,
   computeAutoLinkProposals,
   precedentQueries,
+  tallyPrecedent,
+  tallyDocumentLinks,
+  precedentCounts,
 } from './autoLink.js';
 
 const res = (rows) => ({ results: rows });
@@ -139,6 +142,56 @@ describe('precedentQueries', () => {
       '?t.metadata.form',
       '?tl.config.plaid.role',
     ]);
+    expect(qs[0].where.some((c) => c[0] === '!=')).toBe(false);
+  });
+
+  it('can leave one document out', () => {
+    const [q] = precedentQueries(['v1'], { excludeDocId: 'doc-1' });
+    expect(q.where).toContainEqual(['!=', '?t.doc', 'doc-1']);
+  });
+});
+
+describe('tallyPrecedent + tallyDocumentLinks + precedentCounts', () => {
+  const sentences = [
+    {
+      tokens: [
+        { id: 'w1', content: 'perros.', vocabItem: { id: 'item-a' }, morphemes: [] },
+        {
+          id: 'w2',
+          content: 'whole',
+          vocabItem: null,
+          morphemes: [
+            { id: 'm1', content: 'whol', metadata: {}, vocabItem: null },
+            { id: 'm2', content: 'e', metadata: { form: 's' }, vocabItem: { id: 'item-b' } },
+          ],
+        },
+      ],
+    },
+  ];
+  const ignored = { type: 'unicodePunctuation', whitelist: [] };
+
+  it("folds a document's own links onto the query rows, keyed like the rows", () => {
+    const tally = tallyPrecedent([res([['item-a', 'perros', null, 'word', 3]])], ignored);
+    tallyDocumentLinks(sentences, ignored, tally);
+    expect(precedentCounts(tally, 'perros', 'word')).toEqual(new Map([['item-a', 4]]));
+    expect(precedentCounts(tally, 's', 'morpheme')).toEqual(new Map([['item-b', 1]]));
+  });
+
+  it('a kind with no precedent of its own sees what any kind did; an unknown form sees null', () => {
+    const tally = tallyDocumentLinks(sentences, ignored);
+    expect(precedentCounts(tally, 's', 'word')).toEqual(new Map([['item-b', 1]]));
+    expect(precedentCounts(tally, 'nope', 'word')).toBeNull();
+  });
+
+  it('a form linked by both kinds answers each kind with its own counts', () => {
+    const tally = tallyPrecedent([
+      res([
+        ['item-a', 'la', null, 'word', 5],
+        ['item-b', null, 'la', 'morpheme', 2],
+      ]),
+    ]);
+    expect(precedentCounts(tally, 'la', 'word')).toEqual(new Map([['item-a', 5]]));
+    expect(precedentCounts(tally, 'la', 'morpheme')).toEqual(new Map([['item-b', 2]]));
   });
 });
 

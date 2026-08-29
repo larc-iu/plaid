@@ -18,6 +18,9 @@ let documentId;
 let lexB;
 let ids = {};
 let lexA;
+let TEXT_LAYER_ID;
+let WORD_LAYER_ID;
+let SENT_LAYER_ID;
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
@@ -30,6 +33,9 @@ test.beforeAll(async () => {
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);
   const WORD = layer(ROLES.WORD);
   const MORPH = layer(ROLES.MORPHEME);
+  TEXT_LAYER_ID = textLayer.id;
+  WORD_LAYER_ID = WORD.id;
+  SENT_LAYER_ID = layer(ROLES.SENTENCE).id;
 
   const stamp = Date.now();
   lexB = await client.vocabLayers.create(`LEX-B ${stamp}`);
@@ -391,4 +397,52 @@ test('B8-03/04: the morpheme Type select stores morphType and toggles the affix 
     .poll(async () => 'morphType' in ((await client.tokens.get(m)).metadata || {}))
     .toBe(false);
   await expect(joiner).toHaveText('-');
+});
+
+test('B2 precedent: what a form was linked to before ranks first, counted across the project', async ({
+  page,
+}) => {
+  // A second throwaway document links its `ser` word to LEX-B `human`, and so
+  // does this document's own `ser` word. The project query leaves the open
+  // document out and its links are tallied live, so the count is exactly 2,
+  // not 3. Opened on the MORPHEME under `ser` (no morpheme ever linked `ser`,
+  // so it sees what any token did), `human ×2` ranks ahead of the two
+  // exact-form `ser` entries. Typing a search sets precedent aside.
+  const humanId = lexB.items.human[0];
+  const other = await client.documents.create(projectId, `popover-prec ${Date.now()}`);
+  const made = [];
+  try {
+    await client.texts.create(TEXT_LAYER_ID, other.id, 'ser');
+    const raw = await client.documents.get(other.id, true);
+    const textId = raw.textLayers.find((l) => roleOf(l) === ROLES.BASELINE).text.id;
+    await client.tokens.bulkCreate([
+      { tokenLayerId: SENT_LAYER_ID, text: textId, begin: 0, end: 3 },
+    ]);
+    const t = await client.tokens.create(WORD_LAYER_ID, textId, 0, 3);
+    await client.vocabLinks.create(humanId, [t.id]);
+    // Earlier tests may have left links on the `ser` word or morpheme; only
+    // the one made here should count.
+    for (const id of [ids.w[W.ser], ids.m[W.ser]]) {
+      const stale = await linksTo(id);
+      if (stale.length) await client.vocabLinks.bulkDelete(stale.map((l) => l.id));
+    }
+    made.push((await client.vocabLinks.create(humanId, [ids.w[W.ser]])).id);
+
+    await openAnalyze(page);
+    await open(page, ids.m[W.ser], lexB.name);
+    // `human ×2` first, then the exact-form `ser` entry (B7 renamed the other
+    // homonym); the rest of LEX-B, including entries other tests added,
+    // follows by form.
+    await expect.poll(async () => (await rowForms(page)).slice(0, 2)).toEqual(['human', 'ser']);
+    await expect(rows(page).first().locator('.igt-vocab-pop__prec')).toHaveText('×2');
+    await expect(page.locator('.igt-vocab-pop__prec')).toHaveCount(1);
+    await page.locator('.igt-vocab-pop__search').fill('ser');
+    await expect.poll(async () => (await rowForms(page))[0]).toBe('ser');
+    expect((await rowForms(page)).every((f) => f.includes('ser'))).toBe(true);
+    await expect(page.locator('.igt-vocab-pop__prec')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+  } finally {
+    await client.documents.delete(other.id).catch(() => {});
+    if (made.length) await client.vocabLinks.bulkDelete(made).catch(() => {});
+  }
 });
