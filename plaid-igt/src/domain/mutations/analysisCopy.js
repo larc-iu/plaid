@@ -18,7 +18,7 @@
 // correct move (same as the service-backed auto-link path).
 
 import { stampInferred, isMachine, PROV_CONFIRMED, PROV_STATES } from '@larc-iu/plaid-client';
-import { isUnanalyzedWord } from '../analysisMemory.js';
+import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 
 // The server caps a single atomic batch at 1000 ops (plaid-core
 // rest_api/v1/batch.clj). A copy emits several ops per word, so pack words into
@@ -46,21 +46,116 @@ const findVocabItem = (vocabularies, vocabItemId) => {
   return null;
 };
 
+// Ops per atomic batch when stripping analyses (bulkReplaceAnalyses); each
+// word emits a handful, so this stays well under the server's 1000-op cap.
+const STRIP_CHUNK = 250;
+
 export const analysisCopyMutations = {
   // Returns the number of words a copy was applied to (false on failure).
   async bulkApplyAnalyses(proposals, provSource) {
+    const todo = this._planAnalysisApply(proposals);
+    if (todo === false) return false;
+    if (!todo.length) return 0;
+    const ok = await this._withSaving('Failed to copy previous analyses', () =>
+      this._applyAnalysesImpl(todo, stampInferred(provSource)),
+    );
+    return ok ? todo.length : false;
+  },
+
+  // Bulk Edit's "re-analyze every occurrence": REPLACE each target word's
+  // analysis with `analysis` (same shape as extractAnalysis), whatever it
+  // carries now. Two phases under one operation: strip every link, span and
+  // extra morpheme off the word (first morpheme reset to the healed default),
+  // resync, then run the same apply path as a copy. A human chose this
+  // analysis deliberately, so nothing is provenance-stamped: it lands as
+  // human work, not as an unverified guess. Words already carrying exactly
+  // the target analysis are skipped. Returns the number of words changed
+  // (false on failure).
+  async bulkReplaceAnalyses(proposals) {
+    const targetSig = new Map();
+    const targets = [];
+    for (const p of proposals || []) {
+      const token = this.tokenLookup.get(p.wordTokenId);
+      if (!token || !p.analysis) continue;
+      let sig = targetSig.get(p.analysis);
+      if (!sig) targetSig.set(p.analysis, (sig = analysisSignature(p.analysis)));
+      const current = extractAnalysis(token);
+      if (current && analysisSignature(current) === sig) continue;
+      targets.push({ wordTokenId: p.wordTokenId, analysis: p.analysis, token });
+    }
+    if (!targets.length) return 0;
+
+    return (await this._withSaving('Failed to re-analyze words', async () => {
+      // ---- phase 1: strip. Deleting a morpheme cascades its own spans and
+      // links server-side, so only the word's and the surviving first
+      // morpheme's are queued explicitly (a double delete fails the batch).
+      const strip = []; // thunks, one op each
+      for (const { token } of targets) {
+        const queueAttached = (t) => {
+          if (t.vocabItem?.linkId)
+            strip.push(() => this._client.vocabLinks.delete(t.vocabItem.linkId));
+          for (const span of Object.values(t.annotations || {})) {
+            if (span?.id) strip.push(() => this._client.spans.delete(span.id));
+          }
+        };
+        queueAttached(token);
+        const morphs = [...(token.morphemes || [])].sort(
+          (a, b) => (a.precedence ?? 0) - (b.precedence ?? 0),
+        );
+        morphs.forEach((m, i) => {
+          if (i > 0) {
+            strip.push(() => this._client.tokens.delete(m.id));
+            return;
+          }
+          queueAttached(m);
+          // patch semantics: null deletes the key
+          strip.push(() =>
+            this._client.tokens.patchMetadata(m.id, {
+              form: null,
+              morphType: null,
+              prov: null,
+              provSource: null,
+              provDetail: null,
+              provProb: null,
+              provConfirmed: null,
+            }),
+          );
+          // The apply path numbers created morphemes from 2, so the survivor
+          // must sit at 1.
+          if ((m.precedence ?? 1) !== 1)
+            strip.push(() => this._client.tokens.update(m.id, undefined, undefined, 1));
+        });
+      }
+      for (let i = 0; i < strip.length; i += STRIP_CHUNK) {
+        const part = strip.slice(i, i + STRIP_CHUNK);
+        await this._client.batched(async () => {
+          part.forEach((op) => op());
+        });
+      }
+      await this._reload();
+
+      // ---- phase 2: apply, exactly as a copy would (the words are now
+      // unanalyzed single-morpheme words). No provenance stamp: human work.
+      const todo = this._planAnalysisApply(
+        targets.map(({ wordTokenId, analysis }) => ({ wordTokenId, analysis })),
+      );
+      if (todo === false) throw new Error('Morpheme layer not configured');
+      await this._applyAnalysesImpl(todo, {});
+    }))
+      ? targets.length
+      : false;
+  },
+
+  // Revalidate copy proposals against the CURRENT derived state — proposals
+  // may be stale (computed before an edit landed). Only still-unanalyzed
+  // single-morpheme words proceed. Returns the todo list, or false (with the
+  // error set) when the document has no morpheme layer to write into.
+  _planAnalysisApply(proposals) {
     const info = this.layerInfo;
-    const morphemeLayer = info.morphemeTokenLayer;
-    const textId = info.primaryTextLayer?.text?.id;
-    if (!morphemeLayer?.id || !textId) {
+    if (!info.morphemeTokenLayer?.id || !info.primaryTextLayer?.text?.id) {
       this.setError('Morpheme layer not configured');
       return false;
     }
-    const wordLayersByName = new Map((info.spanLayers?.word || []).map((l) => [l.name, l]));
-    const morphLayersByName = new Map((info.spanLayers?.morpheme || []).map((l) => [l.name, l]));
-
-    // Revalidate against the CURRENT derived state — proposals may be stale
-    // (computed before an edit landed). Only still-unanalyzed words proceed.
     const todo = [];
     for (const p of proposals || []) {
       const token = this.tokenLookup.get(p.wordTokenId);
@@ -68,9 +163,18 @@ export const analysisCopyMutations = {
       if (!(token.morphemes?.length === 1)) continue;
       todo.push({ ...p, token, m0: token.morphemes[0] });
     }
-    if (!todo.length) return 0;
+    return todo;
+  },
 
-    const stamp = stampInferred(provSource);
+  // The write half of a copy: batch-1/batch-2 per chunk (see the file
+  // comment), then one reload. Runs INSIDE a caller's _withSaving. `stamp`
+  // is the metadata merged into every created/patched piece ({} for none).
+  async _applyAnalysesImpl(todo, stamp) {
+    const info = this.layerInfo;
+    const morphemeLayer = info.morphemeTokenLayer;
+    const textId = info.primaryTextLayer?.text?.id;
+    const wordLayersByName = new Map((info.spanLayers?.word || []).map((l) => [l.name, l]));
+    const morphLayersByName = new Map((info.spanLayers?.morpheme || []).map((l) => [l.name, l]));
 
     // A large unanalyzed document can emit far more than one batch's worth of
     // ops (this runs unattended from the auto-analysis pass). Pack words into
@@ -93,7 +197,7 @@ export const analysisCopyMutations = {
     }
     if (cur.length) chunks.push(cur);
 
-    return (await this._withSaving('Failed to copy previous analyses', async () => {
+    {
       for (const chunk of chunks) {
         // ---- batch 1: structure + everything addressable now ----
         let opIdx = 0;
@@ -125,8 +229,9 @@ export const analysisCopyMutations = {
               const patch = {};
               if (s0.form != null && s0.form !== token.content) patch.form = s0.form;
               if (s0.morphType != null) patch.morphType = s0.morphType;
-              if (Object.keys(patch).length || slots.length > 1) {
-                this._client.tokens.patchMetadata(m0.id, { ...patch, ...stamp });
+              const merged = { ...patch, ...stamp };
+              if (Object.keys(merged).length && (Object.keys(patch).length || slots.length > 1)) {
+                this._client.tokens.patchMetadata(m0.id, merged);
                 opIdx++;
               }
               queueLinkAndSpans(m0.id, s0);
@@ -179,9 +284,7 @@ export const analysisCopyMutations = {
       }
 
       await this._reload();
-    }))
-      ? todo.length
-      : false;
+    }
   },
 
   // Discard every machine-unverified piece of one word's analysis at once —

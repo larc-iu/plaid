@@ -17,28 +17,8 @@ import { notifyError, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { MATCH_TYPES, searchDomains } from './searchQueries.js';
 import { runHitsSearch, runFreqSearch } from './searchRunner.js';
-
-// Render sentence text with <mark>s over the hit ranges (code-point offsets,
-// already sentence-relative and sorted).
-const MarkedText = ({ text, marks }) => {
-  if (!marks?.length) return <>{text}</>;
-  const chars = [...text];
-  const out = [];
-  let pos = 0;
-  marks.forEach((m, i) => {
-    const b = Math.max(pos, Math.min(m.begin, chars.length));
-    const e = Math.max(b, Math.min(m.end, chars.length));
-    if (b > pos) out.push(chars.slice(pos, b).join(''));
-    out.push(
-      <mark key={i} className="rounded bg-yellow-200 px-0.5">
-        {chars.slice(b, e).join('')}
-      </mark>,
-    );
-    pos = e;
-  });
-  if (pos < chars.length) out.push(chars.slice(pos).join(''));
-  return <>{out}</>;
-};
+import { MarkedText } from './MarkedText.jsx';
+import { hitTo, rememberCaret } from './hitLinks.js';
 
 export const ProjectSearch = ({ project, projectId, client }) => {
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
@@ -84,21 +64,6 @@ export const ProjectSearch = ({ project, projectId, client }) => {
   const switchMode = (m) => {
     setMode(m);
     if (result && queryText.trim()) runSearch(m);
-  };
-
-  // Click-through: open the document's Analyze tab focused on the hit
-  // sentence. The island consumes the sessionStorage key on first paint.
-  //
-  // The tab + sentence go in the URL rather than in router state so the address
-  // bar describes where you actually are, the result is a link you can copy and
-  // send, and each hit can be a real anchor (middle-click opens it in a new
-  // tab). `begin` stays in sessionStorage: it lands the caret on the matched
-  // WORD, which is a detail of a click here, not something a shared link needs
-  // to reproduce, so a new-tab open simply lands on the sentence.
-  const hitTo = (docId, sentenceId) =>
-    `/projects/${projectId}/documents/${docId}?tab=analyze&focusSentence=${encodeURIComponent(sentenceId)}`;
-  const rememberCaret = (docId, sentenceId, begin = null) => {
-    sessionStorage.setItem('igt:focus-sentence', JSON.stringify({ docId, sentenceId, begin }));
   };
 
   const grouped = useMemo(() => {
@@ -206,7 +171,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                 {g.rows.map((row) => (
                   <Link
                     key={row.sentenceId}
-                    to={hitTo(g.docId, row.sentenceId)}
+                    to={hitTo(projectId, g.docId, row.sentenceId)}
                     onClick={() => rememberCaret(g.docId, row.sentenceId, row.hitBegin ?? null)}
                     className="block w-full px-4 py-2 text-left hover:bg-muted/50"
                     title="Open in Analyze"

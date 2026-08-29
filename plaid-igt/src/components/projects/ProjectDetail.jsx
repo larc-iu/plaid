@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { FileText, Search, Settings } from 'lucide-react';
+import { FileText, Search, Replace, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
+import { ProjectBulkEdit } from './bulk/ProjectBulkEdit.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { readInitialized } from '@/domain/igtConfig';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -14,10 +15,10 @@ import { useTabParam, tabTo } from '@/hooks/useTabParam';
 // URL means deep links and the back button still land on the right section.
 const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'export', 'settings'];
 
-// The two content tabs, which ride in `?tab=` on the project page. Settings is
-// the third tab in the bar but is path-backed (see above) because its sections
-// are pages of their own.
-const CONTENT_TABS = ['documents', 'search'];
+// The content tabs, which ride in `?tab=` on the project page (Bulk Edit is
+// maintainers-only). Settings is the last tab in the bar but is path-backed
+// (see above) because its sections are pages of their own.
+const CONTENT_TABS = ['documents', 'search', 'bulk'];
 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
@@ -29,7 +30,7 @@ const SECTION_TITLES = {
 };
 
 // Default project view: the document list, a query-engine-powered Search tab,
-// and (for maintainers) a Settings tab. Settings is a real panel in this tab
+// and (for maintainers) a Bulk Edit workbench and a Settings tab. Settings is a real panel in this tab
 // group — selecting it stays on the page and renders project administration as
 // a left-side vertical tab group (ProjectSettingsPanel), route-backed by the
 // /access, /tokens, /services, /export, /settings suffixes.
@@ -92,7 +93,12 @@ export const ProjectDetail = () => {
   // Documents/Search live in `?tab=`, so a reload or a shared link reopens the
   // tab the user was on.
   const [contentTab, setContentTab] = useTabParam(CONTENT_TABS, 'documents');
-  const activeTab = onSettings && canManage ? 'settings' : contentTab;
+  const activeTab =
+    onSettings && canManage
+      ? 'settings'
+      : contentTab === 'bulk' && !canManage
+        ? 'documents'
+        : contentTab;
 
   // A non-maintainer who lands on a settings URL has nothing to manage; bounce
   // them back to the document view rather than show an empty Settings panel.
@@ -195,6 +201,11 @@ export const ProjectDetail = () => {
             <Search className="h-4 w-4" /> Search
           </TabsTrigger>
           {canManage && (
+            <TabsTrigger value="bulk" to={tabTo(`/projects/${projectId}`, 'bulk', 'documents')}>
+              <Replace className="h-4 w-4" /> Bulk Edit
+            </TabsTrigger>
+          )}
+          {canManage && (
             <TabsTrigger value="settings" to={`/projects/${projectId}/access`}>
               <Settings className="h-4 w-4" /> Settings
             </TabsTrigger>
@@ -214,6 +225,11 @@ export const ProjectDetail = () => {
         <TabsContent value="search">
           <ProjectSearch project={project} projectId={projectId} client={client} />
         </TabsContent>
+        {canManage && (
+          <TabsContent value="bulk">
+            <ProjectBulkEdit project={project} projectId={projectId} client={client} />
+          </TabsContent>
+        )}
         {canManage && (
           <TabsContent value="settings">
             <ProjectSettingsPanel
