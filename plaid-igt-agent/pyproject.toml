@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "plaid-igt-agent"
+version = "0.0.0"
+description = "A bring-your-own-model LLM assistant service for Plaid IGT projects"
+requires-python = ">=3.11"
+dependencies = ["larc-plaid-client", "litellm>=1.70"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+plaid-igt-agent = "plaid_igt_agent.service:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/plaid_igt_agent"]

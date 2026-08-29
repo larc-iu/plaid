@@ -1,0 +1,460 @@
+"""The IGT view of a Plaid project, for the assistant's tools.
+
+Loads a project's IGT substrate (baseline text; sentence, word and morpheme
+token layers found by their shared role; annotation fields by their igt scope;
+orthographies; lexicons) and its documents into small dataclasses, and
+renders them as the compact text the model reads.
+
+Addresses are positional, so the model never handles ids: ``s3`` is the third
+sentence of a document, ``s3.w2`` its second word, ``s3.w2.m1`` that word's
+first morpheme. Tokens the word layer's ``ignoredTokens`` config excludes
+(punctuation, typically) are not numbered, matching the editor, which gives
+them no annotation cells.
+"""
+
+import re
+import unicodedata
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+from plaid_client import ROLES, find_by_role
+
+SCOPES = ('Word', 'Morpheme', 'Sentence')
+
+
+def _igt(cfg, key):
+    return ((cfg or {}).get('igt') or {}).get(key)
+
+
+# --- ignored tokens (mirrors plaid-igt domain/igtConfig.js) -----------------
+
+def _is_pictograph(c):
+    o = ord(c)
+    return 0x1F000 <= o <= 0x1FAFF or 0x2600 <= o <= 0x27BF
+
+
+def _is_punct_char(c):
+    return unicodedata.category(c)[0] in 'PS' and not _is_pictograph(c)
+
+
+def is_token_ignored(content, cfg):
+    if not cfg:
+        return False
+    if cfg.get('type') == 'unicodePunctuation':
+        if content and all(_is_punct_char(c) for c in content):
+            return content not in (cfg.get('whitelist') or [])
+        return False
+    if cfg.get('type') == 'blacklist':
+        return content in (cfg.get('blacklist') or [])
+    return False
+
+
+def is_clitic(morph_type):
+    return isinstance(morph_type, str) and 'clitic' in morph_type.lower()
+
+
+def joiner(prev_type, next_type):
+    """The mark between two adjacent morphemes: '=' when either is a clitic."""
+    return '=' if is_clitic(prev_type) or is_clitic(next_type) else '-'
+
+
+# --- project ----------------------------------------------------------------
+
+@dataclass
+class Field:
+    name: str
+    layer_id: str
+    scope: str  # Word | Morpheme | Sentence
+
+
+@dataclass
+class IgtProject:
+    id: str
+    name: str
+    text_layer_id: str
+    sentence_layer_id: str
+    word_layer_id: str
+    morpheme_layer_id: Optional[str]
+    fields: Dict[str, Field]
+    orthographies: List[str]
+    ignored_cfg: Optional[dict]
+    vocabs: List[dict]  # [{id, name}]
+    document_metadata: List[str]
+
+    def field(self, name: str) -> Field:
+        """Case-insensitive field lookup; a helpful error otherwise."""
+        for f in self.fields.values():
+            if f.name.lower() == (name or '').lower():
+                return f
+        raise ValueError(f'No field named "{name}". Fields: '
+                         + ', '.join(f'{f.name} ({f.scope})' for f in self.fields.values()))
+
+    def fields_by_scope(self, scope: str) -> List[Field]:
+        return [f for f in self.fields.values() if f.scope == scope]
+
+    def field_by_layer(self, layer_id: str) -> Optional[Field]:
+        for f in self.fields.values():
+            if f.layer_id == layer_id:
+                return f
+        return None
+
+    def orthography(self, name: str) -> str:
+        for o in self.orthographies:
+            if o.lower() == (name or '').lower():
+                return o
+        raise ValueError(f'No orthography named "{name}". Orthographies: '
+                         + (', '.join(self.orthographies) or '(none)'))
+
+    def vocab(self, name: Optional[str] = None) -> dict:
+        """The lexicon by (case-insensitive) name, or the only one when unnamed."""
+        if not self.vocabs:
+            raise ValueError('This project has no lexicon (vocabulary).')
+        if name:
+            for v in self.vocabs:
+                if v['name'].lower() == name.lower():
+                    return v
+            raise ValueError(f'No lexicon named "{name}". Lexicons: '
+                             + ', '.join(v['name'] for v in self.vocabs))
+        if len(self.vocabs) == 1:
+            return self.vocabs[0]
+        raise ValueError('Several lexicons; name one: ' + ', '.join(v['name'] for v in self.vocabs))
+
+
+def load_project(client, project_id: str) -> IgtProject:
+    p = client.projects.get(project_id)
+    text_layer = find_by_role(p.get('text_layers'), ROLES.BASELINE)
+    if not text_layer:
+        raise ValueError('This project has no baseline text layer (not set up for IGT?)')
+    token_layers = text_layer.get('token_layers') or []
+    sent = find_by_role(token_layers, ROLES.SENTENCE)
+    word = find_by_role(token_layers, ROLES.WORD)
+    morph = find_by_role(token_layers, ROLES.MORPHEME)
+    if not sent or not word:
+        raise ValueError('This project lacks a sentence or word token layer (not set up for IGT?)')
+    fields: Dict[str, Field] = {}
+    for tk in (sent, word, morph):
+        if not tk:
+            continue
+        for sl in tk.get('span_layers') or []:
+            scope = _igt(sl.get('config'), 'scope')
+            if scope in SCOPES:
+                fields[sl['name']] = Field(sl['name'], sl['id'], scope)
+    return IgtProject(
+        id=p['id'], name=p['name'],
+        text_layer_id=text_layer['id'], sentence_layer_id=sent['id'], word_layer_id=word['id'],
+        morpheme_layer_id=morph['id'] if morph else None,
+        fields=fields,
+        orthographies=[o['name'] for o in (_igt(word.get('config'), 'orthographies') or [])],
+        ignored_cfg=_igt(word.get('config'), 'ignoredTokens'),
+        vocabs=[{'id': v['id'], 'name': v['name']} for v in (p.get('vocabs') or [])],
+        document_metadata=[m['name'] for m in (_igt(p.get('config'), 'documentMetadata') or [])],
+    )
+
+
+# --- document ---------------------------------------------------------------
+
+@dataclass
+class Span:
+    id: str
+    value: str
+    metadata: Optional[dict] = None
+
+
+@dataclass
+class Link:
+    id: str
+    item_id: str
+    form: str
+    vocab_id: str
+
+
+@dataclass
+class Morpheme:
+    id: str
+    index: int
+    form: str
+    morph_type: Optional[str]
+    metadata: dict
+    fields: Dict[str, Span] = field(default_factory=dict)
+    link: Optional[Link] = None
+
+
+@dataclass
+class Word:
+    id: str
+    index: int
+    surface: str
+    begin: int
+    end: int
+    text_id: str
+    metadata: dict
+    orthographies: Dict[str, str] = field(default_factory=dict)
+    fields: Dict[str, Span] = field(default_factory=dict)
+    morphemes: List[Morpheme] = field(default_factory=list)
+    link: Optional[Link] = None
+
+    @property
+    def ref(self):
+        return f'w{self.index}'
+
+
+@dataclass
+class Sentence:
+    id: str
+    index: int
+    text: str
+    begin: int
+    end: int
+    fields: Dict[str, Span] = field(default_factory=dict)
+    words: List[Word] = field(default_factory=list)
+
+
+@dataclass
+class IgtDoc:
+    id: str
+    name: str
+    text_id: Optional[str]
+    body: str
+    sentences: List[Sentence]
+    metadata: dict
+
+    def word_count(self):
+        return sum(len(s.words) for s in self.sentences)
+
+
+def _find_layer(text_layers, token_layer_id):
+    for tl in text_layers or []:
+        for tk in tl.get('token_layers') or []:
+            if tk['id'] == token_layer_id:
+                return tl, tk
+    return None, None
+
+
+def _spans_by_token(token_layer, project: IgtProject):
+    """token id -> {field name: Span} over the layer's scoped fields."""
+    out: Dict[str, Dict[str, Span]] = {}
+    for sl in token_layer.get('span_layers') or []:
+        f = project.field_by_layer(sl['id'])
+        if not f:
+            continue
+        for sp in sl.get('spans') or []:
+            for tid in sp.get('tokens') or []:
+                out.setdefault(tid, {})[f.name] = Span(sp['id'], sp.get('value') if sp.get('value') is not None else '',
+                                                       sp.get('metadata'))
+    return out
+
+
+def _links_by_token(token_layer):
+    out: Dict[str, Link] = {}
+    for v in token_layer.get('vocabs') or []:
+        for link in v.get('vocab_links') or []:
+            item = link.get('vocab_item') or {}
+            for tid in link.get('tokens') or []:
+                out[tid] = Link(link['id'], item.get('id'), item.get('form') or '', v['id'])
+    return out
+
+
+def load_document(client, project: IgtProject, document_id: str) -> IgtDoc:
+    raw = client.documents.get(document_id, include_body=True)
+    return parse_document(raw, project)
+
+
+def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
+    tl, word_layer = _find_layer(raw.get('text_layers'), project.word_layer_id)
+    _, sent_layer = _find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    morph_layer = None
+    if project.morpheme_layer_id:
+        _, morph_layer = _find_layer(raw.get('text_layers'), project.morpheme_layer_id)
+    text = (tl or {}).get('text') or {}
+    body = text.get('body') or ''
+    chars = list(body)
+    if not word_layer or not sent_layer:
+        return IgtDoc(raw['id'], raw.get('name') or '', text.get('id'), body, [], raw.get('metadata') or {})
+
+    word_spans = _spans_by_token(word_layer, project)
+    word_links = _links_by_token(word_layer)
+    sent_spans = _spans_by_token(sent_layer, project)
+    morph_spans = _spans_by_token(morph_layer, project) if morph_layer else {}
+    morph_links = _links_by_token(morph_layer) if morph_layer else {}
+    morphs_by_extent: Dict[Tuple[int, int], List[dict]] = {}
+    for m in (morph_layer or {}).get('tokens') or []:
+        morphs_by_extent.setdefault((m['begin'], m['end']), []).append(m)
+    for ms in morphs_by_extent.values():
+        ms.sort(key=lambda m: m.get('precedence') or 1)
+
+    words = sorted(word_layer.get('tokens') or [], key=lambda t: (t['begin'], t['end']))
+    sentences: List[Sentence] = []
+    wi = 0
+    for si, s in enumerate(sorted(sent_layer.get('tokens') or [], key=lambda t: t['begin']), start=1):
+        while wi < len(words) and words[wi]['begin'] < s['begin']:
+            wi += 1
+        ws: List[Word] = []
+        k = wi
+        while k < len(words) and words[k]['begin'] < s['end']:
+            w = words[k]
+            k += 1
+            if w['end'] > s['end']:
+                continue
+            surface = ''.join(chars[w['begin']:w['end']])
+            if is_token_ignored(surface, project.ignored_cfg):
+                continue
+            meta = w.get('metadata') or {}
+            morphemes = []
+            for mi, m in enumerate(morphs_by_extent.get((w['begin'], w['end']), []), start=1):
+                mm = m.get('metadata') or {}
+                form = mm.get('form')
+                morphemes.append(Morpheme(
+                    id=m['id'], index=mi,
+                    form=form if form not in (None, '') else surface,
+                    morph_type=mm.get('morphType'), metadata=mm,
+                    fields=morph_spans.get(m['id'], {}), link=morph_links.get(m['id'])))
+            ws.append(Word(
+                id=w['id'], index=len(ws) + 1, surface=surface, begin=w['begin'], end=w['end'],
+                text_id=w['text'], metadata=meta,
+                orthographies={o: meta.get(f'orthog:{o}') for o in project.orthographies
+                               if meta.get(f'orthog:{o}')},
+                fields=word_spans.get(w['id'], {}), morphemes=morphemes, link=word_links.get(w['id'])))
+        sentences.append(Sentence(
+            id=s['id'], index=si, text=''.join(chars[s['begin']:s['end']]).strip(),
+            begin=s['begin'], end=s['end'], fields=sent_spans.get(s['id'], {}), words=ws))
+    return IgtDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences, raw.get('metadata') or {})
+
+
+# --- addressing -------------------------------------------------------------
+
+REF_RE = re.compile(r'^\s*s(\d+)(?:\.w(\d+)(?:\.m(\d+))?)?\s*$')
+
+
+def parse_ref(ref: str):
+    """'s3' -> (3, None, None); 's3.w2' -> (3, 2, None); 's3.w2.m1' -> (3, 2, 1)."""
+    m = REF_RE.match(ref or '')
+    if not m:
+        raise ValueError(f'Bad reference "{ref}": use s<n>, s<n>.w<n>, or s<n>.w<n>.m<n> (e.g. s3.w2.m1)')
+    return tuple(int(g) if g is not None else None for g in m.groups())
+
+
+def resolve(doc: IgtDoc, ref: str):
+    """-> Sentence | Word | Morpheme for a positional reference into `doc`."""
+    si, wi, mi = parse_ref(ref)
+    if not 1 <= si <= len(doc.sentences):
+        raise ValueError(f'{ref}: document "{doc.name}" has {len(doc.sentences)} sentences')
+    s = doc.sentences[si - 1]
+    if wi is None:
+        return s
+    if not 1 <= wi <= len(s.words):
+        raise ValueError(f'{ref}: sentence s{si} has {len(s.words)} words')
+    w = s.words[wi - 1]
+    if mi is None:
+        return w
+    if not 1 <= mi <= len(w.morphemes):
+        raise ValueError(f'{ref}: word s{si}.w{wi} "{w.surface}" has {len(w.morphemes)} morphemes')
+    return w.morphemes[mi - 1]
+
+
+def word_ref(s: Sentence, w: Word) -> str:
+    return f's{s.index}.w{w.index}'
+
+
+# --- rendering ---------------------------------------------------------------
+
+MISSING = '_'
+
+
+def segmentation(w: Word) -> str:
+    out = ''
+    for i, m in enumerate(w.morphemes):
+        if i:
+            out += joiner(w.morphemes[i - 1].morph_type, m.morph_type)
+        out += m.form
+    return out
+
+
+def morpheme_field_line(w: Word, name: str) -> Optional[str]:
+    if not any(name in m.fields for m in w.morphemes):
+        return None
+    out = ''
+    for i, m in enumerate(w.morphemes):
+        if i:
+            out += joiner(w.morphemes[i - 1].morph_type, m.morph_type)
+        sp = m.fields.get(name)
+        out += (sp.value if sp and sp.value != '' else MISSING)
+    return out
+
+
+def render_word(w: Word, project: IgtProject) -> str:
+    parts = [f'w{w.index} {w.surface}']
+    seg = segmentation(w)
+    if len(w.morphemes) > 1 or (w.morphemes and seg != w.surface):
+        types = [m.morph_type for m in w.morphemes if m.morph_type]
+        parts.append(f'seg={seg}' + (f' types={",".join(m.morph_type or "?" for m in w.morphemes)}' if types else ''))
+    for f in project.fields_by_scope('Morpheme'):
+        line = morpheme_field_line(w, f.name)
+        if line is not None:
+            parts.append(f'{f.name}={line}')
+    for f in project.fields_by_scope('Word'):
+        sp = w.fields.get(f.name)
+        if sp and sp.value != '':
+            parts.append(f'{f.name}={sp.value}')
+    for o, v in w.orthographies.items():
+        parts.append(f'{o}={v}')
+    if w.link:
+        parts.append(f'link={w.link.form}')
+    mlinks = [f'm{m.index}:{m.link.form}' for m in w.morphemes if m.link]
+    if mlinks:
+        parts.append('mlinks=' + ' '.join(mlinks))
+    return ' | '.join(parts)
+
+
+def render_sentence(s: Sentence, project: IgtProject) -> str:
+    lines = [f'[s{s.index}] {s.text}']
+    for f in project.fields_by_scope('Sentence'):
+        sp = s.fields.get(f.name)
+        if sp and sp.value != '':
+            lines.append(f'  {f.name}: {sp.value}')
+    for w in s.words:
+        lines.append('  ' + render_word(w, project))
+    return '\n'.join(lines)
+
+
+FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one line per word: '
+                 'wN surface | seg=morphemes joined by - (or = at a clitic) | <morpheme field>=values '
+                 'in the same order (_ = missing) | <word field>=value | <orthography>=value | '
+                 'link=lexicon entry | mlinks=per-morpheme entries. Address items as sN, sN.wN, sN.wN.mN.')
+
+
+def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,
+                    max_sentences: int = 40) -> str:
+    n = len(doc.sentences)
+    start = max(1, start)
+    end = min(n, end if end is not None else start + max_sentences - 1)
+    head = f'Document "{doc.name}": {n} sentences, {doc.word_count()} words'
+    if doc.metadata:
+        head += ' | ' + ', '.join(f'{k}={v}' for k, v in doc.metadata.items() if v not in (None, ''))
+    if n == 0:
+        return head + '\n(no sentences yet)'
+    if end - start + 1 > max_sentences:
+        end = start + max_sentences - 1
+    lines = [head, FORMAT_LEGEND, f'Showing s{start}-s{end}.']
+    for s in doc.sentences[start - 1:end]:
+        lines.append(render_sentence(s, project))
+    if end < n:
+        lines.append(f'... {n - end} more sentences (read_document with from_sentence={end + 1} for the next batch).')
+    return '\n'.join(lines)
+
+
+def render_overview(project: IgtProject, documents: List[dict]) -> str:
+    lines = [f'Project "{project.name}"']
+    for scope in SCOPES:
+        fs = project.fields_by_scope(scope)
+        if fs:
+            lines.append(f'{scope} fields: ' + ', '.join(f.name for f in fs))
+    if not project.morpheme_layer_id:
+        lines.append('No morpheme layer: words cannot be segmented in this project.')
+    lines.append('Orthographies: ' + (', '.join(project.orthographies) or '(none)'))
+    lines.append('Lexicons: ' + (', '.join(v['name'] for v in project.vocabs) or '(none)'))
+    if project.document_metadata:
+        lines.append('Document metadata fields: ' + ', '.join(project.document_metadata))
+    lines.append(f'Documents ({len(documents)}):')
+    for d in sorted(documents, key=lambda d: (d.get('name') or '').lower()):
+        lines.append(f'  {d.get("name") or "(unnamed)"}  id={d["id"]}')
+    return '\n'.join(lines)
