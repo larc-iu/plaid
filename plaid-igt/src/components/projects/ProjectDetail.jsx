@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { FileText, Search, Replace, Settings } from 'lucide-react';
+import { FileText, Search, Replace, Bot, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectBulkEdit } from './bulk/ProjectBulkEdit.jsx';
+import { ProjectAssistant } from './assistant/ProjectAssistant.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { readInitialized } from '@/domain/igtConfig';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -16,9 +17,10 @@ import { useTabParam, tabTo } from '@/hooks/useTabParam';
 const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'export', 'settings'];
 
 // The content tabs, which ride in `?tab=` on the project page (Bulk Edit is
-// maintainers-only). Settings is the last tab in the bar but is path-backed
-// (see above) because its sections are pages of their own.
-const CONTENT_TABS = ['documents', 'search', 'bulk'];
+// maintainers-only; Assistant is open to everyone, since the assistant acts
+// under the user's own permissions). Settings is the last tab in the bar but
+// is path-backed (see above) because its sections are pages of their own.
+const CONTENT_TABS = ['documents', 'search', 'bulk', 'assistant'];
 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
@@ -205,6 +207,12 @@ export const ProjectDetail = () => {
               <Replace className="h-4 w-4" /> Bulk Edit
             </TabsTrigger>
           )}
+          <TabsTrigger
+            value="assistant"
+            to={tabTo(`/projects/${projectId}`, 'assistant', 'documents')}
+          >
+            <Bot className="h-4 w-4" /> Assistant
+          </TabsTrigger>
           {canManage && (
             <TabsTrigger value="settings" to={`/projects/${projectId}/access`}>
               <Settings className="h-4 w-4" /> Settings
@@ -230,6 +238,9 @@ export const ProjectDetail = () => {
             <ProjectBulkEdit project={project} projectId={projectId} client={client} />
           </TabsContent>
         )}
+        <TabsContent value="assistant">
+          <ProjectAssistant projectId={projectId} client={client} canWrite={canWrite} />
+        </TabsContent>
         {canManage && (
           <TabsContent value="settings">
             <ProjectSettingsPanel

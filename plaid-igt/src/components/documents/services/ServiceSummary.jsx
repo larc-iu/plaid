@@ -8,7 +8,7 @@ import { getServiceSummary } from '@larc-iu/plaid-client';
 // independent of the app's CSS reset / design system. react-markdown does not
 // render raw HTML and sanitizes link protocols, so a service-supplied summary
 // can't inject markup.
-const mdComponents = {
+export const mdComponents = {
   h1: ({ node: _node, ...p }) => (
     <div style={{ fontWeight: 600, fontSize: '0.95rem', margin: '0.5em 0 0.2em' }} {...p} />
   ),
