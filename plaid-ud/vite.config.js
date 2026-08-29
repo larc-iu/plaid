@@ -2,6 +2,21 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 
+const PLAID_CLIENT_SRC = fileURLToPath(new URL('../plaid-client-js/src', import.meta.url));
+
+// The client alias below points OUTSIDE this app's root. Vite's watcher only
+// covers the root, so an edit over in ../plaid-client-js reaches no watcher:
+// the dev server keeps handing out the copy it transformed at boot, and the app
+// silently runs an old client (a renamed request field goes on being sent under
+// its old name, and the server ignores it). `server.watch.ignored` cannot fix
+// that — there is nothing to un-ignore, the path was never watched. Add it.
+const watchLocalPlaidClient = (srcDir) => ({
+  name: 'watch-local-plaid-client',
+  configureServer(server) {
+    server.watcher.add(srcDir);
+  },
+});
+
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => ({
   // Bundled into the uberjar and served under /ud/ (see plaid.server.middleware
@@ -9,7 +24,7 @@ export default defineConfig(({ command }) => ({
   // asset URLs. The dev server stays at '/'. Both apps use HashRouter, so client
   // routes live in the URL fragment and don't depend on the base path.
   base: command === 'build' ? '/ud/' : '/',
-  plugins: [react()],
+  plugins: [react(), watchLocalPlaidClient(PLAID_CLIENT_SRC)],
   resolve: {
     preserveSymlinks: true,
     alias: {
