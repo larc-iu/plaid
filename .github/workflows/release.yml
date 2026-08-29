@@ -199,6 +199,8 @@ jobs:
           PRERELEASE_FLAG=""
           [ "${{ steps.ver.outputs.prerelease }}" = "true" ] && PRERELEASE_FLAG="--prerelease"
 
+          # PEP440 form of the tag version, for the pip lines below.
+          PYVER="$(echo "$VER" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')"
           NOTES="$(cat <<EOF
           Plaid \`$VER\`.
 
@@ -216,11 +218,23 @@ jobs:
 
           ## Clients
           - npm: \`npm install @larc-iu/plaid-client@$VER\`
-          - PyPI: \`pip install --pre larc-plaid-client==$(echo "$VER" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')\`
+          - PyPI: \`pip install --pre larc-plaid-client==$PYVER\`
 
-          ## IGT assistant service
-          Bring-your-own-model chat assistant for IGT projects (the Assistant tab), run by the instance operator:
-          \`pip install --pre larc-plaid-igt-agent==$(echo "$VER" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')\` then \`plaid-igt-agent --url <plaid url> --model <litellm model>\`. Python 3.11+.
+          ## IGT assistant (optional)
+          A bring-your-own-model chat assistant for IGT projects: the **Assistant** tab on a project page. Users ask questions about the corpus and lexicon or ask for edits; edits come back as a plan the user approves, then are applied under that user's own account. Nothing runs unless the instance operator starts the service:
+
+          1. On any machine that can reach the server, with Python 3.11+:
+             \`pip install --pre larc-plaid-igt-agent==$PYVER\`
+          2. Create a named API token for the account the service will register with (Profile → API Tokens). The account needs **writer** access on the projects it serves; it never edits with its own credentials.
+          3. Start it, naming any model litellm supports and the provider's key in the usual environment variable:
+             \`\`\`
+             export OPENAI_API_KEY=…            # or ANTHROPIC_API_KEY, GEMINI_API_KEY, …
+             plaid-igt-agent --url https://plaid.example.org --model openai/gpt-4o
+             plaid-igt-agent --url https://plaid.example.org --model ollama/llama3.1
+             plaid-igt-agent --url https://plaid.example.org --model openai/my-model --api-base http://gpu-box:8000/v1
+             \`\`\`
+             It asks for the token on first run and caches it in \`./.token\`. With no project ids it serves every project the token can access (new ones included); pass project ids to serve only those. Run several instances with different \`--model\`s to give users a choice; each registers as its own service.
+          4. Optional: \`delegated_token_ttl_seconds\` under \`[auth]\` in \`config.toml\` bounds the per-request token the server mints for each user (default one hour).
 
           ## Bundled apps
           The jar serves the UD editor at \`/ud/\` and the IGT editor at \`/igt/\`.
