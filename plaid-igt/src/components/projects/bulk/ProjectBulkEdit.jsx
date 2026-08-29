@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, ArrowRight, Replace, ReplaceAll, Wand2, Merge } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -316,23 +316,59 @@ const Progress = ({ text }) =>
 // Before/after for one word: the word row, and (when the word has a morpheme
 // chain of its own) the chain row beneath it, laid out on one grid so the
 // two arrows line up, with the after column hugging the before column.
-const RespellChange = ({ row, includeMorphemes }) => {
-  const chain = row.chain ? chainText(row.chain, includeMorphemes) : null;
+// Shared by the respell and field previews: `lines` is [{ label, cls, from,
+// to }], where a line without `to` is context (the word a gloss sits under)
+// rather than a change.
+const SCOPE_CLS = {
+  word: 'text-blue-700',
+  morpheme: 'text-violet-700',
+  sentence: 'text-green-700',
+};
+const ChangeGrid = ({ lines }) => {
   const cell = (v) => <span className="font-mono text-sm">{v === '' ? '∅' : v}</span>;
-  const line = (label, from, to, cls) => (
-    <>
-      <span className={cn('text-xs', cls)}>{label}</span>
-      {cell(from)}
-      <ArrowRight className="h-3 w-3 text-muted-foreground" />
-      {cell(to)}
-    </>
-  );
   return (
     <div className="inline-grid grid-cols-[5.5rem_auto_auto_auto] items-center gap-x-2 gap-y-0.5">
-      {line('Word', row.old, row.new, 'text-blue-700')}
-      {chain && line('Morphemes', chain.old, chain.new, 'text-violet-700')}
+      {lines.map((l) => (
+        <Fragment key={l.label}>
+          <span className={cn('text-xs', l.cls)}>{l.label}</span>
+          {cell(l.from)}
+          {l.to != null ? <ArrowRight className="h-3 w-3 text-muted-foreground" /> : <span />}
+          {l.to != null ? cell(l.to) : <span />}
+        </Fragment>
+      ))}
     </div>
   );
+};
+
+const RespellChange = ({ row, includeMorphemes }) => {
+  const chain = row.chain ? chainText(row.chain, includeMorphemes) : null;
+  return (
+    <ChangeGrid
+      lines={[
+        { label: 'Word', cls: SCOPE_CLS.word, from: row.old, to: row.new },
+        ...(chain
+          ? [{ label: 'Morphemes', cls: SCOPE_CLS.morpheme, from: chain.old, to: chain.new }]
+          : []),
+      ]}
+    />
+  );
+};
+
+// One field match: the word (and morpheme) it sits under as context, then the
+// field's before → after.
+const FieldChange = ({ row, target }) => {
+  const lines = [];
+  if (row.word != null) lines.push({ label: 'Word', cls: SCOPE_CLS.word, from: row.word });
+  if (row.morpheme != null)
+    lines.push({ label: 'Morpheme', cls: SCOPE_CLS.morpheme, from: row.morpheme });
+  const scope = target.kind === 'morpheme' ? 'morpheme' : target.scope;
+  lines.push({
+    label: target.kind === 'morpheme' ? 'Morpheme form' : target.field,
+    cls: SCOPE_CLS[scope],
+    from: row.old,
+    to: row.new,
+  });
+  return <ChangeGrid lines={lines} />;
 };
 
 const RespellPanel = ({ project, projectId, client, layerInfo }) => {
@@ -609,19 +645,7 @@ const FieldPanel = ({ project, projectId, client, layerInfo }) => {
             selected={r.selected}
             toggle={r.toggle}
             toggleMany={r.toggleMany}
-            renderRow={(row) => (
-              <>
-                {row.word && (
-                  <span className="text-sm">
-                    {row.word}
-                    {row.morpheme != null && (
-                      <span className="text-violet-700"> · {row.morpheme}</span>
-                    )}
-                  </span>
-                )}
-                <Change from={row.old} to={row.new} />
-              </>
-            )}
+            renderRow={(row) => <FieldChange row={row} target={plan.target} />}
           />
         </>
       )}
