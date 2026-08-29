@@ -268,9 +268,6 @@ export const UserProfile = () => {
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                PNG, JPEG, WebP, or GIF. Cropped to a square and resized for you.
-              </p>
             </div>
           </div>
 
@@ -291,6 +288,11 @@ export const UserProfile = () => {
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
+                <Label htmlFor="email">Email address</Label>
+                <Input id="email" value={user?.id ?? ''} disabled readOnly />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
                 <Label htmlFor="displayName">Display name</Label>
                 <Input
                   id="displayName"
@@ -299,15 +301,6 @@ export const UserProfile = () => {
                   placeholder="How you appear to your collaborators"
                 />
                 {fieldError('displayName')}
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email">Email address</Label>
-                <Input id="email" value={user?.id ?? ''} disabled readOnly />
-                <p className="text-xs text-muted-foreground">
-                  This is what you sign in with, and it cannot be changed. Ask an administrator if
-                  you need a different one.
-                </p>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
