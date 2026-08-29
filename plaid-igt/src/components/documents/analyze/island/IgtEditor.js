@@ -1742,28 +1742,7 @@ export class IgtEditor {
   }
 
   // Glossing progress: morphemes with at least one filled gloss field / total.
-  _glossStats(sentences, ctx) {
-    if (!ctx.hasMorphemes || !ctx.morphFields.length) return null;
-    let total = 0;
-    let done = 0;
-    for (const s of sentences) {
-      for (const t of s.tokens) {
-        for (const m of t.morphemes || []) {
-          total += 1;
-          if (ctx.morphFields.some((n) => (m.annotations?.[n]?.value ?? '') !== '')) done += 1;
-        }
-      }
-    }
-    return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
-  }
-
-  // Gloss-progress bar: held back pending a UX rethink (user call, 2026-06-10).
-  // Flip to true to restore — markup, CSS, and _glossStats are all kept.
-  static SHOW_GLOSS_PROGRESS = false;
-
   _toolbar(sentences, ctx, pageCount = 1) {
-    // Only pay for the whole-document stats pass when the bar is actually shown.
-    const stats = IgtEditor.SHOW_GLOSS_PROGRESS ? this._glossStats(sentences, ctx) : null;
     const nSent = sentences.length;
     return html`
       <div class="igt-toolbar">
@@ -1773,19 +1752,6 @@ export class IgtEditor {
             : html`<span class="igt-toolbar__count"
                 >${nSent} sentence${nSent === 1 ? '' : 's'}</span
               >`}
-          ${IgtEditor.SHOW_GLOSS_PROGRESS && stats
-            ? html`
-                <span
-                  class="igt-progress"
-                  title=${`${stats.done} of ${stats.total} morphemes have a gloss`}
-                >
-                  <span class="igt-progress__bar"
-                    ><span class="igt-progress__fill" style=${`width:${stats.pct}%`}></span
-                  ></span>
-                  <span class="igt-progress__text">${stats.done}/${stats.total} glossed</span>
-                </span>
-              `
-            : nothing}
           ${!this.readOnly
             ? html`<button
                 type="button"

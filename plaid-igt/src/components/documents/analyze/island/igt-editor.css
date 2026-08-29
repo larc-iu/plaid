@@ -111,29 +111,6 @@
   font-weight: 600;
   color: #4b5563;
 }
-.igt-progress {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.igt-progress__bar {
-  width: 96px;
-  height: 6px;
-  border-radius: 4px;
-  background: #e5e7eb;
-  overflow: hidden;
-}
-.igt-progress__fill {
-  display: block;
-  height: 100%;
-  background: var(--igt-violet);
-  border-radius: 4px;
-  transition: width 0.2s;
-}
-.igt-progress__text {
-  font-size: 11px;
-  color: #6b7280;
-}
 .igt-toolbar__btn {
   font: inherit;
   font-size: 12px;
