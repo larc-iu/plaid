@@ -188,9 +188,13 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   );
   const isNew = selectedId === NEW_ID;
 
-  const fetchItems = async () => {
+  // `quiet`: refresh the list without the full-pane spinner. The spinner
+  // replaces the whole two-pane layout, so using it for a refresh AFTER an edit
+  // tears down the list and the open editor, losing scroll position and focus
+  // for a change the user already sees. Only the first load earns it.
+  const fetchItems = async ({ quiet = false } = {}) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       if (!client) throw new Error('Not authenticated');
       if (!vocabularyId || vocabularyId === 'undefined' || vocabularyId === 'new') {
         throw new Error('Invalid vocabulary ID');
@@ -206,7 +210,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       console.error('Error fetching vocabulary items:', err);
       return null;
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
 
@@ -220,7 +224,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     // Let the seeding effect re-fill the draft from what came back, unless the
     // user really does have unsaved edits, which stay theirs.
     if (!wasDirty) seededRef.current = undefined;
-    const refreshed = await fetchItems();
+    const refreshed = await fetchItems({ quiet: true });
     if (wasDirty || !openId || openId === NEW_ID || !refreshed) return;
     if (!refreshed.some((i) => i.id === openId)) goItem(null, { replace: true });
   };
@@ -423,30 +427,43 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     }
     try {
       const metadata = cleanMeta(editFields);
+      const form = editForm.trim();
+      // The saved entry is folded into `items` locally rather than re-fetching
+      // the vocabulary: a re-fetch pulls every entry in the lexicon back over
+      // the wire (thousands, for a FLEx import) to learn what we just wrote,
+      // and re-seats the whole tab while it is in flight. `items` carries the
+      // server's shape, so the patch mirrors it: no `metadata` key at all when
+      // there is none, since that is what the API returns.
+      const saved = (id) => ({
+        id,
+        layer: vocabularyId,
+        form,
+        ...(Object.keys(metadata).length ? { metadata } : {}),
+      });
       if (isNew) {
         const created = await client.vocabItems.create(
           vocabularyId,
-          editForm.trim(),
+          form,
           Object.keys(metadata).length ? metadata : undefined,
         );
-        await fetchItems();
+        if (created?.id) setItems((prev) => [...prev, saved(created.id)]);
         // Replace: the `?item=new` step becomes the entry it created, so Back
         // does not return to an empty form for an entry that now exists.
         goItem(created?.id || null, { replace: true });
-        if (created?.id) setEditForm(editForm.trim());
+        if (created?.id) setEditForm(form);
         notifySuccess('Vocabulary item created successfully', 'Success');
       } else {
         const item = selectedItem;
-        if (editForm.trim() !== item.form) {
-          await client.vocabItems.update(item.id, editForm.trim());
+        if (form !== item.form) {
+          await client.vocabItems.update(item.id, form);
         }
         if (Object.keys(metadata).length > 0) {
           await client.vocabItems.setMetadata(item.id, metadata);
         } else if (item.metadata && Object.keys(item.metadata).length > 0) {
           await client.vocabItems.deleteMetadata(item.id);
         }
-        await fetchItems();
-        setEditForm(editForm.trim());
+        setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
+        setEditForm(form);
         notifySuccess('Vocabulary item updated successfully', 'Success');
       }
     } catch (err) {
@@ -458,10 +475,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const handleConfirmDelete = async () => {
     if (!selectedItem) return;
     try {
-      await client.vocabItems.delete(selectedItem.id);
+      const deletedId = selectedItem.id;
+      await client.vocabItems.delete(deletedId);
       setDeleteOpen(false);
       goItem(null, { replace: true });
-      await fetchItems();
+      setItems((prev) => prev.filter((i) => i.id !== deletedId));
       notifySuccess('Vocabulary item deleted successfully', 'Success');
     } catch (err) {
       console.error('Error deleting vocabulary item:', err);
