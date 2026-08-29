@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Tabs, Breadcrumbs, Anchor, Text, Group } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { canManageProject } from '../../utils/permissions.js';
@@ -13,7 +13,6 @@ import { EntityAvatar } from '../common/EntityAvatar.jsx';
 // which all the gating below tolerates.
 export const ProjectTabs = ({ projectId, project }) => {
   const location = useLocation();
-  const navigate = useNavigate();
   const { user } = useAuth();
 
   const canManage = canManageProject(project, user);
@@ -33,11 +32,6 @@ export const ProjectTabs = ({ projectId, project }) => {
         ? 'settings'
         : 'documents';
 
-  const go = (value) => {
-    if (value === 'settings') navigate(settingsTo);
-    else navigate(`/projects/${projectId}/${value}`);
-  };
-
   return (
     <>
       <Breadcrumbs mb="md">
@@ -52,12 +46,29 @@ export const ProjectTabs = ({ projectId, project }) => {
         </Group>
       </Breadcrumbs>
 
-      <Tabs value={active} onChange={go} mb="lg">
+      {/* Each tab is a real link (no `onChange`): the anchor does the
+          navigating, so middle-click and cmd-click open a tab in a new browser
+          tab, and Mantine's arrow-key handler clicks the focused one for us. */}
+      <Tabs value={active} mb="lg">
         <Tabs.List>
-          <Tabs.Tab value="documents">Documents</Tabs.Tab>
-          <Tabs.Tab value="search">Search</Tabs.Tab>
-          {canManage && <Tabs.Tab value="settings">Project Settings</Tabs.Tab>}
-          <Tabs.Tab value="import-export">Import &amp; Export</Tabs.Tab>
+          <Tabs.Tab value="documents" component={Link} to={`/projects/${projectId}/documents`}>
+            Documents
+          </Tabs.Tab>
+          <Tabs.Tab value="search" component={Link} to={`/projects/${projectId}/search`}>
+            Search
+          </Tabs.Tab>
+          {canManage && (
+            <Tabs.Tab value="settings" component={Link} to={settingsTo}>
+              Project Settings
+            </Tabs.Tab>
+          )}
+          <Tabs.Tab
+            value="import-export"
+            component={Link}
+            to={`/projects/${projectId}/import-export`}
+          >
+            Import &amp; Export
+          </Tabs.Tab>
         </Tabs.List>
       </Tabs>
     </>

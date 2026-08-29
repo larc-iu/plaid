@@ -43,6 +43,7 @@ export const ProjectSettingsPanel = ({
             <TabsTrigger
               key={s.value}
               value={s.value}
+              to={`/projects/${projectId}/${s.value}`}
               className="w-full justify-start gap-2 rounded-md border-b-0 px-3 py-2 data-[state=active]:bg-muted data-[state=active]:text-foreground"
             >
               <Icon className="h-4 w-4 shrink-0" /> {s.label}

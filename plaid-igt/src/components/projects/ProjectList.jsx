@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,6 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
 
 export const ProjectList = () => {
   useDocumentTitle('Projects');
-  const navigate = useNavigate();
   const { client, logout } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -154,8 +153,10 @@ export const ProjectList = () => {
     <div className="tw mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
-        <Button onClick={() => navigate('/projects/new')}>
-          <Plus className="h-4 w-4" /> New Project
+        <Button asChild>
+          <Link to="/projects/new">
+            <Plus className="h-4 w-4" /> New Project
+          </Link>
         </Button>
       </div>
 
@@ -212,40 +213,57 @@ export const ProjectList = () => {
                 </tr>
               </thead>
               <tbody>
-                {sortedProjects.map((project) => (
-                  <tr
-                    key={project.id}
-                    onClick={() => navigate(`/projects/${project.id}`)}
-                    className="cursor-pointer border-b last:border-0 hover:bg-accent/40"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{project.name}</div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          ID: {project.id}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                      {project.documentCount ?? 0}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                      {renderWords(project.id)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-muted-foreground">
-                      {project.lastModified ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span>{timeAgo(project.lastModified) || '—'}</span>
-                          </TooltipTrigger>
-                          <TooltipContent>{fullTimestamp(project.lastModified)}</TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {sortedProjects.map((project) => {
+                  // Every cell wraps its content in a real link (rather than a
+                  // row onClick) so the row behaves like one: middle-click and
+                  // right-click "open in new tab" work natively. Same shape as
+                  // the document table.
+                  const to = `/projects/${project.id}`;
+                  return (
+                    <tr key={project.id} className="border-b last:border-0 hover:bg-accent/40">
+                      <td className="p-0">
+                        <Link to={to} className="block px-4 py-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{project.name}</div>
+                            <div className="truncate text-xs text-muted-foreground">
+                              ID: {project.id}
+                            </div>
+                          </div>
+                        </Link>
+                      </td>
+                      <td className="p-0">
+                        <Link
+                          to={to}
+                          className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
+                        >
+                          {project.documentCount ?? 0}
+                        </Link>
+                      </td>
+                      <td className="p-0">
+                        <Link
+                          to={to}
+                          className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
+                        >
+                          {renderWords(project.id)}
+                        </Link>
+                      </td>
+                      <td className="p-0">
+                        <Link to={to} className="block px-4 py-3 text-right text-muted-foreground">
+                          {project.lastModified ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>{timeAgo(project.lastModified) || '—'}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>{fullTimestamp(project.lastModified)}</TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            '—'
+                          )}
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

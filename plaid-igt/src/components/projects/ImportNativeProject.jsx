@@ -9,7 +9,7 @@
 // half-imported ones, and dedupes vocab items by their stamped archive id.
 
 import { useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Upload, Check, RefreshCw, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,6 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 export const ImportNativeProject = () => {
   useDocumentTitle('Import Archive');
-  const navigate = useNavigate();
   const { client } = useAuth();
   const fileInputRef = useRef(null);
 
@@ -285,8 +284,8 @@ export const ImportNativeProject = () => {
                 </Button>
               )}
               {stage === 'done' && (
-                <Button onClick={() => navigate(`/projects/${projectIdRef.current}`)}>
-                  Open project
+                <Button asChild>
+                  <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
                 </Button>
               )}
             </div>

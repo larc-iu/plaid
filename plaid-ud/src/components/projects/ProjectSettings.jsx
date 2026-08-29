@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useLocation, Link } from 'react-router-dom';
 import { Title, Tabs } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ProjectCustomization } from './ProjectCustomization.jsx';
@@ -29,7 +29,6 @@ const SECTION_TITLES = {
 // page at `/configuration`, used by the editor's "missing layers" auto-redirect.
 export const ProjectSettings = () => {
   const { projectId } = useParams();
-  const navigate = useNavigate();
   const location = useLocation();
   const { getClient } = useAuth();
   const [project, setProject] = useState(null);
@@ -64,18 +63,26 @@ export const ProjectSettings = () => {
         Project Settings
       </Title>
 
-      <Tabs
-        orientation="vertical"
-        value={active}
-        onChange={(v) => navigate(`/projects/${projectId}/${v}`)}
-        keepMounted={false}
-      >
+      {/* Real links rather than an `onChange`: each section is a page of its
+          own, so it opens in a new browser tab like any other link. */}
+      <Tabs orientation="vertical" value={active} keepMounted={false}>
         <Tabs.List style={{ minWidth: 200 }}>
-          <Tabs.Tab value="management">Users &amp; Permissions</Tabs.Tab>
-          <Tabs.Tab value="customization">UD Customization</Tabs.Tab>
-          <Tabs.Tab value="services">Services</Tabs.Tab>
-          <Tabs.Tab value="tokens">Access Tokens</Tabs.Tab>
-          <Tabs.Tab value="general">General</Tabs.Tab>
+          {[
+            ['management', 'Users & Permissions'],
+            ['customization', 'UD Customization'],
+            ['services', 'Services'],
+            ['tokens', 'Access Tokens'],
+            ['general', 'General'],
+          ].map(([value, label]) => (
+            <Tabs.Tab
+              key={value}
+              value={value}
+              component={Link}
+              to={`/projects/${projectId}/${value}`}
+            >
+              {label}
+            </Tabs.Tab>
+          ))}
         </Tabs.List>
         <Tabs.Panel value="management" pl="lg">
           <ProjectManagement embedded />

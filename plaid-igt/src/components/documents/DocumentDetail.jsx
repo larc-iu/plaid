@@ -19,7 +19,7 @@ import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useTabParam } from '@/hooks/useTabParam';
+import { useTabParam, tabTo } from '@/hooks/useTabParam';
 
 // Renders only the active tab's panel (others stay unmounted).
 const Panel = ({ active, children }) => (active ? children : null);
@@ -115,6 +115,10 @@ const DocumentEditor = () => {
   // can open the document straight onto Analyze.
   const [activeTab, setActiveTab] = useTabParam(TABS, DEFAULT_TAB);
   const [loadError, setLoadError] = useState('');
+
+  // Base path for the tab links (each tab is `?tab=`, the default is the bare
+  // document URL).
+  const docPath = `/projects/${projectId}/documents/${documentId}`;
 
   const permissions = useDocumentPermissions(doc?.project);
   const history = useDocumentHistory(documentId, client);
@@ -429,22 +433,22 @@ const DocumentEditor = () => {
           <DocumentProvider value={{ doc, client, readOnly, asOf }}>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="tw">
-                <TabsTrigger value="metadata">
+                <TabsTrigger value="metadata" to={tabTo(docPath, 'metadata', DEFAULT_TAB)}>
                   <FileText className="h-4 w-4" /> Metadata
                 </TabsTrigger>
-                <TabsTrigger value="baseline">
+                <TabsTrigger value="baseline" to={tabTo(docPath, 'baseline', DEFAULT_TAB)}>
                   <Type className="h-4 w-4" /> Baseline
                 </TabsTrigger>
-                <TabsTrigger value="media">
+                <TabsTrigger value="media" to={tabTo(docPath, 'media', DEFAULT_TAB)}>
                   <Mic className="h-4 w-4" /> Media
                 </TabsTrigger>
-                <TabsTrigger value="tokenize">
+                <TabsTrigger value="tokenize" to={tabTo(docPath, 'tokenize', DEFAULT_TAB)}>
                   <Play className="h-4 w-4" /> Tokenize
                 </TabsTrigger>
-                <TabsTrigger value="analyze">
+                <TabsTrigger value="analyze" to={tabTo(docPath, 'analyze', DEFAULT_TAB)}>
                   <Table className="h-4 w-4" /> Analyze
                 </TabsTrigger>
-                <TabsTrigger value="export">
+                <TabsTrigger value="export" to={tabTo(docPath, 'export', DEFAULT_TAB)}>
                   <Download className="h-4 w-4" /> Export
                 </TabsTrigger>
               </TabsList>

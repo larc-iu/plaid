@@ -34,7 +34,7 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useTabParam } from '@/hooks/useTabParam';
+import { useTabParam, tabTo } from '@/hooks/useTabParam';
 
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
@@ -114,6 +114,8 @@ export const VocabularyDetail = () => {
   // link opened by a reader falls back to the item list instead of selecting a
   // tab that isn't there. A brand new vocabulary shows the create form with no
   // tab bar at all, so its fallback never reaches the URL.
+  // Base path for the tab links (the item list is the bare vocabulary URL).
+  const vocabPath = `/vocabularies/${vocabularyId}`;
   const [activeTab, setActiveTab] = useTabParam(
     canManageVocabulary() ? ['items', 'maintainers', 'settings'] : ['items'],
     isNewVocabulary ? 'settings' : 'items',
@@ -419,16 +421,16 @@ export const VocabularyDetail = () => {
         {!isNewVocabulary && !isEditing && (
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="tw">
-              <TabsTrigger value="items">
+              <TabsTrigger value="items" to={tabTo(vocabPath, 'items', 'items')}>
                 <BookText className="h-4 w-4" /> Vocabulary Items
               </TabsTrigger>
               {canManageVocabulary() && (
-                <TabsTrigger value="maintainers">
+                <TabsTrigger value="maintainers" to={tabTo(vocabPath, 'maintainers', 'items')}>
                   <Users className="h-4 w-4" /> Maintainers
                 </TabsTrigger>
               )}
               {canManageVocabulary() && (
-                <TabsTrigger value="settings">
+                <TabsTrigger value="settings" to={tabTo(vocabPath, 'settings', 'items')}>
                   <Settings className="h-4 w-4" /> Settings
                 </TabsTrigger>
               )}

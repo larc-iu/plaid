@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,6 @@ const SortHeader = ({ field, label, sort, onSort, className }) => {
 
 export const VocabularyList = () => {
   useDocumentTitle('Vocabularies');
-  const navigate = useNavigate();
   const [vocabularies, setVocabularies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -147,8 +146,10 @@ export const VocabularyList = () => {
     <div className="tw mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Vocabularies</h1>
-        <Button onClick={() => navigate('/vocabularies/new')}>
-          <Plus className="h-4 w-4" /> New Vocabulary
+        <Button asChild>
+          <Link to="/vocabularies/new">
+            <Plus className="h-4 w-4" /> New Vocabulary
+          </Link>
         </Button>
       </div>
 
@@ -195,25 +196,39 @@ export const VocabularyList = () => {
               </tr>
             </thead>
             <tbody>
-              {sortedVocabularies.map((vocabulary) => (
-                <tr
-                  key={vocabulary.id}
-                  onClick={() => navigate(`/vocabularies/${vocabulary.id}`)}
-                  className="cursor-pointer border-b last:border-0 hover:bg-accent/40"
-                >
-                  <td className="px-4 py-3">
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">{vocabulary.name}</div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                    {renderItems(vocabulary.id)}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                    {vocabulary.maintainers?.length ?? 0}
-                  </td>
-                </tr>
-              ))}
+              {sortedVocabularies.map((vocabulary) => {
+                // Cells wrap their content in a real link so the row behaves
+                // like one (middle-click, "open in new tab"), same as the
+                // project and document tables.
+                const to = `/vocabularies/${vocabulary.id}`;
+                return (
+                  <tr key={vocabulary.id} className="border-b last:border-0 hover:bg-accent/40">
+                    <td className="p-0">
+                      <Link to={to} className="block px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{vocabulary.name}</div>
+                        </div>
+                      </Link>
+                    </td>
+                    <td className="p-0">
+                      <Link
+                        to={to}
+                        className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
+                      >
+                        {renderItems(vocabulary.id)}
+                      </Link>
+                    </td>
+                    <td className="p-0">
+                      <Link
+                        to={to}
+                        className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
+                      >
+                        {vocabulary.maintainers?.length ?? 0}
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

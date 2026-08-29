@@ -2,7 +2,7 @@
 // One entry point on the Projects page; new import formats become new cards
 // here rather than new buttons there.
 
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { PenLine, FileUp, Archive, ChevronRight } from 'lucide-react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
@@ -31,7 +31,6 @@ const OPTIONS = [
 
 export const NewProjectChooser = () => {
   useDocumentTitle('New Project');
-  const navigate = useNavigate();
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">
       <div className="flex flex-col gap-6">
@@ -50,10 +49,9 @@ export const NewProjectChooser = () => {
 
         <div className="flex flex-col gap-3">
           {OPTIONS.map((opt) => (
-            <button
+            <Link
               key={opt.to}
-              type="button"
-              onClick={() => navigate(opt.to)}
+              to={opt.to}
               className="flex items-center gap-4 rounded-lg border bg-card p-5 text-left hover:bg-muted/50"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-background">
@@ -64,7 +62,7 @@ export const NewProjectChooser = () => {
                 <span className="block text-sm text-muted-foreground">{opt.description}</span>
               </span>
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </button>
+            </Link>
           ))}
         </div>
       </div>

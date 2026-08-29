@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Search as SearchIcon, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,6 @@ const MarkedText = ({ text, marks }) => {
 };
 
 export const ProjectSearch = ({ project, projectId, client }) => {
-  const navigate = useNavigate();
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
   const domains = useMemo(
     () => searchDomains(layerInfo, project.vocabs),
@@ -91,15 +90,15 @@ export const ProjectSearch = ({ project, projectId, client }) => {
   // sentence. The island consumes the sessionStorage key on first paint.
   //
   // The tab + sentence go in the URL rather than in router state so the address
-  // bar describes where you actually are and the result is a link you can copy
-  // and send. `begin` stays in sessionStorage: it lands the caret on the matched
-  // WORD, which is a detail of this click-through, not something a shared link
-  // needs to reproduce.
-  const openHit = (docId, sentenceId, begin = null) => {
+  // bar describes where you actually are, the result is a link you can copy and
+  // send, and each hit can be a real anchor (middle-click opens it in a new
+  // tab). `begin` stays in sessionStorage: it lands the caret on the matched
+  // WORD, which is a detail of a click here, not something a shared link needs
+  // to reproduce, so a new-tab open simply lands on the sentence.
+  const hitTo = (docId, sentenceId) =>
+    `/projects/${projectId}/documents/${docId}?tab=analyze&focusSentence=${encodeURIComponent(sentenceId)}`;
+  const rememberCaret = (docId, sentenceId, begin = null) => {
     sessionStorage.setItem('igt:focus-sentence', JSON.stringify({ docId, sentenceId, begin }));
-    navigate(
-      `/projects/${projectId}/documents/${docId}?tab=analyze&focusSentence=${encodeURIComponent(sentenceId)}`,
-    );
   };
 
   const grouped = useMemo(() => {
@@ -205,10 +204,10 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               </div>
               <div className="divide-y">
                 {g.rows.map((row) => (
-                  <button
+                  <Link
                     key={row.sentenceId}
-                    type="button"
-                    onClick={() => openHit(g.docId, row.sentenceId, row.hitBegin ?? null)}
+                    to={hitTo(g.docId, row.sentenceId)}
+                    onClick={() => rememberCaret(g.docId, row.sentenceId, row.hitBegin ?? null)}
                     className="block w-full px-4 py-2 text-left hover:bg-muted/50"
                     title="Open in Analyze"
                   >
@@ -228,7 +227,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                         ‘{row.translation}’
                       </p>
                     )}
-                  </button>
+                  </Link>
                 ))}
                 {g.rows.length === 0 && (
                   <p className="px-4 py-2 text-xs text-muted-foreground">

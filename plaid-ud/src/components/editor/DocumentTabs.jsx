@@ -1,10 +1,9 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Tabs, Breadcrumbs, Anchor, Text, Group } from '@mantine/core';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
 
 export const DocumentTabs = ({ projectId, documentId, project, document }) => {
   const location = useLocation();
-  const navigate = useNavigate();
   const currentPath = location.pathname;
   const active = currentPath.includes('/annotate')
     ? 'annotate'
@@ -33,11 +32,19 @@ export const DocumentTabs = ({ projectId, documentId, project, document }) => {
         </Group>
       </Breadcrumbs>
 
-      <Tabs value={active} onChange={(value) => navigate(`${base}/${value}`)} mb="lg">
+      {/* Real links rather than an `onChange`, so middle-click and cmd-click
+          open the tab in a new browser tab. Same shape as `ProjectTabs`. */}
+      <Tabs value={active} mb="lg">
         <Tabs.List>
-          <Tabs.Tab value="edit">Text Editor</Tabs.Tab>
-          <Tabs.Tab value="annotate">Annotate</Tabs.Tab>
-          <Tabs.Tab value="export">Export</Tabs.Tab>
+          <Tabs.Tab value="edit" component={Link} to={`${base}/edit`}>
+            Text Editor
+          </Tabs.Tab>
+          <Tabs.Tab value="annotate" component={Link} to={`${base}/annotate`}>
+            Annotate
+          </Tabs.Tab>
+          <Tabs.Tab value="export" component={Link} to={`${base}/export`}>
+            Export
+          </Tabs.Tab>
         </Tabs.List>
       </Tabs>
     </>

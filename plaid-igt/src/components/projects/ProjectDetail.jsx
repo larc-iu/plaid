@@ -8,7 +8,7 @@ import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { readInitialized } from '@/domain/igtConfig';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useTabParam } from '@/hooks/useTabParam';
+import { useTabParam, tabTo } from '@/hooks/useTabParam';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
@@ -185,14 +185,17 @@ export const ProjectDetail = () => {
         }}
       >
         <TabsList className="tw mb-2">
-          <TabsTrigger value="documents">
+          <TabsTrigger
+            value="documents"
+            to={tabTo(`/projects/${projectId}`, 'documents', 'documents')}
+          >
             <FileText className="h-4 w-4" /> Documents
           </TabsTrigger>
-          <TabsTrigger value="search">
+          <TabsTrigger value="search" to={tabTo(`/projects/${projectId}`, 'search', 'documents')}>
             <Search className="h-4 w-4" /> Search
           </TabsTrigger>
           {canManage && (
-            <TabsTrigger value="settings">
+            <TabsTrigger value="settings" to={`/projects/${projectId}/access`}>
               <Settings className="h-4 w-4" /> Settings
             </TabsTrigger>
           )}

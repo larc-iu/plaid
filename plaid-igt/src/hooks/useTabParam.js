@@ -34,3 +34,8 @@ export const useTabParam = (tabs, fallback, param = 'tab') => {
 
   return [active, setActive];
 };
+
+// The link for one tab of a group whose selection lives in the query string.
+// The fallback tab is the bare page, matching what the setter writes.
+export const tabTo = (basePath, value, fallback, param = 'tab') =>
+  value === fallback ? basePath : `${basePath}?${param}=${value}`;
