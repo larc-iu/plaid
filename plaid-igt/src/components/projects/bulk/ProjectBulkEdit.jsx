@@ -315,7 +315,7 @@ const Progress = ({ text }) =>
 
 // Before/after for one word: the word row, and (when the word has a morpheme
 // chain of its own) the chain row beneath it, laid out on one grid so the
-// arrows line up. Column widths are shared across every row in the list.
+// two arrows line up, with the after column hugging the before column.
 const RespellChange = ({ row, includeMorphemes }) => {
   const chain = row.chain ? chainText(row.chain, includeMorphemes) : null;
   const cell = (v) => <span className="font-mono text-sm">{v === '' ? '∅' : v}</span>;
@@ -328,7 +328,7 @@ const RespellChange = ({ row, includeMorphemes }) => {
     </>
   );
   return (
-    <div className="grid w-full grid-cols-[5.5rem_1fr_auto_1fr] items-center gap-x-2 gap-y-0.5">
+    <div className="inline-grid grid-cols-[5.5rem_auto_auto_auto] items-center gap-x-2 gap-y-0.5">
       {line('Word', row.old, row.new, 'text-blue-700')}
       {chain && line('Morphemes', chain.old, chain.new, 'text-violet-700')}
     </div>
