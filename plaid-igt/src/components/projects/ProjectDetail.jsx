@@ -11,6 +11,7 @@ import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { readInitialized } from '@/domain/igtConfig';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
+import { cn } from '@/lib/utils';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
@@ -162,7 +163,13 @@ export const ProjectDetail = () => {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div
+      className={cn(
+        'mx-auto px-4 py-8',
+        // The assistant is a two-pane chat and wants the room.
+        activeTab === 'assistant' ? 'max-w-7xl' : 'max-w-5xl',
+      )}
+    >
       <div className="tw">
         <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
           <Link to="/projects" className="hover:text-foreground">
@@ -239,7 +246,12 @@ export const ProjectDetail = () => {
           </TabsContent>
         )}
         <TabsContent value="assistant">
-          <ProjectAssistant projectId={projectId} client={client} canWrite={canWrite} />
+          <ProjectAssistant
+            projectId={projectId}
+            client={client}
+            userId={user?.id}
+            canWrite={canWrite}
+          />
         </TabsContent>
         {canManage && (
           <TabsContent value="settings">
