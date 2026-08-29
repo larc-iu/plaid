@@ -38,7 +38,6 @@ function matchesAt(body, at, form) {
  */
 function alignSegment(body, begin, end, analyses, baselineWs) {
   const words = [];
-  const puncts = [];
   const warnings = [];
   let cursor = begin;
   for (const a of analyses) {
@@ -66,11 +65,13 @@ function alignSegment(body, begin, end, analyses, baselineWs) {
         warnings.push(`skipped "${skipped.trim()}" before "${form}"`);
       }
     }
+    // Punctuation analyses are matched for the cursor's sake only, never
+    // collected: punctuation stays untokenized baseline text, the same
+    // convention the built-in tokenizer follows (utils/tokenizationUtils).
     if (a.kind === 'word') words.push({ ...a, beginU16: at, endU16: matchEnd });
-    else if (a.kind === 'punct') puncts.push({ form, beginU16: at, endU16: matchEnd });
     cursor = matchEnd;
   }
-  return { words, puncts, warnings };
+  return { words, warnings };
 }
 
 /**
@@ -129,12 +130,10 @@ export function buildDocuments(ir, opts = {}) {
     }
 
     const words = [];
-    const puncts = [];
     for (const s of sentences) {
       if (!s.seg) continue;
       const r = alignSegment(body, s.beginU16, s.endU16, s.seg.analyses, baselineWs);
       words.push(...r.words);
-      puncts.push(...r.puncts);
       warnings.push(...r.warnings);
     }
 
@@ -158,15 +157,6 @@ export function buildDocuments(ir, opts = {}) {
         begin: utf16ToCp(body, beginU16),
         end: utf16ToCp(body, endU16),
       })),
-      // FLEx's own punctuation analyses, aligned to the body. Imported as word
-      // tokens only when the user opts into tokenizing punctuation; otherwise
-      // they stay as baseline gaps. Kept separate from `words` so word counts
-      // and gloss/morpheme logic never see them.
-      puncts: puncts.map(({ form, beginU16, endU16 }) => ({
-        form,
-        begin: utf16ToCp(body, beginU16),
-        end: utf16ToCp(body, endU16),
-      })),
       warnings,
     });
   }
@@ -180,7 +170,6 @@ export function buildDocuments(ir, opts = {}) {
     documents: documents.length,
     sentences: documents.reduce((n, d) => n + d.sentences.length, 0),
     words: documents.reduce((n, d) => n + d.words.length, 0),
-    puncts: documents.reduce((n, d) => n + d.puncts.length, 0),
     unalignedWords: totalAnalyses - documents.reduce((n, d) => n + d.words.length, 0),
     morphemes: documents.reduce(
       (n, d) => n + d.words.reduce((m, w) => m + (w.morphemes?.length ?? 0), 0),
