@@ -202,10 +202,12 @@ def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sen
                            end=int(to_sentence) if to_sentence else None)
 
 
-def t_search(ws: Workspace, pattern: str, where: str = 'baseline', document: Optional[str] = None,
-             regex: bool = False, limit: int = 40) -> str:
+def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,
+             regex: bool = False, limit: int = 40, missing: bool = False) -> str:
+    if missing:
+        return t_missing(ws, where, document, limit)
     if not pattern:
-        raise ToolError('Give a pattern.')
+        raise ToolError('Give a pattern (or missing=true with a field name to find items without a value).')
     match = _matcher(pattern, bool(regex))
     limit = max(1, min(int(limit or 40), 200))
     where_l = (where or 'baseline').lower()
@@ -254,6 +256,43 @@ def t_search(ws: Workspace, pattern: str, where: str = 'baseline', document: Opt
                     if len(out) < limit:
                         out.append(f'{tag}{word_ref(s, w)} {render_word(w, ws.project)[len(w.ref) + 1:]} || {s.text}')
     return _finish(out, total, limit, 'hits')
+
+
+def t_missing(ws: Workspace, field: str, document: Optional[str], limit: int) -> str:
+    """Items that have NO value for `field` (the unglossed words, the
+    untranslated sentences), by positional reference."""
+    if not field or field.lower() in ('baseline', 'morpheme', 'lexicon'):
+        raise ToolError('missing=true needs a field name in `where` (e.g. "Gloss").')
+    f = ws.project.field(field)
+    limit = max(1, min(int(limit or 40), 200))
+    docs = [ws.doc(document)] if document else ws.all_docs()
+    out: List[str] = []
+    total = 0
+    for doc in docs:
+        tag = f'"{doc.name}" ' if len(docs) > 1 else ''
+        for s in doc.sentences:
+            if f.scope == 'Sentence':
+                sp = s.fields.get(f.name)
+                if not sp or sp.value == '':
+                    total += 1
+                    if len(out) < limit:
+                        out.append(f'{tag}s{s.index} | {s.text}')
+                continue
+            for w in s.words:
+                if f.scope == 'Word':
+                    sp = w.fields.get(f.name)
+                    if not sp or sp.value == '':
+                        total += 1
+                        if len(out) < limit:
+                            out.append(f'{tag}{word_ref(s, w)} {w.surface} || {s.text}')
+                else:
+                    empties = [m for m in w.morphemes if not m.fields.get(f.name) or m.fields[f.name].value == '']
+                    if empties or not w.morphemes:
+                        total += 1
+                        if len(out) < limit:
+                            which = ', '.join(f'm{m.index} {m.form}' for m in empties) if empties else 'no morphemes yet'
+                            out.append(f'{tag}{word_ref(s, w)} {w.surface} ({which}) || {s.text}')
+    return _finish(out, total, limit, f'items without a {f.name} value')
 
 
 def _finish(out, total, limit, noun):
@@ -510,14 +549,16 @@ TOOLS = [
     _fn('search',
         'Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, '
         'or a regex). Returns positional references with each hit\'s word line and sentence. Scans every '
-        'document unless one is named.',
+        'document unless one is named. With missing=true and a field name in `where`, lists the items that have '
+        'NO value for that field (e.g. the unglossed words) instead of matching a pattern.',
         {'pattern': {'type': 'string'},
+         'missing': {'type': 'boolean', 'description': 'List items lacking a value for the field named in `where`.'},
          'where': {'type': 'string', 'description': '"baseline" (word forms, default), "morpheme" (morpheme forms), '
                                                     '"lexicon" (entries), or a field name (e.g. "Gloss", "Translation").'},
          'document': _DOC,
          'regex': {'type': 'boolean', 'description': 'Treat pattern as a regular expression.'},
          'limit': {'type': 'integer', 'description': 'Max hits to return (default 40, max 200).'}},
-        ['pattern']),
+        []),
     _fn('field_values',
         'Count the distinct values of a field (a histogram), across the project or one document. Good for '
         'spotting inconsistencies (e.g. "1SG" vs "1sg").',

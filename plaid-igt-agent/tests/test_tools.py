@@ -134,3 +134,17 @@ def test_tool_errors_come_back_as_text():
     assert call_tool(w, 'nope', {}) == 'Unknown tool nope'
     assert call_tool(w, 'set_field', {'document': 'd1'}).startswith('Error:')
     assert call_tool(w, 'search', {'pattern': '(', 'regex': True}).startswith('Error: Bad regex')
+
+
+
+def test_search_missing_lists_items_without_a_value():
+    w = ws()
+    out = call_tool(w, 'search', {'where': 'Gloss', 'missing': True})
+    assert out.startswith('3 items without a Gloss value')  # w2, w3 of s1 and w1 of s2
+    assert 's1.w2 gam || Ali-di gam akuna.' in out and 's2.w1 Gam-ar' in out and 's1.w1' not in out
+    out = call_tool(w, 'search', {'where': 'Morph Gloss', 'missing': True})
+    assert '3 items' in out and 's1.w2 gam (m1 gam)' in out and 's1.w3 akuna (no morphemes yet)' in out
+    out = call_tool(w, 'search', {'where': 'Translation', 'missing': True})
+    assert out.startswith('1 items') and 's2 | Gam-ar.' in out
+    assert 'needs a field name' in call_tool(w, 'search', {'missing': True})
+    assert 'Give a pattern' in call_tool(w, 'search', {})

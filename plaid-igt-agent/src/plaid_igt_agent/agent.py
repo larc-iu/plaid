@@ -27,7 +27,7 @@ class ModelConfig:
     model: str
     api_base: Optional[str] = None
     api_key: Optional[str] = None
-    max_steps: int = 20
+    max_steps: int = 50
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
 
@@ -109,12 +109,32 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
         if cfg.max_tokens:
             kwargs['max_tokens'] = cfg.max_tokens
         resp = litellm.completion(**kwargs)
-        msg = resp.choices[0].message
-        d = _message_to_dict(msg)
+        choice = resp.choices[0]
+        d = _message_to_dict(choice.message)
         new.append(d)
         calls = d.get('tool_calls') or []
         if not calls:
-            return (d.get('content') or ''), new
+            text = d.get('content') or ''
+            if not text.strip():
+                # Some models end a tool-heavy turn with an empty message (or
+                # reasoning only). Ask once, without tools, for the reply.
+                new.append({'role': 'user', 'content': '(system) Your last message was empty. '
+                                                       'Reply now with your answer to the user.'})
+                kwargs['messages'] = [{'role': 'system', 'content': system}] + history + new
+                kwargs.pop('tools', None)
+                kwargs.pop('tool_choice', None)
+                resp = litellm.completion(**kwargs)
+                choice = resp.choices[0]
+                d = _message_to_dict(choice.message)
+                d.pop('tool_calls', None)
+                new.append(d)
+                text = d.get('content') or ''
+                if not text.strip():
+                    text = '(The model returned an empty reply.)'
+            if getattr(choice, 'finish_reason', None) == 'length':
+                text += ('\n\n*(The reply was cut off by the model\'s output limit. The operator can raise '
+                         'it with `--max-tokens`.)*')
+            return text, new
         steps += 1
         for c in calls:
             name = c['function']['name']
@@ -138,4 +158,6 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
             d = _message_to_dict(resp.choices[0].message)
             d.pop('tool_calls', None)
             new.append(d)
-            return (d.get('content') or ''), new
+            text = (d.get('content') or '').strip() or '(The model returned an empty reply.)'
+            return (text + f'\n\n*(Stopped after {cfg.max_steps} tool calls, the per-turn limit; the operator '
+                           f'can raise it with `--max-steps`.)*'), new

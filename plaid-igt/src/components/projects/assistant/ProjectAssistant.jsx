@@ -10,6 +10,8 @@ import {
   Trash2,
   MessageSquare,
   ChevronDown,
+  ChevronRight,
+  Wrench,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -74,6 +76,226 @@ const timeAgo = (iso) => {
   return new Date(t).toLocaleDateString();
 };
 
+// --- tool traces ------------------------------------------------------------
+// A turn's new transcript messages hold the assistant's tool calls and the
+// tools' replies. Fold them into a compact trace stored on the display item:
+// what was called (humanized), with what, and what came back (truncated so a
+// saved conversation stays small).
+const RESULT_KEEP = 4000;
+
+const parseArgs = (raw) => {
+  try {
+    const v = JSON.parse(raw || '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+};
+
+const extractSteps = (messages) => {
+  const results = new Map();
+  for (const m of messages || []) {
+    if (m.role === 'tool' && m.toolCallId) results.set(m.toolCallId, m.content ?? '');
+  }
+  const steps = [];
+  for (const m of messages || []) {
+    if (m.role !== 'assistant' || !m.toolCalls) continue;
+    for (const c of m.toolCalls) {
+      const result = String(results.get(c.id) ?? '');
+      steps.push({
+        name: c.function?.name || '?',
+        args: parseArgs(c.function?.arguments),
+        result:
+          result.length > RESULT_KEEP
+            ? `${result.slice(0, RESULT_KEEP)}\n… [${result.length - RESULT_KEEP} more characters]`
+            : result,
+        error: result.startsWith('Error'),
+      });
+    }
+  }
+  return steps;
+};
+
+const q = (v) => `“${String(v ?? '')}”`;
+const where = (a) => (a.document ? ` in ${q(a.document)}` : '');
+
+// One line per tool call, in the user's terms.
+const describeStep = ({ name, args: a }) => {
+  switch (name) {
+    case 'project_overview':
+      return 'Looked at the project overview';
+    case 'read_document':
+      return `Read ${q(a.document)}${
+        a.from_sentence || a.to_sentence
+          ? ` (sentences ${a.from_sentence || 1}${a.to_sentence ? `–${a.to_sentence}` : ' on'})`
+          : ''
+      }`;
+    case 'search':
+      return `Searched ${a.where && a.where !== 'baseline' ? a.where : 'the baseline'} for ${q(a.pattern)}${where(a)}`;
+    case 'field_values':
+      return `Counted ${a.field} values${where(a)}`;
+    case 'read_lexicon':
+      return `Read the lexicon${a.pattern ? ` for ${q(a.pattern)}` : ''}`;
+    case 'set_field':
+      return `Planned ${a.field} = ${q(a.value)} on ${(a.refs || []).length} item(s)${where(a)}`;
+    case 'set_analysis':
+      return `Planned a new analysis for ${a.ref}${where(a)}`;
+    case 'set_orthography':
+      return `Planned ${a.orthography} = ${q(a.value)} on ${(a.refs || []).length} word(s)${where(a)}`;
+    case 'respell':
+      return `Planned respelling ${a.ref} → ${q(a.new_text)}${where(a)}`;
+    case 'link_entry':
+      return `Planned linking ${(a.refs || []).length} item(s) to ${q(a.entry_form || a.entry_id)}${where(a)}`;
+    case 'unlink_entry':
+      return `Planned unlinking ${(a.refs || []).length} item(s)${where(a)}`;
+    case 'create_entry':
+      return `Planned a new lexicon entry ${q(a.form)}`;
+    case 'set_entry_field':
+      return `Planned ${a.field} = ${q(a.value)} on entry ${q(a.entry_form || a.entry_id)}`;
+    case 'discard_plan':
+      return 'Discarded the plan so far';
+    default:
+      return name.replace(/_/g, ' ');
+  }
+};
+
+const summarizeSteps = (steps) => {
+  const docs = new Set(steps.filter((s) => s.name === 'read_document').map((s) => s.args.document));
+  const searches = steps.filter((s) => s.name === 'search' || s.name === 'field_values').length;
+  const planned = steps.filter((s) => /^(set_|respell|link_|unlink_|create_)/.test(s.name)).length;
+  const parts = [];
+  if (docs.size) parts.push(`read ${docs.size} document${docs.size === 1 ? '' : 's'}`);
+  if (searches) parts.push(`${searches} search${searches === 1 ? '' : 'es'}`);
+  if (planned) parts.push(`${planned} planned change${planned === 1 ? '' : 's'}`);
+  const head = parts.length
+    ? parts.join(' · ')
+    : `${steps.length} step${steps.length === 1 ? '' : 's'}`;
+  return parts.length ? `${head} · ${steps.length} step${steps.length === 1 ? '' : 's'}` : head;
+};
+
+// --- turns that outlive the component ------------------------------------------
+// A turn can take minutes, and meanwhile the user may switch tabs (which
+// unmounts this component) or a dev reload may remount it. So a turn runs
+// here, at module level, persists its own outcome, and the component only
+// subscribes to whatever is in flight for the conversation it shows.
+const saveQueues = new Map(); // conversation id -> Promise (writes in order)
+const turns = new Map(); // conversation id -> turn in flight
+const turnListeners = new Set(); // mounted components
+
+const upsert = (meta) => (prev) => [meta, ...prev.filter((m) => m.id !== meta.id)];
+
+const buildMeta = (prev, conv, service) => {
+  const firstUser = conv.display.find((d) => d.kind === 'user');
+  return {
+    id: conv.id,
+    title: prev?.title || (firstUser ? titleFrom(firstUser.text) : 'New conversation'),
+    createdAt: prev?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    serviceId: service?.serviceId || prev?.serviceId || null,
+    model: service?.extras?.model || prev?.model || null,
+    turns: conv.display.filter((d) => d.kind === 'user').length,
+  };
+};
+
+// Write a conversation (transcript + sidebar entry). Writes for one
+// conversation run one after another so a slow earlier PUT cannot land on
+// top of a newer one.
+const persistConv = (client, userId, projectId, conv, meta) => {
+  if (!userId) return Promise.resolve();
+  const prev = saveQueues.get(conv.id) || Promise.resolve();
+  const next = prev
+    .then(async () => {
+      await client.userData.put(userId, convKey(projectId, conv.id), {
+        messages: conv.messages,
+        display: conv.display,
+      });
+      await client.userData.put(userId, metaKey(projectId, conv.id), meta);
+    })
+    .catch((e) => {
+      console.error('[Assistant] could not save the conversation', e);
+      notifyError(humanizeError(e, 'The conversation could not be saved.'));
+    });
+  saveQueues.set(conv.id, next);
+  return next;
+};
+
+const notifyTurn = (t) => turnListeners.forEach((fn) => fn(t));
+
+// Run one turn for `conv`, whose last message is the user's. The outcome
+// (the assistant's reply, or an error item) is persisted here, then handed to
+// whichever component is mounted.
+const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
+  const t = {
+    id: conv.id,
+    projectId,
+    conv,
+    progress: 'Thinking…',
+    steps: [],
+    done: false,
+    result: null,
+  };
+  turns.set(conv.id, t);
+  t.promise = (async () => {
+    let next;
+    try {
+      const result = await client.messages.requestService(
+        projectId,
+        service.serviceId,
+        { projectId, messages: conv.messages },
+        TURN_TIMEOUT_MS,
+        (p) => {
+          const msg = p?.message || '';
+          t.progress = msg;
+          if (
+            msg &&
+            !/^(Thinking|Done|Planning)/.test(msg) &&
+            t.steps[t.steps.length - 1] !== msg
+          ) {
+            t.steps = [...t.steps, msg];
+          }
+          notifyTurn(t);
+        },
+      );
+      if (result?.kind !== 'turn') throw new Error('Unexpected reply from the assistant service');
+      next = {
+        ...conv,
+        messages: [...conv.messages, ...(result.messages || [])],
+        display: [
+          ...conv.display,
+          {
+            kind: 'assistant',
+            text: result.message || '',
+            plan: result.plan || null,
+            status: null,
+            model: service?.extras?.model || null,
+            steps: extractSteps(result.messages),
+          },
+        ],
+      };
+    } catch (e) {
+      console.error('[Assistant] turn failed', e);
+      next = {
+        ...conv,
+        // Drop the failed user turn from the model transcript so a retry does
+        // not send it twice; keep it visible with the error.
+        messages: conv.messages.slice(0, -1),
+        display: [
+          ...conv.display,
+          { kind: 'error', text: humanizeError(e, 'The assistant could not answer.') },
+        ],
+      };
+    }
+    const meta = buildMeta(prevMeta, next, service);
+    persistConv(client, userId, projectId, next, meta);
+    t.done = true;
+    t.result = { conv: next, meta };
+    turns.delete(conv.id);
+    notifyTurn(t);
+    return t.result;
+  })();
+  return t;
+};
+
 const EXAMPLES = [
   'Which words in this project are still unglossed?',
   'Are the glosses for the most common suffix consistent?',
@@ -96,15 +318,13 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(null); // null | 'turn' | 'apply'
   const [progress, setProgress] = useState('');
+  const [liveSteps, setLiveSteps] = useState([]); // progress messages so far this turn
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const activeRef = useRef(active);
   activeRef.current = active;
   const convsRef = useRef(convs);
   convsRef.current = convs;
-  // Saves run one after another: two overlapping PUTs could otherwise land
-  // out of order and leave the older transcript on the server.
-  const saveQueue = useRef(Promise.resolve());
 
   // Only ONLINE assist services can take a turn.
   const assistants = useMemo(
@@ -133,7 +353,7 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
 
   // --- persistence ---------------------------------------------------------
   const loadList = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) return [];
     setLoadingList(true);
     try {
       const entries = await client.userData.list(userId, {
@@ -145,66 +365,102 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
         .filter((m) => m && m.id)
         .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
       setConvs(metas);
+      return metas;
     } catch (e) {
       console.error('[Assistant] could not load conversations', e);
       notifyError(humanizeError(e, 'Past conversations could not be loaded.'));
+      return [];
     } finally {
       setLoadingList(false);
     }
   }, [client, userId, projectId]);
 
+  // On mount: a turn still running for this project (we were unmounted
+  // mid-turn) is shown first; otherwise the most recent conversation, the
+  // way a chat app reopens where you left off. "+" starts a fresh one.
   useEffect(() => {
-    loadList();
-    setActive(null);
-  }, [loadList]);
-
-  // Write the active conversation (transcript + sidebar entry). Called after
-  // every change to it; the sidebar list is updated in place so it never
-  // waits on a re-fetch.
-  const persist = useCallback(
-    (conv, meta) => {
-      if (!userId) return;
-      setConvs((prev) => [meta, ...prev.filter((m) => m.id !== meta.id)]);
-      saveQueue.current = saveQueue.current.then(async () => {
-        try {
-          await client.userData.put(userId, convKey(projectId, conv.id), {
-            messages: conv.messages,
-            display: conv.display,
-          });
-          await client.userData.put(userId, metaKey(projectId, conv.id), meta);
-        } catch (e) {
-          console.error('[Assistant] could not save the conversation', e);
-          notifyError(humanizeError(e, 'The conversation could not be saved.'));
+    let cancelled = false;
+    const inFlight = [...turns.values()].find((t) => t.projectId === projectId);
+    setActive(inFlight ? inFlight.conv : null);
+    loadList().then(async (metas) => {
+      if (cancelled || inFlight || !metas.length) return;
+      try {
+        const entry = await client.userData.get(userId, convKey(projectId, metas[0].id));
+        const v = entry?.value || {};
+        if (!cancelled && !activeRef.current) {
+          setActive({ id: metas[0].id, messages: v.messages || [], display: v.display || [] });
         }
-      });
-    },
-    [client, userId, projectId],
-  );
+      } catch {
+        /* the empty state is fine */
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadList, projectId, client, userId]);
+
+  // Reflect turns as they progress and finish, for whichever conversation
+  // is shown; finished turns always refresh the sidebar entry.
+  useEffect(() => {
+    const onTurn = (t) => {
+      if (t.done) setConvs(upsert(t.result.meta));
+      if (activeRef.current?.id !== t.id) return;
+      if (t.done) {
+        activeRef.current = t.result.conv;
+        setActive(t.result.conv);
+        setBusy(null);
+        setProgress('');
+        setLiveSteps([]);
+        inputRef.current?.focus();
+      } else {
+        setBusy('turn');
+        setProgress(t.progress);
+        setLiveSteps(t.steps);
+      }
+    };
+    turnListeners.add(onTurn);
+    return () => turnListeners.delete(onTurn);
+  }, []);
+
+  // Switching conversations: pick up a turn in flight for the new one.
+  useEffect(() => {
+    const t = active ? turns.get(active.id) : null;
+    if (t) {
+      setBusy('turn');
+      setProgress(t.progress);
+      setLiveSteps(t.steps);
+    } else if (busy === 'turn') {
+      setBusy(null);
+      setProgress('');
+      setLiveSteps([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id]);
 
   // Apply `fn` to the active conversation and persist the result.
   const update = useCallback(
     (fn) => {
-      const cur = activeRef.current;
-      const next = fn(cur);
+      const next = fn(activeRef.current);
       activeRef.current = next;
       setActive(next);
-      const firstUser = next.display.find((d) => d.kind === 'user');
-      const prevMeta = convsRef.current.find((m) => m.id === next.id);
-      persist(next, {
-        id: next.id,
-        title: prevMeta?.title || (firstUser ? titleFrom(firstUser.text) : 'New conversation'),
-        createdAt: prevMeta?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        serviceId: service?.serviceId || prevMeta?.serviceId || null,
-        model: model || prevMeta?.model || null,
-        turns: next.display.filter((d) => d.kind === 'user').length,
-      });
+      const meta = buildMeta(
+        convsRef.current.find((m) => m.id === next.id),
+        next,
+        service,
+      );
+      setConvs(upsert(meta));
+      persistConv(client, userId, projectId, next, meta);
     },
-    [persist, service, model],
+    [client, userId, projectId, service],
   );
 
   const open = async (id) => {
-    if (busy || active?.id === id) return;
+    if (busy === 'apply' || active?.id === id) return;
+    const t = turns.get(id);
+    if (t) {
+      setActive(t.conv);
+      return;
+    }
     setOpening(id);
     try {
       const entry = await client.userData.get(userId, convKey(projectId, id));
@@ -218,21 +474,24 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
   };
 
   const remove = async (id) => {
-    if (busy) return;
+    if (turns.has(id)) {
+      notifyError('That conversation is still waiting for an answer.');
+      return;
+    }
     try {
       await Promise.allSettled([
         client.userData.delete(userId, convKey(projectId, id)),
         client.userData.delete(userId, metaKey(projectId, id)),
       ]);
       setConvs((prev) => prev.filter((m) => m.id !== id));
-      if (active?.id === id) setActive(null);
+      if (activeRef.current?.id === id) setActive(null);
     } catch (e) {
       notifyError(humanizeError(e, 'The conversation could not be deleted.'));
     }
   };
 
   const startNew = () => {
-    if (busy) return;
+    if (busy === 'apply') return;
     setActive(null);
     setInput('');
     inputRef.current?.focus();
@@ -243,66 +502,29 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [active?.display.length, busy, progress]);
 
-  const request = useCallback(
-    (data) =>
-      client.messages.requestService(
-        projectId,
-        service.serviceId,
-        { projectId, ...data },
-        TURN_TIMEOUT_MS,
-        (p) => setProgress(p?.message || ''),
-      ),
-    [client, projectId, service],
-  );
-
-  const send = async (textOverride) => {
+  const send = (textOverride) => {
     const text = (textOverride ?? input).trim();
     if (!text || !service || busy) return;
     setInput('');
-    if (!activeRef.current) {
-      activeRef.current = { id: newId(), messages: [], display: [] };
-      setActive(activeRef.current);
-    }
-    const userMsg = { role: 'user', content: text };
-    const priorMessages = activeRef.current.messages;
-    update((c) => ({
-      ...c,
-      messages: [...c.messages, userMsg],
-      display: [...c.display, { kind: 'user', text }],
-    }));
+    const base = activeRef.current || { id: newId(), messages: [], display: [] };
+    const conv = {
+      ...base,
+      messages: [...base.messages, { role: 'user', content: text }],
+      display: [...base.display, { kind: 'user', text }],
+    };
+    const meta = buildMeta(
+      convsRef.current.find((m) => m.id === conv.id),
+      conv,
+      service,
+    );
+    activeRef.current = conv;
+    setActive(conv);
+    setConvs(upsert(meta));
+    persistConv(client, userId, projectId, conv, meta);
     setBusy('turn');
     setProgress('Thinking…');
-    try {
-      const result = await request({ messages: [...priorMessages, userMsg] });
-      if (result?.kind !== 'turn') throw new Error('Unexpected reply from the assistant service');
-      update((c) => ({
-        ...c,
-        messages: [...c.messages, ...(result.messages || [])],
-        display: [
-          ...c.display,
-          {
-            kind: 'assistant',
-            text: result.message || '',
-            plan: result.plan || null,
-            status: null,
-            model,
-          },
-        ],
-      }));
-    } catch (e) {
-      const msg = humanizeError(e, 'The assistant could not answer.');
-      update((c) => ({
-        ...c,
-        // Drop the failed user turn from the model transcript so a retry
-        // does not send it twice; keep it visible with the error.
-        messages: c.messages.slice(0, -1),
-        display: [...c.display, { kind: 'error', text: msg }],
-      }));
-    } finally {
-      setBusy(null);
-      setProgress('');
-      inputRef.current?.focus();
-    }
+    setLiveSteps([]);
+    startTurn({ client, userId, projectId, service, conv, prevMeta: meta });
   };
 
   // The plan's outcome is told to the model as a user-role note, so the next
@@ -319,7 +541,13 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
     setBusy('apply');
     setProgress('Applying changes…');
     try {
-      await request({ approve: { ops: plan.ops, label: `Assistant: ${plan.summary}` } });
+      await client.messages.requestService(
+        projectId,
+        service.serviceId,
+        { projectId, approve: { ops: plan.ops, label: `Assistant: ${plan.summary}` } },
+        TURN_TIMEOUT_MS,
+        (p) => setProgress(p?.message || ''),
+      );
       settlePlan(index, 'applied', `(note) The plan was approved and applied: ${plan.summary}.`);
       notifySuccess(`Applied ${plan.summary}.`, 'Changes applied');
     } catch (e) {
@@ -493,11 +721,18 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
               />
             ))}
             {busy && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="animate-pulse">
-                  {progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')}
-                </span>
+              <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                {liveSteps.map((m, i) => (
+                  <div key={i} className="flex items-center gap-2 pl-6 text-xs">
+                    <Check className="h-3 w-3" /> {m}
+                  </div>
+                ))}
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="animate-pulse">
+                    {progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')}
+                  </span>
+                </div>
               </div>
             )}
             <div ref={bottomRef} />
@@ -584,7 +819,16 @@ const Turn = ({ item, canWrite, busy, onApprove, onDiscard }) => {
         <Bot className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {item.text && <AssistantMarkdown>{item.text}</AssistantMarkdown>}
+        {item.steps?.length > 0 && <ToolTrace steps={item.steps} />}
+        {item.text ? (
+          <AssistantMarkdown>{item.text}</AssistantMarkdown>
+        ) : (
+          !item.plan && (
+            <div className="text-sm italic text-muted-foreground">
+              (The assistant sent no text.)
+            </div>
+          )
+        )}
         {item.plan && (
           <PlanCard
             plan={item.plan}
@@ -596,6 +840,55 @@ const Turn = ({ item, canWrite, busy, onApprove, onDiscard }) => {
           />
         )}
       </div>
+    </div>
+  );
+};
+
+// What the assistant did before answering: a one-line summary, expandable to
+// the steps, each expandable to what the tool returned.
+const ToolTrace = ({ steps }) => {
+  const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState(null);
+  return (
+    <div className="text-xs text-muted-foreground">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <Wrench className="h-3 w-3" />
+        {summarizeSteps(steps)}
+      </button>
+      {open && (
+        <ol className="mt-1 flex flex-col gap-0.5 border-l pl-3">
+          {steps.map((s, i) => (
+            <li key={i}>
+              <button
+                type="button"
+                onClick={() => setShown(shown === i ? null : i)}
+                className={cn(
+                  'flex w-full items-start gap-1 rounded px-1 py-0.5 text-left hover:bg-muted hover:text-foreground',
+                  s.error && 'text-destructive',
+                )}
+                title={s.name}
+              >
+                {shown === i ? (
+                  <ChevronDown className="mt-0.5 h-3 w-3 shrink-0" />
+                ) : (
+                  <ChevronRight className="mt-0.5 h-3 w-3 shrink-0" />
+                )}
+                <span>{describeStep(s)}</span>
+              </button>
+              {shown === i && (
+                <pre className="my-1 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground">
+                  {s.result || '(no output)'}
+                </pre>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 };

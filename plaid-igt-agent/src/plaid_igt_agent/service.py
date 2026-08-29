@@ -60,7 +60,7 @@ class AssistantService(BaseService):
                                  'ollama/llama3.1, or openai/<name> with --api-base for any OpenAI-compatible server')
         parser.add_argument('--api-base', default=None, help='Provider base URL (OpenAI-compatible servers, proxies)')
         parser.add_argument('--api-key', default=None, help='Provider API key (else the provider\'s env var)')
-        parser.add_argument('--max-steps', type=int, default=20, help='Tool-call rounds per turn (default 20)')
+        parser.add_argument('--max-steps', type=int, default=50, help='Tool-call rounds per turn (default 50)')
         parser.add_argument('--temperature', type=float, default=None)
         parser.add_argument('--max-tokens', type=int, default=None)
         parser.add_argument('--service-id', default=None,
