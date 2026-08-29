@@ -16,6 +16,7 @@
             [plaid.rest-api.v1.auth :as pra :refer [authentication-routes logout-routes]]
             [plaid.rest-api.v1.user :refer [user-routes]]
             [plaid.rest-api.v1.api-token :refer [api-token-routes]]
+            [plaid.rest-api.v1.user-data :refer [user-data-routes]]
             [plaid.rest-api.v1.invite :refer [invite-routes public-invite-routes]]
             [plaid.rest-api.v1.project :refer [project-routes]]
             [plaid.rest-api.v1.message :refer [message-routes]]
@@ -96,6 +97,7 @@
              logout-routes
              user-routes
              api-token-routes
+             user-data-routes
              invite-routes
              project-routes
              message-routes

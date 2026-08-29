@@ -109,6 +109,9 @@
    ;; test users survive that wipe, and a profile picture one deftest sets on
    ;; admin@example.com must not be visible to the next.
    "user_avatars"
+   ;; user_data: same story as user_avatars (cascades off users, but the
+   ;; standing test users survive the wipe).
+   "user_data"
    "entity_metadata"
    "vocab_link_tokens"
    "vocab_links"

@@ -971,6 +971,39 @@ class ApiTokensResource(_Resource):
         return self._request('DELETE', f'/api/v1/users/{user_id}/tokens/{token_id}', audit_message=audit_message)
 
 
+class UserDataResource(_Resource):
+    """Private per-user key/value storage: small JSON documents that follow a
+    user across devices and sessions (assistant conversations, drafts,
+    preferences). Owner or admin only; never audited; not batchable."""
+
+    def list(self, user_id: str, *, prefix: str | None = None, include_values: bool = False) -> Any:
+        """List a user's entries ({key, updated_at}, plus value when requested).
+
+        Args:
+            user_id: The owning user
+            prefix: Only keys starting with this prefix
+            include_values: Also return each entry's value
+        """
+        return self._request('GET', f'/api/v1/users/{user_id}/data',
+                             query_params={'prefix': prefix, 'include-values': include_values or None},
+                             no_batch=True)
+
+    def get(self, user_id: str, key: str) -> Any:
+        """Read one entry ({key, updated_at, value}); 404 if absent."""
+        return self._request('GET', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
+                             no_batch=True)
+
+    def put(self, user_id: str, key: str, value: Any) -> Any:
+        """Create or replace one entry. ``value`` is any JSON (up to 1 MB), stored verbatim."""
+        return self._request('PUT', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
+                             body=value, no_batch=True)
+
+    def delete(self, user_id: str, key: str) -> Any:
+        """Delete one entry; 404 if absent."""
+        return self._request('DELETE', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
+                             no_batch=True)
+
+
 class InvitesResource(_Resource):
     """Invite links (signup) and admin-issued password reset links.
 
@@ -2240,6 +2273,7 @@ class PlaidClient:
         self.texts = TextsResource(self)
         self.users = UsersResource(self)
         self.api_tokens = ApiTokensResource(self)
+        self.user_data = UserDataResource(self)
         self.invites = InvitesResource(self)
         self.token_layers = TokenLayersResource(self)
         self.documents = DocumentsResource(self)

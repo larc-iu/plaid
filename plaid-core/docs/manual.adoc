@@ -65,6 +65,13 @@ That last step also strips camera metadata, so GPS coordinates embedded in a pho
 You may set or remove your own picture, and an admin may set or remove anyone's.
 A user with no picture is shown their initials instead.
 
+=== Private user data
+
+Each user also has a small private **key/value store** (`/users/{id}/data/{key}`), meant for application state that should follow a person across devices and sessions but belongs to nobody else: assistant conversations, drafts, interface preferences.
+A key is any string the client chooses (apps namespace theirs, e.g. `igt:assistant:<project>:...`), the value is any JSON document up to 1 MB, and the store can be listed by key prefix, optionally with values.
+Only the owning user and admins can read or write it; nothing in it is audited or time-travelable, and it is deleted with the user.
+It is not a place for annotation data, which belongs in layers where it is shared, audited, and queryable, nor for media, which has its own endpoints.
+
 == Clients
 Plaid's functionality is exposed for development as a REST API.
 This allows you to use Plaid from any programming language with an HTTP client library.
