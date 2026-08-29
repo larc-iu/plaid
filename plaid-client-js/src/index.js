@@ -586,7 +586,12 @@ class PlaidClient {
       /**
        * Update a text's body. A diff is computed and token indices are updated
        * so that tokens remain intact. Alternatively, `body` can be a list of
-       * edit directives.
+       * edit directives (code-point indices, applied in order):
+       *   {type: 'delete', index, value: count}
+       *   {type: 'insert', index, value: string}
+       *   {type: 'replace', index, length, value: string} — unlike
+       *     delete+insert, a token covering the whole range is resized to keep
+       *     it (respell a word in place without losing its annotations).
        * @param {string} textId - The text ID
        * @param {any} body - The request body
        */
