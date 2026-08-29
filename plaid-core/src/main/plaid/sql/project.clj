@@ -816,6 +816,16 @@
         :vocab_layers nil
         (:project_id row)))))
 
+(defn- config-update-attrs
+  "Column attrs for a config write on `table`. Vocab layers additionally
+  carry a `modified_at` (their \"Updated\" column has no other source, and
+  config is part of the vocabulary), folded in here so the change rides the
+  one audit row rather than a second synthetic touch. Other layer tables
+  have no such column."
+  [table new-config]
+  (cond-> {:config (psc/serialize-config new-config)}
+    (= table :vocab_layers) (assoc :modified_at (op/op-ts))))
+
 (defn assoc-editor-config-pair
   "Set <editor-name>/<config-key> = <config-value> in the layer's :config
   JSON. `layer-id` may be any kind of layer (project / text / token /
@@ -840,7 +850,7 @@
                                                    (if (keyword? config-key) (name config-key) (str config-key))]
                                                   config-value)]
                          (psc/update-by-id! tx table layer-id
-                                            {:config (psc/serialize-config new-config)})))))
+                                            (config-update-attrs table new-config))))))
 
 (defn dissoc-editor-config-pair
   "Remove <editor-name>/<config-key> from the layer's :config JSON.
@@ -861,7 +871,7 @@
                              cfg-key (if (keyword? config-key) (name config-key) (str config-key))
                              new-config (update current ed-key dissoc cfg-key)]
                          (psc/update-by-id! tx table layer-id
-                                            {:config (psc/serialize-config new-config)})))))
+                                            (config-update-attrs table new-config))))))
 
 ;; ============================================================
 ;; Vocab management (project_vocabs join + cascade vocab_links)

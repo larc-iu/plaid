@@ -4,6 +4,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Plus, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { cn } from '@/lib/utils';
 import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -112,7 +114,7 @@ export const VocabularyList = () => {
     const extract = {
       name: (v) => v.name?.toLowerCase() ?? '',
       items: (v) => (itemCounts[v.id] == null ? -1 : itemCounts[v.id]),
-      maintainers: (v) => v.maintainers?.length ?? 0,
+      updated: (v) => (v.timeModified ? new Date(v.timeModified).getTime() : 0),
     }[sort.key];
     const dir = sort.dir === 'asc' ? 1 : -1;
     return [...vocabularies].sort((a, b) => {
@@ -168,70 +170,85 @@ export const VocabularyList = () => {
           <p className="mt-1 text-sm">Create your first vocabulary to get started.</p>
         </Card>
       ) : (
-        <div className="overflow-hidden rounded-md border">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40">
-              <tr>
-                <th className="px-4 py-2 text-left">
-                  <SortHeader field="name" label="Vocabulary" sort={sort} onSort={onSort} />
-                </th>
-                <th className="px-4 py-2 text-right">
-                  <SortHeader
-                    field="items"
-                    label="Items"
-                    sort={sort}
-                    onSort={onSort}
-                    className="justify-end"
-                  />
-                </th>
-                <th className="px-4 py-2 text-right">
-                  <SortHeader
-                    field="maintainers"
-                    label="Maintainers"
-                    sort={sort}
-                    onSort={onSort}
-                    className="justify-end"
-                  />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedVocabularies.map((vocabulary) => {
-                // Cells wrap their content in a real link so the row behaves
-                // like one (middle-click, "open in new tab"), same as the
-                // project and document tables.
-                const to = `/vocabularies/${vocabulary.id}`;
-                return (
-                  <tr key={vocabulary.id} className="border-b last:border-0 hover:bg-accent/40">
-                    <td className="p-0">
-                      <Link to={to} className="block px-4 py-3">
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">{vocabulary.name}</div>
-                        </div>
-                      </Link>
-                    </td>
-                    <td className="p-0">
-                      <Link
-                        to={to}
-                        className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
-                      >
-                        {renderItems(vocabulary.id)}
-                      </Link>
-                    </td>
-                    <td className="p-0">
-                      <Link
-                        to={to}
-                        className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
-                      >
-                        {vocabulary.maintainers?.length ?? 0}
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <TooltipProvider>
+          <div className="overflow-hidden rounded-md border">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/40">
+                <tr>
+                  <th className="px-4 py-2 text-left">
+                    <SortHeader field="name" label="Vocabulary" sort={sort} onSort={onSort} />
+                  </th>
+                  <th className="px-4 py-2 text-right">
+                    <SortHeader
+                      field="items"
+                      label="Items"
+                      sort={sort}
+                      onSort={onSort}
+                      className="justify-end"
+                    />
+                  </th>
+                  <th className="px-4 py-2 text-right">
+                    <SortHeader
+                      field="updated"
+                      label="Updated"
+                      sort={sort}
+                      onSort={onSort}
+                      className="justify-end"
+                    />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedVocabularies.map((vocabulary) => {
+                  // Cells wrap their content in a real link so the row behaves
+                  // like one (middle-click, "open in new tab"), same as the
+                  // project and document tables.
+                  const to = `/vocabularies/${vocabulary.id}`;
+                  return (
+                    <tr key={vocabulary.id} className="border-b last:border-0 hover:bg-accent/40">
+                      <td className="p-0">
+                        <Link to={to} className="block px-4 py-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{vocabulary.name}</div>
+                          </div>
+                        </Link>
+                      </td>
+                      <td className="p-0">
+                        <Link
+                          to={to}
+                          className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
+                        >
+                          {renderItems(vocabulary.id)}
+                        </Link>
+                      </td>
+                      <td className="p-0">
+                        <Link
+                          to={to}
+                          className="block whitespace-nowrap px-4 py-3 text-right text-muted-foreground"
+                        >
+                          {/* Null for vocabularies created before the layer carried
+                            timestamps: they read as unknown until their next edit. */}
+                          {vocabulary.timeModified ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>{timeAgo(vocabulary.timeModified) || '—'}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {fullTimestamp(vocabulary.timeModified)}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            '—'
+                          )}
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </TooltipProvider>
       )}
     </div>
   );

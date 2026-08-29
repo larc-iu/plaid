@@ -93,6 +93,7 @@
                                                        :insert nil post-image)))
                           ;; No metadata: use the audited insert! helper as before.
                           (psc/insert! tx :vocab_items row))
+                        (op/touch-vocab-layer! tx layer)
                         new-id))))
 
 (defn merge
@@ -112,7 +113,8 @@
                                      (some? (:vocab-item/form m))
                                      (assoc :form (:vocab-item/form m)))]
                          (when (seq attrs)
-                           (psc/update-by-id! tx :vocab_items eid attrs))
+                           (psc/update-by-id! tx :vocab_items eid attrs)
+                           (op/touch-vocab-layer! tx (:vocab_layer_id existing)))
                          eid))))
 
 (defn delete
@@ -150,6 +152,7 @@
                                               [:= :entity_type "vocab-item"]
                                               [:= :entity_id eid]]})
                        (psc/delete-by-id! tx :vocab_items eid)
+                       (op/touch-vocab-layer! tx (:vocab_layer_id existing))
                        eid)))
 
 ;; ============================================================
@@ -227,6 +230,7 @@
                              (let [post-image (cond-> (clojure.core/get row-by-id (:id r))
                                                 (seq (:metadata r)) (assoc :metadata (:metadata r)))]
                                (psc/record-audit-write! tx :vocab_items (:id r) :insert nil post-image))))
+                         (op/touch-vocab-layers! tx layer-ids)
                          (mapv :id records)))))
 
 (defn bulk-delete
@@ -248,7 +252,10 @@
                                :description (str "Bulk delete " (count eids) " vocab items")
                                :user user-id}]
                        (let [existing-ids (->> (psc/fetch-ids tx :vocab_items eids)
-                                               (keep :id) vec)]
+                                               (keep :id) vec)
+                             ;; Resolved BEFORE the rows go away: afterwards there is
+                             ;; nothing left to read the parent layer off of.
+                             layer-ids (get-layer-ids tx existing-ids)]
                          (when (seq existing-ids)
                            ;; Descendant vocab_links (audited per row), then their
                            ;; metadata (unaudited sweep, no FK on entity_metadata).
@@ -265,7 +272,8 @@
                                              :where [:and
                                                      [:= :entity_type "vocab-item"]
                                                      [:in :entity_id existing-ids]]})
-                           (psc/delete-where! tx :vocab_items [:in :id existing-ids]))
+                           (psc/delete-where! tx :vocab_items [:in :id existing-ids])
+                           (op/touch-vocab-layers! tx layer-ids))
                          existing-ids))))
 
 ;; ============================================================
@@ -282,11 +290,13 @@
                                                " with " (count metadata-map) " keys")
                              :user user-id}]
                      (metadata/validate-entity-type! "vocab-item")
-                     (when (nil? (psc/fetch-by-id tx :vocab_items eid))
-                       (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
-                                       {:code 404 :id eid})))
-                     (metadata/replace-metadata! tx "vocab-item" eid metadata-map)
-                     eid))
+                     (let [existing (psc/fetch-by-id tx :vocab_items eid)]
+                       (when (nil? existing)
+                         (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
+                                         {:code 404 :id eid})))
+                       (metadata/replace-metadata! tx "vocab-item" eid metadata-map)
+                       (op/touch-vocab-layer! tx (:vocab_layer_id existing))
+                       eid)))
 
 (defn patch-metadata
   "Shallow-merge a metadata patch on the vocab item: keys present set/overwrite,
@@ -300,11 +310,13 @@
                                                " with " (count patch) " keys")
                              :user user-id}]
                      (metadata/validate-entity-type! "vocab-item")
-                     (when (nil? (psc/fetch-by-id tx :vocab_items eid))
-                       (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
-                                       {:code 404 :id eid})))
-                     (metadata/patch-metadata! tx "vocab-item" eid patch)
-                     eid))
+                     (let [existing (psc/fetch-by-id tx :vocab_items eid)]
+                       (when (nil? existing)
+                         (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
+                                         {:code 404 :id eid})))
+                       (metadata/patch-metadata! tx "vocab-item" eid patch)
+                       (op/touch-vocab-layer! tx (:vocab_layer_id existing))
+                       eid)))
 
 (defn delete-metadata
   "Remove all metadata for the vocab item."
@@ -315,8 +327,10 @@
                              :description (str "Delete all metadata from vocab item " eid)
                              :user user-id}]
                      (metadata/validate-entity-type! "vocab-item")
-                     (when (nil? (psc/fetch-by-id tx :vocab_items eid))
-                       (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
-                                       {:code 404 :id eid})))
-                     (metadata/delete-metadata! tx "vocab-item" eid)
-                     eid))
+                     (let [existing (psc/fetch-by-id tx :vocab_items eid)]
+                       (when (nil? existing)
+                         (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
+                                         {:code 404 :id eid})))
+                       (metadata/delete-metadata! tx "vocab-item" eid)
+                       (op/touch-vocab-layer! tx (:vocab_layer_id existing))
+                       eid)))

@@ -15,6 +15,8 @@
 (def attr-keys [:vocab/id
                 :vocab/name
                 :vocab/maintainers
+                :vocab/time-created
+                :vocab/time-modified
                 :config])
 
 ;; ============================================================
@@ -23,12 +25,18 @@
 
 (defn- row->vocab-bare
   "Translate a `vocab_layers` row to the namespaced shape. Does NOT
-  populate :vocab/maintainers; callers stitch those in."
+  populate :vocab/maintainers; callers stitch those in.
+
+  :vocab/time-created and :vocab/time-modified mirror the document shape
+  (`created_at` / `modified_at` columns). Both are nil for vocabularies
+  created before those columns existed, so readers must tolerate absence."
   [row]
   (when row
-    {:vocab/id   (:id row)
-     :vocab/name (:name row)
-     :config     (psc/parse-config (:config row))}))
+    {:vocab/id            (:id row)
+     :vocab/name          (:name row)
+     :vocab/time-created  (:created_at row)
+     :vocab/time-modified (:modified_at row)
+     :config              (psc/parse-config (:config row))}))
 
 (defn- attach-maintainers
   "Add :vocab/maintainers (vector of user-ids) to a bare vocab record."
@@ -223,10 +231,15 @@
                                :description (str "Create vocab '" name "'")
                                :user user-id}]
                        (psc/valid-name? name)
-                       (psc/execute! tx {:insert-into :vocab_layers
-                                         :values [{:id new-id
-                                                   :name name
-                                                   :config (psc/serialize-config config)}]})
+                       ;; Stamped from the op's ts (not a fresh now-iso) so the
+                       ;; timestamps agree with the operations row, as documents do.
+                       (let [ts (op/op-ts)]
+                         (psc/execute! tx {:insert-into :vocab_layers
+                                           :values [{:id new-id
+                                                     :name name
+                                                     :config (psc/serialize-config config)
+                                                     :created_at ts
+                                                     :modified_at ts}]}))
                        ;; Grant the maintainer role to the creator (and any
                        ;; other requested maintainers). vocab_maintainers rows
                        ;; are unaudited; their state is folded into the :insert
@@ -260,7 +273,11 @@
                                      (some? (:vocab/name m))
                                      (assoc :name (:vocab/name m)))]
                          (when (seq attrs)
-                           (psc/update-by-id! tx :vocab_layers eid attrs))
+                           ;; Folded rather than a separate touch-vocab-layer! call:
+                           ;; this op already writes the row, so one audit row carries
+                           ;; both the new name and the new modified_at.
+                           (psc/update-by-id! tx :vocab_layers eid
+                                              (assoc attrs :modified_at (op/op-ts))))
                          eid))))
 
 (defn fetch-vocab-maintainer-ids
@@ -306,6 +323,14 @@
   [tx vocab-id pre-maintainers]
   (let [post-maintainers (fetch-vocab-maintainer-ids tx vocab-id)]
     (when (not= pre-maintainers post-maintainers)
+      ;; Who may write a vocabulary is part of the vocabulary, so a real
+      ;; maintainer change bumps modified_at. Stamped here rather than by
+      ;; touch-vocab-layer! at the call sites so it inherits this fn's no-op
+      ;; rule (an add that grants nothing changes nothing) and so it rides the
+      ;; synthetic audit row below instead of adding a second one.
+      (psc/execute! tx {:update :vocab_layers
+                        :set {:modified_at (op/op-ts)}
+                        :where [:= :id vocab-id]})
       (let [vl-row (psc/fetch-by-id tx :vocab_layers vocab-id)
             pre-image (assoc vl-row :maintainers pre-maintainers)
             post-image (assoc vl-row :maintainers post-maintainers)]

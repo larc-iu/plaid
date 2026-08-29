@@ -1,0 +1,22 @@
+-- Vocabulary timestamps (#vocab-layer-timestamps).
+--
+-- `vocab_layers` had no notion of when it was created or last changed, so a
+-- vocabulary list could show every column EXCEPT the "Updated" one that the
+-- project and document lists show. Items carry no timestamps either, and the
+-- audit log is not scoped by vocab layer, so there was nothing to read.
+--
+-- These two columns mirror `documents.created_at` / `documents.modified_at`.
+-- `modified_at` is stamped by plaid.sql.operation/touch-vocab-layers! from
+-- ops that write the vocabulary (layer rename, config, maintainers, and every
+-- item write including the bulk pair), the way bump-document-version! stamps a
+-- document from its annotation writes. Vocab LINKS are deliberately excluded:
+-- a link is an annotation on a document, not a change to the vocabulary.
+--
+-- Both are NULL for rows that predate this migration: their real timestamps
+-- were never recorded, and the alternative (a wholesale scan of audit_writes
+-- guessing at item ancestry from post-image JSON) would put confident wrong
+-- dates on real data. A pre-existing vocabulary reads as "unknown" until its
+-- next write.
+ALTER TABLE vocab_layers ADD COLUMN created_at TEXT NULL;
+--;;
+ALTER TABLE vocab_layers ADD COLUMN modified_at TEXT NULL;

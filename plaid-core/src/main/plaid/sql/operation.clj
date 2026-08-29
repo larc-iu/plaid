@@ -252,6 +252,47 @@
         (when-let [a (:affected-documents psc/*op*)]
           (swap! a conj doc-id))))))
 
+(defn op-ts
+  "The current operation's monotonic timestamp, for bodies that stamp a
+  time column themselves (vocab-layer creation, the folded `:modified_at`
+  on a vocab rename). Falls back to wall clock outside an op context."
+  []
+  (or (:ts psc/*op*) (psc/now-iso)))
+
+(defn touch-vocab-layers!
+  "Stamp `vocab_layers.modified_at` with the op's ts for each id in
+  `vocab-ids`.
+
+  The vocabulary-level counterpart of `bump-document-version!`: an item
+  write never touches its parent layer row, so without this a vocabulary
+  would look untouched no matter how many entries were added, edited, or
+  deleted, and a list view could not show when it last changed. Call from
+  ops that do NOT otherwise write the layer row; ops that do (rename,
+  config) fold `:modified_at` into their own update instead, so the change
+  rides one audit row rather than two.
+
+  An ordinary `:update` audit row, not a sentinel change_type like
+  `:doc-version-bump`: this is a real column write with no ETL consumer
+  that needs to tell it apart, and `fold-rows` merges post-images key-wise
+  so the `:maintainers` fold carried by the synthetic vocab_layers rows
+  survives it. No-ops on a missing row (a layer dropped earlier in the
+  same op) and on an unchanged value, via `update-by-id!`.
+
+  Deliberately NOT called for vocab_links: a link is an annotation on a
+  document, not a change to the vocabulary it points at."
+  [tx vocab-ids]
+  (let [ts (op-ts)]
+    ;; `seq` first: `(distinct some-set)` throws in Clojure 1.12 (see
+    ;; bump-document-versions!), and callers pass whatever shape they have.
+    (doseq [vid (distinct (seq vocab-ids))
+            :when vid]
+      (psc/update-by-id! tx :vocab_layers vid {:modified_at ts}))))
+
+(defn touch-vocab-layer!
+  "Single-id `touch-vocab-layers!`."
+  [tx vocab-id]
+  (touch-vocab-layers! tx [vocab-id]))
+
 (defn- sqlite-busy-in-chain?
   "True when `e` or anything in its cause/suppressed chain is a SQLite
    busy/locked error. The common case is a top-level SQLITE_BUSY, but
