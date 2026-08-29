@@ -119,6 +119,37 @@ function customValues(n) {
   return out;
 }
 
+/** The multilingual value of one element: its <AUni ws=…>/<AStr ws=…> children → {ws: text}, or null. */
+function multiAnyOf(el) {
+  const out = {};
+  for (const a of el.children) {
+    let t = null;
+    if (a.tag === 'AUni') t = a.text;
+    else if (a.tag === 'AStr') t = runText(a);
+    if (t != null && t.trim() !== '') out[a.attrs.ws] = nfc(t);
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * The other multilingual string fields on an object (Comment, GeneralNote,
+ * SocioLinguisticsNote, LiteralMeaning, …): {FieldName: {ws: text}} or null.
+ * Generic on purpose: anything with AUni/AStr children counts, so a field we
+ * never heard of still reaches the import screen. `skip` names the fields
+ * handled elsewhere; custom fields go through customValues.
+ */
+function extraFields(n, skip) {
+  let out = null;
+  for (const c of n.children) {
+    if (c.tag === 'Custom' || skip.has(c.tag)) continue;
+    const m = multiAnyOf(c);
+    if (m) (out ??= {})[c.tag] = m;
+  }
+  return out;
+}
+const ENTRY_HANDLED = new Set(['CitationForm']);
+const SENSE_HANDLED = new Set(['Gloss', 'Definition']);
+
 // --- streaming pass ---------------------------------------------------------
 
 /**
@@ -195,7 +226,7 @@ export const pickEn = (m) => (m == null ? null : (m.en ?? Object.values(m)[0] ??
  * Returns {
  *   version, writingSystems: {vernacular, analysis},
  *   wsUsage: {wordForms, wordGloss, morphGloss, freeTranslation, literalTranslation, note},
- *   texts, lexicon, morphTypes, customFields, warnings
+ *   texts, lexicon, lexiconFields, customFields, warnings
  * }
  */
 export function parseFwdata(xml) {
@@ -269,9 +300,23 @@ export function parseFwdata(xml) {
     freeTranslation: new Set(),
     literalTranslation: new Set(),
     note: new Set(),
+    lexGloss: new Set(),
+    lexDefinition: new Set(),
   };
   const track = (set, m) => {
     for (const ws of Object.keys(m ?? {})) set.add(ws);
+  };
+  // The other lexicon fields that carry values, name → how many entries /
+  // senses have one and in which writing systems (the import screen lists
+  // these as opt-in fields).
+  const lexFieldStats = new Map();
+  const noteExtra = (level, extra) => {
+    for (const [name, m] of Object.entries(extra ?? {})) {
+      let st = lexFieldStats.get(name);
+      if (!st) lexFieldStats.set(name, (st = { name, entries: 0, senses: 0, wss: new Set() }));
+      st[level] += 1;
+      for (const ws of Object.keys(m)) st.wss.add(ws);
+    }
   };
 
   // Senses (entries may own subsenses recursively)
@@ -285,18 +330,24 @@ export function parseFwdata(xml) {
       .filter(Boolean);
     return { text, translations };
   };
+  // Memoized: every morph bundle in the texts resolves its sense through here.
+  const senseCache = new Map();
   const senseOf = (guid) => {
+    if (senseCache.has(guid)) return senseCache.get(guid);
     const s = get(guid, 'LexSense');
     if (!s) return null;
     const examples = refGuids(s, 'Examples').map(exampleOf).filter(Boolean);
-    return {
+    const sense = {
       guid,
       gloss: multiUni(s, 'Gloss'),
       definition: multiStr(s, 'Definition'),
       pos: msaPos(refGuid(s, 'MorphoSyntaxAnalysis')),
       custom: customValues(s),
+      extra: extraFields(s, SENSE_HANDLED),
       examples,
     };
+    senseCache.set(guid, sense);
+    return sense;
   };
 
   // Morpheme bundles
@@ -424,11 +475,18 @@ export function parseFwdata(xml) {
         const sNode = get(sGuid, 'LexSense');
         if (!sNode) continue;
         const s = senseOf(sGuid);
-        if (s) senses.push(s);
+        if (s) {
+          senses.push(s);
+          track(usage.lexGloss, s.gloss);
+          track(usage.lexDefinition, s.definition);
+          noteExtra('senses', s.extra);
+        }
         walkSenses(sNode);
       }
     };
     walkSenses(e);
+    const extra = extraFields(e, ENTRY_HANDLED);
+    noteExtra('entries', extra);
     lexicon.push({
       guid: e.attrs.guid,
       forms: lf?.forms ?? null,
@@ -436,9 +494,13 @@ export function parseFwdata(xml) {
       morphType: lf?.morphType ?? null,
       homograph: Number(valAttr(e, 'HomographNumber') ?? 0),
       custom: customValues(e),
+      extra,
       senses,
     });
   }
+  const lexiconFields = [...lexFieldStats.values()]
+    .map((st) => ({ ...st, wss: [...st.wss] }))
+    .sort((a, b) => b.entries + b.senses - (a.entries + a.senses) || a.name.localeCompare(b.name));
 
   return {
     version,
@@ -446,6 +508,7 @@ export function parseFwdata(xml) {
     wsUsage: Object.fromEntries(Object.entries(usage).map(([k, v]) => [k, [...v]])),
     texts,
     lexicon,
+    lexiconFields,
     customFields,
     warnings,
   };

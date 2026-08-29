@@ -6,7 +6,11 @@ import { readFileSync, existsSync } from 'node:fs';
 import { readFwbackup } from './fwbackup.js';
 import { parseFwdata, pickEn } from './fwdataParser.js';
 
-const LEZGI = '/home/luke/local/plaid/Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
+const LEZGI_NAME = 'Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
+const LEZGI =
+  [`/home/luke/local/plaid/${LEZGI_NAME}`, `/home/luke/Downloads/${LEZGI_NAME}`].find((p) =>
+    existsSync(p),
+  ) ?? `/home/luke/Downloads/${LEZGI_NAME}`;
 const SENA = '/home/luke/Downloads/Sena 3 2018-09-11 1145.fwbackup';
 
 const load = (path) => {
@@ -79,6 +83,25 @@ describe.skipIf(!existsSync(LEZGI))('parseFwdata — Lezgi sample', () => {
     expect(za.forms['lez-Cyrl-AZ-x-qusar']).toBe('за');
     expect(za.morphType).toBe('stem');
     expect(za.senses[0].gloss.en).toBe('1sg-ERG');
+  });
+
+  it('keeps glosses in every analysis ws and lists the other lexicon fields with counts', () => {
+    const senses = ir.lexicon.flatMap((e) => e.senses);
+    // 201 senses carry a <AUni ws="ru"> gloss element, but only 18 have text.
+    expect(senses.filter((s) => s.gloss?.ru)).toHaveLength(18);
+    expect(ir.wsUsage.lexGloss).toEqual(expect.arrayContaining(['en', 'ru']));
+    const byName = Object.fromEntries(ir.lexiconFields.map((f) => [f.name, f]));
+    expect(byName.SocioLinguisticsNote).toMatchObject({ entries: 0, senses: 54, wss: ['en'] });
+    expect(byName.Comment).toMatchObject({ entries: 16, senses: 0 });
+    expect(byName.GeneralNote).toMatchObject({ senses: 2 });
+    // Handled fields never show up as extras.
+    expect(byName.Gloss).toBeUndefined();
+    expect(byName.Definition).toBeUndefined();
+    expect(byName.CitationForm).toBeUndefined();
+    // Sorted by how many objects carry a value.
+    expect(ir.lexiconFields[0].name).toBe('SocioLinguisticsNote');
+    const note = senses.find((s) => s.extra?.SocioLinguisticsNote);
+    expect(typeof note.extra.SocioLinguisticsNote.en).toBe('string');
   });
 
   it('maps FLEx human approval onto word analyses', () => {

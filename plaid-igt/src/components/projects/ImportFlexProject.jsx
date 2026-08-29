@@ -23,6 +23,7 @@ import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { humanizeFieldName } from '@/domain/vocabFields';
 
 const SCOPE_BADGE = {
   Word: 'border-transparent bg-blue-100 text-blue-700',
@@ -42,6 +43,7 @@ export const ImportFlexProject = () => {
   const [orthoNames, setOrthoNames] = useState({}); // ws → display name
   const [selectedTexts, setSelectedTexts] = useState(new Set()); // doc guids
   const [selectedWss, setSelectedWss] = useState(new Set()); // analysis ws tags
+  const [selectedLexFields, setSelectedLexFields] = useState(new Set()); // FLEx field names
   const [progress, setProgress] = useState(null); // {label, pct} | null
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
@@ -72,6 +74,8 @@ export const ImportFlexProject = () => {
         ...ir.wsUsage.freeTranslation,
         ...ir.wsUsage.literalTranslation,
         ...ir.wsUsage.note,
+        ...ir.wsUsage.lexGloss,
+        ...ir.wsUsage.lexDefinition,
       ]);
       const analysisWssAvailable = [
         ...ir.writingSystems.analysis.filter((ws) => used.has(ws)),
@@ -82,6 +86,7 @@ export const ImportFlexProject = () => {
       setOrthoNames(Object.fromEntries(build.orthographyWss.map((ws) => [ws, ws])));
       setSelectedTexts(new Set(build.documents.map((d) => d.guid)));
       setSelectedWss(new Set(analysisWssAvailable));
+      setSelectedLexFields(new Set());
       setStage('review');
     } catch (e) {
       console.error('FLEx parse failed:', e);
@@ -101,8 +106,13 @@ export const ImportFlexProject = () => {
     [parsed, selectedTexts],
   );
   const liveConfig = useMemo(
-    () => parsed && deriveImportConfig(parsed.ir, filteredBuild, { analysisWss: [...selectedWss] }),
-    [parsed, filteredBuild, selectedWss],
+    () =>
+      parsed &&
+      deriveImportConfig(parsed.ir, filteredBuild, {
+        analysisWss: [...selectedWss],
+        lexiconFields: [...selectedLexFields],
+      }),
+    [parsed, filteredBuild, selectedWss, selectedLexFields],
   );
 
   const startImport = async () => {
@@ -425,6 +435,53 @@ export const ImportFlexProject = () => {
                       <code className="text-xs">{ws}</code>
                     </label>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {parsed.ir.lexiconFields.length > 0 && (
+              <div className="rounded-lg border bg-card p-4">
+                <p className="mb-1 font-medium">Lexicon fields</p>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Form, gloss, part of speech, definition, morph type, examples and custom fields
+                  are always imported. These other FLEx fields carry values too. Tick the ones to
+                  keep as fields on the lexicon entries.
+                </p>
+                <div className="flex flex-col gap-2">
+                  {parsed.ir.lexiconFields.map((f) => {
+                    const where = [
+                      f.entries > 0 &&
+                        `${f.entries.toLocaleString()} entr${f.entries === 1 ? 'y' : 'ies'}`,
+                      f.senses > 0 &&
+                        `${f.senses.toLocaleString()} sense${f.senses === 1 ? '' : 's'}`,
+                    ]
+                      .filter(Boolean)
+                      .join(', ');
+                    return (
+                      <label
+                        key={f.name}
+                        className="flex cursor-pointer items-center gap-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedLexFields.has(f.name)}
+                          disabled={locked}
+                          onChange={(e) =>
+                            setSelectedLexFields((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(f.name);
+                              else next.delete(f.name);
+                              return next;
+                            })
+                          }
+                        />
+                        <span>{humanizeFieldName(f.name)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {where} · <code>{f.wss.join(', ')}</code>
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             )}

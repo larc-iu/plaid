@@ -33,8 +33,12 @@ const fieldName = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} (
  * (one per analysis ws that actually occurs), document metadata fields, and
  * the field→(scope, ws) mapping the engine later imports values through.
  *
- * opts.analysisWss — restrict annotation fields to these analysis writing
- * systems (default: every ws that occurs in the data).
+ * opts.analysisWss — restrict annotation fields (and lexicon glosses /
+ * definitions) to these analysis writing systems (default: every ws that
+ * occurs in the data).
+ * opts.lexiconFields — names of the other FLEx lexicon fields (Comment,
+ * GeneralNote, …; see ir.lexiconFields) to import as vocab item fields
+ * (default: none).
  */
 export function deriveImportConfig(ir, build, opts = {}) {
   const primaryAnalysisWs = ir.writingSystems.analysis[0] ?? 'en';
@@ -79,6 +83,8 @@ export function deriveImportConfig(ir, build, opts = {}) {
     fields,
     documentMetadata,
     primaryAnalysisWs,
+    analysisWss: opts.analysisWss ?? null,
+    lexiconFields: opts.lexiconFields ?? [],
     baselineWs: build.baselineWs,
   };
 }
@@ -119,10 +125,19 @@ export function resolveTargets(project, config) {
   };
 }
 
+// Item metadata keys that are bookkeeping or structured data, never a field
+// in the vocab's schema (`examples` is shown read-only in the item detail).
+const HIDDEN_ITEM_KEYS = new Set(['flexEntry', 'flexSense', 'homograph', 'examples']);
+
 /**
  * Import the lexicon as vocab items, one per FLEx sense (multi-sense entries
  * produce several same-form items; the auto-linker already treats ambiguous
  * forms conservatively). Returns Map<senseGuid, vocabItemId>.
+ *
+ * Multilingual values (gloss, definition, the opt-in `lexiconFields`) are
+ * written per analysis writing system exactly as the text fields are named:
+ * the primary ws under the bare key (`gloss`), the others suffixed
+ * (`gloss (ru)`); `analysisWss` (null = all) limits which are kept.
  *
  * Resume-safe: items already in the vocab with a matching metadata.flexSense
  * are reused, not duplicated.
@@ -132,6 +147,9 @@ export async function importLexicon({
   vocabId,
   lexicon,
   baselineWs,
+  primaryAnalysisWs = 'en',
+  analysisWss = null,
+  lexiconFields = [],
   onProgress,
   shouldStop,
 }) {
@@ -141,8 +159,31 @@ export async function importLexicon({
     if (item.metadata?.flexSense) senseToItem.set(item.metadata.flexSense, item.id);
   }
 
+  const wsOk = analysisWss ? new Set(analysisWss) : null;
+  const perWs = (base, m) => {
+    const out = {};
+    for (const [ws, text] of Object.entries(m ?? {})) {
+      if (wsOk && !wsOk.has(ws)) continue;
+      out[fieldName(base, ws, primaryAnalysisWs)] = text;
+    }
+    return out;
+  };
+  const wanted = new Set(lexiconFields);
+  const extras = (extra) => {
+    const out = {};
+    for (const [name, m] of Object.entries(extra ?? {})) {
+      if (wanted.has(name)) Object.assign(out, perWs(name, m));
+    }
+    return out;
+  };
+
   const pending = [];
-  const customFieldNames = new Set();
+  // Every metadata key written, in first-seen order, for the field schema.
+  // The settled core fields come first even when no item fills them.
+  const fieldKeys = new Set(['gloss', 'pos', 'definition', 'morphType', 'lexemeForm']);
+  const note = (metadata) => {
+    for (const k of Object.keys(metadata)) if (!HIDDEN_ITEM_KEYS.has(k)) fieldKeys.add(k);
+  };
   const pickWs = (m) => (m == null ? null : (m[baselineWs] ?? pickEn(m)));
   for (const entry of lexicon) {
     // The item form is the entry's CITATION form (the dictionary headword)
@@ -152,20 +193,21 @@ export async function importLexicon({
     const form = pickWs(entry.citationForm) ?? lexemeForm;
     if (!form) continue;
     // FLEx custom-field values (entry-level + sense-level) become item
-    // metadata under the custom field's own name.
-    for (const k of Object.keys(entry.custom ?? {})) customFieldNames.add(k);
+    // metadata under the custom field's own name; so do the opt-in extra
+    // fields, entry-level ones on every sense of the entry. A sense-level
+    // value wins over an entry-level one under the same name.
     const entryMeta = (sense) => ({
       ...(entry.morphType != null && { morphType: entry.morphType }),
       ...(entry.homograph ? { homograph: entry.homograph } : {}),
       ...(lexemeForm != null && lexemeForm !== form && { lexemeForm }),
       ...(entry.custom ?? {}),
       ...(sense?.custom ?? {}),
+      ...extras(entry.extra),
+      ...extras(sense?.extra),
       flexEntry: entry.guid,
       flexSense: sense?.guid ?? entry.guid,
     });
     for (const sense of entry.senses) {
-      for (const k of Object.keys(sense.custom ?? {})) customFieldNames.add(k);
-      if (senseToItem.has(sense.guid)) continue;
       const examples = (sense.examples ?? [])
         .map((ex) => ({
           text: pickWs(ex.text),
@@ -175,32 +217,29 @@ export async function importLexicon({
       const metadata = {
         // gloss first: the editor popover's no-config fallback shows the
         // first metadata value.
-        ...(pickEn(sense.gloss) != null && { gloss: pickEn(sense.gloss) }),
-        ...(pickEn(sense.definition) != null && { definition: pickEn(sense.definition) }),
+        ...perWs('gloss', sense.gloss),
+        ...perWs('definition', sense.definition),
         ...(sense.pos != null && { pos: sense.pos }),
         ...(examples.length ? { examples } : {}),
         ...entryMeta(sense),
       };
+      note(metadata);
+      if (senseToItem.has(sense.guid)) continue;
       pending.push({ form, metadata, senseGuid: sense.guid });
     }
     // Entries with no senses still become one item (form-only).
-    if (entry.senses.length === 0 && !senseToItem.has(entry.guid)) {
-      pending.push({ form, metadata: entryMeta(null), senseGuid: entry.guid });
+    if (entry.senses.length === 0) {
+      const metadata = entryMeta(null);
+      note(metadata);
+      if (!senseToItem.has(entry.guid)) pending.push({ form, metadata, senseGuid: entry.guid });
     }
   }
 
   // Declare the vocab's field schema so gloss/POS render inline in the editor
   // popover and as table columns (idempotent; cheap relative to the import).
-  // `examples` is deliberately NOT declared: it's structured data, not a
-  // string column.
-  const fieldsConfig = {
-    gloss: { inline: true },
-    pos: { inline: true },
-    definition: { inline: false },
-    morphType: { inline: false },
-    lexemeForm: { inline: false },
-    ...Object.fromEntries([...customFieldNames].map((n) => [n, { inline: false }])),
-  };
+  const fieldsConfig = Object.fromEntries(
+    [...fieldKeys].map((n) => [n, { inline: n === 'gloss' || n === 'pos' }]),
+  );
   await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
 
   let done = 0;
@@ -447,6 +486,9 @@ async function runImportImpl({
     vocabId,
     lexicon,
     baselineWs: config.baselineWs,
+    primaryAnalysisWs: config.primaryAnalysisWs,
+    analysisWss: config.analysisWss ?? null,
+    lexiconFields: config.lexiconFields ?? [],
     onProgress,
     shouldStop,
   });

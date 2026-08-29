@@ -112,13 +112,15 @@ const lexicon = [
     morphType: 'root',
     homograph: 0,
     custom: { Plural: 'махар' },
+    extra: { Comment: { en: 'borrowed' } },
     senses: [
       {
         guid: 's2',
-        gloss: { en: 'tale' },
+        gloss: { en: 'tale', ru: 'сказка' },
         definition: { en: 'a traditional tale' },
         pos: 'n',
         custom: { 'Parsing Note': 'check' },
+        extra: { GeneralNote: { en: 'rare', ru: 'редко' } },
         examples: [{ text: { [BASE_WS]: 'мах ава' }, translations: [{ en: 'there is a tale' }] }],
       },
       { guid: 's3', gloss: { en: 'story' }, pos: 'n' },
@@ -345,8 +347,84 @@ describe('importLexicon', () => {
       definition: { inline: false },
       morphType: { inline: false },
       lexemeForm: { inline: false },
+      'gloss (ru)': { inline: false },
       Plural: { inline: false },
       'Parsing Note': { inline: false },
+    });
+  });
+
+  const created = (client) => client.calls.filter((c) => c.kind === 'vocabItems.create');
+  const bySense = (client, guid) => created(client).find((c) => c.args.metadata.flexSense === guid);
+  const schema = (client) =>
+    client.calls.find((c) => c.kind === 'vocabLayers.setConfig').args.value;
+
+  it('writes a gloss per analysis writing system, the primary one under the bare key', async () => {
+    let client = makeFakeClient();
+    await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
+    expect(bySense(client, 's2').args.metadata).toMatchObject({
+      gloss: 'tale',
+      'gloss (ru)': 'сказка',
+    });
+    expect(Object.keys(bySense(client, 's2').args.metadata)[0]).toBe('gloss');
+
+    // Restricting the analysis languages drops the others, from items and schema alike.
+    client = makeFakeClient();
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon,
+      baselineWs: BASE_WS,
+      analysisWss: ['en'],
+    });
+    expect(bySense(client, 's2').args.metadata).not.toHaveProperty('gloss (ru)');
+    expect(schema(client)).not.toHaveProperty('gloss (ru)');
+
+    // Another primary ws swaps which one is bare.
+    client = makeFakeClient();
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon,
+      baselineWs: BASE_WS,
+      primaryAnalysisWs: 'ru',
+    });
+    expect(bySense(client, 's2').args.metadata).toMatchObject({
+      gloss: 'сказка',
+      'gloss (en)': 'tale',
+    });
+    expect(bySense(client, 's3').args.metadata).toMatchObject({ 'gloss (en)': 'story' });
+    expect(bySense(client, 's3').args.metadata).not.toHaveProperty('gloss');
+  });
+
+  it('imports the other FLEx fields only when asked, per writing system, entry-level ones on every sense', async () => {
+    let client = makeFakeClient();
+    await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
+    for (const guid of ['s2', 's3']) {
+      expect(bySense(client, guid).args.metadata).not.toHaveProperty('Comment');
+      expect(bySense(client, guid).args.metadata).not.toHaveProperty('GeneralNote');
+    }
+    expect(schema(client)).not.toHaveProperty('Comment');
+
+    client = makeFakeClient();
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon,
+      baselineWs: BASE_WS,
+      lexiconFields: ['Comment', 'GeneralNote'],
+    });
+    expect(bySense(client, 's2').args.metadata).toMatchObject({
+      Comment: 'borrowed',
+      GeneralNote: 'rare',
+      'GeneralNote (ru)': 'редко',
+    });
+    expect(bySense(client, 's3').args.metadata).toMatchObject({ Comment: 'borrowed' });
+    expect(bySense(client, 's3').args.metadata).not.toHaveProperty('GeneralNote');
+    expect(bySense(client, 's1').args.metadata).not.toHaveProperty('Comment');
+    expect(schema(client)).toMatchObject({
+      Comment: { inline: false },
+      GeneralNote: { inline: false },
+      'GeneralNote (ru)': { inline: false },
     });
   });
 });

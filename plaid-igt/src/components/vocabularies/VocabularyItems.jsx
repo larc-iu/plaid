@@ -82,6 +82,41 @@ const MarkedText = ({ text, marks }) => {
   return <>{out}</>;
 };
 
+// Read-only facts a FLEx import stores outside the field schema: the FLEx
+// homograph number and the sense's example sentences (metadata.examples is
+// structured, so it is never a field column).
+const ImportedExtras = ({ metadata }) => {
+  const examples = Array.isArray(metadata?.examples)
+    ? metadata.examples.filter((ex) => ex && ex.text)
+    : [];
+  const homograph = Number(metadata?.homograph) || 0;
+  if (!examples.length && !homograph) return null;
+  return (
+    <div className="mt-4 flex flex-col gap-2 border-t pt-3 text-sm">
+      {homograph > 0 && (
+        <p className="text-xs text-muted-foreground">FLEx homograph number {homograph}</p>
+      )}
+      {examples.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Examples
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {examples.map((ex, i) => (
+              <li key={i}>
+                <span>{ex.text}</span>
+                {ex.translation && (
+                  <span className="block text-muted-foreground">{ex.translation}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canManage = true }) => {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
@@ -746,6 +781,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                 </div>
                 {renderFieldInputs(editFields, setEditFields, !canManage)}
               </div>
+              {!isNew && selectedItem && <ImportedExtras metadata={selectedItem.metadata} />}
 
               {canManage && (
                 <div className="mt-4 flex items-center justify-between">

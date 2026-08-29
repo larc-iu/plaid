@@ -43,7 +43,8 @@ if (SMALL) {
     .slice(0, 3);
 }
 const config = {
-  ...deriveImportConfig(ir, build),
+  // every analysis ws (the default) + one opt-in FLEx field, to see them land
+  ...deriveImportConfig(ir, build, { lexiconFields: ['SocioLinguisticsNote'] }),
   // exercise orthography renaming
   orthographies: [{ ws: 'lez-Qaaa-AZ-x-Tran-lat', name: 'Translit' }],
 };
@@ -154,6 +155,25 @@ try {
     Math.abs((vocab.items?.length ?? 0) - expectItems) <= 2,
     `lexicon items ≈ ${expectItems}`,
     `got ${vocab.items?.length}`,
+  );
+  const senses = ir.lexicon.flatMap((e) => e.senses);
+  const wantRu = senses.filter((s) => s.gloss?.ru && config.primaryAnalysisWs !== 'ru').length;
+  const gotRu = vocab.items.filter((i) => i.metadata?.['gloss (ru)']).length;
+  check(gotRu === wantRu, `second-ws glosses land as "gloss (ru)" (${wantRu})`, `got ${gotRu}`);
+  const wantNote = senses.filter((s) => s.extra?.SocioLinguisticsNote).length;
+  const gotNote = vocab.items.filter((i) => i.metadata?.SocioLinguisticsNote).length;
+  check(
+    gotNote === wantNote,
+    `opted-in SocioLinguisticsNote on ${wantNote} items`,
+    `got ${gotNote}`,
+  );
+  const gotComment = vocab.items.filter((i) => i.metadata?.Comment).length;
+  check(gotComment === 0, 'a field not opted into (Comment) is absent', `got ${gotComment}`);
+  const fieldsCfg = vocab.config?.igt?.fields ?? {};
+  check(
+    !!fieldsCfg['gloss (ru)'] && !!fieldsCfg.SocioLinguisticsNote && !fieldsCfg.Comment,
+    'vocab field schema declares the ws variant + the opted-in field only',
+    JSON.stringify(Object.keys(fieldsCfg)),
   );
 
   // Deep-check the Sea Princess via the editor's own read path
