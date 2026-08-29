@@ -13,7 +13,8 @@
 // two morphemes is "=" when either is a clitic (metadata.morphType), else "-"
 // — see domain/affixMarkers.js; markers are display-only, never stored.
 // Words with no morphemes fall back to their surface form. LaTeX formats
-// need equal token counts per line, so empty glosses become {}.
+// need equal token counts per line, so empty glosses become {}. Untokenized
+// baseline text (punctuation) gets its own column with empty gloss cells.
 
 import { joinMorphemes } from './affixMarkers.js';
 
@@ -75,8 +76,34 @@ function wordCells(token, { morphFields, wordFields }) {
   return { segmented, morphLines, wordLines };
 }
 
+// One cell column per piece of the sentence in reading order: word tokens plus
+// the baseline runs no token covers (punctuation, stray characters), which the
+// Analyze grid shows as inert columns and which the built-in tokenizer leaves
+// untokenized on purpose. A gap contributes its text to line 1 and nothing to
+// the gloss/word tiers. Whitespace-only gaps (ordinary spacing) are dropped.
+// Sentences without derived `pieces` (older callers, test fixtures) fall back
+// to their token list.
+function columnCells(sentence, fields) {
+  const pieces = sentence.pieces || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
+  const cells = [];
+  for (const piece of pieces) {
+    if (piece.type === 'token') {
+      cells.push(wordCells(piece, fields));
+      continue;
+    }
+    const text = (piece.content ?? '').trim();
+    if (text === '') continue;
+    cells.push({
+      segmented: text,
+      morphLines: fields.morphFields.map(() => ''),
+      wordLines: fields.wordFields.map(() => ''),
+    });
+  }
+  return cells;
+}
+
 function tiers(sentence, fields) {
-  const cells = (sentence.tokens || []).map((t) => wordCells(t, fields));
+  const cells = columnCells(sentence, fields);
   const lines = [{ label: null, cells: cells.map((c) => c.segmented) }];
   fields.morphFields.forEach((f, i) => {
     lines.push({ label: f, cells: cells.map((c) => c.morphLines[i]) });

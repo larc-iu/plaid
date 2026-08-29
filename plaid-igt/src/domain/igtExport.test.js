@@ -60,6 +60,32 @@ describe('formatPlain', () => {
   });
 });
 
+describe('untokenized baseline runs', () => {
+  // Punctuation the tokenizer leaves in the baseline is a `gap` piece, not a
+  // token. It gets the same inert column the Analyze grid shows it in, so a
+  // gap period and a period token format identically.
+  const GAP_SENT = {
+    annotations: SENT.annotations,
+    tokens: SENT.tokens.slice(0, 2),
+    pieces: [
+      { type: 'token', ...SENT.tokens[0] },
+      { type: 'gap', content: ' ' },
+      { type: 'token', ...SENT.tokens[1] },
+      { type: 'gap', content: '. ' },
+    ],
+  };
+
+  it('columns gap punctuation exactly like a punctuation token', () => {
+    expect(formatPlain(GAP_SENT, FIELDS)).toBe(formatPlain(SENT, FIELDS));
+    expect(formatTsv(GAP_SENT, FIELDS)).toBe(formatTsv(SENT, FIELDS));
+    expect(formatGb4e(GAP_SENT, FIELDS)).toBe(formatGb4e(SENT, FIELDS));
+  });
+
+  it('drops whitespace-only gaps instead of emitting empty columns', () => {
+    expect(formatTsv(GAP_SENT, FIELDS).split('\n')[0]).toBe('perro-s\tcorr-en\t.');
+  });
+});
+
 describe('formatTsv', () => {
   it('emits one tab-separated row per tier plus translation rows', () => {
     const out = formatTsv(SENT, FIELDS);
