@@ -16,7 +16,7 @@ const OPTIONS = [
   {
     to: '/projects/import',
     icon: FileUp,
-    title: 'Import from FieldWorks',
+    title: 'Import from FLEx',
     description:
       'Create a project from a FLEx backup (.fwbackup): texts, glosses, morpheme analyses, translations, and the full lexicon.',
   },
