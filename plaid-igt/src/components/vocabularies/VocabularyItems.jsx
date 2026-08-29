@@ -1,5 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useId, useLayoutEffect, useMemo, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Trash2,
@@ -118,7 +118,9 @@ const ImportedExtras = ({ metadata }) => {
 };
 
 export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canManage = true }) => {
-  const navigate = useNavigate();
+  // Prefix for the detail editor's input ids, so every label addresses its own
+  // field (clicking the label focuses it) even with another copy on the page.
+  const uid = useId();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -552,35 +554,42 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
 
   // Field inputs for the detail editor (morphType is a controlled vocab).
   const renderFieldInputs = (values, onChange, disabled = false) =>
-    fields.map((field) => (
-      <div key={field.name} className="flex flex-col gap-1.5">
-        <Label>{humanizeFieldName(field.name)}</Label>
-        {field.name === 'morphType' ? (
-          <select
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-            value={values.morphType || ''}
-            disabled={disabled}
-            onChange={(event) =>
-              onChange({ ...values, morphType: event.target.value || undefined })
-            }
-          >
-            <option value="">—</option>
-            {FLEX_MORPH_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <Input
-            placeholder={`Enter ${humanizeFieldName(field.name).toLowerCase()}`}
-            value={values[field.name] || ''}
-            disabled={disabled}
-            onChange={(event) => onChange({ ...values, [field.name]: event.target.value })}
-          />
-        )}
-      </div>
-    ));
+    fields.map((field, i) => {
+      // Index, not the field name: a name is free text and may not be a legal
+      // id fragment.
+      const fieldId = `${uid}-field-${i}`;
+      return (
+        <div key={field.name} className="flex flex-col gap-1.5">
+          <Label htmlFor={fieldId}>{humanizeFieldName(field.name)}</Label>
+          {field.name === 'morphType' ? (
+            <select
+              id={fieldId}
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              value={values.morphType || ''}
+              disabled={disabled}
+              onChange={(event) =>
+                onChange({ ...values, morphType: event.target.value || undefined })
+              }
+            >
+              <option value="">—</option>
+              {FLEX_MORPH_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Input
+              id={fieldId}
+              placeholder={`Enter ${humanizeFieldName(field.name).toLowerCase()}`}
+              value={values[field.name] || ''}
+              disabled={disabled}
+              onChange={(event) => onChange({ ...values, [field.name]: event.target.value })}
+            />
+          )}
+        </div>
+      );
+    });
 
   if (loading) {
     return (
@@ -787,10 +796,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label>
+                  <Label htmlFor={`${uid}-form`}>
                     Form <span className="text-destructive">*</span>
                   </Label>
                   <Input
+                    id={`${uid}-form`}
                     value={editForm}
                     autoFocus={isNew}
                     placeholder="Enter item form"
@@ -872,30 +882,14 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                         </div>
                         <div className="divide-y">
                           {g.rows.map((row) => {
-                            // Deep-link the target sentence via query params so a
-                            // new tab (middle/ctrl-click) lands on it too.
+                            // Deep-link the target sentence via query params, so
+                            // the row is an ordinary link: a new tab lands on the
+                            // same sentence.
                             const to = g.projectId
                               ? `/projects/${g.projectId}/documents/${g.docId}?tab=analyze&focusSentence=${row.sentenceId}`
                               : null;
-                            return (
-                              <a
-                                key={row.sentenceId}
-                                href={to ? `#${to}` : undefined}
-                                onClick={(e) => {
-                                  if (!to) {
-                                    e.preventDefault();
-                                    return;
-                                  }
-                                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0)
-                                    return; // let the browser open a new tab
-                                  e.preventDefault();
-                                  navigate(to);
-                                }}
-                                className="block w-full cursor-pointer px-3 py-1.5 text-left no-underline hover:bg-muted/50"
-                                title={
-                                  to ? 'Open in Analyze (middle-click for a new tab)' : undefined
-                                }
-                              >
+                            const body = (
+                              <>
                                 <p className="text-sm text-foreground">
                                   <span className="mr-2 text-xs text-muted-foreground">
                                     #{row.sentenceIndex + 1}
@@ -912,7 +906,26 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                                     ‘{row.translation}’
                                   </p>
                                 )}
-                              </a>
+                              </>
+                            );
+                            // Without a project (an unreadable one) there is
+                            // nowhere to go, so the row is just text.
+                            return to ? (
+                              <Link
+                                key={row.sentenceId}
+                                to={to}
+                                className="block w-full px-3 py-1.5 text-left no-underline hover:bg-muted/50"
+                                title="Open in Analyze (middle-click for a new tab)"
+                              >
+                                {body}
+                              </Link>
+                            ) : (
+                              <div
+                                key={row.sentenceId}
+                                className="block w-full px-3 py-1.5 text-left"
+                              >
+                                {body}
+                              </div>
                             );
                           })}
                           {g.rows.length === 0 && (
