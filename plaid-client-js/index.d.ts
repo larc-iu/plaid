@@ -62,9 +62,15 @@ interface DiscoveredService {
 
 interface ServiceRegistration {
   stop(): void;
+  /** Still serving, including while retrying a channel through a server restart. */
   isRunning(): boolean;
+  /** Channel open right now, i.e. the server currently sees this service as online. */
+  isConnected(): boolean;
   serviceInfo: ServiceInfo & { extras: any };
 }
+
+/** Connection-state transitions reported by a service registration. */
+type ServiceStatusEvent = 'registered' | 'reconnected' | 'disconnected';
 
 interface ResponseHelper {
   progress(percent: number, message: string): void;
@@ -469,19 +475,29 @@ interface MessagesBundle {
   discoverServices(projectId: string): Promise<DiscoveredService[]>;
   /** Forget a previously-seen (offline) service. Maintainer-only; 409 if currently connected. */
   discardService(projectId: string, serviceId: string): Promise<void>;
+  /**
+   * Register as a service and handle work requests. The registration reopens
+   * its channel whenever it drops, so a server restart needs no service restart.
+   */
   serve(
     projectId: string,
     serviceInfo: ServiceInfo,
     onServiceRequest: (data: any, responseHelper: ResponseHelper) => void,
     extras?: any,
+    onStatus?: (event: ServiceStatusEvent, projectId: string, detail?: string) => void,
   ): ServiceRegistration;
-  /** Submit work to a service; streams progress to `onProgress`, resolves with the result. */
+  /**
+   * Submit work to a service; streams progress to `onProgress`, resolves with
+   * the result. Aborting `signal` stops waiting and rejects with an AbortError;
+   * the service is not told and finishes its work regardless.
+   */
   requestService(
     projectId: string,
     serviceId: string,
     data: any,
     timeout?: number,
     onProgress?: (progress: any) => void,
+    signal?: AbortSignal,
   ): Promise<any>;
 }
 

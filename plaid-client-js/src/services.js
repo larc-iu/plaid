@@ -52,13 +52,38 @@ export function discardService(client, projectId, serviceId) {
  * @param {Object} serviceInfo - {serviceId, serviceName, description}
  * @param {function} onServiceRequest - Handler callback (data, responseHelper)
  * @param {Object} extras - Optional additional metadata
- * @returns {Object} ServiceRegistration with .stop(), .isRunning(), .serviceInfo
+ * @param {function} [onStatus] - Optional callback (event, projectId, detail) for
+ *   connection-state transitions: 'registered', 'reconnected', 'disconnected'.
+ *   Called once per transition, not once per retry.
+ * @returns {Object} ServiceRegistration with .stop(), .isRunning(), .isConnected(),
+ *   .serviceInfo
  */
-export function serve(client, projectId, serviceInfo, onServiceRequest, extras = {}) {
+export function serve(client, projectId, serviceInfo, onServiceRequest, extras = {}, onStatus = null) {
   const { serviceId, serviceName, description = '' } = serviceInfo;
   let connection = null;
   let isRunning = true;
   let reconnectTimer = null;
+  // Last state REPORTED, so an outage produces one "lost" line and one "back"
+  // line however many retries it took.
+  let isConnected = false;
+  let everConnected = false;
+
+  const report = (event, detail) => {
+    if (!onStatus) return;
+    try { onStatus(event, projectId, detail); } catch (_) { /* never disturb the loop */ }
+  };
+  const noteConnected = () => {
+    if (isConnected) return;
+    const first = !everConnected;
+    isConnected = true;
+    everConnected = true;
+    report(first ? 'registered' : 'reconnected');
+  };
+  const noteDisconnected = () => {
+    if (!isConnected) return;
+    isConnected = false;
+    report('disconnected');
+  };
 
   const reportEvent = (requestId, body) =>
     client
@@ -76,6 +101,10 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
       if (connection) connection.close();
     },
     isRunning: () => isRunning,
+    // Whether the request channel is open RIGHT NOW, i.e. whether the server
+    // currently sees this service as online. A registration that is retrying
+    // through a server restart is still running but not connected.
+    isConnected: () => isRunning && !!connection && connection.readyState === 1,
     serviceInfo: { serviceId, serviceName, description, extras },
   };
 
@@ -118,12 +147,17 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
     throw new Error(`Failed to start service: ${error.message}`);
   }
 
-  // Reopen the channel if it drops (e.g. the server restarted). Reopening
-  // re-registers the service server-side, so presence and reachability come
-  // back together.
+  // Reopen the channel whenever it drops (e.g. the server restarted), for as
+  // long as the service runs. Reopening re-registers the service server-side,
+  // so presence and reachability come back together, and a server restart never
+  // means a service restart. A reopened channel counts as connected only once
+  // the server has actually answered it (readyState OPEN), not merely because
+  // the attempt was made.
   reconnectTimer = setInterval(() => {
-    if (!isRunning) return;
-    if (connection && connection.readyState === 2) { // CLOSED (dropped)
+    if (!isRunning || !connection) return;
+    if (connection.readyState === 1) { noteConnected(); return; }
+    if (connection.readyState === 2) { // CLOSED (dropped or failed)
+      noteDisconnected();
       try { connection = openChannel(); } catch (_) { /* retry next tick */ }
     }
   }, 3000);
@@ -144,9 +178,10 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  * @param {any} data - Request payload
  * @param {number} [timeout=10000] - Timeout in ms
  * @param {function} [onProgress] - Called with each progress payload {percent, message}
+ * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
  * @returns {Promise<any>} The service's result
  */
-export function requestService(client, projectId, serviceId, data, timeout = 10000, onProgress) {
+export function requestService(client, projectId, serviceId, data, timeout = 10000, onProgress, signal) {
   // Propagate an open logical operation (client.beginOperation) to the
   // service: its writes then fold under the requester's audit-log entry
   // (the Python BaseService adopts the id around process_request). Only for a
@@ -171,6 +206,23 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
       () => finish(reject, new Error(`Service request timed out after ${timeout}ms`)),
       timeout,
     );
+
+    // An external signal stops waiting on a long request (a UI's Stop button).
+    // Reject with an AbortError so a caller can tell a deliberate stop from a
+    // failure. The service is not told: it finishes its work and its reply
+    // goes nowhere, which is safe because it has already been asked for.
+    const stop = () => {
+      const err = new Error('The service request was stopped');
+      err.name = 'AbortError';
+      finish(reject, err);
+    };
+    if (signal) {
+      if (signal.aborted) {
+        stop();
+        return;
+      }
+      signal.addEventListener('abort', stop, { once: true });
+    }
 
     (async () => {
       let response;

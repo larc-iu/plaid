@@ -538,6 +538,12 @@ What *does* persist is the discovery record: each registration upserts a per-pro
 
 Each `service_id` admits **one live connection per project**: a second registration while another instance holds the id is rejected with a 409. A service reconnecting after a network blip is not penalized—if the previously-held connection is dead but not yet reaped, the newcomer simply takes it over.
 
+=== Surviving a server restart
+
+A registration is self-healing, in both clients. The service holds its request channel open, and a supervisor reopens it whenever it drops, so **restarting the Plaid server does not mean restarting its services**: each one re-registers itself, typically within seconds of the server answering again, and its work continues without an operator touching it. Retrying has no attempt budget, so an outage of any length is survivable, and the same loop covers a server that is not up *yet*: services and server can be started in either order.
+
+A reopened channel counts as connected only once the server has actually answered it, so `registration.is_connected()`/`isConnected()` is a true reading of whether the server currently sees the service as online, distinct from `is_running()`/`isRunning()`, which stays true throughout an outage. Python services built on `BaseService` also report the transitions on stdout, one line when the connection is lost and one when it returns, so an operator watching a service's terminal can see it heal rather than restart it on a hunch. The only startup failure that stops a service is a token the server rejects, which no amount of retrying would fix.
+
 NOTE: Like real-time messaging, service activity is **not** recorded in the audit log—only the document changes a service makes through ordinary writes are. The writes a service performs are attributed to whatever token it authenticates with, so giving a service its own named API token makes its edits clearly identifiable in the audit history.
 
 === Acting on the requester's behalf

@@ -18,13 +18,16 @@ Two distinct kinds of "arguments", do not conflate them:
 """
 
 import argparse
+import sys
 import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from plaid_client.client import PlaidClient
+from plaid_client.http import PlaidAPIError, short_error
 from plaid_client.service_schema import build_extras
+from plaid_client.services import ServiceRegistrationError
 
 
 class BaseService(ABC):
@@ -75,6 +78,17 @@ class BaseService(ABC):
         self._registrations_by_project: Dict[str, Any] = {}
         self._sync_failed_projects: set = set()
         self._processing_lock = threading.Lock()
+        # Which projects to serve: a fixed list, or None for "every project the
+        # token can access" (serve-all). Set by :meth:`run`.
+        self._target_projects: Optional[List[str]] = None
+        self._project_names: Dict[str, str] = {}
+        # Connection-state reporting. Registrations reconnect on their own, so
+        # the operator's only question during an outage is whether it is
+        # healing. These keep the answer to two lines per outage no matter how
+        # many projects are served, instead of one pair per project.
+        self._status_lock = threading.Lock()
+        self._disconnected_projects: set = set()
+        self._server_unreachable = False
 
     # --- client bootstrap ---------------------------------------------------
 
@@ -97,16 +111,23 @@ class BaseService(ABC):
                 token = input("Enter Plaid API token (create one in the web UI: "
                               "Profile → API Tokens): ").strip()
                 client = PlaidClient(api_url, token)
-                # Any failure validating the token (bad token -> PlaidAPIError,
-                # or a network error) just means "try again".
+                # A token the server REJECTS means "try again". A server that
+                # cannot be reached says nothing about the token, so take it on
+                # trust and let the run loop wait for the server. Otherwise a
+                # service could not even be configured while Plaid is down.
                 try:
-                    _ = client.projects.list()
+                    _ = client.projects.list_page(limit=1)
+                    verdict = "Token valid."
+                except PlaidAPIError as e:
+                    if e.status:
+                        print(f"Plaid rejected that token: {e}")
+                        continue
+                    verdict = f"Could not reach Plaid to check the token ({e}), keeping it."
                 except Exception as e:
-                    print(f"Error when attempting to connect to Plaid API: {e}")
-                    continue
+                    verdict = f"Could not reach Plaid to check the token ({e}), keeping it."
                 with open(".token", "w") as f:
                     f.write(token)
-                    print("Token valid. Wrote token to .token")
+                    print(f"{verdict} Wrote token to .token")
                 return client
         return PlaidClient(api_url, token)
 
@@ -199,45 +220,111 @@ class BaseService(ABC):
 
     # --- registration + lifecycle ------------------------------------------
 
-    #: Serve-all mode: how often (seconds) to re-list projects so projects
-    #: created after launch get registered on and deleted ones get dropped.
-    #: Override on a subclass or instance to tune.
+    #: How often (seconds) to re-run the reconciliation pass: in serve-all mode
+    #: this re-lists projects so ones created after launch get registered on and
+    #: deleted ones get dropped. Override on a subclass or instance to tune.
     PROJECT_SYNC_INTERVAL_S = 30.0
+
+    #: How soon to re-run that pass when it could not reach the server. Short,
+    #: so a service that outlived a server restart (or was started before the
+    #: server came up) picks it back up promptly instead of waiting out a full
+    #: sync interval. Registrations that already exist heal on their own, faster
+    #: still (see ``ServiceRegistration``).
+    SERVER_RETRY_INTERVAL_S = 5.0
+
+    def _project_label(self, project_id: str) -> str:
+        """Name (when known) plus id, for operator-facing lines."""
+        name = self._project_names.get(project_id)
+        return f'{name} ({project_id})' if name else project_id
+
+    def _on_channel_status(self, event: str, project_id: str, detail=None) -> None:
+        """Report a registration's connection transitions to the operator.
+
+        A registration re-opens its own channel after a server restart, so the
+        only thing the operator needs to know is that it is healing and that
+        restarting the service is unnecessary. Reported per SERVICE, not per
+        project: an outage prints one "lost" line and one "back" line however
+        many projects are served."""
+        with self._status_lock:
+            if event == 'registered':
+                print(f"  Serving project {self._project_label(project_id)}")
+            elif event == 'waiting':
+                print(f"  Not connected yet for project {self._project_label(project_id)} "
+                      f"({detail}). Will keep trying.")
+            elif event == 'disconnected':
+                first = not self._disconnected_projects
+                self._disconnected_projects.add(project_id)
+                if first:
+                    print(f"  Lost the connection to Plaid ({detail}). Retrying every few "
+                          f"seconds. This service re-registers itself as soon as the server "
+                          f"is back, so there is no need to restart it.")
+            elif event == 'reconnected':
+                self._disconnected_projects.discard(project_id)
+                if not self._disconnected_projects:
+                    print(f"  Reconnected to Plaid, serving "
+                          f"{len(self._registrations_by_project)} project(s) again.")
 
     def register_service(self, project_id: str):
         """Open the inbound request channel on one project (which registers the
         service for discovery) and start handling work. The standardized
         ``extras`` ride along for discovery. Records and returns the
-        ``ServiceRegistration``; call once per project to serve several at once."""
+        ``ServiceRegistration``; call once per project to serve several at once.
+
+        The registration is self-healing: it reopens its channel whenever it
+        drops and waits for a server that is not up yet, so this call succeeds
+        (and the service stays useful) across server restarts. It raises only
+        when retrying cannot help: a bad token, no write access, an unknown
+        project."""
         service_info = {
             'service_id': self.service_id,
             'service_name': self.service_name,
             'description': self.description,
         }
         registration = self.client.messages.serve(
-            project_id, service_info, self.handle_service_request, self.extras
+            project_id, service_info, self.handle_service_request, self.extras,
+            on_status=self._on_channel_status,
         )
         self.service_registrations.append(registration)
         self._registrations_by_project[project_id] = registration
         return registration
 
-    def _sync_served_projects(self) -> None:
-        """One serve-all reconciliation pass: make the served set match the
-        accessible set.
-
-        Registers on every accessible project not already served — including
-        projects created (or shared with this token) after launch — and stops
-        registrations whose project is gone (deleted, or access revoked) so
-        their supervisors stop retrying a dead channel. Per-project failures
-        (e.g. another live instance already holds this service id there) are
-        non-fatal; the next pass retries them. A failure to list projects
-        leaves the current set untouched."""
+    def _target_project_names(self) -> Optional[Dict[str, str]]:
+        """The projects this service should be serving, as {id: name}, or None
+        if the server could not be asked. In serve-all mode that is every
+        accessible project (re-read each pass, so projects created or shared
+        after launch are picked up). With explicit ids it is just those, and no
+        request is needed."""
+        if self._target_projects is not None:
+            return {pid: self._project_names.get(pid, '') for pid in self._target_projects}
         try:
             projects = self.client.projects.list()
         except Exception as e:
-            print(f"Failed to list projects (will retry): {e}")
-            return
-        current = {p['id']: p.get('name', p['id']) for p in projects}
+            if not self._server_unreachable:
+                self._server_unreachable = True
+                print(f"  Cannot reach the Plaid server ({short_error(e)}). Waiting for "
+                      f"it to come back, then registering automatically.")
+            return None
+        if self._server_unreachable:
+            self._server_unreachable = False
+            print("  Plaid server is reachable again.")
+        return {p['id']: p.get('name', '') for p in projects}
+
+    def _sync_served_projects(self) -> bool:
+        """One reconciliation pass: make the served set match the target set.
+
+        Registers on every target project not already served — including, in
+        serve-all mode, projects created (or shared with this token) after
+        launch — and stops registrations whose project is gone (deleted, or
+        access revoked) so their supervisors stop retrying a dead channel.
+        Per-project failures are non-fatal; the next pass retries them. Failing
+        to reach the server leaves the current set untouched (the existing
+        registrations are already reconnecting on their own).
+
+        Returns whether the pass could talk to the server."""
+        current = self._target_project_names()
+        if current is None:
+            return False
+        self._project_names.update({pid: name for pid, name in current.items() if name})
 
         for pid in [pid for pid in self._registrations_by_project if pid not in current]:
             registration = self._registrations_by_project.pop(pid)
@@ -249,39 +336,51 @@ class BaseService(ABC):
                 self.service_registrations.remove(registration)
             except ValueError:
                 pass
-            print(f"  No longer serving project {pid} (deleted or access revoked)")
+            self._disconnected_projects.discard(pid)
+            print(f"  No longer serving project {self._project_label(pid)} "
+                  f"(deleted or access revoked)")
 
-        for pid, pname in current.items():
+        for pid in current:
             if pid in self._registrations_by_project:
                 continue
             try:
+                # Registration announces itself through _on_channel_status.
                 self.register_service(pid)
+            except ServiceRegistrationError as e:
+                # Retrying cannot fix this one (bad token, no write access,
+                # unknown project). Say so once, then let later passes stay
+                # quiet unless it starts working.
+                if pid not in self._sync_failed_projects:
+                    self._sync_failed_projects.add(pid)
+                    print(f"  Cannot serve project {self._project_label(pid)}: {e}")
+                continue
             except Exception as e:
                 if pid not in self._sync_failed_projects:
                     self._sync_failed_projects.add(pid)
-                    print(f"  Cannot serve project {pname} ({pid}) yet, will keep retrying: {e}")
+                    print(f"  Cannot serve project {self._project_label(pid)} yet, "
+                          f"will keep retrying: {e}")
                 continue
             self._sync_failed_projects.discard(pid)
-            print(f"  Serving project {pname} ({pid})")
+        return True
 
     def run_service_loop(self, project_sync_interval_s: Optional[float] = None) -> None:
-        """Block until every registration stops or Ctrl+C, then stop them all.
+        """Run until Ctrl+C, re-running :meth:`_sync_served_projects` on an
+        interval, then stop every registration.
 
-        With ``project_sync_interval_s`` set (serve-all mode), also re-runs
-        :meth:`_sync_served_projects` on that interval — registering on
-        projects created after launch, dropping deleted ones — and keeps
-        running even while zero projects are served."""
+        The loop never exits on its own: registrations reconnect through server
+        restarts rather than ending, and in serve-all mode the service keeps
+        running even while zero projects are served. A pass that could not reach
+        the server is retried after :attr:`SERVER_RETRY_INTERVAL_S` instead of
+        the full interval."""
+        interval = project_sync_interval_s or self.PROJECT_SYNC_INTERVAL_S
         try:
-            if project_sync_interval_s:
-                next_sync = time.monotonic() + project_sync_interval_s
-                while True:
-                    time.sleep(1)
-                    if time.monotonic() >= next_sync:
-                        self._sync_served_projects()
-                        next_sync = time.monotonic() + project_sync_interval_s
-            else:
-                while any(reg.is_running() for reg in self.service_registrations):
-                    time.sleep(1)
+            next_sync = time.monotonic() + interval
+            while True:
+                time.sleep(1)
+                if time.monotonic() >= next_sync:
+                    reached = self._sync_served_projects()
+                    next_sync = time.monotonic() + (interval if reached
+                                                    else self.SERVER_RETRY_INTERVAL_S)
         except KeyboardInterrupt:
             print(f"\nStopping {self.service_name}...")
         finally:
@@ -333,6 +432,30 @@ class BaseService(ABC):
         registration."""
         pass
 
+    def _check_credentials(self) -> None:
+        """One cheap call before any expensive :meth:`setup`, to separate the
+        two ways a server can refuse us.
+
+        A token the server REJECTS is an operator error worth dying on now,
+        rather than after minutes of model loading. A server that is merely
+        down is not an error at all: we go on to set up and then wait for it,
+        exactly as a running service waits out a restart."""
+        try:
+            self.client.projects.list_page(limit=1)
+        except PlaidAPIError as e:
+            if e.status in (401, 403):
+                print(f"Plaid rejected this service's token: {e}")
+                print("Create an API token in the web UI (Profile → API Tokens) and put "
+                      "it in .token, or delete .token to be prompted for a new one.")
+                raise SystemExit(1)
+            self._server_unreachable = True
+            print(f"  Plaid is not reachable yet ({short_error(e)}); starting anyway "
+                  f"and registering as soon as it answers.")
+        except Exception as e:
+            self._server_unreachable = True
+            print(f"  Plaid is not reachable yet ({short_error(e)}); starting anyway "
+                  f"and registering as soon as it answers.")
+
     def run(self, args=None) -> None:
         """Main entry point: parse args, init client, set up, register on the
         target project(s), loop.
@@ -346,47 +469,49 @@ class BaseService(ABC):
         covered without a restart. Every registration shares this instance's
         client and single-flight lock, so requests are still handled one at a
         time across all served projects.
+
+        A service outlives the server: an unreachable server is waited for at
+        startup, and every registration reopens its channel when the server
+        comes back, so restarting Plaid never means restarting its services.
+        Only a token the server rejects stops startup.
         """
+        # A service is usually run with its output redirected (nohup, systemd,
+        # a log file), where stdout is block-buffered: the connection-state
+        # lines below would sit in an 8KB buffer for hours, which is exactly
+        # when an operator is reading them to decide whether to restart. `run`
+        # owns the process, so switch stdout to line buffering for good.
+        try:
+            sys.stdout.reconfigure(line_buffering=True)
+        except Exception:
+            pass
+
         parser = self.create_argument_parser()
         parsed_args = parser.parse_args(args)
         self.client = self.get_client(parsed_args.url)
 
         project_ids = list(getattr(parsed_args, 'project_ids', None) or [])
         serve_all = getattr(parsed_args, 'all', False) or not project_ids
-        if serve_all:
-            # Fail fast on connectivity/auth before any expensive setup().
-            # Zero accessible projects is NOT fatal: the sync loop registers on
-            # projects that appear later.
-            try:
-                self.client.projects.list()
-            except Exception as e:
-                print(f"Failed to list projects: {e}")
-                raise SystemExit(1)
+        self._target_projects = None if serve_all else project_ids
 
+        self._check_credentials()
         self.setup(parsed_args)
 
         print(f"Registering {self.service_name} (service_id={self.service_id}, "
               f"tasks={self.extras.get('tasks')})…")
+        # Initial registration is just the first pass of the same reconciliation
+        # the run loop repeats, so a server that is down now is handled the same
+        # way as one that goes down later: keep trying.
+        self._sync_served_projects()
         if serve_all:
-            # Initial registration is just the first pass of the same
-            # reconciliation the run loop repeats.
-            self._sync_served_projects()
             if not self.service_registrations:
                 print("  No projects served yet; waiting for projects to appear…")
             print(f"{self.service_name} serving {len(self.service_registrations)} "
                   f"project(s); syncing with the project list every "
                   f"{self.PROJECT_SYNC_INTERVAL_S:g}s. Waiting for requests… "
                   f"(Press Ctrl+C to stop.)")
-            self.run_service_loop(project_sync_interval_s=self.PROJECT_SYNC_INTERVAL_S)
         else:
-            for pid in project_ids:
-                try:
-                    self.register_service(pid)
-                except Exception as e:
-                    print(f"Failed to register on project {pid}: {e}")
-                    raise SystemExit(1)
             print(f"{self.service_name} registered on "
                   + (f"project {project_ids[0]}" if len(project_ids) == 1
                      else f"{len(project_ids)} projects")
                   + ". Waiting for requests… (Press Ctrl+C to stop.)")
-            self.run_service_loop()
+        self.run_service_loop(project_sync_interval_s=self.PROJECT_SYNC_INTERVAL_S)

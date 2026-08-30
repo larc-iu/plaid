@@ -2066,14 +2066,19 @@ class PlaidClient {
 
       /**
        * Register as a service and handle incoming work requests.
+       *
+       * The registration reopens its channel whenever it drops, so a server
+       * restart needs no service restart.
        * @param {string} projectId - The UUID of the project to serve
        * @param {Object} serviceInfo - Service information {serviceId, serviceName, description}
        * @param {function} onServiceRequest - Callback (data, responseHelper)
        * @param {Object} [extras] - Optional additional service metadata
-       * @returns {Object} Service registration object with .stop() method
+       * @param {function} [onStatus] - Optional callback (event, projectId, detail) for
+       *   connection transitions: 'registered', 'reconnected', 'disconnected'
+       * @returns {Object} Service registration with .stop(), .isRunning(), .isConnected()
        */
-      serve: (projectId, serviceInfo, onServiceRequest, extras) =>
-        serve(this, projectId, serviceInfo, onServiceRequest, extras),
+      serve: (projectId, serviceInfo, onServiceRequest, extras, onStatus) =>
+        serve(this, projectId, serviceInfo, onServiceRequest, extras, onStatus),
 
       /**
        * Request a service to perform work and await its result.
@@ -2082,10 +2087,11 @@ class PlaidClient {
        * @param {any} data - The request data
        * @param {number} [timeout] - Timeout in milliseconds (default: 10000)
        * @param {function} [onProgress] - Called with each progress payload {percent, message}
+       * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
        * @returns {Promise<any>} Service response
        */
-      requestService: (projectId, serviceId, data, timeout, onProgress) =>
-        requestService(this, projectId, serviceId, data, timeout, onProgress),
+      requestService: (projectId, serviceId, data, timeout, onProgress, signal) =>
+        requestService(this, projectId, serviceId, data, timeout, onProgress, signal),
     };
 
     /**

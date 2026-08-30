@@ -14,10 +14,33 @@ import urllib.parse
 
 import requests
 
-from plaid_client.sse import abort_response
+from plaid_client.http import short_error
+from plaid_client.sse import SSE_CONNECT_TIMEOUT_S, abort_response
 from plaid_client.transforms import transform_request, transform_response
 
 logger = logging.getLogger(__name__)
+
+# How long to wait for a channel-open attempt to declare itself (headers back,
+# or the attempt failed). Comfortably above the SSE connect timeout so a
+# refused port settles well within it.
+_OPEN_SETTLE_TIMEOUT_S = SSE_CONNECT_TIMEOUT_S + 5.0
+
+# HTTP statuses that mean "this registration will never work as configured":
+# a bad token, a token without write access to the project, a project that does
+# not exist. Retrying those forever would hide an operator error, so they are
+# raised out of `serve` instead. Everything else (the server being down or
+# restarting, a 5xx, a 409 from an instance that has not let go yet) is
+# transient, and the registration keeps retrying.
+_PERMANENT_STATUSES = frozenset({400, 401, 403, 404, 405, 422})
+
+
+class ServiceRegistrationError(RuntimeError):
+    """A service registration failed for a reason retrying cannot fix (bad
+    token, insufficient permissions, unknown project)."""
+
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 def discover_services(client, project_id):
@@ -49,13 +72,29 @@ def _report_event(client, project_id, request_id, body):
         body=body)
 
 
+def _error_status(error):
+    """HTTP status behind a failed channel-open attempt, or None if it failed
+    below HTTP (connection refused, timeout, DNS)."""
+    return getattr(getattr(error, 'response', None), 'status_code', None)
+
+
+def _error_summary(error):
+    """Why a channel-open attempt failed, for the operator. A 409 gets its own
+    wording because it is the one failure another OPERATOR causes."""
+    if _error_status(error) == 409:
+        return 'another instance of this service is already connected (409)'
+    return short_error(error)
+
+
 class ServiceRegistration:
     """Handle for a running service created by ``serve``.
 
     Holds the inbound request channel (SSE) the service receives work on.
     Holding that channel open IS the registration — there is no separate
     registry entry or heartbeat. A supervisor thread reopens the channel if it
-    drops (e.g. the server restarted), so the service self-heals.
+    drops (e.g. the server restarted), so the service self-heals: a restarted
+    server is picked up within a few seconds of coming back, with no need to
+    restart the service.
 
     Attributes:
         service_info: The registered metadata
@@ -63,7 +102,7 @@ class ServiceRegistration:
     """
 
     def __init__(self, service_info, connection, client=None, project_id=None,
-                 service_id=None, open_channel=None):
+                 service_id=None, open_channel=None, on_status=None):
         self.service_info = service_info
         self._connection = connection
         self._client = client
@@ -73,34 +112,84 @@ class ServiceRegistration:
         self._running = True
         self._stop_event = threading.Event()
         self._supervisor_thread = None
+        # Last state REPORTED through `_on_status`, so an outage produces one
+        # "lost" line and one "back" line however many retries it took.
+        self._on_status = on_status
+        self._connected = False
+        self._ever_connected = False
+
+    # --- status reporting ---------------------------------------------------
+
+    def _report(self, event, detail=None):
+        """Announce a connection-state transition to the owner (BaseService
+        prints these). Never let a listener's failure disturb the supervisor."""
+        if not self._on_status:
+            return
+        try:
+            self._on_status(event, self._project_id, detail)
+        except Exception:
+            logger.debug('Service status listener raised', exc_info=True)
+
+    def _note_connected(self):
+        """Report a channel that is verifiably open. The first success is a
+        registration. A later one (after the server went away and came back) is
+        a reconnection, including the case where the very first attempt had to
+        wait for a server that was not up yet."""
+        if self._connected:
+            return
+        first = not self._ever_connected
+        self._connected = True
+        self._ever_connected = True
+        self._report('registered' if first else 'reconnected')
+
+    def _note_disconnected(self, detail):
+        if not self._connected:
+            return
+        self._connected = False
+        self._report('disconnected', detail)
 
     def _start_supervisor(self, check_interval_s=3.0):
-        """Spawn a daemon thread that reopens the request channel if it drops
-        (e.g. the server restarted). Reopening the channel re-registers the
-        service server-side, so presence and reachability come back together."""
+        """Spawn a daemon thread that reopens the request channel whenever it
+        drops (e.g. the server restarted). Reopening the channel re-registers
+        the service server-side, so presence and reachability come back
+        together.
+
+        Each attempt is VERIFIED: the reopened stream is only treated (and
+        reported) as connected once the server has actually answered it. An
+        attempt made while the server is down settles as CLOSED within the
+        connect timeout and the next tick tries again, indefinitely, so a
+        service left running through an outage of any length still comes back."""
         def loop():
             while not self._stop_event.wait(timeout=check_interval_s):
                 if not self._running:
                     break
                 conn = self._connection
-                # ready_state 2 == CLOSED (dropped, since stop() would have
-                # ended the loop via _stop_event).
-                if conn is not None and conn.ready_state == 2 and self._open_channel:
-                    if not self._running:
-                        break
-                    try:
-                        self._connection = self._open_channel()
-                        logger.info('Service channel reconnected for %s', self._service_id)
-                    except Exception as e:
-                        resp = getattr(e, 'response', None)
-                        if resp is not None and getattr(resp, 'status_code', None) == 409:
-                            # Another live instance holds this service-id; once
-                            # it stops (or its dead channel is reaped) a retry
-                            # will take over.
-                            logger.warning('Service registration rejected (409): another instance '
-                                           'of %s is already connected; will retry', self._service_id)
-                        else:
-                            logger.warning('Service channel reconnect failed; will retry')
+                # ready_state: 0 CONNECTING (an attempt is in flight, leave it
+                # alone), 1 OPEN (nothing to do), 2 CLOSED (dropped or failed,
+                # since stop() would have ended the loop via _stop_event).
+                if conn is None or conn.ready_state != 2 or not self._open_channel:
+                    continue
+                self._note_disconnected(_error_summary(getattr(conn, 'error', None)))
+                if not self._running:
+                    break
+                try:
+                    self._connection = conn = self._open_channel()
+                except Exception as e:
+                    # The channel opener does not normally raise (it hands back
+                    # a connection that settles asynchronously), so this is an
+                    # unexpected local failure. Retry on the next tick.
+                    logger.warning('Service channel reconnect failed for %s: %s',
+                                   self._service_id, e)
+                    continue
+                settled = conn.wait_until_settled(timeout=_OPEN_SETTLE_TIMEOUT_S)
+                if not self._running:
+                    # stop() landed while this attempt was in flight, so it
+                    # closed the connection this one replaced. Close ours too,
+                    # or the service would stay registered server-side.
+                    conn.close()
+                    break
+                if settled == 1:
+                    self._note_connected()
 
         self._supervisor_thread = threading.Thread(target=loop, daemon=True)
         self._supervisor_thread.start()
@@ -114,11 +203,19 @@ class ServiceRegistration:
             self._connection.close()
 
     def is_running(self):
-        """Return whether the service is still running."""
+        """Return whether the service is still running (it keeps running, and
+        keeps retrying, while the server is unreachable)."""
         return self._running
 
+    def is_connected(self):
+        """Return whether the request channel is open RIGHT NOW, i.e. whether
+        the server currently sees this service as online."""
+        conn = self._connection
+        return bool(self._running and conn is not None and conn.ready_state == 1)
 
-def serve(client, project_id, service_info, on_service_request, extras=None):
+
+def serve(client, project_id, service_info, on_service_request, extras=None,
+          on_status=None):
     """Register a service and handle incoming work requests.
 
     Opens the service's dedicated request channel — which registers it for
@@ -135,15 +232,30 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
     user (their permissions, their name in the audit log). Readers may drive a
     delegating service; a plain one is writer-only.
 
+    A server that is DOWN is not an error here: the returned registration keeps
+    retrying (see :meth:`ServiceRegistration._start_supervisor`) and connects
+    as soon as the server answers, so a service may be started before the
+    server and survives any number of server restarts. Only a failure that
+    retrying cannot fix (a bad token, no write access, an unknown project)
+    raises :class:`ServiceRegistrationError`.
+
     Args:
         client: PlaidClient instance.
         project_id: Project UUID.
         service_info: Dict with service_id, service_name, description.
         on_service_request: Handler callback (data, response_helper).
         extras: Optional additional metadata.
+        on_status: Optional callback ``(event, project_id, detail)`` for
+            connection-state transitions, where event is ``'registered'``,
+            ``'reconnected'``, ``'disconnected'`` or ``'waiting'``. Called once
+            per transition, not once per retry.
 
     Returns:
-        A ServiceRegistration with stop() and is_running().
+        A ServiceRegistration with stop(), is_running() and is_connected().
+
+    Raises:
+        ServiceRegistrationError: the registration cannot succeed as
+            configured (bad token, insufficient permissions, unknown project).
     """
     if extras is None:
         extras = {}
@@ -154,7 +266,8 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
     full_info = {'service_id': service_id, 'service_name': service_name,
                  'description': description, 'extras': extras}
     registration = ServiceRegistration(full_info, None, client=client,
-                                       project_id=project_id, service_id=service_id)
+                                       project_id=project_id, service_id=service_id,
+                                       on_status=on_status)
 
     # Discovery metadata rides the channel's query string — opening the channel
     # is the registration. Keep wire keys kebab-case (transform extras too) so
@@ -223,7 +336,9 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
             helper.error(str(e))
 
     # Open the inbound request channel; this registers the service for
-    # discovery (presence = open channel).
+    # discovery (presence = open channel). The opener hands back a connection
+    # whose fate is decided asynchronously, so wait for the verdict rather than
+    # assuming an object means a live registration.
     try:
         connection = open_channel()
     except Exception as e:
@@ -231,6 +346,21 @@ def serve(client, project_id, service_info, on_service_request, extras=None):
 
     registration._connection = connection
     registration._open_channel = open_channel
+
+    state = connection.wait_until_settled(timeout=_OPEN_SETTLE_TIMEOUT_S)
+    if state == 2:
+        error = connection.error
+        status = _error_status(error)
+        if status in _PERMANENT_STATUSES:
+            raise ServiceRegistrationError(
+                f"Cannot serve '{service_id}' on project {project_id}: "
+                f'{_error_summary(error)}', status=status)
+        # Transient: the server is down, restarting, or still holding a stale
+        # registration. Hand back a registration that keeps trying.
+        registration._report('waiting', _error_summary(error))
+    elif state == 1:
+        registration._note_connected()
+
     registration._start_supervisor()
     return registration
 

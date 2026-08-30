@@ -40,6 +40,40 @@ class PlaidAPIError(Exception):
         self.original_error = original_error
 
 
+def short_error(error):
+    """One readable line for an operator.
+
+    An HTTP failure names its status. A connection failure is unwrapped down to
+    its root cause: ``requests`` reports one through urllib3's retry chain, so
+    the raw string is three nested exceptions of noise around "Connection
+    refused", which is the only part worth showing on a line whose job is to say
+    "the server is not up yet".
+
+    Unwrapping stops as soon as a layer says something its parent did not.
+    Every wrapper in a connection chain quotes the cause it wraps, so a cause
+    whose message is contained in its parent's is pure detail and worth
+    descending into; one that is NOT (a chunked-stream drop bottoming out in
+    ``invalid literal for int()``) is a different, less useful fact than the
+    "Response ended prematurely" above it, so we keep the parent.
+    """
+    if error is None:
+        return 'the server closed the stream'
+    status = (getattr(error, 'status', 0)
+              or getattr(getattr(error, 'response', None), 'status_code', None))
+    if status:
+        return f'HTTP {status}'
+    root = error
+    for _ in range(8):
+        inner = (getattr(root, 'original_error', None)
+                 or root.__cause__ or root.__context__)
+        if inner is None or inner is root or not str(inner):
+            break
+        if str(inner) not in str(root):
+            break
+        root = inner
+    return f'{type(root).__name__}: {root}'
+
+
 def parse_error_body(response):
     """Read a failed response's body as parsed JSON, falling back to text."""
     try:

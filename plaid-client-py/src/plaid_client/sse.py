@@ -6,6 +6,7 @@ import time
 
 import requests
 
+from plaid_client.http import short_error
 from plaid_client.transforms import transform_response
 
 logger = logging.getLogger(__name__)
@@ -71,27 +72,37 @@ def event_payload(event_type, parsed):
 
 
 # Connection failures are reported once at WARNING and then at DEBUG while the
-# same failure repeats (a supervisor retries every few seconds, and a 409 can
-# persist for as long as another instance holds the registration). The URL's
+# same failure repeats. A supervisor retries every few seconds for as long as
+# the server is away, and a 409 can persist for as long as another instance
+# holds the registration, so an outage must not scroll the operator's terminal.
+# Cleared when the stream next opens, so the NEXT outage warns again. The URL's
 # query string (service metadata) is never logged.
 _last_connection_error = {}
 
 
+def _stream_key(url):
+    """Dedup key for a stream: its path, without the query string."""
+    return (url or '').split('?', 1)[0]
+
+
+def _note_connection_opened(url):
+    """A stream opened: forget its last failure so the next outage is reported
+    at WARNING rather than swallowed as a repeat."""
+    _last_connection_error.pop(_stream_key(url), None)
+
+
 def _log_connection_error(e, url=None):
     status = getattr(getattr(e, 'response', None), 'status_code', None)
-    where = (url or getattr(getattr(e, 'request', None), 'url', '') or '').split('?', 1)[0]
+    where = _stream_key(url or getattr(getattr(e, 'request', None), 'url', ''))
     if status == 409:
         msg = (f'service registration rejected (409) for {where}: another instance holds '
                f'this service id on the project; will retry until it stops')
-    elif status:
-        msg = f'SSE connection error: HTTP {status} for {where}'
     else:
-        msg = f'SSE connection error: {e}'
-    key = (where, status or str(e))
-    if _last_connection_error.get(where) == key:
+        msg = f'SSE connection error for {where}: {short_error(e)}'
+    if _last_connection_error.get(where) == msg:
         logger.debug('%s (repeat)', msg)
     else:
-        _last_connection_error[where] = key
+        _last_connection_error[where] = msg
         logger.warning(msg)
 
 
@@ -108,6 +119,13 @@ class SSEConnection:
 
     The ``ready_state`` property mirrors the JS readyState values:
     0 (CONNECTING), 1 (OPEN), 2 (CLOSED).
+
+    The constructor returns as soon as the reader thread is started, so
+    ``ready_state`` is 0 at that point and the connection's fate is not yet
+    known. Callers that need the outcome (a service registration deciding
+    whether it is actually online) call :meth:`wait_until_settled`, which
+    blocks until the stream is OPEN or has failed, and then read
+    :attr:`error` for the reason.
     """
 
     def __init__(self, client, project_id, on_event, path=None):
@@ -119,6 +137,12 @@ class SSEConnection:
         self._stop_event = threading.Event()
         self._response = None
         self._ready_state = 0  # CONNECTING
+        # Set once the connection attempt has an outcome (OPEN, or CLOSED
+        # because it failed), so a caller can wait for the fate of a
+        # connection the constructor only started. `error` holds the
+        # exception that closed a failed attempt, or None.
+        self._settled = threading.Event()
+        self.error = None
 
         self._client = client
         self._project_id = project_id
@@ -137,12 +161,24 @@ class SSEConnection:
         """Current connection state: 0 CONNECTING, 1 OPEN, 2 CLOSED."""
         return self._ready_state
 
+    def wait_until_settled(self, timeout=None):
+        """Block until the connection is OPEN or has failed; return
+        ``ready_state``.
+
+        Returns 0 if `timeout` elapsed while still CONNECTING, which is what
+        a restarting server looks like: the socket is accepted but nothing has
+        answered yet. On 2 (CLOSED), :attr:`error` says why.
+        """
+        self._settled.wait(timeout=timeout)
+        return self._ready_state
+
     def close(self):
         """Close the connection and abort the underlying stream."""
         if not self._is_closed:
             self._is_closed = True
             self._is_connected = False
             self._ready_state = 2  # CLOSED
+            self._settled.set()
             self._stop_event.set()
             # Unblock the reader's iter_lines() first, then release the
             # response — otherwise close() can hang waiting on the in-flight
@@ -208,6 +244,8 @@ class SSEConnection:
 
             self._is_connected = True
             self._ready_state = 1  # OPEN
+            self._settled.set()
+            _note_connection_opened(url)
 
             event_type = ''
             data = ''
@@ -245,9 +283,11 @@ class SSEConnection:
                     data = ''
 
         except Exception as e:
+            self.error = e
             if not self._is_closed:
                 _log_connection_error(e, getattr(self, '_url', None))
         finally:
             self._is_connected = False
             self._is_closed = True
             self._ready_state = 2  # CLOSED
+            self._settled.set()

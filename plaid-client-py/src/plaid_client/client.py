@@ -1491,23 +1491,34 @@ class MessagesResource(_Resource):
         return svc.discard_service(self._client, project_id, service_id)
 
     def serve(self, project_id: str, service_info: dict, on_service_request,
-              extras: dict | None = None) -> svc.ServiceRegistration:
+              extras: dict | None = None, on_status=None) -> svc.ServiceRegistration:
         """Register as a service and handle incoming work requests.
 
         Requests are delivered over the service's own addressed channel (not the
         broadcast bus); replies stream back to the one requester.
+
+        The registration reopens its channel whenever it drops, so a server
+        restart needs no service restart, and a server that is not up yet is
+        waited for rather than treated as an error. Only a failure retrying
+        cannot fix (bad token, no write access, unknown project) raises
+        ``ServiceRegistrationError``.
 
         Args:
             project_id: The UUID of the project to serve
             service_info: Service information {service_id, service_name, description}
             on_service_request: Callback (data, response_helper)
             extras: Optional additional service metadata
+            on_status: Optional callback (event, project_id, detail) for
+                connection-state transitions ('registered', 'reconnected',
+                'disconnected', 'waiting'), one call per transition
 
         Returns:
-            Service registration object with .stop() method
+            Service registration object with .stop(), .is_running() and
+            .is_connected()
         """
         return svc.serve(
-            self._client, project_id, service_info, on_service_request, extras)
+            self._client, project_id, service_info, on_service_request, extras,
+            on_status=on_status)
 
     def request_service(self, project_id: str, service_id: str, data: Any,
                         timeout: float = 10.0, on_progress=None) -> Any:

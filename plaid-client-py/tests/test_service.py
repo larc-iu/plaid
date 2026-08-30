@@ -18,6 +18,8 @@ from plaid_client.service_schema import (  # noqa: E402
     TASKS, Param, build_extras, default_values, coerce,
 )
 from plaid_client.service import BaseService  # noqa: E402
+from plaid_client.http import PlaidAPIError  # noqa: E402
+from plaid_client.services import ServiceRegistration, ServiceRegistrationError  # noqa: E402
 
 
 def test_param_builders_and_options_normalize():
@@ -127,10 +129,11 @@ def test_base_service_assembles_extras_and_forwards_them():
     captured = {}
 
     class FakeMessages:
-        def serve(self, project_id, service_info, handler, extras):
+        def serve(self, project_id, service_info, handler, extras, on_status=None):
             captured['project_id'] = project_id
             captured['service_info'] = service_info
             captured['extras'] = extras
+            captured['on_status'] = on_status
             return object()
 
     class FakeClient:
@@ -155,6 +158,9 @@ def test_base_service_assembles_extras_and_forwards_them():
     }
     assert captured['extras']['summary'] == '## sum'
     assert captured['extras']['tasks'] == ['tokenize']
+    # The registration reports connection transitions back to the service, which
+    # is how an operator sees it heal itself after a server restart.
+    assert captured['on_status'] == svc._on_channel_status
 
 
 class _FakeRegistration:
@@ -174,18 +180,24 @@ def _make_sync_service(serve=None):
 
     class FakeMessages:
         def __init__(self):
-            self.serve = serve or (lambda project_id, service_info, handler, extras:
-                                   _FakeRegistration())
+            self.serve = serve or (lambda project_id, service_info, handler, extras,
+                                   on_status=None: _FakeRegistration())
 
     class FakeProjects:
         def __init__(self):
             self.current = []
             self.fail = False
+            self.error = RuntimeError('connection refused')
 
         def list(self):
             if self.fail:
-                raise RuntimeError('connection refused')
+                raise self.error
             return self.current
+
+        def list_page(self, *, limit=None, cursor=None, as_of=None):
+            if self.fail:
+                raise self.error
+            return {'entries': self.current[:limit], 'next_cursor': None}
 
     class FakeClient:
         def __init__(self):
@@ -231,7 +243,7 @@ def test_sync_served_projects_follows_the_project_set():
 def test_sync_served_projects_retries_failed_registrations():
     state = {'fail': True}
 
-    def serve(project_id, service_info, handler, extras):
+    def serve(project_id, service_info, handler, extras, on_status=None):
         if state['fail']:
             raise RuntimeError('409: already connected')
         return _FakeRegistration()
@@ -343,7 +355,8 @@ def test_non_delegating_service_ignores_delegation_and_stays_single_flight():
 def test_run_registers_on_each_named_project(monkeypatch):
     svc = _make_sync_service()
     served = []
-    svc.client.messages.serve = (lambda project_id, service_info, handler, extras:
+    svc.client.messages.serve = (lambda project_id, service_info, handler, extras,
+                                 on_status=None:
                                  served.append(project_id) or _FakeRegistration())
     monkeypatch.setattr(BaseService, 'get_client', staticmethod(lambda url: svc.client))
     monkeypatch.setattr(svc, 'run_service_loop', lambda *a, **k: None)
@@ -359,3 +372,201 @@ def test_run_without_ids_serves_all(monkeypatch):
     monkeypatch.setattr(svc, 'run_service_loop', lambda *a, **k: None)
     svc.run(['--url', 'http://x'])
     assert set(svc._registrations_by_project) == {'a', 'b'}
+
+
+# --- surviving the server: startup, reconnection, status reporting -----------
+
+
+def test_run_waits_for_a_server_that_is_down_instead_of_exiting(monkeypatch, capsys):
+    """A service launched while Plaid is down must start and keep trying, not
+    die, or else every server restart is also a service restart."""
+    svc = _make_sync_service()
+    svc.client.projects.fail = True
+    monkeypatch.setattr(BaseService, 'get_client', staticmethod(lambda url: svc.client))
+    monkeypatch.setattr(svc, 'run_service_loop', lambda *a, **k: None)
+
+    svc.run(['--url', 'http://x'])          # must not raise SystemExit
+    assert svc._registrations_by_project == {}
+
+    # setup() still ran, so the service is ready the moment the server answers.
+    svc.client.projects.fail = False
+    svc.client.projects.current = [{'id': 'p1', 'name': 'One'}]
+    assert svc._sync_served_projects() is True
+    assert set(svc._registrations_by_project) == {'p1'}
+    out = capsys.readouterr().out
+    assert 'not reachable yet' in out and 'Plaid server is reachable again' in out
+
+
+def test_run_exits_when_the_server_rejects_the_token(monkeypatch):
+    """A rejected token is an operator error worth dying on, before an
+    expensive setup(), and unlike an unreachable server."""
+    svc = _make_sync_service()
+    svc.client.projects.fail = True
+    svc.client.projects.error = PlaidAPIError('HTTP 401 Unauthorized', status=401)
+    monkeypatch.setattr(BaseService, 'get_client', staticmethod(lambda url: svc.client))
+    monkeypatch.setattr(svc, 'setup', lambda args: (_ for _ in ()).throw(
+        AssertionError('setup must not run after a rejected token')))
+
+    try:
+        svc.run(['--url', 'http://x'])
+    except SystemExit as e:
+        assert e.code == 1
+    else:
+        raise AssertionError('expected SystemExit')
+
+
+def test_named_projects_are_retried_and_never_listed(monkeypatch):
+    """With explicit project ids the service must not need `projects.list`, and
+    a registration that could not be made yet is retried by the run loop."""
+    state = {'fail': True}
+
+    def serve(project_id, service_info, handler, extras, on_status=None):
+        if state['fail']:
+            raise RuntimeError('connection refused')
+        return _FakeRegistration()
+
+    svc = _make_sync_service(serve=serve)
+    svc.client.projects.fail = True   # listing would raise if it were attempted
+    monkeypatch.setattr(BaseService, 'get_client', staticmethod(lambda url: svc.client))
+    monkeypatch.setattr(svc, 'run_service_loop', lambda *a, **k: None)
+    monkeypatch.setattr(svc, '_check_credentials', lambda: None)
+
+    svc.run(['p1', 'p2', '--url', 'http://x'])
+    assert svc._registrations_by_project == {}
+
+    state['fail'] = False
+    assert svc._sync_served_projects() is True
+    assert set(svc._registrations_by_project) == {'p1', 'p2'}
+
+
+def test_permanent_registration_failure_is_reported_once(capsys):
+    """A project this token can never serve should not reprint its error on
+    every pass, but must still be picked up if the permission is granted."""
+    state = {'fail': True}
+
+    def serve(project_id, service_info, handler, extras, on_status=None):
+        if state['fail']:
+            raise ServiceRegistrationError('lacks write access', status=403)
+        return _FakeRegistration()
+
+    svc = _make_sync_service(serve=serve)
+    svc.client.projects.current = [{'id': 'p1', 'name': 'One'}]
+    svc._sync_served_projects()
+    svc._sync_served_projects()
+    assert capsys.readouterr().out.count('lacks write access') == 1
+
+    state['fail'] = False
+    svc._sync_served_projects()
+    assert set(svc._registrations_by_project) == {'p1'}
+
+
+def test_outage_reports_one_lost_and_one_back_line_for_many_projects(capsys):
+    """Reporting is per SERVICE, not per project: an operator watching a
+    service on 3 projects sees one 'lost' line and one 'back' line, and both
+    say the service heals itself."""
+    svc = _make_sync_service()
+    svc.client.projects.current = [{'id': 'p1', 'name': 'One'}, {'id': 'p2'}, {'id': 'p3'}]
+    svc._sync_served_projects()
+    capsys.readouterr()
+
+    for pid in ('p1', 'p2', 'p3'):
+        svc._on_channel_status('disconnected', pid, 'ConnectionError: refused')
+    out = capsys.readouterr().out
+    assert out.count('Lost the connection') == 1
+    assert 'no need to restart' in out
+
+    for pid in ('p1', 'p2'):
+        svc._on_channel_status('reconnected', pid)
+    assert 'Reconnected' not in capsys.readouterr().out   # p3 still down
+    svc._on_channel_status('reconnected', 'p3')
+    assert 'Reconnected to Plaid, serving 3 project(s)' in capsys.readouterr().out
+
+
+class _FakeConnection:
+    """Stand-in for an SSEConnection: `state` is the readyState it settles on
+    (1 OPEN, 2 CLOSED), reported through the same wait_until_settled contract
+    the real one uses."""
+
+    def __init__(self, state, error=None):
+        self.ready_state = state
+        self.error = error
+        self.closed = False
+
+    def wait_until_settled(self, timeout=None):
+        return self.ready_state
+
+    def close(self):
+        self.closed = True
+        self.ready_state = 2
+
+
+def _drain(events, timeout=3.0):
+    """Wait for the supervisor thread to report something."""
+    import time as _t
+    deadline = _t.monotonic() + timeout
+    while _t.monotonic() < deadline:
+        if events:
+            return events
+        _t.sleep(0.01)
+    return events
+
+
+def test_registration_only_claims_reconnection_once_the_channel_is_really_open():
+    """The supervisor must verify a reopened channel rather than treating the
+    attempt itself as success. A failed attempt while the server is still down
+    must report nothing and be retried."""
+    events = []
+    attempts = []
+    outcomes = [_FakeConnection(2, error=RuntimeError('refused')),   # server still down
+                _FakeConnection(2, error=RuntimeError('refused')),   # still down
+                _FakeConnection(1)]                                  # back up
+
+    def open_channel():
+        conn = outcomes[min(len(attempts), len(outcomes) - 1)]
+        attempts.append(conn)
+        return conn
+
+    reg = ServiceRegistration({'service_id': 'x'}, _FakeConnection(1),
+                              project_id='p1', service_id='x',
+                              open_channel=open_channel,
+                              on_status=lambda e, pid, d=None: events.append((e, pid)))
+    reg._connected = True
+    reg._ever_connected = True
+    reg._start_supervisor(check_interval_s=0.02)
+    try:
+        reg._connection.ready_state = 2          # the server went away
+        _drain(events)
+        assert events[0][0] == 'disconnected'
+        # Only the third attempt actually opens. The two failures before it
+        # must not be reported as a reconnection.
+        import time as _t
+        deadline = _t.monotonic() + 3.0
+        while _t.monotonic() < deadline and not any(e[0] == 'reconnected' for e in events):
+            _t.sleep(0.01)
+        assert [e[0] for e in events] == ['disconnected', 'reconnected']
+        assert len(attempts) >= 3
+        assert reg.is_connected()
+    finally:
+        reg.stop()
+
+
+def test_registration_keeps_retrying_for_as_long_as_the_server_is_away():
+    """No attempt budget: a service left running through a long outage keeps
+    trying, so it is still there when the server returns."""
+    import time as _t
+    attempts = []
+
+    def open_channel():
+        attempts.append(1)
+        return _FakeConnection(2, error=RuntimeError('refused'))
+
+    reg = ServiceRegistration({'service_id': 'x'}, _FakeConnection(2),
+                              project_id='p1', service_id='x',
+                              open_channel=open_channel)
+    reg._start_supervisor(check_interval_s=0.02)
+    try:
+        _t.sleep(0.4)
+        assert len(attempts) > 5
+        assert reg.is_running() and not reg.is_connected()
+    finally:
+        reg.stop()

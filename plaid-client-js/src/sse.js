@@ -1,5 +1,17 @@
 import { transformResponse } from './transforms.js';
 
+// A live SSE stream is never silent for long: the server sends a keepalive
+// comment on service channels (every 25s) and a heartbeat event on the /listen
+// bus (every 30s). So if NOTHING arrives for longer than this, the connection is
+// dead: the server was killed without closing the socket, the network dropped
+// it, or a reconnect caught the server mid-restart (port accepting, app not yet
+// streaming). We must surface that as a drop so the registration supervisor in
+// serve() can reopen it. Without the watchdog such a silent drop
+// leaves `reader.read()` pending forever: readyState never reaches CLOSED, so
+// nothing reconnects and the service never heals. Comfortably above both server
+// cadences, so a healthy idle stream never trips it.
+export const SSE_IDLE_TIMEOUT_MS = 60000;
+
 /**
  * Project a parsed SSE `data:` object onto what a listener callback sees.
  *
@@ -59,6 +71,21 @@ export function createSSEConnection(client, projectId, onEvent, path) {
     }
   };
 
+  // Watchdog: abort the fetch if the stream goes silent for longer than the
+  // server's keepalive cadence, so a silently-dropped connection lands in the
+  // catch below (readyState CLOSED) instead of blocking on a read that will
+  // never resolve.
+  let idleTimer = null;
+  const clearIdleTimer = () => {
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  };
+  const armIdleTimer = () => {
+    clearIdleTimer();
+    idleTimer = setTimeout(() => {
+      if (!isClosed) abortController.abort(new Error('SSE stream went silent'));
+    }, SSE_IDLE_TIMEOUT_MS);
+  };
+
   const sseConnection = {
     readyState: 0, // CONNECTING
     close: () => {
@@ -66,6 +93,7 @@ export function createSSEConnection(client, projectId, onEvent, path) {
         isClosed = true;
         isConnected = false;
         sseConnection.readyState = 2; // CLOSED
+        clearIdleTimer();
         abortController.abort();
       }
     },
@@ -83,6 +111,7 @@ export function createSSEConnection(client, projectId, onEvent, path) {
   (async () => {
     try {
       const url = `${client.baseUrl}${streamPath}`;
+      armIdleTimer();
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -120,6 +149,7 @@ export function createSSEConnection(client, projectId, onEvent, path) {
       while (true) {
         const { done, value } = await reader.read();
         if (done || isClosed) break;
+        armIdleTimer();
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -163,6 +193,7 @@ export function createSSEConnection(client, projectId, onEvent, path) {
         console.warn('SSE connection error:', error);
       }
     } finally {
+      clearIdleTimer();
       isConnected = false;
       isClosed = true;
       sseConnection.readyState = 2; // CLOSED
