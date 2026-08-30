@@ -255,3 +255,63 @@ def test_execute_lexicon_and_document_ops():
     # entries are deleted only after their links are gone, in the second batch
     second = [(r, m, a) for r, m, a, k in c.batches[1]]
     assert second == [('vocab_items', 'delete', ('vi-erg',)), ('vocab_items', 'delete', ('vi-gam',))]
+
+
+def test_op_keys_survive_the_wire_unchanged():
+    """A plan crosses the wire twice: Python writes it snake_case, the server
+    speaks kebab-case, the browser holds it camelCase, and it comes back the
+    same way. That is only lossless while every key is plain snake_case, and
+    while the arbitrary keys a user chooses live under ``metadata`` (which
+    both clients pass through untouched). A key like ``layer_2`` or one with
+    a capital would come back as something else, and the write would silently
+    lose whatever it named."""
+    import re
+    from test_tools import ws as tools_ws
+    from test_shape import ws as shape_ws
+    from plaid_igt_agent.tools import call_tool
+
+    key_re = re.compile(r'^[a-z][a-z0-9]*(_[a-z][a-z0-9]*)*$')
+    ops = []
+    w = tools_ws()
+    for name, args in [
+        ('set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'}),
+        ('set_analysis', {'document': 'Text 1', 'ref': 's1.w2', 'morphemes': [{'form': 'gam', 'Morph Gloss': 'fish'}]}),
+        ('set_orthography', {'document': 'Text 1', 'refs': ['s1.w1'], 'orthography': 'IPA', 'value': 'ali'}),
+        ('respell', {'document': 'Text 1', 'ref': 's1.w2', 'new_text': 'gamm'}),
+        ('link_entry', {'document': 'Text 1', 'refs': ['s1.w1'], 'entry_form': 'Ali'}),
+        ('unlink_entry', {'document': 'Text 1', 'refs': ['s1.w1.m1']}),
+        ('create_entry', {'form': 'zzz', 'fields': {'gloss': 'g'}}),
+        ('set_entry_field', {'entry_form': 'Ali', 'field': 'gloss', 'value': 'ali'}),
+        ('set_document_metadata', {'document': 'Text 1', 'field': 'Date', 'value': '2026'}),
+        ('create_document', {'name': 'Brand new', 'text': 'Sa cuma.'}),
+        ('confirm', {'document': 'Text 1'}),
+        ('rename_entry', {'entry_id': 'vi-gam', 'new_form': 'gam2'}),
+        ('delete_entry', {'entry_form': 'Ali'}),
+        ('merge_words', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2']}),
+        ('merge_sentences', {'document': 'Text 1', 'ref': 's2'}),
+        ('rename_document', {'document': 'Text 1', 'new_name': 'Text One'}),
+    ]:
+        assert not call_tool(w, name, args).startswith('Error'), name
+    ops += w.ops
+    w = shape_ws()
+    for name, args in [('split_word', {'document': 'Text 1', 'ref': 's1.w1', 'at': 2}),
+                       ('delete_word', {'document': 'Text 1', 'refs': ['s1.w2']}),
+                       ('split_sentence', {'document': 'Text 1', 'ref': 's1', 'before_word': 2}),
+                       ('append_text', {'document': 'Text 1', 'text': 'Yeni cümlə.'})]:
+        assert not call_tool(w, name, args).startswith('Error'), name
+    ops += w.ops
+
+    covered = {o['kind'] for o in ops}
+    assert len(covered) >= 15, covered  # a broad sample, not one shape
+
+    def walk(value, under_metadata=False):
+        if isinstance(value, list):
+            for v in value:
+                walk(v, under_metadata)
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                if not under_metadata:
+                    assert key_re.match(k), f'{k!r} does not survive recasing'
+                walk(v, under_metadata or k in ('metadata', 'config'))
+
+    walk(ops)

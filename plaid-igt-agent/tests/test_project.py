@@ -13,6 +13,10 @@ def test_load_project_reads_roles_scopes_orthographies_and_lexicons():
     assert p.document_metadata == ['Date']
     assert p.field('gloss').layer_id == 'sl-gloss'  # case-insensitive
     assert p.field('morph gloss').scope == 'Morpheme'
+    # A scope-qualified name works even where nothing forces the qualifier,
+    # so one spelling addresses a field in every project.
+    assert p.field('Gloss (Word)').layer_id == 'sl-gloss'
+    assert p.field('morph gloss (morpheme)').scope == 'Morpheme'
 
 
 def test_parse_document_numbers_words_skipping_punctuation_and_attaches_everything():
@@ -121,3 +125,36 @@ def test_literal_and_case_only_collisions_stay_addressable():
     assert sorted(p.fields) == ['Gloss (Morpheme)', 'Gloss (Word)', 'gloss (Word 2)']
     assert p.field('Gloss (Word)').scope == 'Sentence' and p.field('gloss (word 2)').scope == 'Word'
     assert p.field_by_layer('sl-trans') is not None
+    # The literal name wins over the qualified reading of the same string.
+    assert p.field('gloss (Morpheme)').scope == 'Morpheme'
+
+
+def test_the_field_error_spells_names_the_way_they_must_be_passed_back():
+    p = load_project(FakeClient(project=project_raw()), 'p1')
+    try:
+        p.field('Nope')
+    except ValueError as e:
+        # Not "Gloss (Word)", which in this project is not the field's name.
+        assert str(e) == ('No field named "Nope". Fields: '
+                          'Word: Gloss; Morpheme: Morph Gloss; Sentence: Translation')
+    else:
+        raise AssertionError
+
+
+def test_two_lexicons_with_one_name_are_refused_rather_than_guessed():
+    raw = project_raw()
+    raw['vocabs'] = raw['vocabs'] + [{'id': 'v-other', 'name': 'lexicon', 'config': {}}]
+    p = load_project(FakeClient(project=raw), 'p1')
+    try:
+        p.vocab('Lexicon')
+    except ValueError as e:
+        assert 'Several lexicons are named' in str(e)
+    else:
+        raise AssertionError
+    # And with no name at all, since there is no longer only one.
+    try:
+        p.vocab()
+    except ValueError as e:
+        assert 'Several lexicons' in str(e)
+    else:
+        raise AssertionError

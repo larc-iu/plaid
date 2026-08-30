@@ -127,10 +127,13 @@ class IgtProject:
 
     def field(self, name: str) -> Field:
         """Case-insensitive field lookup by display name, falling back to the
-        bare layer name when that is unambiguous; a helpful error otherwise.
-        (A project may have a word-scope and a morpheme-scope layer both
-        called "Gloss": they are exposed as "Gloss (Word)" and
-        "Gloss (Morpheme)", and bare "Gloss" asks you to pick.)"""
+        bare layer name when that is unambiguous, and to "<name> (<scope>)"
+        whichever way the project spells it. (A project may have a word-scope
+        and a morpheme-scope layer both called "Gloss": they are exposed as
+        "Gloss (Word)" and "Gloss (Morpheme)", and bare "Gloss" asks you to
+        pick. Where there is no such clash the display name is bare "Gloss",
+        but "Gloss (Word)" still names it, so one spelling works in every
+        project.)"""
         key = (name or '').strip().lower()
         for f in self.fields.values():
             if f.name.lower() == key:
@@ -140,8 +143,15 @@ class IgtProject:
             return base[0]
         if len(base) > 1:
             raise ValueError(f'"{name}" names several fields; say which: ' + ', '.join(f.name for f in base))
-        raise ValueError(f'No field named "{name}". Fields: '
-                         + ', '.join(f'{f.name} ({f.scope})' for f in self.fields.values()))
+        qualified = [f for f in self.fields.values() if f'{f.base_name} ({f.scope})'.lower() == key]
+        if len(qualified) == 1:
+            return qualified[0]
+        raise ValueError(f'No field named "{name}". Fields: ' + self.field_list())
+
+    def field_list(self) -> str:
+        """The fields by scope, spelled the way they must be passed back."""
+        return '; '.join(f'{scope}: ' + ', '.join(f.name for f in fs)
+                         for scope in SCOPES for fs in [self.fields_by_scope(scope)] if fs) or '(none)'
 
     def fields_by_scope(self, scope: str) -> List[Field]:
         return [f for f in self.fields.values() if f.scope == scope]
@@ -192,13 +202,19 @@ class IgtProject:
                          + (', '.join(self.orthographies) or '(none)'))
 
     def vocab(self, name: Optional[str] = None) -> dict:
-        """The lexicon by (case-insensitive) name, or the only one when unnamed."""
+        """The lexicon by (case-insensitive) name, or the only one when
+        unnamed. Nothing stops two lexicons from sharing a name, so a name
+        that matches more than one is refused rather than resolved to
+        whichever comes first."""
         if not self.vocabs:
             raise ValueError('This project has no lexicon (vocabulary).')
         if name:
-            for v in self.vocabs:
-                if v['name'].lower() == name.lower():
-                    return v
+            named = [v for v in self.vocabs if v['name'].lower() == name.lower()]
+            if len(named) == 1:
+                return named[0]
+            if len(named) > 1:
+                raise ValueError(f'Several lexicons are named "{name}", so the name does not say which. '
+                                 'Use read_lexicon to see them, and address entries by entry_id.')
             raise ValueError(f'No lexicon named "{name}". Lexicons: '
                              + ', '.join(v['name'] for v in self.vocabs))
         if len(self.vocabs) == 1:
