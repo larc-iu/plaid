@@ -41,6 +41,7 @@ class Workspace:
         self._docs: Dict[str, IgtDoc] = {}
         self._lexicons: Dict[str, List[dict]] = {}
         self.ops: List[Dict[str, Any]] = []
+        self.replaced = 0  # ops superseded by a later op on the same target this turn
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
 
     # --- loading ---------------------------------------------------------
@@ -128,7 +129,33 @@ class Workspace:
     # --- plan --------------------------------------------------------------
 
     def add_op(self, op: Dict[str, Any]) -> None:
+        """Append a plan op. An op on a target the plan already touches
+        REPLACES the earlier op (last wins), so a corrected instruction never
+        yields two writes to one span, token, or entry. The target key is
+        derived from the op's kind."""
+        key = op_target(op)
+        if key is not None:
+            for i, prev in enumerate(self.ops):
+                if op_target(prev) == key:
+                    self.ops[i] = op
+                    self.replaced += 1
+                    return
         self.ops.append(op)
+
+    def add_ops(self, ops: List[Dict[str, Any]]) -> None:
+        for op in ops:
+            self.add_op(op)
+
+    def planned_span_value(self, layer_id: str, token_id: str, current: str) -> str:
+        """The value a span will have once the plan runs (a planned op wins
+        over the stored value), so bulk tools compose with earlier plans."""
+        for op in self.ops:
+            if op.get('kind') == 'set_span' and op.get('layer_id') == layer_id and op.get('token_id') == token_id:
+                return op.get('value') or ''
+        return current
+
+    def planned_respells(self, text_id: str) -> List[tuple]:
+        return [(op['begin'], op['end']) for op in self.ops if op.get('kind') == 'respell' and op.get('text_id') == text_id]
 
     def plan_payload(self) -> Optional[Dict[str, Any]]:
         if not self.ops:
@@ -140,8 +167,40 @@ class Workspace:
                 'labels': [op['label'] for op in self.ops], 'ops': copy.deepcopy(self.ops)}
 
     def planned_note(self, n: int) -> str:
-        return (f'Planned {n} change{"s" if n != 1 else ""} (nothing is written until the user approves; '
+        note = (f'Planned {n} change{"s" if n != 1 else ""} (nothing is written until the user approves; '
                 f'the plan now holds {len(self.ops)}). Describe the plan to the user in your reply.')
+        if self.replaced:
+            note += f' {self.replaced} earlier planned change{"s" if self.replaced != 1 else ""} on the same target{"s" if self.replaced != 1 else ""} superseded.'
+            self.replaced = 0
+        return note
+
+
+def op_target(op: Dict[str, Any]):
+    """What an op writes to, for last-wins replacement within one plan."""
+    k = op.get('kind')
+    if k == 'set_span':
+        return ('span', op.get('layer_id'), op.get('token_id'))
+    if k == 'set_analysis':
+        return ('analysis', op.get('word_id'))
+    if k == 'set_orthography':
+        return ('orth', op.get('word_id'), op.get('key'))
+    if k == 'respell':
+        return ('respell', op.get('text_id'), op.get('begin'), op.get('end'))
+    if k in ('link', 'unlink'):
+        return ('link', op.get('token_id') if k == 'link' else op.get('token_id_hint'))
+    if k == 'set_entry_field':
+        return ('entry_field', op.get('item_id'), op.get('field'))
+    if k == 'rename_entry':
+        return ('rename_entry', op.get('item_id'))
+    if k == 'delete_entry':
+        return ('delete_entry', op.get('item_id'))
+    if k == 'set_doc_metadata':
+        return ('doc_meta', op.get('document_id'), op.get('field'))
+    if k == 'rename_document':
+        return ('rename_document', op.get('document_id'))
+    if k == 'create_document':
+        return ('create_document', op.get('name'))
+    return None
 
 
 # --- helpers -----------------------------------------------------------------
@@ -682,21 +741,25 @@ def t_set_field(ws: Workspace, document: str, refs, field: str, value: str) -> s
     doc = ws.doc(document)
     value = '' if value is None else str(value)
     kind = {'Word': Word, 'Morpheme': Morpheme, 'Sentence': Sentence}[f.scope]
-    n = 0
+    staged: List[Dict[str, Any]] = []
     for ref in _refs(refs):
         obj = _need(resolve(doc, ref), kind, ref)
         old = obj.fields.get(f.name)
         if (old.value if old else '') == value:
             continue
         what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
-        target_id = obj.id
-        ws.add_op({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': target_id,
-                   'span_id': old.id if old else None, 'value': value,
-                   'label': f'{doc.name} {ref} "{what[:40]}": {f.name} '
-                            + (f'"{old.value}" → "{value}"' if old and old.value != '' else f'= "{value}"')
-                            + (' (cleared)' if value == '' else '')})
-        n += 1
-    return ws.planned_note(n)
+        staged.append(span_op(doc, ref, what, f, obj.id, old, value))
+    ws.add_ops(staged)
+    return ws.planned_note(len(staged))
+
+
+def span_op(doc, ref: str, what: str, f, token_id: str, old, value: str) -> Dict[str, Any]:
+    """A set_span op with its human label. ``old`` is the current Span or None."""
+    return {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': token_id,
+            'span_id': old.id if old else None, 'value': value,
+            'label': f'{doc.name} {ref} "{what[:40]}": {f.name} '
+                     + (f'"{old.value}" → "{value}"' if old and old.value != '' else f'= "{value}"')
+                     + (' (cleared)' if value == '' else '')}
 
 
 def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> str:
@@ -740,16 +803,16 @@ def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> s
 def t_set_orthography(ws: Workspace, document: str, refs, orthography: str, value: str) -> str:
     o = ws.project.orthography(orthography)
     doc = ws.doc(document)
-    n = 0
+    staged: List[Dict[str, Any]] = []
     for ref in _refs(refs):
         w = _need(resolve(doc, ref), Word, ref)
         old = w.orthographies.get(o, '')
         if old == (value or ''):
             continue
-        ws.add_op({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{o}', 'value': value or '',
-                   'label': f'{doc.name} {ref} "{w.surface}": {o} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"')})
-        n += 1
-    return ws.planned_note(n)
+        staged.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{o}', 'value': value or '',
+                       'label': f'{doc.name} {ref} "{w.surface}": {o} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"')})
+    ws.add_ops(staged)
+    return ws.planned_note(len(staged))
 
 
 def t_respell(ws: Workspace, document: str, ref: str, new_text: str) -> str:
@@ -760,9 +823,20 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str) -> str:
         raise ToolError('new_text must not be empty (there is no delete-word tool)')
     if new_text == w.surface:
         return ws.planned_note(0)
+    check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{doc.name} {ref}')
     ws.add_op({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new_text,
                'label': f'{doc.name} {ref}: respell "{w.surface}" → "{new_text}"'})
     return ws.planned_note(1)
+
+
+def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, where: str) -> None:
+    """A respell may repeat an already planned range (last wins) but never
+    overlap a different one: the server applies text edits sequentially and
+    overlapping ranges would corrupt the text."""
+    for b, e in ws.planned_respells(text_id):
+        if (b, e) != (begin, end) and b < end and begin < e:
+            raise ToolError(f'{where}: overlaps a respelling already planned for {b}-{e} in the same text; '
+                            f'discard_plan or narrow the pattern')
 
 
 def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] = None,
@@ -770,7 +844,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     doc = ws.doc(document)
     kind, target = ws.find_entry(entry_form, lexicon, entry_id)
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
-    n = 0
+    staged: List[Dict[str, Any]] = []
     for ref in _refs(refs):
         obj = resolve(doc, ref)
         if isinstance(obj, Sentence):
@@ -778,27 +852,27 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
         if kind == 'existing' and obj.link and obj.link.item_id == target['id']:
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
-        ws.add_op({'kind': 'link', 'token_id': obj.id,
-                   'item_id': target['id'] if kind == 'existing' else None,
-                   'new_entry_key': target if kind == 'new' else None,
-                   'existing_link_id': obj.link.id if obj.link else None,
-                   'label': f'{doc.name} {ref} "{what}": link ' + (f'"{obj.link.form}" → ' if obj.link else '') + f'"{form}"'})
-        n += 1
-    return ws.planned_note(n)
+        staged.append({'kind': 'link', 'token_id': obj.id,
+                       'item_id': target['id'] if kind == 'existing' else None,
+                       'new_entry_key': target if kind == 'new' else None,
+                       'existing_link_id': obj.link.id if obj.link else None,
+                       'label': f'{doc.name} {ref} "{what}": link ' + (f'"{obj.link.form}" → ' if obj.link else '') + f'"{form}"'})
+    ws.add_ops(staged)
+    return ws.planned_note(len(staged))
 
 
 def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
     doc = ws.doc(document)
-    n = 0
+    staged: List[Dict[str, Any]] = []
     for ref in _refs(refs):
         obj = resolve(doc, ref)
         if isinstance(obj, Sentence) or not obj.link:
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
-        ws.add_op({'kind': 'unlink', 'link_id': obj.link.id,
-                   'label': f'{doc.name} {ref} "{what}": unlink "{obj.link.form}"'})
-        n += 1
-    return ws.planned_note(n)
+        staged.append({'kind': 'unlink', 'link_id': obj.link.id, 'token_id_hint': obj.id,
+                       'label': f'{doc.name} {ref} "{what}": unlink "{obj.link.form}"'})
+    ws.add_ops(staged)
+    return ws.planned_note(len(staged))
 
 
 def t_create_entry(ws: Workspace, form: str, lexicon: Optional[str] = None, fields: Optional[dict] = None,
@@ -853,7 +927,7 @@ def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[di
     name = (name or '').strip()
     if not name:
         raise ToolError('name must not be empty')
-    if any((d.get('name') or '') == name for d in ws.documents()):
+    if any((d.get('name') or '').casefold() == name.casefold() for d in ws.documents()):
         raise ToolError(f'A document named "{name}" already exists.')
     text = (text or '').replace('\r\n', '\n')
     if not text.strip():
@@ -1027,6 +1101,8 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
         return _truncate(fn(ws, **(args or {})))
     except (ToolError, ValueError) as e:  # ValueError: a name/reference lookup failed, message is for the model
         return f'Error: {e}'
+    except (TypeError, AttributeError) as e:
+        return f'Error: an argument has the wrong type ({e}); check the tool\'s parameter types'
     except Exception as e:  # noqa: BLE001 - the model gets the failure as text; the log gets the trace
         import traceback
         traceback.print_exc()

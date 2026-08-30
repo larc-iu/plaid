@@ -22,7 +22,7 @@ import re
 from plaid_client import BaseService, TASKS, service_source
 
 from .agent import ModelConfig, run_turn
-from .plan import execute_plan, summarize
+from .plan import execute_plan, summarize, PlanError
 from .project import load_project
 from .prompt import build_system_prompt
 from .tools import Workspace
@@ -53,6 +53,10 @@ class AssistantService(BaseService):
             'Chat about the project and plan edits, with the operator\'s model',
             tasks=[TASKS.ASSIST], summary=SUMMARY, delegation=True)
         self.cfg: ModelConfig | None = None
+        # Plan ids already applied by this process, so a second approval of
+        # the same plan (a retried request after a client timeout, a double
+        # click) does not write it twice. Bounded, most recent last.
+        self._applied_plans: list = []
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument('--model', required=True,
@@ -102,14 +106,33 @@ class AssistantService(BaseService):
             if not ops:
                 response_helper.error('Nothing to apply')
                 return
+            plan_id = approve.get('id')
+            if plan_id and plan_id in self._applied_plans:
+                response_helper.complete({'kind': 'applied', 'applied': 0, 'counts': [], 'duplicate': True,
+                                          'message': 'This plan was already applied; nothing was written again.'})
+                return
             label = approve.get('label') or f'Assistant: {summarize(ops)}'
             response_helper.progress(10, 'Applying changes…')
-            counts = execute_plan(client, ops, source=service_source(self.service_id), label=label, project=project)
+            try:
+                counts = execute_plan(client, ops, source=service_source(self.service_id), label=label, project=project)
+            except PlanError as e:
+                if plan_id and e.applied:
+                    self._remember_applied(plan_id)
+                response_helper.error(f'The plan failed after {e.applied} of {e.total} changes were applied: {e}. '
+                                      + ('Those changes stand (see recent_changes); the rest were not applied.' if e.applied
+                                         else 'Nothing was written.'))
+                return
+            except ValueError as e:
+                response_helper.error(f'The plan was rejected before anything was written: {e}')
+                return
+            if plan_id:
+                self._remember_applied(plan_id)
+            notes = counts.pop('notes', [])
             response_helper.progress(100, 'Done')
             response_helper.complete({
                 'kind': 'applied', 'applied': sum(counts.values()),
                 'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
-                'message': f'Applied {summarize(ops)}.',
+                'message': f'Applied {summarize(ops)}.' + (' ' + '; '.join(notes) if notes else ''),
             })
             return
 
@@ -124,6 +147,11 @@ class AssistantService(BaseService):
         text, new = run_turn(self.cfg, ws, build_system_prompt(project), transcript, on_progress)
         response_helper.progress(100, 'Done')
         response_helper.complete({'kind': 'turn', 'message': text, 'messages': new, 'plan': ws.plan_payload()})
+
+
+    def _remember_applied(self, plan_id: str) -> None:
+        self._applied_plans.append(plan_id)
+        del self._applied_plans[:-500]
 
 
 def main():

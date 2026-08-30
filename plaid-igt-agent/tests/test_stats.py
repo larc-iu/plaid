@@ -105,7 +105,8 @@ def test_bulk_plans():
     assert w.ops[-1]['value'] == 'Ali saw a fish!'
     assert call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'}).startswith('Nothing to change')
     out = call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
-    assert 'Planned 3 changes' in out and w.ops[-1]['kind'] == 'respell' and w.ops[-1]['value'] == 'Gäm-är'
+    assert 'Planned 4 changes' in out and w.ops[-1]['kind'] == 'respell' and w.ops[-1]['value'] == 'Gäm-är'  # case-insensitive, like search
+    assert 'Planned 3 changes' in call_tool(ws(), 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'case_sensitive': True})
     assert 'would become empty' in call_tool(w, 'respell_all', {'pattern': '.*', 'replacement': '', 'regex': True})
     out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})
     assert 'Planned 3 changes' in out  # w-1 already has IPA
@@ -151,7 +152,7 @@ def test_query_rewrites_layer_names_and_scopes_to_the_project():
     w = ws(c)
     out = call_tool(w, 'query', {'query': {'find': ['?s'], 'where': [['span', '?s', {'layer': 'morph gloss', 'value': 'ERG'}],
                                                                      ['seq', {'layer': 'words'}, ['span', {'layer': 'Gloss'}, 'as', '?g']]]}})
-    assert seen['scope'] == {'project_ids': ['p1']} and seen['return'] == 'entities' and seen['limit'] == 50
+    assert seen['scope'] == {'project_ids': ['p1']} and seen['return'] == 'entities' and seen['limit'] == 1000
     assert seen['where'][0][2]['layer'] == 'sl-mgloss' and seen['where'][1][1]['layer'] == 'tk-word'
     assert seen['where'][1][2][1]['layer'] == 'sl-gloss'
     assert out == '1 row: s\n  "Text 1" s1.w1.m2 Morph Gloss = "ERG"'
@@ -170,3 +171,49 @@ def test_query_count_and_aggregate_shapes():
     out = call_tool(ws(c), 'query', {'query': {'where': [['token', '?t', {'layer': 'words', 'doc': {'var': '?d'}}]],
                                                'return': {'group': ['?d'], 'aggregates': [['count']]}}})
     assert out == '1 group: d\tcount\n  Text 1\t4'
+
+
+def test_a_failing_tool_call_leaves_no_partial_plan():
+    w = ws()
+    # the cap: 4 words would change, cap it at 2 for the test
+    import plaid_igt_agent.bulk as bulk
+    old = bulk.MAX_BULK
+    bulk.MAX_BULK = 2
+    try:
+        assert 'more than the 2' in call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
+    finally:
+        bulk.MAX_BULK = old
+    assert w.ops == []
+    # a bad ref in a multi-ref call
+    assert 'not a morpheme' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m2', 's1.w2'], 'field': 'Morph Gloss', 'value': 'x'})
+    assert w.ops == []
+    # a word that would be emptied part-way through
+    assert 'would become empty' in call_tool(w, 'respell_all', {'pattern': '^gam$', 'replacement': '', 'regex': True})
+    assert w.ops == []
+
+
+def test_second_op_on_the_same_target_replaces_the_first():
+    w = ws()
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': ''})
+    out = call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': 'X'})
+    assert '1 earlier planned change on the same target superseded' in out
+    assert len(w.ops) == 1 and w.ops[0]['value'] == 'X' and w.ops[0]['span_id'] == 'sp-g1'
+    # replace_in_field composes with the planned value rather than the stored one
+    call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'X', 'replacement': 'Y'})
+    assert len(w.ops) == 1 and w.ops[0]['value'] == 'Y'
+    # two analyses of one word: one op
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'gam'}, {'form': 'ar'}]})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'gamar'}]})
+    assert sum(1 for op in w.ops if op['kind'] == 'set_analysis') == 1
+    # link then unlink on one word: one op
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': 's1.w2', 'entry_id': 'vi-gam'})
+    call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': 's1.w1'})
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': 's1.w1', 'entry_id': 'vi-gam'})
+    assert [op['kind'] for op in w.ops if op['kind'] in ('link', 'unlink') and (op.get('token_id') == 'w-1' or op.get('token_id_hint') == 'w-1')] == ['link']
+
+
+def test_overlapping_respells_are_refused_but_repeats_replace():
+    w = ws()
+    call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
+    call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'ghem'})
+    assert len(w.ops) == 1 and w.ops[0]['value'] == 'ghem'

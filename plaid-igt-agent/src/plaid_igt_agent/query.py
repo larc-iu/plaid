@@ -121,18 +121,23 @@ def ws_field_name(idx: Dict[str, List[tuple]], layer_id: str) -> Optional[str]:
     return best
 
 
-def _rewrite(node: Any, idx: Dict[str, List[tuple]]) -> Any:
-    """Substitute layer names with ids in every layer slot, recursively."""
+def _rewrite(node: Any, idx: Dict[str, List[tuple]], docs: Optional[Dict[str, str]] = None) -> Any:
+    """Substitute layer names with ids in every layer slot, and document names
+    with ids in `doc` slots, recursively."""
     if isinstance(node, dict):
         out = {}
         for k, v in node.items():
             if k in LAYER_SLOTS:
                 out[k] = _resolve(v, idx)
+            elif k == 'doc' and docs is not None and isinstance(v, str) and not v.startswith('?') and not UUID_RE.match(v):
+                if v.casefold() not in docs:
+                    raise ToolError(f'No document named "{v}"')
+                out[k] = docs[v.casefold()]
             else:
-                out[k] = _rewrite(v, idx)
+                out[k] = _rewrite(v, idx, docs)
         return out
     if isinstance(node, list):
-        return [_rewrite(x, idx) for x in node]
+        return [_rewrite(x, idx, docs) for x in node]
     return node
 
 
@@ -180,7 +185,7 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
 def _cell(entity: Any, refs: Dict[str, str], layer_names: Dict[str, str], doc_names: Dict[str, str]) -> str:
     if not isinstance(entity, dict):
         return str(entity)
-    eid = entity.get('id')
+    eid = entity.get('id') or '?'
     ref = refs.get(eid)
     layer = layer_names.get(entity.get('layer'), '')
     if 'form' in entity and 'tokens' not in entity:
@@ -207,14 +212,16 @@ def t_query(ws: Workspace, query: Any, limit: int = 50) -> str:
         raise ToolError('query must be an object with at least "where" (call query_help for the language)')
     limit = max(1, min(int(limit or 50), 500))
     idx = _layer_index(ws)
-    q = _rewrite(dict(query), idx)
+    docs = {(d.get('name') or '').casefold(): d['id'] for d in ws.documents()}
+    q = _rewrite(dict(query), idx, docs)
     q['scope'] = {'project_ids': [ws.project.id]}
     q.pop('as_of', None)
+    q.pop('as-of', None)
     ret = q.get('return')
     aggregate = isinstance(ret, dict)
     if not aggregate and ret not in ('count',):
         q['return'] = ret or 'entities'
-        q['limit'] = min(int(q.get('limit') or limit), 1000)
+        q['limit'] = min(int(q.get('limit') or 1000), 1000)
     ws.on_progress('Running the query…')
     try:
         res = ws.client.query(q)

@@ -457,6 +457,8 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
         head += ' | ' + ', '.join(f'{k}={v}' for k, v in doc.metadata.items() if v not in (None, ''))
     if n == 0:
         return head + '\n(no sentences yet)'
+    if start > n:
+        return head + f'\nThe document has only {n} sentences; from_sentence={start} is past the end.'
     if end - start + 1 > max_sentences:
         end = start + max_sentences - 1
     lines = [head, FORMAT_LEGEND, f'Showing s{start}-s{end}.']

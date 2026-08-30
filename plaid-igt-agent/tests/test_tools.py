@@ -60,9 +60,10 @@ def test_set_field_plans_create_update_clear_and_respects_scope():
     assert w.ops[1]['span_id'] is None and w.ops[1]['token_id'] == 'w-2'
     # unchanged value -> nothing planned
     assert call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': 'Ali'}).startswith('Planned 0')
-    # clearing
+    # clearing: replaces the earlier planned op on that span (last wins)
     call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': ''})
-    assert w.ops[-1]['value'] == '' and '(cleared)' in w.ops[-1]['label']
+    op = next(o for o in w.ops if o['token_id'] == 'w-1')
+    assert op['value'] == '' and '(cleared)' in op['label'] and len(w.ops) == 2
     # scope mismatch
     assert 'is not a morpheme' in call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Morph Gloss', 'value': 'x'})
     assert 'is not a sentence' in call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Translation', 'value': 'x'})
@@ -111,7 +112,7 @@ def test_orthography_respell_links_entries():
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w1'], 'entry_form': '-di'})
     assert w.ops[-1]['existing_link_id'] == 'l-1' and 'link "Ali" → "-di"' in w.ops[-1]['label']
     call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w1.m2', 's1.w2']})
-    assert w.ops[-1] == {'kind': 'unlink', 'link_id': 'l-2', 'label': 'Text 1 s1.w1.m2 "di": unlink "-di"'}
+    assert w.ops[-1] == {'kind': 'unlink', 'link_id': 'l-2', 'token_id_hint': 'm-1b', 'label': 'Text 1 s1.w1.m2 "di": unlink "-di"'}
     # new entry, then link to it in the same plan
     out = call_tool(w, 'create_entry', {'form': 'akun', 'fields': {'gloss': 'see'}, 'type': 'stem'})
     key = out.split('entry_id="')[1].rstrip('").')

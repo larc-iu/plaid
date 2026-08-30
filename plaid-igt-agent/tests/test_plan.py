@@ -24,10 +24,11 @@ def test_execute_set_span_variants():
         {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'span_id': 'S2', 'value': '', 'label': ''},
         {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'span_id': None, 'value': '', 'label': ''},
     ], source='service:igt:assist', label='test')
-    assert counts == {'field values': 4}
+    assert counts == {'field values': 3}  # clearing a span that does not exist writes nothing
     assert c.operations == ['test']
     kinds = [(r, m) for r, m, a, k in c.log]
     assert kinds == [('spans', 'create'), ('spans', 'update'), ('spans', 'patch_metadata'), ('spans', 'delete')]
+    assert c.log[2][2][1]['provConfirmed'] is None  # a rewritten value loses any human confirmation
     _, _, args, _ = c.log[0]
     assert args[:3] == ('L', ['T'], 'new') and args[3]['prov'] == 'inferred' and args[3]['provSource'] == 'service:igt:assist'
     assert len(c.batches) == 1 and len(c.batches[0]) == 4
@@ -49,13 +50,14 @@ def test_execute_set_analysis_replaces_chain_and_glosses_new_morphemes_second_pa
     assert first[1][0] == 'delete' and first[1][1] == ('sp-old',)                     # old gloss on m0 dropped
     assert first[2][0] == 'patch_metadata' and first[2][1][0] == 'm-4a'
     assert first[2][1][1]['form'] == 'gam' and first[2][1][1]['morphType'] == 'stem' and first[2][1][1]['prov'] == 'inferred'
-    assert first[3][0] == 'create' and first[3][1][:3] == (MGLOSS, ['m-4a'], 'fish')   # m0 glossed in pass one
-    assert first[4][0] == 'create' and first[4][1] == (MORPH_LAYER, TEXT_ID, 18, 24)
-    assert first[4][2]['precedence'] == 2 and first[4][2]['metadata']['form'] == 'ar' and 'morphType' not in first[4][2]['metadata']
-    assert first[5][2]['precedence'] == 3 and first[5][2]['metadata']['morphType'] == 'suffix'
+    assert first[3] == ('update', ('m-4a',), {'precedence': 1})                       # chain renumbered from 1
+    assert first[4][0] == 'create' and first[4][1][:3] == (MGLOSS, ['m-4a'], 'fish')   # m0 glossed in pass one
+    assert first[5][0] == 'create' and first[5][1] == (MORPH_LAYER, TEXT_ID, 18, 24)
+    assert first[5][2]['precedence'] == 2 and first[5][2]['metadata']['form'] == 'ar' and 'morphType' not in first[5][2]['metadata']
+    assert first[6][2]['precedence'] == 3 and first[6][2]['metadata']['morphType'] == 'suffix'
     # Second pass glosses the created morpheme by its minted id; the empty gloss is skipped.
     second = [(m, a) for r, m, a, k in c.batches[1]]
-    assert second == [('create', (MGLOSS, [f'new-tokens-4'], 'PL', second[0][1][3]))]
+    assert second == [('create', (MGLOSS, [f'new-tokens-5'], 'PL', second[0][1][3]))]
 
 
 def test_execute_set_analysis_on_word_without_morphemes_creates_all():
@@ -66,7 +68,7 @@ def test_execute_set_analysis_on_word_without_morphemes_creates_all():
                         {'form': 'na', 'morph_type': 'suffix', 'fields': [{'layer_id': MGLOSS, 'value': 'PST'}]}],
           'label': ''}
     execute_plan(c, [op], source='src', label='l')
-    creates = [(a, k) for r, m, a, k in c.batches[0]]
+    creates = [(a, k) for r, m, a, k in c.batches[0] if m == 'create']
     assert [k['precedence'] for a, k in creates] == [1, 2]
     assert [a[1] for r, m, a, k in c.batches[1]] == [['new-tokens-0'], ['new-tokens-1']]
 
@@ -105,16 +107,55 @@ def test_execute_links_entries_orthography_and_respells_last():
     assert c.log.index(last) > len(c.batches[0]) + len(c.batches[1]) - 1
 
 
-def test_unknown_kind_aborts_the_open_batch():
+def test_malformed_plans_are_rejected_before_any_write():
+    import pytest
+    from plaid_igt_agent.plan import validate_ops, normalize_ops, PlanError
     c = FakeClient()
-    try:
-        execute_plan(c, [{'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'span_id': None, 'value': 'v', 'label': ''},
-                         {'kind': 'bogus'}], source='s', label='l')
-    except ValueError as e:
-        assert 'bogus' in str(e)
-    else:
-        raise AssertionError
-    assert c.batches == []
+    for bad, msg in ([{'kind': 'bogus'}], 'unknown kind'), \
+                    ([{'kind': 'set_analysis', 'word_id': 'w', 'text_id': 't', 'begin': 0, 'end': 1, 'morpheme_layer_id': 'm', 'morphemes': []}], 'non-empty'), \
+                    ([{'kind': 'link', 'token_id': 't'}], 'item_id or new_entry_key'):
+        with pytest.raises(ValueError, match=msg):
+            execute_plan(c, [{'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'span_id': None, 'value': 'v', 'label': ''}] + bad,
+                         source='s', label='l')
+        assert c.batches == [] and c.log == []
+
+
+def test_normalize_resolves_op_interactions():
+    from plaid_igt_agent.plan import normalize_ops
+    ops = [{'kind': 'delete_entry', 'item_id': 'X', 'links': [], 'label': ''},
+           {'kind': 'delete_entry', 'item_id': 'X', 'links': [], 'label': ''},
+           {'kind': 'link', 'token_id': 't', 'item_id': 'X', 'label': 'link t to X'},
+           {'kind': 'respell', 'text_id': 'T', 'begin': 0, 'end': 3, 'value': 'a', 'label': ''},
+           {'kind': 'respell', 'text_id': 'T', 'begin': 0, 'end': 3, 'value': 'b', 'label': ''}]
+    out, notes = normalize_ops(ops)
+    assert [o['kind'] for o in out] == ['delete_entry', 'respell'] and out[1]['value'] == 'b'
+    assert notes == ['dropped: link t to X (its entry is deleted in this plan)']
+    import pytest
+    with pytest.raises(ValueError, match='overlap'):
+        normalize_ops([{'kind': 'respell', 'text_id': 'T', 'begin': 0, 'end': 3, 'value': 'a', 'label': ''},
+                       {'kind': 'respell', 'text_id': 'T', 'begin': 2, 'end': 5, 'value': 'b', 'label': ''}])
+    with pytest.raises(ValueError, match='merged away'):
+        normalize_ops([{'kind': 'merge_entries', 'keep_id': 'A', 'remove_id': 'B', 'links': [], 'label': ''},
+                       {'kind': 'merge_entries', 'keep_id': 'B', 'remove_id': 'C', 'links': [], 'label': ''}])
+
+
+def test_plan_error_reports_how_much_was_applied():
+    from plaid_igt_agent.plan import PlanError
+    import pytest
+    c = FakeClient()
+    calls = {'n': 0}
+    real = c.submit_batch
+
+    def flaky():
+        calls['n'] += 1
+        if calls['n'] == 2:
+            raise RuntimeError('boom')
+        return real()
+    c.submit_batch = flaky
+    ops = [{'kind': 'set_span', 'layer_id': 'L', 'token_id': f'T{i}', 'span_id': None, 'value': 'v', 'label': ''} for i in range(1200)]
+    with pytest.raises(PlanError) as ei:
+        execute_plan(c, ops, source='s', label='l')
+    assert ei.value.applied == 800 and ei.value.total == 1200 and 'boom' in str(ei.value)
 
 
 def test_summarize():

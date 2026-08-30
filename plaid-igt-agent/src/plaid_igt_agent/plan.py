@@ -86,18 +86,122 @@ def _created_id(r):
     return None
 
 
+class PlanError(Exception):
+    """A plan failed part-way. ``applied`` says how many ops had already been
+    committed (each atomic batch commits on its own; the operation label is
+    only an audit grouping)."""
+
+    def __init__(self, message: str, applied: int, total: int):
+        super().__init__(message)
+        self.applied = applied
+        self.total = total
+
+
+KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'create_entry',
+         'set_entry_field', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
+         'rename_entry', 'rename_document')
+REQUIRED = {
+    'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
+    'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
+    'link': ('token_id',), 'unlink': ('link_id',), 'create_entry': ('vocab_id', 'form', 'key'),
+    'set_entry_field': ('item_id', 'field'), 'set_doc_metadata': ('document_id', 'field'),
+    'create_document': ('name', 'text'), 'merge_entries': ('keep_id', 'remove_id'), 'delete_entry': ('item_id',),
+    'rename_entry': ('item_id', 'form'), 'rename_document': ('document_id', 'name'),
+}
+
+
+def validate_ops(ops: List[Dict[str, Any]]) -> None:
+    """Reject a malformed plan BEFORE anything is written."""
+    for i, op in enumerate(ops):
+        kind = op.get('kind') if isinstance(op, dict) else None
+        if kind not in KINDS:
+            raise ValueError(f'op {i + 1}: unknown kind {kind!r}')
+        for k in REQUIRED[kind]:
+            if op.get(k) in (None, '') and not (k in ('begin', 'end') and op.get(k) == 0):
+                raise ValueError(f'op {i + 1} ({kind}): missing {k}')
+        if kind == 'set_analysis' and (not isinstance(op['morphemes'], list) or not op['morphemes']
+                                       or any(not (m.get('form') or '').strip() for m in op['morphemes'])):
+            raise ValueError(f'op {i + 1} (set_analysis): morphemes must be a non-empty list with non-empty forms')
+        if kind == 'link' and not (op.get('item_id') or op.get('new_entry_key')):
+            raise ValueError(f'op {i + 1} (link): needs item_id or new_entry_key')
+
+
+def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
+    """Resolve interactions between ops in one plan: drop links to entries the
+    plan deletes or merges away, refuse a merge whose survivor is removed by
+    another op, dedupe entry deletes, collapse repeated respells of one range
+    (last wins) and refuse overlapping ones. Returns (ops, notes)."""
+    notes: List[str] = []
+    removed = {op['remove_id'] for op in ops if op.get('kind') == 'merge_entries'} | \
+        {op['item_id'] for op in ops if op.get('kind') == 'delete_entry'}
+    for op in ops:
+        if op.get('kind') == 'merge_entries' and op['keep_id'] in removed:
+            raise ValueError(f'merge into {op["keep_id"]}: that entry is deleted or merged away by another op in this plan')
+    out: List[Dict[str, Any]] = []
+    seen_delete = set()
+    respell_at: Dict[tuple, int] = {}
+    for op in ops:
+        k = op.get('kind')
+        if k == 'link' and op.get('item_id') in removed:
+            notes.append(f'dropped: {op.get("label") or "a link"} (its entry is deleted in this plan)')
+            continue
+        if k == 'delete_entry':
+            if op['item_id'] in seen_delete:
+                continue
+            seen_delete.add(op['item_id'])
+        if k == 'respell':
+            key = (op['text_id'], op['begin'], op['end'])
+            for (t, b, e), idx in respell_at.items():
+                if t == op['text_id'] and (b, e) != (op['begin'], op['end']) and b < op['end'] and op['begin'] < e:
+                    raise ValueError(f'respellings overlap in one text ({b}-{e} and {op["begin"]}-{op["end"]})')
+            if key in respell_at:
+                out[respell_at[key]] = op  # last wins
+                continue
+            respell_at[key] = len(out)
+        out.append(op)
+    return out, notes
+
+
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
-    Returns per-kind counts of what was applied. ``project`` (an IgtProject)
-    is needed only by document-creating ops."""
+    Returns per-kind counts of what was applied (plus ``notes`` for anything
+    dropped). ``project`` (an IgtProject) is needed only by document-creating
+    ops. Raises :class:`PlanError` with the applied count if a later batch
+    fails: batches are atomic individually, the plan as a whole is not."""
+    validate_ops(ops)
+    ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
+    new_docs = []
+    b = None
+    try:
+        return _execute(client, ops, source=source, label=label, project=project, counts=counts, notes=notes)
+    except PlanError:
+        raise
+    except Exception as e:
+        applied = getattr(e, '_applied', None)
+        raise PlanError(f'{type(e).__name__}: {e}', applied if applied is not None else 0, len(ops)) from e
+
+
+def _execute(client, ops, *, source, label, project, counts, notes) -> Dict[str, int]:
     new_docs = []
 
     def stamp():
         return stamp_inferred(source)
 
+    applied = [0]
+
+    class _Tracker(Batcher):
+        def flush(self):
+            n = self._pending
+            try:
+                super().flush()
+            except Exception as e:
+                e._applied = applied[0]
+                raise
+            applied[0] += n
+
     with client.operation(label):
-        b = Batcher(client)
+        b = _Tracker(client)
         pending_spans = []   # (result idx of the created morpheme, layer_id, value)
         pending_links = []   # (token_id, new_entry_key)
         entry_idx: Dict[str, int] = {}
@@ -112,9 +216,13 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
                     b.add(lambda sid=span_id: client.spans.delete(sid))
                 elif span_id:
                     b.add(lambda sid=span_id, v=value: client.spans.update(sid, v))
-                    b.add(lambda sid=span_id: client.spans.patch_metadata(sid, stamp()))
+                    # A rewritten value is machine-made again: clear any earlier
+                    # human confirmation along with the new stamp.
+                    b.add(lambda sid=span_id: client.spans.patch_metadata(sid, {**stamp(), 'provConfirmed': None}))
                 elif value != '':
                     b.add(lambda o=op, v=value: client.spans.create(o['layer_id'], [o['token_id']], v, stamp()))
+                else:
+                    continue  # nothing to clear
                 counts['field values'] += 1
 
             elif kind == 'set_analysis':
@@ -130,7 +238,10 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
                         b.add(lambda s=sid: client.spans.delete(s))
                     first = morphemes[0]
                     b.add(lambda mid=m0['id'], f=first: client.tokens.patch_metadata(
-                        mid, {'form': f['form'], 'morphType': f.get('morph_type'), **stamp()}))
+                        mid, {'form': f['form'], 'morphType': f.get('morph_type'), **stamp(), 'provConfirmed': None}))
+                    # Keep the chain's numbering contiguous from 1 whatever the
+                    # first morpheme's precedence was before.
+                    b.add(lambda mid=m0['id']: client.tokens.update(mid, precedence=1))
                     for fv in first.get('fields') or []:
                         if fv.get('value') not in (None, ''):
                             b.add(lambda mid=m0['id'], fv=fv: client.spans.create(fv['layer_id'], [mid], fv['value'], stamp()))
@@ -208,20 +319,22 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
                 counts['renamed documents'] += 1
 
             else:
-                raise ValueError(f'Unknown plan operation kind: {kind}')
+                raise ValueError(f'Unknown plan operation kind: {kind}')  # unreachable after validate_ops
 
         b.flush()
 
         # Second pass: things that need ids minted above.
         for idx, layer_id, value in pending_spans:
             mid = _created_id(b.results[idx] if idx < len(b.results) else None)
-            if mid:
-                b.add(lambda l=layer_id, m=mid, v=value: client.spans.create(l, [m], v, stamp()))
+            if not mid:
+                raise RuntimeError('a created morpheme came back without an id; its gloss was not written')
+            b.add(lambda l=layer_id, m=mid, v=value: client.spans.create(l, [m], v, stamp()))
         for token_id, key in pending_links:
             i = entry_idx.get(key)
             iid = _created_id(b.results[i]) if i is not None and i < len(b.results) else None
-            if iid:
-                b.add(lambda i=iid, t=token_id: client.vocab_links.create(i, [t], stamp()))
+            if not iid:
+                raise RuntimeError('a created lexicon entry came back without an id; a link to it was not written')
+            b.add(lambda i=iid, t=token_id: client.vocab_links.create(i, [t], stamp()))
         for iid in pending_deletes:
             b.add(lambda i=iid: client.vocab_items.delete(i))
         b.flush()
@@ -238,7 +351,10 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
             if project is None:
                 raise ValueError('create_document needs the project')
             create_document(client, project, op['name'], op['text'], op.get('metadata') or {})
-    return dict(counts)
+    result = dict(counts)
+    if notes:
+        result['notes'] = notes
+    return result
 
 
 def create_document(client, project, name: str, text: str, metadata: Dict[str, Any]):
@@ -248,15 +364,23 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
     from .tools import split_sentences, split_words
     doc = client.documents.create(project.id, name, metadata or None)
     doc_id = doc['id']
-    t = client.texts.create(project.text_layer_id, doc_id, text)
-    text_id = t['id']
-    sents = split_sentences(text)
-    body = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e} for b, e in sents]
-    for b, e in sents:
-        body.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
-                    for wb, we in split_words(text, b, e, project.ignored_cfg))
-    if body:
-        client.tokens.bulk_create(body)
+    try:
+        t = client.texts.create(project.text_layer_id, doc_id, text)
+        text_id = t['id']
+        sents = split_sentences(text)
+        body = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e} for b, e in sents]
+        for b, e in sents:
+            body.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
+                        for wb, we in split_words(text, b, e, project.ignored_cfg))
+        if body:
+            client.tokens.bulk_create(body)
+    except Exception:
+        # No orphan half-document: best effort, the original error is what matters.
+        try:
+            client.documents.delete(doc_id)
+        except Exception:
+            pass
+        raise
     return doc_id
 
 

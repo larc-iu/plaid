@@ -123,7 +123,7 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
     while True:
         on_progress(min(85, 8 + steps * 5), 'Thinking…' if steps == 0 else 'Thinking more…')
         kwargs: Dict[str, Any] = dict(model=cfg.model, messages=[{'role': 'system', 'content': system}] + history + new,
-                                      tools=TOOLS, tool_choice='auto')
+                                      tools=list(TOOLS), tool_choice='auto')
         if cfg.api_base:
             kwargs['api_base'] = cfg.api_base
         if cfg.api_key:
@@ -142,15 +142,16 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
             if not text.strip():
                 # Some models end a tool-heavy turn with an empty message (or
                 # reasoning only). Ask once, without tools, for the reply.
-                new.append({'role': 'user', 'content': '(system) Your last message was empty. '
-                                                       'Reply now with your answer to the user.'})
-                kwargs['messages'] = [{'role': 'system', 'content': system}] + history + new
+                nudge = {'role': 'user', 'content': '(system) Your last message was empty. '
+                                                    'Reply now with your answer to the user.'}
+                kwargs['messages'] = [{'role': 'system', 'content': system}] + history + new + [nudge]
                 kwargs.pop('tools', None)
                 kwargs.pop('tool_choice', None)
                 resp = litellm.completion(**kwargs)
                 choice = resp.choices[0]
                 d = _message_to_dict(choice.message)
                 d.pop('tool_calls', None)
+                new.pop()  # the empty message; the nudge never enters the saved transcript
                 new.append(d)
                 text = d.get('content') or ''
                 if not text.strip():
@@ -173,9 +174,9 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
                 result = call_tool(ws, name, args)
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
         if steps >= cfg.max_steps:
-            new.append({'role': 'user', 'content': '(system) You have used the tool budget for this turn. '
-                                                   'Reply now with what you found and what remains to do.'})
-            kwargs['messages'] = [{'role': 'system', 'content': system}] + history + new
+            nudge = {'role': 'user', 'content': '(system) You have used the tool budget for this turn. '
+                                                'Reply now with what you found and what remains to do.'}
+            kwargs['messages'] = [{'role': 'system', 'content': system}] + history + new + [nudge]
             kwargs.pop('tools', None)
             kwargs.pop('tool_choice', None)
             resp = litellm.completion(**kwargs)
