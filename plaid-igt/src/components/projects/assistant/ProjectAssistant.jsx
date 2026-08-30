@@ -251,14 +251,23 @@ const summarizeSteps = (steps) => {
   return parts.length ? `${head} · ${steps.length} step${steps.length === 1 ? '' : 's'}` : head;
 };
 
-// --- turns that outlive the component ------------------------------------------
-// A turn can take minutes, and meanwhile the user may switch tabs (which
-// unmounts this component) or a dev reload may remount it. So a turn runs
-// here, at module level, persists its own outcome, and the component only
-// subscribes to whatever is in flight for the conversation it shows.
+// --- work that outlives the component ------------------------------------------
+// A turn, and applying an approved plan, can each take minutes, and meanwhile
+// the user may switch tabs (which unmounts this component) or a dev reload may
+// remount it. So both run here, at module level, persist their own outcome,
+// and the component only subscribes to whatever is in flight for the
+// conversation it shows. A job is {id, projectId, kind: 'turn' | 'apply',
+// conv, progress, steps, done, result}.
 const saveQueues = new Map(); // conversation id -> Promise (writes in order)
 const turns = new Map(); // conversation id -> turn in flight
-const turnListeners = new Set(); // mounted components
+const applies = new Map(); // conversation id -> plan application in flight
+const jobListeners = new Set(); // mounted components
+
+// At most one job runs per conversation: the composer and the plan's buttons
+// are both disabled while one is in flight.
+const jobFor = (id) => (id ? turns.get(id) || applies.get(id) || null : null);
+const jobInProject = (projectId) =>
+  [...turns.values(), ...applies.values()].find((j) => j.projectId === projectId) || null;
 
 const upsert = (meta) => (prev) => [meta, ...prev.filter((m) => m.id !== meta.id)];
 
@@ -297,7 +306,15 @@ const persistConv = (client, userId, projectId, conv, meta) => {
   return next;
 };
 
-const notifyTurn = (t) => turnListeners.forEach((fn) => fn(t));
+const notifyJob = (j) => jobListeners.forEach((fn) => fn(j));
+
+// A plan's outcome: the status shown on its card, plus a note in the model
+// transcript (user role) so the next turn knows whether its proposal happened.
+const settle = (conv, index, status, note) => ({
+  ...conv,
+  messages: note ? [...conv.messages, { role: 'user', content: note }] : conv.messages,
+  display: conv.display.map((d, i) => (i === index ? { ...d, status } : d)),
+});
 
 // Run one turn for `conv`, whose last message is the user's. The outcome
 // (the assistant's reply, or an error item) is persisted here, then handed to
@@ -306,6 +323,7 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
   const t = {
     id: conv.id,
     projectId,
+    kind: 'turn',
     conv,
     progress: 'Thinking…',
     steps: [],
@@ -331,7 +349,7 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
           ) {
             t.steps = [...t.steps, msg];
           }
-          notifyTurn(t);
+          notifyJob(t);
         },
       );
       if (result?.kind !== 'turn') throw new Error('Unexpected reply from the assistant service');
@@ -369,10 +387,90 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
     t.done = true;
     t.result = { conv: next, meta };
     turns.delete(conv.id);
-    notifyTurn(t);
+    notifyJob(t);
     return t.result;
   })();
   return t;
+};
+
+// Apply the plan at `index` in `conv`. What a plan writes is recorded as
+// verified (made by the assistant, confirmed by the approver) unless the user
+// asks for it to count as human-made. The plan id lets the service refuse a
+// second application of the same plan (a retried request, a double click), so
+// a failure leaves the plan undecided and approving again is safe.
+const startApply = ({
+  client,
+  userId,
+  projectId,
+  service,
+  conv,
+  prevMeta,
+  index,
+  plan,
+  asHuman,
+}) => {
+  const j = {
+    id: conv.id,
+    projectId,
+    kind: 'apply',
+    conv,
+    progress: 'Applying changes…',
+    steps: [],
+    done: false,
+    result: null,
+  };
+  applies.set(conv.id, j);
+  j.promise = (async () => {
+    let next;
+    try {
+      const res = await client.messages.requestService(
+        projectId,
+        service.serviceId,
+        {
+          projectId,
+          approve: {
+            id: plan.id,
+            ops: plan.ops,
+            label: `Assistant: ${plan.summary}`,
+            asHuman,
+            // Versions the plan was made against; the service refuses a plan
+            // whose documents changed since (its offsets and ids may not fit).
+            documents: plan.documents || [],
+          },
+        },
+        TURN_TIMEOUT_MS,
+        (p) => {
+          j.progress = p?.message || '';
+          notifyJob(j);
+        },
+      );
+      const data = res?.data || res || {};
+      next = settle(
+        conv,
+        index,
+        'applied',
+        `(note) The plan was approved and applied: ${plan.summary}.` +
+          (data.message && /;/.test(data.message) ? ` ${data.message}` : ''),
+      );
+      notifySuccess(data.message || `Applied ${plan.summary}.`, 'Changes applied');
+    } catch (e) {
+      console.error('[Assistant] apply failed', e);
+      next = settle(conv, index, null, null);
+      notifyError(
+        humanizeError(e, 'The changes could not be applied.') +
+          ' Approving again is safe: a plan that was already applied is not written twice.',
+        'Not applied',
+      );
+    }
+    const meta = buildMeta(prevMeta, next, service);
+    persistConv(client, userId, projectId, next, meta);
+    j.done = true;
+    j.result = { conv: next, meta };
+    applies.delete(conv.id);
+    notifyJob(j);
+    return j.result;
+  })();
+  return j;
 };
 
 const EXAMPLES = [
@@ -454,12 +552,12 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     }
   }, [client, userId, projectId]);
 
-  // On mount: a turn still running for this project (we were unmounted
-  // mid-turn) is shown first; otherwise the most recent conversation, the
+  // On mount: work still running for this project (we were unmounted mid-turn
+  // or mid-apply) is shown first; otherwise the most recent conversation, the
   // way a chat app reopens where you left off. "+" starts a fresh one.
   useEffect(() => {
     let cancelled = false;
-    const inFlight = [...turns.values()].find((t) => t.projectId === projectId);
+    const inFlight = jobInProject(projectId);
     setActive(inFlight ? inFlight.conv : null);
     loadList().then(async (metas) => {
       if (cancelled || inFlight || !metas.length) return;
@@ -478,37 +576,37 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     };
   }, [loadList, projectId, client, userId]);
 
-  // Reflect turns as they progress and finish, for whichever conversation
-  // is shown; finished turns always refresh the sidebar entry.
+  // Reflect jobs as they progress and finish, for whichever conversation is
+  // shown; a finished job always refreshes the sidebar entry.
   useEffect(() => {
-    const onTurn = (t) => {
-      if (t.done) setConvs(upsert(t.result.meta));
-      if (activeRef.current?.id !== t.id) return;
-      if (t.done) {
-        activeRef.current = t.result.conv;
-        setActive(t.result.conv);
+    const onJob = (j) => {
+      if (j.done) setConvs(upsert(j.result.meta));
+      if (activeRef.current?.id !== j.id) return;
+      if (j.done) {
+        activeRef.current = j.result.conv;
+        setActive(j.result.conv);
         setBusy(null);
         setProgress('');
         setLiveSteps([]);
         inputRef.current?.focus();
       } else {
-        setBusy('turn');
-        setProgress(t.progress);
-        setLiveSteps(t.steps);
+        setBusy(j.kind);
+        setProgress(j.progress);
+        setLiveSteps(j.steps);
       }
     };
-    turnListeners.add(onTurn);
-    return () => turnListeners.delete(onTurn);
+    jobListeners.add(onJob);
+    return () => jobListeners.delete(onJob);
   }, []);
 
-  // Switching conversations: pick up a turn in flight for the new one.
+  // Switching conversations: pick up a job in flight for the new one.
   useEffect(() => {
-    const t = active ? turns.get(active.id) : null;
-    if (t) {
-      setBusy('turn');
-      setProgress(t.progress);
-      setLiveSteps(t.steps);
-    } else if (busy === 'turn') {
+    const j = jobFor(active?.id);
+    if (j) {
+      setBusy(j.kind);
+      setProgress(j.progress);
+      setLiveSteps(j.steps);
+    } else if (busy) {
       setBusy(null);
       setProgress('');
       setLiveSteps([]);
@@ -534,10 +632,10 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   );
 
   const open = async (id) => {
-    if (busy === 'apply' || active?.id === id) return;
-    const t = turns.get(id);
-    if (t) {
-      setActive(t.conv);
+    if (active?.id === id) return;
+    const j = jobFor(id);
+    if (j) {
+      setActive(j.conv);
       return;
     }
     setOpening(id);
@@ -553,8 +651,13 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   };
 
   const remove = async (id) => {
-    if (turns.has(id)) {
-      notifyError('That conversation is still waiting for an answer.');
+    const j = jobFor(id);
+    if (j) {
+      notifyError(
+        j.kind === 'apply'
+          ? 'That conversation is still applying changes.'
+          : 'That conversation is still waiting for an answer.',
+      );
       return;
     }
     try {
@@ -570,7 +673,6 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   };
 
   const startNew = () => {
-    if (busy === 'apply') return;
     setActive(null);
     setInput('');
     inputRef.current?.focus();
@@ -606,65 +708,29 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     startTurn({ client, userId, projectId, service, conv, prevMeta: meta });
   };
 
-  // The plan's outcome is told to the model as a user-role note, so the next
-  // turn knows whether its proposal happened.
-  const settlePlan = (index, status, note) =>
-    update((c) => ({
-      ...c,
-      messages: [...c.messages, { role: 'user', content: note }],
-      display: c.display.map((d, i) => (i === index ? { ...d, status } : d)),
-    }));
-
-  // What a plan writes is recorded as verified (made by the assistant,
-  // confirmed by the approver) unless the user asks for it to count as
-  // human-made. The plan id lets the service refuse a second application of
-  // the same plan (a retried request, a double click), so approving again
-  // after a timeout is safe.
-  const approve = async (index, plan, { asHuman = false } = {}) => {
-    if (busy) return;
+  const approve = (index, plan, { asHuman = false } = {}) => {
+    const conv = activeRef.current;
+    if (busy || !conv || !service) return;
     setBusy('apply');
     setProgress('Applying changes…');
-    try {
-      const res = await client.messages.requestService(
-        projectId,
-        service.serviceId,
-        {
-          projectId,
-          approve: {
-            id: plan.id,
-            ops: plan.ops,
-            label: `Assistant: ${plan.summary}`,
-            asHuman,
-            // Versions the plan was made against; the service refuses a plan
-            // whose documents changed since (its offsets and ids may not fit).
-            documents: plan.documents || [],
-          },
-        },
-        TURN_TIMEOUT_MS,
-        (p) => setProgress(p?.message || ''),
-      );
-      const data = res?.data || res || {};
-      settlePlan(
-        index,
-        'applied',
-        `(note) The plan was approved and applied: ${plan.summary}.` +
-          (data.message && /;/.test(data.message) ? ` ${data.message}` : ''),
-      );
-      notifySuccess(data.message || `Applied ${plan.summary}.`, 'Changes applied');
-    } catch (e) {
-      notifyError(
-        humanizeError(e, 'The changes could not be applied.') +
-          ' Approving again is safe: a plan that was already applied is not written twice.',
-        'Not applied',
-      );
-    } finally {
-      setBusy(null);
-      setProgress('');
-    }
+    setLiveSteps([]);
+    startApply({
+      client,
+      userId,
+      projectId,
+      service,
+      conv,
+      prevMeta: convsRef.current.find((m) => m.id === conv.id),
+      index,
+      plan,
+      asHuman,
+    });
   };
 
   const discard = (index) =>
-    settlePlan(index, 'discarded', '(note) The user discarded the plan; nothing was changed.');
+    update((c) =>
+      settle(c, index, 'discarded', '(note) The user discarded the plan; nothing was changed.'),
+    );
 
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
