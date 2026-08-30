@@ -149,6 +149,13 @@ class Workspace:
             lines.append(f'  id={k} {e["form"]} (new in this plan)')
         raise ToolError('\n'.join(lines))
 
+    def vocab_of_item(self, item_id: str) -> Optional[dict]:
+        """The lexicon an existing entry belongs to."""
+        for v in self.project.vocabs:
+            if any(it['id'] == item_id for it in self.lexicon(v)):
+                return v
+        return None
+
     # --- plan --------------------------------------------------------------
 
     def add_op(self, op: Dict[str, Any]) -> None:
@@ -1042,7 +1049,8 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
                       lexicon: Optional[str] = None, entry_id: Optional[str] = None,
                       entry_gloss: Optional[str] = None) -> str:
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
-    vocab = next((v for v in ws.project.vocabs if v['id'] == (ws.new_entries[target]['vocab_id'] if kind == 'new' else target.get('layer'))), None)
+    vocab = (next((v for v in ws.project.vocabs if v['id'] == ws.new_entries[target]['vocab_id']), None)
+             if kind == 'new' else ws.vocab_of_item(target['id']))
     if vocab:
         field = lexicon_field(vocab, field)
     if kind == 'new':
