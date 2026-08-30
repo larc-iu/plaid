@@ -12,7 +12,6 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from .project import IgtProject
 from .tools import Workspace, ToolError, _truncate, word_ref
 
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)

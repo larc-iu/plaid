@@ -20,7 +20,7 @@ import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .project import IgtDoc, Sentence, Word, Morpheme, is_token_ignored
+from .project import is_token_ignored
 from .tools import Workspace, ToolError
 
 GROUP_LIMIT = 100000       # the engine's backstop for group rows
@@ -919,7 +919,7 @@ def q_entry_usage(ws: Workspace, item_id: str, examples: int):
             doc, s, w, _ = c.locate(ent['document'], ent['id'])
             if w is None or any(e.endswith(f'|| {s.text}') and word_ref(s, w) in e for e in exs):
                 continue
-            exs.append(f'  {c.ws.doc_tag(doc)}{word_ref(s, w)} {render_word(w, p := c.p)[len(w.ref) + 1:]} || {s.text}')
+            exs.append(f'  {c.ws.doc_tag(doc)}{word_ref(s, w)} {render_word(w, c.p)[len(w.ref) + 1:]} || {s.text}')
             if len(exs) >= examples:
                 break
     return word_links, morph_links, exs
@@ -1042,7 +1042,6 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
 
 
 def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bool, cap: int):
-    from .tools import span_op
     from .project import Span
     c = ws.corpus
     spec = rx(form, whole=True)

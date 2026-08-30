@@ -7,10 +7,10 @@ is applied only after approval."""
 import re
 from typing import Any, Dict, List, Optional
 
-from .project import Word, Sentence, Morpheme, segmentation, word_ref
+from .project import word_ref
 from .tools import (Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op,
                     has_own_form, morpheme_form_op, parse_analysis, analysis_op)
-from .stats import _analyzed, _docs, _tag
+from .stats import _analyzed, _docs
 
 MAX_BULK = 3000
 
@@ -397,6 +397,10 @@ def t_rename_document(ws: Workspace, document: str, new_name: str) -> str:
     doc = ws.doc(document)
     if doc.name == new_name:
         return ws.planned_note(0)
+    clash = [d for d in ws.documents() if d['id'] != doc.id and (d.get('name') or '').casefold() == new_name.casefold()]
+    if clash:
+        raise ToolError(f'Another document is already named "{new_name}"; two documents with one name can only be '
+                        'told apart by id. Pick a different name.')
     ws.add_op({'kind': 'rename_document', 'document_id': doc.id, 'name': new_name,
-               'label': f'Rename document "{ws.doc_label(doc.id)}" → "{new_name}"'})
+               'label': f'Rename document {ws.doc_label(doc.id, quote=True)} → "{new_name}"'})
     return ws.planned_note(1)

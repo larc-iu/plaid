@@ -110,7 +110,7 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     if w.fields or w.link:
         note += ' (word values and link stay on the left part)'
     ws.add_op({'kind': 'split_word', 'word_id': w.id, 'position': w.begin + n, 'morpheme_ids': morphs,
-               'label': f'{doc.name} {ref} "{w.surface}": split into "{left}" + "{right}"{note}'})
+               'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": split into "{left}" + "{right}"{note}'})
     return ws.planned_note(1)
 
 
@@ -151,7 +151,7 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     s = next(s for s in doc.sentences if s.id in sents)
     ws.add_op({'kind': 'merge_words', 'word_id': first.id, 'other_ids': [w.id for w in words[1:]],
                'morpheme_ids': morphs, 'spans': spans, 'links': links,
-               'label': f'{doc.name} s{s.index}: merge ' + ' + '.join(f'w{w.index} "{w.surface}"' for w in words)
+               'label': f'{ws.doc_label(doc.id)} s{s.index}: merge ' + ' + '.join(f'w{w.index} "{w.surface}"' for w in words)
                         + f' → "{merged}"{note}'})
     return ws.planned_note(1)
 
@@ -165,7 +165,7 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
         _guard(ws, w, ref)
         had = bool(w.fields or w.link or len(w.morphemes) > 1 or any(m.fields or m.link for m in w.morphemes))
         staged.append({'kind': 'delete_word', 'word_id': w.id, 'morpheme_ids': [m.id for m in w.morphemes],
-                       'label': f'{doc.name} {ref} "{w.surface}": delete the word token'
+                       'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": delete the word token'
                                 + (' (its analysis, values, and link go; the text stays)' if had else ' (the text stays)')})
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
@@ -187,7 +187,7 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     right = doc.body[w.begin:s.end].strip()
     note = ' (sentence values such as the translation stay with the first part)' if s.fields else ''
     ws.add_op({'kind': 'split_sentence', 'sentence_id': s.id, 'position': w.begin,
-               'label': f'{doc.name} {ref}: split before w{n} "{w.surface}" → "{left[:40]}" | "{right[:40]}"{note}'})
+               'label': f'{ws.doc_label(doc.id)} {ref}: split before w{n} "{w.surface}" → "{left[:40]}" | "{right[:40]}"{note}'})
     return ws.planned_note(1)
 
 
@@ -203,7 +203,7 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     spans = _dedup_spans([prev, s])
     comb = _combined_values(spans, ws.project)
     ws.add_op({'kind': 'merge_sentences', 'sentence_id': prev.id, 'other_id': s.id, 'spans': spans,
-               'label': f'{doc.name}: merge s{s.index} "{s.text[:30]}" into s{prev.index} "{prev.text[:30]}"'
+               'label': f'{ws.doc_label(doc.id)}: merge s{s.index} "{s.text[:30]}" into s{prev.index} "{prev.text[:30]}"'
                         + (f' (values combined: {comb})' if comb else '')})
     return ws.planned_note(1)
 
@@ -237,13 +237,13 @@ def t_append_text(ws: Workspace, document: str, text: str) -> str:
     doc = ws.doc(document)
     text = _clean_text(text)
     at = len(doc.body)
-    _guard_text_edit(ws, doc.text_id, at, at, f'{doc.name}: append')
+    _guard_text_edit(ws, doc.text_id, at, at, f'{ws.doc_label(doc.id)}: append')
     sep = '' if not doc.body or doc.body.endswith('\n') else '\n'
     sents = split_sentences(text)
     words = sum(len(split_words(text, b, e, ws.project.ignored_cfg)) for b, e in sents)
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': None,
                'begin': at, 'end': at, 'old': '', 'new': sep + text, 'word_ids': [], 'morpheme_ids': [],
-               'label': f'{doc.name}: append {len(sents)} sentence{"s" if len(sents) != 1 else ""} '
+               'label': f'{ws.doc_label(doc.id)}: append {len(sents)} sentence{"s" if len(sents) != 1 else ""} '
                         f'({words} words): "{text[:60]}{"…" if len(text) > 60 else ""}"'})
     return ws.planned_note(1)
 
@@ -262,12 +262,12 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     if old == text:
         return ws.planned_note(0)
     _guard(ws, s, ref)
-    _guard_text_edit(ws, doc.text_id, b, e, f'{doc.name} {ref}')
+    _guard_text_edit(ws, doc.text_id, b, e, f'{ws.doc_label(doc.id)} {ref}')
     n = len(split_sentences(text))
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,
                'begin': b, 'end': e, 'old': old, 'new': text,
                'word_ids': [w.id for w in s.words], 'morpheme_ids': [m.id for w in s.words for m in w.morphemes],
-               'label': f'{doc.name} {ref}: retype "{old[:40]}{"…" if len(old) > 40 else ""}" → '
+               'label': f'{ws.doc_label(doc.id)} {ref}: retype "{old[:40]}{"…" if len(old) > 40 else ""}" → '
                         f'"{text[:40]}{"…" if len(text) > 40 else ""}"' + (f' ({n} sentences)' if n > 1 else '')
                         + ' (unchanged words keep their analyses; changed text is re-tokenized without analysis; '
                           'sentence fields stay)'})

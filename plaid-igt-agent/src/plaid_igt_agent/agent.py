@@ -13,11 +13,12 @@ one read without re-reading.
 
 import json
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 import litellm
 
-from .tools import TOOLS, WRITE_TOOLS, Workspace, call_tool
+from .tools import TOOLS, Workspace, call_tool
+from .trace import progress_label, summarize_steps, trace_step
 
 litellm.drop_params = True  # providers that lack a param get it dropped, not an error
 
@@ -27,7 +28,7 @@ class ModelConfig:
     model: str
     api_base: Optional[str] = None
     api_key: Optional[str] = None
-    max_steps: int = 500
+    max_steps: int = 50
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
 
@@ -100,57 +101,51 @@ def _clean_transcript(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-def _progress_label(name: str, args: Dict[str, Any]) -> str:
-    if name == 'project_overview':
-        return 'Looking at the project…'
-    if name == 'read_document':
-        return f'Reading "{args.get("document", "")}"…'
-    if name == 'search':
-        return f'Searching for "{args.get("pattern", "")}"…'
-    if name == 'read_lexicon':
-        return 'Reading the lexicon…'
-    if name == 'concordance':
-        return f'Concordancing "{args.get("pattern", "")}"…'
-    if name == 'analyses_of':
-        return f'Tallying analyses of "{args.get("form", "")}"…'
-    if name == 'lexicon_entry':
-        return f'Looking up "{args.get("entry_form") or args.get("entry_id") or ""}"…'
-    if name == 'check_consistency':
-        return f'Checking {args.get("field", "")} consistency…'
-    if name == 'recent_changes':
-        return 'Reading the change history…'
-    if name == 'corpus_stats':
-        return 'Counting the corpus…'
-    if name == 'frequency_list':
-        return 'Counting frequencies…'
-    if name == 'worklist':
-        return f'Listing {args.get("kind", "unfinished")} work…'
-    if name == 'check_lexicon':
-        return 'Checking the lexicon…'
-    if name == 'check_integrity':
-        return 'Checking data integrity…'
-    if name == 'sequence_search':
-        return 'Searching for the sequence…'
-    if name == 'query_help':
-        return 'Reading the query reference…'
-    if name == 'query':
-        return 'Running a query…'
-    if name in WRITE_TOOLS:
-        return 'Planning changes…'
-    return f'{name}…'
+def _length_note(choice) -> str:
+    """A reply the provider cut off at its output limit says so, since the
+    operator is the only one who can raise it."""
+    if getattr(choice, 'finish_reason', None) != 'length':
+        return ''
+    return ('\n\n*(The reply was cut off by the model\'s output limit. The operator can raise it '
+            'with `--max-tokens`.)*')
+
+
+@dataclass
+class TurnResult:
+    """One finished turn: the reply, the messages it appended to the
+    transcript, and the trace of what it did (see :mod:`.trace`)."""
+    text: str
+    messages: List[Dict[str, Any]]
+    steps: List[Dict[str, Any]]
+
+    @property
+    def summary(self) -> str:
+        return summarize_steps(self.steps)
 
 
 def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict[str, Any]],
-             on_progress: Callable[[int, str], None] = lambda p, m: None
-             ) -> Tuple[str, List[Dict[str, Any]]]:
-    """Run one turn. Returns (final assistant text, the NEW messages this turn
-    appended to the transcript: assistant tool-call messages, tool results,
-    and the final assistant message)."""
+             on_progress: Callable[[int, str], None] = lambda p, m: None) -> TurnResult:
+    """Run one turn: model call, tool calls, repeat, final text."""
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
-    steps = 0
+    trace: List[Dict[str, Any]] = []
+    rounds = 0
+
+    def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str) -> str:
+        """One more call, without tools, when the model owes the user words."""
+        kwargs = {**kwargs, 'messages': [{'role': 'system', 'content': system}] + history + new
+                  + [{'role': 'user', 'content': nudge}]}
+        kwargs.pop('tools', None)
+        kwargs.pop('tool_choice', None)
+        choice = litellm.completion(**kwargs).choices[0]
+        d = _message_to_dict(choice.message)
+        d.pop('tool_calls', None)
+        new.append(d)  # the nudge itself never enters the saved transcript
+        text = (d.get('content') or '').strip() or '(The model returned an empty reply.)'
+        return text + _length_note(choice)
+
     while True:
-        on_progress(min(85, 8 + steps * 5), 'Thinking…' if steps == 0 else 'Thinking more…')
+        on_progress(min(85, 8 + rounds * 5), 'Thinking…' if rounds == 0 else 'Thinking more…')
         kwargs: Dict[str, Any] = dict(**_provider_kwargs(cfg), tools=list(TOOLS), tool_choice='auto',
                                       messages=[{'role': 'system', 'content': system}] + history + new)
         if cfg.temperature is not None:
@@ -163,29 +158,17 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
         new.append(d)
         calls = d.get('tool_calls') or []
         if not calls:
-            text = d.get('content') or ''
-            if not text.strip():
+            text = (d.get('content') or '').strip()
+            if not text:
                 # Some models end a tool-heavy turn with an empty message (or
                 # reasoning only). Ask once, without tools, for the reply.
-                nudge = {'role': 'user', 'content': '(system) Your last message was empty. '
-                                                    'Reply now with your answer to the user.'}
-                kwargs['messages'] = [{'role': 'system', 'content': system}] + history + new + [nudge]
-                kwargs.pop('tools', None)
-                kwargs.pop('tool_choice', None)
-                resp = litellm.completion(**kwargs)
-                choice = resp.choices[0]
-                d = _message_to_dict(choice.message)
-                d.pop('tool_calls', None)
-                new.pop()  # the empty message; the nudge never enters the saved transcript
-                new.append(d)
-                text = d.get('content') or ''
-                if not text.strip():
-                    text = '(The model returned an empty reply.)'
-            if getattr(choice, 'finish_reason', None) == 'length':
-                text += ('\n\n*(The reply was cut off by the model\'s output limit. The operator can raise '
-                         'it with `--max-tokens`.)*')
-            return text, new
-        steps += 1
+                new.pop()
+                text = ask_for_the_reply(kwargs, '(system) Your last message was empty. '
+                                                 'Reply now with your answer to the user.')
+            else:
+                text += _length_note(choice)
+            return TurnResult(text, new, trace)
+        rounds += 1
         for c in calls:
             name = c['function']['name']
             try:
@@ -193,21 +176,14 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
                 if not isinstance(args, dict):
                     args = {}
             except json.JSONDecodeError as e:
-                result = f'Error: arguments were not valid JSON ({e})'
+                args, result = {}, f'Error: arguments were not valid JSON ({e})'
             else:
-                on_progress(min(85, 8 + steps * 5), _progress_label(name, args))
+                on_progress(min(85, 8 + rounds * 5), progress_label(name, args))
                 result = call_tool(ws, name, args)
+            trace.append(trace_step(c['id'], name, args))
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
-        if steps >= cfg.max_steps:
-            nudge = {'role': 'user', 'content': '(system) You have used the tool budget for this turn. '
-                                                'Reply now with what you found and what remains to do.'}
-            kwargs['messages'] = [{'role': 'system', 'content': system}] + history + new + [nudge]
-            kwargs.pop('tools', None)
-            kwargs.pop('tool_choice', None)
-            resp = litellm.completion(**kwargs)
-            d = _message_to_dict(resp.choices[0].message)
-            d.pop('tool_calls', None)
-            new.append(d)
-            text = (d.get('content') or '').strip() or '(The model returned an empty reply.)'
-            return (text + f'\n\n*(Stopped after {cfg.max_steps} tool calls, the per-turn limit; the operator '
-                           f'can raise it with `--max-steps`.)*'), new
+        if rounds >= cfg.max_steps:
+            text = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this turn. '
+                                             'Reply now with what you found and what remains to do.')
+            return TurnResult(text + f'\n\n*(Stopped after {cfg.max_steps} tool calls, the per-turn limit; '
+                                     f'the operator can raise it with `--max-steps`.)*', new, trace)

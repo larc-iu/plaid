@@ -15,7 +15,9 @@ Request data:
 
 Result data:
     {kind: 'turn', message, messages: [new transcript messages], plan: {id, summary, labels, ops, documents} | null,
-     citations: [{key, document_id, document_name, sentence_id, sentence, focus, text, words, fields}]}
+     citations: [{key, document_id, document_name, sentence_id, sentence, focus, text, words, fields}],
+     steps: [{id, name, kind, label}], steps_summary: '...'}
+                 (a step's own output is not repeated here: it is the `tool` message with the same id)
     {kind: 'applied', applied: n, counts: [{kind, count}], message}
 """
 
@@ -169,10 +171,11 @@ class AssistantService(BaseService):
             response_helper.progress(state['pct'], msg)
 
         ws = Workspace(client, project, on_progress=lambda msg: response_helper.progress(state['pct'], msg))
-        text, new = run_turn(self.cfg, ws, build_system_prompt(project), transcript, on_progress)
+        turn = run_turn(self.cfg, ws, build_system_prompt(project), transcript, on_progress)
         response_helper.progress(100, 'Done')
-        response_helper.complete({'kind': 'turn', 'message': text, 'messages': new, 'plan': ws.plan_payload(),
-                                  'citations': resolve_citations(ws, text)})
+        response_helper.complete({'kind': 'turn', 'message': turn.text, 'messages': turn.messages,
+                                  'plan': ws.plan_payload(), 'citations': resolve_citations(ws, turn.text),
+                                  'steps': turn.steps, 'steps_summary': turn.summary})
 
 
     def _remember_applied(self, plan_id: str) -> None:

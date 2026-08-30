@@ -5,14 +5,13 @@ implementation the query path is tested against. check_integrity always
 scans (it inspects raw text)."""
 
 import difflib
-import re
 import unicodedata
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional
 
-from plaid_client.provenance import prov_state, MACHINE, HUMAN, VERIFIED
+from plaid_client.provenance import prov_state, MACHINE
 
-from .project import IgtDoc, Sentence, Word, Morpheme, render_word, segmentation, word_ref
+from .project import IgtDoc, Sentence, Word, render_word, segmentation, word_ref
 from .tools import Workspace, ToolError, _matcher, _truncate, entry_line
 
 
@@ -189,7 +188,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 
     key = next((k for k in project.document_metadata if k.lower() == by.lower()), None)
     if not key:
-        raise ToolError(f'by must be "document" or a document metadata field: ' + ', '.join(project.document_metadata))
+        raise ToolError('by must be "document" or a document metadata field: ' + ', '.join(project.document_metadata))
     groups: Dict[str, List[str]] = defaultdict(list)
     for did in rows:
         groups[str((metas.get(did) or {}).get(key, '') or '(none)')].append(did)

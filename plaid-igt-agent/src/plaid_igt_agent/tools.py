@@ -15,7 +15,7 @@ import copy
 import json
 import re
 import uuid
-from collections import Counter
+from collections import Counter, OrderedDict
 from typing import Any, Dict, List, Optional
 
 import unicodedata
@@ -23,7 +23,7 @@ import unicodedata
 from plaid_client.provenance import prov_state, MACHINE
 
 from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, load_document, resolve, document_lines,
-                      render_document, render_overview, render_sentence, render_word,
+                      render_document, render_overview, render_word,
                       segmentation, joiner, word_ref, is_unicode_punctuation)
 
 MAX_RESULT_CHARS = 12000
@@ -34,7 +34,7 @@ MAX_DOCS_PER_SEARCH = 1000
 # and the document list a turn starts from carries the current versions, so a
 # cached document is exact or unused. Any reader of a project may read all
 # of its documents, so sharing is safe. Bounded, least recently used out.
-_DOC_CACHE: "OrderedDict[tuple, IgtDoc]" = __import__('collections').OrderedDict()
+_DOC_CACHE: 'OrderedDict[tuple, IgtDoc]' = OrderedDict()
 DOC_CACHE_SIZE = 400
 
 
@@ -71,11 +71,13 @@ class Workspace:
         name, or its id where another document shares that name."""
         return f'"{self.corpus.ref_name(doc.id)}" ' if show else ''
 
-    def doc_label(self, doc_id: str) -> str:
+    def doc_label(self, doc_id: str, quote: bool = False) -> str:
         """How a plan's lines name a document to the person approving them:
-        its name, and its id too where another document shares that name."""
+        its name, and its id too where another document shares that name.
+        ``quote`` puts the name in quotes (for prose), the id outside them."""
         name = self.corpus.doc_name(doc_id)
-        return name if self.corpus.ref_name(doc_id) == name else f'{name} ({doc_id})'
+        head = f'"{name}"' if quote else name
+        return head if self.corpus.ref_name(doc_id) == name else f'{head} ({doc_id})'
 
     def use_scan(self, document: Optional[str]) -> bool:
         """Scan (one document, or everything when asked) rather than query."""
@@ -482,7 +484,7 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
     limit = max(1, min(int(limit or 100), 500))
     offset = max(0, int(offset or 0))
     page = docs[offset:offset + limit]
-    head = f'{len(docs)} document{"s" if len(docs) != 1 else ""}' + (f' matching' if pattern or metadata_field else '') \
+    head = f'{len(docs)} document{"s" if len(docs) != 1 else ""}' + (' matching' if pattern or metadata_field else '') \
         + (f', showing {offset + 1}-{offset + len(page)}' if len(docs) > len(page) else '') + ':'
     lines = [head] + document_lines(page)
     if offset + len(page) < len(docs):
@@ -1537,9 +1539,6 @@ _IMPL = {
     'confirm': t_confirm, 'discard_analysis': t_discard_analysis, 'drop_planned': t_drop_planned,
 }
 
-WRITE_TOOLS = {'set_field', 'set_analysis', 'set_orthography', 'respell', 'link_entry', 'unlink_entry',
-               'create_entry', 'set_entry_field', 'set_document_metadata', 'create_document', 'confirm',
-               'discard_analysis'}
 
 
 def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
@@ -1659,9 +1658,6 @@ _IMPL.update({
     'set_analysis_for_form': t_set_analysis_for_form, 'set_field_for_form': t_set_field_for_form, 'merge_entries': t_merge_entries, 'delete_entry': t_delete_entry,
     'rename_entry': t_rename_entry, 'rename_document': t_rename_document,
 })
-WRITE_TOOLS |= {'replace_in_field', 'respell_all', 'copy_to_orthography', 'set_analysis_for_form', 'set_field_for_form', 'merge_entries',
-                'delete_entry', 'rename_entry', 'rename_document'}
-
 from .shape import (t_split_word, t_merge_words, t_delete_word, t_split_sentence,  # noqa: E402
                     t_merge_sentences, t_append_text, t_retype_sentence)
 
@@ -1702,9 +1698,6 @@ TOOLS += [
 _IMPL.update({'split_word': t_split_word, 'merge_words': t_merge_words, 'delete_word': t_delete_word,
               'split_sentence': t_split_sentence, 'merge_sentences': t_merge_sentences,
               'append_text': t_append_text, 'retype_sentence': t_retype_sentence})
-WRITE_TOOLS |= {'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences', 'append_text',
-                'retype_sentence'}
-
 from .query import t_query, t_query_help  # noqa: E402
 
 TOOLS += [
@@ -1721,3 +1714,7 @@ TOOLS += [
         ['query']),
 ]
 _IMPL.update({'query_help': t_query_help, 'query': t_query})
+
+# A tool that plans a change says so in the first word of its description, and
+# that is what makes it one: no second list to keep in step with the first.
+WRITE_TOOLS = {t['function']['name'] for t in TOOLS if t['function']['description'].startswith('PLAN:')}
