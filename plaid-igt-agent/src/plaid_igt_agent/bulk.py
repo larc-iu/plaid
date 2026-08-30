@@ -268,8 +268,8 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
 
 # --- lexicon and document operations ----------------------------------------------
 
-def _existing(ws: Workspace, form, lexicon, entry_id) -> dict:
-    kind, target = ws.find_entry(form, lexicon, entry_id)
+def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None) -> dict:
+    kind, target = ws.find_entry(form, lexicon, entry_id, gloss)
     if kind == 'new':
         raise ToolError('That entry is new in this plan; approve the plan first, then merge or rename it.')
     return target
@@ -290,12 +290,13 @@ def _links_to(ws: Workspace, item_id: str) -> List[Dict[str, str]]:
 
 def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form: Optional[str] = None,
                     lexicon: Optional[str] = None, keep_id: Optional[str] = None,
-                    remove_id: Optional[str] = None) -> str:
+                    remove_id: Optional[str] = None, keep_gloss: Optional[str] = None,
+                    remove_gloss: Optional[str] = None) -> str:
     """PLAN: fold one lexicon entry into another: every link to the removed
     entry is moved to the kept one, then the removed entry is deleted. The
     kept entry's fields are untouched."""
-    keep = _existing(ws, keep_form, lexicon, keep_id)
-    remove = _existing(ws, remove_form, lexicon, remove_id)
+    keep = _existing(ws, keep_form, lexicon, keep_id, keep_gloss)
+    remove = _existing(ws, remove_form, lexicon, remove_id, remove_gloss)
     if keep['id'] == remove['id']:
         raise ToolError('keep and remove are the same entry')
     doomed = {op.get('remove_id') for op in ws.ops if op.get('kind') == 'merge_entries'} | \
@@ -311,10 +312,10 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
 
 
 def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
-                   entry_id: Optional[str] = None) -> str:
+                   entry_id: Optional[str] = None, entry_gloss: Optional[str] = None) -> str:
     """PLAN: delete a lexicon entry and its links (the words and morphemes
     stay, just unlinked)."""
-    it = _existing(ws, entry_form, lexicon, entry_id)
+    it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss)
     links = _links_to(ws, it['id'])
     ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
                'label': f'Delete entry {entry_line(it)} ({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
@@ -322,12 +323,13 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
 
 
 def t_rename_entry(ws: Workspace, new_form: str, entry_form: Optional[str] = None,
-                   lexicon: Optional[str] = None, entry_id: Optional[str] = None) -> str:
+                   lexicon: Optional[str] = None, entry_id: Optional[str] = None,
+                   entry_gloss: Optional[str] = None) -> str:
     """PLAN: change an entry's headword form (links are unaffected)."""
     new_form = (new_form or '').strip()
     if not new_form:
         raise ToolError('new_form must not be empty')
-    it = _existing(ws, entry_form, lexicon, entry_id)
+    it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss)
     if it.get('form') == new_form:
         return ws.planned_note(0)
     ws.add_op({'kind': 'rename_entry', 'item_id': it['id'], 'form': new_form,

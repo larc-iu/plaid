@@ -94,8 +94,10 @@ class Workspace:
             self._lexicons[vocab['id']] = list(layer.get('items') or [])
         return self._lexicons[vocab['id']]
 
-    def find_entry(self, form: Optional[str], lexicon: Optional[str], entry_id: Optional[str]):
-        """-> ('existing', item) | ('new', key). Errors list candidates."""
+    def find_entry(self, form: Optional[str], lexicon: Optional[str], entry_id: Optional[str],
+                   gloss: Optional[str] = None):
+        """-> ('existing', item) | ('new', key). Errors list candidates.
+        ``gloss`` narrows homographs to entries with that value in any field."""
         if entry_id:
             for key, e in self.new_entries.items():
                 if key == entry_id:
@@ -115,6 +117,10 @@ class Workspace:
         if '#' in form:
             form, _, hn = form.rpartition('#')
             homograph = hn.strip()
+        g = (gloss or '').strip().casefold()
+
+        def has_gloss(meta):
+            return not g or any(isinstance(v, str) and v.strip().casefold() == g for v in (meta or {}).values())
         hits = []
         for v in vocabs:
             for it in self.lexicon(v):
@@ -122,14 +128,19 @@ class Workspace:
                     continue
                 if homograph is not None and str((it.get('metadata') or {}).get('homograph', '')) != homograph:
                     continue
+                if not has_gloss(it.get('metadata')):
+                    continue
                 hits.append((v, it))
         news = [(k, e) for k, e in self.new_entries.items()
-                if e['form'].lower() == form.lower() and (not lexicon or e['vocab_id'] == vocabs[0]['id'])]
+                if e['form'].lower() == form.lower() and (not lexicon or e['vocab_id'] == vocabs[0]['id'])
+                and has_gloss(e.get('metadata'))]
         if len(hits) + len(news) == 1:
             return ('existing', hits[0][1]) if hits else ('new', news[0][0])
         if not hits and not news:
-            raise ToolError(f'No lexicon entry "{form}". Use read_lexicon to look, or create_entry to add one.')
-        lines = [f'Several entries match "{form}"; pass entry_id, or entry_form "{form}#<homograph number>" where one is shown:']
+            raise ToolError(f'No lexicon entry "{form}"' + (f' with a field valued "{gloss}"' if g else '')
+                            + '. Use read_lexicon to look, or create_entry to add one.')
+        lines = [f'Several entries match "{form}"; pass entry_id, entry_gloss (a field value that singles one out), '
+                 f'or entry_form "{form}#<homograph number>" where one is shown:']
         for v, it in hits:
             hn = (it.get('metadata') or {}).get('homograph')
             lines.append(f'  id={it["id"]}' + (f' form={form}#{hn}' if hn not in (None, '') else '') + f' {entry_line(it)} ({v["name"]})')
@@ -593,10 +604,10 @@ def t_analyses_of(ws: Workspace, form: str, document: Optional[str] = None) -> s
 
 
 def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
-                    entry_id: Optional[str] = None, examples: int = 3) -> str:
+                    entry_id: Optional[str] = None, examples: int = 3, entry_gloss: Optional[str] = None) -> str:
     """One lexicon entry in full: every field, where it is linked (words vs
     morphemes, how many), and example occurrences."""
-    kind, target = ws.find_entry(entry_form, lexicon, entry_id)
+    kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     if kind == 'new':
         e = ws.new_entries[target]
         return f'Entry "{e["form"]}" is new in this plan (not written yet): ' + entry_line({'form': e['form'], 'metadata': e['metadata']})
@@ -913,9 +924,10 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
 
 
 def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] = None,
-                 lexicon: Optional[str] = None, entry_id: Optional[str] = None) -> str:
+                 lexicon: Optional[str] = None, entry_id: Optional[str] = None,
+                 entry_gloss: Optional[str] = None) -> str:
     doc = ws.doc(document)
-    kind, target = ws.find_entry(entry_form, lexicon, entry_id)
+    kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
     staged: List[Dict[str, Any]] = []
     for ref in _refs(refs):
@@ -977,8 +989,9 @@ def lexicon_field(vocab: dict, name: str) -> str:
 
 
 def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optional[str] = None,
-                      lexicon: Optional[str] = None, entry_id: Optional[str] = None) -> str:
-    kind, target = ws.find_entry(entry_form, lexicon, entry_id)
+                      lexicon: Optional[str] = None, entry_id: Optional[str] = None,
+                      entry_gloss: Optional[str] = None) -> str:
+    kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     vocab = next((v for v in ws.project.vocabs if v['id'] == (ws.new_entries[target]['vocab_id'] if kind == 'new' else target.get('layer'))), None)
     if vocab:
         field = lexicon_field(vocab, field)
@@ -1167,6 +1180,8 @@ def _fn(name, description, properties, required):
 
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
+_GLOSS = {'type': 'string', 'description': 'Singles out one of several entries with the same form: a value one of '
+                                           'its fields has (e.g. its gloss).'}
 _REFS = {'type': 'array', 'items': {'type': 'string'},
          'description': 'Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.'}
 
@@ -1231,7 +1246,7 @@ TOOLS = [
         'PLAN: link words or morphemes to a lexicon entry, by the entry\'s form ("ама", or "ама#2" for homograph 2), '
         'or entry_id (also the id returned by create_entry). Replaces an existing link.',
         {'document': _DOC, 'refs': _REFS, 'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'},
-         'entry_id': {'type': 'string'}},
+         'entry_id': {'type': 'string'}, 'entry_gloss': _GLOSS},
         ['document', 'refs']),
     _fn('unlink_entry', 'PLAN: remove the lexicon link from words or morphemes.',
         {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
@@ -1243,7 +1258,7 @@ TOOLS = [
         ['form']),
     _fn('set_entry_field', 'PLAN: set a field (e.g. gloss) on a lexicon entry.',
         {'field': {'type': 'string'}, 'value': {'type': 'string'}, 'entry_form': {'type': 'string'},
-         'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'}},
+         'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'}, 'entry_gloss': _GLOSS},
         ['field', 'value']),
     _fn('concordance',
         'Every occurrence of a morpheme form (default), word form, or field value (whole-form match, case-insensitive; '
@@ -1264,7 +1279,7 @@ TOOLS = [
     _fn('lexicon_entry',
         'One lexicon entry in full: all its fields, how many words and morphemes link to it, and example occurrences.',
         {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},
-         'examples': {'type': 'integer', 'description': 'Example occurrences to show (default 3).'}},
+         'entry_gloss': _GLOSS, 'examples': {'type': 'integer', 'description': 'Example occurrences to show (default 3).'}},
         []),
     _fn('check_consistency',
         'A consistency report for a field: values that are case/spelling variants of one another, forms that carry '
@@ -1337,7 +1352,8 @@ from .stats import (t_corpus_stats, t_frequency_list, t_worklist, t_check_lexico
 from .bulk import (t_replace_in_field, t_respell_all, t_copy_to_orthography, t_set_analysis_for_form,  # noqa: E402
                    t_set_field_for_form, t_merge_entries, t_delete_entry, t_rename_entry, t_rename_document)
 
-_ENTRY = {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'}}
+_ENTRY = {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},
+          'entry_gloss': _GLOSS}
 
 TOOLS += [
     _fn('corpus_stats',
@@ -1413,7 +1429,8 @@ TOOLS += [
     _fn('merge_entries',
         'PLAN: fold one lexicon entry into another (links move to the kept entry, the other is deleted).',
         {'keep_form': {'type': 'string'}, 'remove_form': {'type': 'string'}, 'lexicon': {'type': 'string'},
-         'keep_id': {'type': 'string'}, 'remove_id': {'type': 'string'}}, []),
+         'keep_id': {'type': 'string'}, 'remove_id': {'type': 'string'},
+         'keep_gloss': _GLOSS, 'remove_gloss': _GLOSS}, []),
     _fn('delete_entry', 'PLAN: delete a lexicon entry and its links; the words and morphemes stay, unlinked.',
         _ENTRY, []),
     _fn('rename_entry', 'PLAN: change a lexicon entry\'s headword form.',
