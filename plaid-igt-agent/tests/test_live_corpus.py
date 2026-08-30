@@ -92,3 +92,47 @@ def test_concordance_analyses_and_consistency(proj):
     assert 'Slot: m1 (2)' in out and '    s1.w2 gam' in out
     out = call_tool(b, 'analyses_of', {'form': 'di'})
     assert 'Word "di": no occurrences.' in out and 'Morph Gloss: ERG (1)' in out and 'Type: suffix (1)' in out and 'Links: -di (1)' in out
+
+
+def test_lexicon_sequence_and_entry(proj):
+    for args in ({}, {'section': 'unused'}, {'section': 'glosses'}, {'section': 'stale'}, {'section': 'homographs'}):
+        same(proj, 'check_lexicon', args)
+    for args in ({'sequence': [{'Gloss': 'Ali'}, {'form': 'gam'}]}, {'sequence': [{'Morph Gloss': 'ERG'}, {'form': 'akuna'}], 'adjacent': False},
+                 {'sequence': [{'form': 'gam'}]}, {'sequence': [{'morpheme': 'ar'}]}, {'sequence': [{'type': 'suffix'}, {'form': 'gam'}]},
+                 {'sequence': [{'form': 'gam'}, {'form': 'akuna'}]}, {'sequence': [{'form': 'ali-di'}, {'form': 'akuna'}]},
+                 {'sequence': [{'form': '^g', 'form2': 'x'}], 'regex': True} if False else {'sequence': [{'form': '^g'}], 'regex': True}):
+        same(proj, 'sequence_search', args)
+    for args in ({'entry_form': 'Ali'}, {'entry_form': '-di'}, {'entry_form': 'gam', 'entry_gloss': 'fish'}):
+        same(proj, 'lexicon_entry', args)
+
+
+def same_ops(proj, tool, args):
+    """Both paths must plan the same operations (labels included); the query
+    path also stamps each op with its document."""
+    a, b = two(proj)
+    ra, rb = call_tool(a, tool, args), call_tool(b, tool, args)
+    strip = lambda ops: [{k: v for k, v in op.items() if k != 'doc'} for op in ops]  # noqa: E731
+    assert strip(b.ops) == strip(a.ops), f'{tool} {args}\n--- scan ---\n{ra}\n{a.ops}\n--- query ---\n{rb}\n{b.ops}'
+    assert rb == ra, f'{tool} {args}\n--- scan ---\n{ra}\n--- query ---\n{rb}'
+    return b
+
+
+def test_bulk_tools_plan_the_same_ops(proj):
+    same_ops(proj, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole_value': True})
+    same_ops(proj, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
+    same_ops(proj, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'})
+    same_ops(proj, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
+    same_ops(proj, 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'case_sensitive': True, 'morpheme_forms': False, 'lexicon': False})
+    same_ops(proj, 'copy_to_orthography', {'orthography': 'IPA'})
+    same_ops(proj, 'copy_to_orthography', {'orthography': 'IPA', 'overwrite': True})
+    same_ops(proj, 'set_field_for_form', {'form': 'gam', 'field': 'Gloss', 'value': 'fish'})
+    same_ops(proj, 'set_field_for_form', {'form': 'ali', 'field': 'Gloss', 'value': 'Ali2', 'only_empty': False})
+    same_ops(proj, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})
+    same_ops(proj, 'set_analysis_for_form', {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})
+    same_ops(proj, 'set_analysis_for_form', {'form': 'gam', 'morphemes': [{'form': 'gam'}], 'skip_analyzed': True})
+    same_ops(proj, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'ERG'}}]})
+    b = same_ops(proj, 'merge_entries', {'keep_form': 'Ali', 'remove_form': '-di'})
+    assert b.ops[-1]['links'] and b.ops[-1]['links'][0]['token_id'] == proj.ids['m-1b']
+    same_ops(proj, 'delete_entry', {'entry_form': 'Ali'})
+    # The stale check knows the documents of query-built ops.
+    assert [d['id'] for d in b.plan_payload()['documents']] == [proj.ids['d1']]

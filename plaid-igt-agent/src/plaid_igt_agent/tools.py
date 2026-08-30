@@ -22,7 +22,7 @@ import unicodedata
 
 from plaid_client.provenance import prov_state, MACHINE
 
-from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, load_document, resolve,
+from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, load_document, resolve, document_lines,
                       render_document, render_overview, render_sentence, render_word,
                       segmentation, joiner, word_ref, is_unicode_punctuation)
 
@@ -428,6 +428,36 @@ def t_project_overview(ws: Workspace) -> str:
     return render_overview(ws.project, ws.documents())
 
 
+def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_field: Optional[str] = None,
+                     value: Optional[str] = None, limit: int = 100, offset: int = 0) -> str:
+    """The documents, filtered by a name pattern and/or a metadata value, a
+    page at a time (the overview shows only the first hundred)."""
+    docs = sorted(ws.documents(), key=lambda d: (d.get('name') or '').lower())
+    if pattern:
+        m = _matcher(pattern, False)
+        docs = [d for d in docs if m(d.get('name') or '')]
+    if metadata_field:
+        name = next((n for n in ws.project.document_metadata if n.lower() == metadata_field.lower()), None)
+        if not name:
+            raise ToolError(f'No document metadata field "{metadata_field}". Fields: '
+                            + (', '.join(ws.project.document_metadata) or '(none configured)'))
+        metas = ws.corpus.document_metadata() if not ws.prefer_scan else {d.id: d.metadata for d in ws.all_docs()}
+        want = (value or '').casefold()
+        docs = [d for d in docs if str((metas.get(d['id']) or {}).get(name, '') or '').casefold() == want
+                or (not want and not (metas.get(d['id']) or {}).get(name))]
+        for d in docs:
+            d = d  # metadata shown below
+    limit = max(1, min(int(limit or 100), 500))
+    offset = max(0, int(offset or 0))
+    page = docs[offset:offset + limit]
+    head = f'{len(docs)} document{"s" if len(docs) != 1 else ""}' + (f' matching' if pattern or metadata_field else '') \
+        + (f', showing {offset + 1}-{offset + len(page)}' if len(docs) > len(page) else '') + ':'
+    lines = [head] + document_lines(page)
+    if offset + len(page) < len(docs):
+        lines.append(f'  … list_documents(offset={offset + len(page)}) for the next page')
+    return _truncate('\n'.join(lines))
+
+
 def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sentence: Optional[int] = None) -> str:
     doc = ws.doc(document)
     return render_document(doc, ws.project, start=int(from_sentence or 1),
@@ -706,7 +736,10 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
         lines.append(f'  {k}: {json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v}')
     word_links, morph_links, exs = 0, 0, []
     examples = max(0, min(int(examples or 3), 20))
-    for doc in ws.all_docs():
+    if not ws.prefer_scan:
+        from .corpus import q_entry_usage
+        word_links, morph_links, exs = q_entry_usage(ws, target['id'], examples)
+    for doc in (ws.all_docs() if ws.prefer_scan else []):
         tag = f'"{doc.name}" ' if True else ''
         for s in doc.sentences:
             for w in s.words:
@@ -917,9 +950,19 @@ def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> s
         raise ToolError('This project has no morpheme layer.')
     doc = ws.doc(document)
     w = _need(resolve(doc, ref), Word, ref)
+    out = parse_analysis(ws, morphemes)
+    existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes]
+    had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
+    op, note = analysis_op(ws, f'{doc.name} {ref} "{w.surface}"', w.surface, w.id, w.text_id, w.begin, w.end,
+                           existing, segmentation(w) if w.morphemes else '', had_values, out)
+    ws.add_op(op)
+    return ws.planned_note(1) + note
+
+
+def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
+    """The validated morpheme list of a set_analysis call."""
     if not morphemes or not isinstance(morphemes, list):
         raise ToolError('morphemes must be a non-empty list of {form, type?, fields?}')
-    mfields = ws.project.fields_by_scope('Morpheme')
     out = []
     for m in morphemes:
         if not isinstance(m, dict) or not (m.get('form') or '').strip():
@@ -933,25 +976,30 @@ def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> s
                 raise ToolError(f'"{f.name}" is a {f.scope} field, not a morpheme field; use set_field for it')
             fvals.append({'layer_id': f.layer_id, 'value': '' if val is None else str(val)})
         out.append({'form': m['form'].strip(), 'morph_type': m.get('type') or None, 'fields': fvals})
+    return out
+
+
+def analysis_op(ws: Workspace, head: str, surface: str, word_id: str, text_id: str, begin: int, end: int,
+                existing: List[Dict[str, Any]], current_seg: str, had_values: int, out: List[Dict[str, Any]]):
+    """A set_analysis op with its label, and the allomorphy note if the forms
+    do not add up to the surface."""
     joined = ''.join(m['form'] for m in out)
-    if joined.replace(' ', '') != w.surface.replace(' ', ''):
-        note = f' (note: forms "{joined}" differ from the surface "{w.surface}"; that is allowed for allomorphy)'
+    if joined.replace(' ', '') != surface.replace(' ', ''):
+        note = f' (note: forms "{joined}" differ from the surface "{surface}"; that is allowed for allomorphy)'
     else:
         note = ''
-    existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes]
     desc = '-'.join(m['form'] for m in out)
     gloss_bits = []
-    for f in mfields:
+    for f in ws.project.fields_by_scope('Morpheme'):
         vals = [next((fv['value'] for fv in m['fields'] if fv['layer_id'] == f.layer_id), '_') for m in out]
         if any(v not in ('', '_') for v in vals):
             gloss_bits.append(f'{f.name} {"-".join(v or "_" for v in vals)}')
-    had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
-    ws.add_op({'kind': 'set_analysis', 'word_id': w.id, 'text_id': w.text_id, 'begin': w.begin, 'end': w.end,
-               'morpheme_layer_id': ws.project.morpheme_layer_id, 'existing': existing, 'morphemes': out,
-               'label': f'{doc.name} {ref} "{w.surface}": ' + (f'{segmentation(w)} → ' if w.morphemes else '')
-                        + desc + (', ' + ', '.join(gloss_bits) if gloss_bits else '')
-                        + (f' (replaces {had_values} existing morpheme value{"s" if had_values != 1 else ""})' if had_values else '')})
-    return ws.planned_note(1) + note
+    op = {'kind': 'set_analysis', 'word_id': word_id, 'text_id': text_id, 'begin': begin, 'end': end,
+          'morpheme_layer_id': ws.project.morpheme_layer_id, 'existing': existing, 'morphemes': out,
+          'label': f'{head}: ' + (f'{current_seg} → ' if current_seg else '')
+                   + desc + (', ' + ', '.join(gloss_bits) if gloss_bits else '')
+                   + (f' (replaces {had_values} existing morpheme value{"s" if had_values != 1 else ""})' if had_values else '')}
+    return op, note
 
 
 def t_set_orthography(ws: Workspace, document: str, refs, orthography: str, value: str) -> str:
@@ -1313,6 +1361,11 @@ TOOLS = [
     _fn('project_overview',
         'The project: its annotation fields by scope (Word / Morpheme / Sentence), orthographies, lexicons, and the '
         'list of documents. Call this first.', {}, []),
+    _fn('list_documents',
+        'The documents by name, a page at a time, optionally filtered by a name substring and/or a document metadata '
+        'value (metadata_field + value; an empty value lists documents lacking it).',
+        {'pattern': {'type': 'string'}, 'metadata_field': {'type': 'string'}, 'value': {'type': 'string'},
+         'limit': {'type': 'integer'}, 'offset': {'type': 'integer'}}, []),
     _fn('read_document',
         'Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word '
         'with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per call.',
@@ -1440,6 +1493,7 @@ TOOLS = [
 
 _IMPL = {
     'project_overview': t_project_overview, 'read_document': t_read_document, 'search': t_search,
+    'list_documents': t_list_documents,
     'read_lexicon': t_read_lexicon,
     'set_field': t_set_field, 'set_analysis': t_set_analysis, 'set_orthography': t_set_orthography,
     'respell': t_respell, 'link_entry': t_link_entry, 'unlink_entry': t_unlink_entry,
@@ -1509,7 +1563,8 @@ TOOLS += [
         {'lexicon': {'type': 'string'}, 'section': {'type': 'string'}}, []),
     _fn('check_integrity',
         'Data-shape report: segmentations that do not add up to the word, duplicate and empty sentences, non-NFC '
-        'text, mixed apostrophe characters, and unusual characters in the baseline.',
+        'text, mixed apostrophe characters, and unusual characters in the baseline. Reads every document; on a large '
+        'project name one.',
         {'document': _DOC}, []),
     _fn('sequence_search',
         'Sentences containing a sequence of words, each described by conditions on its form, morphemes, morph type, '

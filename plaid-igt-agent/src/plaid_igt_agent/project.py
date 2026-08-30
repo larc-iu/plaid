@@ -570,6 +570,9 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
     return '\n'.join(lines)
 
 
+MAX_OVERVIEW_DOCS = 100
+
+
 def render_overview(project: IgtProject, documents: List[dict]) -> str:
     lines = [f'Project "{project.name}"']
     for scope in SCOPES:
@@ -586,8 +589,15 @@ def render_overview(project: IgtProject, documents: List[dict]) -> str:
                                             for v in project.vocabs) or '(none)'))
     if project.document_metadata:
         lines.append('Document metadata fields: ' + ', '.join(project.document_metadata))
-    lines.append(f'Documents ({len(documents)}):')
-    for d in sorted(documents, key=lambda d: (d.get('name') or '').lower()):
-        mod = (d.get('time_modified') or '')[:10]
-        lines.append(f'  {d.get("name") or "(unnamed)"}  id={d["id"]}' + (f'  modified={mod}' if mod else ''))
+    lines.append(f'Documents ({len(documents)}):' + (f' first {MAX_OVERVIEW_DOCS} by name; list_documents pages and filters the rest'
+                                                     if len(documents) > MAX_OVERVIEW_DOCS else ''))
+    lines.extend(document_lines(sorted(documents, key=lambda d: (d.get('name') or '').lower())[:MAX_OVERVIEW_DOCS]))
     return '\n'.join(lines)
+
+
+def document_lines(documents: List[dict]) -> List[str]:
+    out = []
+    for d in documents:
+        mod = (d.get('time_modified') or '')[:10]
+        out.append(f'  {d.get("name") or "(unnamed)"}  id={d["id"]}' + (f'  modified={mod}' if mod else ''))
+    return out

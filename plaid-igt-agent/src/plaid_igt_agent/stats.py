@@ -1,6 +1,8 @@
 """Corpus-wide reads: numbers, worklists, lexicon and integrity reports, and
-sequence search. All of these scan the loaded documents (cached per turn),
-so a first call on a large project reads every document once."""
+sequence search. Project-wide they run on the query engine (see corpus.py);
+with ``document=`` they scan that one document, which is also the reference
+implementation the query path is tested against. check_integrity always
+scans (it inspects raw text)."""
 
 import difflib
 import re
@@ -395,7 +397,8 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         for it in ws.lexicon(v):
             items[it['id']] = it
             item_vocab[it['id']] = v['id']
-    docs = ws.all_docs()
+    docs = ws.all_docs() if ws.prefer_scan else []
+    n_docs = len(docs) if ws.prefer_scan else len(ws.documents())
     gm, gw = project.gloss_field('Morpheme'), project.gloss_field('Word')
     first_m, first_w = (gm.name if gm else None), (gw.name if gw else None)
     # The lexicon's own gloss and POS fields, by each lexicon's schema.
@@ -410,6 +413,10 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     corpus_gloss: Dict[str, Counter] = defaultdict(Counter)   # item -> corpus gloss values
     gloss_items: Dict[str, set] = defaultdict(set)            # corpus gloss -> items
     stale: List[str] = []
+    if not ws.prefer_scan:
+        from .corpus import q_lexicon_usage
+        uses, use_docs, corpus_gloss, gloss_items, stale = q_lexicon_usage(ws, vocabs, items)
+        docs = []
     for d in docs:
         tag = _tag(docs, d)
         for s in d.sentences:
@@ -505,7 +512,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         real_stale = [s for s in stale if s]
         lines.append(f'{len(stale)} links whose form no longer contains the entry form'
                      + (': ' + '; '.join(real_stale[:cap]) + (' …' if len(stale) > min(cap, len(real_stale)) else '') if real_stale else '.'))
-    if want('single') and len(docs) > 1:
+    if want('single') and n_docs > 1:
         listing('entries attested in a single document', (items[i].get('form') or '' for i, ds in use_docs.items() if len(ds) == 1))
     return _truncate('\n'.join(lines))
 
@@ -616,21 +623,30 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
     if not isinstance(sequence, list) or not sequence or not all(isinstance(c, dict) and c for c in sequence):
         raise ToolError('sequence must be a non-empty list of condition objects, e.g. [{"POS":"v"},{"Gloss":"PL"}]')
     limit = max(1, min(int(limit or 40), 200))
-    docs = _docs(ws, document)
     out: List[str] = []
     total = 0
-    for d in docs:
-        tag = _tag(docs, d)
-        for s in d.sentences:
-            matches = _find_sequence(s, sequence, adjacent, ws.project, regex)
-            if not matches:
-                continue
-            total += 1
-            if len(out) < limit:
-                idx = set(matches)
-                shown = ' '.join(f'[{w.surface}]' if w.index in idx else w.surface for w in s.words)
-                out.append(f'{tag}s{s.index} {shown}' + ''.join(
-                    f'\n    w{i} ' + render_word(s.words[i - 1], ws.project)[len(s.words[i - 1].ref) + 1:] for i in matches))
+
+    def show(tag, s, matches):
+        idx = set(matches)
+        shown = ' '.join(f'[{w.surface}]' if w.index in idx else w.surface for w in s.words)
+        out.append(f'{tag}s{s.index} {shown}' + ''.join(
+            f'\n    w{i} ' + render_word(s.words[i - 1], ws.project)[len(s.words[i - 1].ref) + 1:] for i in matches))
+    if not ws.use_scan(document):
+        from .corpus import q_sequence
+        found, total = q_sequence(ws, sequence, bool(adjacent), bool(regex), limit)
+        for d, s, word_ids in found:
+            show(ws.corpus.tag(d.id), s, [w.index for w in s.words if w.id in word_ids])
+    else:
+        docs = _docs(ws, document)
+        for d in docs:
+            tag = _tag(docs, d)
+            for s in d.sentences:
+                matches = _find_sequence(s, sequence, adjacent, ws.project, regex)
+                if not matches:
+                    continue
+                total += 1
+                if len(out) < limit:
+                    show(tag, s, matches)
     if not total:
         return 'No sentence matches that sequence.'
     return _truncate('\n'.join([f'{total} sentence{"s" if total != 1 else ""} match' + (f' (showing {limit})' if total > limit else '') + ':'] + out))

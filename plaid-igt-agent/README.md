@@ -54,7 +54,7 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
   interlinear text. Everything is addressed positionally (`s3.w2.m1`); the
   model never sees ids.
 - `tools.py`: the tools the model gets. Reads run immediately:
-  `project_overview`, `read_document`, `search`, `read_lexicon`,
+  `project_overview`, `list_documents`, `read_document`, `search`, `read_lexicon`,
   `lexicon_entry`, `concordance` (aligned context and pattern tally for a
   form or value), `analyses_of` (how a form has been analyzed so far),
   `check_consistency` (spelling variants, forms with several values, link
@@ -78,6 +78,19 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
   and `retype_sentence`, which go through the server's diffing text update
   (unchanged words keep their tokens and analyses) and then tokenize the
   edited region as the editor would.
+- `corpus.py`: the query-engine side of every corpus-wide tool. Project-wide
+  reads and target finding run as server-side queries (counts, grouped
+  tallies, entity ids); documents are fetched only to render the hits a tool
+  shows, so cost follows what is displayed, not the size of the corpus. With
+  `document=` a tool scans that one document instead, and the scan
+  implementations double as the reference the query path is tested against
+  (`tests/test_live_corpus.py`, which seeds the fixture project into a running
+  core and compares both paths; it skips without a server at
+  `PLAID_TEST_URL`, default `http://localhost:8085`, dev account `a@b.com`).
+  Two conventions the engine does not know are applied in Python on grouped
+  results: ignored (punctuation) tokens are left out of word counts, and
+  forms are compared case-insensitively. `check_integrity` still reads whole
+  documents (it inspects raw text).
 - `plan.py`: validates and normalizes an approved plan (a later op on the same
   target wins; links to entries the plan deletes are dropped; overlapping
   respells are refused; ops on tokens a split, merge, or delete removes are

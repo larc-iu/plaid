@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from .project import Word, Sentence, Morpheme, segmentation, word_ref
 from .tools import (Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op,
-                    has_own_form, morpheme_form_op)
+                    has_own_form, morpheme_form_op, parse_analysis, analysis_op)
 from .stats import _analyzed, _docs, _tag
 
 MAX_BULK = 3000
@@ -62,6 +62,13 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     rep = _replacer(pattern, replacement, bool(regex), bool(whole_value), bool(case_sensitive))
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
+    if not ws.use_scan(document) and not _names_morpheme_forms(ws, field):
+        from .corpus import q_replace_in_field
+        f = ws.project.field(field)
+        staged = q_replace_in_field(ws, f, rep, MAX_BULK)
+        _check_cap(len(staged))
+        ws.add_ops(staged)
+        return _bulk_note(ws, len(staged), [op['label'] for op in staged], f'{f.name} values')
     if _names_morpheme_forms(ws, field):
         for doc in _docs(ws, document):
             for s in doc.sentences:
@@ -128,7 +135,12 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
     n_words = n_morphs = n_entries = 0
-    for doc in _docs(ws, document):
+    if not ws.use_scan(document):
+        from .corpus import q_respell_all, rx
+        staged, n_words, n_morphs = q_respell_all(ws, rep, rx(pattern, regex=bool(regex), whole=bool(whole_word),
+                                                              case_sensitive=bool(case_sensitive)), bool(morpheme_forms), MAX_BULK)
+        labels = [op['label'] for op in staged]
+    for doc in (_docs(ws, document) if ws.use_scan(document) else []):
         for s in doc.sentences:
             for w in s.words:
                 new = rep(w.surface)
@@ -182,7 +194,11 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
     src = None if (source or 'baseline').lower() == 'baseline' else ws.project.orthography(source)
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
-    for doc in _docs(ws, document):
+    if not ws.use_scan(document):
+        from .corpus import q_copy_to_orthography
+        staged = q_copy_to_orthography(ws, target, src, bool(overwrite), MAX_BULK)
+        labels = [op['label'] for op in staged]
+    for doc in (_docs(ws, document) if ws.use_scan(document) else []):
         for s in doc.sentences:
             for w in s.words:
                 cur = w.orthographies.get(target, '')
@@ -211,7 +227,10 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
         raise ToolError('Give a form.')
     value = '' if value is None else str(value)
     staged: List[Dict[str, Any]] = []
-    for doc in _docs(ws, document):
+    if not ws.use_scan(document):
+        from .corpus import q_set_field_for_form
+        staged = q_set_field_for_form(ws, form, f, value, bool(only_empty), MAX_BULK)
+    for doc in (_docs(ws, document) if ws.use_scan(document) else []):
         for s in doc.sentences:
             for w in s.words:
                 if f.scope == 'Word':
@@ -238,6 +257,8 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     key = (form or '').strip().casefold()
     if not key:
         raise ToolError('Give a form.')
+    if not ws.use_scan(document):
+        return _set_analysis_for_form_q(ws, form, morphemes, bool(skip_analyzed))
     targets = []
     for doc in _docs(ws, document):
         for s in doc.sentences:
@@ -266,6 +287,34 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     return _bulk_note(ws, len(staged), labels, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
 
 
+def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_analyzed: bool) -> str:
+    """The query path: word occurrences and their morpheme chains by query,
+    then one set_analysis op per word."""
+    from .corpus import q_analysis_targets, _docs_of
+    if not ws.project.morpheme_layer_id:
+        raise ToolError('This project has no morpheme layer.')
+    out = parse_analysis(ws, morphemes)
+    words, chains, spans = q_analysis_targets(ws, form, skip_analyzed, MAX_BULK)
+    _check_cap(len(words))
+    budget = _docs_of([[w] for w in words])
+    staged = []
+    first_note = ''
+    for w in words:
+        chain = sorted(chains.get(w['id']) or [], key=lambda m: (m.get('precedence') or 0, m.get('id')))
+        existing = [{'id': m['id'], 'span_ids': spans.get(m['id']) or []} for m in chain]
+        seg = '-'.join(((m.get('metadata') or {}).get('form') or m.get('value') or '') for m in chain) if chain else ''
+        had_values = sum(len(spans.get(m['id']) or []) for m in chain)
+        head = ws.corpus.label_ref(w['document'], w['id'], budget) + f' "{w.get("value") or ""}"'
+        op, note = analysis_op(ws, head, w.get('value') or '', w['id'], w['text'], w['begin'], w['end'],
+                               existing, seg, had_values, out)
+        op['doc'] = w['document']
+        staged.append(op)
+        if not first_note and note:
+            first_note = note.strip()
+    ws.add_ops(staged)
+    return _bulk_note(ws, len(staged), [op['label'] for op in staged], f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
+
+
 # --- lexicon and document operations ----------------------------------------------
 
 def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None) -> dict:
@@ -276,6 +325,9 @@ def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None) -> dict:
 
 
 def _links_to(ws: Workspace, item_id: str) -> List[Dict[str, str]]:
+    if not ws.prefer_scan:
+        from .corpus import q_entry_links
+        return q_entry_links(ws, item_id)
     out = []
     for doc in ws.all_docs():
         for s in doc.sentences:

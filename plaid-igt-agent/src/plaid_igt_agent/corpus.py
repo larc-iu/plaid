@@ -181,16 +181,17 @@ class Corpus:
             return doc, None, None, None
         return (doc,) + hit
 
-    def label_ref(self, doc_id: str, token_id: str, surface: str, budget: Optional[set] = None) -> str:
-        """``"Doc" s3.w2 "surface"`` when the document is loaded or the plan's
-        documents are few enough to load; else ``"Doc" "surface"``."""
+    def label_ref(self, doc_id: str, token_id: str, budget: Optional[set] = None) -> str:
+        """``Doc s3.w2`` (the scan's label head) when the document is loaded
+        or the plan touches few enough documents to load them; else the
+        document name alone, quoted. Callers add the surface as the scan does."""
         name = self.doc_name(doc_id)
         if doc_id in self.ws._docs or (budget is not None and len(budget) <= LABEL_DOC_BUDGET):
             doc, s, w, m = self.locate(doc_id, token_id)
             if s is not None:
                 ref = f's{s.index}' + (f'.w{w.index}' if w else '') + (f'.m{m.index}' if m else '')
-                return f'{doc.name} {ref} "{surface[:40]}"'
-        return f'"{name}" "{surface[:40]}"'
+                return f'{doc.name} {ref}'
+        return f'"{name}"'
 
     def tag(self, doc_id: str) -> str:
         """The document prefix on a reference; none in a one-document project."""
@@ -711,3 +712,320 @@ def q_consistency(ws: Workspace, f):
     n = c.count(where, ['?u'])
     linked_empty = (n, examples(where, ['?u'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} → {u.link.form if u.link else "?"}') if n else [])
     return values, by_form, unlinked, linked_empty
+
+
+# --- check_lexicon --------------------------------------------------------------------
+
+def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
+    """(uses, use_docs, corpus_gloss, gloss_items, stale) for check_lexicon,
+    from grouped queries over the links of the given lexicons."""
+    from .stats import _strip_affix
+    c = ws.corpus
+    p = c.p
+    gm, gw = p.gloss_field('Morpheme'), p.gloss_field('Word')
+    uses: Counter = Counter()
+    use_docs: Dict[str, set] = defaultdict(set)
+    corpus_gloss: Dict[str, Counter] = defaultdict(Counter)
+    gloss_items: Dict[str, set] = defaultdict(set)
+    stale: List[str] = []
+    levels = [('?t', c.word('?t'), gw, ['?t.value'])]
+    if c.M:
+        levels.append(('?t', c.morph('?t'), gm, ['?t.metadata.form', '?t.value']))
+    for v in vocabs:
+        base = [['vocab', '?v', {'layer': v['id']}], ['vocab-link', '?t', '?v']]
+        for var, tok, gloss_field, form_keys in levels:
+            where = base + [tok]
+            for iid, n in c.group(where, ['?v']):
+                if iid in items:
+                    uses[iid] += n
+            for iid, doc, _n in c.group(where, ['?v', '?t.doc']):
+                if iid in items:
+                    use_docs[iid].add(doc)
+            if gloss_field:
+                for iid, value, n in c.group(where + [c.span('?s', gloss_field.layer_id), ['covers', '?s', '?t']], ['?v', '?s.value']):
+                    if iid in items and value not in (None, ''):
+                        corpus_gloss[iid][value] += n
+                        gloss_items[value].add(iid)
+            for row in c.group(where, ['?v'] + form_keys):
+                iid, n = row[0], row[-1]
+                if iid not in items:
+                    continue
+                form = Corpus.morph_key(row[1], row[2]) if len(form_keys) == 2 else (row[1] or '')
+                if _strip_affix(items[iid].get('form')) not in _strip_affix(form):
+                    stale.append(f'{form} → "{items[iid].get("form")}"' + (f' ×{n}' if n > 1 else ''))
+    return uses, use_docs, corpus_gloss, gloss_items, stale
+
+
+# --- sequence_search ----------------------------------------------------------------
+
+_PUNCT_FILLER = ['rep', 0, 2, ['token', {'value': {'regex': r'^[\p{P}\p{S}]+$'}}]]
+
+
+def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, regex: bool, limit: int):
+    """[(doc, sentence, [matched word ids])] for the first match in each of
+    the shown sentences, and the number of matching sentences."""
+    c = ws.corpus
+    p = c.p
+    n = len(sequence)
+    wvars = [f'?w{i}' for i in range(n)]
+    extra: List[Any] = []
+    token_cons: List[Dict[str, Any]] = []
+    for i, cond in enumerate(sequence):
+        cons: Dict[str, Any] = {}
+        for key, pat in cond.items():
+            spec = rx(str(pat), regex=regex, whole=not regex)
+            k = (key or '').lower()
+            if k in ('form', 'word', 'baseline'):
+                cons['value'] = spec
+            elif k == 'morpheme':
+                extra += [c.morph_form_clauses(f'?m{i}f', spec), ['within', f'?m{i}f', wvars[i]]]
+            elif k == 'type':
+                extra += [c.morph(f'?m{i}t', metadata={'morphType': spec}), ['within', f'?m{i}t', wvars[i]]]
+            else:
+                f = p.field(key)
+                if f.scope == 'Word':
+                    extra += [c.span(f'?s{i}w', f.layer_id, value=spec), ['covers', f'?s{i}w', wvars[i]]]
+                elif f.scope == 'Morpheme':
+                    extra += [c.span(f'?s{i}m', f.layer_id, value=spec), ['covers', f'?s{i}m', f'?m{i}g'],
+                              c.morph(f'?m{i}g'), ['within', f'?m{i}g', wvars[i]]]
+                else:
+                    raise ToolError(f'"{f.name}" is a sentence field; sequence conditions are per word')
+        token_cons.append(cons)
+    where: List[Any] = []
+    if adjacent:
+        seq: List[Any] = ['seq', {'layer': c.W}]
+        for i, cons in enumerate(token_cons):
+            if i:
+                seq.append(_PUNCT_FILLER)
+            seq.append(['token', cons, 'as', wvars[i]])
+        where.append(seq)
+    else:
+        for i, cons in enumerate(token_cons):
+            where.append(c.word(wvars[i], **cons))
+            if i:
+                where.append(['precedes*', wvars[i - 1], wvars[i]])
+    where += extra
+    where += [c.sent('?sent')] + [['within', v, '?sent'] for v in wvars]
+    total = c.count(where, ['?sent'])
+    order = [['?sent.doc'], ['?sent.begin']] + [[f'{v}.begin'] for v in wvars]
+    rows = c.entities(where, ['?sent'] + wvars, limit * 4, order)
+    out = []
+    seen = set()
+    for row in rows:
+        sent = row[0]
+        if not isinstance(sent, dict) or sent['id'] in seen:
+            continue
+        seen.add(sent['id'])
+        doc, s, _, _ = c.locate(sent['document'], sent['id'])
+        if s is None:
+            continue
+        out.append((doc, s, [w['id'] for w in row[1:] if isinstance(w, dict)]))
+        if len(out) >= limit:
+            break
+    return out, total
+
+
+# --- lexicon_entry --------------------------------------------------------------------
+
+def q_entry_usage(ws: Workspace, item_id: str, examples: int):
+    """(word links, morpheme links, example lines) for one lexicon entry."""
+    from .project import render_word, word_ref
+    c = ws.corpus
+    where = [['vocab', '?v', {}], ['=', '?v.id', item_id], ['vocab-link', '?t', '?v']]
+    word_links = morph_links = 0
+    for layer, n in c.group(where, ['?t.layer']):
+        if layer == c.W:
+            word_links += n
+        elif layer == c.M:
+            morph_links += n
+    exs = []
+    if examples:
+        for row in c.entities(where, ['?t'], examples * 2, [['?t.doc'], ['?t.begin']]):
+            ent = row[0]
+            if not isinstance(ent, dict):
+                continue
+            doc, s, w, _ = c.locate(ent['document'], ent['id'])
+            if w is None or any(e.endswith(f'|| {s.text}') and word_ref(s, w) in e for e in exs):
+                continue
+            exs.append(f'  "{doc.name}" {word_ref(s, w)} {render_word(w, p := c.p)[len(w.ref) + 1:]} || {s.text}')
+            if len(exs) >= examples:
+                break
+    return word_links, morph_links, exs
+
+
+def q_entry_links(ws: Workspace, item_id: str) -> List[Dict[str, str]]:
+    """[{link_id, token_id}] for an entry: the documents its links live in
+    are found by query and only those are loaded (link ids are not queryable)."""
+    c = ws.corpus
+    rows = c.entities([['vocab', '?v', {}], ['=', '?v.id', item_id], ['vocab-link', '?t', '?v']], ['?t'], ROW_LIMIT)
+    doc_ids = list(dict.fromkeys(r[0]['document'] for r in rows if isinstance(r[0], dict)))
+    out = []
+    for did in doc_ids:
+        doc = ws.doc(did)
+        for s in doc.sentences:
+            for w in s.words:
+                if w.link and w.link.item_id == item_id:
+                    out.append({'link_id': w.link.id, 'token_id': w.id})
+                for m in w.morphemes:
+                    if m.link and m.link.item_id == item_id:
+                        out.append({'link_id': m.link.id, 'token_id': m.id})
+    return out
+
+
+# --- bulk plan tools -----------------------------------------------------------------
+
+def _docs_of(rows: List[list]) -> set:
+    return {e['document'] for r in rows for e in r if isinstance(e, dict) and e.get('document')}
+
+
+def q_replace_in_field(ws: Workspace, f, rep, cap: int) -> List[Dict[str, Any]]:
+    c = ws.corpus
+    layer = c.scope_layer(f.scope)
+    rows = c.entities([c.span('?s', f.layer_id), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]],
+                      ['?s', '?t'], cap + 1, [['?t.doc'], ['?t.begin']])
+    budget = _docs_of(rows)
+    staged = []
+    for sp, tok in rows:
+        if not (isinstance(sp, dict) and isinstance(tok, dict)):
+            continue
+        cur = ws.planned_span_value(f.layer_id, tok['id'], sp.get('value') or '')
+        if cur == '':
+            continue
+        new = rep(cur)
+        if new == cur:
+            continue
+        what = (tok.get('metadata') or {}).get('form') if f.scope == 'Morpheme' else None
+        what = what or (tok.get('value') or '').strip()
+        head = c.label_ref(tok['document'], tok['id'], budget)
+        staged.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': tok['id'], 'span_id': sp['id'],
+                       'value': new, 'doc': tok['document'],
+                       'label': f'{head} "{what[:30]}": {f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else '')})
+    return staged
+
+
+def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool, cap: int):
+    """(word respell ops, morpheme form ops) for every word the pattern hits."""
+    from .tools import check_respell_overlap
+    c = ws.corpus
+    rows = c.entities([c.word('?t', value=spec)], ['?t'], cap + 1, [['?t.doc'], ['?t.begin']])
+    budget = _docs_of(rows)
+    words, morphs = [], []
+    for (tok,) in rows:
+        if not isinstance(tok, dict) or c.ignored(tok.get('value')):
+            continue
+        old = tok.get('value') or ''
+        new = rep(old)
+        if new == old:
+            continue
+        head = c.label_ref(tok['document'], tok['id'], budget)
+        if not new.strip():
+            raise ToolError(f'{head}: "{old}" would become empty; there is no delete-word tool')
+        check_respell_overlap(ws, tok['text'], tok['begin'], tok['end'], head)
+        words.append({'kind': 'respell', 'text_id': tok['text'], 'begin': tok['begin'], 'end': tok['end'], 'value': new,
+                      'doc': tok['document'], 'label': f'{head}: respell "{old}" → "{new}"',
+                      '_pos': (tok['document'], tok['begin'], 0, 0)})
+    if morpheme_forms and c.M and words:
+        mrows = c.entities([c.word('?w', value=spec), c.morph('?m', metadata={'form': spec}), ['within', '?m', '?w']],
+                           ['?m', '?w'], cap + 1, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
+        for m, w in mrows:
+            if not (isinstance(m, dict) and isinstance(w, dict)) or c.ignored(w.get('value')):
+                continue
+            old = (m.get('metadata') or {}).get('form') or ''
+            new = rep(old)
+            if new == old or not new.strip():
+                continue
+            head = c.label_ref(m['document'], m['id'], budget)
+            morphs.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
+                           'label': f'{head} (in "{w.get("value")}"): morpheme form "{old}" → "{new}"',
+                           '_pos': (m['document'], m['begin'], 1, m.get('precedence') or 0)})
+    # Interleave as the scan does: each word, then its morpheme forms.
+    ordered = sorted(words + morphs, key=lambda op: op['_pos'])
+    for op in ordered:
+        op.pop('_pos', None)
+    return ordered, len(words), len(morphs)
+
+
+def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwrite: bool, cap: int):
+    c = ws.corpus
+    where = [c.word('?t')]
+    if not overwrite:
+        where.append(['not', ['token', '?t', {'metadata': {f'orthog:{target}': {'regex': '.'}}}]])
+    rows = c.entities(where, ['?t'], cap + 1, [['?t.doc'], ['?t.begin']])
+    budget = _docs_of(rows)
+    staged = []
+    for (tok,) in rows:
+        if not isinstance(tok, dict) or c.ignored(tok.get('value')):
+            continue
+        meta = tok.get('metadata') or {}
+        cur = meta.get(f'orthog:{target}') or ''
+        if cur and not overwrite:
+            continue
+        value = tok.get('value') if src is None else meta.get(f'orthog:{src}', '')
+        if not value or value == cur:
+            continue
+        head = c.label_ref(tok['document'], tok['id'], budget)
+        staged.append({'kind': 'set_orthography', 'word_id': tok['id'], 'key': f'orthog:{target}', 'value': value,
+                       'doc': tok['document'], 'label': f'{head} "{tok.get("value") or ""}": {target} = "{value}"'})
+    return staged
+
+
+def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bool, cap: int):
+    from .tools import span_op
+    from .project import Span
+    c = ws.corpus
+    spec = rx(form, whole=True)
+    if f.scope == 'Word':
+        unit = [c.word('?u', value=spec)]
+    else:
+        unit = [c.morph_form_clauses('?u', spec)]
+    with_span = [] if False else c.entities(unit + [c.span('?s', f.layer_id), ['covers', '?s', '?u']], ['?u', '?s'], cap + 1,
+                                            [['?u.doc'], ['?u.begin']])
+    without = c.entities(unit + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]], ['?u'], cap + 1,
+                         [['?u.doc'], ['?u.begin']])
+    rows = [(u, s) for u, s in with_span] + [(u, None) for (u,) in without]
+    budget = _docs_of([[u] for u, _ in rows])
+    staged = []
+    for tok, sp in rows:
+        if not isinstance(tok, dict):
+            continue
+        what = ((tok.get('metadata') or {}).get('form') if f.scope == 'Morpheme' else None) or tok.get('value') or ''
+        old = Span(sp['id'], sp.get('value') or '', sp.get('metadata'), f.layer_id) if isinstance(sp, dict) else None
+        cur = ws.planned_span_value(f.layer_id, tok['id'], old.value if old else '')
+        if cur == value or (only_empty and cur != ''):
+            continue
+        head = c.label_ref(tok['document'], tok['id'], budget)
+        op = {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': tok['id'], 'span_id': old.id if old else None,
+              'value': value, 'doc': tok['document'],
+              'label': f'{head} "{what[:40]}": {f.name} '
+                       + (f'"{old.value}" → "{value}"' if old and old.value != '' else f'= "{value}"')
+                       + (' (cleared)' if value == '' else ''),
+              '_pos': (tok['document'], tok['begin'], tok.get('precedence') or 0)}
+        staged.append(op)
+    staged.sort(key=lambda op: op['_pos'])
+    for op in staged:
+        op.pop('_pos', None)
+    return staged
+
+
+def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
+    """Word occurrences of a form with their current morpheme chains (ids,
+    precedence, span ids), without loading documents."""
+    from .corpus import Unanalyzed
+    c = ws.corpus
+    where = [c.word('?w', value=rx(form, whole=True))]
+    if skip_analyzed:
+        where += Unanalyzed.clauses(c, '?w')
+    rows = c.entities(where, ['?w'], cap + 1, [['?w.doc'], ['?w.begin']])
+    words = [r[0] for r in rows if isinstance(r[0], dict) and not c.ignored(r[0].get('value'))]
+    chains: Dict[str, List[dict]] = defaultdict(list)
+    spans: Dict[str, List[str]] = defaultdict(list)
+    if c.M and words:
+        # Even an unanalyzed word carries its default morpheme, which the executor reuses.
+        base = [c.word('?w', value=rx(form, whole=True)), c.morph('?m'), ['within', '?m', '?w']]
+        for m, w in c.entities(base, ['?m', '?w'], ROW_LIMIT, [['?w.doc'], ['?w.begin'], ['?m.precedence']]):
+            if isinstance(m, dict) and isinstance(w, dict):
+                chains[w['id']].append(m)
+        for sp, m in c.entities(base + [['span', '?s', {'layer': '?sl'}], ['covers', '?s', '?m']], ['?s', '?m'], ROW_LIMIT):
+            if isinstance(sp, dict) and isinstance(m, dict):
+                spans[m['id']].append(sp['id'])
+    return words, chains, spans

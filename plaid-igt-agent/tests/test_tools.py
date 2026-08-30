@@ -375,3 +375,27 @@ def test_prompt_shows_double_brace_citations_and_single_braces_still_resolve():
     assert '{{Text 1 s32}}' in prompt and 'Demo' in prompt and '{project_name}' not in prompt
     out = resolve_citations(w, 'see {Text 1 s2} and {{Text 1 s1.w1}}')
     assert [(c['key'], c['sentence']) for c in out] == [('{Text 1 s2}', 2), ('{{Text 1 s1.w1}}', 1)]
+
+
+def test_list_documents_pages_and_filters_and_overview_caps():
+    from fixtures import document_raw
+    from plaid_igt_agent.project import MAX_OVERVIEW_DOCS
+    docs = {}
+    for i in range(MAX_OVERVIEW_DOCS + 5):
+        raw = document_raw()
+        raw['id'] = f'd{i}'
+        raw['name'] = f'Text {i:03d}'
+        raw['metadata'] = {'Date': '2020' if i % 2 else '2021'}
+        docs[raw['id']] = raw
+    c = FakeClient(documents=docs)
+    w = scan_ws(c)
+    ov = call_tool(w, 'project_overview', {})
+    assert f'Documents ({MAX_OVERVIEW_DOCS + 5}): first {MAX_OVERVIEW_DOCS} by name; list_documents' in ov
+    assert 'Text 099' in ov and 'Text 104' not in ov
+    out = call_tool(w, 'list_documents', {'pattern': 'Text 10', 'limit': 2})
+    assert out.startswith('5 documents matching, showing 1-2:') and 'Text 100' in out and 'list_documents(offset=2)' in out
+    out = call_tool(w, 'list_documents', {'pattern': 'Text 10', 'limit': 2, 'offset': 4})
+    assert 'showing 5-5' in out and 'Text 104' in out and 'offset=' not in out
+    out = call_tool(w, 'list_documents', {'metadata_field': 'Date', 'value': '2021', 'limit': 500})
+    assert out.startswith('53 documents matching:')
+    assert 'No document metadata field "Genre"' in call_tool(w, 'list_documents', {'metadata_field': 'Genre', 'value': 'x'})
