@@ -27,7 +27,7 @@ class ModelConfig:
     model: str
     api_base: Optional[str] = None
     api_key: Optional[str] = None
-    max_steps: int = 50
+    max_steps: int = 500
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
 
