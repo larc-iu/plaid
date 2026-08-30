@@ -9,8 +9,9 @@ Users reach it from the **Assistant** tab on a project page. They can ask
 analytic questions about the corpus and lexicon, or ask for edits. The
 assistant never writes on its own: an edit request comes back as a plan the
 user approves or discards, and an approved plan is applied under the user's
-own account, in one audit-log entry, stamped machine-made so it shows as
-unverified in the editor until confirmed.
+own account, in one audit-log entry. Approval is the human check, so what a
+plan writes is recorded as **verified** (made by the assistant, confirmed by
+the approver); the approver can instead have it recorded as human-made.
 
 ## Running
 
@@ -59,14 +60,22 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
   query language, project-scoped, layers by name). Writes append resolved operations to the turn's plan:
   `set_field`, `set_analysis`, `set_orthography`, `respell`, `link_entry`,
   `unlink_entry`, `create_entry`, `set_entry_field`, `set_document_metadata`,
-  `create_document`, and the corpus-wide `replace_in_field`, `set_field_for_form`,
-  `respell_all`, `copy_to_orthography`, `set_analysis_for_form`, plus `merge_entries`,
-  `delete_entry`, `rename_entry`, `rename_document`.
+  `create_document`, and the corpus-wide `replace_in_field` (also on stored
+  morpheme forms), `set_field_for_form`, `respell_all` (carrying morpheme forms
+  and lexicon headwords along, as Bulk Edit does), `copy_to_orthography`,
+  `set_analysis_for_form`, plus `merge_entries`, `delete_entry`, `rename_entry`,
+  `rename_document`; `confirm` and `discard_analysis` for what other services
+  produced; and the segmentation edits `split_word`, `merge_words`,
+  `delete_word`, `split_sentence`, `merge_sentences` (`shape.py`), which mirror
+  the editor's own mutations including their side effects (a word split or
+  merge deletes the affected morpheme analyses; merges combine field values
+  losslessly and keep one lexicon link).
 - `plan.py`: validates and normalizes an approved plan (a later op on the same
   target wins; links to entries the plan deletes are dropped; overlapping
-  respells are refused), then applies it with the requester's client in atomic
-  batches under one operation, reporting how much was applied if a later
-  batch fails.
+  respells are refused; ops on tokens a split, merge, or delete removes are
+  refused), then applies it with the requester's client in atomic batches
+  under one operation (`stamp_mode` verified or human), reporting how much
+  was applied if a later batch fails.
 - `agent.py`: the litellm loop. `service.py`: the Plaid service; one request
   is one turn (the browser keeps the transcript) or one approval.
 
