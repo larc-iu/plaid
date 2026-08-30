@@ -275,9 +275,10 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
         raise ToolError('Give a pattern (to list items LACKING a value, use worklist).')
     match = _matcher(pattern, bool(regex))
     limit = max(1, min(int(limit or 40), 200))
-    where_l = (where or 'baseline').lower()
-    if where_l.startswith('field:'):
-        where_l = where_l[6:]
+    where_name = (where or 'baseline').strip()
+    if where_name.lower().startswith('field:'):
+        where_name = where_name[6:].strip()
+    where_l = where_name.lower()
     out: List[str] = []
     total = 0
 
@@ -293,7 +294,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
 
     field = None
     if where_l not in ('baseline', 'morpheme'):
-        field = ws.project.field(where)
+        field = ws.project.field(where_name)
     docs = [ws.doc(document)] if document else ws.all_docs()
     for doc in docs:
         tag = f'"{doc.name}" ' if len(docs) > 1 else ''
@@ -379,8 +380,8 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     if regex:
         match = _matcher(pattern, True)
     else:
-        key = pattern.casefold()
-        match = lambda s: (s or '').casefold() == key  # noqa: E731
+        wanted = pattern.casefold()
+        match = lambda s: (s or '').casefold() == wanted  # noqa: E731
     limit = max(1, min(int(limit or 60), 300))
     where_l = (where or 'morpheme').lower()
     field = None
@@ -421,8 +422,8 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
                     seg = _bracket_line(w, hit, None) if w.morphemes else w.surface
                     glosses = ' | '.join(f'{f}={_bracket_line(w, hit, f)}' for f in mfields
                                          if any(f in m.fields for m in w.morphemes))
-                    key = seg if hit is None else f'{seg}' + (f'  {glosses}' if glosses else '')
-                    patterns[key] += 1
+                    pattern_key = seg if hit is None else f'{seg}' + (f'  {glosses}' if glosses else '')
+                    patterns[pattern_key] += 1
                     if len(hits) < limit:
                         wf = ' | '.join(f'{f.name}={w.fields[f.name].value}' for f in ws.project.fields_by_scope('Word')
                                         if f.name in w.fields and w.fields[f.name].value != '')
@@ -1069,8 +1070,9 @@ TOOLS += [
         {'document': _DOC}, []),
     _fn('sequence_search',
         'Sentences containing a sequence of words, each described by conditions on its form, morphemes, morph type, '
-        'or field values, e.g. [{"POS":"v"},{"POS":"n"}] or [{"Gloss":"ERG"},{"form":"ava"}]. adjacent=false '
-        'lets other words come between, in order. For constituent-order and construction questions.',
+        'or field values, e.g. [{"POS":"v"},{"POS":"n"}] or [{"Gloss":"ERG"},{"form":"ava"}]; conditions match whole '
+        'values (regex=true for patterns). adjacent=false lets other words come between, in order. Counts are '
+        'sentences (first match per sentence). For constituent-order and construction questions.',
         {'sequence': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
          'adjacent': {'type': 'boolean'}, 'document': _DOC, 'regex': {'type': 'boolean'},
          'limit': {'type': 'integer'}}, ['sequence']),

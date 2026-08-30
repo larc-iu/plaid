@@ -79,6 +79,13 @@ def test_check_integrity_report():
     assert 'All text is NFC-normalized.' in out
 
 
+def test_sequence_search_matches_whole_values():
+    w = ws()
+    # "ERG" must not match a morpheme glossed "ERGATIVE-ish" by substring, and "Ali" must not match "Ali-di" partials
+    assert call_tool(w, 'sequence_search', {'sequence': [{'Morph Gloss': 'ER'}]}) == 'No sentence matches that sequence.'
+    assert '1 sentence match' in call_tool(w, 'sequence_search', {'sequence': [{'Morph Gloss': 'ER'}], 'regex': True})
+
+
 def test_sequence_search():
     w = ws()
     out = call_tool(w, 'sequence_search', {'sequence': [{'Morph Gloss': 'ERG'}, {'form': 'gam'}]})

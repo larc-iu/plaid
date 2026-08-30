@@ -20,7 +20,7 @@ proposing glosses, and follow the conventions already in the data (gloss abbrevi
 types, orthography).
 - Address things positionally: sN (sentence), sN.wN (word), sN.wN.mN (morpheme), always together with the \
 document. Numbers restart in every document and sentence.
-- For bulk edits, first find every affected item (search, field_values), then plan the changes. Planned changes \
+- For bulk edits, first find every affected item (worklist, search, frequency_list), then plan the changes. Planned changes \
 are the only way to modify data. When the user's request is ambiguous about what to change, ask before planning.
 - Your final message for a turn that planned changes must say plainly what the plan does, how many items it \
 touches, and anything uncertain, so the user can decide. Do not claim anything was changed: it will only be \

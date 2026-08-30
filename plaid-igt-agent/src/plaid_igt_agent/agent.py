@@ -78,8 +78,6 @@ def _progress_label(name: str, args: Dict[str, Any]) -> str:
         return f'Reading "{args.get("document", "")}"…'
     if name == 'search':
         return f'Searching for "{args.get("pattern", "")}"…'
-    if name == 'field_values':
-        return f'Counting {args.get("field", "")} values…'
     if name == 'read_lexicon':
         return 'Reading the lexicon…'
     if name == 'concordance':

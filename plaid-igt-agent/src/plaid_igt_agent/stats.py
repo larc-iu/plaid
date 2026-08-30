@@ -470,7 +470,11 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
 
 def _word_matches(w: Word, cond: Dict[str, Any], project, regex: bool) -> bool:
     for key, pat in cond.items():
-        m = _matcher(str(pat), regex)
+        if regex:
+            m = _matcher(str(pat), True)
+        else:
+            wanted = str(pat).casefold()
+            m = lambda s, wanted=wanted: (s or '').casefold() == wanted  # noqa: E731
         k = (key or '').lower()
         if k in ('form', 'word', 'baseline'):
             if not m(w.surface):
@@ -499,7 +503,9 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
                       regex: bool = False, limit: int = 40) -> str:
     """Sentences containing a sequence of words, each described by conditions
     on its form, morphemes, or field values (e.g. [{"POS": "v"}, {"POS": "n"}]).
-    adjacent=false allows other words in between, in order."""
+    Conditions match whole values (case-insensitive) unless regex=true.
+    adjacent=false allows other words in between, in order. One match per
+    sentence is reported, so the count is sentences, not occurrences."""
     if not isinstance(sequence, list) or not sequence or not all(isinstance(c, dict) and c for c in sequence):
         raise ToolError('sequence must be a non-empty list of condition objects, e.g. [{"POS":"v"},{"Gloss":"PL"}]')
     limit = max(1, min(int(limit or 40), 200))
