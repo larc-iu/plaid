@@ -248,6 +248,7 @@ export const ProjectDetail = () => {
         <TabsContent value="assistant">
           <ProjectAssistant
             projectId={projectId}
+            projectName={project?.name}
             client={client}
             userId={user?.id}
             canWrite={canWrite}

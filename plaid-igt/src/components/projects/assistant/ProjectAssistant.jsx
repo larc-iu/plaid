@@ -12,6 +12,9 @@ import {
   ChevronDown,
   ChevronRight,
   Wrench,
+  Download,
+  Copy,
+  FileDown,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -26,8 +29,15 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
+import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 
 // The Assistant tab: a chat with whatever `assist` service(s) the operator
 // runs (see ../../../../../plaid-igt-agent), laid out like any chat app: past
@@ -370,7 +380,7 @@ const EXAMPLES = [
   'Summarize the noun morphology you can see in the corpus.',
 ];
 
-export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
+export const ProjectAssistant = ({ projectId, projectName, client, userId, canWrite }) => {
   // --- services ---------------------------------------------------------
   const [services, setServices] = useState([]);
   const [discovering, setDiscovering] = useState(true);
@@ -764,6 +774,14 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
             </>
           )}
           <div className="ml-auto flex items-center gap-1">
+            {display.length > 0 && (
+              <ExportMenu
+                conv={active}
+                meta={convs.find((m) => m.id === active?.id) || null}
+                projectId={projectId}
+                projectName={projectName}
+              />
+            )}
             <Button
               type="button"
               variant="ghost"
@@ -887,6 +905,55 @@ export const AssistantMarkdown = ({ children }) => (
     </Markdown>
   </div>
 );
+
+// ---- export -----------------------------------------------------------------
+// The conversation as Markdown: downloaded as a file, or copied.
+
+const ExportMenu = ({ conv, meta, projectId, projectName }) => {
+  const build = () =>
+    conversationToMarkdown(conv, meta, {
+      origin: `${window.location.origin}${window.location.pathname}`,
+      projectId,
+      projectName,
+      summarizeSteps,
+    });
+  const download = () => {
+    const blob = new Blob([build()], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = markdownFilename(meta);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(build());
+      notifySuccess('The conversation was copied as Markdown.', 'Copied');
+    } catch (e) {
+      notifyError(humanizeError(e, 'Could not copy to the clipboard.'), 'Not copied');
+    }
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="ghost" size="sm" title="Export this conversation">
+          <Download className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={download}>
+          <FileDown className="mr-2 h-4 w-4" /> Download as Markdown
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={copy}>
+          <Copy className="mr-2 h-4 w-4" /> Copy as Markdown
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
 
 // ---- sentence citations -----------------------------------------------------
 // The model cites evidence as `{{<document> sN}}` (or `sN.wM` for a word); the
