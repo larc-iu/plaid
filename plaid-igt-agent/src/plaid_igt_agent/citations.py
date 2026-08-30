@@ -16,6 +16,8 @@ from .project import Sentence, Word, resolve, joiner, segmentation
 from .tools import Workspace, ToolError
 
 CITE_RE = re.compile(r'\{\{\s*(?P<doc>.+?)\s+(?P<ref>s\d+(?:\.w\d+)?)\s*\}\}')
+# A bare reference ("s32.w16") is unambiguous only when the turn read one document.
+BARE_RE = re.compile(r'(?<![\w{.])(?P<ref>s\d+(?:\.w\d+)?)\b')
 MAX_CITATIONS = 40
 
 
@@ -53,20 +55,17 @@ def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
     them as written)."""
     out: List[Dict[str, Any]] = []
     seen = set()
-    for m in CITE_RE.finditer(text or ''):
-        key = m.group(0)
-        if key in seen:
-            continue
+    text = text or ''
+
+    def add(key: str, doc_name: str, ref: str) -> None:
+        if key in seen or len(out) >= MAX_CITATIONS:
+            return
         seen.add(key)
-        if len(out) >= MAX_CITATIONS:
-            break
-        doc_name = m.group('doc').strip().strip('"\'')
         try:
             doc = ws.doc(doc_name)
-            ref = m.group('ref')
             obj = resolve(doc, ref)
         except (ToolError, ValueError):
-            continue
+            return
         if isinstance(obj, Word):
             s = next(s for s in doc.sentences if obj in s.words)
             word = obj.index
@@ -74,4 +73,14 @@ def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
             s, word = obj, None
         out.append({'key': key, 'document_id': doc.id, 'document_name': doc.name, 'word': word,
                     **_sentence_payload(s, ws.project)})
+
+    for m in CITE_RE.finditer(text):
+        add(m.group(0), m.group('doc').strip().strip('"\''), m.group('ref'))
+    # Sloppier models write "s32.w16" without the document: fine when the
+    # turn read exactly one document, where such a reference means one thing.
+    loaded = list(ws._docs.values())
+    if len(loaded) == 1:
+        rest = CITE_RE.sub(' ', text)
+        for m in BARE_RE.finditer(rest):
+            add(m.group(0), loaded[0].id, m.group('ref'))
     return out

@@ -487,7 +487,7 @@ FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one
                  'in the same order (_ = missing) | <word field>=value | <orthography>=value | '
                  'link=lexicon entry | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or '
                  'segmentation that is machine-made and not yet confirmed (confirm / discard_analysis). '
-                 'Address items as sN, sN.wN, sN.wN.mN.')
+                 'Address items as sN, sN.wN, sN.wN.mN; cite a sentence to the user as {{<document name> sN}}.')
 
 
 def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,

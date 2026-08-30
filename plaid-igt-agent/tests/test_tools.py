@@ -352,3 +352,12 @@ def test_citations_resolve_to_interlinear_examples():
     assert a['words'][1] == {'index': 2, 'surface': 'gam', 'seg': None, 'lines': []}
     assert (b['sentence'], b['word'], b['words'][0]['seg']) == (2, 1, 'Gam=ar')
     assert resolve_citations(w, 'no citations here') == []
+
+
+def test_bare_references_are_citations_when_one_document_was_read():
+    from plaid_igt_agent.citations import resolve_citations
+    w = ws()
+    assert resolve_citations(w, 'see s1.w2 and s2') == []  # nothing read yet: ambiguous, left alone
+    call_tool(w, 'read_document', {'document': 'd1'})
+    out = resolve_citations(w, 'Relatives: {{Text 1 s1}}; cf. the data in s1.w2, s2 and s9 (none), not words2 or x.s1')
+    assert [(c['key'], c['sentence'], c['word']) for c in out] == [('{{Text 1 s1}}', 1, None), ('s1.w2', 1, 2), ('s2', 2, None)]
