@@ -124,8 +124,8 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         return _truncate('\n'.join(lines))
 
     if by.lower() == 'document':
-        first_m = next((f.name for f in project.fields_by_scope('Morpheme')), None)
-        first_s = next((f.name for f in project.fields_by_scope('Sentence')), None)
+        gm, gs = project.gloss_field('Morpheme') or project.gloss_field('Word'), project.gloss_field('Sentence')
+        first_m, first_s = (gm.name if gm else None), (gs.name if gs else None)
         head = ['document', 'sentences', 'words', 'analyzed', 'linked' if project.vocabs else None,
                 f'{first_m}' if first_m else None, f'{first_s}' if first_s else None, 'hapax', 'TTR']
         head += project.document_metadata
@@ -250,7 +250,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
         if field:
             f = project.field(field)
         else:
-            f = next(iter(project.fields_by_scope('Morpheme')), None) or next(iter(project.fields_by_scope('Word')), None)
+            f = project.gloss_field('Morpheme') or project.gloss_field('Word')
             if not f:
                 raise ToolError('No word or morpheme field to check; name one with field=')
     lvl = (level or '').lower() or ('morpheme' if (project.morpheme_layer_id and kind in ('unlinked', 'unglossed')
@@ -328,12 +328,21 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     cap = 200 if only else 12  # one section: generous; the overview: a taste of each
     want = lambda name: only is None or only == name  # noqa: E731
     items: Dict[str, dict] = {}
+    item_vocab: Dict[str, str] = {}
     for v in vocabs:
         for it in ws.lexicon(v):
             items[it['id']] = it
+            item_vocab[it['id']] = v['id']
     docs = ws.all_docs()
-    first_m = next((f.name for f in project.fields_by_scope('Morpheme')), None)
-    first_w = next((f.name for f in project.fields_by_scope('Word')), None)
+    gm, gw = project.gloss_field('Morpheme'), project.gloss_field('Word')
+    first_m, first_w = (gm.name if gm else None), (gw.name if gw else None)
+    # The lexicon's own gloss and POS fields, by each lexicon's schema.
+    lex_gloss = {v['id']: project.lexicon_field(v, 'gloss') for v in vocabs}
+    lex_pos = {v['id']: project.lexicon_field(v, 'pos') for v in vocabs}
+
+    def entry_gloss(it: dict) -> str:
+        fld = lex_gloss.get(item_vocab.get(it['id']))
+        return str((it.get('metadata') or {}).get(fld) or '').strip() if fld else ''
     uses: Dict[str, int] = Counter()
     use_docs: Dict[str, set] = defaultdict(set)
     corpus_gloss: Dict[str, Counter] = defaultdict(Counter)   # item -> corpus gloss values
@@ -373,13 +382,13 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     if want('unused'):
         listing('entries never linked from a text', (it.get('form') or '' for it in items.values() if uses[it['id']] == 0))
     if want('fields'):
-        schema = set()
-        for v in vocabs:
-            schema |= set(v.get('fields') or [])
-        for fld in ('gloss', 'pos'):
-            if schema and fld not in schema:
+        for role, table in (('gloss', lex_gloss), ('pos', lex_pos)):
+            names = sorted({f for f in table.values() if f})
+            if not names:
                 continue
-            listing(f'entries without a {fld}', (it.get('form') or '' for it in items.values() if not (it.get('metadata') or {}).get(fld)))
+            listing(f'entries without a {"/".join(names)}',
+                    (it.get('form') or '' for it in items.values()
+                     if table.get(item_vocab[it['id']]) and not (it.get('metadata') or {}).get(table[item_vocab[it['id']]])))
 
     by_form: Dict[str, List[dict]] = defaultdict(list)
     for it in items.values():
@@ -388,7 +397,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         homographs = {k: v for k, v in by_form.items() if len(v) > 1}
         if homographs:
             def same_gloss(its):
-                gl = [((it.get('metadata') or {}).get('gloss') or '').casefold() for it in its]
+                gl = [entry_gloss(it).casefold() for it in its]
                 return len(gl) - len(set(gl))
             ranked = sorted(homographs.items(), key=lambda kv: (-same_gloss(kv[1]), -len(kv[1])))
             dup = sum(1 for _, its in ranked if same_gloss(its))
@@ -420,7 +429,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
 
     disagree = []
     for iid, c in corpus_gloss.items():
-        lex = ((items[iid].get('metadata') or {}).get('gloss') or '').strip()
+        lex = entry_gloss(items[iid])
         top, n = c.most_common(1)[0]
         if lex and top.casefold() != lex.casefold():
             disagree.append(f'{items[iid].get("form")}: lexicon "{lex}", corpus mostly "{top}" ({n}/{sum(c.values())})')

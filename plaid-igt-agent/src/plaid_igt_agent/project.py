@@ -146,6 +146,38 @@ class IgtProject:
     def fields_by_scope(self, scope: str) -> List[Field]:
         return [f for f in self.fields.values() if f.scope == scope]
 
+    GLOSS_NAMES = {'Word': ('gloss', 'meaning', 'sense', 'translation'), 'Morpheme': ('gloss', 'meaning', 'sense'),
+                   'Sentence': ('translation', 'gloss', 'free', 'meaning')}
+
+    def gloss_field(self, scope: str) -> Optional[Field]:
+        """The field that plays the role of gloss at a scope, used only as the
+        DEFAULT where a tool takes a field: the first field whose name says
+        so (gloss / meaning / sense; translation for sentences), else the
+        scope's first field. The overview names the choice so a caller can
+        pass field= instead."""
+        fs = self.fields_by_scope(scope)
+        for key in self.GLOSS_NAMES.get(scope, ('gloss',)):
+            hit = next((f for f in fs if key in f.name.casefold()), None)
+            if hit:
+                return hit
+        return fs[0] if fs else None
+
+    @staticmethod
+    def lexicon_field(vocab: dict, role: str) -> Optional[str]:
+        """The lexicon entry field playing ``role`` ('gloss' or 'pos'): from
+        the lexicon's declared schema, the field whose name says so (for pos
+        also "part of speech" / "category"); without a schema, the plain
+        conventional name. None when the schema has no such field."""
+        fields = vocab.get('fields') or []
+        if not fields:
+            return role
+        names = {'gloss': ('gloss', 'meaning', 'sense'), 'pos': ('pos', 'part of speech', 'category')}[role]
+        for f in fields:
+            k = f.casefold()
+            if any(n in k for n in names):
+                return f
+        return None
+
     def field_by_layer(self, layer_id: str) -> Optional[Field]:
         for f in self.fields.values():
             if f.layer_id == layer_id:
@@ -521,6 +553,9 @@ def render_overview(project: IgtProject, documents: List[dict]) -> str:
             lines.append(f'{scope} fields: ' + ', '.join(f.name for f in fs))
     if not project.morpheme_layer_id:
         lines.append('No morpheme layer: words cannot be segmented in this project.')
+    defaults = [f'{scope.lower()}: {f.name}' for scope in SCOPES for f in [project.gloss_field(scope)] if f]
+    if defaults and len(project.fields) > len(defaults):
+        lines.append('Treated as the gloss where a tool takes no field= (' + ', '.join(defaults) + ')')
     lines.append('Orthographies: ' + (', '.join(project.orthographies) or '(none)'))
     lines.append('Lexicons: ' + (', '.join(v['name'] + (f' (entry fields: {", ".join(v["fields"])})' if v.get('fields') else '')
                                             for v in project.vocabs) or '(none)'))

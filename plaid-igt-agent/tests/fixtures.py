@@ -155,7 +155,8 @@ class FakeClient:
             self.c = c
 
         def get(self, vid, include_items=None, **kw):
-            return self.c._lexicon
+            by_id = getattr(self.c, '_lexicons_by_id', None)
+            return by_id[vid] if by_id else self.c._lexicon
 
     @property
     def projects(self):
@@ -194,3 +195,73 @@ class FakeClient:
 
     def calls(self, resource=None, method=None):
         return [e for e in self.log if (resource is None or e[0] == resource) and (method is None or e[1] == method)]
+
+
+# --- an unconventionally shaped project -------------------------------------------
+# No morpheme layer, fields not called Gloss (and the gloss-like one is NOT first),
+# a lexicon whose schema names its fields "meaning" and "category", another with
+# no schema at all. Everything the agent infers about roles must come from config.
+
+ODD_CAT, ODD_MEAN, ODD_FREE = 'sl-cat', 'sl-mean', 'sl-free'
+ODD_VOCAB, ODD_VOCAB2 = 'v-odd', 'v-plain'
+
+
+def odd_project_raw():
+    return {
+        'id': PID, 'name': 'Odd', 'config': {'igt': {'initialized': True, 'documentMetadata': []}},
+        'vocabs': [{'id': ODD_VOCAB, 'name': 'Wordlist', 'config': {'igt': {'fields': {'meaning': {}, 'category': {}}}}},
+                   {'id': ODD_VOCAB2, 'name': 'Plain', 'config': {}}],
+        'text_layers': [{
+            'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
+            'token_layers': [
+                {'id': SENT_LAYER, 'name': 'Lines', 'config': {'plaid': {'role': 'sentence'}},
+                 'span_layers': [{'id': ODD_FREE, 'name': 'Free translation', 'config': {'igt': {'scope': 'Sentence'}}}]},
+                {'id': WORD_LAYER, 'name': 'Tokens',
+                 'config': {'plaid': {'role': 'word'}, 'igt': {'orthographies': [], 'ignoredTokens': {'type': 'blacklist', 'blacklist': ['.']}}},
+                 'span_layers': [{'id': ODD_CAT, 'name': 'Category', 'config': {'igt': {'scope': 'Word'}}},
+                                 {'id': ODD_MEAN, 'name': 'Meaning', 'config': {'igt': {'scope': 'Word'}}}]},
+            ]}],
+    }
+
+
+def odd_document_raw():
+    return {
+        'id': 'd1', 'name': 'Odd text', 'version': 1, 'metadata': {},
+        'text_layers': [{
+            'id': TEXT_LAYER, 'name': 'Text', 'text': {'id': TEXT_ID, 'body': BODY},
+            'token_layers': [
+                {'id': SENT_LAYER, 'tokens': [
+                    {'id': 's-1', 'text': TEXT_ID, 'begin': 0, 'end': 17},
+                    {'id': 's-2', 'text': TEXT_ID, 'begin': 18, 'end': 25}],
+                 'span_layers': [{'id': ODD_FREE, 'spans': [{'id': 'sp-f1', 'value': 'Ali saw a fish.', 'tokens': ['s-1']}]}]},
+                {'id': WORD_LAYER, 'tokens': [
+                    {'id': 'w-1', 'text': TEXT_ID, 'begin': 0, 'end': 6},
+                    {'id': 'w-2', 'text': TEXT_ID, 'begin': 7, 'end': 10},
+                    {'id': 'w-3', 'text': TEXT_ID, 'begin': 11, 'end': 16},
+                    {'id': 'w-p', 'text': TEXT_ID, 'begin': 16, 'end': 17},
+                    {'id': 'w-4', 'text': TEXT_ID, 'begin': 18, 'end': 24},
+                    {'id': 'w-p2', 'text': TEXT_ID, 'begin': 24, 'end': 25}],
+                 'span_layers': [{'id': ODD_CAT, 'spans': [{'id': 'sp-c1', 'value': 'N', 'tokens': ['w-1']},
+                                                           {'id': 'sp-c2', 'value': 'N', 'tokens': ['w-2']}]},
+                                 {'id': ODD_MEAN, 'spans': [{'id': 'sp-m1', 'value': 'Ali.ERG', 'tokens': ['w-1']},
+                                                            {'id': 'sp-m2', 'value': 'fish', 'tokens': ['w-2']}]}],
+                 'vocabs': [{'id': ODD_VOCAB, 'name': 'Wordlist', 'vocab_links': [
+                     {'id': 'l-1', 'vocab_item': {'id': 'oi-gam', 'form': 'gam'}, 'tokens': ['w-2']},
+                     {'id': 'l-2', 'vocab_item': {'id': 'oi-gam2', 'form': 'gam'}, 'tokens': ['w-4']}]}]},
+            ]}],
+    }
+
+
+def odd_lexicons():
+    return {ODD_VOCAB: {'id': ODD_VOCAB, 'name': 'Wordlist', 'items': [
+                {'id': 'oi-gam', 'form': 'gam', 'metadata': {'meaning': 'net', 'category': 'n'}},
+                {'id': 'oi-gam2', 'form': 'gam', 'metadata': {'meaning': 'net'}},
+                {'id': 'oi-ali', 'form': 'Ali', 'metadata': {'category': 'pn'}}]},
+            ODD_VOCAB2: {'id': ODD_VOCAB2, 'name': 'Plain', 'items': [
+                {'id': 'pi-1', 'form': 'akuna', 'metadata': {'gloss': 'see', 'note': 'x'}}]}}
+
+
+def odd_client():
+    c = FakeClient(project=odd_project_raw(), documents={'d1': odd_document_raw()})
+    c._lexicons_by_id = odd_lexicons()
+    return c
