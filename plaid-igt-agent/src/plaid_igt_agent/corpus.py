@@ -1,0 +1,713 @@
+"""Corpus-wide reads and target finding on the query engine.
+
+The tools that look across the whole project (search, concordance, the
+worklists, statistics, consistency and lexicon reports, sequence search,
+and the bulk plan tools) ask the server's query engine for counts, grouped
+tallies, and the ids of matching entities, instead of fetching every
+document and scanning it in Python. Documents are fetched only to render
+the handful of hits a tool shows (positional references, context), so cost
+follows what is displayed, not the size of the corpus. With ``document=``
+the tools still take the scan path over that one document, which gives the
+richer per-document output and serves as the reference implementation the
+query path is tested against.
+
+Two conventions the query engine does not know are applied in Python on
+grouped results: ignored (punctuation) word tokens are excluded from word
+counts, and forms are compared case-insensitively.
+"""
+
+import re
+from collections import Counter, defaultdict
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+from .project import IgtDoc, Sentence, Word, Morpheme, is_token_ignored
+from .tools import Workspace, ToolError
+
+GROUP_LIMIT = 100000       # the engine's backstop for group rows
+ROW_LIMIT = 100000         # the engine's hard cap for ids/entities
+LABEL_DOC_BUDGET = 10      # documents a bulk tool may load just to write positional labels
+
+
+def rx(pattern: str, *, regex: bool = False, whole: bool = False, case_sensitive: bool = False) -> Dict[str, Any]:
+    """A regex constraint: a literal substring (escaped) or a pattern, whole
+    value when asked, case-insensitive unless asked otherwise."""
+    p = pattern if regex else re.escape(pattern)
+    if whole:
+        p = f'^(?:{p})$'
+    spec: Dict[str, Any] = {'regex': p}
+    if not case_sensitive:
+        spec['flags'] = 'i'
+    return spec
+
+
+def _err(e: Exception) -> ToolError:
+    msg = str(e)
+    m = re.search(r'"error"\s*:\s*"([^"]+)"', msg)
+    return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]))
+
+
+class Corpus:
+    """Query helpers bound to one workspace (its client, project, caches)."""
+
+    def __init__(self, ws: Workspace):
+        self.ws = ws
+        self.p = ws.project
+        self.W, self.M, self.S = self.p.word_layer_id, self.p.morpheme_layer_id, self.p.sentence_layer_id
+
+    # --- running queries ------------------------------------------------------
+
+    def run(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        body = dict(body)
+        body['scope'] = {'project_ids': [self.p.id]}
+        try:
+            res = self.ws.client.query(body)
+        except Exception as e:  # noqa: BLE001 - the model gets the engine's message
+            raise _err(e)
+        return res if isinstance(res, dict) else {}
+
+    def count(self, where: List[Any], find: List[str]) -> int:
+        """Distinct tuples of ``find`` (never inflated by joins)."""
+        return int(self.run({'find': find, 'where': where, 'return': 'count'}).get('count') or 0)
+
+    def group(self, where: List[Any], group: List[str], aggregates=None, limit: int = GROUP_LIMIT) -> List[list]:
+        """Grouped rows ``[key..., count]``; ``truncated`` is remembered on the
+        instance for callers that want to say so."""
+        res = self.run({'where': where, 'limit': limit,
+                        'return': {'group': group, 'aggregates': aggregates or [['count']]}})
+        self.truncated = bool(res.get('truncated'))
+        return res.get('results') or []
+
+    def entities(self, where: List[Any], find: List[str], limit: int, order_by=None) -> List[list]:
+        body: Dict[str, Any] = {'find': find, 'where': where, 'return': 'entities', 'limit': min(limit, ROW_LIMIT)}
+        if order_by:
+            body['order_by'] = order_by
+        res = self.run(body)
+        self.truncated = bool(res.get('truncated'))
+        return res.get('results') or []
+
+    # --- clause builders -------------------------------------------------------
+
+    def word(self, var: str = '?t', **c) -> list:
+        return ['token', var, {'layer': self.W, **c}]
+
+    def morph(self, var: str = '?m', **c) -> list:
+        if not self.M:
+            raise ToolError('This project has no morpheme layer.')
+        return ['token', var, {'layer': self.M, **c}]
+
+    def sent(self, var: str = '?sent', **c) -> list:
+        return ['token', var, {'layer': self.S, **c}]
+
+    def scope_layer(self, scope: str) -> str:
+        if scope == 'Word':
+            return self.W
+        if scope == 'Sentence':
+            return self.S
+        if not self.M:
+            raise ToolError('This project has no morpheme layer.')
+        return self.M
+
+    @staticmethod
+    def span(var: str, layer_id: str, **c) -> list:
+        return ['span', var, {'layer': layer_id, **c}]
+
+    @staticmethod
+    def has_form(var: str) -> list:
+        """A morpheme token with a stored form (else it shows the word's surface)."""
+        return ['token', var, {'metadata': {'form': {'regex': '.'}}}]
+
+    def morph_form_clauses(self, var: str, spec: Dict[str, Any]) -> list:
+        """Match a morpheme by its FORM: the stored metadata.form, or, for a
+        morpheme without one, the surface it inherits from its word."""
+        return ['or',
+                [self.morph(var, metadata={'form': spec})],
+                [self.morph(var, value=spec), ['not', self.has_form(var)]]]
+
+    # --- conventions ----------------------------------------------------------
+
+    def ignored(self, value: Optional[str]) -> bool:
+        return is_token_ignored(value or '', self.p.ignored_cfg)
+
+    def word_tally(self, where: List[Any], var: str = '?t') -> Counter:
+        """Word forms (case-folded, punctuation excluded) with counts, from a
+        grouped query over ``var``'s surface."""
+        out: Counter = Counter()
+        for value, n in self.group(where, [f'{var}.value']):
+            if value is None or self.ignored(value):
+                continue
+            out[value.casefold()] += n
+        return out
+
+    def word_count(self, where: List[Any], var: str = '?t') -> int:
+        return sum(self.word_tally(where, var).values())
+
+    @staticmethod
+    def morph_key(form: Optional[str], value: Optional[str]) -> str:
+        """A morpheme's form for tallies: the stored one, else its surface."""
+        return (form if form not in (None, '') else (value or '')).casefold()
+
+    # --- documents ------------------------------------------------------------
+
+    def doc_names(self) -> Dict[str, str]:
+        return {d['id']: d.get('name') or d['id'] for d in self.ws.documents()}
+
+    def doc_name(self, doc_id: str) -> str:
+        return self.doc_names().get(doc_id, doc_id)
+
+    def document_metadata(self) -> Dict[str, dict]:
+        """id -> metadata for every document, in one query."""
+        rows = self.entities([['document', '?d', {}]], ['?d'], ROW_LIMIT)
+        return {r[0]['id']: (r[0].get('metadata') or {}) for r in rows if isinstance(r[0], dict)}
+
+    def versions(self, doc_ids: Iterable[str]) -> Dict[str, Optional[int]]:
+        """Current versions of the named documents (for the stale-plan check)."""
+        ids = [i for i in dict.fromkeys(doc_ids) if i]
+        out: Dict[str, Optional[int]] = {}
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            for r in self.entities([['document', '?d', {'id': chunk}]], ['?d'], len(chunk)):
+                if isinstance(r[0], dict):
+                    out[r[0]['id']] = r[0].get('version')
+        return out
+
+    # --- materializing hits ---------------------------------------------------
+
+    def locate(self, doc_id: str, entity_id: str):
+        """(doc, sentence, word|None, morpheme|None) for a token or span id,
+        loading the document (cached for the turn)."""
+        doc = self.ws.doc(doc_id)
+        hit = doc.find(entity_id)
+        if hit is None:
+            return doc, None, None, None
+        return (doc,) + hit
+
+    def label_ref(self, doc_id: str, token_id: str, surface: str, budget: Optional[set] = None) -> str:
+        """``"Doc" s3.w2 "surface"`` when the document is loaded or the plan's
+        documents are few enough to load; else ``"Doc" "surface"``."""
+        name = self.doc_name(doc_id)
+        if doc_id in self.ws._docs or (budget is not None and len(budget) <= LABEL_DOC_BUDGET):
+            doc, s, w, m = self.locate(doc_id, token_id)
+            if s is not None:
+                ref = f's{s.index}' + (f'.w{w.index}' if w else '') + (f'.m{m.index}' if m else '')
+                return f'{doc.name} {ref} "{surface[:40]}"'
+        return f'"{name}" "{surface[:40]}"'
+
+    def tag(self, doc_id: str) -> str:
+        """The document prefix on a reference; none in a one-document project."""
+        names = self.doc_names()
+        return f'"{names.get(doc_id, doc_id)}" ' if len(names) > 1 else ''
+
+
+# --- search ---------------------------------------------------------------------
+
+def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=None, extra=None) -> List[str]:
+    """Render token hits as the scan does: one line per word (deduplicated),
+    ``"Doc" sN.wN <word> || <sentence>``, or the sentence line for a
+    sentence field. ``extra`` returns text appended per hit (concordance)."""
+    from .project import render_word, word_ref
+    out: List[str] = []
+    seen = set()
+    for row in rows:
+        ent = row[token_col]
+        if not isinstance(ent, dict):
+            continue
+        if field is None and c.ignored(ent.get('value')):
+            continue
+        doc, s, w, m = c.locate(ent['document'], ent['id'])
+        if s is None:
+            continue
+        key = (doc.id, s.id, w.id if w else None)
+        if key in seen:
+            continue
+        seen.add(key)
+        tag = c.tag(doc.id)
+        if w is None:
+            sp = s.fields.get(field.name) if field else None
+            out.append(f'{tag}s{s.index} {field.name}={sp.value if sp else ""} | {s.text}')
+        else:
+            out.append(f'{tag}{word_ref(s, w)} {render_word(w, c.p)[len(w.ref) + 1:]} || {s.text}')
+        if len(out) >= limit:
+            break
+    return out
+
+
+def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int) -> Tuple[List[str], int]:
+    """Hits for search over the whole project: (lines, total)."""
+    c = ws.corpus
+    spec = rx(pattern, regex=regex)
+    if where_l == 'baseline':
+        where = [c.word('?t', value=spec)]
+        total = c.word_count(where)
+        rows = c.entities(where, ['?t'], limit * 2, [['?t.doc'], ['?t.begin']])
+        return _hit_lines(c, rows, 0, limit), total
+    if where_l == 'morpheme':
+        where = [c.morph_form_clauses('?m', spec), ['within', '?m', '?w'], c.word('?w')]
+        total = c.count(where, ['?w'])  # words, as the scan counts
+        rows = c.entities(where, ['?m', '?w'], limit * 3, [['?w.doc'], ['?w.begin']])
+        return _hit_lines(c, rows, 1, limit), total
+    layer = c.scope_layer(field.scope)
+    where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
+    if field.scope == 'Morpheme':
+        where += [['within', '?t', '?w'], c.word('?w')]
+        total = c.count(where, ['?w'])
+        rows = c.entities(where, ['?s', '?w'], limit * 3, [['?w.doc'], ['?w.begin']])
+        return _hit_lines(c, rows, 1, limit), total
+    total = c.count(where, ['?t'])
+    rows = c.entities(where, ['?s', '?t'], limit * 2, [['?t.doc'], ['?t.begin']])
+    return _hit_lines(c, rows, 1, limit, field=field if field.scope == 'Sentence' else None), total
+
+
+# --- shared tallies --------------------------------------------------------------
+
+def _casefold_tally(rows: List[list], keyfn) -> Tuple[Counter, Dict[str, set]]:
+    """Fold grouped rows into casefolded counts, remembering the raw spellings
+    behind each key (for follow-up ``in`` queries)."""
+    counts: Counter = Counter()
+    raw: Dict[str, set] = defaultdict(set)
+    for row in rows:
+        key, rawval = keyfn(row)
+        if key is None:
+            continue
+        counts[key] += row[-1]
+        raw[key].add(rawval)
+    return counts, raw
+
+
+def _chunks(items: List[Any], n: int = 200):
+    for i in range(0, len(items), n):
+        yield items[i:i + n]
+
+
+class Unanalyzed:
+    """Clauses for a word token ``var`` with no analysis at all: no link, no
+    span on any layer, and no morpheme within it that has a form, a type, a
+    span, or a link, nor two morphemes (the scan's ``_analyzed`` negated)."""
+
+    @staticmethod
+    def clauses(c: Corpus, var: str = '?w') -> List[Any]:
+        out = [['not', ['vocab-link', var, '?uv']],
+               ['not', ['span', '?us', {'layer': '?usl'}], ['covers', '?us', var]]]
+        if c.M:
+            out += [['not', c.morph('?um1', metadata={'form': {'regex': '.'}}), ['within', '?um1', var]],
+                    ['not', c.morph('?um2', metadata={'morphType': {'regex': '.'}}), ['within', '?um2', var]],
+                    ['not', c.morph('?um3'), ['within', '?um3', var], ['span', '?us3', {'layer': '?usl3'}], ['covers', '?us3', '?um3']],
+                    ['not', c.morph('?um4'), ['within', '?um4', var], ['vocab-link', '?um4', '?uv4']],
+                    ['not', c.morph('?ua'), c.morph('?ub'), ['within', '?ua', var], ['within', '?ub', var], ['precedes', '?ua', '?ub']]]
+        return out
+
+
+def linked_word_ids(c: Corpus) -> Dict[str, str]:
+    """Word id -> surface for every word linked itself or through a morpheme."""
+    out: Dict[str, str] = {}
+    for wid, value, _n in c.group([c.word('?w'), ['vocab-link', '?w', '?v']], ['?w', '?w.value']):
+        out[wid] = value
+    if c.M:
+        for wid, value, _n in c.group([c.word('?w'), c.morph('?m'), ['within', '?m', '?w'], ['vocab-link', '?m', '?v']],
+                                      ['?w', '?w.value']):
+            out[wid] = value
+    return out
+
+
+# --- frequency_list ---------------------------------------------------------------
+
+def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: int):
+    """(items [(key, n)], spread {key: documents}, empty) over the whole project."""
+    c = ws.corpus
+    empty = 0
+    if what_l in ('wordform', 'word'):
+        counts, raw = _casefold_tally(c.group([c.word('?t')], ['?t.value']),
+                                      lambda r: ((r[0].casefold(), r[0]) if r[0] and not c.ignored(r[0]) else (None, None)))
+    elif what_l == 'morpheme':
+        counts, raw = _casefold_tally(c.group([c.morph('?m')], ['?m.metadata.form', '?m.value']),
+                                      lambda r: ((Corpus.morph_key(r[0], r[1]) or None, (r[0], r[1]))))
+    else:
+        counts, raw = _casefold_tally(c.group([c.span('?s', field.layer_id)], ['?s.value']),
+                                      lambda r: ((r[0], r[0]) if r[0] not in (None, '') else (None, None)))
+        layer = c.scope_layer(field.scope)
+        where = [['token', '?t', {'layer': layer}], ['not', c.span('?s', field.layer_id), ['covers', '?s', '?t']]]
+        empty = c.word_count(where) if field.scope == 'Word' else c.count(where, ['?t'])
+    items = sorted(((k, n) for k, n in counts.items() if n >= max(1, int(min_count or 1))), key=lambda kv: (-kv[1], kv[0]))
+    shown = items[:limit]
+    # Document dispersion for the shown items only (a second, narrow query).
+    spread: Dict[str, set] = defaultdict(set)
+    if what_l in ('wordform', 'word'):
+        values = [v for k, _ in shown for v in raw[k]]
+        for chunk in _chunks(values):
+            for value, doc, _n in c.group([c.word('?t'), ['in', '?t.value', chunk]], ['?t.value', '?t.doc']):
+                spread[value.casefold()].add(doc)
+    elif what_l == 'morpheme':
+        forms = [f for k, _ in shown for f, v in raw[k] if f not in (None, '')]
+        values = [v for k, _ in shown for f, v in raw[k] if f in (None, '')]
+        for chunk in _chunks(forms):
+            for form, doc, _n in c.group([c.morph('?m'), ['in', '?m.metadata.form', chunk]], ['?m.metadata.form', '?m.doc']):
+                spread[form.casefold()].add(doc)
+        for chunk in _chunks(values):
+            for value, doc, _n in c.group([c.morph('?m'), ['not', c.has_form('?m')], ['in', '?m.value', chunk]],
+                                          ['?m.value', '?m.doc']):
+                spread[value.casefold()].add(doc)
+    else:
+        values = [k for k, _ in shown]
+        for chunk in _chunks(values):
+            for value, doc, _n in c.group([c.span('?s', field.layer_id), ['in', '?s.value', chunk]], ['?s.value', '?s.doc']):
+                spread[value].add(doc)
+    return items, spread, empty
+
+
+# --- worklist ---------------------------------------------------------------------
+
+def q_worklist(ws: Workspace, kind: str, f, lvl: str):
+    """{form: count} over the whole project, plus {form: example document
+    names}; for sentence fields the groups are documents."""
+    c = ws.corpus
+    names = c.doc_names()
+    examples: Dict[str, List[str]] = {}
+    if lvl == 'sentence':
+        rows = c.group([c.sent('?t'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?t']]], ['?t.doc'])
+        return {names.get(d, d): n for d, n in rows}, examples
+    if kind == 'unanalyzed':
+        where = [c.word('?w')] + Unanalyzed.clauses(c, '?w')
+        counts = c.word_tally(where, '?w')
+        by_doc = c.group(where, ['?w.value', '?w.doc'])
+    elif kind == 'unverified':
+        # Distinct words carrying any machine-made, unconfirmed span or
+        # morpheme (links are not reachable by query).
+        ids: Dict[str, Tuple[str, str]] = {}
+        machine_span = ['span', '?s', {'layer': '?sl', 'metadata': {'prov': 'inferred'}}]
+        unconfirmed = ['not', ['span', '?s', {'metadata': {'provConfirmed': True}}]]
+        for wid, value, doc, _n in c.group([c.word('?w'), machine_span, ['covers', '?s', '?w'], unconfirmed],
+                                           ['?w', '?w.value', '?w.doc']):
+            ids[wid] = (value, doc)
+        if c.M:
+            for wid, value, doc, _n in c.group([c.word('?w'), c.morph('?m', metadata={'prov': 'inferred'}), ['within', '?m', '?w'],
+                                                ['not', ['token', '?m', {'metadata': {'provConfirmed': True}}]]],
+                                               ['?w', '?w.value', '?w.doc']):
+                ids[wid] = (value, doc)
+            for wid, value, doc, _n in c.group([c.word('?w'), c.morph('?m'), ['within', '?m', '?w'], machine_span,
+                                                ['covers', '?s', '?m'], unconfirmed], ['?w', '?w.value', '?w.doc']):
+                ids[wid] = (value, doc)
+        counts = Counter()
+        by_doc = []
+        for value, doc in ids.values():
+            if c.ignored(value):
+                continue
+            counts[value.casefold()] += 1
+            by_doc.append((value, doc, 1))
+    elif lvl == 'word':
+        if kind == 'unlinked':
+            where = [c.word('?w'), ['not', ['vocab-link', '?w', '?v']]]
+        else:
+            where = [c.word('?w'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?w']]]
+        counts = c.word_tally(where, '?w')
+        by_doc = c.group(where, ['?w.value', '?w.doc'])
+    else:
+        if kind == 'unlinked':
+            where = [c.morph('?m'), ['not', ['vocab-link', '?m', '?v']], ['within', '?m', '?w'], c.word('?w'),
+                     ['not', ['vocab-link', '?w', '?v2']]]
+        else:
+            where = [c.morph('?m'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?m']]]
+        rows = c.group(where, ['?m.metadata.form', '?m.value', '?m.doc'])
+        counts = Counter()
+        by_doc = []
+        for form, value, doc, n in rows:
+            key = Corpus.morph_key(form, value)
+            if not key:
+                continue
+            counts[key] += n
+            by_doc.append((key, doc, n))
+    docs_of: Dict[str, Counter] = defaultdict(Counter)
+    for value, doc, n in by_doc:
+        if value:
+            docs_of[value.casefold()][doc] += n
+    for key, dc in docs_of.items():
+        examples[key] = [f'"{names.get(d, d)}"' for d, _ in dc.most_common(3)]
+    return dict(counts), examples
+
+
+# --- corpus_stats ------------------------------------------------------------------
+
+def q_corpus_numbers(ws: Workspace, per_doc: bool):
+    """The numbers ``corpus_stats`` reports, from grouped queries: one dict
+    (project-wide) or ``{doc_id: dict}``. ``longest`` is not computed here."""
+    c = ws.corpus
+    p = c.p
+    fields = list(p.fields.values())
+
+    def fresh():
+        return {'sentences': 0, 'words': 0, 'forms': 0, 'hapax': 0, 'morphemes': 0, 'morpheme_forms': 0,
+                'morpheme_hapax': 0, 'analyzed': 0, 'linked': 0, 'ttr': 0.0, 'longest': [],
+                **{f'field:{f.name}': [0, 0] for f in fields}}
+
+    rows: Dict[str, dict] = defaultdict(fresh)
+    key = (lambda d: d) if per_doc else (lambda d: '*')
+    # sentences
+    for doc, n in c.group([c.sent('?t')], ['?t.doc']):
+        rows[key(doc)]['sentences'] += n
+    # words: (doc, form) pairs when per document, else forms
+    forms: Dict[str, Counter] = defaultdict(Counter)
+    if per_doc:
+        for doc, value, n in c.group([c.word('?t')], ['?t.doc', '?t.value']):
+            if value and not c.ignored(value):
+                forms[doc][value.casefold()] += n
+    else:
+        forms['*'] = c.word_tally([c.word('?t')])
+    for k, tally in forms.items():
+        r = rows[k]
+        r['_forms'] = tally
+        r['words'] = sum(tally.values())
+        r['forms'] = len(tally)
+        r['hapax'] = sum(1 for n in tally.values() if n == 1)
+        r['ttr'] = (r['forms'] / r['words']) if r['words'] else 0.0
+    # morphemes
+    if c.M:
+        mforms: Dict[str, Counter] = defaultdict(Counter)
+        group = ['?m.doc', '?m.metadata.form', '?m.value'] if per_doc else ['?m.metadata.form', '?m.value']
+        for row in c.group([c.morph('?m')], group):
+            doc = row[0] if per_doc else '*'
+            mforms[doc][Corpus.morph_key(row[-3], row[-2])] += row[-1]
+        for k, tally in mforms.items():
+            r = rows[k]
+            r['_mforms'] = tally
+            r['morphemes'] = sum(tally.values())
+            r['morpheme_forms'] = len([f for f in tally if f])
+            r['morpheme_hapax'] = sum(1 for f, n in tally.items() if f and n == 1)
+    # analyzed = words - unanalyzed
+    unan = [c.word('?w')] + Unanalyzed.clauses(c, '?w')
+    for row in c.group(unan, ['?w.doc', '?w.value'] if per_doc else ['?w.value']):
+        value = row[-2]
+        if value and not c.ignored(value):
+            rows[key(row[0]) if per_doc else '*']['unanalyzed'] = rows[key(row[0]) if per_doc else '*'].get('unanalyzed', 0) + row[-1]
+    for r in rows.values():
+        r['analyzed'] = r['words'] - r.pop('unanalyzed', 0)
+    # linked words
+    if p.vocabs:
+        linked: Dict[str, set] = defaultdict(set)
+        for where in ([c.word('?w'), ['vocab-link', '?w', '?v']],
+                      *([[c.word('?w'), c.morph('?m'), ['within', '?m', '?w'], ['vocab-link', '?m', '?v']]] if c.M else [])):
+            for wid, value, doc, _n in c.group(where, ['?w', '?w.value', '?w.doc']):
+                if not c.ignored(value):
+                    linked[key(doc)].add(wid)
+        for k, ids in linked.items():
+            rows[k]['linked'] = len(ids)
+    # field coverage
+    for f in fields:
+        filled = c.group([c.span('?s', f.layer_id), ['!=', '?s.value', '']], ['?s.doc'])
+        for doc, n in filled:
+            rows[key(doc)][f'field:{f.name}'][0] += n
+    for k, r in rows.items():
+        for f in fields:
+            of = r['sentences'] if f.scope == 'Sentence' else r['words'] if f.scope == 'Word' else r['morphemes']
+            r[f'field:{f.name}'] = (r[f'field:{f.name}'][0], of)
+    if per_doc:
+        return dict(rows)
+    return rows['*']
+
+
+def _empty_numbers(project):
+    return {'sentences': 0, 'words': 0, 'forms': 0, 'hapax': 0, 'morphemes': 0, 'morpheme_forms': 0,
+            'morpheme_hapax': 0, 'analyzed': 0, 'linked': 0, 'ttr': 0.0, 'longest': [],
+            **{f'field:{f.name}': (0, 0) for f in project.fields.values()}}
+
+
+q_corpus_numbers.empty = _empty_numbers
+
+
+# --- concordance -------------------------------------------------------------------
+
+def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int):
+    """[(doc, sentence, word, hit morpheme|None)] for the shown occurrences,
+    ordered by document and position, and the total number of occurrences."""
+    c = ws.corpus
+    spec = rx(pattern, regex=regex, whole=not regex)
+    if where_l == 'baseline':
+        where = [c.word('?w', value=spec)]
+        total = c.word_count(where, '?w')
+        rows = c.entities(where, ['?w'], limit * 2, [['?w.doc'], ['?w.begin']])
+        picks = [(r[0], None) for r in rows]
+    elif where_l == 'morpheme':
+        where = [c.morph_form_clauses('?m', spec), ['within', '?m', '?w'], c.word('?w')]
+        total = c.count(where, ['?m'])
+        rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
+        picks = [(r[0], r[1]) for r in rows]
+    elif field.scope == 'Word':
+        where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?w'], c.word('?w')]
+        total = c.count(where, ['?w'])
+        rows = c.entities(where, ['?w'], limit, [['?w.doc'], ['?w.begin']])
+        picks = [(r[0], None) for r in rows]
+    else:
+        where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?m'], c.morph('?m'), ['within', '?m', '?w'], c.word('?w')]
+        total = c.count(where, ['?m'])
+        rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
+        picks = [(r[0], r[1]) for r in rows]
+    hits = []
+    for went, ment in picks:
+        if not isinstance(went, dict) or (where_l == 'baseline' and c.ignored(went.get('value'))):
+            continue
+        doc, s, w, _ = c.locate(went['document'], went['id'])
+        if w is None:
+            continue
+        hit = None
+        if isinstance(ment, dict):
+            hit = next((m for m in w.morphemes if m.id == ment['id']), None)
+            if hit is None:
+                continue
+        hits.append((doc, s, w, hit))
+        if len(hits) >= limit:
+            break
+    return hits, total
+
+
+# --- analyses_of --------------------------------------------------------------------
+
+def _tally_line(label: str, pairs, fmt=lambda k: k) -> Optional[str]:
+    pairs = [(k, n) for k, n in pairs if k not in (None, '')]
+    if not pairs:
+        return None
+    return f'  {label}: ' + ', '.join(f'{fmt(k)} ({n})' for k, n in sorted(pairs, key=lambda kv: (-kv[1], str(kv[0]))))
+
+
+def q_analyses_of(ws: Workspace, form: str) -> str:
+    """Precedent tallies for a form, from grouped queries: per field, per
+    morpheme slot, links, and a few rendered examples."""
+    from .project import render_word, word_ref
+    c = ws.corpus
+    p = c.p
+    spec = rx(form, whole=True)
+    item_form: Dict[str, str] = {}
+    for v in p.vocabs:
+        for it in ws.lexicon(v):
+            item_form[it['id']] = it.get('form') or ''
+    lines: List[str] = []
+
+    def examples(where, find, order):
+        out = []
+        for row in c.entities(where, find, 3, order):
+            ent = row[0]
+            if not isinstance(ent, dict):
+                continue
+            doc, s, w, _ = c.locate(ent['document'], ent['id'])
+            if w is not None:
+                out.append(f'    {c.tag(doc.id)}{word_ref(s, w)} {render_word(w, p)[len(w.ref) + 1:]}')
+        return out
+
+    # the word
+    word = [c.word('?w', value=spec)]
+    n = c.word_count(word, '?w')
+    if not n:
+        lines.append(f'Word "{form}": no occurrences.')
+    else:
+        lines.append(f'Word "{form}": {n} occurrence{"s" if n != 1 else ""}.')
+        for f in p.fields_by_scope('Word'):
+            line = _tally_line(f.name, ((v, k) for v, k in c.group(word + [c.span('?s', f.layer_id), ['covers', '?s', '?w']], ['?s.value'])))
+            if line:
+                lines.append(line)
+        if c.M:
+            slots: Dict[int, Counter] = defaultdict(Counter)
+            for prec, mform, value, mtype, k in c.group(word + [c.morph('?m'), ['within', '?m', '?w']],
+                                                       ['?m.precedence', '?m.metadata.form', '?m.value', '?m.metadata.morphType']):
+                key = Corpus.morph_key(mform, value) + (f' ({mtype})' if mtype else '')
+                slots[prec or 0][key] += k
+            if slots:
+                lines.append('  Segmentation by slot: ' + '; '.join(
+                    f'm{prec}: ' + ', '.join(f'{k} ({n2})' for k, n2 in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0])))
+                    for prec, cnt in sorted(slots.items())))
+            for f in p.fields_by_scope('Morpheme'):
+                fslots: Dict[int, Counter] = defaultdict(Counter)
+                for prec, value, k in c.group(word + [c.morph('?m'), ['within', '?m', '?w'], c.span('?s', f.layer_id), ['covers', '?s', '?m']],
+                                              ['?m.precedence', '?s.value']):
+                    if value not in (None, ''):
+                        fslots[prec or 0][value] += k
+                if fslots:
+                    lines.append(f'  {f.name} by slot: ' + '; '.join(
+                        f'm{prec}: ' + ', '.join(f'{k} ({n2})' for k, n2 in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0])))
+                        for prec, cnt in sorted(fslots.items())))
+        if p.vocabs:
+            line = _tally_line('Links', ((iid, k) for iid, k in c.group(word + [['vocab-link', '?w', '?v']], ['?v'])),
+                               lambda iid: item_form.get(iid, iid))
+            if line:
+                lines.append(line)
+            if c.M:
+                line = _tally_line('Morpheme links', ((f'm{prec}:{item_form.get(iid, iid)}', k) for prec, iid, k in
+                                                      c.group(word + [c.morph('?m'), ['within', '?m', '?w'], ['vocab-link', '?m', '?v']], ['?m.precedence', '?v'])))
+                if line:
+                    lines.append(line)
+        lines.append('  Examples:')
+        lines.extend(examples(word, ['?w'], [['?w.doc'], ['?w.begin']]))
+    # the morpheme
+    if c.M:
+        morph = [c.morph_form_clauses('?m', spec), ['within', '?m', '?w'], c.word('?w')]
+        n = c.count(morph, ['?m'])
+        if not n:
+            lines.append(f'Morpheme "{form}": no occurrences.')
+        else:
+            lines.append(f'Morpheme "{form}": {n} occurrence{"s" if n != 1 else ""}.')
+            line = _tally_line('In words', ((v.casefold(), k) for v, k in c.group(morph, ['?w.value']) if v))
+            if line:
+                lines.append(line)
+            for f in p.fields_by_scope('Morpheme'):
+                line = _tally_line(f.name, ((v, k) for v, k in c.group(morph + [c.span('?s', f.layer_id), ['covers', '?s', '?m']], ['?s.value'])))
+                if line:
+                    lines.append(line)
+            line = _tally_line('Type', ((t, k) for t, k in c.group(morph, ['?m.metadata.morphType'])))
+            if line:
+                lines.append(line)
+            line = _tally_line('Slot', ((f'm{prec}', k) for prec, k in c.group(morph, ['?m.precedence'])))
+            if line:
+                lines.append(line)
+            if p.vocabs:
+                line = _tally_line('Links', ((iid, k) for iid, k in c.group(morph + [['vocab-link', '?m', '?v']], ['?v'])),
+                                   lambda iid: item_form.get(iid, iid))
+                if line:
+                    lines.append(line)
+            lines.append('  Examples:')
+            lines.extend(examples(morph, ['?w', '?m'], [['?w.doc'], ['?w.begin']]))
+    return '\n'.join(lines)
+
+
+# --- check_consistency ---------------------------------------------------------------
+
+def q_consistency(ws: Workspace, f):
+    """(values Counter, by_form {form: Counter}, unlinked (n, examples), linked_empty (n, examples))."""
+    from .project import word_ref
+    c = ws.corpus
+    layer = c.scope_layer(f.scope)
+    values: Counter = Counter()
+    for v, n in c.group([c.span('?s', f.layer_id)], ['?s.value']):
+        if v not in (None, ''):
+            values[v] += n
+    by_form: Dict[str, Counter] = {}
+    unlinked = (0, [])
+    linked_empty = (0, [])
+    if f.scope == 'Sentence':
+        return values, by_form, unlinked, linked_empty
+    unit = ['token', '?u', {'layer': layer}]
+    covered = [c.span('?s', f.layer_id), ['covers', '?s', '?u'], unit]
+    if f.scope == 'Word':
+        for form, v, n in c.group(covered, ['?u.value', '?s.value']):
+            if v not in (None, '') and form and not c.ignored(form):
+                by_form.setdefault(form.casefold(), Counter())[v] += n
+    else:
+        for mform, value, v, n in c.group(covered, ['?u.metadata.form', '?u.value', '?s.value']):
+            if v not in (None, ''):
+                by_form.setdefault(Corpus.morph_key(mform, value), Counter())[v] += n
+    if not c.p.vocabs:
+        return values, by_form, unlinked, linked_empty
+
+    def examples(where, find, fmt):
+        out = []
+        for row in c.entities(where, find, 15, [['?u.doc'], ['?u.begin']]):
+            ent = row[0]
+            if not isinstance(ent, dict):
+                continue
+            doc, s, w, m = c.locate(ent['document'], ent['id'])
+            if w is None:
+                continue
+            ref = f'{c.tag(doc.id)}{word_ref(s, w)}' + (f'.m{m.index}' if m else '')
+            out.append(fmt(ref, m or w, row))
+        return out
+    where = covered + [['!=', '?s.value', ''], ['not', ['vocab-link', '?u', '?v']]]
+    n = c.count(where, ['?u'])
+    unlinked = (n, examples(where, ['?u', '?s'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} ({row[1].get("value")})') if n else [])
+    where = [unit, ['vocab-link', '?u', '?v'], ['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]]
+    n = c.count(where, ['?u'])
+    linked_empty = (n, examples(where, ['?u'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} → {u.link.form if u.link else "?"}') if n else [])
+    return values, by_form, unlinked, linked_empty

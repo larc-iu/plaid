@@ -308,9 +308,34 @@ class IgtDoc:
     sentences: List[Sentence]
     metadata: dict
     version: Optional[int] = None
+    _index: Optional[dict] = field(default=None, repr=False, compare=False)
 
     def word_count(self):
         return sum(len(s.words) for s in self.sentences)
+
+    def find(self, entity_id: str):
+        """(sentence, word|None, morpheme|None) for a sentence, word, morpheme,
+        span, or link id in this document; None when unknown."""
+        if self._index is None:
+            idx = {}
+            for s in self.sentences:
+                idx[s.id] = (s, None, None)
+                for sp in s.fields.values():
+                    idx[sp.id] = (s, None, None)
+                for w in s.words:
+                    idx[w.id] = (s, w, None)
+                    for sp in w.fields.values():
+                        idx[sp.id] = (s, w, None)
+                    if w.link:
+                        idx[w.link.id] = (s, w, None)
+                    for m in w.morphemes:
+                        idx[m.id] = (s, w, m)
+                        for sp in m.fields.values():
+                            idx[sp.id] = (s, w, m)
+                        if m.link:
+                            idx[m.link.id] = (s, w, m)
+            self._index = idx
+        return self._index.get(entity_id)
 
 
 def _find_layer(text_layers, token_layer_id):

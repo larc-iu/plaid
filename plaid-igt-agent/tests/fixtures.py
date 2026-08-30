@@ -265,3 +265,13 @@ def odd_client():
     c = FakeClient(project=odd_project_raw(), documents={'d1': odd_document_raw()})
     c._lexicons_by_id = odd_lexicons()
     return c
+
+
+def scan_ws(client, project_id='p1'):
+    """A workspace over the fake client: it has no query engine, so every
+    corpus-wide tool takes the scan path (the query path is tested live)."""
+    from plaid_igt_agent.project import load_project
+    from plaid_igt_agent.tools import Workspace
+    w = Workspace(client, load_project(client, project_id))
+    w.prefer_scan = True
+    return w

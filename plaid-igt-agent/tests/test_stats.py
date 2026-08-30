@@ -1,4 +1,4 @@
-from fixtures import FakeClient, document_raw
+from fixtures import scan_ws, FakeClient, document_raw
 
 from plaid_igt_agent.project import load_project
 from plaid_igt_agent.tools import Workspace, call_tool, TOOLS, _IMPL, WRITE_TOOLS
@@ -6,7 +6,7 @@ from plaid_igt_agent.tools import Workspace, call_tool, TOOLS, _IMPL, WRITE_TOOL
 
 def ws(client=None):
     c = client or FakeClient()
-    return Workspace(c, load_project(c, 'p1'))
+    return scan_ws(c)
 
 
 def test_all_tools_registered():

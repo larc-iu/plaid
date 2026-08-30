@@ -1,7 +1,7 @@
 """Every inference about roles comes from configuration: a project with no
 morpheme layer, fields not called Gloss (the gloss-like one not first), one
 lexicon with a schema naming its fields "meaning"/"category" and one with none."""
-from fixtures import odd_client
+from fixtures import scan_ws, odd_client
 
 from plaid_igt_agent.project import load_project, render_document
 from plaid_igt_agent.tools import Workspace, call_tool, TOOLS
@@ -9,7 +9,7 @@ from plaid_igt_agent.tools import Workspace, call_tool, TOOLS
 
 def ws():
     c = odd_client()
-    return Workspace(c, load_project(c, 'p1'))
+    return scan_ws(c)
 
 
 def test_gloss_roles_come_from_names_and_schemas():

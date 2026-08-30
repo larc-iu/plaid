@@ -91,14 +91,58 @@ def _sum_numbers(rows: List[Dict[str, Any]], project, docs: List[IgtDoc]) -> Dic
     return total
 
 
+def merge_numbers(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Sum per-document number dicts that carry their form tallies."""
+    total: Dict[str, Any] = {}
+    for k in ('sentences', 'words', 'morphemes', 'analyzed', 'linked'):
+        total[k] = sum(r[k] for r in rows)
+    forms: Counter = Counter()
+    mforms: Counter = Counter()
+    for r in rows:
+        forms.update(r.get('_forms') or {})
+        mforms.update(r.get('_mforms') or {})
+    total['forms'] = len(forms)
+    total['hapax'] = sum(1 for n in forms.values() if n == 1)
+    total['morpheme_forms'] = len([f for f in mforms if f])
+    total['morpheme_hapax'] = sum(1 for f, n in mforms.items() if f and n == 1)
+    total['ttr'] = (len(forms) / total['words']) if total['words'] else 0.0
+    total['longest'] = []
+    for k in rows[0] if rows else ():
+        if k.startswith('field:'):
+            total[k] = (sum(r[k][0] for r in rows), sum(r[k][1] for r in rows))
+    return total
+
+
 def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[str] = None) -> str:
     """Totals and coverage for the project or one document; with `by`, a
     per-document table (`by="document"`) or a breakdown by a document
     metadata field (`by="Genre"`)."""
-    docs = _docs(ws, document)
     project = ws.project
-    rows = {d.id: _doc_numbers(d, project) for d in docs}
     lines: List[str] = []
+    if ws.use_scan(document):
+        docs = _docs(ws, document)
+        rows = {d.id: _doc_numbers(d, project) for d in docs}
+        names = {d.id: d.name for d in docs}
+        metas = {d.id: d.metadata for d in docs}
+        n_docs = len(docs)
+        whole = _sum_numbers(list(rows.values()), project, docs)
+
+        def total(ids):
+            return _sum_numbers([rows[i] for i in ids], project, [d for d in docs if d.id in ids])
+    else:
+        from .corpus import q_corpus_numbers
+        names = ws.corpus.doc_names()
+        n_docs = len(names)
+        if by is None:
+            whole = q_corpus_numbers(ws, per_doc=False)
+        else:
+            rows = q_corpus_numbers(ws, per_doc=True)
+            for did in names:
+                rows.setdefault(did, q_corpus_numbers.empty(project))
+            metas = ws.corpus.document_metadata()
+
+            def total(ids):
+                return merge_numbers([rows[i] for i in ids])
 
     def describe(n: Dict[str, Any], docs_n: int, head: str):
         lines.append(head)
@@ -114,13 +158,13 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
             cov.append(f'{f.name} {_pct(filled, of)} ({filled}/{of} {f.scope.lower()}s)')
         if cov:
             lines.append('  Field coverage: ' + ', '.join(cov))
-        if n['longest'] and n['longest'][0].morphemes and len(n['longest'][0].morphemes) > 1:
+        longest = n.get('longest') or []
+        if longest and longest[0].morphemes and len(longest[0].morphemes) > 1:
             lines.append('  Longest words: ' + ', '.join(f'{w.surface} ({len(w.morphemes)}: {segmentation(w)})'
-                                                        for w in n['longest'] if len(w.morphemes) > 1))
+                                                        for w in longest if len(w.morphemes) > 1))
 
     if by is None:
-        describe(_sum_numbers(list(rows.values()), project, docs), len(docs),
-                 f'Project "{project.name}"' if not document else f'Document "{docs[0].name}"')
+        describe(whole, n_docs, f'Project "{project.name}"' if not document else f'Document "{names[next(iter(names))]}"')
         return _truncate('\n'.join(lines))
 
     if by.lower() == 'document':
@@ -130,25 +174,25 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
                 f'{first_m}' if first_m else None, f'{first_s}' if first_s else None, 'hapax', 'TTR']
         head += project.document_metadata
         lines.append('\t'.join(h for h in head if h))
-        for d in sorted(docs, key=lambda d: d.name.lower()):
-            n = rows[d.id]
-            cells = [d.name, str(n['sentences']), str(n['words']), _pct(n['analyzed'], n['words']),
+        for did in sorted(rows, key=lambda i: (names.get(i) or '').lower()):
+            n = rows[did]
+            cells = [names.get(did, did), str(n['sentences']), str(n['words']), _pct(n['analyzed'], n['words']),
                      _pct(n['linked'], n['words']) if project.vocabs else None,
                      _pct(*n[f'field:{first_m}']) if first_m else None,
                      _pct(*n[f'field:{first_s}']) if first_s else None,
                      _pct(n['hapax'], n['words']), f'{n["ttr"]:.2f}']
-            cells += [str(d.metadata.get(k, '') or '') for k in project.document_metadata]
+            cells += [str((metas.get(did) or {}).get(k, '') or '') for k in project.document_metadata]
             lines.append('\t'.join(c for c in cells if c is not None))
         return _truncate('\n'.join(lines))
 
     key = next((k for k in project.document_metadata if k.lower() == by.lower()), None)
     if not key:
         raise ToolError(f'by must be "document" or a document metadata field: ' + ', '.join(project.document_metadata))
-    groups: Dict[str, List[IgtDoc]] = defaultdict(list)
-    for d in docs:
-        groups[str(d.metadata.get(key, '') or '(none)')].append(d)
-    for val, ds in sorted(groups.items(), key=lambda kv: -len(kv[1])):
-        describe(_sum_numbers([rows[d.id] for d in ds], project, ds), len(ds), f'{key} = {val}')
+    groups: Dict[str, List[str]] = defaultdict(list)
+    for did in rows:
+        groups[str((metas.get(did) or {}).get(key, '') or '(none)')].append(did)
+    for val, ids in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        describe(total(ids), len(ids), f'{key} = {val}')
     return _truncate('\n'.join(lines))
 
 
@@ -158,7 +202,6 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                      limit: int = 100, min_count: int = 1) -> str:
     """Counts with document dispersion for wordforms, morpheme forms, or a
     field's values."""
-    docs = _docs(ws, document)
     limit = max(1, min(int(limit or 100), 1000))
     what_l = (what or 'wordform').lower()
     counts: Counter = Counter()
@@ -167,6 +210,11 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
     field = None
     if what_l not in ('wordform', 'word', 'morpheme'):
         field = ws.project.field(what)
+    if not ws.use_scan(document):
+        from .corpus import q_frequency_list
+        items, spread, empty = q_frequency_list(ws, what_l, field, limit, min_count)
+        return _frequency_lines(items, spread, empty, field, what_l, limit)
+    docs = _docs(ws, document)
     for d in docs:
         for s in d.sentences:
             if field and field.scope == 'Sentence':
@@ -205,11 +253,15 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                         else:
                             empty += 1
     items = [(k, n) for k, n in counts.most_common() if n >= max(1, int(min_count or 1))]
+    return _frequency_lines(items, spread, empty, field, what_l, limit)
+
+
+def _frequency_lines(items, spread, empty, field, what_l, limit) -> str:
     noun = field.name + ' values' if field else ('wordforms' if what_l != 'morpheme' else 'morpheme forms')
     lines = [f'{len(items)} {noun}, {sum(n for _, n in items)} tokens' + (f', {empty} empty' if field else '')
              + (f' (showing {limit})' if len(items) > limit else '') + '. count\tdocuments\tform']
-    for k, n in items[:limit]:
-        lines.append(f'  {n}\t{len(spread[k])}\t{k}')
+    for k, n in sorted(items, key=lambda kv: (-kv[1], kv[0]))[:limit]:
+        lines.append(f'  {n}\t{len(spread.get(k) or ())}\t{k}')
     return _truncate('\n'.join(lines))
 
 
@@ -244,7 +296,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
         raise ToolError('kind must be one of: ' + ', '.join(KINDS))
     project = ws.project
     limit = max(1, min(int(limit or 50), 500))
-    docs = _docs(ws, document)
+    docs = _docs(ws, document) if ws.use_scan(document) else []
     f = None
     if kind == 'unglossed':
         if field:
@@ -259,6 +311,10 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
         lvl = 'word'
     if f and f.scope == 'Sentence':
         lvl = 'sentence'
+    if not ws.use_scan(document):
+        from .corpus import q_worklist
+        counts, examples = q_worklist(ws, kind, f, lvl)
+        return _worklist_lines(kind, f, lvl, limit, counts, examples)
     groups: Dict[str, List[str]] = defaultdict(list)
     for d in docs:
         tag = _tag(docs, d)
@@ -289,7 +345,13 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
                             groups[m.form.casefold()].append(f'{ref}.m{m.index}')
                         elif kind == 'unglossed' and f and not (m.fields.get(f.name) and m.fields[f.name].value != ''):
                             groups[m.form.casefold()].append(f'{ref}.m{m.index}')
-    total = sum(len(v) for v in groups.values())
+    return _worklist_lines(kind, f, lvl, limit, {k: len(v) for k, v in groups.items()},
+                           {k: v[:3] for k, v in groups.items()})
+
+
+def _worklist_lines(kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[str, List[str]]) -> str:
+    total = sum(counts.values())
+    groups = counts
     what = {'unlinked': f'{lvl}s not linked to the lexicon',
             'unglossed': f'{lvl}s without a {f.name if f else ""} value' + (' (grouped by document)' if lvl == 'sentence' else ''),
             'unanalyzed': 'words with no analysis at all',
@@ -298,8 +360,8 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
         return f'Nothing to do: no {what}.'
     lines = [f'{total} {what} across {len(groups)} distinct forms' + (f' (showing {limit})' if len(groups) > limit else '')
              + '. count\tform\texamples']
-    for form, refs in sorted(groups.items(), key=lambda kv: -len(kv[1]))[:limit]:
-        lines.append(f'  {len(refs)}\t{form}\t{", ".join(refs[:3])}')
+    for form, n in sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]:
+        lines.append(f'  {n}\t{form}\t{", ".join(examples.get(form) or [])}')
     return _truncate('\n'.join(lines))
 
 

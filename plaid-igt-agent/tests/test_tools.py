@@ -1,4 +1,4 @@
-from fixtures import FakeClient
+from fixtures import scan_ws, FakeClient
 
 from plaid_igt_agent.project import load_project
 from plaid_igt_agent.tools import Workspace, call_tool, TOOLS, _IMPL
@@ -6,7 +6,7 @@ from plaid_igt_agent.tools import Workspace, call_tool, TOOLS, _IMPL
 
 def ws():
     c = FakeClient()
-    return Workspace(c, load_project(c, 'p1'))
+    return scan_ws(c)
 
 
 def test_every_declared_tool_has_an_implementation():
@@ -158,7 +158,7 @@ def test_morph_types_and_lexicon_fields_are_validated():
     # a lexicon with a configured field schema rejects unknown entry fields
     c = FakeClient()
     c._project['vocabs'][0]['config'] = {'igt': {'fields': {'gloss': {'inline': True}, 'pos': {'inline': False}}}}
-    w2 = Workspace(c, load_project(c, 'p1'))
+    w2 = scan_ws(c)
     assert 'has no entry field "definition"' in call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'definition': 'y'}})
     call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'Gloss': 'y'}})
     assert w2.ops[-1]['metadata'] == {'gloss': 'y'}
@@ -169,7 +169,7 @@ def test_homograph_numbers_pick_an_entry():
     c = FakeClient()
     c._lexicon['items'][2]['metadata']['homograph'] = 1
     c._lexicon['items'][3]['metadata']['homograph'] = 2
-    w = Workspace(c, load_project(c, 'p1'))
+    w = scan_ws(c)
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': 's1.w2', 'entry_form': 'gam'})
     assert 'form=gam#1' in out and 'form=gam#2' in out
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': 's1.w2', 'entry_form': 'gam#2'})
@@ -196,7 +196,7 @@ def _machine_doc():
 
 def test_confirm_collects_unconfirmed_machine_pieces():
     c = FakeClient(documents={'d1': _machine_doc()})
-    w = Workspace(c, load_project(c, 'p1'))
+    w = scan_ws(c)
     out = call_tool(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
     assert 'Planned 1 change' in out and '5 annotations will be marked verified' in out
     op = w.ops[0]
@@ -204,11 +204,11 @@ def test_confirm_collects_unconfirmed_machine_pieces():
     assert sorted(op['span_ids']) == ['sp-g1', 'sp-m1b'] and op['token_ids'] == ['m-1b'] and sorted(op['link_ids']) == ['l-1', 'l-2']
     assert op['label'] == 'Text 1 s1.w1 "Ali-di": confirm 2 values, 2 links, 1 segmentation'
     # Field-restricted: only that field's spans, no links or segmentations.
-    w2 = Workspace(c, load_project(c, 'p1'))
+    w2 = scan_ws(c)
     call_tool(w2, 'confirm', {'document': 'd1', 'refs': ['s1'], 'field': 'Morph Gloss'})
     assert w2.ops[0]['span_ids'] == ['sp-m1b'] and not w2.ops[0]['token_ids'] and not w2.ops[0]['link_ids']
     # Whole document: one op.
-    w3 = Workspace(c, load_project(c, 'p1'))
+    w3 = scan_ws(c)
     out = call_tool(w3, 'confirm', {'document': 'd1'})
     assert len(w3.ops) == 1 and w3.ops[0]['label'].startswith('Text 1: confirm 2 values, 2 links, 2 segmentations')
     assert '6 annotations' in out
@@ -218,7 +218,7 @@ def test_confirm_collects_unconfirmed_machine_pieces():
 
 def test_discard_analysis_mirrors_the_editor():
     c = FakeClient(documents={'d1': _machine_doc()})
-    w = Workspace(c, load_project(c, 'p1'))
+    w = scan_ws(c)
     out = call_tool(w, 'discard_analysis', {'document': 'd1', 'refs': ['s1.w1', 's1.w3', 's2']})
     assert 'Planned 2 changes' in out
     a, b = w.ops
@@ -239,7 +239,7 @@ def test_single_respell_carries_a_lone_matching_morpheme_form():
     raw = document_raw()
     raw['text_layers'][0]['token_layers'][2]['tokens'][2]['metadata'] = {'form': 'gam'}  # m-2 stores its form
     c = FakeClient(documents={'d1': raw})
-    w = Workspace(c, load_project(c, 'p1'))
+    w = scan_ws(c)
     out = call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
     assert 'Planned 2 changes' in out
     assert [o['kind'] for o in w.ops] == ['respell', 'set_morpheme_form'] and w.ops[1] == {
@@ -248,7 +248,7 @@ def test_single_respell_carries_a_lone_matching_morpheme_form():
     # A chain cannot be re-derived from a whole-word respelling: kept, and said so.
     out = call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w1', 'new_text': 'Alidi'})
     assert 'Planned 1 change' in out and 'Morpheme forms Ali, di are kept' in out
-    w2 = Workspace(c, load_project(c, 'p1'))
+    w2 = scan_ws(c)
     call_tool(w2, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham', 'morpheme_forms': False})
     assert [o['kind'] for o in w2.ops] == ['respell']
 
@@ -286,7 +286,7 @@ def test_entry_gloss_singles_out_a_homograph():
 def test_reads_mark_unverified_machine_material():
     from plaid_igt_agent.project import render_document
     c = FakeClient(documents={'d1': _machine_doc()})
-    w = Workspace(c, load_project(c, 'p1'))
+    w = scan_ws(c)
     out = render_document(w.doc('d1'), w.project)
     assert 'w1 Ali-di | seg=Ali-di~ types=?,suffix | Morph Gloss=Ali-ERG~ | Gloss=Ali~ | IPA=alidi | link=Ali~ | mlinks=m2:-di~' in out
     assert 'w1 Gam-ar | seg=Gam=ar~' in out  # m-4b is machine-made

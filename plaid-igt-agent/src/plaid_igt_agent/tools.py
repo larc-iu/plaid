@@ -46,6 +46,21 @@ class Workspace:
         self.replaced = 0  # ops superseded by a later op on the same target this turn
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
         self._doc_ids: Dict[str, set] = {}  # document id -> every id the document contains
+        # Corpus-wide tools ask the query engine unless told to scan every
+        # document instead (tests compare the two).
+        self.prefer_scan = False
+        self._corpus = None
+
+    @property
+    def corpus(self):
+        if self._corpus is None:
+            from .corpus import Corpus
+            self._corpus = Corpus(self)
+        return self._corpus
+
+    def use_scan(self, document: Optional[str]) -> bool:
+        """Scan (one document, or everything when asked) rather than query."""
+        return bool(document) or self.prefer_scan
 
     # --- loading ---------------------------------------------------------
 
@@ -202,6 +217,11 @@ class Workspace:
         read at, so approval can refuse a plan made against stale data (ops
         carry ids and character offsets from plan time)."""
         out = []
+        # Ops built from query results name their document directly.
+        unloaded = {op['doc'] for op in self.ops if op.get('doc') and op['doc'] not in self._docs}
+        if unloaded:
+            for did, version in self.corpus.versions(unloaded).items():
+                out.append({'id': did, 'name': self.corpus.doc_name(did), 'version': version})
         for did, doc in self._docs.items():
             ids = self._doc_ids.get(did)
             if ids is None:
@@ -440,6 +460,10 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
     field = None
     if where_l not in ('baseline', 'morpheme'):
         field = ws.project.field(where_name)
+    if not ws.use_scan(document):
+        from .corpus import q_search
+        out, total = q_search(ws, pattern, where_l, field, bool(regex), limit)
+        return _finish(out, total, limit, 'hits')
     docs = [ws.doc(document)] if document else ws.all_docs()
     for doc in docs:
         tag = f'"{doc.name}" ' if len(docs) > 1 else ''
@@ -520,13 +544,6 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     questions (what precedes/follows X, does X vary by context)."""
     if not pattern:
         raise ToolError('Give a pattern.')
-    # Whole-form match by default (a concordance of "ar" must not include
-    # "para"); regex for anything looser.
-    if regex:
-        match = _matcher(pattern, True)
-    else:
-        wanted = pattern.casefold()
-        match = lambda s: (s or '').casefold() == wanted  # noqa: E731
     limit = max(1, min(int(limit or 60), 300))
     where_l = (where or 'morpheme').lower()
     field = None
@@ -534,58 +551,72 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         field = ws.project.field(where)
         if field.scope == 'Sentence':
             raise ToolError('concordance works on words and morphemes; use search for sentence fields')
-    mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
-    docs = [ws.doc(document)] if document else ws.all_docs()
-    hits: List[str] = []
-    patterns: Counter = Counter()
-    total = 0
-    for doc in docs:
-        tag = f'"{doc.name}" ' if len(docs) > 1 else ''
-        for s in doc.sentences:
-            for wi, w in enumerate(s.words):
-                hit_morphs: List[Morpheme] = []
-                if where_l == 'baseline':
-                    if not match(w.surface):
-                        continue
-                elif where_l == 'morpheme':
-                    hit_morphs = [m for m in w.morphemes if match(m.form)]
-                    if not hit_morphs:
-                        continue
-                elif field.scope == 'Word':
-                    sp = w.fields.get(field.name)
-                    if not (sp and match(sp.value)):
-                        continue
-                else:
-                    hit_morphs = [m for m in w.morphemes
-                                  if field.name in m.fields and match(m.fields[field.name].value)]
-                    if not hit_morphs:
-                        continue
-                prev = s.words[wi - 1].surface if wi > 0 else '#'
-                nxt = s.words[wi + 1].surface if wi + 1 < len(s.words) else '#'
-                for hit in (hit_morphs or [None]):
-                    total += 1
-                    seg = _bracket_line(w, hit, None) if w.morphemes else w.surface
-                    glosses = ' | '.join(f'{f}={_bracket_line(w, hit, f)}' for f in mfields
-                                         if any(f in m.fields for m in w.morphemes))
-                    pattern_key = seg if hit is None else f'{seg}' + (f'  {glosses}' if glosses else '')
-                    patterns[pattern_key] += 1
-                    if len(hits) < limit:
-                        wf = ' | '.join(f'{f.name}={w.fields[f.name].value}' for f in ws.project.fields_by_scope('Word')
-                                        if f.name in w.fields and w.fields[f.name].value != '')
-                        hits.append(f'{tag}{word_ref(s, w)} {prev} [{w.surface}] {nxt} | seg={seg}'
-                                    + (f' | {glosses}' if glosses else '') + (f' | {wf}' if wf else '')
-                                    + f' || {s.text}')
+    if not ws.use_scan(document):
+        from .corpus import q_concordance_hits
+        hits, total = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit)
+    else:
+        # Whole-form match by default (a concordance of "ar" must not include
+        # "para"); regex for anything looser.
+        if regex:
+            match = _matcher(pattern, True)
+        else:
+            wanted = pattern.casefold()
+            match = lambda s: (s or '').casefold() == wanted  # noqa: E731
+        docs = [ws.doc(document)] if document else ws.all_docs()
+        hits = []
+        total = 0
+        for doc in docs:
+            for s in doc.sentences:
+                for w in s.words:
+                    hit_morphs: List[Morpheme] = []
+                    if where_l == 'baseline':
+                        if not match(w.surface):
+                            continue
+                    elif where_l == 'morpheme':
+                        hit_morphs = [m for m in w.morphemes if match(m.form)]
+                        if not hit_morphs:
+                            continue
+                    elif field.scope == 'Word':
+                        sp = w.fields.get(field.name)
+                        if not (sp and match(sp.value)):
+                            continue
+                    else:
+                        hit_morphs = [m for m in w.morphemes
+                                      if field.name in m.fields and match(m.fields[field.name].value)]
+                        if not hit_morphs:
+                            continue
+                    for hit in (hit_morphs or [None]):
+                        total += 1
+                        if len(hits) < limit:
+                            hits.append((doc, s, w, hit))
     if not total:
         return f'No occurrences of "{pattern}".'
+    mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
+    patterns: Counter = Counter()
+    lines_out: List[str] = []
+    for doc, s, w, hit in hits:
+        wi = w.index - 1
+        prev = s.words[wi - 1].surface if wi > 0 else '#'
+        nxt = s.words[wi + 1].surface if wi + 1 < len(s.words) else '#'
+        seg = _bracket_line(w, hit, None) if w.morphemes else w.surface
+        glosses = ' | '.join(f'{f}={_bracket_line(w, hit, f)}' for f in mfields
+                             if any(f in m.fields for m in w.morphemes))
+        pattern_key = seg if hit is None else f'{seg}' + (f'  {glosses}' if glosses else '')
+        patterns[pattern_key] += 1
+        wf = ' | '.join(f'{f.name}={w.fields[f.name].value}' for f in ws.project.fields_by_scope('Word')
+                        if f.name in w.fields and w.fields[f.name].value != '')
+        lines_out.append(f'{ws.corpus.tag(doc.id)}{word_ref(s, w)} {prev} [{w.surface}] {nxt} | seg={seg}'
+                         + (f' | {glosses}' if glosses else '') + (f' | {wf}' if wf else '')
+                         + f' || {s.text}')
     lines = [f'{total} occurrence{"s" if total != 1 else ""} of "{pattern}" in {where_l if not field else field.name}'
              + (f' (showing {limit})' if total > limit else '') + '.',
-             'Word patterns (hit in [brackets]), by frequency:']
-    for key, n in patterns.most_common(25):
+             'Word patterns (hit in [brackets]), by frequency' + (f', among the {len(hits)} shown' if total > len(hits) else '') + ':']
+    for key, n in sorted(patterns.items(), key=lambda kv: (-kv[1], kv[0]))[:25]:
         lines.append(f'  {n}\t{key}')
     if len(patterns) > 25:
         lines.append(f'  ... {len(patterns) - 25} more patterns')
     lines.append('Occurrences (previous [word] next | segmentation | morpheme fields || sentence):')
-    lines.extend('  ' + h for h in hits)
+    lines.extend('  ' + h for h in lines_out)
     return _truncate('\n'.join(lines))
 
 
@@ -596,6 +627,9 @@ def t_analyses_of(ws: Workspace, form: str, document: Optional[str] = None) -> s
     form = (form or '').strip()
     if not form:
         raise ToolError('Give a form.')
+    if not ws.use_scan(document):
+        from .corpus import q_analyses_of
+        return _truncate(q_analyses_of(ws, form))
     key = form.casefold()
     docs = [ws.doc(document)] if document else ws.all_docs()
     mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
@@ -704,6 +738,10 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     values, and items annotated in this field but not linked to the lexicon
     (or linked but empty)."""
     f = ws.project.field(field)
+    if not ws.use_scan(document):
+        from .corpus import q_consistency
+        values, by_form, (unlinked_n, unlinked), (linked_empty_n, linked_empty) = q_consistency(ws, f)
+        return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty)
     docs = [ws.doc(document)] if document else ws.all_docs()
     values: Counter = Counter()
     by_form: Dict[str, Counter] = {}
@@ -736,6 +774,10 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
                         linked_empty_n += 1
                         if len(linked_empty) < 15:
                             linked_empty.append(f'{ref} {form} → {u.link.form}')
+    return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty)
+
+
+def _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty) -> str:
     lines = [f'Consistency of {f.name} ({f.scope} field): {sum(values.values())} values, {len(values)} distinct.']
     groups: Dict[str, List[str]] = {}
     for v in values:
@@ -743,16 +785,16 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     variants = [g for g in groups.values() if len(g) > 1]
     if variants:
         lines.append(f'{len(variants)} value{"s" if len(variants) != 1 else ""} spelled more than one way:')
-        for g in sorted(variants, key=lambda g: -sum(values[v] for v in g))[:40]:
-            lines.append('  ' + ' / '.join(f'{v} ({values[v]})' for v in sorted(g, key=lambda v: -values[v])))
+        for g in sorted(variants, key=lambda g: (-sum(values[v] for v in g), sorted(g)))[:40]:
+            lines.append('  ' + ' / '.join(f'{v} ({values[v]})' for v in sorted(g, key=lambda v: (-values[v], v))))
     else:
         lines.append('No spelling or case variants among values.')
     if f.scope != 'Sentence':
         multi = {form: c for form, c in by_form.items() if len(c) > 1}
         if multi:
             lines.append(f'{len(multi)} {"morpheme" if f.scope == "Morpheme" else "word"} form{"s" if len(multi) != 1 else ""} with several {f.name} values (homonymy or inconsistency):')
-            for form, c in sorted(multi.items(), key=lambda kv: -sum(kv[1].values()))[:40]:
-                lines.append(f'  {form}: ' + ', '.join(f'{v} ({n})' for v, n in c.most_common()))
+            for form, c in sorted(multi.items(), key=lambda kv: (-sum(kv[1].values()), kv[0]))[:40]:
+                lines.append(f'  {form}: ' + ', '.join(f'{v} ({n})' for v, n in sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))))
         else:
             lines.append(f'Every form carries a single {f.name} value.')
         by_value: Dict[str, Counter] = {}
@@ -762,8 +804,8 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
         shared = {v: c for v, c in by_value.items() if len(c) > 1}
         if shared:
             lines.append(f'{len(shared)} {f.name} value{"s" if len(shared) != 1 else ""} carried by several forms (allomorphy or a gloss collision):')
-            for v, c in sorted(shared.items(), key=lambda kv: -len(kv[1]))[:25]:
-                lines.append(f'  {v}: ' + ', '.join(f'{form} ({n})' for form, n in c.most_common(8)) + (' …' if len(c) > 8 else ''))
+            for v, c in sorted(shared.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:25]:
+                lines.append(f'  {v}: ' + ', '.join(f'{form} ({n})' for form, n in sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))[:8]) + (' …' if len(c) > 8 else ''))
         if ws.project.vocabs:
             lines.append(f'{unlinked_n} annotated but not linked to the lexicon'
                          + (': ' + '; '.join(unlinked) + (' …' if unlinked_n > len(unlinked) else '') if unlinked else '.'))
