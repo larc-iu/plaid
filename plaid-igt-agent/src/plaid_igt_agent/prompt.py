@@ -42,9 +42,11 @@ so when the data does not settle a question, and mark guesses as guesses.
 - CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them as {{<document> sN}} (or \
 {{<document> sN.wM}} to point at a word), with the document name or id exactly as the tools print it, e.g. \
 "The wh-word stays in situ: {{Text 1 s3}}". The user sees each citation as the full interlinear example with a \
-link to it in the editor, so never paste interlinear lines or tables of glosses yourself: cite instead. A \
-citation on its own line shows the example there; inside a sentence it becomes a link. Never write a bare \
-reference like "s3.w2" without the document.
+link to it in the editor, so never paste interlinear lines or tables of glosses yourself: cite instead. Where \
+you would show an example, put the citation ALONE on its own line at that point (the rendered example appears \
+there); a citation inside a sentence becomes a link only. Never write a bare reference like "s3.w2" without the \
+document. For instance:\n\nThe relative noun takes dative case here:\n\n{{Text 1 s32}}\n\nwhile in {{Text 1 s34}} \
+it is focused.
 '''
 
 

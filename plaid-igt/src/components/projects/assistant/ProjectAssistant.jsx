@@ -881,7 +881,7 @@ const mdComponents = {
 };
 
 export const AssistantMarkdown = ({ children }) => (
-  <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-pre:my-2 prose-table:my-2 prose-li:my-0.5">
+  <div className="prose prose-sm max-w-none leading-relaxed dark:prose-invert prose-p:my-3.5 prose-headings:mt-6 prose-headings:mb-2.5 prose-pre:my-3 prose-table:my-4 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-hr:my-5">
     <Markdown remarkPlugins={[remarkGfm]} components={mdComponents}>
       {children}
     </Markdown>
@@ -902,48 +902,83 @@ const CITE_RE = /\{\{\s*.+?\s+s\d+(?:\.w\d+)?\s*\}\}|(?<![\w{.])s\d+(?:\.w\d+)?\
 const sentenceHref = (projectId, c) =>
   `#/projects/${projectId}/documents/${c.documentId}?tab=analyze&focusSentence=${c.sentenceId}`;
 
-const ExampleCard = ({ c, projectId }) => (
-  <div className="my-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-    <div className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-      <a
-        href={sentenceHref(projectId, c)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="font-medium text-foreground hover:underline"
-        title="Open this sentence in the editor"
-      >
-        {c.documentName} · s{c.sentence}
-        {c.word ? `.w${c.word}` : ''}
-      </a>
-      <span>open in editor ↗</span>
-    </div>
-    <div className="flex flex-wrap gap-x-4 gap-y-2">
-      {(c.words || []).map((w) => (
-        <div
-          key={w.index}
-          className={cn(
-            'flex flex-col leading-tight',
-            c.word === w.index && '-mx-1 rounded bg-primary/15 px-1',
-          )}
+const ExampleCard = ({ c, projectId }) => {
+  const words = c.words || [];
+  // One row per tier: the words, their segmentation (when any word has one),
+  // then every field any word carries, in the project's field order.
+  const tiers = [];
+  words.forEach((w) =>
+    (w.lines || []).forEach((l) => {
+      if (!tiers.includes(l.field)) tiers.push(l.field);
+    }),
+  );
+  const rows = [
+    { label: '', cls: 'font-medium', cells: words.map((w) => w.surface) },
+    words.some((w) => w.seg) && {
+      label: 'morphemes',
+      cls: 'font-mono text-xs',
+      cells: words.map((w) => w.seg || ''),
+    },
+    ...tiers.map((name) => ({
+      label: name,
+      cls: 'text-xs',
+      cells: words.map((w) => (w.lines || []).find((l) => l.field === name)?.value || ''),
+    })),
+  ].filter(Boolean);
+  return (
+    <div className="my-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+      <div className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+        <a
+          href={sentenceHref(projectId, c)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-foreground hover:underline"
+          title="Open this sentence in the editor"
         >
-          <span className="font-medium">{w.surface}</span>
-          {w.seg && <span className="font-mono text-xs">{w.seg}</span>}
-          {(w.lines || []).map((l) => (
-            <span key={l.field} className="text-xs text-muted-foreground" title={l.field}>
-              {l.value}
-            </span>
-          ))}
+          {c.documentName} · s{c.sentence}
+          {c.word ? `.w${c.word}` : ''}
+        </a>
+        <span>open in editor ↗</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="border-separate border-spacing-0 whitespace-nowrap">
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <th
+                  scope="row"
+                  className="pr-3 text-left align-top text-[11px] font-normal leading-5 text-muted-foreground"
+                >
+                  {r.label}
+                </th>
+                {r.cells.map((v, j) => (
+                  <td
+                    key={j}
+                    className={cn(
+                      'px-1.5 align-top leading-5',
+                      r.cls,
+                      c.word === words[j].index && 'bg-primary/15',
+                      c.word === words[j].index && i === 0 && 'rounded-t',
+                      c.word === words[j].index && i === rows.length - 1 && 'rounded-b',
+                    )}
+                  >
+                    {v}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {(c.fields || []).map((f) => (
+        <div key={f.field} className="mt-2 italic">
+          <span className="not-italic text-xs text-muted-foreground">{f.field}: </span>
+          {f.value}
         </div>
       ))}
     </div>
-    {(c.fields || []).map((f) => (
-      <div key={f.field} className="mt-1.5 italic">
-        <span className="not-italic text-xs text-muted-foreground">{f.field}: </span>
-        {f.value}
-      </div>
-    ))}
-  </div>
-);
+  );
+};
 
 // Reply text with its citations: block cards in place, links inline, and the
 // inline-only citations' cards after the text.
