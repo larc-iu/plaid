@@ -108,8 +108,25 @@ def test_bulk_plans():
     assert w.ops[-1]['value'] == 'Ali saw a fish!'
     assert call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'}).startswith('Nothing to change')
     out = call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
-    assert 'Planned 4 changes' in out and w.ops[-1]['kind'] == 'respell' and w.ops[-1]['value'] == 'Gäm-är'  # case-insensitive, like search
-    assert 'Planned 3 changes' in call_tool(ws(), 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'case_sensitive': True})
+    # 4 words (case-insensitive, like search) + the stored morpheme forms of those words
+    # (Ali, Gam, ar) + every lexicon headword the pattern hits (Ali, gam, gam), as Bulk Edit does.
+    assert 'Planned 10 changes' in out and '(4 words, 3 morpheme forms, 3 lexicon headwords.)' in out
+    kinds = [o['kind'] for o in w.ops[-10:]]
+    assert kinds.count('respell') == 4 and kinds.count('set_morpheme_form') == 3 and kinds.count('rename_entry') == 3
+    respells = [o for o in w.ops if o['kind'] == 'respell']
+    assert respells[-1]['value'] == 'Gäm-är'
+    forms = {o['morpheme_id']: o['form'] for o in w.ops if o['kind'] == 'set_morpheme_form'}
+    assert forms == {'m-1a': 'äli', 'm-4a': 'Gäm', 'm-4b': 'är'}
+    assert {o['item_id']: o['form'] for o in w.ops if o['kind'] == 'rename_entry'} == {'vi-ali': 'äli', 'vi-gam': 'gäm', 'vi-gam2': 'gäm'}
+    assert 'Planned 3 changes' in call_tool(ws(), 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'case_sensitive': True,
+                                                                    'morpheme_forms': False, 'lexicon': False})
+    # replace_in_field on the stored morpheme forms (derived forms are left to respell_all)
+    w2 = ws()
+    out = call_tool(w2, 'replace_in_field', {'field': 'morpheme form', 'pattern': 'ar', 'replacement': 'är', 'whole_value': True})
+    assert 'Planned 1 change' in out and w2.ops == [w2.ops[0]] and w2.ops[0]['kind'] == 'set_morpheme_form' and w2.ops[0]['morpheme_id'] == 'm-4b'
+    assert 'm2 (in "Gam-ar"): morpheme form "ar" → "är"' in w2.ops[0]['label']
+    out = call_tool(w2, 'replace_in_field', {'field': 'form', 'pattern': 'gam', 'replacement': 'x'})
+    assert 'Planned 1 change' in out and 'm1 (in "Gam-ar"): morpheme form "Gam" → "x"' in out  # m-2 has no stored form: skipped
     assert 'would become empty' in call_tool(w, 'respell_all', {'pattern': '.*', 'replacement': '', 'regex': True})
     out = call_tool(w, 'copy_to_orthography', {'orthography': 'IPA'})
     assert 'Planned 3 changes' in out  # w-1 already has IPA
@@ -178,7 +195,7 @@ def test_query_count_and_aggregate_shapes():
 
 def test_a_failing_tool_call_leaves_no_partial_plan():
     w = ws()
-    # the cap: 4 words would change, cap it at 2 for the test
+    # the cap: 10 items would change, cap it at 2 for the test
     import plaid_igt_agent.bulk as bulk
     old = bulk.MAX_BULK
     bulk.MAX_BULK = 2

@@ -8,7 +8,8 @@ import re
 from typing import Any, Dict, List, Optional
 
 from .project import Word, Sentence, Morpheme, segmentation, word_ref
-from .tools import Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op
+from .tools import (Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op,
+                    has_own_form, morpheme_form_op)
 from .stats import _analyzed, _docs, _tag
 
 MAX_BULK = 3000
@@ -55,11 +56,31 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                        case_sensitive: bool = False) -> str:
     """PLAN: substitute inside every EXISTING value of a field (substring,
     whole value, or regex with backreferences), project-wide or in one
-    document. Empty cells are not filled: use set_field_for_form for that."""
-    f = ws.project.field(field)
+    document. Empty cells are not filled: use set_field_for_form for that.
+    ``field`` may also name the stored morpheme forms (Bulk Edit's morpheme
+    domain) when no field is so named."""
     rep = _replacer(pattern, replacement, bool(regex), bool(whole_value), bool(case_sensitive))
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
+    if _names_morpheme_forms(ws, field):
+        for doc in _docs(ws, document):
+            for s in doc.sentences:
+                for w in s.words:
+                    for m in w.morphemes:
+                        if not has_own_form(m):
+                            continue  # a derived form is the word's surface: respell_all's job
+                        new = rep(m.form)
+                        if new == m.form:
+                            continue
+                        if not new.strip():
+                            raise ToolError(f'{doc.name} {word_ref(s, w)}.m{m.index}: "{m.form}" would become empty')
+                        op = morpheme_form_op(doc, word_ref(s, w), w, m, new)
+                        staged.append(op)
+                        labels.append(op['label'])
+        _check_cap(len(staged))
+        ws.add_ops(staged)
+        return _bulk_note(ws, len(labels), labels, 'morpheme forms')
+    f = ws.project.field(field)
     for doc in _docs(ws, document):
         for s in doc.sentences:
             if f.scope == 'Sentence':
@@ -85,16 +106,28 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     return _bulk_note(ws, len(labels), labels, f'{f.name} values')
 
 
+def _names_morpheme_forms(ws: Workspace, field: str) -> bool:
+    """Whether ``field`` addresses the stored morpheme forms rather than a
+    field: one of a few spellings, and no field literally so named."""
+    name = (field or '').strip().casefold()
+    if name not in ('morpheme form', 'morpheme forms', 'morph form', 'form', 'forms', 'morpheme'):
+        return False
+    return not any(f.name.casefold() == name for f in ws.project.fields.values())
+
+
 def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = False,
                   whole_word: bool = False, document: Optional[str] = None,
-                  case_sensitive: bool = False) -> str:
+                  case_sensitive: bool = False, morpheme_forms: bool = True, lexicon: bool = True) -> str:
     """PLAN: change the baseline spelling of every word matching a pattern
     (orthography migration). Each word is replaced whole, so its analysis,
     glosses, and links survive. Patterns apply within a word, never across
-    word boundaries."""
+    word boundaries. As in the editor's Bulk Edit, the replacement is carried
+    into the stored morpheme forms of the respelled words and into every
+    lexicon headword it matches, unless switched off."""
     rep = _replacer(pattern, replacement, bool(regex), bool(whole_word), bool(case_sensitive))
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
+    n_words = n_morphs = n_entries = 0
     for doc in _docs(ws, document):
         for s in doc.sentences:
             for w in s.words:
@@ -108,9 +141,36 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                 staged.append({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new,
                                'label': label})
                 labels.append(label)
+                n_words += 1
+                if not morpheme_forms:
+                    continue
+                for m in w.morphemes:
+                    if not has_own_form(m):
+                        continue
+                    nm = rep(m.form)
+                    if nm == m.form or not nm.strip():
+                        continue
+                    op = morpheme_form_op(doc, word_ref(s, w), w, m, nm)
+                    staged.append(op)
+                    labels.append(op['label'])
+                    n_morphs += 1
+    if lexicon:
+        for v in ws.project.vocabs:
+            for it in ws.lexicon(v):
+                old = it.get('form') or ''
+                new = rep(old)
+                if new == old or not new.strip():
+                    continue
+                label = f'{v["name"]}: rename entry "{old}" → "{new}"'
+                staged.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new, 'label': label})
+                labels.append(label)
+                n_entries += 1
     _check_cap(len(staged))
     ws.add_ops(staged)
-    return _bulk_note(ws, len(labels), labels, 'words')
+    out = _bulk_note(ws, len(labels), labels, 'words')
+    if labels:
+        out += (f'\n({n_words} words, {n_morphs} morpheme forms, {n_entries} lexicon headwords.)')
+    return out
 
 
 def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseline',

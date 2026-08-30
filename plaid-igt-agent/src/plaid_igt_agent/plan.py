@@ -31,6 +31,7 @@ wire's key recasing):
   delete_entry    {item_id, links: [link_id]}
   rename_entry    {item_id, form}
   rename_document {document_id, name}
+  set_morpheme_form {morpheme_id, form}   (a respelling carried into a morpheme's own form; no restamp, as in Bulk Edit)
   confirm         {span_ids, token_ids, link_ids}   (provConfirmed on machine-made material, any producer)
   discard_analysis {word_id, link_ids, span_ids, morpheme_ids, reset_first_id|null, renumber: [{id, precedence}]}
 
@@ -110,7 +111,7 @@ class PlanError(Exception):
 
 KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'create_entry',
          'set_entry_field', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
-         'rename_entry', 'rename_document', 'confirm', 'discard_analysis')
+         'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form')
 REQUIRED = {
     'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
     'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
@@ -118,7 +119,7 @@ REQUIRED = {
     'set_entry_field': ('item_id', 'field'), 'set_doc_metadata': ('document_id', 'field'),
     'create_document': ('name', 'text'), 'merge_entries': ('keep_id', 'remove_id'), 'delete_entry': ('item_id',),
     'rename_entry': ('item_id', 'form'), 'rename_document': ('document_id', 'name'),
-    'confirm': (), 'discard_analysis': ('word_id',),
+    'confirm': (), 'discard_analysis': ('word_id',), 'set_morpheme_form': ('morpheme_id', 'form'),
 }
 
 
@@ -176,6 +177,16 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     notes: List[str] = []
     removed = {op['remove_id'] for op in ops if op.get('kind') == 'merge_entries'} | \
         {op['item_id'] for op in ops if op.get('kind') == 'delete_entry'}
+    # Morphemes another op rewrites wholesale (set_analysis replaces the chain,
+    # discard_analysis deletes or resets it): a form patch on them is moot.
+    rewritten = set()
+    for op in ops:
+        if op.get('kind') == 'set_analysis':
+            rewritten.update(m['id'] for m in op.get('existing') or [])
+        elif op.get('kind') == 'discard_analysis':
+            rewritten.update(op.get('morpheme_ids') or [])
+            if op.get('reset_first_id'):
+                rewritten.add(op['reset_first_id'])
     for op in ops:
         if op.get('kind') == 'merge_entries' and op['keep_id'] in removed:
             raise ValueError(f'merge into {op["keep_id"]}: that entry is deleted or merged away by another op in this plan')
@@ -187,6 +198,9 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         k = op.get('kind')
         if k == 'link' and op.get('item_id') in removed:
             notes.append(f'dropped: {op.get("label") or "a link"} (its entry is deleted in this plan)')
+            continue
+        if k == 'set_morpheme_form' and op['morpheme_id'] in rewritten:
+            notes.append(f'dropped: {op.get("label") or "a morpheme form"} (that analysis is rewritten in this plan)')
             continue
         if k == 'confirm' and doomed:
             op = {**op, **{key: [i for i in (op.get(key) or []) if i not in doomed]
@@ -376,6 +390,10 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode) 
                 b.add(lambda o=op: client.documents.update(o['document_id'], o['name']))
                 counts['renamed documents'] += 1
 
+            elif kind == 'set_morpheme_form':
+                b.add(lambda o=op: client.tokens.patch_metadata(o['morpheme_id'], {'form': o['form']}))
+                counts['morpheme forms'] += 1
+
             elif kind == 'confirm':
                 for tid in op.get('token_ids') or []:
                     b.add(lambda i=tid: client.tokens.patch_metadata(i, CONFIRM))
@@ -481,7 +499,8 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
              'create_document': ('new document', 'new documents'),
              'merge_entries': ('merged entry', 'merged entries'), 'delete_entry': ('deleted entry', 'deleted entries'),
              'rename_entry': ('renamed entry', 'renamed entries'), 'rename_document': ('renamed document', 'renamed documents'),
-             'confirm': ('confirmation', 'confirmations'), 'discard_analysis': ('discarded analysis', 'discarded analyses')}
+             'confirm': ('confirmation', 'confirmations'), 'discard_analysis': ('discarded analysis', 'discarded analyses'),
+             'set_morpheme_form': ('morpheme form', 'morpheme forms')}
     parts = []
     for kind, n in counts.items():
         one, many = names.get(kind, (kind, kind))

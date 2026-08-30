@@ -195,6 +195,8 @@ def op_target(op: Dict[str, Any]):
         return ('analysis', op.get('word_id'))
     if k == 'set_orthography':
         return ('orth', op.get('word_id'), op.get('key'))
+    if k == 'set_morpheme_form':
+        return ('morph_form', op.get('morpheme_id'))
     if k == 'respell':
         return ('respell', op.get('text_id'), op.get('begin'), op.get('end'))
     if k in ('link', 'unlink'):
@@ -861,7 +863,17 @@ def t_set_orthography(ws: Workspace, document: str, refs, orthography: str, valu
     return ws.planned_note(len(staged))
 
 
-def t_respell(ws: Workspace, document: str, ref: str, new_text: str) -> str:
+def has_own_form(m: Morpheme) -> bool:
+    """A morpheme whose form is stored (not derived from the word's surface)."""
+    return (m.metadata or {}).get('form') not in (None, '')
+
+
+def morpheme_form_op(doc, ref: str, w: Word, m: Morpheme, new: str) -> Dict[str, Any]:
+    return {'kind': 'set_morpheme_form', 'morpheme_id': m.id, 'form': new,
+            'label': f'{doc.name} {ref}.m{m.index} (in "{w.surface}"): morpheme form "{m.form}" → "{new}"'}
+
+
+def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_forms: bool = True) -> str:
     doc = ws.doc(document)
     w = _need(resolve(doc, ref), Word, ref)
     new_text = (new_text or '').strip()
@@ -870,9 +882,24 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str) -> str:
     if new_text == w.surface:
         return ws.planned_note(0)
     check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{doc.name} {ref}')
-    ws.add_op({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new_text,
-               'label': f'{doc.name} {ref}: respell "{w.surface}" → "{new_text}"'})
-    return ws.planned_note(1)
+    staged = [{'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new_text,
+               'label': f'{doc.name} {ref}: respell "{w.surface}" → "{new_text}"'}]
+    # A single-morpheme own form spelt like the word follows it; a longer
+    # chain cannot be re-derived from a whole-word replacement.
+    kept = []
+    for m in w.morphemes:
+        if not has_own_form(m):
+            continue
+        if morpheme_forms and m.form == w.surface:
+            staged.append(morpheme_form_op(doc, ref, w, m, new_text))
+        else:
+            kept.append(m.form)
+    ws.add_ops(staged)
+    note = ws.planned_note(len(staged))
+    if kept:
+        note += (f' Morpheme forms {", ".join(kept)} are kept as they are; use set_analysis to respell them, '
+                 'or respell_all with a pattern to carry the change into morpheme forms.')
+    return note
 
 
 def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, where: str) -> None:
@@ -1194,9 +1221,11 @@ TOOLS = [
         {'document': _DOC, 'refs': _REFS, 'orthography': {'type': 'string'}, 'value': {'type': 'string'}},
         ['document', 'refs', 'orthography', 'value']),
     _fn('respell',
-        'PLAN: change the BASELINE spelling of one word (its analysis, glosses, and links are kept). For an '
-        'alternative transcription tier use set_orthography.',
-        {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'}, 'new_text': {'type': 'string'}},
+        'PLAN: change the BASELINE spelling of one word (its analysis, glosses, and links are kept; a lone '
+        'morpheme form spelt like the word follows it unless morpheme_forms=false). For an alternative '
+        'transcription tier use set_orthography.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'}, 'new_text': {'type': 'string'},
+         'morpheme_forms': {'type': 'boolean'}},
         ['document', 'ref', 'new_text']),
     _fn('link_entry',
         'PLAN: link words or morphemes to a lexicon entry, by the entry\'s form ("ама", or "ама#2" for homograph 2), '
@@ -1350,16 +1379,19 @@ TOOLS += [
          'limit': {'type': 'integer'}}, ['sequence']),
     _fn('replace_in_field',
         'PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, '
-        'whole_value=true for exact values, regex=true for patterns with backreferences (\\1). One call plans '
-        'every change; the plan lists each.',
+        'whole_value=true for exact values, regex=true for patterns with backreferences (\\1). field="morpheme form" '
+        'rewrites stored morpheme forms instead of a field. One call plans every change; the plan lists each.',
         {'field': {'type': 'string'}, 'pattern': {'type': 'string'}, 'replacement': {'type': 'string'},
          'regex': {'type': 'boolean'}, 'whole_value': {'type': 'boolean'}, 'document': _DOC},
         ['field', 'pattern', 'replacement']),
     _fn('respell_all',
         'PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each '
-        'word\'s analysis, glosses, and links. Patterns apply within words only.',
+        'word\'s analysis, glosses, and links. The same replacement is carried into the stored morpheme forms of '
+        'those words (morpheme_forms=false to leave them) and into lexicon headwords (lexicon=false to leave them; '
+        'the pattern is applied to every entry, not only linked ones). Patterns apply within words only.',
         {'pattern': {'type': 'string'}, 'replacement': {'type': 'string'}, 'regex': {'type': 'boolean'},
-         'whole_word': {'type': 'boolean'}, 'document': _DOC}, ['pattern', 'replacement']),
+         'whole_word': {'type': 'boolean'}, 'document': _DOC, 'morpheme_forms': {'type': 'boolean'},
+         'lexicon': {'type': 'boolean'}}, ['pattern', 'replacement']),
     _fn('copy_to_orthography',
         'PLAN: fill an orthography for every word that lacks a value, from the baseline or another orthography.',
         {'orthography': {'type': 'string'}, 'source': {'type': 'string'}, 'document': _DOC,

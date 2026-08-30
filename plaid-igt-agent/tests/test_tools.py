@@ -232,3 +232,36 @@ def test_discard_analysis_mirrors_the_editor():
     # A later set_analysis on the same word supersedes the discard (same target).
     call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Alidi'}]})
     assert [o['kind'] for o in w.ops] == ['set_analysis', 'discard_analysis'] and w.ops[0]['word_id'] == 'w-1'
+
+
+def test_single_respell_carries_a_lone_matching_morpheme_form():
+    from fixtures import document_raw
+    raw = document_raw()
+    raw['text_layers'][0]['token_layers'][2]['tokens'][2]['metadata'] = {'form': 'gam'}  # m-2 stores its form
+    c = FakeClient(documents={'d1': raw})
+    w = Workspace(c, load_project(c, 'p1'))
+    out = call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
+    assert 'Planned 2 changes' in out
+    assert [o['kind'] for o in w.ops] == ['respell', 'set_morpheme_form'] and w.ops[1] == {
+        'kind': 'set_morpheme_form', 'morpheme_id': 'm-2', 'form': 'gham',
+        'label': 'Text 1 s1.w2.m1 (in "gam"): morpheme form "gam" → "gham"'}
+    # A chain cannot be re-derived from a whole-word respelling: kept, and said so.
+    out = call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w1', 'new_text': 'Alidi'})
+    assert 'Planned 1 change' in out and 'Morpheme forms Ali, di are kept' in out
+    w2 = Workspace(c, load_project(c, 'p1'))
+    call_tool(w2, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham', 'morpheme_forms': False})
+    assert [o['kind'] for o in w2.ops] == ['respell']
+
+
+def test_morpheme_form_ops_yield_to_a_rewrite_of_the_same_analysis():
+    from plaid_igt_agent.plan import normalize_ops, execute_plan
+    ops = [{'kind': 'set_morpheme_form', 'morpheme_id': 'm-1a', 'form': 'x', 'label': 'f1'},
+           {'kind': 'set_morpheme_form', 'morpheme_id': 'm-9', 'form': 'y', 'label': 'f2'},
+           {'kind': 'set_analysis', 'word_id': 'w-1', 'text_id': 't', 'begin': 0, 'end': 6, 'morpheme_layer_id': 'ml',
+            'existing': [{'id': 'm-1a', 'span_ids': []}], 'morphemes': [{'form': 'Alidi', 'fields': []}], 'label': ''}]
+    out, notes = normalize_ops(ops)
+    assert [o['kind'] for o in out] == ['set_morpheme_form', 'set_analysis'] and out[0]['morpheme_id'] == 'm-9'
+    assert notes == ['dropped: f1 (that analysis is rewritten in this plan)']
+    c = FakeClient()
+    counts = execute_plan(c, ops, source='s', label='l')
+    assert counts['morpheme forms'] == 1 and ('tokens', 'patch_metadata', ('m-9', {'form': 'y'}), {}) in c.log
