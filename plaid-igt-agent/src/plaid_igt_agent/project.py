@@ -62,9 +62,23 @@ def joiner(prev_type, next_type):
 
 @dataclass
 class Field:
-    name: str
+    name: str        # display name, unique in the project ("Gloss", or "Gloss (Word)" on a collision)
     layer_id: str
-    scope: str  # Word | Morpheme | Sentence
+    scope: str       # Word | Morpheme | Sentence
+    base_name: str = ''  # the layer's own name
+
+
+def _unique_field_names(entries):
+    """[(layer name, layer id, scope)] -> Fields with display names made unique
+    by a scope suffix where the same layer name occurs in several scopes."""
+    counts = {}
+    for name, _, _ in entries:
+        counts[name] = counts.get(name, 0) + 1
+    out = {}
+    for name, lid, scope in entries:
+        display = f'{name} ({scope})' if counts[name] > 1 else name
+        out[display] = Field(display, lid, scope, name)
+    return out
 
 
 @dataclass
@@ -82,10 +96,20 @@ class IgtProject:
     document_metadata: List[str]
 
     def field(self, name: str) -> Field:
-        """Case-insensitive field lookup; a helpful error otherwise."""
+        """Case-insensitive field lookup by display name, falling back to the
+        bare layer name when that is unambiguous; a helpful error otherwise.
+        (A project may have a word-scope and a morpheme-scope layer both
+        called "Gloss": they are exposed as "Gloss (Word)" and
+        "Gloss (Morpheme)", and bare "Gloss" asks you to pick.)"""
+        key = (name or '').strip().lower()
         for f in self.fields.values():
-            if f.name.lower() == (name or '').lower():
+            if f.name.lower() == key:
                 return f
+        base = [f for f in self.fields.values() if f.base_name.lower() == key]
+        if len(base) == 1:
+            return base[0]
+        if len(base) > 1:
+            raise ValueError(f'"{name}" names several fields; say which: ' + ', '.join(f.name for f in base))
         raise ValueError(f'No field named "{name}". Fields: '
                          + ', '.join(f'{f.name} ({f.scope})' for f in self.fields.values()))
 
@@ -131,14 +155,15 @@ def load_project(client, project_id: str) -> IgtProject:
     morph = find_by_role(token_layers, ROLES.MORPHEME)
     if not sent or not word:
         raise ValueError('This project lacks a sentence or word token layer (not set up for IGT?)')
-    fields: Dict[str, Field] = {}
+    entries = []
     for tk in (sent, word, morph):
         if not tk:
             continue
         for sl in tk.get('span_layers') or []:
             scope = _igt(sl.get('config'), 'scope')
             if scope in SCOPES:
-                fields[sl['name']] = Field(sl['name'], sl['id'], scope)
+                entries.append((sl['name'], sl['id'], scope))
+    fields = _unique_field_names(entries)
     return IgtProject(
         id=p['id'], name=p['name'],
         text_layer_id=text_layer['id'], sentence_layer_id=sent['id'], word_layer_id=word['id'],

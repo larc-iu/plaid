@@ -270,11 +270,9 @@ def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sen
 
 
 def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,
-             regex: bool = False, limit: int = 40, missing: bool = False) -> str:
-    if missing:
-        return t_missing(ws, where, document, limit)
+             regex: bool = False, limit: int = 40) -> str:
     if not pattern:
-        raise ToolError('Give a pattern (or missing=true with a field name to find items without a value).')
+        raise ToolError('Give a pattern (to list items LACKING a value, use worklist).')
     match = _matcher(pattern, bool(regex))
     limit = max(1, min(int(limit or 40), 200))
     where_l = (where or 'baseline').lower()
@@ -325,79 +323,11 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
     return _finish(out, total, limit, 'hits')
 
 
-def t_missing(ws: Workspace, field: str, document: Optional[str], limit: int) -> str:
-    """Items that have NO value for `field` (the unglossed words, the
-    untranslated sentences), by positional reference."""
-    if not field or field.lower() in ('baseline', 'morpheme', 'lexicon'):
-        raise ToolError('missing=true needs a field name in `where` (e.g. "Gloss").')
-    f = ws.project.field(field)
-    limit = max(1, min(int(limit or 40), 200))
-    docs = [ws.doc(document)] if document else ws.all_docs()
-    out: List[str] = []
-    total = 0
-    for doc in docs:
-        tag = f'"{doc.name}" ' if len(docs) > 1 else ''
-        for s in doc.sentences:
-            if f.scope == 'Sentence':
-                sp = s.fields.get(f.name)
-                if not sp or sp.value == '':
-                    total += 1
-                    if len(out) < limit:
-                        out.append(f'{tag}s{s.index} | {s.text}')
-                continue
-            for w in s.words:
-                if f.scope == 'Word':
-                    sp = w.fields.get(f.name)
-                    if not sp or sp.value == '':
-                        total += 1
-                        if len(out) < limit:
-                            out.append(f'{tag}{word_ref(s, w)} {w.surface} || {s.text}')
-                else:
-                    empties = [m for m in w.morphemes if not m.fields.get(f.name) or m.fields[f.name].value == '']
-                    if empties or not w.morphemes:
-                        total += 1
-                        if len(out) < limit:
-                            which = ', '.join(f'm{m.index} {m.form}' for m in empties) if empties else 'no morphemes yet'
-                            out.append(f'{tag}{word_ref(s, w)} {w.surface} ({which}) || {s.text}')
-    return _finish(out, total, limit, f'items without a {f.name} value')
-
-
 def _finish(out, total, limit, noun):
     if not out:
         return f'No {noun}.'
     head = f'{total} {noun}' + (f' (showing {limit})' if total > limit else '') + ':'
     return _truncate('\n'.join([head] + out))
-
-
-def t_field_values(ws: Workspace, field: str, document: Optional[str] = None, limit: int = 40) -> str:
-    f = ws.project.field(field)
-    docs = [ws.doc(document)] if document else ws.all_docs()
-    counts: Counter = Counter()
-    empty = 0
-    for doc in docs:
-        for s in doc.sentences:
-            if f.scope == 'Sentence':
-                sp = s.fields.get(f.name)
-                if sp and sp.value != '':
-                    counts[sp.value] += 1
-                else:
-                    empty += 1
-                continue
-            for w in s.words:
-                units = [w] if f.scope == 'Word' else w.morphemes
-                for u in units:
-                    sp = u.fields.get(f.name)
-                    if sp and sp.value != '':
-                        counts[sp.value] += 1
-                    else:
-                        empty += 1
-    limit = max(1, min(int(limit or 40), 500))
-    lines = [f'{f.name} ({f.scope} field): {sum(counts.values())} values, {len(counts)} distinct, {empty} empty']
-    for v, n in counts.most_common(limit):
-        lines.append(f'  {n}\t{v}')
-    if len(counts) > limit:
-        lines.append(f'  ... {len(counts) - limit} more distinct values')
-    return _truncate('\n'.join(lines))
 
 
 def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Optional[str] = None,
@@ -973,22 +903,14 @@ TOOLS = [
     _fn('search',
         'Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, '
         'or a regex). Returns positional references with each hit\'s word line and sentence. Scans every '
-        'document unless one is named. With missing=true and a field name in `where`, lists the items that have '
-        'NO value for that field (e.g. the unglossed words) instead of matching a pattern.',
+        'document unless one is named. (For items LACKING a value use worklist; for aligned context use concordance.)',
         {'pattern': {'type': 'string'},
-         'missing': {'type': 'boolean', 'description': 'List items lacking a value for the field named in `where`.'},
          'where': {'type': 'string', 'description': '"baseline" (word forms, default), "morpheme" (morpheme forms), '
                                                     '"lexicon" (entries), or a field name (e.g. "Gloss", "Translation").'},
          'document': _DOC,
          'regex': {'type': 'boolean', 'description': 'Treat pattern as a regular expression.'},
          'limit': {'type': 'integer', 'description': 'Max hits to return (default 40, max 200).'}},
-        []),
-    _fn('field_values',
-        'Count the distinct values of a field (a histogram), across the project or one document. Good for '
-        'spotting inconsistencies (e.g. "1SG" vs "1sg").',
-        {'field': {'type': 'string'}, 'document': _DOC,
-         'limit': {'type': 'integer', 'description': 'Max distinct values to list (default 40).'}},
-        ['field']),
+        ['pattern']),
     _fn('read_lexicon',
         'List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a '
         'substring pattern over the whole entry line.',
@@ -1082,7 +1004,7 @@ TOOLS = [
 
 _IMPL = {
     'project_overview': t_project_overview, 'read_document': t_read_document, 'search': t_search,
-    'field_values': t_field_values, 'read_lexicon': t_read_lexicon,
+    'read_lexicon': t_read_lexicon,
     'set_field': t_set_field, 'set_analysis': t_set_analysis, 'set_orthography': t_set_orthography,
     'respell': t_respell, 'link_entry': t_link_entry, 'unlink_entry': t_unlink_entry,
     'create_entry': t_create_entry, 'set_entry_field': t_set_entry_field, 'discard_plan': t_discard_plan,
@@ -1196,3 +1118,20 @@ _IMPL.update({
 })
 WRITE_TOOLS |= {'replace_in_field', 'respell_all', 'copy_to_orthography', 'set_analysis_for_form', 'merge_entries',
                 'delete_entry', 'rename_entry', 'rename_document'}
+
+from .query import t_query, t_query_help  # noqa: E402
+
+TOOLS += [
+    _fn('query_help',
+        'The reference for the query language used by `query`, plus the layer names of this project. Call it once '
+        'before writing a query; it is long, so only when the other tools cannot express the question.',
+        {}, []),
+    _fn('query',
+        'Run a read-only query in Plaid\'s query language over this project (structure across layers, joins, '
+        'negation, aggregates). Name layers by their names from query_help. Prefer the specialised tools when they '
+        'fit; this is the escape hatch for questions they cannot express.',
+        {'query': {'type': 'object', 'description': 'The query object: find, where, return, limit, order_by.'},
+         'limit': {'type': 'integer', 'description': 'Rows to show (default 50, max 500).'}},
+        ['query']),
+]
+_IMPL.update({'query_help': t_query_help, 'query': t_query})

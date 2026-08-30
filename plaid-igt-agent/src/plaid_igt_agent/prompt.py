@@ -29,7 +29,7 @@ applied if they approve.
 search for finding items, concordance for context around a form or gloss, sequence_search for constructions; \
 analyses_of before proposing any analysis; check_consistency, check_lexicon, check_integrity for quality reports; \
 for project-wide edits use replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography rather than \
-many single set_field calls.
+many single set_field calls. When none of these can express a question, read query_help and write a query.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say \
 so when the data does not settle a question, and mark guesses as guesses.
 '''

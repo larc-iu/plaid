@@ -89,3 +89,23 @@ def test_project_without_morpheme_layer():
     d = parse_document(document_raw(), p)
     assert d.sentences[0].words[0].morphemes == []
     assert 'No morpheme layer' in render_overview(p, [])
+
+
+def test_colliding_field_names_get_scope_suffixes():
+    raw = project_raw()
+    layers = raw['text_layers'][0]['token_layers']
+    layers[1]['span_layers'][0]['name'] = 'Gloss'   # word-scope Gloss
+    layers[2]['span_layers'][0]['name'] = 'Gloss'   # morpheme-scope Gloss
+    p = load_project(FakeClient(project=raw), 'p1')
+    assert sorted(p.fields) == ['Gloss (Morpheme)', 'Gloss (Word)', 'Translation']
+    assert p.field('gloss (word)').layer_id == 'sl-gloss' and p.field('Gloss (Morpheme)').layer_id == 'sl-mgloss'
+    assert p.field('translation').scope == 'Sentence'  # unique bare names still resolve
+    try:
+        p.field('Gloss')
+    except ValueError as e:
+        assert 'say which: Gloss (Word), Gloss (Morpheme)' in str(e)
+    else:
+        raise AssertionError
+    d = parse_document(document_raw(), p)
+    assert d.sentences[0].words[0].fields['Gloss (Word)'].value == 'Ali'
+    assert 'Gloss (Word)=Ali' in render_document(d, p) and 'Gloss (Morpheme)=Ali-ERG' in render_document(d, p)

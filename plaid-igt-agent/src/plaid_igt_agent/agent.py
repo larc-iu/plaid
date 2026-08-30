@@ -104,6 +104,10 @@ def _progress_label(name: str, args: Dict[str, Any]) -> str:
         return 'Checking data integrity…'
     if name == 'sequence_search':
         return 'Searching for the sequence…'
+    if name == 'query_help':
+        return 'Reading the query reference…'
+    if name == 'query':
+        return 'Running a query…'
     if name in WRITE_TOOLS:
         return 'Planning changes…'
     return f'{name}…'

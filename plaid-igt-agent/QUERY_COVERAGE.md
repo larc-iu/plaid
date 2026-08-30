@@ -21,6 +21,8 @@ Tools today: `project_overview`, `read_document`, `search` (patterns,
 `respell`, `link_entry`, `unlink_entry`, `create_entry`, `set_entry_field`,
 `set_document_metadata`, `create_document`.
 
+> Since this was scored (same day): every "gap" below except export was built, `search(missing)` was folded into `worklist`, `field_values` into `frequency_list`, and a read-only `query` escape hatch was added.
+
 ## Scorecard
 
 Roughly: 32 direct, 74 chain, 40 gap, 16 out.

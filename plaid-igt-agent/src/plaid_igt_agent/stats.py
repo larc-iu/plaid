@@ -163,6 +163,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
     what_l = (what or 'wordform').lower()
     counts: Counter = Counter()
     spread: Dict[str, set] = defaultdict(set)
+    empty = 0
     field = None
     if what_l not in ('wordform', 'word', 'morpheme'):
         field = ws.project.field(what)
@@ -173,6 +174,8 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                 if sp and sp.value != '':
                     counts[sp.value] += 1
                     spread[sp.value].add(d.id)
+                else:
+                    empty += 1
                 continue
             for w in s.words:
                 if what_l in ('wordform', 'word'):
@@ -189,16 +192,20 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                     if sp and sp.value != '':
                         counts[sp.value] += 1
                         spread[sp.value].add(d.id)
+                    else:
+                        empty += 1
                 else:
                     for m in w.morphemes:
                         sp = m.fields.get(field.name)
                         if sp and sp.value != '':
                             counts[sp.value] += 1
                             spread[sp.value].add(d.id)
+                        else:
+                            empty += 1
     items = [(k, n) for k, n in counts.most_common() if n >= max(1, int(min_count or 1))]
     noun = field.name + ' values' if field else ('wordforms' if what_l != 'morpheme' else 'morpheme forms')
-    lines = [f'{len(items)} {noun}, {sum(n for _, n in items)} tokens' + (f' (showing {limit})' if len(items) > limit else '')
-             + '. count\tdocuments\tform']
+    lines = [f'{len(items)} {noun}, {sum(n for _, n in items)} tokens' + (f', {empty} empty' if field else '')
+             + (f' (showing {limit})' if len(items) > limit else '') + '. count\tdocuments\tform']
     for k, n in items[:limit]:
         lines.append(f'  {n}\t{len(spread[k])}\t{k}')
     return _truncate('\n'.join(lines))
@@ -246,10 +253,18 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
                                                  and (f is None or f.scope == 'Morpheme')) else 'word')
     if f and f.scope == 'Word':
         lvl = 'word'
+    if f and f.scope == 'Sentence':
+        lvl = 'sentence'
     groups: Dict[str, List[str]] = defaultdict(list)
     for d in docs:
         tag = _tag(docs, d)
         for s in d.sentences:
+            if lvl == 'sentence':
+                # Sentences have no form to group by: group by document.
+                sp = s.fields.get(f.name)
+                if not (sp and sp.value != ''):
+                    groups[d.name].append(f'{tag}s{s.index} {s.text[:50]}')
+                continue
             for w in s.words:
                 ref = f'{tag}{word_ref(s, w)}'
                 if kind == 'unanalyzed':
@@ -272,7 +287,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
                             groups[m.form.casefold()].append(f'{ref}.m{m.index}')
     total = sum(len(v) for v in groups.values())
     what = {'unlinked': f'{lvl}s not linked to the lexicon',
-            'unglossed': f'{lvl}s without a {f.name if f else ""} value',
+            'unglossed': f'{lvl}s without a {f.name if f else ""} value' + (' (grouped by document)' if lvl == 'sentence' else ''),
             'unanalyzed': 'words with no analysis at all',
             'unverified': 'words with machine-made annotations not yet confirmed'}[kind]
     if not total:

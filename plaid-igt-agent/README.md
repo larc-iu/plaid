@@ -48,15 +48,15 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
   interlinear text. Everything is addressed positionally (`s3.w2.m1`); the
   model never sees ids.
 - `tools.py`: the tools the model gets. Reads run immediately:
-  `project_overview`, `read_document`, `search` (patterns, or `missing=true`
-  for items lacking a field value), `field_values`, `read_lexicon`,
+  `project_overview`, `read_document`, `search`, `read_lexicon`,
   `lexicon_entry`, `concordance` (aligned context and pattern tally for a
   form or value), `analyses_of` (how a form has been analyzed so far),
   `check_consistency` (spelling variants, forms with several values, link
   gaps), `check_lexicon`, `check_integrity`, `corpus_stats`,
   `frequency_list`, `worklist` (unlinked / unglossed / unanalyzed /
   unverified, by frequency), `sequence_search`, `recent_changes` (the audit
-  log), `plan_status`. Writes append resolved operations to the turn's plan:
+  log), `plan_status`, and the escape hatch `query` + `query_help` (Plaid's
+  query language, project-scoped, layers by name). Writes append resolved operations to the turn's plan:
   `set_field`, `set_analysis`, `set_orthography`, `respell`, `link_entry`,
   `unlink_entry`, `create_entry`, `set_entry_field`, `set_document_metadata`,
   `create_document`, and the corpus-wide `replace_in_field`, `respell_all`,

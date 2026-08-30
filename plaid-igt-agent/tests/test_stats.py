@@ -13,7 +13,7 @@ def test_all_tools_registered():
     names = {t['function']['name'] for t in TOOLS}
     assert names == set(_IMPL)
     assert WRITE_TOOLS <= names
-    assert len(names) >= 36
+    assert len(names) >= 37 and 'field_values' not in names
 
 
 def test_corpus_stats_totals_and_tables():
@@ -36,7 +36,7 @@ def test_frequency_list():
     assert out.startswith('4 morpheme forms, 5 tokens. count\tdocuments\tform')
     assert '  1\t1\tali' in out
     out = call_tool(ws(), 'frequency_list', {'what': 'Morph Gloss', 'limit': 1})
-    assert '2 Morph Gloss values, 2 tokens (showing 1)' in out
+    assert '2 Morph Gloss values, 2 tokens, 3 empty (showing 1)' in out
     assert 'No field named "zzz"' in call_tool(ws(), 'frequency_list', {'what': 'zzz'})
 
 
@@ -47,6 +47,8 @@ def test_worklist_kinds():
     assert '  2\tgam\ts1.w2.m1, s2.w1.m1' in out
     out = call_tool(w, 'worklist', {'kind': 'unglossed', 'field': 'Gloss'})
     assert '3 words without a Gloss value' in out and 'akuna' in out
+    out = call_tool(w, 'worklist', {'kind': 'unglossed', 'field': 'Translation'})
+    assert out.startswith('1 sentences without a Translation value (grouped by document)') and 's2 Gam-ar.' in out
     out = call_tool(w, 'worklist', {'kind': 'unlinked', 'level': 'word'})
     assert '3 words not linked to the lexicon' in out
     out = call_tool(w, 'worklist', {'kind': 'unanalyzed'})
@@ -128,3 +130,36 @@ def test_recent_changes_filters():
     assert '1 most recent change by "luke"' in call_tool(w, 'recent_changes', {'user': 'luke'})
     out = call_tool(w, 'recent_changes', {'since': '2026-08-29'})
     assert 'since 2026-08-29' in out
+
+
+def test_query_rewrites_layer_names_and_scopes_to_the_project():
+    c = FakeClient()
+    seen = {}
+
+    def fake_query(body):
+        seen.update(body)
+        return {'return': 'entities', 'columns': ['s'], 'count': 1, 'truncated': False,
+                'results': [[{'id': 'sp-m1b', 'layer': 'sl-mgloss', 'document': 'd1', 'value': 'ERG', 'tokens': ['m-1b']}]]}
+    c.query = fake_query
+    w = ws(c)
+    out = call_tool(w, 'query', {'query': {'find': ['?s'], 'where': [['span', '?s', {'layer': 'morph gloss', 'value': 'ERG'}],
+                                                                     ['seq', {'layer': 'words'}, ['span', {'layer': 'Gloss'}, 'as', '?g']]]}})
+    assert seen['scope'] == {'project_ids': ['p1']} and seen['return'] == 'entities' and seen['limit'] == 50
+    assert seen['where'][0][2]['layer'] == 'sl-mgloss' and seen['where'][1][1]['layer'] == 'tk-word'
+    assert seen['where'][1][2][1]['layer'] == 'sl-gloss'
+    assert out == '1 row: s\n  "Text 1" s1.w1.m2 Morph Gloss = "ERG"'
+    assert 'No layer named "Nope"' in call_tool(w, 'query', {'query': {'where': [['span', '?s', {'layer': 'Nope'}]]}})
+    assert 'must be a JSON object' in call_tool(w, 'query', {'query': 'not json'})
+    help_text = call_tool(w, 'query_help', {})
+    assert 'Morpheme-scope fields (span layers on morpheme tokens): Morph Gloss' in help_text
+    assert 'lexicons (vocab layers): Lexicon' in help_text and '["covers", ?span, ?token]' in help_text
+
+
+def test_query_count_and_aggregate_shapes():
+    c = FakeClient()
+    c.query = lambda body: {'return': 'count', 'count': 7, 'truncated': False}
+    assert call_tool(ws(c), 'query', {'query': {'find': ['?s'], 'where': [['span', '?s', {}]], 'return': 'count'}}) == 'count: 7'
+    c.query = lambda body: {'return': 'aggregate', 'columns': ['d', 'count'], 'results': [['d1', 4]], 'count': 1, 'truncated': False}
+    out = call_tool(ws(c), 'query', {'query': {'where': [['token', '?t', {'layer': 'words', 'doc': {'var': '?d'}}]],
+                                               'return': {'group': ['?d'], 'aggregates': [['count']]}}})
+    assert out == '1 group: d\tcount\n  Text 1\t4'

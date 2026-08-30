@@ -180,6 +180,10 @@ const describeStep = ({ name, args: a }) => {
       return `Planned renaming the entry ${q(a.entry_form || a.entry_id)} → ${q(a.new_form)}`;
     case 'rename_document':
       return `Planned renaming ${q(a.document)} → ${q(a.new_name)}`;
+    case 'query_help':
+      return 'Read the query language reference';
+    case 'query':
+      return 'Ran a query';
     case 'set_field':
       return `Planned ${a.field} = ${q(a.value)} on ${(a.refs || []).length} item(s)${where(a)}`;
     case 'set_analysis':
@@ -218,6 +222,7 @@ const summarizeSteps = (steps) => {
       'check_lexicon',
       'check_integrity',
       'sequence_search',
+      'query',
     ].includes(s.name),
   ).length;
   const planned = steps.filter((s) =>
