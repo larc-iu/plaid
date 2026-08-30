@@ -380,6 +380,16 @@ const startApply = ({
 // first message goes out.
 const newConversation = () => ({ id: newId(), messages: [], display: [], draft: true });
 
+// The model that wrote the reply before this one. A conversation keeps the
+// assistant it started with, but that one can go offline and another answer
+// in its place, and then the transcript should say where each reply came from.
+const previousModel = (display, i) => {
+  for (let k = i - 1; k >= 0; k--) {
+    if (display[k].kind === 'assistant') return display[k].model || null;
+  }
+  return null;
+};
+
 const EXAMPLES = [
   'Which words in this project are still unglossed?',
   'Are the glosses for the most common suffix consistent?',
@@ -549,7 +559,9 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id]);
 
-  // Apply `fn` to the active conversation and persist the result.
+  // Apply `fn` to the active conversation and persist the result. No service
+  // is involved (discarding a plan is the user's own doing), so the
+  // conversation keeps the assistant already recorded against it.
   const update = useCallback(
     (fn) => {
       const next = fn(activeRef.current);
@@ -558,12 +570,12 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
       const meta = buildMeta(
         convsRef.current.find((m) => m.id === next.id),
         next,
-        service,
+        null,
       );
       setConvs(upsert(meta));
       persistConv(client, userId, projectId, next, meta);
     },
-    [client, userId, projectId, service],
+    [client, userId, projectId],
   );
 
   const open = async (id) => {
@@ -895,6 +907,9 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                 item={d}
                 projectId={projectId}
                 results={results}
+                fromAnotherModel={
+                  !!d.model && !!previousModel(display, i) && d.model !== previousModel(display, i)
+                }
                 canWrite={canWrite}
                 busy={!!busy || blockedByOther}
                 interrupted={i === stuckApply}
@@ -1255,7 +1270,17 @@ const CitedMarkdown = ({ text, citations, projectId }) => {
   );
 };
 
-const Turn = ({ item, projectId, results, canWrite, busy, interrupted, onApprove, onDiscard }) => {
+const Turn = ({
+  item,
+  projectId,
+  results,
+  fromAnotherModel,
+  canWrite,
+  busy,
+  interrupted,
+  onApprove,
+  onDiscard,
+}) => {
   if (item.kind === 'user') {
     return (
       <div className="flex justify-end">
@@ -1285,6 +1310,11 @@ const Turn = ({ item, projectId, results, canWrite, busy, interrupted, onApprove
         <Bot className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {fromAnotherModel && (
+          <div className="text-xs text-muted-foreground">
+            Answered by <span className="font-medium text-foreground">{item.model}</span>
+          </div>
+        )}
         {item.stepsSummary && item.steps?.length > 0 && (
           <ToolTrace steps={item.steps} summary={item.stepsSummary} results={results} />
         )}
