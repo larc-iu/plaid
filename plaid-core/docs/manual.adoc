@@ -515,7 +515,7 @@ client.messages.serve(project_id, service_info, handle_request, extras)
 
 The standard `extras` keys are:
 
-`tasks`:: A list of the slots this service fills, drawn from a small fixed vocabulary: `tokenize`, `parse`, `transcribe`, `link-vocab`, `analyze` (propose a morpheme segmentation and glosses for words), `assist` (a conversational assistant that takes chat turns over a project). A client offering a "tokenize" action lists exactly the services whose `tasks` include `tokenize`.
+`tasks`:: A list of the slots this service fills, drawn from a small fixed vocabulary: `tokenize`, `parse`, `transcribe`, `link-vocab`, `analyze` (propose a morpheme segmentation and glosses for words), `translate` (propose a free translation for each sentence), `assist` (a conversational assistant that takes chat turns over a project). A client offering a "tokenize" action lists exactly the services whose `tasks` include `tokenize`.
 `summary`:: A longer, human-readable description (Markdown), shown on demand—use it for what the one-line `description` is too short to say.
 `parameters`:: An ordered list of the arguments a user may set per request. Each entry is a small descriptor; the client renders a form from it and sends the chosen values as part of the request data.
 
