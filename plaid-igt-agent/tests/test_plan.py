@@ -28,10 +28,60 @@ def test_execute_set_span_variants():
     assert c.operations == ['test']
     kinds = [(r, m) for r, m, a, k in c.log]
     assert kinds == [('spans', 'create'), ('spans', 'update'), ('spans', 'patch_metadata'), ('spans', 'delete')]
-    assert c.log[2][2][1]['provConfirmed'] is None  # a rewritten value loses any human confirmation
+    # Approval is a human decision: everything a plan writes is machine-made AND confirmed.
+    assert c.log[2][2][1] == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
     _, _, args, _ = c.log[0]
-    assert args[:3] == ('L', ['T'], 'new') and args[3]['prov'] == 'inferred' and args[3]['provSource'] == 'service:igt:assist'
+    assert args[:3] == ('L', ['T'], 'new') and args[3] == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
     assert len(c.batches) == 1 and len(c.batches[0]) == 4
+
+
+def test_human_stamp_mode_writes_no_provenance_and_clears_it_on_rewrites():
+    import pytest
+    c = FakeClient()
+    ops = [{'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'span_id': None, 'value': 'new', 'label': ''},
+           {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T2', 'span_id': 'S', 'value': 'upd', 'label': ''},
+           {'kind': 'link', 'token_id': 'w-1', 'item_id': 'vi-erg', 'new_entry_key': None, 'existing_link_id': None, 'label': ''},
+           {'kind': 'set_analysis', 'word_id': 'w-4', 'text_id': TEXT_ID, 'begin': 18, 'end': 24, 'morpheme_layer_id': MORPH_LAYER,
+            'existing': [{'id': 'm-4a', 'span_ids': []}], 'morphemes': [{'form': 'gam', 'fields': []}, {'form': 'ar', 'fields': []}], 'label': ''}]
+    execute_plan(c, ops, source='src', label='l', stamp_mode='human')
+    by = {(r, m): a for r, m, a, k in c.log}
+    assert by[('spans', 'create')][3] == {}
+    assert by[('spans', 'patch_metadata')][1] == {'prov': None, 'provSource': None, 'provConfirmed': None, 'provProb': None, 'provDetail': None}
+    assert by[('vocab_links', 'create')][2] == {}
+    patched = [a for r, m, a, k in c.log if (r, m) == ('tokens', 'patch_metadata')][0][1]
+    assert patched['form'] == 'gam' and patched['prov'] is None and patched['provConfirmed'] is None
+    created = [k for r, m, a, k in c.log if (r, m) == ('tokens', 'create')][0]
+    assert created['metadata'] == {'form': 'ar'}
+    with pytest.raises(ValueError, match='stamp_mode'):
+        execute_plan(c, ops, source='src', label='l', stamp_mode='bogus')
+
+
+def test_confirm_and_discard_analysis_ops():
+    c = FakeClient()
+    ops = [{'kind': 'confirm', 'span_ids': ['sp-a', 'sp-gone'], 'token_ids': ['m-x'], 'link_ids': ['l-a'], 'label': 'c1'},
+           {'kind': 'confirm', 'span_ids': ['sp-gone2'], 'token_ids': [], 'link_ids': [], 'label': 'c2'},
+           {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'span_id': 'sp-gone', 'value': '', 'label': ''},
+           {'kind': 'discard_analysis', 'word_id': 'w-4', 'link_ids': ['l-d'], 'span_ids': ['sp-gone2'], 'morpheme_ids': ['m-4b'],
+            'reset_first_id': 'm-4a', 'renumber': [{'id': 'm-4c', 'precedence': 2}], 'label': 'd'}]
+    counts = execute_plan(c, ops, source='src', label='l')
+    # The confirmation of a span another op deletes is dropped, one whole op with a note.
+    assert counts == {'confirmed annotations': 3, 'field values': 1, 'discarded analyses': 1,
+                      'notes': ['dropped: c2 (everything it confirms is deleted in this plan)']}
+    calls = [(r, m, a) for r, m, a, k in c.log]
+    assert ('tokens', 'patch_metadata', ('m-x', {'provConfirmed': True})) in calls
+    assert ('vocab_links', 'patch_metadata', ('l-a', {'provConfirmed': True})) in calls
+    assert ('spans', 'patch_metadata', ('sp-a', {'provConfirmed': True})) in calls
+    assert ('spans', 'patch_metadata', ('sp-gone', {'provConfirmed': True})) not in calls
+    assert ('spans', 'delete', ('sp-gone',)) in calls
+    assert ('vocab_links', 'delete', ('l-d',)) in calls and ('spans', 'delete', ('sp-gone2',)) in calls
+    assert ('tokens', 'delete', ('m-4b',)) in calls
+    reset = [a for r, m, a in calls if (r, m) == ('tokens', 'patch_metadata') and a[0] == 'm-4a'][0][1]
+    assert reset == {'form': None, 'morphType': None, 'prov': None, 'provSource': None, 'provConfirmed': None,
+                     'provProb': None, 'provDetail': None}
+    assert [(a, k) for r, m, a, k in c.log if (r, m) == ('tokens', 'update')] == [(('m-4c',), {'precedence': 2})]
+    import pytest
+    with pytest.raises(ValueError, match='nothing to confirm'):
+        execute_plan(c, [{'kind': 'confirm', 'span_ids': [], 'label': ''}], source='s', label='l')
 
 
 def test_execute_set_analysis_replaces_chain_and_glosses_new_morphemes_second_pass():

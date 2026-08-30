@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional
 
 import unicodedata
 
+from plaid_client.provenance import prov_state, MACHINE
+
 from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, load_document, resolve,
                       render_document, render_overview, render_sentence, render_word,
                       segmentation, joiner, word_ref, is_unicode_punctuation)
@@ -189,7 +191,7 @@ def op_target(op: Dict[str, Any]):
     k = op.get('kind')
     if k == 'set_span':
         return ('span', op.get('layer_id'), op.get('token_id'))
-    if k == 'set_analysis':
+    if k in ('set_analysis', 'discard_analysis'):
         return ('analysis', op.get('word_id'))
     if k == 'set_orthography':
         return ('orth', op.get('word_id'), op.get('key'))
@@ -1004,6 +1006,124 @@ def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[di
     return ws.planned_note(1) + f' ({len(sents)} sentences, {words} words will be tokenized.)'
 
 
+def _is_machine(meta) -> bool:
+    return prov_state(meta) == MACHINE
+
+
+def _machine_pieces(obj, f=None, into=None) -> Dict[str, list]:
+    """Ids of the machine-made, unconfirmed pieces of a sentence, word, or
+    morpheme (a sentence includes its words): spans (only field ``f`` when
+    given), links and token metadata (only when no field is named)."""
+    out = into if into is not None else {'span_ids': [], 'token_ids': [], 'link_ids': []}
+    for name, sp in obj.fields.items():
+        if (f is None or name == f.name) and _is_machine(sp.metadata):
+            out['span_ids'].append(sp.id)
+    if isinstance(obj, Sentence):
+        if f is None or f.scope != 'Sentence':
+            for w in obj.words:
+                _machine_pieces(w, f, out)
+        return out
+    if f is None:
+        if obj.link and _is_machine(obj.link.metadata):
+            out['link_ids'].append(obj.link.id)
+        if _is_machine(obj.metadata):
+            out['token_ids'].append(obj.id)
+    if isinstance(obj, Word):
+        for m in obj.morphemes:
+            _machine_pieces(m, f, out)
+    return out
+
+
+def _pieces_label(pieces: Dict[str, list]) -> str:
+    bits = []
+    for key, noun in (('span_ids', 'value'), ('link_ids', 'link'), ('token_ids', 'segmentation')):
+        n = len(pieces[key])
+        if n:
+            bits.append(f'{n} {noun}{"s" if n != 1 else ""}')
+    return ', '.join(bits)
+
+
+def _what(obj) -> str:
+    return obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
+
+
+def t_confirm(ws: Workspace, document: str, refs=None, field: Optional[str] = None) -> str:
+    """PLAN: mark machine-made annotations as verified, after checking them."""
+    doc = ws.doc(document)
+    f = ws.project.field(field) if field else None
+    staged: List[Dict[str, Any]] = []
+    refs = _refs(refs)
+    if refs:
+        for ref in refs:
+            obj = resolve(doc, ref)
+            pieces = _machine_pieces(obj, f)
+            if not any(pieces.values()):
+                continue
+            staged.append({'kind': 'confirm', **pieces,
+                           'label': f'{doc.name} {ref} "{_what(obj)[:40]}": confirm {_pieces_label(pieces)}'
+                                    + (f' ({f.name})' if f else '')})
+    else:
+        pieces = {'span_ids': [], 'token_ids': [], 'link_ids': []}
+        for s in doc.sentences:
+            _machine_pieces(s, f, pieces)
+        if any(pieces.values()):
+            staged.append({'kind': 'confirm', **pieces,
+                           'label': f'{doc.name}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')})
+    ws.add_ops(staged)
+    n = sum(len(v) for op in staged for k, v in op.items() if k.endswith('_ids'))
+    if not staged:
+        return 'Nothing to confirm: no machine-made, unconfirmed annotations there.'
+    return ws.planned_note(len(staged)) + f' ({n} annotation{"s" if n != 1 else ""} will be marked verified.)'
+
+
+def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
+    """PLAN: delete a word's unverified machine-made analysis (the editor's
+    discard gesture): its machine links, values, and morphemes go; human and
+    verified pieces stay."""
+    doc = ws.doc(document)
+    words: List[tuple] = []
+    for ref in _refs(refs):
+        obj = resolve(doc, ref)
+        if isinstance(obj, Sentence):
+            words.extend((f'{ref}.{w.ref}', w) for w in obj.words)
+        elif isinstance(obj, Word):
+            words.append((ref, obj))
+        else:
+            raise ToolError(f'{ref}: discard_analysis works on words (sN.wN), not single morphemes')
+    staged: List[Dict[str, Any]] = []
+    for ref, w in words:
+        link_ids, span_ids, morpheme_ids = [], [], []
+        reset_first = None
+
+        def attached(t):
+            if t.link and _is_machine(t.link.metadata):
+                link_ids.append(t.link.id)
+            span_ids.extend(sp.id for sp in t.fields.values() if _is_machine(sp.metadata))
+        attached(w)
+        survivors = []
+        for i, m in enumerate(w.morphemes):
+            if _is_machine(m.metadata) and i > 0:
+                morpheme_ids.append(m.id)  # spans and links cascade with the token
+                continue
+            survivors.append(m)
+            attached(m)
+            if _is_machine(m.metadata):
+                reset_first = m.id
+        renumber = [{'id': m.id, 'precedence': i + 1} for i, m in enumerate(survivors) if m.index != i + 1]
+        if not (link_ids or span_ids or morpheme_ids or reset_first):
+            continue
+        bits = _pieces_label({'span_ids': span_ids, 'link_ids': link_ids, 'token_ids': []})
+        if morpheme_ids or reset_first:
+            bits = (bits + ', ' if bits else '') + 'the segmentation'
+        staged.append({'kind': 'discard_analysis', 'word_id': w.id, 'link_ids': link_ids, 'span_ids': span_ids,
+                       'morpheme_ids': morpheme_ids, 'reset_first_id': reset_first, 'renumber': renumber,
+                       'label': f'{doc.name} {ref} "{w.surface}": discard unverified {bits}'})
+    ws.add_ops(staged)
+    if not staged:
+        return 'Nothing to discard: no machine-made, unconfirmed analysis there.'
+    return ws.planned_note(len(staged))
+
+
 def t_discard_plan(ws: Workspace) -> str:
     n = len(ws.ops)
     ws.ops.clear()
@@ -1137,6 +1257,15 @@ TOOLS = [
          'metadata': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
         ['name', 'text']),
     _fn('discard_plan', 'Drop every change planned so far in this turn.', {}, []),
+    _fn('confirm',
+        'PLAN: mark machine-made annotations (from other services or earlier assistant plans; see worklist '
+        'kind="unverified") as verified, after checking them. refs: sentences, words, or morphemes (a sentence '
+        'covers its words); field: only that field\'s values; neither: the whole document.',
+        {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'}}, ['document']),
+    _fn('discard_analysis',
+        'PLAN: delete the unverified machine-made analysis of words (their machine links, values, and morphemes); '
+        'human-made and verified pieces stay. refs: words or sentences.',
+        {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
 ]
 
 _IMPL = {
@@ -1148,10 +1277,12 @@ _IMPL = {
     'concordance': t_concordance, 'analyses_of': t_analyses_of, 'lexicon_entry': t_lexicon_entry,
     'check_consistency': t_check_consistency, 'recent_changes': t_recent_changes, 'plan_status': t_plan_status,
     'set_document_metadata': t_set_document_metadata, 'create_document': t_create_document,
+    'confirm': t_confirm, 'discard_analysis': t_discard_analysis,
 }
 
 WRITE_TOOLS = {'set_field', 'set_analysis', 'set_orthography', 'respell', 'link_entry', 'unlink_entry',
-               'create_entry', 'set_entry_field', 'set_document_metadata', 'create_document'}
+               'create_entry', 'set_entry_field', 'set_document_metadata', 'create_document', 'confirm',
+               'discard_analysis'}
 
 
 def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:

@@ -603,22 +603,40 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
       display: c.display.map((d, i) => (i === index ? { ...d, status } : d)),
     }));
 
-  const approve = async (index, plan) => {
+  // What a plan writes is recorded as verified (made by the assistant,
+  // confirmed by the approver) unless the user asks for it to count as
+  // human-made. The plan id lets the service refuse a second application of
+  // the same plan (a retried request, a double click), so approving again
+  // after a timeout is safe.
+  const approve = async (index, plan, { asHuman = false } = {}) => {
     if (busy) return;
     setBusy('apply');
     setProgress('Applying changes…');
     try {
-      await client.messages.requestService(
+      const res = await client.messages.requestService(
         projectId,
         service.serviceId,
-        { projectId, approve: { ops: plan.ops, label: `Assistant: ${plan.summary}` } },
+        {
+          projectId,
+          approve: { id: plan.id, ops: plan.ops, label: `Assistant: ${plan.summary}`, asHuman },
+        },
         TURN_TIMEOUT_MS,
         (p) => setProgress(p?.message || ''),
       );
-      settlePlan(index, 'applied', `(note) The plan was approved and applied: ${plan.summary}.`);
-      notifySuccess(`Applied ${plan.summary}.`, 'Changes applied');
+      const data = res?.data || res || {};
+      settlePlan(
+        index,
+        'applied',
+        `(note) The plan was approved and applied: ${plan.summary}.` +
+          (data.message && /;/.test(data.message) ? ` ${data.message}` : ''),
+      );
+      notifySuccess(data.message || `Applied ${plan.summary}.`, 'Changes applied');
     } catch (e) {
-      notifyError(humanizeError(e, 'The changes could not be applied.'), 'Not applied');
+      notifyError(
+        humanizeError(e, 'The changes could not be applied.') +
+          ' Approving again is safe: a plan that was already applied is not written twice.',
+        'Not applied',
+      );
     } finally {
       setBusy(null);
       setProgress('');
@@ -783,7 +801,7 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
                 item={d}
                 canWrite={canWrite}
                 busy={!!busy}
-                onApprove={() => approve(i, d.plan)}
+                onApprove={(opts) => approve(i, d.plan, opts)}
                 onDiscard={() => discard(i)}
               />
             ))}
@@ -965,6 +983,8 @@ const ToolTrace = ({ steps }) => {
 const PlanCard = ({ plan, status, canWrite, busy, onApprove, onDiscard }) => {
   const labels = plan.labels || [];
   const [expanded, setExpanded] = useState(labels.length <= 12);
+  const [asHuman, setAsHuman] = useState(false);
+  const humanId = `plan-human-${plan.id}`;
   const shown = expanded ? labels : labels.slice(0, 12);
   return (
     <div
@@ -1006,7 +1026,7 @@ const PlanCard = ({ plan, status, canWrite, busy, onApprove, onDiscard }) => {
       {status === null && (
         <div className="mt-2 flex items-center gap-2">
           {canWrite ? (
-            <Button type="button" size="sm" onClick={onApprove} disabled={busy}>
+            <Button type="button" size="sm" onClick={() => onApprove({ asHuman })} disabled={busy}>
               <Check className="h-4 w-4" /> Approve and apply
             </Button>
           ) : (
@@ -1015,6 +1035,23 @@ const PlanCard = ({ plan, status, canWrite, busy, onApprove, onDiscard }) => {
           <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
             <X className="h-4 w-4" /> Discard
           </Button>
+          {canWrite && (
+            <label
+              htmlFor={humanId}
+              className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
+              title="By default the changes are recorded as made by the assistant and verified by you. Tick this to record them as if you had made them yourself (no machine provenance)."
+            >
+              <input
+                id={humanId}
+                type="checkbox"
+                className="h-3.5 w-3.5"
+                checked={asHuman}
+                disabled={busy}
+                onChange={(e) => setAsHuman(e.target.checked)}
+              />
+              Record as human-made
+            </label>
+          )}
         </div>
       )}
     </div>

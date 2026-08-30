@@ -174,3 +174,61 @@ def test_homograph_numbers_pick_an_entry():
     assert 'form=gam#1' in out and 'form=gam#2' in out
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': 's1.w2', 'entry_form': 'gam#2'})
     assert w.ops[-1]['item_id'] == 'vi-gam2'
+
+
+def _machine_doc():
+    """The fixture document with machine-made pieces: w1's Gloss span and link, m1b's
+    segmentation and gloss (unconfirmed), m1a's gloss (already verified), and a
+    machine link on w4's second morpheme."""
+    from fixtures import document_raw
+    raw = document_raw()
+    layers = raw['text_layers'][0]['token_layers']
+    m = {'prov': 'inferred', 'provSource': 'service:x'}
+    layers[1]['span_layers'][0]['spans'][0]['metadata'] = dict(m)                      # sp-g1 (Gloss on w-1)
+    layers[1]['vocabs'][0]['vocab_links'][0]['metadata'] = dict(m)                     # l-1 (w-1 link)
+    layers[2]['tokens'][1]['metadata'] = {**layers[2]['tokens'][1]['metadata'], **m}   # m-1b segmentation
+    layers[2]['tokens'][4]['metadata'] = {**layers[2]['tokens'][4]['metadata'], **m}   # m-4b segmentation
+    layers[2]['span_layers'][0]['spans'][0]['metadata'] = {**m, 'provConfirmed': True}  # sp-m1a verified
+    layers[2]['span_layers'][0]['spans'][1]['metadata'] = dict(m)                      # sp-m1b
+    layers[2]['vocabs'][0]['vocab_links'][0]['metadata'] = dict(m)                     # l-2 (m-1b link)
+    return raw
+
+
+def test_confirm_collects_unconfirmed_machine_pieces():
+    c = FakeClient(documents={'d1': _machine_doc()})
+    w = Workspace(c, load_project(c, 'p1'))
+    out = call_tool(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
+    assert 'Planned 1 change' in out and '5 annotations will be marked verified' in out
+    op = w.ops[0]
+    assert op['kind'] == 'confirm'
+    assert sorted(op['span_ids']) == ['sp-g1', 'sp-m1b'] and op['token_ids'] == ['m-1b'] and sorted(op['link_ids']) == ['l-1', 'l-2']
+    assert op['label'] == 'Text 1 s1.w1 "Ali-di": confirm 2 values, 2 links, 1 segmentation'
+    # Field-restricted: only that field's spans, no links or segmentations.
+    w2 = Workspace(c, load_project(c, 'p1'))
+    call_tool(w2, 'confirm', {'document': 'd1', 'refs': ['s1'], 'field': 'Morph Gloss'})
+    assert w2.ops[0]['span_ids'] == ['sp-m1b'] and not w2.ops[0]['token_ids'] and not w2.ops[0]['link_ids']
+    # Whole document: one op.
+    w3 = Workspace(c, load_project(c, 'p1'))
+    out = call_tool(w3, 'confirm', {'document': 'd1'})
+    assert len(w3.ops) == 1 and w3.ops[0]['label'].startswith('Text 1: confirm 2 values, 2 links, 2 segmentations')
+    assert '6 annotations' in out
+    # Nothing unverified there.
+    assert call_tool(w3, 'confirm', {'document': 'd1', 'refs': ['s1.w3']}).startswith('Nothing to confirm')
+
+
+def test_discard_analysis_mirrors_the_editor():
+    c = FakeClient(documents={'d1': _machine_doc()})
+    w = Workspace(c, load_project(c, 'p1'))
+    out = call_tool(w, 'discard_analysis', {'document': 'd1', 'refs': ['s1.w1', 's1.w3', 's2']})
+    assert 'Planned 2 changes' in out
+    a, b = w.ops
+    # w1: machine gloss + link on the word go; m-1b (machine, not first) is deleted outright; m-1a (human) stays.
+    assert a['word_id'] == 'w-1' and a['span_ids'] == ['sp-g1'] and a['link_ids'] == ['l-1']
+    assert a['morpheme_ids'] == ['m-1b'] and a['reset_first_id'] is None and a['renumber'] == []
+    assert a['label'] == 'Text 1 s1.w1 "Ali-di": discard unverified 1 value, 1 link, the segmentation'
+    # w4 (via s2): only the machine second morpheme goes.
+    assert b['word_id'] == 'w-4' and b['morpheme_ids'] == ['m-4b'] and b['span_ids'] == [] and b['link_ids'] == []
+    assert 'not single morphemes' in call_tool(w, 'discard_analysis', {'document': 'd1', 'refs': ['s1.w1.m1']})
+    # A later set_analysis on the same word supersedes the discard (same target).
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Alidi'}]})
+    assert [o['kind'] for o in w.ops] == ['set_analysis', 'discard_analysis'] and w.ops[0]['word_id'] == 'w-1'

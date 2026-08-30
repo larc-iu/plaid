@@ -6,9 +6,12 @@ to the user with the turn; the user approves it in the UI, and the next
 request carries the same operations back for :func:`execute_plan` to apply,
 under one audit-log operation, with the requester's own client.
 
-Every span, morpheme, and link the plan creates is stamped machine-made
-(``stamp_inferred``), so it renders as unverified in the editor until a person
-confirms it, the same as any other service's output.
+Approval is a human decision, so what a plan writes is VERIFIED by default:
+machine-made (``prov: inferred`` with the assistant as ``provSource``, so the
+origin stays traceable) and confirmed (``provConfirmed: true``), exactly the
+state a person reaches by checking a service's output in the editor. The user
+may instead approve a plan as HUMAN-made (``stamp_mode='human'``): nothing is
+stamped, and rewritten entities lose their machine keys.
 
 Operation shapes (all keys snake_case, no id-keyed maps, so they survive the
 wire's key recasing):
@@ -28,6 +31,8 @@ wire's key recasing):
   delete_entry    {item_id, links: [link_id]}
   rename_entry    {item_id, form}
   rename_document {document_id, name}
+  confirm         {span_ids, token_ids, link_ids}   (provConfirmed on machine-made material, any producer)
+  discard_analysis {word_id, link_ids, span_ids, morpheme_ids, reset_first_id|null, renumber: [{id, precedence}]}
 
 Each also carries a human ``label`` for the approval UI.
 """
@@ -35,7 +40,13 @@ Each also carries a human ``label`` for the approval UI.
 from collections import Counter
 from typing import Any, Dict, List
 
-from plaid_client.provenance import stamp_inferred
+from plaid_client.provenance import (confirmed_inferred, PROV_KEY, PROV_SOURCE_KEY, PROV_CONFIRMED_KEY,
+                                     PROV_PROB_KEY, PROV_DETAIL_KEY)
+
+STAMP_MODES = ('verified', 'human')
+# patch semantics: a null value deletes the key
+CLEAR_PROV = {PROV_KEY: None, PROV_SOURCE_KEY: None, PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: None, PROV_DETAIL_KEY: None}
+CONFIRM = {PROV_CONFIRMED_KEY: True}
 
 BATCH_OP_BUDGET = 800  # the server caps one atomic batch at 1000 ops
 
@@ -99,7 +110,7 @@ class PlanError(Exception):
 
 KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'create_entry',
          'set_entry_field', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
-         'rename_entry', 'rename_document')
+         'rename_entry', 'rename_document', 'confirm', 'discard_analysis')
 REQUIRED = {
     'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
     'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
@@ -107,6 +118,7 @@ REQUIRED = {
     'set_entry_field': ('item_id', 'field'), 'set_doc_metadata': ('document_id', 'field'),
     'create_document': ('name', 'text'), 'merge_entries': ('keep_id', 'remove_id'), 'delete_entry': ('item_id',),
     'rename_entry': ('item_id', 'form'), 'rename_document': ('document_id', 'name'),
+    'confirm': (), 'discard_analysis': ('word_id',),
 }
 
 
@@ -124,6 +136,36 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError(f'op {i + 1} (set_analysis): morphemes must be a non-empty list with non-empty forms')
         if kind == 'link' and not (op.get('item_id') or op.get('new_entry_key')):
             raise ValueError(f'op {i + 1} (link): needs item_id or new_entry_key')
+        if kind == 'confirm' and not any(op.get(k) for k in ('span_ids', 'token_ids', 'link_ids')):
+            raise ValueError(f'op {i + 1} (confirm): nothing to confirm')
+
+
+def _doomed_ids(ops) -> set:
+    """Ids other ops in the plan delete, which a confirm must not touch (a
+    patch of a deleted entity fails the whole batch)."""
+    gone = set()
+    for op in ops:
+        k = op.get('kind')
+        if k == 'set_span' and op.get('span_id') and (op.get('value') or '') == '':
+            gone.add(op['span_id'])
+        elif k == 'set_analysis':
+            ex = op.get('existing') or []
+            gone.update(m['id'] for m in ex[1:])
+            if ex:
+                gone.update(ex[0].get('span_ids') or [])
+        elif k == 'unlink':
+            gone.add(op['link_id'])
+        elif k == 'link' and op.get('existing_link_id'):
+            gone.add(op['existing_link_id'])
+        elif k == 'merge_entries':
+            gone.update(l['link_id'] for l in op.get('links') or [])
+        elif k == 'delete_entry':
+            gone.update(op.get('links') or [])
+        elif k == 'discard_analysis':
+            gone.update(op.get('link_ids') or [])
+            gone.update(op.get('span_ids') or [])
+            gone.update(op.get('morpheme_ids') or [])
+    return gone
 
 
 def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
@@ -140,11 +182,18 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     out: List[Dict[str, Any]] = []
     seen_delete = set()
     respell_at: Dict[tuple, int] = {}
+    doomed = _doomed_ids(ops)
     for op in ops:
         k = op.get('kind')
         if k == 'link' and op.get('item_id') in removed:
             notes.append(f'dropped: {op.get("label") or "a link"} (its entry is deleted in this plan)')
             continue
+        if k == 'confirm' and doomed:
+            op = {**op, **{key: [i for i in (op.get(key) or []) if i not in doomed]
+                           for key in ('span_ids', 'token_ids', 'link_ids')}}
+            if not any(op[key] for key in ('span_ids', 'token_ids', 'link_ids')):
+                notes.append(f'dropped: {op.get("label") or "a confirmation"} (everything it confirms is deleted in this plan)')
+                continue
         if k == 'delete_entry':
             if op['item_id'] in seen_delete:
                 continue
@@ -162,19 +211,23 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     return out, notes
 
 
-def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None) -> Dict[str, int]:
+def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
+                 stamp_mode: str = 'verified') -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
     Returns per-kind counts of what was applied (plus ``notes`` for anything
     dropped). ``project`` (an IgtProject) is needed only by document-creating
-    ops. Raises :class:`PlanError` with the applied count if a later batch
-    fails: batches are atomic individually, the plan as a whole is not."""
+    ops. ``stamp_mode`` is ``'verified'`` (machine-made, human-confirmed: the
+    default) or ``'human'`` (no provenance keys at all). Raises
+    :class:`PlanError` with the applied count if a later batch fails: batches
+    are atomic individually, the plan as a whole is not."""
+    if stamp_mode not in STAMP_MODES:
+        raise ValueError(f'stamp_mode must be one of {STAMP_MODES}')
     validate_ops(ops)
     ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
-    new_docs = []
-    b = None
     try:
-        return _execute(client, ops, source=source, label=label, project=project, counts=counts, notes=notes)
+        return _execute(client, ops, source=source, label=label, project=project, counts=counts, notes=notes,
+                        stamp_mode=stamp_mode)
     except PlanError:
         raise
     except Exception as e:
@@ -182,11 +235,18 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
         raise PlanError(f'{type(e).__name__}: {e}', applied if applied is not None else 0, len(ops)) from e
 
 
-def _execute(client, ops, *, source, label, project, counts, notes) -> Dict[str, int]:
+def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode) -> Dict[str, int]:
     new_docs = []
+    human = stamp_mode == 'human'
 
     def stamp():
-        return stamp_inferred(source)
+        """Metadata merged into everything the plan creates (empty when there is nothing to stamp)."""
+        return {} if human else confirmed_inferred(source)
+
+    def restamp():
+        """Metadata patched onto an entity the plan rewrites: the new value is
+        this plan's, whatever the entity was before."""
+        return CLEAR_PROV if human else confirmed_inferred(source)
 
     applied = [0]
 
@@ -216,9 +276,7 @@ def _execute(client, ops, *, source, label, project, counts, notes) -> Dict[str,
                     b.add(lambda sid=span_id: client.spans.delete(sid))
                 elif span_id:
                     b.add(lambda sid=span_id, v=value: client.spans.update(sid, v))
-                    # A rewritten value is machine-made again: clear any earlier
-                    # human confirmation along with the new stamp.
-                    b.add(lambda sid=span_id: client.spans.patch_metadata(sid, {**stamp(), 'provConfirmed': None}))
+                    b.add(lambda sid=span_id: client.spans.patch_metadata(sid, restamp()))
                 elif value != '':
                     b.add(lambda o=op, v=value: client.spans.create(o['layer_id'], [o['token_id']], v, stamp()))
                 else:
@@ -238,7 +296,7 @@ def _execute(client, ops, *, source, label, project, counts, notes) -> Dict[str,
                         b.add(lambda s=sid: client.spans.delete(s))
                     first = morphemes[0]
                     b.add(lambda mid=m0['id'], f=first: client.tokens.patch_metadata(
-                        mid, {'form': f['form'], 'morphType': f.get('morph_type'), **stamp(), 'provConfirmed': None}))
+                        mid, {'form': f['form'], 'morphType': f.get('morph_type'), **restamp()}))
                     # Keep the chain's numbering contiguous from 1 whatever the
                     # first morpheme's precedence was before.
                     b.add(lambda mid=m0['id']: client.tokens.update(mid, precedence=1))
@@ -318,6 +376,35 @@ def _execute(client, ops, *, source, label, project, counts, notes) -> Dict[str,
                 b.add(lambda o=op: client.documents.update(o['document_id'], o['name']))
                 counts['renamed documents'] += 1
 
+            elif kind == 'confirm':
+                for tid in op.get('token_ids') or []:
+                    b.add(lambda i=tid: client.tokens.patch_metadata(i, CONFIRM))
+                for lid in op.get('link_ids') or []:
+                    b.add(lambda i=lid: client.vocab_links.patch_metadata(i, CONFIRM))
+                for sid in op.get('span_ids') or []:
+                    b.add(lambda i=sid: client.spans.patch_metadata(i, CONFIRM))
+                counts['confirmed annotations'] += (len(op.get('token_ids') or []) + len(op.get('link_ids') or [])
+                                                    + len(op.get('span_ids') or []))
+
+            elif kind == 'discard_analysis':
+                # The editor's discardWordAnalysis: machine links and spans go,
+                # machine morphemes after the first go (their spans and links
+                # cascade server-side, so they are not deleted separately), a
+                # machine first morpheme is reset to the healed default, and
+                # survivors are renumbered gap-free.
+                for lid in op.get('link_ids') or []:
+                    b.add(lambda i=lid: client.vocab_links.delete(i))
+                for sid in op.get('span_ids') or []:
+                    b.add(lambda i=sid: client.spans.delete(i))
+                for mid in op.get('morpheme_ids') or []:
+                    b.add(lambda i=mid: client.tokens.delete(i))
+                if op.get('reset_first_id'):
+                    b.add(lambda i=op['reset_first_id']: client.tokens.patch_metadata(
+                        i, {'form': None, 'morphType': None, **CLEAR_PROV}))
+                for r in op.get('renumber') or []:
+                    b.add(lambda r=r: client.tokens.update(r['id'], precedence=r['precedence']))
+                counts['discarded analyses'] += 1
+
             else:
                 raise ValueError(f'Unknown plan operation kind: {kind}')  # unreachable after validate_ops
 
@@ -393,7 +480,8 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
              'set_doc_metadata': ('document metadata value', 'document metadata values'),
              'create_document': ('new document', 'new documents'),
              'merge_entries': ('merged entry', 'merged entries'), 'delete_entry': ('deleted entry', 'deleted entries'),
-             'rename_entry': ('renamed entry', 'renamed entries'), 'rename_document': ('renamed document', 'renamed documents')}
+             'rename_entry': ('renamed entry', 'renamed entries'), 'rename_document': ('renamed document', 'renamed documents'),
+             'confirm': ('confirmation', 'confirmations'), 'discard_analysis': ('discarded analysis', 'discarded analyses')}
     parts = []
     for kind, n in counts.items():
         one, many = names.get(kind, (kind, kind))

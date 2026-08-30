@@ -9,7 +9,8 @@ may read and approved edits are attributed to them in the audit log.
 Request data:
     project_id   the project (a service instance may serve many)
     messages     the transcript so far (OpenAI-shaped message dicts, no system)
-    approve      instead of a turn: {ops, label} of a plan the user approved
+    approve      instead of a turn: {id, ops, label, as_human} of a plan the user approved
+                 (as_human: record the writes as human-made instead of verified machine-made)
 
 Result data:
     {kind: 'turn', message, messages: [new transcript messages], plan: {id, summary, labels, ops} | null}
@@ -34,10 +35,11 @@ model the Plaid operator configured (any provider litellm supports).
 Ask it analytic questions (how is X glossed, which words are unanalyzed, are
 these glosses consistent), or ask it to make changes: fix a gloss across the
 corpus, segment and gloss words, link words to lexicon entries, add entries,
-respell words, fill in an orthography. It never writes on its own: a request
-that changes data comes back as a **plan** you approve or discard. Approved
-changes are applied under your own account, in one audit-log entry, stamped as
-machine-made so they show as unverified in the editor until confirmed.
+respell words, fill in an orthography, confirm or discard what another service
+produced. It never writes on its own: a request that changes data comes back
+as a **plan** you approve or discard. Approved changes are applied under your
+own account, in one audit-log entry, and recorded as **verified** (made by the
+assistant, confirmed by you), or as human-made if you say so when approving.
 
 Readers can use it for questions; planning and applying changes needs write
 access.
@@ -112,9 +114,11 @@ class AssistantService(BaseService):
                                           'message': 'This plan was already applied; nothing was written again.'})
                 return
             label = approve.get('label') or f'Assistant: {summarize(ops)}'
+            stamp_mode = 'human' if approve.get('as_human') else 'verified'
             response_helper.progress(10, 'Applying changes…')
             try:
-                counts = execute_plan(client, ops, source=service_source(self.service_id), label=label, project=project)
+                counts = execute_plan(client, ops, source=service_source(self.service_id), label=label, project=project,
+                                      stamp_mode=stamp_mode)
             except PlanError as e:
                 if plan_id and e.applied:
                     self._remember_applied(plan_id)
