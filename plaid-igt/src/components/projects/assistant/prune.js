@@ -19,7 +19,11 @@ export const DROPPED = '[This result was dropped to keep the conversation within
 
 const bytes = (value) => new TextEncoder().encode(JSON.stringify(value) ?? '').length;
 
-// What the conversation weighs as stored: exactly the value persistConv puts.
+// What the conversation weighs, measured on the value persistConv puts. The
+// client recases keys on the way out (`toolCallId` goes as `tool-call-id`),
+// so the stored text is a little longer than this, by a few bytes per key on
+// a value that is almost entirely tool output. The gap between the budget and
+// the server's cap covers that many times over.
 export const conversationBytes = (conv) =>
   bytes({ messages: conv?.messages || [], display: conv?.display || [] });
 

@@ -994,7 +994,14 @@ class UserDataResource(_Resource):
                              no_batch=True)
 
     def put(self, user_id: str, key: str, value: Any) -> Any:
-        """Create or replace one entry. ``value`` is any JSON (up to 1 MB), stored verbatim."""
+        """Create or replace one entry. ``value`` is any JSON (up to 1 MB).
+
+        The server stores it verbatim, but this client recases object keys on
+        the way out and back like any other body (``my_key`` <-> ``my-key``),
+        so a value whose keys are snake_case round-trips unchanged while one
+        keyed by arbitrary strings does not. Put such a map under a
+        ``metadata`` key, which both clients pass through untouched.
+        """
         return self._request('PUT', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
                              body=value, no_batch=True)
 

@@ -923,7 +923,13 @@ class PlaidClient {
         ),
       /**
        * Create or replace one private data entry. `value` is any JSON (up to
-       * 1 MB), stored verbatim. Not audited, not batchable.
+       * 1 MB), stored as sent. Not audited, not batchable.
+       *
+       * The server stores it verbatim, but this client recases object keys on
+       * the way out and back like any other body (`myKey` <-> `my-key`), so a
+       * value whose keys are camelCase round-trips unchanged while one keyed
+       * by arbitrary strings does not. Put such a map under a `metadata` key,
+       * which both clients pass through untouched.
        * @param {string} userId
        * @param {string} key
        * @param {*} value
