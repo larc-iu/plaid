@@ -25,6 +25,11 @@ are the only way to modify data. When the user's request is ambiguous about what
 - Your final message for a turn that planned changes must say plainly what the plan does, how many items it \
 touches, and anything uncertain, so the user can decide. Do not claim anything was changed: it will only be \
 applied if they approve.
+- Which tool: worklist for what is unfinished (by frequency); corpus_stats and frequency_list for numbers; \
+search for finding items, concordance for context around a form or gloss, sequence_search for constructions; \
+analyses_of before proposing any analysis; check_consistency, check_lexicon, check_integrity for quality reports; \
+for project-wide edits use replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography rather than \
+many single set_field calls.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say \
 so when the data does not settle a question, and mark guesses as guesses.
 '''

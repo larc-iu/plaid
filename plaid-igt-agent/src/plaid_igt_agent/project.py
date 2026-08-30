@@ -456,5 +456,6 @@ def render_overview(project: IgtProject, documents: List[dict]) -> str:
         lines.append('Document metadata fields: ' + ', '.join(project.document_metadata))
     lines.append(f'Documents ({len(documents)}):')
     for d in sorted(documents, key=lambda d: (d.get('name') or '').lower()):
-        lines.append(f'  {d.get("name") or "(unnamed)"}  id={d["id"]}')
+        mod = (d.get('time_modified') or '')[:10]
+        lines.append(f'  {d.get("name") or "(unnamed)"}  id={d["id"]}' + (f'  modified={mod}' if mod else ''))
     return '\n'.join(lines)

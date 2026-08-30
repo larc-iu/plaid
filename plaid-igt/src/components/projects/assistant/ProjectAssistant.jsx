@@ -152,6 +152,34 @@ const describeStep = ({ name, args: a }) => {
       return `Planned ${a.field} = ${q(a.value)} on document ${q(a.document)}`;
     case 'create_document':
       return `Planned a new document ${q(a.name)}`;
+    case 'corpus_stats':
+      return `Counted the corpus${a.by ? ` by ${a.by}` : ''}${where(a)}`;
+    case 'frequency_list':
+      return `Ranked ${a.what || 'wordform'}s by frequency${where(a)}`;
+    case 'worklist':
+      return `Listed ${a.kind || 'unglossed'} ${a.field ? `${a.field} ` : ''}work${where(a)}`;
+    case 'check_lexicon':
+      return 'Checked the lexicon';
+    case 'check_integrity':
+      return `Checked data integrity${where(a)}`;
+    case 'sequence_search':
+      return `Searched for a word sequence${where(a)}`;
+    case 'replace_in_field':
+      return `Planned replacing ${q(a.pattern)} → ${q(a.replacement)} in ${a.field}${where(a)}`;
+    case 'respell_all':
+      return `Planned respelling ${q(a.pattern)} → ${q(a.replacement)}${where(a)}`;
+    case 'copy_to_orthography':
+      return `Planned filling ${a.orthography} from ${a.source || 'the baseline'}${where(a)}`;
+    case 'set_analysis_for_form':
+      return `Planned an analysis for every ${q(a.form)}${where(a)}`;
+    case 'merge_entries':
+      return `Planned merging ${q(a.remove_form || a.remove_id)} into ${q(a.keep_form || a.keep_id)}`;
+    case 'delete_entry':
+      return `Planned deleting the entry ${q(a.entry_form || a.entry_id)}`;
+    case 'rename_entry':
+      return `Planned renaming the entry ${q(a.entry_form || a.entry_id)} → ${q(a.new_form)}`;
+    case 'rename_document':
+      return `Planned renaming ${q(a.document)} → ${q(a.new_name)}`;
     case 'set_field':
       return `Planned ${a.field} = ${q(a.value)} on ${(a.refs || []).length} item(s)${where(a)}`;
     case 'set_analysis':
@@ -178,9 +206,23 @@ const describeStep = ({ name, args: a }) => {
 const summarizeSteps = (steps) => {
   const docs = new Set(steps.filter((s) => s.name === 'read_document').map((s) => s.args.document));
   const searches = steps.filter((s) =>
-    ['search', 'field_values', 'concordance', 'analyses_of', 'check_consistency'].includes(s.name),
+    [
+      'search',
+      'field_values',
+      'concordance',
+      'analyses_of',
+      'check_consistency',
+      'corpus_stats',
+      'frequency_list',
+      'worklist',
+      'check_lexicon',
+      'check_integrity',
+      'sequence_search',
+    ].includes(s.name),
   ).length;
-  const planned = steps.filter((s) => /^(set_|respell|link_|unlink_|create_)/.test(s.name)).length;
+  const planned = steps.filter((s) =>
+    /^(set_|respell|link_|unlink_|create_|replace_|copy_to|merge_|delete_|rename_)/.test(s.name),
+  ).length;
   const parts = [];
   if (docs.size) parts.push(`read ${docs.size} document${docs.size === 1 ? '' : 's'}`);
   if (searches) parts.push(`${searches} search${searches === 1 ? '' : 'es'}`);

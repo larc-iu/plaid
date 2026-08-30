@@ -145,3 +145,22 @@ def test_execute_creates_documents_tokenized_like_the_editor():
     # '-' is punctuation, so it splits words (no whitelist in the fixture); ',' and '!' stay in gaps
     assert [text[b:e] for b, e in words] == ['Ali', 'di', 'gam', 'akuna', 'Gam', 'ar']
     assert all(t['text'] == texts[0][2] and False for t in []) or all(t['text'] == 'texts-create-' + str(c.log.index(texts[0]) + 1) for t in bulk)
+
+
+def test_execute_lexicon_and_document_ops():
+    c = FakeClient()
+    ops = [{'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg', 'links': [{'link_id': 'l-2', 'token_id': 'm-1b'}], 'label': ''},
+           {'kind': 'delete_entry', 'item_id': 'vi-gam', 'links': ['l-9'], 'label': ''},
+           {'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'net', 'label': ''},
+           {'kind': 'rename_document', 'document_id': 'd1', 'name': 'Text One', 'label': ''}]
+    counts = execute_plan(c, ops, source='s', label='l')
+    assert counts == {'merged entries': 1, 'deleted entries': 1, 'renamed entries': 1, 'renamed documents': 1}
+    first = [(r, m, a) for r, m, a, k in c.batches[0]]
+    assert first[0] == ('vocab_links', 'delete', ('l-2',))
+    assert first[1][:2] == ('vocab_links', 'create') and first[1][2][:2] == ('vi-ali', ['m-1b'])
+    assert first[2] == ('vocab_links', 'delete', ('l-9',))
+    assert first[3] == ('vocab_items', 'update', ('vi-gam2', 'net'))
+    assert first[4] == ('documents', 'update', ('d1', 'Text One'))
+    # entries are deleted only after their links are gone, in the second batch
+    second = [(r, m, a) for r, m, a, k in c.batches[1]]
+    assert second == [('vocab_items', 'delete', ('vi-erg',)), ('vocab_items', 'delete', ('vi-gam',))]

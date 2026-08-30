@@ -53,10 +53,15 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
   `lexicon_entry`, `concordance` (aligned context and pattern tally for a
   form or value), `analyses_of` (how a form has been analyzed so far),
   `check_consistency` (spelling variants, forms with several values, link
-  gaps), `recent_changes` (the audit log), `plan_status`. Writes append
-  resolved operations to the turn's plan: `set_field`, `set_analysis`,
-  `set_orthography`, `respell`, `link_entry`, `unlink_entry`, `create_entry`,
-  `set_entry_field`, `set_document_metadata`, `create_document`.
+  gaps), `check_lexicon`, `check_integrity`, `corpus_stats`,
+  `frequency_list`, `worklist` (unlinked / unglossed / unanalyzed /
+  unverified, by frequency), `sequence_search`, `recent_changes` (the audit
+  log), `plan_status`. Writes append resolved operations to the turn's plan:
+  `set_field`, `set_analysis`, `set_orthography`, `respell`, `link_entry`,
+  `unlink_entry`, `create_entry`, `set_entry_field`, `set_document_metadata`,
+  `create_document`, and the corpus-wide `replace_in_field`, `respell_all`,
+  `copy_to_orthography`, `set_analysis_for_form`, plus `merge_entries`,
+  `delete_entry`, `rename_entry`, `rename_document`.
 - `plan.py`: applies an approved plan with the requester's client, in atomic
   batches under one operation.
 - `agent.py`: the litellm loop. `service.py`: the Plaid service; one request

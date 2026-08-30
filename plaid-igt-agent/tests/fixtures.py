@@ -143,6 +143,10 @@ class FakeClient:
             self.c.log.append(('documents', 'patch_metadata', (did, body), {}))
             return {'id': did}
 
+        def update(self, did, name, **kw):
+            self.c.log.append(('documents', 'update', (did, name), {}))
+            return {'id': did}
+
         def audit(self, did, **kw):
             return [e for e in self.c.audit if any(d['id'] == did for d in e.get('documents', []))]
 

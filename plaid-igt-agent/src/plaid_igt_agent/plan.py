@@ -24,6 +24,10 @@ wire's key recasing):
   set_entry_field {item_id, field, value}
   set_doc_metadata {document_id, field, value}
   create_document {name, text, metadata}   (needs the project: text layer, token layers, ignored config)
+  merge_entries   {keep_id, remove_id, links: [{link_id, token_id}]}
+  delete_entry    {item_id, links: [link_id]}
+  rename_entry    {item_id, form}
+  rename_document {document_id, name}
 
 Each also carries a human ``label`` for the approval UI.
 """
@@ -98,6 +102,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
         pending_links = []   # (token_id, new_entry_key)
         entry_idx: Dict[str, int] = {}
         respells: Dict[str, List[tuple]] = {}
+        pending_deletes: List[str] = []  # entries to delete once their links are gone
 
         for op in ops:
             kind = op.get('kind')
@@ -181,6 +186,27 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
                 new_docs.append(op)  # after the batches: several dependent calls
                 counts['new documents'] += 1
 
+            elif kind == 'merge_entries':
+                for l in op.get('links') or []:
+                    b.add(lambda lid=l['link_id']: client.vocab_links.delete(lid))
+                    b.add(lambda o=op, t=l['token_id']: client.vocab_links.create(o['keep_id'], [t], stamp()))
+                pending_deletes.append(op['remove_id'])
+                counts['merged entries'] += 1
+
+            elif kind == 'delete_entry':
+                for lid in op.get('links') or []:
+                    b.add(lambda lid=lid: client.vocab_links.delete(lid))
+                pending_deletes.append(op['item_id'])
+                counts['deleted entries'] += 1
+
+            elif kind == 'rename_entry':
+                b.add(lambda o=op: client.vocab_items.update(o['item_id'], o['form']))
+                counts['renamed entries'] += 1
+
+            elif kind == 'rename_document':
+                b.add(lambda o=op: client.documents.update(o['document_id'], o['name']))
+                counts['renamed documents'] += 1
+
             else:
                 raise ValueError(f'Unknown plan operation kind: {kind}')
 
@@ -196,6 +222,8 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
             iid = _created_id(b.results[i]) if i is not None and i < len(b.results) else None
             if iid:
                 b.add(lambda i=iid, t=token_id: client.vocab_links.create(i, [t], stamp()))
+        for iid in pending_deletes:
+            b.add(lambda i=iid: client.vocab_items.delete(i))
         b.flush()
 
         # Text edits last: whole-token replaces keep the token (and its
@@ -239,7 +267,9 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
              'link': ('lexicon link', 'lexicon links'), 'unlink': ('unlink', 'unlinks'),
              'create_entry': ('new lexicon entry', 'new lexicon entries'), 'set_entry_field': ('entry field', 'entry fields'),
              'set_doc_metadata': ('document metadata value', 'document metadata values'),
-             'create_document': ('new document', 'new documents')}
+             'create_document': ('new document', 'new documents'),
+             'merge_entries': ('merged entry', 'merged entries'), 'delete_entry': ('deleted entry', 'deleted entries'),
+             'rename_entry': ('renamed entry', 'renamed entries'), 'rename_document': ('renamed document', 'renamed documents')}
     parts = []
     for kind, n in counts.items():
         one, many = names.get(kind, (kind, kind))

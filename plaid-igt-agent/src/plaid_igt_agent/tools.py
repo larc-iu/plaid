@@ -687,20 +687,34 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     return _truncate('\n'.join(lines))
 
 
-def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: int = 20) -> str:
+def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: int = 20,
+                     since: Optional[str] = None, user: Optional[str] = None) -> str:
     """The newest entries of the audit log: who changed what, when, under
-    which operation label (the assistant's own applied plans included)."""
+    which operation label (the assistant's own applied plans included).
+    `since` is a date (YYYY-MM-DD) or timestamp; `user` matches the actor's
+    name or email."""
     limit = max(1, min(int(limit or 20), 100))
     ws.on_progress('Reading the change history…')
+    start = None
+    if since:
+        start = since.strip()
+        if re.fullmatch(r'\d{4}-\d{2}-\d{2}', start):
+            start += 'T00:00:00Z'
     if document:
         did = ws.resolve_document_id(document)
-        entries = ws.client.documents.audit(did)
+        entries = ws.client.documents.audit(did, start_time=start)
     else:
-        entries = ws.client.projects.audit(ws.project.id)
+        entries = ws.client.projects.audit(ws.project.id, start_time=start)
+    if user:
+        u = user.casefold()
+        entries = [e for e in entries or []
+                   if u in ((e.get('user') or {}).get('display_name') or '').casefold()
+                   or u in ((e.get('user') or {}).get('id') or '').casefold()]
     entries = sorted(entries or [], key=lambda e: e.get('time') or '', reverse=True)[:limit]
     if not entries:
         return 'No changes recorded.'
-    lines = [f'{len(entries)} most recent change{"s" if len(entries) != 1 else ""} (newest first):']
+    lines = [f'{len(entries)} most recent change{"s" if len(entries) != 1 else ""}'
+             + (f' since {since}' if since else '') + (f' by "{user}"' if user else '') + ' (newest first):']
     for e in entries:
         who = (e.get('user') or {}).get('display_name') or (e.get('user') or {}).get('id') or '?'
         when = (e.get('time') or '')[:16].replace('T', ' ')
@@ -1050,7 +1064,9 @@ TOOLS = [
         {'field': {'type': 'string'}, 'document': _DOC}, ['field']),
     _fn('recent_changes',
         'The newest entries of the change history: who changed what and when, including plans this assistant applied.',
-        {'document': _DOC, 'limit': {'type': 'integer', 'description': 'Entries to show (default 20, max 100).'}}, []),
+        {'document': _DOC, 'limit': {'type': 'integer', 'description': 'Entries to show (default 20, max 100).'},
+         'since': {'type': 'string', 'description': 'Only changes at or after this date (YYYY-MM-DD) or timestamp.'},
+         'user': {'type': 'string', 'description': 'Only changes by this person (name or email substring).'}}, []),
     _fn('plan_status', 'List the changes planned so far in this turn.', {}, []),
     _fn('set_document_metadata',
         'PLAN: set one of the project\'s document metadata fields (see project_overview) on a document.',
@@ -1092,3 +1108,91 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
         import traceback
         traceback.print_exc()
         return f'Error: {type(e).__name__}: {e}'
+
+
+# --- corpus-wide reads and bulk plan tools live in their own modules --------------
+from .stats import (t_corpus_stats, t_frequency_list, t_worklist, t_check_lexicon,  # noqa: E402
+                    t_check_integrity, t_sequence_search)
+from .bulk import (t_replace_in_field, t_respell_all, t_copy_to_orthography, t_set_analysis_for_form,  # noqa: E402
+                   t_merge_entries, t_delete_entry, t_rename_entry, t_rename_document)
+
+_ENTRY = {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'}}
+
+TOOLS += [
+    _fn('corpus_stats',
+        'Totals and coverage: documents, sentences, words, distinct forms, hapax, type/token ratio, morphemes, the '
+        'share of words analysed and linked, and every field\'s fill rate. by="document" gives a per-document '
+        'table (with metadata columns); by=<metadata field> (e.g. "Genre") breaks the corpus down by that field.',
+        {'document': _DOC, 'by': {'type': 'string'}}, []),
+    _fn('frequency_list',
+        'Ranked counts with document dispersion for wordforms (default), morpheme forms, or a field\'s values.',
+        {'what': {'type': 'string', 'description': '"wordform" (default), "morpheme", or a field name.'},
+         'document': _DOC, 'limit': {'type': 'integer', 'description': 'Rows (default 100, max 1000).'},
+         'min_count': {'type': 'integer'}}, []),
+    _fn('worklist',
+        'The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (no lexicon link), '
+        '"unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), or '
+        '"unverified" (machine-made annotations nobody confirmed). Use this to decide what to do next.',
+        {'kind': {'type': 'string', 'enum': ['unlinked', 'unglossed', 'unanalyzed', 'unverified']},
+         'field': {'type': 'string'}, 'level': {'type': 'string', 'enum': ['word', 'morpheme']},
+         'document': _DOC, 'limit': {'type': 'integer'}}, []),
+    _fn('check_lexicon',
+        'Lexicon hygiene report: entries never linked, entries lacking a gloss or pos, homographs, forms one character '
+        'apart, entries whose lexicon gloss disagrees with how the corpus glosses them, links whose form no longer '
+        'matches the entry, one corpus gloss spread over several entries, entries attested in a single document.',
+        {'lexicon': {'type': 'string'}}, []),
+    _fn('check_integrity',
+        'Data-shape report: segmentations that do not add up to the word, duplicate and empty sentences, non-NFC '
+        'text, mixed apostrophe characters, and unusual characters in the baseline.',
+        {'document': _DOC}, []),
+    _fn('sequence_search',
+        'Sentences containing a sequence of words, each described by conditions on its form, morphemes, morph type, '
+        'or field values, e.g. [{"POS":"v"},{"POS":"n"}] or [{"Gloss":"ERG"},{"form":"ava"}]. adjacent=false '
+        'lets other words come between, in order. For constituent-order and construction questions.',
+        {'sequence': {'type': 'array', 'items': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
+         'adjacent': {'type': 'boolean'}, 'document': _DOC, 'regex': {'type': 'boolean'},
+         'limit': {'type': 'integer'}}, ['sequence']),
+    _fn('replace_in_field',
+        'PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, '
+        'whole_value=true for exact values, regex=true for patterns with backreferences (\\1). One call plans '
+        'every change; the plan lists each.',
+        {'field': {'type': 'string'}, 'pattern': {'type': 'string'}, 'replacement': {'type': 'string'},
+         'regex': {'type': 'boolean'}, 'whole_value': {'type': 'boolean'}, 'document': _DOC},
+        ['field', 'pattern', 'replacement']),
+    _fn('respell_all',
+        'PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each '
+        'word\'s analysis, glosses, and links. Patterns apply within words only.',
+        {'pattern': {'type': 'string'}, 'replacement': {'type': 'string'}, 'regex': {'type': 'boolean'},
+         'whole_word': {'type': 'boolean'}, 'document': _DOC}, ['pattern', 'replacement']),
+    _fn('copy_to_orthography',
+        'PLAN: fill an orthography for every word that lacks a value, from the baseline or another orthography.',
+        {'orthography': {'type': 'string'}, 'source': {'type': 'string'}, 'document': _DOC,
+         'overwrite': {'type': 'boolean'}}, ['orthography']),
+    _fn('set_analysis_for_form',
+        'PLAN: apply one analysis (same shape as set_analysis\'s morphemes) to every occurrence of a word form; '
+        'skip_analyzed=true leaves already-analysed words alone.',
+        {'form': {'type': 'string'},
+         'morphemes': {'type': 'array', 'items': {'type': 'object', 'properties': {
+             'form': {'type': 'string'}, 'type': {'type': 'string'},
+             'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}}, 'required': ['form']}},
+         'document': _DOC, 'skip_analyzed': {'type': 'boolean'}}, ['form', 'morphemes']),
+    _fn('merge_entries',
+        'PLAN: fold one lexicon entry into another (links move to the kept entry, the other is deleted).',
+        {'keep_form': {'type': 'string'}, 'remove_form': {'type': 'string'}, 'lexicon': {'type': 'string'},
+         'keep_id': {'type': 'string'}, 'remove_id': {'type': 'string'}}, []),
+    _fn('delete_entry', 'PLAN: delete a lexicon entry and its links; the words and morphemes stay, unlinked.',
+        _ENTRY, []),
+    _fn('rename_entry', 'PLAN: change a lexicon entry\'s headword form.',
+        {'new_form': {'type': 'string'}, **_ENTRY}, ['new_form']),
+    _fn('rename_document', 'PLAN: rename a document.',
+        {'document': _DOC, 'new_name': {'type': 'string'}}, ['document', 'new_name']),
+]
+_IMPL.update({
+    'corpus_stats': t_corpus_stats, 'frequency_list': t_frequency_list, 'worklist': t_worklist,
+    'check_lexicon': t_check_lexicon, 'check_integrity': t_check_integrity, 'sequence_search': t_sequence_search,
+    'replace_in_field': t_replace_in_field, 'respell_all': t_respell_all, 'copy_to_orthography': t_copy_to_orthography,
+    'set_analysis_for_form': t_set_analysis_for_form, 'merge_entries': t_merge_entries, 'delete_entry': t_delete_entry,
+    'rename_entry': t_rename_entry, 'rename_document': t_rename_document,
+})
+WRITE_TOOLS |= {'replace_in_field', 'respell_all', 'copy_to_orthography', 'set_analysis_for_form', 'merge_entries',
+                'delete_entry', 'rename_entry', 'rename_document'}
