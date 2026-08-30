@@ -22,10 +22,10 @@ import unicodedata
 
 from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, load_document, resolve,
                       render_document, render_overview, render_sentence, render_word,
-                      segmentation, joiner, word_ref)
+                      segmentation, joiner, word_ref, is_unicode_punctuation)
 
 MAX_RESULT_CHARS = 12000
-MAX_DOCS_PER_SEARCH = 200
+MAX_DOCS_PER_SEARCH = 1000
 
 
 class ToolError(Exception):
@@ -108,20 +108,29 @@ class Workspace:
         vocabs = [self.project.vocab(lexicon)] if lexicon else self.project.vocabs
         if not vocabs:
             raise ToolError('This project has no lexicon.')
+        # "ама#2" picks homograph 2 (the entry's `homograph` metadata).
+        homograph = None
+        if '#' in form:
+            form, _, hn = form.rpartition('#')
+            homograph = hn.strip()
         hits = []
         for v in vocabs:
             for it in self.lexicon(v):
-                if (it.get('form') or '').lower() == form.lower():
-                    hits.append((v, it))
+                if (it.get('form') or '').lower() != form.lower():
+                    continue
+                if homograph is not None and str((it.get('metadata') or {}).get('homograph', '')) != homograph:
+                    continue
+                hits.append((v, it))
         news = [(k, e) for k, e in self.new_entries.items()
                 if e['form'].lower() == form.lower() and (not lexicon or e['vocab_id'] == vocabs[0]['id'])]
         if len(hits) + len(news) == 1:
             return ('existing', hits[0][1]) if hits else ('new', news[0][0])
         if not hits and not news:
             raise ToolError(f'No lexicon entry "{form}". Use read_lexicon to look, or create_entry to add one.')
-        lines = [f'Several entries match "{form}"; pass entry_id to pick one:']
+        lines = [f'Several entries match "{form}"; pass entry_id, or entry_form "{form}#<homograph number>" where one is shown:']
         for v, it in hits:
-            lines.append(f'  id={it["id"]} {entry_line(it)} ({v["name"]})')
+            hn = (it.get('metadata') or {}).get('homograph')
+            lines.append(f'  id={it["id"]}' + (f' form={form}#{hn}' if hn not in (None, '') else '') + f' {entry_line(it)} ({v["name"]})')
         for k, e in news:
             lines.append(f'  id={k} {e["form"]} (new in this plan)')
         raise ToolError('\n'.join(lines))
@@ -211,7 +220,7 @@ def entry_line(it: dict) -> str:
     if meta.get('morphType'):
         parts.append(f'type={meta["morphType"]}')
     for k, v in meta.items():
-        if k in ('morphType',) or k.startswith('prov') or k.startswith('flex') or v in (None, '', [], {}):
+        if k in ('morphType', 'flexEntry', 'flexSense') or k.startswith('prov') or v in (None, '', [], {}):
             continue
         if isinstance(v, (list, dict)):
             v = json.dumps(v, ensure_ascii=False)
@@ -219,12 +228,22 @@ def entry_line(it: dict) -> str:
     return ' | '.join(parts)
 
 
+_REF_TOKEN = re.compile(r's\d+(?:\.w\d+(?:\.m\d+)?)?')
+
+
 def _refs(refs) -> List[str]:
+    """References as the model passes them: a list or a string, possibly
+    prefixed with the document name the read tools print ('"Text 1" s3.w2')."""
     if refs is None:
         return []
-    if isinstance(refs, str):
-        return [r.strip() for r in re.split(r'[,\s]+', refs) if r.strip()]
-    return [str(r).strip() for r in refs if str(r).strip()]
+    items = [refs] if isinstance(refs, str) else [str(r) for r in refs]
+    out: List[str] = []
+    for item in items:
+        found = _REF_TOKEN.findall(item)
+        if not found and item.strip():
+            raise ToolError(f'Bad reference "{item.strip()}": use sN, sN.wN, or sN.wN.mN')
+        out.extend(found)
+    return out
 
 
 def _matcher(pattern: str, regex: bool):
@@ -239,11 +258,10 @@ def _matcher(pattern: str, regex: bool):
 
 
 def _is_break_char(c: str, cfg) -> bool:
-    """Does this character end a word (mirrors shouldTokenizeCharacter)?
-    Unicode punctuation, or any ASCII symbol, unless whitelisted; or, under a
+    """Does this character end a word (the editor's shouldTokenizeCharacter,
+    with its exact punctuation class)? Unless whitelisted; or, under a
     blacklist config, exactly the listed characters."""
-    cat = unicodedata.category(c)
-    punct = cat.startswith('P') or (ord(c) < 128 and cat.startswith('S'))
+    punct = is_unicode_punctuation(c)
     if not cfg:
         return punct
     if cfg.get('type') == 'unicodePunctuation':
@@ -581,7 +599,7 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
     meta = target.get('metadata') or {}
     lines = [f'Entry "{target.get("form")}" (id {target["id"]})']
     for k, v in meta.items():
-        if k.startswith('prov') or k.startswith('flex') or v in (None, '', [], {}):
+        if k in ('flexEntry', 'flexSense') or k.startswith('prov') or v in (None, '', [], {}):
             continue
         lines.append(f'  {k}: {json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v}')
     word_links, morph_links, exs = 0, 0, []
@@ -669,6 +687,15 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
                 lines.append(f'  {form}: ' + ', '.join(f'{v} ({n})' for v, n in c.most_common()))
         else:
             lines.append(f'Every form carries a single {f.name} value.')
+        by_value: Dict[str, Counter] = {}
+        for form, c in by_form.items():
+            for v, n in c.items():
+                by_value.setdefault(v, Counter())[form] += n
+        shared = {v: c for v, c in by_value.items() if len(c) > 1}
+        if shared:
+            lines.append(f'{len(shared)} {f.name} value{"s" if len(shared) != 1 else ""} carried by several forms (allomorphy or a gloss collision):')
+            for v, c in sorted(shared.items(), key=lambda kv: -len(kv[1]))[:25]:
+                lines.append(f'  {v}: ' + ', '.join(f'{form} ({n})' for form, n in c.most_common(8)) + (' …' if len(c) > 8 else ''))
         if ws.project.vocabs:
             lines.append(f'{unlinked_n} annotated but not linked to the lexicon'
                          + (': ' + '; '.join(unlinked) + (' …' if unlinked_n > len(unlinked) else '') if unlinked else '.'))
@@ -729,6 +756,19 @@ def t_plan_status(ws: Workspace) -> str:
 
 # --- write tools (plan only) ---------------------------------------------------
 
+FLEX_MORPH_TYPES = ['stem', 'bound stem', 'root', 'bound root', 'prefix', 'suffix', 'infix', 'circumfix',
+                    'simulfix', 'suprafix', 'infixing interfix', 'prefixing interfix', 'suffixing interfix',
+                    'clitic', 'enclitic', 'proclitic', 'particle', 'phrase', 'discontiguous phrase']
+
+
+def morph_type(t: str) -> str:
+    """The editor's controlled morph-type vocabulary (FLEx's inventory)."""
+    k = (t or '').strip().lower()
+    if k in FLEX_MORPH_TYPES:
+        return k
+    raise ToolError(f'Unknown morph type "{t}". Types: ' + ', '.join(FLEX_MORPH_TYPES))
+
+
 def _need(obj, kind, ref):
     if not isinstance(obj, kind):
         want = {Sentence: 'a sentence (sN)', Word: 'a word (sN.wN)', Morpheme: 'a morpheme (sN.wN.mN)'}[kind]
@@ -774,6 +814,8 @@ def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> s
     for m in morphemes:
         if not isinstance(m, dict) or not (m.get('form') or '').strip():
             raise ToolError('each morpheme needs a non-empty form')
+        if m.get('type'):
+            m = {**m, 'type': morph_type(m['type'])}
         fvals = []
         for name, val in (m.get('fields') or {}).items():
             f = ws.project.field(name)
@@ -793,10 +835,12 @@ def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> s
         vals = [next((fv['value'] for fv in m['fields'] if fv['layer_id'] == f.layer_id), '_') for m in out]
         if any(v not in ('', '_') for v in vals):
             gloss_bits.append(f'{f.name} {"-".join(v or "_" for v in vals)}')
+    had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
     ws.add_op({'kind': 'set_analysis', 'word_id': w.id, 'text_id': w.text_id, 'begin': w.begin, 'end': w.end,
                'morpheme_layer_id': ws.project.morpheme_layer_id, 'existing': existing, 'morphemes': out,
                'label': f'{doc.name} {ref} "{w.surface}": ' + (f'{segmentation(w)} → ' if w.morphemes else '')
-                        + desc + (', ' + ', '.join(gloss_bits) if gloss_bits else '')})
+                        + desc + (', ' + ', '.join(gloss_bits) if gloss_bits else '')
+                        + (f' (replaces {had_values} existing morpheme value{"s" if had_values != 1 else ""})' if had_values else '')})
     return ws.planned_note(1) + note
 
 
@@ -881,19 +925,34 @@ def t_create_entry(ws: Workspace, form: str, lexicon: Optional[str] = None, fiel
     if not form:
         raise ToolError('form must not be empty')
     v = ws.project.vocab(lexicon)
-    metadata = {k: ('' if val is None else str(val)) for k, val in (fields or {}).items()}
+    metadata = {lexicon_field(v, k): ('' if val is None else str(val)) for k, val in (fields or {}).items()}
     if type:
-        metadata['morphType'] = type
+        metadata['morphType'] = morph_type(type)
     key = f'new:{v["id"]}:{form}#{len(ws.new_entries) + 1}'
     ws.new_entries[key] = {'form': form, 'vocab_id': v['id'], 'metadata': metadata}
     ws.add_op({'kind': 'create_entry', 'vocab_id': v['id'], 'form': form, 'metadata': metadata, 'key': key,
                'label': f'{v["name"]}: new entry ' + entry_line({'form': form, 'metadata': metadata})})
-    return ws.planned_note(1) + f' New entries can be linked in this same plan (entry_id="{key}").'
+    return ws.planned_note(1) + f'\nentry_id: {key}  (use it to link this entry in the same plan)'
+
+
+def lexicon_field(vocab: dict, name: str) -> str:
+    """A lexicon's configured entry field, by case-insensitive name; any name
+    when the lexicon declares no schema. morphType is always allowed."""
+    fields = vocab.get('fields') or []
+    if not fields or name == 'morphType':
+        return name
+    for f in fields:
+        if f.lower() == (name or '').lower():
+            return f
+    raise ToolError(f'"{vocab["name"]}" has no entry field "{name}". Fields: ' + ', '.join(fields))
 
 
 def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optional[str] = None,
                       lexicon: Optional[str] = None, entry_id: Optional[str] = None) -> str:
     kind, target = ws.find_entry(entry_form, lexicon, entry_id)
+    vocab = next((v for v in ws.project.vocabs if v['id'] == (ws.new_entries[target]['vocab_id'] if kind == 'new' else target.get('layer'))), None)
+    if vocab:
+        field = lexicon_field(vocab, field)
     if kind == 'new':
         ws.new_entries[target]['metadata'][field] = '' if value is None else str(value)
         for op in ws.ops:
@@ -1002,23 +1061,26 @@ TOOLS = [
         'PLAN: replace a word\'s morpheme segmentation and morpheme-level fields. Morphemes are given in order; '
         'each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and '
         'fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, '
-        '{"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. Existing morphemes and their field values are replaced.',
+        '{"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word\'s whole chain: every existing '
+        'morpheme field value on it, human-made ones included, is dropped. To change one morpheme\'s value keep the '
+        'chain and use set_field with sN.wN.mN. Types: stem, root, prefix, suffix, infix, enclitic, proclitic, ...',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'},
          'morphemes': {'type': 'array', 'items': {'type': 'object', 'properties': {
              'form': {'type': 'string'}, 'type': {'type': 'string'},
              'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}}, 'required': ['form']}}},
         ['document', 'ref', 'morphemes']),
     _fn('set_orthography',
-        'PLAN: set an orthography (an alternative transcription) value on words.',
+        'PLAN: set an orthography value (an alternative transcription tier, not the baseline) on words.',
         {'document': _DOC, 'refs': _REFS, 'orthography': {'type': 'string'}, 'value': {'type': 'string'}},
         ['document', 'refs', 'orthography', 'value']),
     _fn('respell',
-        'PLAN: change the baseline spelling of one word (its analysis, glosses, and links are kept).',
+        'PLAN: change the BASELINE spelling of one word (its analysis, glosses, and links are kept). For an '
+        'alternative transcription tier use set_orthography.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'}, 'new_text': {'type': 'string'}},
         ['document', 'ref', 'new_text']),
     _fn('link_entry',
-        'PLAN: link words or morphemes to a lexicon entry, by the entry\'s form (or entry_id when ambiguous, or '
-        'the id returned by create_entry). Replaces an existing link.',
+        'PLAN: link words or morphemes to a lexicon entry, by the entry\'s form ("ама", or "ама#2" for homograph 2), '
+        'or entry_id (also the id returned by create_entry). Replaces an existing link.',
         {'document': _DOC, 'refs': _REFS, 'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'},
          'entry_id': {'type': 'string'}},
         ['document', 'refs']),
@@ -1113,7 +1175,7 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
 from .stats import (t_corpus_stats, t_frequency_list, t_worklist, t_check_lexicon,  # noqa: E402
                     t_check_integrity, t_sequence_search)
 from .bulk import (t_replace_in_field, t_respell_all, t_copy_to_orthography, t_set_analysis_for_form,  # noqa: E402
-                   t_merge_entries, t_delete_entry, t_rename_entry, t_rename_document)
+                   t_set_field_for_form, t_merge_entries, t_delete_entry, t_rename_entry, t_rename_document)
 
 _ENTRY = {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'}}
 
@@ -1133,13 +1195,16 @@ TOOLS += [
         '"unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), or '
         '"unverified" (machine-made annotations nobody confirmed). Use this to decide what to do next.',
         {'kind': {'type': 'string', 'enum': ['unlinked', 'unglossed', 'unanalyzed', 'unverified']},
-         'field': {'type': 'string'}, 'level': {'type': 'string', 'enum': ['word', 'morpheme']},
+         'field': {'type': 'string'},
+         'level': {'type': 'string', 'enum': ['word', 'morpheme'], 'description': 'For unlinked: which level to list (default morpheme when there is a morpheme layer). For unglossed the field\'s scope decides.'},
          'document': _DOC, 'limit': {'type': 'integer'}}, []),
     _fn('check_lexicon',
-        'Lexicon hygiene report: entries never linked, entries lacking a gloss or pos, homographs, forms one character '
-        'apart, entries whose lexicon gloss disagrees with how the corpus glosses them, links whose form no longer '
-        'matches the entry, one corpus gloss spread over several entries, entries attested in a single document.',
-        {'lexicon': {'type': 'string'}}, []),
+        'Lexicon hygiene report, worst first with counts. section: "unused" (entries never linked), "fields" (missing '
+        'gloss/pos), "homographs" (same form; groups with the same gloss first), "near" (forms one character apart), '
+        '"glosses" (lexicon gloss disagrees with the corpus), "spread" (one corpus gloss over several entries), '
+        '"stale" (link form no longer contains the entry form), "single" (attested in one document), or "all" (default, '
+        'each section capped).',
+        {'lexicon': {'type': 'string'}, 'section': {'type': 'string'}}, []),
     _fn('check_integrity',
         'Data-shape report: segmentations that do not add up to the word, duplicate and empty sentences, non-NFC '
         'text, mixed apostrophe characters, and unusual characters in the baseline.',
@@ -1168,6 +1233,12 @@ TOOLS += [
         'PLAN: fill an orthography for every word that lacks a value, from the baseline or another orthography.',
         {'orthography': {'type': 'string'}, 'source': {'type': 'string'}, 'document': _DOC,
          'overwrite': {'type': 'boolean'}}, ['orthography']),
+    _fn('set_field_for_form',
+        'PLAN: set a field value on every occurrence of a form: a morpheme form for a morpheme field, a word form for '
+        'a word field (e.g. Gloss (Morpheme) = "OBL" on every morpheme "ди"). only_empty=true (default) fills gaps '
+        'and leaves existing values alone; false overwrites them.',
+        {'form': {'type': 'string'}, 'field': {'type': 'string'}, 'value': {'type': 'string'},
+         'only_empty': {'type': 'boolean'}, 'document': _DOC}, ['form', 'field', 'value']),
     _fn('set_analysis_for_form',
         'PLAN: apply one analysis (same shape as set_analysis\'s morphemes) to every occurrence of a word form; '
         'skip_analyzed=true leaves already-analysed words alone.',
@@ -1191,10 +1262,10 @@ _IMPL.update({
     'corpus_stats': t_corpus_stats, 'frequency_list': t_frequency_list, 'worklist': t_worklist,
     'check_lexicon': t_check_lexicon, 'check_integrity': t_check_integrity, 'sequence_search': t_sequence_search,
     'replace_in_field': t_replace_in_field, 'respell_all': t_respell_all, 'copy_to_orthography': t_copy_to_orthography,
-    'set_analysis_for_form': t_set_analysis_for_form, 'merge_entries': t_merge_entries, 'delete_entry': t_delete_entry,
+    'set_analysis_for_form': t_set_analysis_for_form, 'set_field_for_form': t_set_field_for_form, 'merge_entries': t_merge_entries, 'delete_entry': t_delete_entry,
     'rename_entry': t_rename_entry, 'rename_document': t_rename_document,
 })
-WRITE_TOOLS |= {'replace_in_field', 'respell_all', 'copy_to_orthography', 'set_analysis_for_form', 'merge_entries',
+WRITE_TOOLS |= {'replace_in_field', 'respell_all', 'copy_to_orthography', 'set_analysis_for_form', 'set_field_for_form', 'merge_entries',
                 'delete_entry', 'rename_entry', 'rename_document'}
 
 from .query import t_query, t_query_help  # noqa: E402

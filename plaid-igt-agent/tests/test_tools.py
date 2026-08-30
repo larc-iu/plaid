@@ -115,7 +115,7 @@ def test_orthography_respell_links_entries():
     assert w.ops[-1] == {'kind': 'unlink', 'link_id': 'l-2', 'token_id_hint': 'm-1b', 'label': 'Text 1 s1.w1.m2 "di": unlink "-di"'}
     # new entry, then link to it in the same plan
     out = call_tool(w, 'create_entry', {'form': 'akun', 'fields': {'gloss': 'see'}, 'type': 'stem'})
-    key = out.split('entry_id="')[1].rstrip('").')
+    key = out.split('entry_id: ')[1].split()[0]
     assert w.ops[-1]['kind'] == 'create_entry' and w.ops[-1]['metadata'] == {'gloss': 'see', 'morphType': 'stem'}
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3'], 'entry_form': 'akun'})
     assert w.ops[-1]['new_entry_key'] == key and w.ops[-1]['item_id'] is None
@@ -141,3 +141,36 @@ def test_tool_errors_come_back_as_text():
 def test_search_without_pattern_points_to_worklist():
     assert 'use worklist' in call_tool(ws(), 'search', {})
     assert call_tool(ws(), 'search', {'where': 'Gloss', 'missing': True}).startswith('Error:')
+
+
+def test_refs_accept_document_prefixes_and_reject_junk():
+    w = ws()
+    out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['"Text 1" s1.w1', 's1.w2, s1.w3'], 'field': 'Gloss', 'value': 'X'})
+    assert 'Planned 3 changes' in out
+    assert 'Bad reference "w1"' in call_tool(w, 'set_field', {'document': 'd1', 'refs': 'w1', 'field': 'Gloss', 'value': 'X'})
+
+
+def test_morph_types_and_lexicon_fields_are_validated():
+    w = ws()
+    assert 'Unknown morph type "sufix"' in call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [{'form': 'gam', 'type': 'sufix'}]})
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [{'form': 'gam', 'type': 'Bound Stem'}]})
+    assert w.ops[-1]['morphemes'][0]['morph_type'] == 'bound stem'
+    # a lexicon with a configured field schema rejects unknown entry fields
+    c = FakeClient()
+    c._project['vocabs'][0]['config'] = {'igt': {'fields': {'gloss': {'inline': True}, 'pos': {'inline': False}}}}
+    w2 = Workspace(c, load_project(c, 'p1'))
+    assert 'has no entry field "definition"' in call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'definition': 'y'}})
+    call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'Gloss': 'y'}})
+    assert w2.ops[-1]['metadata'] == {'gloss': 'y'}
+    assert 'entry fields: gloss, pos' in call_tool(w2, 'project_overview', {})
+
+
+def test_homograph_numbers_pick_an_entry():
+    c = FakeClient()
+    c._lexicon['items'][2]['metadata']['homograph'] = 1
+    c._lexicon['items'][3]['metadata']['homograph'] = 2
+    w = Workspace(c, load_project(c, 'p1'))
+    out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': 's1.w2', 'entry_form': 'gam'})
+    assert 'form=gam#1' in out and 'form=gam#2' in out
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': 's1.w2', 'entry_form': 'gam#2'})
+    assert w.ops[-1]['item_id'] == 'vi-gam2'

@@ -59,12 +59,15 @@ def test_worklist_kinds():
 
 def test_check_lexicon_report():
     out = call_tool(ws(), 'check_lexicon', {})
-    assert 'Lexicon check: 4 entries in Lexicon, 2 links.' in out
+    assert out.startswith('Lexicon check: 4 entries in Lexicon, 2 links; each section capped')
     assert '2 entries never linked from a text: gam, gam' in out
     assert '0 entries without a gloss.' in out and '3 entries without a pos: -di, gam, gam' in out
-    assert '1 homograph groups:' in out and 'gam | gloss=fish (0 links) | gam | gloss=net (0 links)' in out
+    assert '1 homograph groups (0 with a repeated gloss' in out and 'gam | gloss=fish (0 links) | gam | gloss=net (0 links)' in out
     assert '0 entries whose gloss disagrees with the corpus.' in out
-    assert '0 links whose form no longer matches the entry.' in out
+    assert '0 links whose form no longer contains the entry form.' in out
+    only = call_tool(ws(), 'check_lexicon', {'section': 'unused'})
+    assert 'section "unused"' in only and 'homograph' not in only
+    assert 'section must be' in call_tool(ws(), 'check_lexicon', {'section': 'bogus'})
 
 
 def test_check_integrity_report():
@@ -217,3 +220,37 @@ def test_overlapping_respells_are_refused_but_repeats_replace():
     call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
     call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'ghem'})
     assert len(w.ops) == 1 and w.ops[0]['value'] == 'ghem'
+
+
+def test_unverified_worklist_sees_machine_made_links():
+    c = FakeClient()
+    doc = c._documents['d1']
+    doc['text_layers'][0]['token_layers'][1]['vocabs'][0]['vocab_links'][0]['metadata'] = {'prov': 'inferred', 'provSource': 'x'}
+    out = call_tool(ws(c), 'worklist', {'kind': 'unverified'})
+    assert out.startswith('1 words with machine-made annotations not yet confirmed') and 'ali-di' in out
+
+
+def test_set_field_for_form_fills_gaps_by_default():
+    w = ws()
+    out = call_tool(w, 'set_field_for_form', {'form': 'GAM', 'field': 'Morph Gloss', 'value': 'fish'})
+    assert 'Planned 2 changes' in out and {op['token_id'] for op in w.ops} == {'m-2', 'm-4a'}
+    # existing values are left alone unless only_empty=false
+    assert 'Nothing to change' in call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL'})
+    call_tool(w, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})
+    assert w.ops[-1]['span_id'] == 'sp-m1b' and w.ops[-1]['value'] == 'OBL'
+    # word fields match word surfaces
+    call_tool(w, 'set_field_for_form', {'form': 'akuna', 'field': 'Gloss', 'value': 'saw'})
+    assert w.ops[-1]['token_id'] == 'w-3'
+    assert 'sentence field' in call_tool(w, 'set_field_for_form', {'form': 'x', 'field': 'Translation', 'value': 'y'})
+
+
+def test_formless_morphemes_in_a_chain_render_as_gaps():
+    c = FakeClient()
+    doc = c._documents['d1']
+    doc['text_layers'][0]['token_layers'][2]['tokens'].append({'id': 'm-2b', 'text': 'text1', 'begin': 7, 'end': 10, 'precedence': 2})
+    w = ws(c)
+    assert 'w2 gam | seg=?-?' in call_tool(w, 'read_document', {'document': 'd1'})  # neither fixture morpheme has a form
+    out = call_tool(w, 'check_integrity', {})
+    assert '1 words with a morpheme that has no form (shown as ?): s1.w2 gam' in out
+    assert '0 words whose morpheme forms do not add up' in out
+    assert '  1\t1\tgam' in call_tool(w, 'frequency_list', {'what': 'morpheme'})  # the gap is not a form

@@ -170,6 +170,8 @@ const describeStep = ({ name, args: a }) => {
       return `Planned respelling ${q(a.pattern)} → ${q(a.replacement)}${where(a)}`;
     case 'copy_to_orthography':
       return `Planned filling ${a.orthography} from ${a.source || 'the baseline'}${where(a)}`;
+    case 'set_field_for_form':
+      return `Planned ${a.field} = ${q(a.value)} on every ${q(a.form)}${where(a)}`;
     case 'set_analysis_for_form':
       return `Planned an analysis for every ${q(a.form)}${where(a)}`;
     case 'merge_entries':

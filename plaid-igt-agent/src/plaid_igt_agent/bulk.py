@@ -8,7 +8,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from .project import Word, Sentence, Morpheme, segmentation, word_ref
-from .tools import Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap
+from .tools import Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op
 from .stats import _analyzed, _docs, _tag
 
 MAX_BULK = 3000
@@ -137,6 +137,37 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
     _check_cap(len(staged))
     ws.add_ops(staged)
     return _bulk_note(ws, len(labels), labels, 'words')
+
+
+def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_empty: bool = True,
+                         document: Optional[str] = None) -> str:
+    """PLAN: one field value on every occurrence of a form (morpheme form for
+    a morpheme field, word form for a word field)."""
+    f = ws.project.field(field)
+    if f.scope == 'Sentence':
+        raise ToolError(f'"{f.name}" is a sentence field; use set_field with sentence references')
+    key = (form or '').strip().casefold()
+    if not key:
+        raise ToolError('Give a form.')
+    value = '' if value is None else str(value)
+    staged: List[Dict[str, Any]] = []
+    for doc in _docs(ws, document):
+        for s in doc.sentences:
+            for w in s.words:
+                if f.scope == 'Word':
+                    units = [(w, word_ref(s, w), w.surface)] if w.surface.casefold() == key else []
+                else:
+                    units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for m in w.morphemes if m.form.casefold() == key]
+                for u, ref, what in units:
+                    old = u.fields.get(f.name)
+                    cur = ws.planned_span_value(f.layer_id, u.id, old.value if old else '')
+                    if cur == value or (only_empty and cur != ''):
+                        continue
+                    staged.append(span_op(doc, ref, what, f, u.id, old, value))
+    _check_cap(len(staged))
+    ws.add_ops(staged)
+    return _bulk_note(ws, len(staged), [op['label'] for op in staged], f'occurrences of "{form}"'
+                      + (' without a value' if only_empty else ''))
 
 
 def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document: Optional[str] = None,

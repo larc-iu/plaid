@@ -109,3 +109,15 @@ def test_colliding_field_names_get_scope_suffixes():
     d = parse_document(document_raw(), p)
     assert d.sentences[0].words[0].fields['Gloss (Word)'].value == 'Ali'
     assert 'Gloss (Word)=Ali' in render_document(d, p) and 'Gloss (Morpheme)=Ali-ERG' in render_document(d, p)
+
+
+def test_literal_and_case_only_collisions_stay_addressable():
+    raw = project_raw()
+    layers = raw['text_layers'][0]['token_layers']
+    layers[1]['span_layers'][0]['name'] = 'gloss'          # word-scope, lowercase
+    layers[2]['span_layers'][0]['name'] = 'Gloss'          # morpheme-scope
+    layers[0]['span_layers'][0]['name'] = 'Gloss (Word)'   # a sentence layer literally so named
+    p = load_project(FakeClient(project=raw), 'p1')
+    assert sorted(p.fields) == ['Gloss (Morpheme)', 'Gloss (Word)', 'gloss (Word 2)']
+    assert p.field('Gloss (Word)').scope == 'Sentence' and p.field('gloss (word 2)').scope == 'Word'
+    assert p.field_by_layer('sl-trans') is not None

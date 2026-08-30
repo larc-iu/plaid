@@ -184,6 +184,8 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                     spread[k].add(d.id)
                 elif what_l == 'morpheme':
                     for m in w.morphemes:
+                        if not m.form:
+                            continue
                         k = m.form.casefold()
                         counts[k] += 1
                         spread[k].add(d.id)
@@ -221,12 +223,14 @@ def _prov_votes(w: Word) -> List[str]:
     for sp in w.fields.values():
         votes.append(prov_state(sp.metadata))
     if w.link:
-        votes.append(HUMAN)  # links carry prov in metadata we did not keep; treat as human
+        votes.append(prov_state(w.link.metadata))
     for m in w.morphemes:
         if len(w.morphemes) > 1 or m.morph_type or m.form != w.surface:
             votes.append(prov_state(m.metadata))
         for sp in m.fields.values():
             votes.append(prov_state(sp.metadata))
+        if m.link:
+            votes.append(prov_state(m.link.metadata))
     return votes
 
 
@@ -305,7 +309,10 @@ def _strip_affix(form: str) -> str:
     return (form or '').strip('-=~ ').casefold()
 
 
-def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None) -> str:
+LEXICON_SECTIONS = ('unused', 'fields', 'homographs', 'near', 'glosses', 'spread', 'stale', 'single')
+
+
+def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optional[str] = None) -> str:
     """Lexicon hygiene: entries never linked, entries missing gloss or POS,
     homographs, near-duplicate forms, entries whose lexicon gloss disagrees
     with the corpus, links whose form no longer matches the entry, one corpus
@@ -314,6 +321,12 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None) -> str:
     vocabs = [project.vocab(lexicon)] if lexicon else project.vocabs
     if not vocabs:
         return 'This project has no lexicon.'
+    section = (section or 'all').lower()
+    if section != 'all' and section not in LEXICON_SECTIONS:
+        raise ToolError('section must be "all" or one of: ' + ', '.join(LEXICON_SECTIONS))
+    only = None if section == 'all' else section
+    cap = 200 if only else 12  # one section: generous; the overview: a taste of each
+    want = lambda name: only is None or only == name  # noqa: E731
     items: Dict[str, dict] = {}
     for v in vocabs:
         for it in ws.lexicon(v):
@@ -346,30 +359,46 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None) -> str:
                     # A word may link to its stem's entry, so the entry form
                     # only has to be contained in the linked form.
                     if _strip_affix(items[iid].get('form')) not in _strip_affix(form):
-                        if len(stale) < 15:
+                        if len(stale) < 200:
                             stale.append(f'{ref} {form} → "{items[iid].get("form")}"')
                         else:
                             stale.append('')
-    lines = [f'Lexicon check: {len(items)} entries in {", ".join(v["name"] for v in vocabs)}, {sum(uses.values())} links.']
+    lines = [f'Lexicon check: {len(items)} entries in {", ".join(v["name"] for v in vocabs)}, {sum(uses.values())} links'
+             + (f'; section "{only}"' if only else '; each section capped, ask for one section for the full list') + '.']
 
-    unused = [it for it in items.values() if uses[it['id']] == 0]
-    lines.append(f'{len(unused)} entries never linked from a text' + (': ' + ', '.join(it.get('form') or '' for it in unused[:40])
-                                                                       + (' …' if len(unused) > 40 else '') if unused else '.'))
-    no_gloss = [it for it in items.values() if not (it.get('metadata') or {}).get('gloss')]
-    no_pos = [it for it in items.values() if not (it.get('metadata') or {}).get('pos')]
-    lines.append(f'{len(no_gloss)} entries without a gloss' + (': ' + ', '.join(it.get('form') or '' for it in no_gloss[:30]) + (' …' if len(no_gloss) > 30 else '') if no_gloss else '.'))
-    lines.append(f'{len(no_pos)} entries without a pos' + (': ' + ', '.join(it.get('form') or '' for it in no_pos[:30]) + (' …' if len(no_pos) > 30 else '') if no_pos else '.'))
+    def listing(title, forms, noun='entries'):
+        forms = list(forms)
+        lines.append(f'{len(forms)} {title}' + (': ' + ', '.join(forms[:cap]) + (f' … ({len(forms) - cap} more)' if len(forms) > cap else '') if forms else '.'))
+
+    if want('unused'):
+        listing('entries never linked from a text', (it.get('form') or '' for it in items.values() if uses[it['id']] == 0))
+    if want('fields'):
+        schema = set()
+        for v in vocabs:
+            schema |= set(v.get('fields') or [])
+        for fld in ('gloss', 'pos'):
+            if schema and fld not in schema:
+                continue
+            listing(f'entries without a {fld}', (it.get('form') or '' for it in items.values() if not (it.get('metadata') or {}).get(fld)))
 
     by_form: Dict[str, List[dict]] = defaultdict(list)
     for it in items.values():
         by_form[_strip_affix(it.get('form'))].append(it)
-    homographs = {k: v for k, v in by_form.items() if len(v) > 1}
-    if homographs:
-        lines.append(f'{len(homographs)} homograph groups:')
-        for k, its in sorted(homographs.items(), key=lambda kv: -len(kv[1]))[:30]:
-            lines.append('  ' + ' | '.join(f'{entry_line(it)} ({uses[it["id"]]} links)' for it in its))
-    else:
-        lines.append('No homographs.')
+    if want('homographs'):
+        homographs = {k: v for k, v in by_form.items() if len(v) > 1}
+        if homographs:
+            def same_gloss(its):
+                gl = [((it.get('metadata') or {}).get('gloss') or '').casefold() for it in its]
+                return len(gl) - len(set(gl))
+            ranked = sorted(homographs.items(), key=lambda kv: (-same_gloss(kv[1]), -len(kv[1])))
+            dup = sum(1 for _, its in ranked if same_gloss(its))
+            lines.append(f'{len(homographs)} homograph groups ({dup} with a repeated gloss, likely duplicates; the rest look like senses):')
+            for k, its in ranked[:cap]:
+                lines.append('  ' + ' | '.join(f'{entry_line(it)} ({uses[it["id"]]} links)' for it in its))
+            if len(ranked) > cap:
+                lines.append(f'  … {len(ranked) - cap} more groups')
+        else:
+            lines.append('No homographs.')
 
     forms = sorted(by_form)
     near: List[str] = []
@@ -386,9 +415,8 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None) -> str:
             if abs(len(fm) - len(other)) <= 1 and difflib.SequenceMatcher(None, fm, other).ratio() >= 0.8 \
                     and sum(a != b for a, b in zip(fm, other)) + abs(len(fm) - len(other)) == 1:
                 near.append(f'{fm} / {other}')
-    if near:
-        lines.append(f'{len(near)} pairs of forms one character apart (possible variants or duplicates): '
-                     + ', '.join(near[:30]) + (' …' if len(near) > 30 else ''))
+    if want('near'):
+        listing('pairs of forms one character apart (possible variants or duplicates)', near, 'pairs')
 
     disagree = []
     for iid, c in corpus_gloss.items():
@@ -396,18 +424,18 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None) -> str:
         top, n = c.most_common(1)[0]
         if lex and top.casefold() != lex.casefold():
             disagree.append(f'{items[iid].get("form")}: lexicon "{lex}", corpus mostly "{top}" ({n}/{sum(c.values())})')
-    lines.append(f'{len(disagree)} entries whose gloss disagrees with the corpus' + (':\n  ' + '\n  '.join(disagree[:30]) if disagree else '.'))
-
-    spread = {g: ids for g, ids in gloss_items.items() if len(ids) > 1}
-    if spread:
-        lines.append(f'{len(spread)} corpus glosses linked to several entries: '
-                     + '; '.join(f'{g} → {", ".join(items[i].get("form") or "" for i in ids)}' for g, ids in list(spread.items())[:20]))
-    real_stale = [s for s in stale if s]
-    lines.append(f'{len(real_stale) + (len(stale) - len(real_stale))} links whose form no longer matches the entry'
-                 + (': ' + '; '.join(real_stale) + (' …' if len(stale) > len(real_stale) else '') if real_stale else '.'))
-    single = [items[i].get('form') or '' for i, ds in use_docs.items() if len(ds) == 1 and len(docs) > 1]
-    if len(docs) > 1:
-        lines.append(f'{len(single)} entries attested in a single document' + (': ' + ', '.join(single[:40]) + (' …' if len(single) > 40 else '') if single else '.'))
+    if want('glosses'):
+        lines.append(f'{len(disagree)} entries whose gloss disagrees with the corpus' + (':\n  ' + '\n  '.join(disagree[:cap])
+                     + (f'\n  … {len(disagree) - cap} more' if len(disagree) > cap else '') if disagree else '.'))
+    if want('spread'):
+        spread = {g: ids for g, ids in gloss_items.items() if len(ids) > 1}
+        listing('corpus glosses linked to several entries', (f'{g} → {", ".join(items[i].get("form") or "" for i in ids)}' for g, ids in spread.items()))
+    if want('stale'):
+        real_stale = [s for s in stale if s]
+        lines.append(f'{len(stale)} links whose form no longer contains the entry form'
+                     + (': ' + '; '.join(real_stale[:cap]) + (' …' if len(stale) > min(cap, len(real_stale)) else '') if real_stale else '.'))
+    if want('single') and len(docs) > 1:
+        listing('entries attested in a single document', (items[i].get('form') or '' for i, ds in use_docs.items() if len(ds) == 1))
     return _truncate('\n'.join(lines))
 
 
@@ -423,6 +451,8 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
     docs = _docs(ws, document)
     mismatch: List[str] = []
     mismatch_n = 0
+    formless: List[str] = []
+    formless_n = 0
     dups: Dict[str, List[str]] = defaultdict(list)
     empty: List[str] = []
     non_nfc: List[str] = []
@@ -445,6 +475,11 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
                 empty.append(f'{tag}s{s.index}')
             dups[s.text.strip().casefold()].append(f'{tag}s{s.index}')
             for w in s.words:
+                if any(m.form == '' for m in w.morphemes):
+                    formless_n += 1
+                    if len(formless) < 15:
+                        formless.append(f'{tag}{word_ref(s, w)} {w.surface}')
+                    continue
                 if len(w.morphemes) > 1 or (w.morphemes and w.morphemes[0].form != w.surface):
                     joined = ''.join(m.form for m in w.morphemes)
                     if joined.replace('-', '').replace('=', '').casefold() != w.surface.replace('-', '').replace('=', '').casefold():
@@ -452,6 +487,7 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
                         if len(mismatch) < 25:
                             mismatch.append(f'{tag}{word_ref(s, w)} {w.surface} ≠ {segmentation(w)}')
     lines = [f'Integrity check over {len(docs)} document{"s" if len(docs) != 1 else ""}.']
+    lines.append(f'{formless_n} words with a morpheme that has no form (shown as ?)' + (': ' + '; '.join(formless) + (' …' if formless_n > len(formless) else '') if formless else '.'))
     lines.append(f'{mismatch_n} words whose morpheme forms do not add up to the surface (allomorphy or a slip)'
                  + (': ' + '; '.join(mismatch) + (' …' if mismatch_n > len(mismatch) else '') if mismatch else '.'))
     dd = {k: v for k, v in dups.items() if len(v) > 1 and k}
