@@ -265,10 +265,21 @@ const applies = new Map(); // conversation id -> plan application in flight
 const jobListeners = new Set(); // mounted components
 
 // At most one job runs per conversation: the composer and the plan's buttons
-// are both disabled while one is in flight.
+// are both disabled while one is in flight. A job stays in its registry until
+// its final write lands, so a conversation reopened in that window serves the
+// finished copy rather than a stale read, and deleting it cannot race the
+// write.
+const allJobs = () => [...turns.values(), ...applies.values()];
 const jobFor = (id) => (id ? turns.get(id) || applies.get(id) || null : null);
-const jobInProject = (projectId) =>
-  [...turns.values(), ...applies.values()].find((j) => j.projectId === projectId) || null;
+const jobInProject = (projectId) => allJobs().find((j) => j.projectId === projectId) || null;
+const convOf = (j) => (j.done ? j.result.conv : j.conv);
+
+// A service dispatches requests inline on its single event-stream reader, so
+// it handles exactly one at a time: a second request would sit unread until
+// the first returned, with no progress in the meantime. Better to say so than
+// to spin. Another online assistant is still free to take a turn.
+const serviceBusy = (projectId, serviceId) =>
+  allJobs().some((j) => j.projectId === projectId && j.serviceId === serviceId && !j.done);
 
 const upsert = (meta) => (prev) => [meta, ...prev.filter((m) => m.id !== meta.id)];
 
@@ -306,6 +317,10 @@ const persistConv = (client, userId, projectId, conv, meta) => {
     .catch((e) => {
       console.error('[Assistant] could not save the conversation', e);
       notifyError(humanizeError(e, 'The conversation could not be saved.'));
+    })
+    .finally(() => {
+      // Nothing queued behind this one: stop holding the chain.
+      if (saveQueues.get(conv.id) === next) saveQueues.delete(conv.id);
     });
   saveQueues.set(conv.id, next);
   return next;
@@ -328,6 +343,7 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
   const t = {
     id: conv.id,
     projectId,
+    serviceId: service.serviceId,
     kind: 'turn',
     conv,
     progress: 'Thinking…',
@@ -388,9 +404,10 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
       };
     }
     const meta = buildMeta(prevMeta, next, service);
-    persistConv(client, userId, projectId, next, meta);
     t.done = true;
     t.result = { conv: next, meta };
+    notifyJob(t);
+    await persistConv(client, userId, projectId, next, meta);
     turns.delete(conv.id);
     notifyJob(t);
     return t.result;
@@ -417,6 +434,7 @@ const startApply = ({
   const j = {
     id: conv.id,
     projectId,
+    serviceId: service.serviceId,
     kind: 'apply',
     conv,
     progress: 'Applying changes…',
@@ -478,9 +496,10 @@ const startApply = ({
       );
     }
     const meta = buildMeta(prevMeta, next, service);
-    persistConv(client, userId, projectId, next, meta);
     j.done = true;
     j.result = { conv: next, meta };
+    notifyJob(j);
+    await persistConv(client, userId, projectId, next, meta);
     applies.delete(conv.id);
     notifyJob(j);
     return j.result;
@@ -573,7 +592,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   useEffect(() => {
     let cancelled = false;
     const inFlight = jobInProject(projectId);
-    setActive(inFlight ? inFlight.conv : null);
+    setActive(inFlight ? convOf(inFlight) : null);
     loadList().then(async (metas) => {
       if (cancelled || inFlight || !metas.length) return;
       try {
@@ -617,7 +636,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   // Switching conversations: pick up a job in flight for the new one.
   useEffect(() => {
     const j = jobFor(active?.id);
-    if (j) {
+    if (j && !j.done) {
       setBusy(j.kind);
       setProgress(j.progress);
       setLiveSteps(j.steps);
@@ -650,7 +669,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     if (active?.id === id) return;
     const j = jobFor(id);
     if (j) {
-      setActive(j.conv);
+      setActive(convOf(j));
       return;
     }
     setOpening(id);
@@ -669,9 +688,11 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     const j = jobFor(id);
     if (j) {
       notifyError(
-        j.kind === 'apply'
-          ? 'That conversation is still applying changes.'
-          : 'That conversation is still waiting for an answer.',
+        j.done
+          ? 'That conversation is still being saved.'
+          : j.kind === 'apply'
+            ? 'That conversation is still applying changes.'
+            : 'That conversation is still waiting for an answer.',
       );
       return;
     }
@@ -698,9 +719,15 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [active?.display.length, busy, progress]);
 
+  // The chosen assistant takes one request at a time, so a job on another
+  // conversation blocks the composer just as this conversation's own does.
+  const occupied = !!service && serviceBusy(projectId, service.serviceId);
+  const blockedByOther = occupied && !busy;
+  const canSend = !!service && !busy && !occupied;
+
   const send = (textOverride) => {
     const text = (textOverride ?? input).trim();
-    if (!text || !service || busy) return;
+    if (!text || !canSend) return;
     setInput('');
     const base = activeRef.current || { id: newId(), messages: [], display: [] };
     const conv = {
@@ -728,7 +755,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   // before the user's item.
   const retryTurn = () => {
     const conv = activeRef.current;
-    if (!conv || busy || !service) return;
+    if (!conv || !canSend) return;
     const rewound = rewindForRetry(conv);
     if (!rewound) return;
     activeRef.current = rewound.conv;
@@ -737,7 +764,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
 
   const approve = (index, plan, { asHuman = false } = {}) => {
     const conv = activeRef.current;
-    if (busy || !conv || !service) return;
+    if (!conv || !canSend) return;
     setBusy('apply');
     setProgress('Applying changes…');
     setLiveSteps([]);
@@ -786,7 +813,6 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
             variant="ghost"
             size="sm"
             onClick={startNew}
-            disabled={!!busy}
             title="New conversation"
           >
             <Plus className="h-4 w-4" />
@@ -811,7 +837,6 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                 <button
                   type="button"
                   onClick={() => open(m.id)}
-                  disabled={!!busy}
                   className="min-w-0 flex-1 text-left"
                 >
                   <div className="flex items-center gap-1.5">
@@ -827,7 +852,6 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                 <button
                   type="button"
                   onClick={() => remove(m.id)}
-                  disabled={!!busy}
                   title="Delete conversation"
                   className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
                 >
@@ -913,7 +937,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                     <button
                       key={ex}
                       type="button"
-                      disabled={!service}
+                      disabled={!canSend}
                       onClick={() => send(ex)}
                       className="rounded-full border px-3 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                     >
@@ -929,7 +953,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                 item={d}
                 projectId={projectId}
                 canWrite={canWrite}
-                busy={!!busy}
+                busy={!!busy || blockedByOther}
                 interrupted={i === stuckApply}
                 onApprove={(opts) => approve(i, d.plan, opts)}
                 onDiscard={() => discard(i)}
@@ -947,7 +971,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                   size="sm"
                   variant="outline"
                   onClick={retryTurn}
-                  disabled={!service}
+                  disabled={!canSend}
                 >
                   <RotateCcw className="h-4 w-4" /> Retry
                 </Button>
@@ -982,11 +1006,13 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
               placeholder={
                 !service
                   ? 'No assistant online'
-                  : pendingPlan
-                    ? 'Approve or discard the plan above, or keep talking'
-                    : 'Message the assistant… (Enter to send, Shift+Enter for a new line)'
+                  : blockedByOther
+                    ? 'This assistant is busy with another conversation…'
+                    : pendingPlan
+                      ? 'Approve or discard the plan above, or keep talking'
+                      : 'Message the assistant… (Enter to send, Shift+Enter for a new line)'
               }
-              disabled={!service || !!busy}
+              disabled={!canSend}
               rows={2}
               className="min-h-[2.5rem] flex-1 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:ring-0"
             />
@@ -994,7 +1020,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
               type="button"
               size="sm"
               onClick={() => send()}
-              disabled={!service || !!busy || !input.trim()}
+              disabled={!canSend || !input.trim()}
               title="Send"
             >
               <Send className="h-4 w-4" />
