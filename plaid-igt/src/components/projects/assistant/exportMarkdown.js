@@ -92,7 +92,9 @@ const planToMarkdown = (plan, status) => {
       ? 'Approved and applied.'
       : status === 'discarded'
         ? 'Discarded.'
-        : 'Not yet approved.';
+        : status === 'applying'
+          ? 'Approved, but interrupted before the result came back.'
+          : 'Not yet approved.';
   const lines = [`**Proposed changes:** ${plan.summary || ''} (${outcome})`, ''];
   (plan.labels || []).forEach((l, i) => lines.push(`${i + 1}. ${l}`));
   return lines.join('\n');

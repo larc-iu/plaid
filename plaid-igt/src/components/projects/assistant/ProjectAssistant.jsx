@@ -39,6 +39,7 @@ import {
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
+import { applyingIndex, rewindForRetry, unansweredTurn } from './resume.js';
 
 // The Assistant tab: a chat with whatever `assist` service(s) the operator
 // runs (see ../../../../../plaid-igt-agent), laid out like any chat app: past
@@ -281,6 +282,10 @@ const buildMeta = (prev, conv, service) => {
     serviceId: service?.serviceId || prev?.serviceId || null,
     model: service?.extras?.model || prev?.model || null,
     turns: conv.display.filter((d) => d.kind === 'user').length,
+    // Work was under way at the last write. With no job in flight for the
+    // conversation this means it was interrupted, which the sidebar shows
+    // without having to load every transcript.
+    pending: unansweredTurn(conv) || applyingIndex(conv) >= 0,
   };
 };
 
@@ -420,6 +425,16 @@ const startApply = ({
     result: null,
   };
   applies.set(conv.id, j);
+  // Record the attempt before making it, so a reload mid-apply is
+  // recognisable afterwards and offers a retry, instead of looking like a plan
+  // the user never approved. `asHuman` rides along so a retry stamps
+  // provenance the way the approver chose.
+  const started = {
+    ...conv,
+    display: conv.display.map((d, i) => (i === index ? { ...d, status: 'applying', asHuman } : d)),
+  };
+  j.conv = started;
+  persistConv(client, userId, projectId, started, buildMeta(prevMeta, started, service));
   j.promise = (async () => {
     let next;
     try {
@@ -446,7 +461,7 @@ const startApply = ({
       );
       const data = res?.data || res || {};
       next = settle(
-        conv,
+        started,
         index,
         'applied',
         `(note) The plan was approved and applied: ${plan.summary}.` +
@@ -455,7 +470,7 @@ const startApply = ({
       notifySuccess(data.message || `Applied ${plan.summary}.`, 'Changes applied');
     } catch (e) {
       console.error('[Assistant] apply failed', e);
-      next = settle(conv, index, null, null);
+      next = settle(started, index, null, null);
       notifyError(
         humanizeError(e, 'The changes could not be applied.') +
           ' Approving again is safe: a plan that was already applied is not written twice.',
@@ -708,6 +723,18 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     startTurn({ client, userId, projectId, service, conv, prevMeta: meta });
   };
 
+  // Send the user's last message again, whether the turn was interrupted (the
+  // page went away mid-turn) or failed. Both rewind the same way, to just
+  // before the user's item.
+  const retryTurn = () => {
+    const conv = activeRef.current;
+    if (!conv || busy || !service) return;
+    const rewound = rewindForRetry(conv);
+    if (!rewound) return;
+    activeRef.current = rewound.conv;
+    send(rewound.text);
+  };
+
   const approve = (index, plan, { asHuman = false } = {}) => {
     const conv = activeRef.current;
     if (busy || !conv || !service) return;
@@ -741,6 +768,12 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
 
   const display = active?.display || [];
   const pendingPlan = display.some((d) => d.plan && d.status === null);
+  // Nothing is running for this conversation, so anything left mid-flight in
+  // it was interrupted rather than in progress.
+  const idle = !busy && !jobFor(active?.id);
+  const lastKind = display.at(-1)?.kind;
+  const canRetryTurn = idle && (lastKind === 'user' || lastKind === 'error');
+  const stuckApply = idle ? applyingIndex(active) : -1;
 
   return (
     <div className="tw flex h-[calc(100vh-15rem)] min-h-[32rem] gap-4">
@@ -788,6 +821,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                   <div className="pl-5 text-[11px] text-muted-foreground">
                     {opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)}
                     {m.model ? ` · ${m.model.split('/').pop()}` : ''}
+                    {m.pending && !jobFor(m.id) ? ' · unfinished' : ''}
                   </div>
                 </button>
                 <button
@@ -896,10 +930,29 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                 projectId={projectId}
                 canWrite={canWrite}
                 busy={!!busy}
+                interrupted={i === stuckApply}
                 onApprove={(opts) => approve(i, d.plan, opts)}
                 onDiscard={() => discard(i)}
               />
             ))}
+            {canRetryTurn && (
+              <div className="flex items-center gap-3 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                <span className="flex-1">
+                  {lastKind === 'error'
+                    ? 'That turn did not finish.'
+                    : 'No answer came back for this message. The page was probably closed or reloaded while the assistant was working.'}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={retryTurn}
+                  disabled={!service}
+                >
+                  <RotateCcw className="h-4 w-4" /> Retry
+                </Button>
+              </div>
+            )}
             {busy && (
               <div className="flex flex-col gap-1 text-sm text-muted-foreground">
                 {liveSteps.map((m, i) => (
@@ -1176,7 +1229,7 @@ const CitedMarkdown = ({ text, citations, projectId }) => {
   );
 };
 
-const Turn = ({ item, projectId, canWrite, busy, onApprove, onDiscard }) => {
+const Turn = ({ item, projectId, canWrite, busy, interrupted, onApprove, onDiscard }) => {
   if (item.kind === 'user') {
     return (
       <div className="flex justify-end">
@@ -1216,6 +1269,8 @@ const Turn = ({ item, projectId, canWrite, busy, onApprove, onDiscard }) => {
           <PlanCard
             plan={item.plan}
             status={item.status}
+            recordedAsHuman={item.asHuman}
+            interrupted={interrupted}
             canWrite={canWrite}
             busy={busy}
             onApprove={onApprove}
@@ -1278,17 +1333,31 @@ const ToolTrace = ({ steps }) => {
 
 // A proposed plan: what it does in one line, every change as a row, and the
 // decision. Once settled it stays in the transcript as a record.
-const PlanCard = ({ plan, status, canWrite, busy, onApprove, onDiscard }) => {
+const PlanCard = ({
+  plan,
+  status,
+  recordedAsHuman,
+  interrupted,
+  canWrite,
+  busy,
+  onApprove,
+  onDiscard,
+}) => {
   const labels = plan.labels || [];
   const [expanded, setExpanded] = useState(labels.length <= 12);
-  const [asHuman, setAsHuman] = useState(false);
+  const [asHuman, setAsHuman] = useState(!!recordedAsHuman);
   const humanId = `plan-human-${plan.id}`;
   const shown = expanded ? labels : labels.slice(0, 12);
+  // 'applying' with nothing in flight means the page went away mid-apply, so
+  // whether the changes landed is unknown. Offer the same buttons as an
+  // undecided plan: re-approving is safe, since the service refuses to write
+  // the same plan twice.
+  const undecided = status === null || interrupted;
   return (
     <div
       className={cn(
         'rounded-lg border px-3 py-2 text-sm',
-        status === null && 'border-primary/40 bg-primary/5',
+        (status === null || status === 'applying') && 'border-primary/40 bg-primary/5',
         status === 'applied' && 'border-green-600/40 bg-green-600/5',
         status === 'discarded' && 'opacity-60',
       )}
@@ -1306,7 +1375,23 @@ const PlanCard = ({ plan, status, canWrite, busy, onApprove, onDiscard }) => {
             Discarded
           </Badge>
         )}
+        {status === 'applying' && !interrupted && (
+          <Badge variant="secondary" className="ml-auto">
+            <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Applying…
+          </Badge>
+        )}
+        {interrupted && (
+          <Badge variant="outline" className="ml-auto">
+            Interrupted
+          </Badge>
+        )}
       </div>
+      {interrupted && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          The page closed while these changes were being applied, so whether they landed is unknown.
+          Applying again is safe: a plan that was already applied is not written twice.
+        </p>
+      )}
       <ol className="mt-2 max-h-72 list-decimal overflow-auto pl-5 font-mono text-xs leading-5">
         {shown.map((l, i) => (
           <li key={i}>{l}</li>
@@ -1321,11 +1406,19 @@ const PlanCard = ({ plan, status, canWrite, busy, onApprove, onDiscard }) => {
           <ChevronDown className="h-3 w-3" /> Show all {labels.length}
         </button>
       )}
-      {status === null && (
+      {undecided && (
         <div className="mt-2 flex items-center gap-2">
           {canWrite ? (
             <Button type="button" size="sm" onClick={() => onApprove({ asHuman })} disabled={busy}>
-              <Check className="h-4 w-4" /> Approve and apply
+              {interrupted ? (
+                <>
+                  <RotateCcw className="h-4 w-4" /> Apply again
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" /> Approve and apply
+                </>
+              )}
             </Button>
           ) : (
             <span className="text-muted-foreground">Applying needs write access.</span>
