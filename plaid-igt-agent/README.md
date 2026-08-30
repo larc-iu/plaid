@@ -59,11 +59,14 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
   query language, project-scoped, layers by name). Writes append resolved operations to the turn's plan:
   `set_field`, `set_analysis`, `set_orthography`, `respell`, `link_entry`,
   `unlink_entry`, `create_entry`, `set_entry_field`, `set_document_metadata`,
-  `create_document`, and the corpus-wide `replace_in_field`, `respell_all`,
-  `copy_to_orthography`, `set_analysis_for_form`, plus `merge_entries`,
+  `create_document`, and the corpus-wide `replace_in_field`, `set_field_for_form`,
+  `respell_all`, `copy_to_orthography`, `set_analysis_for_form`, plus `merge_entries`,
   `delete_entry`, `rename_entry`, `rename_document`.
-- `plan.py`: applies an approved plan with the requester's client, in atomic
-  batches under one operation.
+- `plan.py`: validates and normalizes an approved plan (a later op on the same
+  target wins; links to entries the plan deletes are dropped; overlapping
+  respells are refused), then applies it with the requester's client in atomic
+  batches under one operation, reporting how much was applied if a later
+  batch fails.
 - `agent.py`: the litellm loop. `service.py`: the Plaid service; one request
   is one turn (the browser keeps the transcript) or one approval.
 

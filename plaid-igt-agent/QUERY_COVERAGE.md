@@ -21,7 +21,7 @@ Tools today: `project_overview`, `read_document`, `search` (patterns,
 `respell`, `link_entry`, `unlink_entry`, `create_entry`, `set_entry_field`,
 `set_document_metadata`, `create_document`.
 
-> Since this was scored (same day): every "gap" below except export was built, `search(missing)` was folded into `worklist`, `field_values` into `frequency_list`, and a read-only `query` escape hatch was added.
+> Since this was scored (same day): every "gap" below except export was built, `search(missing)` was folded into `worklist`, `field_values` into `frequency_list`, and a read-only `query` escape hatch was added. Two reviews (adversarial and functionality) then led to plan-integrity fixes and `set_field_for_form`; their remaining proposals (confirm/discard provenance, respell carrying morpheme forms and headwords, word/sentence split and merge, append/retype sentences, provenance marks in reads, shared suggestion ranking, per-entity history, project shape admin, running other services, dropping single planned ops) are pending decisions.
 
 ## Scorecard
 
