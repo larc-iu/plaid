@@ -21,10 +21,11 @@ Result data:
 
 import argparse
 import re
+import time
 
 from plaid_client import BaseService, TASKS, service_source
 
-from .agent import ModelConfig, run_turn
+from .agent import ModelConfig, ping_model, run_turn
 from .citations import resolve_citations
 from .plan import execute_plan, summarize, PlanError
 from .project import load_project
@@ -92,6 +93,17 @@ class AssistantService(BaseService):
         # Advertised so the UI can say which model answers.
         self.extras['model'] = self.cfg.model
         print(f'Model: {self.cfg.model}' + (f' via {self.cfg.api_base}' if self.cfg.api_base else ''))
+        # Ask the model one question before registering. A service that cannot
+        # reach its model has nothing to offer, and the operator is here NOW.
+        started = time.monotonic()
+        try:
+            ping_model(self.cfg)
+        except Exception as e:  # noqa: BLE001 - whatever the provider says, the operator needs to read it
+            print(f'  The model did not answer: {e}')
+            print('  Check --model (a litellm model string), --api-base, and the provider key '
+                  '(--api-key or the provider\'s environment variable).')
+            raise SystemExit(1)
+        print(f'  Answered in {time.monotonic() - started:.1f}s.')
 
     def process_request(self, request_data: dict, response_helper) -> None:
         client = request_data.get('requester_client')

@@ -35,6 +35,35 @@ class ModelConfig:
         return {'model': self.model, **({'api_base': self.api_base} if self.api_base else {})}
 
 
+PING_TIMEOUT_S = 30
+
+
+def _provider_kwargs(cfg: ModelConfig) -> Dict[str, Any]:
+    """What every call to this model needs: the model string, and the base and
+    key when the operator gave them (else litellm reads the provider's env)."""
+    out: Dict[str, Any] = {'model': cfg.model}
+    if cfg.api_base:
+        out['api_base'] = cfg.api_base
+    if cfg.api_key:
+        out['api_key'] = cfg.api_key
+    return out
+
+
+def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
+    """One tiny completion, before the service registers on any project.
+
+    A typo in --model, a missing provider key, an --api-base pointing at
+    nothing: each of them looks the same to a user, as a chat that fails on
+    every question. The operator is watching at startup and is not watching
+    then, so ask the model one question here and let the provider's own
+    complaint reach the operator. Raises whatever litellm raises.
+    """
+    resp = litellm.completion(**_provider_kwargs(cfg), timeout=timeout, max_tokens=8,
+                              messages=[{'role': 'user', 'content': 'ping'}])
+    if not getattr(resp, 'choices', None):
+        raise RuntimeError('the provider answered without a completion')
+
+
 def _message_to_dict(msg) -> Dict[str, Any]:
     """A litellm Message -> the plain dict shape we keep in the transcript."""
     out: Dict[str, Any] = {'role': 'assistant', 'content': msg.content if msg.content is not None else None}
@@ -122,12 +151,8 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
     steps = 0
     while True:
         on_progress(min(85, 8 + steps * 5), 'Thinking…' if steps == 0 else 'Thinking more…')
-        kwargs: Dict[str, Any] = dict(model=cfg.model, messages=[{'role': 'system', 'content': system}] + history + new,
-                                      tools=list(TOOLS), tool_choice='auto')
-        if cfg.api_base:
-            kwargs['api_base'] = cfg.api_base
-        if cfg.api_key:
-            kwargs['api_key'] = cfg.api_key
+        kwargs: Dict[str, Any] = dict(**_provider_kwargs(cfg), tools=list(TOOLS), tool_choice='auto',
+                                      messages=[{'role': 'system', 'content': system}] + history + new)
         if cfg.temperature is not None:
             kwargs['temperature'] = cfg.temperature
         if cfg.max_tokens:

@@ -32,7 +32,12 @@ plaid-igt-agent --url http://localhost:8080 --model openai/my-model --api-base h
 ```
 
 Provider keys come from the provider's usual environment variable
-(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...) or `--api-key`. With no project
+(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...) or `--api-key`. At startup the
+service asks the model one question and stops if it gets no answer, so a typo
+in `--model`, a missing key or an `--api-base` pointing at nothing is a
+message to the operator rather than a chat that fails on every question. (A
+provider that is merely down at that moment stops startup too, unlike a Plaid
+server that is down, which is waited out.) With no project
 id the service registers on every project its token can access (new ones are
 picked up as they appear); pass one or more project ids to serve just those.
 
