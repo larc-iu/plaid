@@ -335,3 +335,20 @@ def test_drop_planned_keeps_the_rest_and_takes_links_to_dropped_entries_along():
     assert [o['kind'] for o in w.ops] == ['set_span', 'set_orthography'] and w.ops[0]['token_id'] == 'w-3'
     assert w.new_entries == {} and '2 planned changes' in out
     assert 'Dropped 1' in call_tool(w, 'drop_planned', {'indexes': 2}) and len(w.ops) == 1
+
+
+def test_citations_resolve_to_interlinear_examples():
+    from plaid_igt_agent.citations import resolve_citations
+    w = ws()
+    text = ('Wh-words stay in situ, e.g. {{Text 1 s1}} and {{"Text 1" s2.w1}}; see also {{Text 1 s1}} again, '
+            '{{Nope s1}} (no such document) and {{Text 1 s9}} (no such sentence).')
+    out = resolve_citations(w, text)
+    assert [c['key'] for c in out] == ['{{Text 1 s1}}', '{{"Text 1" s2.w1}}']
+    a, b = out
+    assert (a['document_id'], a['document_name'], a['sentence_id'], a['sentence'], a['word']) == ('d1', 'Text 1', 's-1', 1, None)
+    assert a['text'] == 'Ali-di gam akuna.' and a['fields'] == [{'field': 'Translation', 'value': 'Ali saw a fish.'}]
+    assert a['words'][0] == {'index': 1, 'surface': 'Ali-di', 'seg': 'Ali-di',
+                             'lines': [{'field': 'Morph Gloss', 'value': 'Ali-ERG'}, {'field': 'Gloss', 'value': 'Ali'}]}
+    assert a['words'][1] == {'index': 2, 'surface': 'gam', 'seg': None, 'lines': []}
+    assert (b['sentence'], b['word'], b['words'][0]['seg']) == (2, 1, 'Gam=ar')
+    assert resolve_citations(w, 'no citations here') == []

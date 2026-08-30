@@ -333,6 +333,7 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
             kind: 'assistant',
             text: result.message || '',
             plan: result.plan || null,
+            citations: result.citations || [],
             status: null,
             model: service?.extras?.model || null,
             steps: extractSteps(result.messages),
@@ -807,6 +808,7 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
               <Turn
                 key={i}
                 item={d}
+                projectId={projectId}
                 canWrite={canWrite}
                 busy={!!busy}
                 onApprove={(opts) => approve(i, d.plan, opts)}
@@ -886,7 +888,114 @@ export const AssistantMarkdown = ({ children }) => (
   </div>
 );
 
-const Turn = ({ item, canWrite, busy, onApprove, onDiscard }) => {
+// ---- sentence citations -----------------------------------------------------
+// The model cites evidence as `{{<document> sN}}` (or `sN.wM` for a word); the
+// service resolves each to interlinear data (see citations.py). A citation
+// alone on a line becomes an example card in place; one inside a sentence
+// becomes a link, and its card is listed under the reply. Citations the
+// service could not resolve stay as written.
+
+const CITE_RE = /\{\{\s*.+?\s+s\d+(?:\.w\d+)?\s*\}\}/g;
+
+const sentenceHref = (projectId, c) =>
+  `#/projects/${projectId}/documents/${c.documentId}?tab=analyze&focusSentence=${c.sentenceId}`;
+
+const ExampleCard = ({ c, projectId }) => (
+  <div className="my-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+    <div className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+      <a
+        href={sentenceHref(projectId, c)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium text-foreground hover:underline"
+        title="Open this sentence in the editor"
+      >
+        {c.documentName} · s{c.sentence}
+        {c.word ? `.w${c.word}` : ''}
+      </a>
+      <span>open in editor ↗</span>
+    </div>
+    <div className="flex flex-wrap gap-x-4 gap-y-2">
+      {(c.words || []).map((w) => (
+        <div
+          key={w.index}
+          className={cn(
+            'flex flex-col leading-tight',
+            c.word === w.index && '-mx-1 rounded bg-primary/15 px-1',
+          )}
+        >
+          <span className="font-medium">{w.surface}</span>
+          {w.seg && <span className="font-mono text-xs">{w.seg}</span>}
+          {(w.lines || []).map((l) => (
+            <span key={l.field} className="text-xs text-muted-foreground" title={l.field}>
+              {l.value}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+    {(c.fields || []).map((f) => (
+      <div key={f.field} className="mt-1.5 italic">
+        <span className="not-italic text-xs text-muted-foreground">{f.field}: </span>
+        {f.value}
+      </div>
+    ))}
+  </div>
+);
+
+// Reply text with its citations: block cards in place, links inline, and the
+// inline-only citations' cards after the text.
+const CitedMarkdown = ({ text, citations, projectId }) => {
+  const byKey = new Map((citations || []).map((c) => [c.key, c]));
+  if (byKey.size === 0) return <AssistantMarkdown>{text}</AssistantMarkdown>;
+  const segments = [];
+  const shown = new Set();
+  let buf = [];
+  const flush = () => {
+    if (buf.length) segments.push({ md: buf.join('\n') });
+    buf = [];
+  };
+  for (const line of (text || '').split('\n')) {
+    const key = line.trim();
+    if (byKey.has(key)) {
+      flush();
+      segments.push({ card: byKey.get(key) });
+      shown.add(key);
+    } else {
+      buf.push(line);
+    }
+  }
+  flush();
+  const inline = [];
+  const linkify = (md) =>
+    md.replace(CITE_RE, (m) => {
+      const c = byKey.get(m);
+      if (!c) return m;
+      if (!shown.has(m) && !inline.includes(c)) inline.push(c);
+      return `[${c.documentName} s${c.sentence}${c.word ? `.w${c.word}` : ''}](${sentenceHref(projectId, c)})`;
+    });
+  return (
+    <div>
+      {segments.map((seg, i) =>
+        seg.card ? (
+          <ExampleCard key={i} c={seg.card} projectId={projectId} />
+        ) : (
+          <AssistantMarkdown key={i}>{linkify(seg.md)}</AssistantMarkdown>
+        ),
+      )}
+      {inline.length > 0 && (
+        <div className="mt-2">
+          <div className="text-xs font-medium text-muted-foreground">Cited examples</div>
+          {inline.map((c) => (
+            <ExampleCard key={c.key} c={c} projectId={projectId} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Turn = ({ item, projectId, canWrite, busy, onApprove, onDiscard }) => {
   if (item.kind === 'user') {
     return (
       <div className="flex justify-end">
@@ -914,7 +1023,7 @@ const Turn = ({ item, canWrite, busy, onApprove, onDiscard }) => {
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {item.steps?.length > 0 && <ToolTrace steps={item.steps} />}
         {item.text ? (
-          <AssistantMarkdown>{item.text}</AssistantMarkdown>
+          <CitedMarkdown text={item.text} citations={item.citations} projectId={projectId} />
         ) : (
           !item.plan && (
             <div className="text-sm italic text-muted-foreground">

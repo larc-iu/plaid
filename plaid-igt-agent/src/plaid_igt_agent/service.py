@@ -14,7 +14,8 @@ Request data:
                  documents: [{id, name, version}] read at plan time, refused if any changed since)
 
 Result data:
-    {kind: 'turn', message, messages: [new transcript messages], plan: {id, summary, labels, ops} | null}
+    {kind: 'turn', message, messages: [new transcript messages], plan: {id, summary, labels, ops, documents} | null,
+     citations: [{key, document_id, document_name, sentence_id, sentence, word, text, words, fields}]}
     {kind: 'applied', applied: n, counts: [{kind, count}], message}
 """
 
@@ -24,6 +25,7 @@ import re
 from plaid_client import BaseService, TASKS, service_source
 
 from .agent import ModelConfig, run_turn
+from .citations import resolve_citations
 from .plan import execute_plan, summarize, PlanError
 from .project import load_project
 from .prompt import build_system_prompt
@@ -157,7 +159,8 @@ class AssistantService(BaseService):
         ws = Workspace(client, project, on_progress=lambda msg: response_helper.progress(state['pct'], msg))
         text, new = run_turn(self.cfg, ws, build_system_prompt(project), transcript, on_progress)
         response_helper.progress(100, 'Done')
-        response_helper.complete({'kind': 'turn', 'message': text, 'messages': new, 'plan': ws.plan_payload()})
+        response_helper.complete({'kind': 'turn', 'message': text, 'messages': new, 'plan': ws.plan_payload(),
+                                  'citations': resolve_citations(ws, text)})
 
 
     def _remember_applied(self, plan_id: str) -> None:

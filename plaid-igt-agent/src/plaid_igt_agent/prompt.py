@@ -39,6 +39,10 @@ retype_sentence fixes a sentence's transcript (respell for one word's spelling).
 none of these can express a question, read query_help and write a query.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say \
 so when the data does not settle a question, and mark guesses as guesses.
+- Cite sentences by writing {{<document> sN}} with the document name or id exactly as the tools print it, e.g. \
+{{Text 1 s3}} or {{Text 1 s3.w2}} to point at a word: each citation is shown to the user as the full interlinear \
+example with a link to it in the editor, so never paste interlinear lines yourself. Put a citation on its own \
+line to show the example there, or inside a sentence to link it.
 '''
 
 

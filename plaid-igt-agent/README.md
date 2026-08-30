@@ -13,6 +13,11 @@ own account, in one audit-log entry. Approval is the human check, so what a
 plan writes is recorded as **verified** (made by the assistant, confirmed by
 the approver); the approver can instead have it recorded as human-made.
 
+Replies cite evidence as `{{<document> sN}}` (or `sN.wM` for a word); the
+service resolves each citation to the sentence's interlinear data
+(`citations.py`) and the Assistant tab shows it as an example card linking
+to that sentence in the editor.
+
 ## Running
 
 Python 3.11+.
