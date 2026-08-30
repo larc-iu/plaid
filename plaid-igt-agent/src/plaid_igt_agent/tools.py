@@ -71,6 +71,12 @@ class Workspace:
         name, or its id where another document shares that name."""
         return f'"{self.corpus.ref_name(doc.id)}" ' if show else ''
 
+    def doc_label(self, doc_id: str) -> str:
+        """How a plan's lines name a document to the person approving them:
+        its name, and its id too where another document shares that name."""
+        name = self.corpus.doc_name(doc_id)
+        return name if self.corpus.ref_name(doc_id) == name else f'{name} ({doc_id})'
+
     def use_scan(self, document: Optional[str]) -> bool:
         """Scan (one document, or everything when asked) rather than query."""
         return bool(document) or self.prefer_scan
@@ -958,16 +964,16 @@ def t_set_field(ws: Workspace, document: str, refs, field: str, value: str) -> s
         if (old.value if old else '') == value:
             continue
         what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
-        staged.append(span_op(doc, ref, what, f, obj.id, old, value))
+        staged.append(span_op(ws, doc, ref, what, f, obj.id, old, value))
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
 
 
-def span_op(doc, ref: str, what: str, f, token_id: str, old, value: str) -> Dict[str, Any]:
+def span_op(ws: Workspace, doc, ref: str, what: str, f, token_id: str, old, value: str) -> Dict[str, Any]:
     """A set_span op with its human label. ``old`` is the current Span or None."""
     return {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': token_id,
             'span_id': old.id if old else None, 'value': value,
-            'label': f'{doc.name} {ref} "{what[:40]}": {f.name} '
+            'label': f'{ws.doc_label(doc.id)} {ref} "{what[:40]}": {f.name} '
                      + (f'"{old.value}" → "{value}"' if old and old.value != '' else f'= "{value}"')
                      + (' (cleared)' if value == '' else '')}
 
@@ -980,7 +986,7 @@ def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> s
     out = parse_analysis(ws, morphemes)
     existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes]
     had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
-    op, note = analysis_op(ws, f'{doc.name} {ref} "{w.surface}"', w.surface, w.id, w.text_id, w.begin, w.end,
+    op, note = analysis_op(ws, f'{ws.doc_label(doc.id)} {ref} "{w.surface}"', w.surface, w.id, w.text_id, w.begin, w.end,
                            existing, segmentation(w) if w.morphemes else '', had_values, out)
     ws.add_op(op)
     return ws.planned_note(1) + note
@@ -1039,7 +1045,7 @@ def t_set_orthography(ws: Workspace, document: str, refs, orthography: str, valu
         if old == (value or ''):
             continue
         staged.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{o}', 'value': value or '',
-                       'label': f'{doc.name} {ref} "{w.surface}": {o} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"')})
+                       'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": {o} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"')})
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
 
@@ -1049,9 +1055,9 @@ def has_own_form(m: Morpheme) -> bool:
     return (m.metadata or {}).get('form') not in (None, '')
 
 
-def morpheme_form_op(doc, ref: str, w: Word, m: Morpheme, new: str) -> Dict[str, Any]:
+def morpheme_form_op(ws: Workspace, doc, ref: str, w: Word, m: Morpheme, new: str) -> Dict[str, Any]:
     return {'kind': 'set_morpheme_form', 'morpheme_id': m.id, 'form': new,
-            'label': f'{doc.name} {ref}.m{m.index} (in "{w.surface}"): morpheme form "{m.form}" → "{new}"'}
+            'label': f'{ws.doc_label(doc.id)} {ref}.m{m.index} (in "{w.surface}"): morpheme form "{m.form}" → "{new}"'}
 
 
 def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_forms: bool = True) -> str:
@@ -1062,9 +1068,9 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_fo
         raise ToolError('new_text must not be empty (there is no delete-word tool)')
     if new_text == w.surface:
         return ws.planned_note(0)
-    check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{doc.name} {ref}')
+    check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {ref}')
     staged = [{'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new_text,
-               'label': f'{doc.name} {ref}: respell "{w.surface}" → "{new_text}"'}]
+               'label': f'{ws.doc_label(doc.id)} {ref}: respell "{w.surface}" → "{new_text}"'}]
     # A single-morpheme own form spelt like the word follows it; a longer
     # chain cannot be re-derived from a whole-word replacement.
     kept = []
@@ -1072,7 +1078,7 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_fo
         if not has_own_form(m):
             continue
         if morpheme_forms and m.form == w.surface:
-            staged.append(morpheme_form_op(doc, ref, w, m, new_text))
+            staged.append(morpheme_form_op(ws, doc, ref, w, m, new_text))
         else:
             kept.append(m.form)
     ws.add_ops(staged)
@@ -1115,7 +1121,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
                        'item_id': target['id'] if kind == 'existing' else None,
                        'new_entry_key': target if kind == 'new' else None,
                        'existing_link_id': obj.link.id if obj.link else None,
-                       'label': f'{doc.name} {ref} "{what}": link ' + (f'"{obj.link.form}" → ' if obj.link else '') + f'"{form}"'})
+                       'label': f'{ws.doc_label(doc.id)} {ref} "{what}": link ' + (f'"{obj.link.form}" → ' if obj.link else '') + f'"{form}"'})
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
 
@@ -1129,7 +1135,7 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
         staged.append({'kind': 'unlink', 'link_id': obj.link.id, 'token_id_hint': obj.id,
-                       'label': f'{doc.name} {ref} "{what}": unlink "{obj.link.form}"'})
+                       'label': f'{ws.doc_label(doc.id)} {ref} "{what}": unlink "{obj.link.form}"'})
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
 
@@ -1193,7 +1199,7 @@ def t_set_document_metadata(ws: Workspace, document: str, field: str, value: str
     if (old or '') == value:
         return ws.planned_note(0)
     ws.add_op({'kind': 'set_doc_metadata', 'document_id': doc.id, 'field': name, 'value': value,
-               'label': f'{doc.name}: {name} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"')})
+               'label': f'{ws.doc_label(doc.id)}: {name} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"')})
     return ws.planned_note(1)
 
 
@@ -1275,7 +1281,7 @@ def t_confirm(ws: Workspace, document: str, refs=None, field: Optional[str] = No
             if not any(pieces.values()):
                 continue
             staged.append({'kind': 'confirm', **pieces,
-                           'label': f'{doc.name} {ref} "{_what(obj)[:40]}": confirm {_pieces_label(pieces)}'
+                           'label': f'{ws.doc_label(doc.id)} {ref} "{_what(obj)[:40]}": confirm {_pieces_label(pieces)}'
                                     + (f' ({f.name})' if f else '')})
     else:
         pieces = {'span_ids': [], 'token_ids': [], 'link_ids': []}
@@ -1283,7 +1289,7 @@ def t_confirm(ws: Workspace, document: str, refs=None, field: Optional[str] = No
             _machine_pieces(s, f, pieces)
         if any(pieces.values()):
             staged.append({'kind': 'confirm', **pieces,
-                           'label': f'{doc.name}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')})
+                           'label': f'{ws.doc_label(doc.id)}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')})
     ws.add_ops(staged)
     n = sum(len(v) for op in staged for k, v in op.items() if k.endswith('_ids'))
     if not staged:
@@ -1332,7 +1338,7 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
             bits = (bits + ', ' if bits else '') + 'the segmentation'
         staged.append({'kind': 'discard_analysis', 'word_id': w.id, 'link_ids': link_ids, 'span_ids': span_ids,
                        'morpheme_ids': morpheme_ids, 'reset_first_id': reset_first, 'renumber': renumber,
-                       'label': f'{doc.name} {ref} "{w.surface}": discard unverified {bits}'})
+                       'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": discard unverified {bits}'})
     ws.add_ops(staged)
     if not staged:
         return 'Nothing to discard: no machine-made, unconfirmed analysis there.'

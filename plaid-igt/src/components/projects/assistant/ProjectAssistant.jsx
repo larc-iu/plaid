@@ -1227,13 +1227,13 @@ const ExampleCard = ({ c, projectId }) => {
                   const w = words[j] || {};
                   const cited = highlights.get(w.index);
                   const morphemes = cited instanceof Set ? cited : null;
+                  // Pieces exist exactly where the service sent them (the
+                  // morpheme rows of a word cited for its morphemes).
                   const parts =
                     morphemes &&
                     (r.kind === 'morphemes'
                       ? w.morphs
-                      : r.kind === 'morpheme'
-                        ? (w.lines || []).find((l) => l.field === r.label)?.parts
-                        : null);
+                      : (w.lines || []).find((l) => l.field === r.label)?.parts);
                   return (
                     <td
                       key={j}

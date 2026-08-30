@@ -438,6 +438,11 @@ def test_documents_sharing_a_name_are_printed_and_cited_by_id():
     cites = resolve_citations(w, 'see <cite doc="d2" ref="s1"/>, not <cite doc="Text 1" ref="s1"/>')
     assert [(c['key'], c['document_id'], c['document_name']) for c in cites] == [
         ('<cite doc="d2" ref="s1"/>', 'd2', 'Text 1')]
+    # The person approving a plan sees the id too, but only where it is needed.
+    call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
+    assert w.ops[-1]['label'] == 'Text 1 (d1) s1.w2: respell "gam" → "gham"'
+    call_tool(w, 'respell', {'document': 'd3', 'ref': 's2.w1', 'new_text': 'Gham-ar'})
+    assert w.ops[-1]['label'] == 'Text 2 s2.w1: respell "Gam-ar" → "Gham-ar"'
 
 
 def test_bare_references_are_citations_when_one_document_was_read():

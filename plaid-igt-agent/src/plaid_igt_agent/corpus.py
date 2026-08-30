@@ -197,13 +197,13 @@ class Corpus:
         """``Doc s3.w2`` (the scan's label head) when the document is loaded
         or the plan touches few enough documents to load them; else the
         document name alone, quoted. Callers add the surface as the scan does."""
-        name = self.doc_name(doc_id)
+        label = self.ws.doc_label(doc_id)
         if doc_id in self.ws._docs or (budget is not None and len(budget) <= LABEL_DOC_BUDGET):
-            doc, s, w, m = self.locate(doc_id, token_id)
+            _, s, w, m = self.locate(doc_id, token_id)
             if s is not None:
                 ref = f's{s.index}' + (f'.w{w.index}' if w else '') + (f'.m{m.index}' if m else '')
-                return f'{doc.name} {ref}'
-        return f'"{name}"'
+                return f'{label} {ref}'
+        return f'"{label}"'
 
     def may_load(self, doc_id: str, loaded: set) -> bool:
         """Whether rendering may fetch this document: already fetched this
@@ -919,7 +919,7 @@ def q_entry_usage(ws: Workspace, item_id: str, examples: int):
             doc, s, w, _ = c.locate(ent['document'], ent['id'])
             if w is None or any(e.endswith(f'|| {s.text}') and word_ref(s, w) in e for e in exs):
                 continue
-            exs.append(f'  "{doc.name}" {word_ref(s, w)} {render_word(w, p := c.p)[len(w.ref) + 1:]} || {s.text}')
+            exs.append(f'  {c.ws.doc_tag(doc)}{word_ref(s, w)} {render_word(w, p := c.p)[len(w.ref) + 1:]} || {s.text}')
             if len(exs) >= examples:
                 break
     return word_links, morph_links, exs

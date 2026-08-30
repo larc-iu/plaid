@@ -40,6 +40,30 @@ describe('citationToMarkdown', () => {
     );
   });
 
+  it('bolds the morphemes a citation names inside a word', () => {
+    const md = citationToMarkdown(
+      {
+        ...cite,
+        word: undefined,
+        focus: [{ word: 1, morpheme: 2 }],
+        words: [
+          {
+            index: 1,
+            surface: 'Ali-di',
+            seg: 'Ali-di',
+            morphs: ['Ali', 'di'],
+            joiners: ['-'],
+            lines: [{ field: 'Gloss', value: 'Ali-ERG', parts: ['Ali', 'ERG'] }],
+          },
+          ...cite.words.slice(1),
+        ],
+      },
+      ctx,
+    );
+    expect(md).toContain('| Morphemes | Ali-**di** |');
+    expect(md).toContain('| Gloss | Ali-**ERG** | fish |  |');
+  });
+
   it('bolds every word a citation names', () => {
     const md = citationToMarkdown(
       {

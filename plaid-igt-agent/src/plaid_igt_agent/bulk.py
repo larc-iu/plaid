@@ -80,8 +80,8 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                         if new == m.form:
                             continue
                         if not new.strip():
-                            raise ToolError(f'{doc.name} {word_ref(s, w)}.m{m.index}: "{m.form}" would become empty')
-                        op = morpheme_form_op(doc, word_ref(s, w), w, m, new)
+                            raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}.m{m.index}: "{m.form}" would become empty')
+                        op = morpheme_form_op(ws, doc, word_ref(s, w), w, m, new)
                         staged.append(op)
                         labels.append(op['label'])
         _check_cap(len(staged))
@@ -104,7 +104,7 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                 new = rep(cur)
                 if new == cur:
                     continue
-                label = f'{doc.name} {ref} "{what[:30]}": {f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else '')
+                label = f'{ws.doc_label(doc.id)} {ref} "{what[:30]}": {f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else '')
                 staged.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': u.id,
                                'span_id': sp.id if sp else None, 'value': new, 'label': label})
                 labels.append(label)
@@ -147,9 +147,9 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                 if new == w.surface:
                     continue
                 if not new.strip():
-                    raise ToolError(f'{doc.name} {word_ref(s, w)}: "{w.surface}" would become empty; there is no delete-word tool')
-                check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{doc.name} {word_ref(s, w)}')
-                label = f'{doc.name} {word_ref(s, w)}: respell "{w.surface}" → "{new}"'
+                    raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}: "{w.surface}" would become empty; there is no delete-word tool')
+                check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {word_ref(s, w)}')
+                label = f'{ws.doc_label(doc.id)} {word_ref(s, w)}: respell "{w.surface}" → "{new}"'
                 staged.append({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new,
                                'label': label})
                 labels.append(label)
@@ -162,7 +162,7 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                     nm = rep(m.form)
                     if nm == m.form or not nm.strip():
                         continue
-                    op = morpheme_form_op(doc, word_ref(s, w), w, m, nm)
+                    op = morpheme_form_op(ws, doc, word_ref(s, w), w, m, nm)
                     staged.append(op)
                     labels.append(op['label'])
                     n_morphs += 1
@@ -207,7 +207,7 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
                 value = w.surface if src is None else w.orthographies.get(src, '')
                 if not value or value == cur:
                     continue
-                label = f'{doc.name} {word_ref(s, w)} "{w.surface}": {target} = "{value}"'
+                label = f'{ws.doc_label(doc.id)} {word_ref(s, w)} "{w.surface}": {target} = "{value}"'
                 staged.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{target}', 'value': value, 'label': label})
                 labels.append(label)
     _check_cap(len(staged))
@@ -242,7 +242,7 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
                     cur = ws.planned_span_value(f.layer_id, u.id, old.value if old else '')
                     if cur == value or (only_empty and cur != ''):
                         continue
-                    staged.append(span_op(doc, ref, what, f, u.id, old, value))
+                    staged.append(span_op(ws, doc, ref, what, f, u.id, old, value))
     _check_cap(len(staged))
     ws.add_ops(staged)
     return _bulk_note(ws, len(staged), [op['label'] for op in staged], f'occurrences of "{form}"'
@@ -398,5 +398,5 @@ def t_rename_document(ws: Workspace, document: str, new_name: str) -> str:
     if doc.name == new_name:
         return ws.planned_note(0)
     ws.add_op({'kind': 'rename_document', 'document_id': doc.id, 'name': new_name,
-               'label': f'Rename document "{doc.name}" → "{new_name}"'})
+               'label': f'Rename document "{ws.doc_label(doc.id)}" → "{new_name}"'})
     return ws.planned_note(1)
