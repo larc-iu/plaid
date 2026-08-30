@@ -170,3 +170,56 @@ def test_chunk_plans_respects_the_op_budget():
     plan = {'word': w, 'analysis': analysis_for('ev', ParsedWord('house(ev)'))}  # 2 ops
     assert chunk_plans([plan] * 5, budget=4) == [[plan, plan], [plan, plan], [plan]]
     assert chunk_plans([plan], budget=1) == [[plan]]  # never an empty chunk
+
+
+# --- cases carried over from the PolyGloss service's own tests ------------------------
+
+def test_align_dropped_hallucinated_and_shifted_words():
+    # the model dropped the second word: 'bbb' stays None, the rest align
+    m = align_words(['aaa', 'bbb', 'ccc'], parse_interleaved('A(aaa) C(ccc)'))
+    assert m[0].raw == 'A(aaa)' and m[1] is None and m[2].raw == 'C(ccc)'
+    # a hallucinated word in the output is skipped
+    m = align_words(['aaa', 'bbb'], parse_interleaved('A(aaa) X(xxx) B(bbb)'))
+    assert m[0].raw == 'A(aaa)' and m[1].raw == 'B(bbb)'
+    # same count but shifted (dropped + junk appended): the fast path must not fire
+    m = align_words(['aaa', 'bbb', 'ccc'], parse_interleaved('A(aaa) C(ccc) Z(zzz)'))
+    assert m[0].raw == 'A(aaa)' and m[1] is None and m[2].raw == 'C(ccc)'
+    # non-Latin fast path
+    out = parse_interleaved('1pl.gen(чи) teacher(муаллим) friend(юлдаш)-PL(ар)-ERG(и)')
+    assert align_words(['Чи', 'муаллим', 'юлдашари'], out) == out
+
+
+def test_clitic_defaults_and_undecidable_interior_boundary():
+    assert clitic_types(['='], ['a', 'b']) == [None, 'enclitic']  # two-piece default
+    assert clitic_types(['-', '=', '-'], ['a', 'b', 'c', 'd']) == [None, None, None, None]
+    assert clitic_types(['-', '='], ['house', 'PL', 'TOP']) == [None, None, 'enclitic']
+
+
+def test_analysis_for_surface_mismatch_in_cyrillic():
+    a = analysis_for('rixoqiil', ParsedWord('E3S(r)-esposa(ixoqiil)'))
+    assert not a['degraded'] and a['segments'] == ['r', 'ixoqiil'] and not a['surface_mismatch']
+    assert analysis_for('тухузвай', ParsedWord('bring(тухун)-IMPF(зва)-PTP(й)'))['surface_mismatch']
+
+
+def _word(surface, morphs, spans=(), links=(), morph_spans=None, morph_links=None):
+    return {
+        'surface': surface, 'text': surface, 'token': {'id': 'w'},
+        'morphs': morphs, 'spans': list(spans), 'links': list(links),
+        'morph_spans': morph_spans or {}, 'morph_links': morph_links or {},
+    }
+
+
+def test_word_state_on_hand_built_words():
+    assert word_state(_word('abc', [])) == 'nomorph'
+    m0 = {'id': 'm0', 'metadata': {}}
+    assert word_state(_word('abc', [m0])) == 'unanalyzed'
+    assert word_state(_word('abc', [{'id': 'm0', 'metadata': {'form': 'abc'}}])) == 'unanalyzed'
+    # human segmentation (no prov on the morpheme tokens) -> protected
+    assert word_state(_word('abc', [{'id': 'm0', 'metadata': {'form': 'ab'}},
+                                     {'id': 'm1', 'metadata': {'form': 'c'}}])) == 'protected'
+    ms = [{'id': 'm0', 'metadata': {'form': 'ab', **MACHINE}}, {'id': 'm1', 'metadata': {'form': 'c', **MACHINE}}]
+    assert word_state(_word('abc', ms, morph_spans={'m0': [('g', {'metadata': MACHINE})]})) == 'machine'
+    assert word_state(_word('abc', ms, morph_spans={'m0': [('g', {'metadata': VERIFIED})]})) == 'protected'
+    # a human word-level span or morpheme link protects even a default morpheme
+    assert word_state(_word('abc', [m0], spans=[('pos', {'metadata': None})])) == 'protected'
+    assert word_state(_word('abc', [m0], morph_links={'m0': [{'metadata': {}}]})) == 'protected'
