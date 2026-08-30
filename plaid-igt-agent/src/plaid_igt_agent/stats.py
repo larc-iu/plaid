@@ -421,6 +421,8 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
             if c in APOSTROPHES:
                 apos[c] += 1
             cat = unicodedata.category(c)
+            if c.isspace():
+                continue
             if cat[0] in ('M', 'S', 'C') or (cat[0] == 'P' and c not in '.,;:!?-'):
                 chars[c] += 1
         for s in d.sentences:
