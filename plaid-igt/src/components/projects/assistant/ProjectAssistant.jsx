@@ -259,6 +259,7 @@ const summarizeSteps = (steps) => {
 // and the component only subscribes to whatever is in flight for the
 // conversation it shows. A job is {id, projectId, kind: 'turn' | 'apply',
 // conv, progress, steps, done, result}.
+const serviceCache = new Map(); // project id -> services, so a remount need not blank the picker
 const saveQueues = new Map(); // conversation id -> Promise (writes in order)
 const turns = new Map(); // conversation id -> turn in flight
 const applies = new Map(); // conversation id -> plan application in flight
@@ -345,6 +346,8 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
     projectId,
     serviceId: service.serviceId,
     kind: 'turn',
+    // Lives on the job so Stop still works after a remount.
+    controller: new AbortController(),
     conv,
     progress: 'Thinking…',
     steps: [],
@@ -372,6 +375,7 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
           }
           notifyJob(t);
         },
+        t.controller.signal,
       );
       if (result?.kind !== 'turn') throw new Error('Unexpected reply from the assistant service');
       next = {
@@ -391,15 +395,20 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
         ],
       };
     } catch (e) {
-      console.error('[Assistant] turn failed', e);
+      // A stop is the user's own doing, so it reads as a note rather than a
+      // failure, but it settles the turn the same way.
+      const stopped = e?.name === 'AbortError';
+      if (!stopped) console.error('[Assistant] turn failed', e);
       next = {
         ...conv,
-        // Drop the failed user turn from the model transcript so a retry does
-        // not send it twice; keep it visible with the error.
+        // Drop the unanswered user turn from the model transcript so a retry
+        // does not send it twice; keep it visible with what happened.
         messages: conv.messages.slice(0, -1),
         display: [
           ...conv.display,
-          { kind: 'error', text: humanizeError(e, 'The assistant could not answer.') },
+          stopped
+            ? { kind: 'error', stopped: true, text: 'Stopped.' }
+            : { kind: 'error', text: humanizeError(e, 'The assistant could not answer.') },
         ],
       };
     }
@@ -532,6 +541,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   const [liveSteps, setLiveSteps] = useState([]); // progress messages so far this turn
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const openSeq = useRef(0); // the latest open() request, so a stale read is ignored
   const activeRef = useRef(active);
   activeRef.current = active;
   const convsRef = useRef(convs);
@@ -547,20 +557,31 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   const model = service?.extras?.model;
 
   const discover = useCallback(async () => {
-    setDiscovering(true);
     try {
-      setServices((await client.messages.discoverServices(projectId)) || []);
+      const found = (await client.messages.discoverServices(projectId)) || [];
+      serviceCache.set(projectId, found);
+      setServices(found);
     } catch (e) {
       console.error('[Assistant] discovery failed', e);
-      setServices([]);
+      if (!serviceCache.has(projectId)) setServices([]);
     } finally {
       setDiscovering(false);
     }
   }, [client, projectId]);
 
-  useEffect(() => {
+  const refresh = () => {
+    setDiscovering(true);
     discover();
-  }, [discover]);
+  };
+
+  // Show what we already know about this project while re-checking, so
+  // switching tabs does not blank the assistant picker every time.
+  useEffect(() => {
+    const cached = serviceCache.get(projectId);
+    setServices(cached || []);
+    setDiscovering(!cached);
+    discover();
+  }, [discover, projectId]);
 
   // --- persistence ---------------------------------------------------------
   const loadList = useCallback(async () => {
@@ -667,6 +688,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
 
   const open = async (id) => {
     if (active?.id === id) return;
+    const seq = ++openSeq.current;
     const j = jobFor(id);
     if (j) {
       setActive(convOf(j));
@@ -675,12 +697,16 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     setOpening(id);
     try {
       const entry = await client.userData.get(userId, convKey(projectId, id));
+      // A later click (or "+") won the race: its choice stands.
+      if (seq !== openSeq.current) return;
       const v = entry?.value || {};
       setActive({ id, messages: v.messages || [], display: v.display || [] });
     } catch (e) {
-      notifyError(humanizeError(e, 'That conversation could not be opened.'));
+      if (seq === openSeq.current) {
+        notifyError(humanizeError(e, 'That conversation could not be opened.'));
+      }
     } finally {
-      setOpening(null);
+      if (seq === openSeq.current) setOpening(null);
     }
   };
 
@@ -709,6 +735,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   };
 
   const startNew = () => {
+    openSeq.current++;
     setActive(null);
     setInput('');
     inputRef.current?.focus();
@@ -761,6 +788,12 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     activeRef.current = rewound.conv;
     send(rewound.text);
   };
+
+  // Stop waiting on a turn. The service keeps working and its reply is
+  // discarded, which is safe because a turn never writes. Only turns can be
+  // stopped: an apply's writes are already under way, and abandoning one would
+  // hide what landed.
+  const stopTurn = () => turns.get(activeRef.current?.id)?.controller?.abort();
 
   const approve = (index, plan, { asHuman = false } = {}) => {
     const conv = activeRef.current;
@@ -911,7 +944,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
               type="button"
               variant="ghost"
               size="sm"
-              onClick={discover}
+              onClick={refresh}
               disabled={discovering}
               title="Refresh assistants"
             >
@@ -989,6 +1022,17 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                   <span className="animate-pulse">
                     {progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')}
                   </span>
+                  {busy === 'turn' && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={stopTurn}
+                      className="h-6 px-2 text-xs"
+                    >
+                      <X className="h-3 w-3" /> Stop
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -1266,7 +1310,11 @@ const Turn = ({ item, projectId, canWrite, busy, interrupted, onApprove, onDisca
     );
   }
   if (item.kind === 'error') {
-    return (
+    return item.stopped ? (
+      <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+        {item.text}
+      </div>
+    ) : (
       <div
         role="alert"
         className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
