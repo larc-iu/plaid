@@ -26,6 +26,8 @@ from .tools import Workspace, ToolError
 GROUP_LIMIT = 100000       # the engine's backstop for group rows
 ROW_LIMIT = 100000         # the engine's hard cap for ids/entities
 LABEL_DOC_BUDGET = 10      # documents a bulk tool may load just to write positional labels
+RENDER_DOC_BUDGET = 8      # documents a read tool loads to render the hits it shows
+MORE_DOCS_NOTE = '  … more hits in other documents (name a document, or narrow the pattern)'
 
 
 def rx(pattern: str, *, regex: bool = False, whole: bool = False, case_sensitive: bool = False) -> Dict[str, Any]:
@@ -116,6 +118,15 @@ class Corpus:
         """A morpheme token with a stored form (else it shows the word's surface)."""
         return ['token', var, {'metadata': {'form': {'regex': '.'}}}]
 
+    def in_word(self, mvar: str, wvar: str, tag: str = '') -> List[list]:
+        """A morpheme token ``mvar`` of the word token ``wvar``. In IGT a
+        morpheme exactly fills its word, so this is an equality join on
+        (doc, begin, end) value variables, which the engine runs an order of
+        magnitude faster than the range containment of ``within``. Add your
+        own constrained clauses for the same variables; constraints conjoin."""
+        vs = {'doc': {'var': f'?xd{tag}'}, 'begin': {'var': f'?xb{tag}'}, 'end': {'var': f'?xe{tag}'}}
+        return [['token', mvar, {'layer': self.M, **vs}], ['token', wvar, {'layer': self.W, **vs}]]
+
     def morph_form_clauses(self, var: str, spec: Dict[str, Any]) -> list:
         """Match a morpheme by its FORM: the stored metadata.form, or, for a
         morpheme without one, the surface it inherits from its word."""
@@ -193,6 +204,17 @@ class Corpus:
                 return f'{doc.name} {ref}'
         return f'"{name}"'
 
+    def may_load(self, doc_id: str, loaded: set) -> bool:
+        """Whether rendering may fetch this document: already fetched this
+        turn, or within the per-call budget of documents to fetch."""
+        if doc_id in self.ws._docs or doc_id in loaded:
+            loaded.add(doc_id)
+            return True
+        if len(loaded) >= RENDER_DOC_BUDGET:
+            return False
+        loaded.add(doc_id)
+        return True
+
     def tag(self, doc_id: str) -> str:
         """The document prefix on a reference; none in a one-document project."""
         names = self.doc_names()
@@ -208,12 +230,16 @@ def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=No
     from .project import render_word, word_ref
     out: List[str] = []
     seen = set()
+    loaded = set()
     for row in rows:
         ent = row[token_col]
         if not isinstance(ent, dict):
             continue
         if field is None and c.ignored(ent.get('value')):
             continue
+        if not c.may_load(ent['document'], loaded):
+            out.append(MORE_DOCS_NOTE)
+            break
         doc, s, w, m = c.locate(ent['document'], ent['id'])
         if s is None:
             continue
@@ -242,14 +268,14 @@ def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limi
         rows = c.entities(where, ['?t'], limit * 2, [['?t.doc'], ['?t.begin']])
         return _hit_lines(c, rows, 0, limit), total
     if where_l == 'morpheme':
-        where = [c.morph_form_clauses('?m', spec), ['within', '?m', '?w'], c.word('?w')]
+        where = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
         total = c.count(where, ['?w'])  # words, as the scan counts
         rows = c.entities(where, ['?m', '?w'], limit * 3, [['?w.doc'], ['?w.begin']])
         return _hit_lines(c, rows, 1, limit), total
     layer = c.scope_layer(field.scope)
     where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
     if field.scope == 'Morpheme':
-        where += [['within', '?t', '?w'], c.word('?w')]
+        where += c.in_word('?t', '?w')
         total = c.count(where, ['?w'])
         rows = c.entities(where, ['?s', '?w'], limit * 3, [['?w.doc'], ['?w.begin']])
         return _hit_lines(c, rows, 1, limit), total
@@ -289,11 +315,14 @@ class Unanalyzed:
         out = [['not', ['vocab-link', var, '?uv']],
                ['not', ['span', '?us', {'layer': '?usl'}], ['covers', '?us', var]]]
         if c.M:
-            out += [['not', c.morph('?um1', metadata={'form': {'regex': '.'}}), ['within', '?um1', var]],
-                    ['not', c.morph('?um2', metadata={'morphType': {'regex': '.'}}), ['within', '?um2', var]],
-                    ['not', c.morph('?um3'), ['within', '?um3', var], ['span', '?us3', {'layer': '?usl3'}], ['covers', '?us3', '?um3']],
-                    ['not', c.morph('?um4'), ['within', '?um4', var], ['vocab-link', '?um4', '?uv4']],
-                    ['not', c.morph('?ua'), c.morph('?ub'), ['within', '?ua', var], ['within', '?ub', var], ['precedes', '?ua', '?ub']]]
+            vs = {'doc': {'var': '?uxd'}, 'begin': {'var': '?uxb'}, 'end': {'var': '?uxe'}}
+            m = lambda v, **cons: ['token', v, {'layer': c.M, **vs, **cons}]  # noqa: E731
+            out.insert(0, ['token', var, {'layer': c.W, **vs}])
+            out += [['not', m('?um1', metadata={'form': {'regex': '.'}})],
+                    ['not', m('?um2', metadata={'morphType': {'regex': '.'}})],
+                    ['not', m('?um3'), ['span', '?us3', {'layer': '?usl3'}], ['covers', '?us3', '?um3']],
+                    ['not', m('?um4'), ['vocab-link', '?um4', '?uv4']],
+                    ['not', m('?ua'), m('?ub'), ['precedes', '?ua', '?ub']]]
         return out
 
 
@@ -303,8 +332,7 @@ def linked_word_ids(c: Corpus) -> Dict[str, str]:
     for wid, value, _n in c.group([c.word('?w'), ['vocab-link', '?w', '?v']], ['?w', '?w.value']):
         out[wid] = value
     if c.M:
-        for wid, value, _n in c.group([c.word('?w'), c.morph('?m'), ['within', '?m', '?w'], ['vocab-link', '?m', '?v']],
-                                      ['?w', '?w.value']):
+        for wid, value, _n in c.group(c.in_word('?m', '?w') + [['vocab-link', '?m', '?v']], ['?w', '?w.value']):
             out[wid] = value
     return out
 
@@ -320,7 +348,7 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
                                       lambda r: ((r[0].casefold(), r[0]) if r[0] and not c.ignored(r[0]) else (None, None)))
     elif what_l == 'morpheme':
         counts, raw = _casefold_tally(c.group([c.morph('?m')], ['?m.metadata.form', '?m.value']),
-                                      lambda r: ((Corpus.morph_key(r[0], r[1]) or None, (r[0], r[1]))))
+                                      lambda r: ((Corpus.morph_key(r[0], r[1]) or None, (r[0], r[1])) if not c.ignored(r[1]) else (None, None)))
     else:
         counts, raw = _casefold_tally(c.group([c.span('?s', field.layer_id)], ['?s.value']),
                                       lambda r: ((r[0], r[0]) if r[0] not in (None, '') else (None, None)))
@@ -379,12 +407,12 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str):
                                            ['?w', '?w.value', '?w.doc']):
             ids[wid] = (value, doc)
         if c.M:
-            for wid, value, doc, _n in c.group([c.word('?w'), c.morph('?m', metadata={'prov': 'inferred'}), ['within', '?m', '?w'],
+            for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [c.morph('?m', metadata={'prov': 'inferred'}),
                                                 ['not', ['token', '?m', {'metadata': {'provConfirmed': True}}]]],
                                                ['?w', '?w.value', '?w.doc']):
                 ids[wid] = (value, doc)
-            for wid, value, doc, _n in c.group([c.word('?w'), c.morph('?m'), ['within', '?m', '?w'], machine_span,
-                                                ['covers', '?s', '?m'], unconfirmed], ['?w', '?w.value', '?w.doc']):
+            for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [machine_span, ['covers', '?s', '?m'], unconfirmed],
+                                               ['?w', '?w.value', '?w.doc']):
                 ids[wid] = (value, doc)
         counts = Counter()
         by_doc = []
@@ -402,8 +430,7 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str):
         by_doc = c.group(where, ['?w.value', '?w.doc'])
     else:
         if kind == 'unlinked':
-            where = [c.morph('?m'), ['not', ['vocab-link', '?m', '?v']], ['within', '?m', '?w'], c.word('?w'),
-                     ['not', ['vocab-link', '?w', '?v2']]]
+            where = c.in_word('?m', '?w') + [['not', ['vocab-link', '?m', '?v']], ['not', ['vocab-link', '?w', '?v2']]]
         else:
             where = [c.morph('?m'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?m']]]
         rows = c.group(where, ['?m.metadata.form', '?m.value', '?m.doc'])
@@ -411,7 +438,7 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str):
         by_doc = []
         for form, value, doc, n in rows:
             key = Corpus.morph_key(form, value)
-            if not key:
+            if not key or c.ignored(value):  # a punctuation token's morpheme is not work
                 continue
             counts[key] += n
             by_doc.append((key, doc, n))
@@ -464,6 +491,8 @@ def q_corpus_numbers(ws: Workspace, per_doc: bool):
         group = ['?m.doc', '?m.metadata.form', '?m.value'] if per_doc else ['?m.metadata.form', '?m.value']
         for row in c.group([c.morph('?m')], group):
             doc = row[0] if per_doc else '*'
+            if c.ignored(row[-2]):
+                continue
             mforms[doc][Corpus.morph_key(row[-3], row[-2])] += row[-1]
         for k, tally in mforms.items():
             r = rows[k]
@@ -483,7 +512,7 @@ def q_corpus_numbers(ws: Workspace, per_doc: bool):
     if p.vocabs:
         linked: Dict[str, set] = defaultdict(set)
         for where in ([c.word('?w'), ['vocab-link', '?w', '?v']],
-                      *([[c.word('?w'), c.morph('?m'), ['within', '?m', '?w'], ['vocab-link', '?m', '?v']]] if c.M else [])):
+                      *([c.in_word('?m', '?w') + [['vocab-link', '?m', '?v']]] if c.M else [])):
             for wid, value, doc, _n in c.group(where, ['?w', '?w.value', '?w.doc']):
                 if not c.ignored(value):
                     linked[key(doc)].add(wid)
@@ -525,7 +554,7 @@ def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: 
         rows = c.entities(where, ['?w'], limit * 2, [['?w.doc'], ['?w.begin']])
         picks = [(r[0], None) for r in rows]
     elif where_l == 'morpheme':
-        where = [c.morph_form_clauses('?m', spec), ['within', '?m', '?w'], c.word('?w')]
+        where = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
         total = c.count(where, ['?m'])
         rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
         picks = [(r[0], r[1]) for r in rows]
@@ -535,14 +564,17 @@ def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: 
         rows = c.entities(where, ['?w'], limit, [['?w.doc'], ['?w.begin']])
         picks = [(r[0], None) for r in rows]
     else:
-        where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?m'], c.morph('?m'), ['within', '?m', '?w'], c.word('?w')]
+        where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?m']] + c.in_word('?m', '?w')
         total = c.count(where, ['?m'])
         rows = c.entities(where, ['?w', '?m'], limit, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
         picks = [(r[0], r[1]) for r in rows]
     hits = []
+    loaded = set()
     for went, ment in picks:
         if not isinstance(went, dict) or (where_l == 'baseline' and c.ignored(went.get('value'))):
             continue
+        if not c.may_load(went['document'], loaded):
+            break
         doc, s, w, _ = c.locate(went['document'], went['id'])
         if w is None:
             continue
@@ -603,7 +635,7 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
                 lines.append(line)
         if c.M:
             slots: Dict[int, Counter] = defaultdict(Counter)
-            for prec, mform, value, mtype, k in c.group(word + [c.morph('?m'), ['within', '?m', '?w']],
+            for prec, mform, value, mtype, k in c.group(word + c.in_word('?m', '?w'),
                                                        ['?m.precedence', '?m.metadata.form', '?m.value', '?m.metadata.morphType']):
                 key = Corpus.morph_key(mform, value) + (f' ({mtype})' if mtype else '')
                 slots[prec or 0][key] += k
@@ -613,7 +645,7 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
                     for prec, cnt in sorted(slots.items())))
             for f in p.fields_by_scope('Morpheme'):
                 fslots: Dict[int, Counter] = defaultdict(Counter)
-                for prec, value, k in c.group(word + [c.morph('?m'), ['within', '?m', '?w'], c.span('?s', f.layer_id), ['covers', '?s', '?m']],
+                for prec, value, k in c.group(word + c.in_word('?m', '?w') + [c.span('?s', f.layer_id), ['covers', '?s', '?m']],
                                               ['?m.precedence', '?s.value']):
                     if value not in (None, ''):
                         fslots[prec or 0][value] += k
@@ -628,14 +660,14 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
                 lines.append(line)
             if c.M:
                 line = _tally_line('Morpheme links', ((f'm{prec}:{item_form.get(iid, iid)}', k) for prec, iid, k in
-                                                      c.group(word + [c.morph('?m'), ['within', '?m', '?w'], ['vocab-link', '?m', '?v']], ['?m.precedence', '?v'])))
+                                                      c.group(word + c.in_word('?m', '?w') + [['vocab-link', '?m', '?v']], ['?m.precedence', '?v'])))
                 if line:
                     lines.append(line)
         lines.append('  Examples:')
         lines.extend(examples(word, ['?w'], [['?w.doc'], ['?w.begin']]))
     # the morpheme
     if c.M:
-        morph = [c.morph_form_clauses('?m', spec), ['within', '?m', '?w'], c.word('?w')]
+        morph = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
         n = c.count(morph, ['?m'])
         if not n:
             lines.append(f'Morpheme "{form}": no occurrences.')
@@ -688,7 +720,7 @@ def q_consistency(ws: Workspace, f):
                 by_form.setdefault(form.casefold(), Counter())[v] += n
     else:
         for mform, value, v, n in c.group(covered, ['?u.metadata.form', '?u.value', '?s.value']):
-            if v not in (None, ''):
+            if v not in (None, '') and not c.ignored(value):
                 by_form.setdefault(Corpus.morph_key(mform, value), Counter())[v] += n
     if not c.p.vocabs:
         return values, by_form, unlinked, linked_empty
@@ -751,6 +783,8 @@ def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
                 if iid not in items:
                     continue
                 form = Corpus.morph_key(row[1], row[2]) if len(form_keys) == 2 else (row[1] or '')
+                if c.ignored(row[2] if len(form_keys) == 2 else row[1]):
+                    continue
                 if _strip_affix(items[iid].get('form')) not in _strip_affix(form):
                     stale.append(f'{form} → "{items[iid].get("form")}"' + (f' ×{n}' if n > 1 else ''))
     return uses, use_docs, corpus_gloss, gloss_items, stale
@@ -778,16 +812,16 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
             if k in ('form', 'word', 'baseline'):
                 cons['value'] = spec
             elif k == 'morpheme':
-                extra += [c.morph_form_clauses(f'?m{i}f', spec), ['within', f'?m{i}f', wvars[i]]]
+                extra += [c.morph_form_clauses(f'?m{i}f', spec)] + c.in_word(f'?m{i}f', wvars[i], f'{i}f')
             elif k == 'type':
-                extra += [c.morph(f'?m{i}t', metadata={'morphType': spec}), ['within', f'?m{i}t', wvars[i]]]
+                extra += [c.morph(f'?m{i}t', metadata={'morphType': spec})] + c.in_word(f'?m{i}t', wvars[i], f'{i}t')
             else:
                 f = p.field(key)
                 if f.scope == 'Word':
                     extra += [c.span(f'?s{i}w', f.layer_id, value=spec), ['covers', f'?s{i}w', wvars[i]]]
                 elif f.scope == 'Morpheme':
-                    extra += [c.span(f'?s{i}m', f.layer_id, value=spec), ['covers', f'?s{i}m', f'?m{i}g'],
-                              c.morph(f'?m{i}g'), ['within', f'?m{i}g', wvars[i]]]
+                    extra += [c.span(f'?s{i}m', f.layer_id, value=spec), ['covers', f'?s{i}m', f'?m{i}g']] \
+                        + c.in_word(f'?m{i}g', wvars[i], f'{i}g')
                 else:
                     raise ToolError(f'"{f.name}" is a sentence field; sequence conditions are per word')
         token_cons.append(cons)
@@ -811,11 +845,14 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
     rows = c.entities(where, ['?sent'] + wvars, limit * 4, order)
     out = []
     seen = set()
+    loaded = set()
     for row in rows:
         sent = row[0]
         if not isinstance(sent, dict) or sent['id'] in seen:
             continue
         seen.add(sent['id'])
+        if not c.may_load(sent['document'], loaded):
+            break
         doc, s, _, _ = c.locate(sent['document'], sent['id'])
         if s is None:
             continue
@@ -925,7 +962,7 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
                       'doc': tok['document'], 'label': f'{head}: respell "{old}" → "{new}"',
                       '_pos': (tok['document'], tok['begin'], 0, 0)})
     if morpheme_forms and c.M and words:
-        mrows = c.entities([c.word('?w', value=spec), c.morph('?m', metadata={'form': spec}), ['within', '?m', '?w']],
+        mrows = c.entities([c.word('?w', value=spec), c.morph('?m', metadata={'form': spec})] + c.in_word('?m', '?w'),
                            ['?m', '?w'], cap + 1, [['?w.doc'], ['?w.begin'], ['?m.precedence']])
         for m, w in mrows:
             if not (isinstance(m, dict) and isinstance(w, dict)) or c.ignored(w.get('value')):
@@ -1021,7 +1058,7 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
     spans: Dict[str, List[str]] = defaultdict(list)
     if c.M and words:
         # Even an unanalyzed word carries its default morpheme, which the executor reuses.
-        base = [c.word('?w', value=rx(form, whole=True)), c.morph('?m'), ['within', '?m', '?w']]
+        base = [c.word('?w', value=rx(form, whole=True))] + c.in_word('?m', '?w')
         for m, w in c.entities(base, ['?m', '?w'], ROW_LIMIT, [['?w.doc'], ['?w.begin'], ['?m.precedence']]):
             if isinstance(m, dict) and isinstance(w, dict):
                 chains[w['id']].append(m)
