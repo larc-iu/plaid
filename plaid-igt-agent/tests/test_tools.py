@@ -361,3 +361,13 @@ def test_bare_references_are_citations_when_one_document_was_read():
     call_tool(w, 'read_document', {'document': 'd1'})
     out = resolve_citations(w, 'Relatives: {{Text 1 s1}}; cf. the data in s1.w2, s2 and s9 (none), not words2 or x.s1')
     assert [(c['key'], c['sentence'], c['word']) for c in out] == [('{{Text 1 s1}}', 1, None), ('s1.w2', 1, 2), ('s2', 2, None)]
+
+
+def test_prompt_shows_double_brace_citations_and_single_braces_still_resolve():
+    from plaid_igt_agent.prompt import build_system_prompt
+    from plaid_igt_agent.citations import resolve_citations
+    w = ws()
+    prompt = build_system_prompt(w.project)
+    assert '{{Text 1 s32}}' in prompt and 'Demo' in prompt and '{project_name}' not in prompt
+    out = resolve_citations(w, 'see {Text 1 s2} and {{Text 1 s1.w1}}')
+    assert [(c['key'], c['sentence']) for c in out] == [('{Text 1 s2}', 2), ('{{Text 1 s1.w1}}', 1)]

@@ -60,4 +60,5 @@ def build_system_prompt(project: IgtProject) -> str:
         lines.append('- No morpheme layer (words cannot be segmented here).')
     lines.append('- Orthographies: ' + (', '.join(project.orthographies) or 'none'))
     lines.append('- Lexicons: ' + (', '.join(v['name'] for v in project.vocabs) or 'none'))
-    return SYSTEM.format(project_name=project.name, shape='\n'.join(lines))
+    # Not str.format: the citation examples contain literal double braces.
+    return SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))

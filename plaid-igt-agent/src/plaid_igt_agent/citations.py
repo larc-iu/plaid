@@ -15,7 +15,8 @@ from typing import Any, Dict, List
 from .project import Sentence, Word, resolve, joiner, segmentation
 from .tools import Workspace, ToolError
 
-CITE_RE = re.compile(r'\{\{\s*(?P<doc>.+?)\s+(?P<ref>s\d+(?:\.w\d+)?)\s*\}\}')
+# Double braces by convention; single ones are accepted too (models drop one).
+CITE_RE = re.compile(r'\{\{?\s*(?P<doc>[^{}\n]+?)\s+(?P<ref>s\d+(?:\.w\d+)?)\s*\}\}?')
 # A bare reference ("s32.w16") is unambiguous only when the turn read one document.
 BARE_RE = re.compile(r'(?<![\w{.])(?P<ref>s\d+(?:\.w\d+)?)\b')
 MAX_CITATIONS = 40

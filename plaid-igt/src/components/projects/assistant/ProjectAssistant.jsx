@@ -897,7 +897,7 @@ export const AssistantMarkdown = ({ children }) => (
 
 // Braced citations, plus bare "s32.w16" references (the service resolves
 // those only when the turn read a single document; unknown ones stay text).
-const CITE_RE = /\{\{\s*.+?\s+s\d+(?:\.w\d+)?\s*\}\}|(?<![\w{.])s\d+(?:\.w\d+)?\b/g;
+const CITE_RE = /\{\{?\s*[^{}\n]+?\s+s\d+(?:\.w\d+)?\s*\}\}?|(?<![\w{.])s\d+(?:\.w\d+)?\b/g;
 
 const sentenceHref = (projectId, c) =>
   `#/projects/${projectId}/documents/${c.documentId}?tab=analyze&focusSentence=${c.sentenceId}`;
