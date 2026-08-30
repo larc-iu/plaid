@@ -54,10 +54,9 @@ describe('citationTitle', () => {
     );
   });
 
-  it('still names a conversation saved when a citation could point at only one word', () => {
-    expect(citationFocus({ word: 2, morpheme: 1 })).toEqual([{ word: 2, morpheme: 1 }]);
-    expect(citationTitle({ ...base, word: 2 })).toBe('Text 1, sentence 3, word 2');
+  it('names the sentence alone when nothing inside it was singled out', () => {
     expect(citationFocus({})).toEqual([]);
+    expect(citationTitle(base)).toBe('Text 1, sentence 3');
   });
 });
 

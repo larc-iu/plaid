@@ -95,20 +95,7 @@ const planToMarkdown = (plan, status) => {
   return lines.join('\n');
 };
 
-// The tab's own one-line summary when the caller lends it, else a count.
-const stepsLine = (steps, summarizeSteps) => {
-  if (!steps?.length) return null;
-  const text = summarizeSteps
-    ? summarizeSteps(steps)
-    : `${steps.length} tool call${steps.length === 1 ? '' : 's'}`;
-  return `*${text}*`;
-};
-
-export const conversationToMarkdown = (
-  conv,
-  meta,
-  { origin, projectId, projectName, summarizeSteps },
-) => {
+export const conversationToMarkdown = (conv, meta, { origin, projectId, projectName }) => {
   const ctx = { origin, projectId };
   const out = [`# ${meta?.title || 'Conversation'}`, ''];
   const facts = [];
@@ -123,8 +110,8 @@ export const conversationToMarkdown = (
       out.push(`> **Error:** ${d.text || ''}`, '');
     } else {
       out.push('## Assistant', '');
-      const trace = stepsLine(d.steps, summarizeSteps);
-      if (trace) out.push(trace, '');
+      // What it did before answering, in the service's own words.
+      if (d.stepsSummary) out.push(`*${d.stepsSummary}*`, '');
       if (d.text) out.push(replyToMarkdown(d.text, d.citations, ctx), '');
       if (d.plan) out.push(planToMarkdown(d.plan, d.status), '');
     }

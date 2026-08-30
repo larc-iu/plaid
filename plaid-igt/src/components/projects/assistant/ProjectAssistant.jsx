@@ -56,6 +56,7 @@ import {
   sentenceHref,
 } from './citations.js';
 import { applyingIndex, rewindForRetry, unansweredTurn } from './resume.js';
+import { pruneConversation } from './prune.js';
 
 // The Assistant tab: a chat with whatever `assist` service(s) the operator
 // runs (see ../../../../../plaid-igt-agent), laid out like any chat app: past
@@ -102,170 +103,6 @@ const timeAgo = (iso) => {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   if (s < 7 * 86400) return `${Math.floor(s / 86400)}d ago`;
   return new Date(t).toLocaleDateString();
-};
-
-// --- tool traces ------------------------------------------------------------
-// A turn's new transcript messages hold the assistant's tool calls and the
-// tools' replies. Fold them into a compact trace stored on the display item:
-// what was called (humanized), with what, and what came back (truncated so a
-// saved conversation stays small).
-const RESULT_KEEP = 4000;
-
-const parseArgs = (raw) => {
-  try {
-    const v = JSON.parse(raw || '{}');
-    return v && typeof v === 'object' ? v : {};
-  } catch {
-    return {};
-  }
-};
-
-const extractSteps = (messages) => {
-  const results = new Map();
-  for (const m of messages || []) {
-    if (m.role === 'tool' && m.toolCallId) results.set(m.toolCallId, m.content ?? '');
-  }
-  const steps = [];
-  for (const m of messages || []) {
-    if (m.role !== 'assistant' || !m.toolCalls) continue;
-    for (const c of m.toolCalls) {
-      const result = String(results.get(c.id) ?? '');
-      steps.push({
-        name: c.function?.name || '?',
-        args: parseArgs(c.function?.arguments),
-        result:
-          result.length > RESULT_KEEP
-            ? `${result.slice(0, RESULT_KEEP)}\n… [${result.length - RESULT_KEEP} more characters]`
-            : result,
-        error: result.startsWith('Error'),
-      });
-    }
-  }
-  return steps;
-};
-
-const q = (v) => `“${String(v ?? '')}”`;
-const where = (a) => (a.document ? ` in ${q(a.document)}` : '');
-
-// One line per tool call, in the user's terms.
-const describeStep = ({ name, args: a }) => {
-  switch (name) {
-    case 'project_overview':
-      return 'Looked at the project overview';
-    case 'read_document':
-      return `Read ${q(a.document)}${
-        a.from_sentence || a.to_sentence
-          ? ` (sentences ${a.from_sentence || 1}${a.to_sentence ? `–${a.to_sentence}` : ' on'})`
-          : ''
-      }`;
-    case 'search':
-      return `Searched ${a.where && a.where !== 'baseline' ? a.where : 'the baseline'} for ${q(a.pattern)}${where(a)}`;
-    case 'field_values':
-      return `Counted ${a.field} values${where(a)}`;
-    case 'read_lexicon':
-      return `Read the lexicon${a.pattern ? ` for ${q(a.pattern)}` : ''}`;
-    case 'concordance':
-      return `Concordanced ${q(a.pattern)}${a.where && a.where !== 'morpheme' ? ` in ${a.where}` : ''}${where(a)}`;
-    case 'analyses_of':
-      return `Tallied the analyses of ${q(a.form)}${where(a)}`;
-    case 'lexicon_entry':
-      return `Looked up the entry ${q(a.entry_form || a.entry_id)}`;
-    case 'check_consistency':
-      return `Checked ${a.field} for consistency${where(a)}`;
-    case 'recent_changes':
-      return `Read the change history${where(a)}`;
-    case 'plan_status':
-      return 'Reviewed the plan so far';
-    case 'set_document_metadata':
-      return `Planned ${a.field} = ${q(a.value)} on document ${q(a.document)}`;
-    case 'create_document':
-      return `Planned a new document ${q(a.name)}`;
-    case 'corpus_stats':
-      return `Counted the corpus${a.by ? ` by ${a.by}` : ''}${where(a)}`;
-    case 'frequency_list':
-      return `Ranked ${a.what || 'wordform'}s by frequency${where(a)}`;
-    case 'worklist':
-      return `Listed ${a.kind || 'unglossed'} ${a.field ? `${a.field} ` : ''}work${where(a)}`;
-    case 'check_lexicon':
-      return 'Checked the lexicon';
-    case 'check_integrity':
-      return `Checked data integrity${where(a)}`;
-    case 'sequence_search':
-      return `Searched for a word sequence${where(a)}`;
-    case 'replace_in_field':
-      return `Planned replacing ${q(a.pattern)} → ${q(a.replacement)} in ${a.field}${where(a)}`;
-    case 'respell_all':
-      return `Planned respelling ${q(a.pattern)} → ${q(a.replacement)}${where(a)}`;
-    case 'copy_to_orthography':
-      return `Planned filling ${a.orthography} from ${a.source || 'the baseline'}${where(a)}`;
-    case 'set_field_for_form':
-      return `Planned ${a.field} = ${q(a.value)} on every ${q(a.form)}${where(a)}`;
-    case 'set_analysis_for_form':
-      return `Planned an analysis for every ${q(a.form)}${where(a)}`;
-    case 'merge_entries':
-      return `Planned merging ${q(a.remove_form || a.remove_id)} into ${q(a.keep_form || a.keep_id)}`;
-    case 'delete_entry':
-      return `Planned deleting the entry ${q(a.entry_form || a.entry_id)}`;
-    case 'rename_entry':
-      return `Planned renaming the entry ${q(a.entry_form || a.entry_id)} → ${q(a.new_form)}`;
-    case 'rename_document':
-      return `Planned renaming ${q(a.document)} → ${q(a.new_name)}`;
-    case 'query_help':
-      return 'Read the query language reference';
-    case 'query':
-      return 'Ran a query';
-    case 'set_field':
-      return `Planned ${a.field} = ${q(a.value)} on ${(a.refs || []).length} item(s)${where(a)}`;
-    case 'set_analysis':
-      return `Planned a new analysis for ${a.ref}${where(a)}`;
-    case 'set_orthography':
-      return `Planned ${a.orthography} = ${q(a.value)} on ${(a.refs || []).length} word(s)${where(a)}`;
-    case 'respell':
-      return `Planned respelling ${a.ref} → ${q(a.new_text)}${where(a)}`;
-    case 'link_entry':
-      return `Planned linking ${(a.refs || []).length} item(s) to ${q(a.entry_form || a.entry_id)}${where(a)}`;
-    case 'unlink_entry':
-      return `Planned unlinking ${(a.refs || []).length} item(s)${where(a)}`;
-    case 'create_entry':
-      return `Planned a new lexicon entry ${q(a.form)}`;
-    case 'set_entry_field':
-      return `Planned ${a.field} = ${q(a.value)} on entry ${q(a.entry_form || a.entry_id)}`;
-    case 'discard_plan':
-      return 'Discarded the plan so far';
-    default:
-      return name.replace(/_/g, ' ');
-  }
-};
-
-const summarizeSteps = (steps) => {
-  const docs = new Set(steps.filter((s) => s.name === 'read_document').map((s) => s.args.document));
-  const searches = steps.filter((s) =>
-    [
-      'search',
-      'field_values',
-      'concordance',
-      'analyses_of',
-      'check_consistency',
-      'corpus_stats',
-      'frequency_list',
-      'worklist',
-      'check_lexicon',
-      'check_integrity',
-      'sequence_search',
-      'query',
-    ].includes(s.name),
-  ).length;
-  const planned = steps.filter((s) =>
-    /^(set_|respell|link_|unlink_|create_|replace_|copy_to|merge_|delete_|rename_)/.test(s.name),
-  ).length;
-  const parts = [];
-  if (docs.size) parts.push(`read ${docs.size} document${docs.size === 1 ? '' : 's'}`);
-  if (searches) parts.push(`${searches} search${searches === 1 ? '' : 'es'}`);
-  if (planned) parts.push(`${planned} planned change${planned === 1 ? '' : 's'}`);
-  const head = parts.length
-    ? parts.join(' · ')
-    : `${steps.length} step${steps.length === 1 ? '' : 's'}`;
-  return parts.length ? `${head} · ${steps.length} step${steps.length === 1 ? '' : 's'}` : head;
 };
 
 // --- work that outlives the component ------------------------------------------
@@ -406,10 +243,16 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
             citations: result.citations || [],
             status: null,
             model: service?.extras?.model || null,
-            steps: extractSteps(result.messages),
+            // What the assistant did, described by the service (see
+            // plaid-igt-agent/src/plaid_igt_agent/trace.py). Each step names
+            // the tool call it belongs to, so its output is read back out of
+            // the transcript rather than stored a second time.
+            steps: result.steps || [],
+            stepsSummary: result.stepsSummary || '',
           },
         ],
       };
+      next = pruneConversation(next);
     } catch (e) {
       // A stop is the user's own doing, so it reads as a note rather than a
       // failure, but it settles the turn the same way.
@@ -532,6 +375,11 @@ const startApply = ({
   return j;
 };
 
+// A conversation that has not been sent yet. It gets its id up front so it can
+// sit in the sidebar like any other, and turns into a saved one the moment the
+// first message goes out.
+const newConversation = () => ({ id: newId(), messages: [], display: [], draft: true });
+
 const EXAMPLES = [
   'Which words in this project are still unglossed?',
   'Are the glosses for the most common suffix consistent?',
@@ -547,7 +395,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   // --- conversations ----------------------------------------------------
   const [convs, setConvs] = useState([]); // sidebar metas, newest first
   const [loadingList, setLoadingList] = useState(true);
-  const [active, setActive] = useState(null); // {id, messages, display} | null (a fresh chat)
+  const [active, setActive] = useState(null); // {id, messages, display, draft?}
   const [opening, setOpening] = useState(null); // id being fetched
 
   // --- the turn in flight ------------------------------------------------
@@ -568,8 +416,20 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     () => filterServicesByTask(services, TASKS.ASSIST).filter((s) => s.online !== false),
     [services],
   );
-  const service =
-    assistants.find((s) => s.serviceId === choice) ?? (assistants.length ? assistants[0] : null);
+  // A conversation keeps the assistant it started with: its earlier answers
+  // were that model's, and swapping models halfway through a thread makes the
+  // whole thread hard to read. So the picker is offered while a conversation
+  // is still new, and again only if the assistant it started with has gone
+  // offline, where the alternative is not being able to go on at all.
+  const activeMeta = convs.find((m) => m.id === active?.id) || null;
+  const pinned = activeMeta?.serviceId
+    ? (assistants.find((s) => s.serviceId === activeMeta.serviceId) ?? null)
+    : null;
+  const service = pinned ?? assistants.find((s) => s.serviceId === choice) ?? assistants[0] ?? null;
+  const canChoose = !pinned && assistants.length > 1;
+  // The conversation's own assistant is offline, so a reply now would come
+  // from a different one. Say so rather than switching quietly.
+  const wentOffline = !!activeMeta?.serviceId && !pinned;
   const model = service?.extras?.model;
 
   const discover = useCallback(async () => {
@@ -625,21 +485,25 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
 
   // On mount: work still running for this project (we were unmounted mid-turn
   // or mid-apply) is shown first; otherwise the most recent conversation, the
-  // way a chat app reopens where you left off. "+" starts a fresh one.
+  // way a chat app reopens where you left off, and a fresh one when there is
+  // nothing to reopen. "+" starts a fresh one at any time.
   useEffect(() => {
     let cancelled = false;
+    const seq = openSeq.current;
     const inFlight = jobInProject(projectId);
-    setActive(inFlight ? convOf(inFlight) : null);
+    setActive(inFlight ? convOf(inFlight) : newConversation());
     loadList().then(async (metas) => {
       if (cancelled || inFlight || !metas.length) return;
       try {
         const entry = await client.userData.get(userId, convKey(projectId, metas[0].id));
         const v = entry?.value || {};
-        if (!cancelled && !activeRef.current) {
+        // A conversation the user opened, or a "+" they pressed, meanwhile
+        // wins over reopening the last one.
+        if (!cancelled && seq === openSeq.current) {
           setActive({ id: metas[0].id, messages: v.messages || [], display: v.display || [] });
         }
       } catch {
-        /* the empty state is fine */
+        /* the fresh conversation is fine */
       }
     });
     return () => {
@@ -739,12 +603,14 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
       return;
     }
     try {
-      await Promise.allSettled([
+      // Both keys, or neither: a transcript left behind without its sidebar
+      // entry could never be reached again.
+      await Promise.all([
         client.userData.delete(userId, convKey(projectId, id)),
         client.userData.delete(userId, metaKey(projectId, id)),
       ]);
       setConvs((prev) => prev.filter((m) => m.id !== id));
-      if (activeRef.current?.id === id) setActive(null);
+      if (activeRef.current?.id === id) setActive(newConversation());
     } catch (e) {
       notifyError(humanizeError(e, 'The conversation could not be deleted.'));
     }
@@ -752,8 +618,11 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
 
   const startNew = () => {
     openSeq.current++;
-    setActive(null);
-    setInput('');
+    // Already sitting in an untouched new conversation: nothing to start.
+    if (!activeRef.current?.draft || activeRef.current.display.length) {
+      setActive(newConversation());
+      setInput('');
+    }
     inputRef.current?.focus();
   };
 
@@ -772,9 +641,11 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
     const text = (textOverride ?? input).trim();
     if (!text || !canSend) return;
     setInput('');
-    const base = activeRef.current || { id: newId(), messages: [], display: [] };
+    // Sending is what turns a draft into a saved conversation, so the flag
+    // does not travel with it.
+    const base = activeRef.current ?? newConversation();
     const conv = {
-      ...base,
+      id: base.id,
       messages: [...base.messages, { role: 'user', content: text }],
       display: [...base.display, { kind: 'user', text }],
     };
@@ -783,6 +654,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
       conv,
       service,
     );
+    openSeq.current++; // sending settles which conversation is open
     activeRef.current = conv;
     setActive(conv);
     setConvs(upsert(meta));
@@ -843,6 +715,22 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   };
 
   const display = active?.display || [];
+  // A step's output, looked up by the tool call it belongs to. The transcript
+  // is where it is stored, so the trace does not carry a second copy.
+  const results = useMemo(
+    () =>
+      new Map(
+        (active?.messages || [])
+          .filter((m) => m.role === 'tool' && m.toolCallId)
+          .map((m) => [m.toolCallId, String(m.content ?? '')]),
+      ),
+    [active?.messages],
+  );
+  // The sidebar lists the saved conversations, with an unsent one at the top
+  // so a new conversation is a real place to be rather than a blank screen.
+  const rows = active?.draft
+    ? [{ id: active.id, title: 'New conversation', draft: true }, ...convs]
+    : convs;
   const pendingPlan = display.some((d) => d.plan && d.status === null);
   // Nothing is running for this conversation, so anything left mid-flight in
   // it was interrupted rather than in progress.
@@ -868,14 +756,10 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto p-1.5">
-          {loadingList ? (
+          {loadingList && !rows.length ? (
             <div className="px-2 py-3 text-xs text-muted-foreground">Loading…</div>
-          ) : convs.length === 0 ? (
-            <div className="px-2 py-3 text-xs text-muted-foreground">
-              No conversations yet. They are private to you and saved to your account.
-            </div>
           ) : (
-            convs.map((m) => (
+            rows.map((m) => (
               <div
                 key={m.id}
                 className={cn(
@@ -886,30 +770,40 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                 <button
                   type="button"
                   onClick={() => open(m.id)}
+                  disabled={m.draft}
                   className="min-w-0 flex-1 text-left"
                 >
                   <div className="flex items-center gap-1.5">
                     <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{m.title || 'Untitled'}</span>
+                    <span className={cn('truncate', m.draft && 'italic')}>
+                      {m.title || 'Untitled'}
+                    </span>
                   </div>
                   <div className="pl-5 text-[11px] text-muted-foreground">
-                    {opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)}
-                    {m.model ? ` · ${m.model.split('/').pop()}` : ''}
-                    {m.pending && !jobFor(m.id) ? ' · unfinished' : ''}
+                    {m.draft
+                      ? 'Nothing sent yet'
+                      : (opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)) +
+                        (m.model ? ` · ${m.model.split('/').pop()}` : '') +
+                        (m.pending && !jobFor(m.id) ? ' · unfinished' : '')}
                   </div>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => remove(m.id)}
-                  title="Delete conversation"
-                  className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {!m.draft && (
+                  <button
+                    type="button"
+                    onClick={() => remove(m.id)}
+                    title="Delete conversation"
+                    className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             ))
           )}
         </div>
+        <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+          Conversations are private to you and saved to your account.
+        </p>
       </aside>
 
       {/* --- chat --------------------------------------------------------- */}
@@ -925,18 +819,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
             </span>
           ) : (
             <>
-              <Select value={service.serviceId} onValueChange={setChoice} disabled={!!busy}>
-                <SelectTrigger className="h-8 w-auto min-w-48 gap-2 border-none bg-transparent px-2 font-medium shadow-none">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {assistants.map((s) => (
-                    <SelectItem key={s.serviceId} value={s.serviceId}>
-                      {s.serviceName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <span className="font-medium">{service.serviceName}</span>
               {model && !service.serviceName?.includes(model) && (
                 <Badge variant="secondary">{model}</Badge>
               )}
@@ -951,7 +834,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
             {display.length > 0 && (
               <ExportMenu
                 conv={active}
-                meta={convs.find((m) => m.id === active?.id) || null}
+                meta={activeMeta}
                 projectId={projectId}
                 projectName={projectName}
               />
@@ -978,9 +861,19 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                 </div>
                 <div className="max-w-md text-sm text-muted-foreground">
                   Ask about the corpus or the lexicon, or ask for changes. The assistant reads the
-                  project and answers with evidence; anything that would change data comes back as a
+                  project and answers with evidence. Anything that would change data comes back as a
                   plan for you to approve.
                 </div>
+                {/* Which assistant answers is settled here, at the start, and
+                    then stays put for the rest of the conversation. */}
+                {canChoose && (
+                  <AssistantPicker
+                    assistants={assistants}
+                    value={service?.serviceId}
+                    onChange={setChoice}
+                    disabled={!!busy}
+                  />
+                )}
                 <div className="flex flex-wrap justify-center gap-2">
                   {EXAMPLES.map((ex) => (
                     <button
@@ -1001,6 +894,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                 key={i}
                 item={d}
                 projectId={projectId}
+                results={results}
                 canWrite={canWrite}
                 busy={!!busy || blockedByOther}
                 interrupted={i === stuckApply}
@@ -1057,6 +951,25 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
         </div>
 
         <div className="border-t px-4 py-3">
+          {/* The conversation's own assistant is gone. Rather than answer in a
+              different voice without saying so, name the replacement, and let
+              the user choose it where there is more than one. */}
+          {wentOffline && service && (
+            <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                The assistant this conversation started with is offline. Replies now come from{' '}
+                <span className="font-medium text-foreground">{service.serviceName}</span>.
+              </span>
+              {canChoose && (
+                <AssistantPicker
+                  assistants={assistants}
+                  value={service.serviceId}
+                  onChange={setChoice}
+                  disabled={!!busy}
+                />
+              )}
+            </div>
+          )}
           <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 focus-within:ring-1 focus-within:ring-ring">
             <Textarea
               ref={inputRef}
@@ -1092,6 +1005,24 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
   );
 };
 
+// Which assistant a new conversation talks to. Shown only where there is a
+// choice to make: more than one online, and a conversation not yet bound to
+// one of them.
+const AssistantPicker = ({ assistants, value, onChange, disabled }) => (
+  <Select value={value} onValueChange={onChange} disabled={disabled}>
+    <SelectTrigger className="h-8 w-auto min-w-48 gap-2" aria-label="Assistant">
+      <SelectValue />
+    </SelectTrigger>
+    <SelectContent>
+      {assistants.map((s) => (
+        <SelectItem key={s.serviceId} value={s.serviceId}>
+          {s.serviceName}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+);
+
 // Standard chat markdown: GFM (tables, task lists, strikethrough) rendered
 // with Tailwind Typography. Tables scroll sideways instead of breaking the
 // column; links open in a new tab.
@@ -1121,7 +1052,6 @@ const ExportMenu = ({ conv, meta, projectId, projectName }) => {
       origin: `${window.location.origin}${window.location.pathname}`,
       projectId,
       projectName,
-      summarizeSteps,
     });
   const download = () => {
     const blob = new Blob([build()], { type: 'text/markdown;charset=utf-8' });
@@ -1325,7 +1255,7 @@ const CitedMarkdown = ({ text, citations, projectId }) => {
   );
 };
 
-const Turn = ({ item, projectId, canWrite, busy, interrupted, onApprove, onDiscard }) => {
+const Turn = ({ item, projectId, results, canWrite, busy, interrupted, onApprove, onDiscard }) => {
   if (item.kind === 'user') {
     return (
       <div className="flex justify-end">
@@ -1355,7 +1285,9 @@ const Turn = ({ item, projectId, canWrite, busy, interrupted, onApprove, onDisca
         <Bot className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {item.steps?.length > 0 && <ToolTrace steps={item.steps} />}
+        {item.stepsSummary && item.steps?.length > 0 && (
+          <ToolTrace steps={item.steps} summary={item.stepsSummary} results={results} />
+        )}
         {item.text ? (
           <CitedMarkdown text={item.text} citations={item.citations} projectId={projectId} />
         ) : (
@@ -1382,9 +1314,12 @@ const Turn = ({ item, projectId, canWrite, busy, interrupted, onApprove, onDisca
   );
 };
 
-// What the assistant did before answering: a one-line summary, expandable to
-// the steps, each expandable to what the tool returned.
-const ToolTrace = ({ steps }) => {
+// What the assistant did before answering: the service's one-line summary,
+// expandable to its steps, each expandable to what that tool returned. A step
+// names the tool call it came from, and `results` maps that to the tool's
+// output in the transcript, so nothing is stored twice (and a result the size
+// cap dropped reads as dropped here too).
+const ToolTrace = ({ steps, summary, results }) => {
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(null);
   return (
@@ -1396,35 +1331,38 @@ const ToolTrace = ({ steps }) => {
       >
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         <Wrench className="h-3 w-3" />
-        {summarizeSteps(steps)}
+        {summary}
       </button>
       {open && (
         <ol className="mt-1 flex flex-col gap-0.5 border-l pl-3">
-          {steps.map((s, i) => (
-            <li key={i}>
-              <button
-                type="button"
-                onClick={() => setShown(shown === i ? null : i)}
-                className={cn(
-                  'flex w-full items-start gap-1 rounded px-1 py-0.5 text-left hover:bg-muted hover:text-foreground',
-                  s.error && 'text-destructive',
+          {steps.map((s, i) => {
+            const result = results.get(s.id) ?? '';
+            return (
+              <li key={s.id || i}>
+                <button
+                  type="button"
+                  onClick={() => setShown(shown === i ? null : i)}
+                  className={cn(
+                    'flex w-full items-start gap-1 rounded px-1 py-0.5 text-left hover:bg-muted hover:text-foreground',
+                    result.startsWith('Error') && 'text-destructive',
+                  )}
+                  title={s.name}
+                >
+                  {shown === i ? (
+                    <ChevronDown className="mt-0.5 h-3 w-3 shrink-0" />
+                  ) : (
+                    <ChevronRight className="mt-0.5 h-3 w-3 shrink-0" />
+                  )}
+                  <span>{s.label}</span>
+                </button>
+                {shown === i && (
+                  <pre className="my-1 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground">
+                    {result || '(no output)'}
+                  </pre>
                 )}
-                title={s.name}
-              >
-                {shown === i ? (
-                  <ChevronDown className="mt-0.5 h-3 w-3 shrink-0" />
-                ) : (
-                  <ChevronRight className="mt-0.5 h-3 w-3 shrink-0" />
-                )}
-                <span>{describeStep(s)}</span>
-              </button>
-              {shown === i && (
-                <pre className="my-1 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px] leading-4 text-foreground">
-                  {s.result || '(no output)'}
-                </pre>
-              )}
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ol>
       )}
     </div>

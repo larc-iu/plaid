@@ -13,8 +13,12 @@ const cite = {
   documentName: 'Text 1',
   sentenceId: 's-3',
   sentence: 3,
-  word: 2,
+  focus: [{ word: 2, morpheme: null }],
   text: 'Ali-di gam akuna.',
+  tiers: [
+    { name: 'Morphemes', kind: 'morphemes' },
+    { name: 'Gloss', kind: 'morpheme' },
+  ],
   words: [
     { index: 1, surface: 'Ali-di', seg: 'Ali-di', lines: [{ field: 'Gloss', value: 'Ali-ERG' }] },
     { index: 2, surface: 'gam', seg: null, lines: [{ field: 'Gloss', value: 'fish' }] },
@@ -44,7 +48,6 @@ describe('citationToMarkdown', () => {
     const md = citationToMarkdown(
       {
         ...cite,
-        word: undefined,
         focus: [{ word: 1, morpheme: 2 }],
         words: [
           {
@@ -68,7 +71,6 @@ describe('citationToMarkdown', () => {
     const md = citationToMarkdown(
       {
         ...cite,
-        word: undefined,
         focus: [
           { word: 1, morpheme: 2 },
           { word: 3, morpheme: null },
@@ -108,7 +110,11 @@ describe('conversationToMarkdown', () => {
           text: 'Planned it.',
           plan: { summary: '1 field value', labels: ['Text 1 s1.w2 "gam": Gloss = "fish"'] },
           status: 'applied',
-          steps: [{ label: 'read' }, { label: 'plan' }],
+          steps: [
+            { id: 'a', label: 'Read “Text 1”' },
+            { id: 'b', label: 'Planned it' },
+          ],
+          stepsSummary: 'read 1 document · 1 planned change · 2 steps',
         },
         { kind: 'error', text: 'boom' },
       ],
@@ -116,7 +122,7 @@ describe('conversationToMarkdown', () => {
     const md = conversationToMarkdown(
       conv,
       { title: 'Gloss gam', model: 'openai/x', createdAt: '2026-08-30T01:02:03Z' },
-      { ...ctx, summarizeSteps: (s) => `${s.length} steps` },
+      ctx,
     );
     expect(md).toBe(
       [
@@ -130,7 +136,7 @@ describe('conversationToMarkdown', () => {
         '',
         '## Assistant',
         '',
-        '*2 steps*',
+        '*read 1 document · 1 planned change · 2 steps*',
         '',
         'Planned it.',
         '',

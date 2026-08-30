@@ -26,10 +26,8 @@ export const citePlain = (m) => {
 };
 
 // What the citation points at: [{word, morpheme}], one entry per item the
-// model named. (A conversation saved before citations could name several
-// carries a single `word`/`morpheme` instead.)
-export const citationFocus = (c) =>
-  c.focus || (c?.word ? [{ word: c.word, morpheme: c.morpheme || null }] : []);
+// model named.
+export const citationFocus = (c) => c?.focus || [];
 
 // The sentence in the editor, and the first cited word within it: both ride in
 // the URL, so the link is shareable and a middle-click opens it in a new tab
@@ -54,9 +52,6 @@ export const citationTitle = (c) => {
   return `${head}, words ${words.join(', ')}`;
 };
 
-// The rows of a cited sentence, in the Analyze grid's order: the surface row
-// first, then the tiers the service sends (older stored citations without
-// `tiers` fall back to the order the cells appear in). Empty rows are left out.
 // Highlights by word index: `true` for the whole word, or a Set of morpheme
 // indexes when the citation names morphemes inside it.
 export const citationHighlights = (c) => {
@@ -69,20 +64,12 @@ export const citationHighlights = (c) => {
   return out;
 };
 
+// The rows of a cited sentence, in the Analyze grid's order: the surface row
+// first, then the tiers the service sends. Empty rows are left out.
 export const citationRows = (c) => {
   const words = c.words || [];
-  let tiers = c.tiers;
-  if (!tiers) {
-    tiers = [];
-    words.forEach((w) =>
-      (w.lines || []).forEach((l) => {
-        if (!tiers.some((t) => t.name === l.field)) tiers.push({ name: l.field, kind: 'field' });
-      }),
-    );
-    if (words.some((w) => w.seg)) tiers.unshift({ name: 'Morphemes', kind: 'morphemes' });
-  }
   const rows = [{ label: '', kind: 'surface', cells: words.map((w) => w.surface) }];
-  for (const t of tiers) {
+  for (const t of c.tiers || []) {
     const cells =
       t.kind === 'morphemes'
         ? words.map((w) => w.seg || '')
