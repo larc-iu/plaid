@@ -11,7 +11,7 @@ word takes its analysis, values, and links with it while the text stays."""
 from typing import Any, Dict, List, Optional
 
 from .project import Sentence, Word, resolve, word_ref
-from .tools import Workspace, ToolError, _refs, _need
+from .tools import Workspace, ToolError, _refs, _need, split_sentences, split_words
 
 SHAPE_KINDS = ('split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences')
 
@@ -26,8 +26,9 @@ def _shaped_ids(ws: Workspace, merges_only: bool) -> set:
         elif k == 'merge_words':
             out.add(op['word_id'])
             out.update(op.get('other_ids') or [])
-        elif k == 'split_sentence' and not merges_only:
-            out.add(op['sentence_id'])
+        elif k in ('split_sentence', 'edit_text') and not merges_only:
+            if op.get('sentence_id'):
+                out.add(op['sentence_id'])
         elif k == 'merge_sentences':
             out.add(op['sentence_id'])
             out.add(op['other_id'])
@@ -204,4 +205,70 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     ws.add_op({'kind': 'merge_sentences', 'sentence_id': prev.id, 'other_id': s.id, 'spans': spans,
                'label': f'{doc.name}: merge s{s.index} "{s.text[:30]}" into s{prev.index} "{prev.text[:30]}"'
                         + (f' (values combined: {comb})' if comb else '')})
+    return ws.planned_note(1)
+
+
+# --- text edits ----------------------------------------------------------------
+
+def _guard_text_edit(ws: Workspace, text_id: Optional[str], begin: int, end: int, where: str) -> None:
+    """A region edit shifts everything after it, so it may only sit after
+    every respelling of the same text in the plan (the executor runs region
+    edits first, then respellings with their still-valid offsets), and
+    regions must not overlap."""
+    for b, e in ws.planned_respells(text_id):
+        if e > begin:
+            raise ToolError(f'{where}: a respelling is planned at {b}-{e} in the same text, after this point; '
+                            'plan the respellings in a separate plan (or discard_plan)')
+    for op in ws.ops:
+        if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and (op['begin'], op['end']) != (begin, end) \
+                and op['begin'] < max(end, begin + 1) and begin < max(op['end'], op['begin'] + 1):
+            raise ToolError(f'{where}: overlaps a text edit already planned at {op["begin"]}-{op["end"]}')
+
+
+def _clean_text(text: str) -> str:
+    text = (text or '').replace('\r\n', '\n').strip('\n')
+    if not text.strip():
+        raise ToolError('text must not be empty')
+    return text
+
+
+def t_append_text(ws: Workspace, document: str, text: str) -> str:
+    """PLAN: add sentences at the end of a document."""
+    doc = ws.doc(document)
+    text = _clean_text(text)
+    at = len(doc.body)
+    _guard_text_edit(ws, doc.text_id, at, at, f'{doc.name}: append')
+    sep = '' if not doc.body or doc.body.endswith('\n') else '\n'
+    sents = split_sentences(text)
+    words = sum(len(split_words(text, b, e, ws.project.ignored_cfg)) for b, e in sents)
+    ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': None,
+               'begin': at, 'end': at, 'old': '', 'new': sep + text, 'word_ids': [], 'morpheme_ids': [],
+               'label': f'{doc.name}: append {len(sents)} sentence{"s" if len(sents) != 1 else ""} '
+                        f'({words} words): "{text[:60]}{"…" if len(text) > 60 else ""}"'})
+    return ws.planned_note(1)
+
+
+def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
+    """PLAN: replace one sentence's baseline text."""
+    doc = ws.doc(document)
+    s = _need(resolve(doc, ref), Sentence, ref)
+    text = _clean_text(text)
+    b, e = s.begin, s.end
+    while b < e and doc.body[b].isspace():
+        b += 1
+    while e > b and doc.body[e - 1].isspace():
+        e -= 1
+    old = doc.body[b:e]
+    if old == text:
+        return ws.planned_note(0)
+    _guard(ws, s, ref)
+    _guard_text_edit(ws, doc.text_id, b, e, f'{doc.name} {ref}')
+    n = len(split_sentences(text))
+    ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,
+               'begin': b, 'end': e, 'old': old, 'new': text,
+               'word_ids': [w.id for w in s.words], 'morpheme_ids': [m.id for w in s.words for m in w.morphemes],
+               'label': f'{doc.name} {ref}: retype "{old[:40]}{"…" if len(old) > 40 else ""}" → '
+                        f'"{text[:40]}{"…" if len(text) > 40 else ""}"' + (f' ({n} sentences)' if n > 1 else '')
+                        + ' (unchanged words keep their analyses; changed text is re-tokenized without analysis; '
+                          'sentence fields stay)'})
     return ws.planned_note(1)

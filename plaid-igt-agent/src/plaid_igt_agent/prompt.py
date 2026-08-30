@@ -34,7 +34,8 @@ many single set_field calls; confirm marks machine-made annotations (another ser
 kind="unverified"; shown with a trailing ~ in reads) as verified once checked, discard_analysis deletes a word's \
 unverified machine analysis; drop_planned removes single planned changes when the user wants most of a plan; \
 split_word, merge_words, delete_word, split_sentence, merge_sentences change the segmentation of the text (a word \
-split or merge deletes the affected morpheme analyses). When \
+split or merge deletes the affected morpheme analyses); append_text adds sentences to a document and \
+retype_sentence fixes a sentence's transcript (respell for one word's spelling). When \
 none of these can express a question, read query_help and write a query.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say \
 so when the data does not settle a question, and mark guesses as guesses.

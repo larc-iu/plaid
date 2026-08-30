@@ -252,6 +252,8 @@ def op_target(op: Dict[str, Any]):
         return ('word_shape', op.get('word_id'))
     if k in ('split_sentence', 'merge_sentences'):
         return ('sentence_shape', op.get('sentence_id'))
+    if k == 'edit_text':
+        return ('edit_text', op.get('text_id'), op.get('begin'), op.get('end'))
     if k == 'respell':
         return ('respell', op.get('text_id'), op.get('begin'), op.get('end'))
     if k in ('link', 'unlink'):
@@ -965,6 +967,10 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
         if (b, e) != (begin, end) and b < end and begin < e:
             raise ToolError(f'{where}: overlaps a respelling already planned for {b}-{e} in the same text; '
                             f'discard_plan or narrow the pattern')
+    for op in ws.ops:
+        if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and op['begin'] < end:
+            raise ToolError(f'{where}: a sentence before or at this point is retyped or appended in this plan; '
+                            'respell it in a separate plan')
 
 
 def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] = None,
@@ -1519,7 +1525,7 @@ WRITE_TOOLS |= {'replace_in_field', 'respell_all', 'copy_to_orthography', 'set_a
                 'delete_entry', 'rename_entry', 'rename_document'}
 
 from .shape import (t_split_word, t_merge_words, t_delete_word, t_split_sentence,  # noqa: E402
-                    t_merge_sentences)
+                    t_merge_sentences, t_append_text, t_retype_sentence)
 
 TOOLS += [
     _fn('split_word',
@@ -1545,10 +1551,21 @@ TOOLS += [
         'PLAN: merge a sentence into the one before it. Sentence values are combined losslessly.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The later sentence, sN (N ≥ 2).'}},
         ['document', 'ref']),
+    _fn('append_text',
+        'PLAN: add text at the end of a document, one sentence per line, tokenized into words like the editor.',
+        {'document': _DOC, 'text': {'type': 'string'}}, ['document', 'text']),
+    _fn('retype_sentence',
+        'PLAN: replace the baseline text of one sentence (fix a transcript: insert, remove, or respell words). '
+        'Unchanged words keep their analyses; changed text is re-tokenized without analysis; the sentence\'s '
+        'own fields stay. Newlines in the new text split it into several sentences.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'The sentence, sN.'}, 'text': {'type': 'string'}},
+        ['document', 'ref', 'text']),
 ]
 _IMPL.update({'split_word': t_split_word, 'merge_words': t_merge_words, 'delete_word': t_delete_word,
-              'split_sentence': t_split_sentence, 'merge_sentences': t_merge_sentences})
-WRITE_TOOLS |= {'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences'}
+              'split_sentence': t_split_sentence, 'merge_sentences': t_merge_sentences,
+              'append_text': t_append_text, 'retype_sentence': t_retype_sentence})
+WRITE_TOOLS |= {'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences', 'append_text',
+                'retype_sentence'}
 
 from .query import t_query, t_query_help  # noqa: E402
 

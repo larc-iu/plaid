@@ -69,7 +69,10 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
   `delete_word`, `split_sentence`, `merge_sentences` (`shape.py`), which mirror
   the editor's own mutations including their side effects (a word split or
   merge deletes the affected morpheme analyses; merges combine field values
-  losslessly and keep one lexicon link).
+  losslessly and keep one lexicon link); and the text edits `append_text`
+  and `retype_sentence`, which go through the server's diffing text update
+  (unchanged words keep their tokens and analyses) and then tokenize the
+  edited region as the editor would.
 - `plan.py`: validates and normalizes an approved plan (a later op on the same
   target wins; links to entries the plan deletes are dropped; overlapping
   respells are refused; ops on tokens a split, merge, or delete removes are

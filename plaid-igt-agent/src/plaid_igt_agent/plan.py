@@ -38,6 +38,10 @@ wire's key recasing):
   delete_word     {word_id, morpheme_ids}
   split_sentence  {sentence_id, position}
   merge_sentences {sentence_id, other_id, spans: [...]}
+  edit_text       {document_id, text_id|null, sentence_id|null, begin, end, old, new, word_ids, morpheme_ids}
+                  (append or retype: the region is re-verified against the live body, the edit goes through the
+                   server's diffing text update so unchanged words keep their tokens, then sentence boundaries at
+                   line starts and word tokens for untokenized text in the region are created from the real result)
   confirm         {span_ids, token_ids, link_ids}   (provConfirmed on machine-made material, any producer)
   discard_analysis {word_id, link_ids, span_ids, morpheme_ids, reset_first_id|null, renumber: [{id, precedence}]}
 
@@ -118,7 +122,7 @@ class PlanError(Exception):
 KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'create_entry',
          'set_entry_field', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
          'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form',
-         'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences')
+         'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences', 'edit_text')
 REQUIRED = {
     'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
     'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
@@ -129,6 +133,7 @@ REQUIRED = {
     'confirm': (), 'discard_analysis': ('word_id',), 'set_morpheme_form': ('morpheme_id', 'form'),
     'split_word': ('word_id', 'position'), 'merge_words': ('word_id', 'other_ids'), 'delete_word': ('word_id',),
     'split_sentence': ('sentence_id', 'position'), 'merge_sentences': ('sentence_id', 'other_id'),
+    'edit_text': ('document_id', 'begin', 'end', 'new'),
 }
 
 
@@ -150,6 +155,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError(f'op {i + 1} (confirm): nothing to confirm')
         if kind == 'merge_words' and not isinstance(op['other_ids'], list):
             raise ValueError(f'op {i + 1} (merge_words): other_ids must be a list')
+        if kind == 'edit_text' and not (op['new'] or '').strip():
+            raise ValueError(f'op {i + 1} (edit_text): the new text is empty')
 
 
 def _dead_tokens(ops) -> set:
@@ -165,6 +172,9 @@ def _dead_tokens(ops) -> set:
             dead.update(op.get('other_ids') or [])
         elif k == 'merge_sentences':
             dead.add(op['other_id'])
+        elif k == 'edit_text':
+            dead.update(op.get('word_ids') or [])
+            dead.update(op.get('morpheme_ids') or [])
     return dead
 
 
@@ -323,6 +333,7 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode) 
         entry_idx: Dict[str, int] = {}
         respells: Dict[str, List[tuple]] = {}
         pending_deletes: List[str] = []  # entries to delete once their links are gone
+        text_edits: List[Dict[str, Any]] = []
 
         for op in ops:
             kind = op.get('kind')
@@ -469,6 +480,10 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode) 
                 b.add(lambda o=op: client.tokens.split(o['sentence_id'], o['position']))
                 counts['split sentences'] += 1
 
+            elif kind == 'edit_text':
+                text_edits.append(op)  # after the batches: several dependent calls
+                counts['text edits'] += 1
+
             elif kind == 'confirm':
                 for tid in op.get('token_ids') or []:
                     b.add(lambda i=tid: client.tokens.patch_metadata(i, CONFIRM))
@@ -519,9 +534,17 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode) 
             b.add(lambda i=iid: client.vocab_items.delete(i))
         b.flush()
 
-        # Text edits last: whole-token replaces keep the token (and its
-        # morphemes, which share its extent) and shift everything after it,
-        # so they must not precede ops that carry pre-edit offsets.
+        # Text edits after the batches (which carry pre-edit offsets).
+        # Region edits first, highest region first: each is re-verified
+        # against the live body, and the tools only let a region sit after
+        # every respelling of the same text, so the respellings' offsets
+        # still hold afterwards.
+        for op in sorted(text_edits, key=lambda o: -o['begin']):
+            if project is None:
+                raise ValueError('edit_text needs the project')
+            _apply_text_edit(client, project, op)
+        # Whole-token replaces keep the token (and its morphemes, which share
+        # its extent) and shift everything after it.
         for text_id, edits in respells.items():
             edits.sort(key=lambda e: -e[0])
             client.texts.update(text_id, [{'type': 'replace', 'index': bg, 'length': en - bg, 'value': v}
@@ -541,19 +564,10 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
     """Document + baseline text + sentence and word tokens, tokenized as the
     editor would (one sentence per line, words split on whitespace and
     punctuation). Returns the new document id."""
-    from .tools import split_sentences, split_words
     doc = client.documents.create(project.id, name, metadata or None)
     doc_id = doc['id']
     try:
-        t = client.texts.create(project.text_layer_id, doc_id, text)
-        text_id = t['id']
-        sents = split_sentences(text)
-        body = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e} for b, e in sents]
-        for b, e in sents:
-            body.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
-                        for wb, we in split_words(text, b, e, project.ignored_cfg))
-        if body:
-            client.tokens.bulk_create(body)
+        _seed_text(client, project, doc_id, text)
     except Exception:
         # No orphan half-document: best effort, the original error is what matters.
         try:
@@ -562,6 +576,109 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
             pass
         raise
     return doc_id
+
+
+def _seed_text(client, project, doc_id: str, text: str) -> str:
+    """A document's first text, with sentence and word tokens. Returns the text id."""
+    from .tools import split_sentences, split_words
+    t = client.texts.create(project.text_layer_id, doc_id, text)
+    text_id = t['id']
+    sents = split_sentences(text)
+    body = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e} for b, e in sents]
+    for b, e in sents:
+        body.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
+                    for wb, we in split_words(text, b, e, project.ignored_cfg))
+    if body:
+        client.tokens.bulk_create(body)
+    return text_id
+
+
+def _line_starts(body: str, begin: int, end: int) -> List[int]:
+    """Where sentences should begin inside body[begin:end): the region's
+    first non-blank position and the one after every newline in it (leading
+    whitespace stays with the sentence before, as the server's gap-fill
+    leaves it)."""
+    i = begin
+    while i < end and body[i].isspace():
+        i += 1
+    out = [i]
+    while i < end:
+        if body[i] == '\n':
+            j = i + 1
+            while j < end and body[j].isspace():
+                j += 1
+            if j < end:
+                out.append(j)
+            i = j
+        else:
+            i += 1
+    return out
+
+
+def _gaps(ranges: List[tuple], begin: int, end: int) -> List[tuple]:
+    """Sub-ranges of [begin, end) no range in ``ranges`` covers."""
+    out = []
+    cur = begin
+    for b, e in sorted(ranges):
+        if e <= cur:
+            continue
+        if b >= end:
+            break
+        if b > cur:
+            out.append((cur, b))
+        cur = max(cur, e)
+    if cur < end:
+        out.append((cur, end))
+    return out
+
+
+def _apply_text_edit(client, project, op: Dict[str, Any]) -> None:
+    """Replace body[begin:end] (verified to still read ``old``) with ``new``
+    through the server's diffing text update, then give the edited region
+    the sentence boundaries its line starts call for and word tokens for
+    whatever text in it is untokenized, as the editor's baseline save plus
+    its tokenizer would."""
+    from .project import _find_layer
+    from .tools import split_words
+    doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
+    if not text_id:
+        _seed_text(client, project, doc_id, new)
+        return
+    raw = client.documents.get(doc_id, include_body=True)
+    tl, _ = _find_layer(raw.get('text_layers'), project.word_layer_id)
+    body = ((tl or {}).get('text') or {}).get('body') or ''
+    b, e = op['begin'], op['end']
+    if body[b:e] != op['old']:
+        raise ValueError(f'the text no longer reads "{op["old"][:40]}" at {b}-{e}; the document changed since the plan was made')
+    new_body = body[:b] + new + body[e:]
+    client.texts.update(text_id, new_body)
+    region_end = b + len(new)
+
+    raw = client.documents.get(doc_id, include_body=True)
+    _, sent_layer = _find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    _, word_layer = _find_layer(raw.get('text_layers'), project.word_layer_id)
+    sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
+    if not sents and new_body:
+        r = client.tokens.create(project.sentence_layer_id, text_id, 0, len(new_body))
+        sents = [(0, len(new_body), r['id'])]
+    for p in _line_starts(new_body, b, region_end):
+        hit = next((s for s in sents if s[0] < p < s[1]), None)
+        # Only a boundary that leaves text on both sides: never a blank sentence.
+        if hit is None or not new_body[hit[0]:p].strip() or not new_body[p:hit[1]].strip():
+            continue
+        sb, se, sid = hit
+        r = client.tokens.split(sid, p)
+        sents.remove(hit)
+        sents.extend([(sb, p, sid), (p, se, r['id'])])
+        sents.sort()
+    words = [(t['begin'], t['end']) for t in (word_layer or {}).get('tokens') or []]
+    creates = []
+    for gb, ge in _gaps(words, b, region_end):
+        # A gap never straddles a sentence boundary (those sit after whitespace).
+        creates.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
+                       for wb, we in split_words(new_body, gb, ge, project.ignored_cfg))
+    if creates:
+        client.tokens.bulk_create(creates)
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
@@ -578,7 +695,7 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
              'set_morpheme_form': ('morpheme form', 'morpheme forms'),
              'split_word': ('split word', 'split words'), 'merge_words': ('word merge', 'word merges'),
              'delete_word': ('deleted word', 'deleted words'), 'split_sentence': ('split sentence', 'split sentences'),
-             'merge_sentences': ('sentence merge', 'sentence merges')}
+             'merge_sentences': ('sentence merge', 'sentence merges'), 'edit_text': ('text edit', 'text edits')}
     parts = []
     for kind, n in counts.items():
         one, many = names.get(kind, (kind, kind))
