@@ -13,26 +13,39 @@ const esc = (s) =>
 export const sentenceUrl = (origin, projectId, c) =>
   `${origin}#/projects/${projectId}/documents/${c.documentId}?tab=analyze&focusSentence=${c.sentenceId}`;
 
-const citeLabel = (c) => `${c.documentName} s${c.sentence}${c.word ? `.w${c.word}` : ''}`;
+const citeLabel = (c) =>
+  `${c.documentName}, sentence ${c.sentence}${c.word ? `, word ${c.word}` : ''}`;
+
+// Rows in the Analyze grid's order (`tiers` from the service; older stored
+// citations fall back to the order the cells appear in). Empty rows are left out.
+const citationRows = (c) => {
+  const words = c.words || [];
+  let tiers = c.tiers;
+  if (!tiers) {
+    tiers = [];
+    words.forEach((w) =>
+      (w.lines || []).forEach((l) => {
+        if (!tiers.some((t) => t.name === l.field)) tiers.push({ name: l.field, kind: 'field' });
+      }),
+    );
+    if (words.some((w) => w.seg)) tiers.unshift({ name: 'Morphemes', kind: 'morphemes' });
+  }
+  const rows = [];
+  for (const t of tiers) {
+    const cells =
+      t.kind === 'morphemes'
+        ? words.map((w) => w.seg || '')
+        : words.map((w) => (w.lines || []).find((l) => l.field === t.name)?.value || '');
+    if (cells.some(Boolean)) rows.push([t.name, ...cells]);
+  }
+  return rows;
+};
 
 // One cited sentence as a Markdown table: a column per word, a row per tier
 // (words, morphemes, each field), then the sentence fields.
 export const citationToMarkdown = (c, { origin, projectId }) => {
   const words = c.words || [];
-  const tiers = [];
-  words.forEach((w) =>
-    (w.lines || []).forEach((l) => {
-      if (!tiers.includes(l.field)) tiers.push(l.field);
-    }),
-  );
-  const rows = [];
-  if (words.some((w) => w.seg)) rows.push(['morphemes', ...words.map((w) => w.seg || '')]);
-  tiers.forEach((name) =>
-    rows.push([
-      name,
-      ...words.map((w) => (w.lines || []).find((l) => l.field === name)?.value || ''),
-    ]),
-  );
+  const rows = citationRows(c);
   const out = [`**[${esc(citeLabel(c))}](${sentenceUrl(origin, projectId, c)})**`, ''];
   if (words.length) {
     out.push(

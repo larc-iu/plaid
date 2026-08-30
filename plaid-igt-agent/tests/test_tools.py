@@ -347,8 +347,12 @@ def test_citations_resolve_to_interlinear_examples():
     a, b = out
     assert (a['document_id'], a['document_name'], a['sentence_id'], a['sentence'], a['word']) == ('d1', 'Text 1', 's-1', 1, None)
     assert a['text'] == 'Ali-di gam akuna.' and a['fields'] == [{'field': 'Translation', 'value': 'Ali saw a fish.'}]
+    # Cells and tiers follow the Analyze grid: orthographies, word fields, morphemes, morpheme fields.
     assert a['words'][0] == {'index': 1, 'surface': 'Ali-di', 'seg': 'Ali-di',
-                             'lines': [{'field': 'Morph Gloss', 'value': 'Ali-ERG'}, {'field': 'Gloss', 'value': 'Ali'}]}
+                             'lines': [{'field': 'IPA', 'value': 'alidi'}, {'field': 'Gloss', 'value': 'Ali'},
+                                       {'field': 'Morph Gloss', 'value': 'Ali-ERG'}]}
+    assert a['tiers'] == [{'name': 'IPA', 'kind': 'orthography'}, {'name': 'Gloss', 'kind': 'word'},
+                          {'name': 'Morphemes', 'kind': 'morphemes'}, {'name': 'Morph Gloss', 'kind': 'morpheme'}]
     assert a['words'][1] == {'index': 2, 'surface': 'gam', 'seg': None, 'lines': []}
     assert (b['sentence'], b['word'], b['words'][0]['seg']) == (2, 1, 'Gam=ar')
     assert resolve_citations(w, 'no citations here') == []

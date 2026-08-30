@@ -22,8 +22,28 @@ BARE_RE = re.compile(r'(?<![\w{.])(?P<ref>s\d+(?:\.w\d+)?)\b')
 MAX_CITATIONS = 40
 
 
+def tiers(project) -> List[Dict[str, str]]:
+    """The rows of the Analyze grid, in its order: orthographies, word fields,
+    the morpheme forms, morpheme fields (each in layer order)."""
+    out = [{'name': o, 'kind': 'orthography'} for o in project.orthographies]
+    out += [{'name': f.name, 'kind': 'word'} for f in project.fields_by_scope('Word')]
+    if project.morpheme_layer_id:
+        out.append({'name': 'Morphemes', 'kind': 'morphemes'})
+        out += [{'name': f.name, 'kind': 'morpheme'} for f in project.fields_by_scope('Morpheme')]
+    return out
+
+
 def _word_payload(w: Word, project) -> Dict[str, Any]:
+    """A word's cells, in the grid's row order (see :func:`tiers`)."""
     lines: List[Dict[str, str]] = []
+    for o in project.orthographies:
+        v = w.orthographies.get(o)
+        if v:
+            lines.append({'field': o, 'value': v})
+    for f in project.fields_by_scope('Word'):
+        sp = w.fields.get(f.name)
+        if sp and sp.value != '':
+            lines.append({'field': f.name, 'value': sp.value})
     for f in project.fields_by_scope('Morpheme'):
         if not any(f.name in m.fields for m in w.morphemes):
             continue
@@ -34,17 +54,13 @@ def _word_payload(w: Word, project) -> Dict[str, Any]:
             sp = m.fields.get(f.name)
             out += sp.value if sp and sp.value != '' else '_'
         lines.append({'field': f.name, 'value': out})
-    for f in project.fields_by_scope('Word'):
-        sp = w.fields.get(f.name)
-        if sp and sp.value != '':
-            lines.append({'field': f.name, 'value': sp.value})
     seg = segmentation(w)
     return {'index': w.index, 'surface': w.surface, 'seg': seg if (len(w.morphemes) > 1 or seg != w.surface) else None,
             'lines': lines}
 
 
 def _sentence_payload(s: Sentence, project) -> Dict[str, Any]:
-    return {'sentence_id': s.id, 'sentence': s.index, 'text': s.text,
+    return {'sentence_id': s.id, 'sentence': s.index, 'text': s.text, 'tiers': tiers(project),
             'words': [_word_payload(w, project) for w in s.words],
             'fields': [{'field': f.name, 'value': s.fields[f.name].value} for f in project.fields_by_scope('Sentence')
                        if f.name in s.fields and s.fields[f.name].value != '']}

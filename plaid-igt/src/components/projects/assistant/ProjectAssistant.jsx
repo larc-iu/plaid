@@ -15,6 +15,7 @@ import {
   Download,
   Copy,
   FileDown,
+  ExternalLink,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -969,43 +970,51 @@ const CITE_RE = /\{\{?\s*[^{}\n]+?\s+s\d+(?:\.w\d+)?\s*\}\}?|(?<![\w{.])s\d+(?:\
 const sentenceHref = (projectId, c) =>
   `#/projects/${projectId}/documents/${c.documentId}?tab=analyze&focusSentence=${c.sentenceId}`;
 
+// The rows of a cited sentence, in the Analyze grid's order (the service
+// sends `tiers`; older stored citations without it fall back to the order
+// the cells appear in). Rows nobody fills are left out.
+export const citationRows = (c) => {
+  const words = c.words || [];
+  let tiers = c.tiers;
+  if (!tiers) {
+    tiers = [];
+    words.forEach((w) =>
+      (w.lines || []).forEach((l) => {
+        if (!tiers.some((t) => t.name === l.field)) tiers.push({ name: l.field, kind: 'field' });
+      }),
+    );
+    if (words.some((w) => w.seg)) tiers.unshift({ name: 'Morphemes', kind: 'morphemes' });
+  }
+  const rows = [{ label: '', kind: 'surface', cells: words.map((w) => w.surface) }];
+  for (const t of tiers) {
+    const cells =
+      t.kind === 'morphemes'
+        ? words.map((w) => w.seg || '')
+        : words.map((w) => (w.lines || []).find((l) => l.field === t.name)?.value || '');
+    if (cells.some(Boolean)) rows.push({ label: t.name, kind: t.kind, cells });
+  }
+  return rows;
+};
+
+export const citationTitle = (c) =>
+  `${c.documentName}, sentence ${c.sentence}${c.word ? `, word ${c.word}` : ''}`;
+
 const ExampleCard = ({ c, projectId }) => {
   const words = c.words || [];
-  // One row per tier: the words, their segmentation (when any word has one),
-  // then every field any word carries, in the project's field order.
-  const tiers = [];
-  words.forEach((w) =>
-    (w.lines || []).forEach((l) => {
-      if (!tiers.includes(l.field)) tiers.push(l.field);
-    }),
-  );
-  const rows = [
-    { label: '', cls: 'font-medium', cells: words.map((w) => w.surface) },
-    words.some((w) => w.seg) && {
-      label: 'morphemes',
-      cls: 'font-mono text-xs',
-      cells: words.map((w) => w.seg || ''),
-    },
-    ...tiers.map((name) => ({
-      label: name,
-      cls: 'text-xs',
-      cells: words.map((w) => (w.lines || []).find((l) => l.field === name)?.value || ''),
-    })),
-  ].filter(Boolean);
+  const rows = citationRows(c);
   return (
     <div className="my-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-      <div className="mb-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="mb-1.5 text-xs">
         <a
           href={sentenceHref(projectId, c)}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-medium text-foreground hover:underline"
+          className="inline-flex items-center gap-1.5 font-medium text-foreground hover:underline"
           title="Open this sentence in the editor"
         >
-          {c.documentName} · s{c.sentence}
-          {c.word ? `.w${c.word}` : ''}
+          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+          {citationTitle(c)}
         </a>
-        <span>open in editor ↗</span>
       </div>
       <div className="overflow-x-auto">
         <table className="border-separate border-spacing-0 whitespace-nowrap">
@@ -1023,7 +1032,9 @@ const ExampleCard = ({ c, projectId }) => {
                     key={j}
                     className={cn(
                       'px-1.5 align-top leading-5',
-                      r.cls,
+                      r.kind === 'surface' && 'font-medium',
+                      r.kind === 'morphemes' && 'font-mono text-xs',
+                      r.kind !== 'surface' && r.kind !== 'morphemes' && 'text-xs',
                       c.word === words[j].index && 'bg-primary/15',
                       c.word === words[j].index && i === 0 && 'rounded-t',
                       c.word === words[j].index && i === rows.length - 1 && 'rounded-b',
@@ -1076,7 +1087,7 @@ const CitedMarkdown = ({ text, citations, projectId }) => {
       const c = byKey.get(m);
       if (!c) return m;
       if (!shown.has(m) && !inline.includes(c)) inline.push(c);
-      return `[${c.documentName} s${c.sentence}${c.word ? `.w${c.word}` : ''}](${sentenceHref(projectId, c)})`;
+      return `[${citationTitle(c)}](${sentenceHref(projectId, c)})`;
     });
   return (
     <div>

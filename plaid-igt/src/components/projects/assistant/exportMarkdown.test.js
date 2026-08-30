@@ -28,11 +28,11 @@ describe('citationToMarkdown', () => {
     const md = citationToMarkdown(cite, ctx);
     expect(md).toBe(
       [
-        '**[Text 1 s3.w2](http://x/#/projects/p1/documents/d1?tab=analyze&focusSentence=s-3)**',
+        '**[Text 1, sentence 3, word 2](http://x/#/projects/p1/documents/d1?tab=analyze&focusSentence=s-3)**',
         '',
         '| | Ali-di | **gam** | akuna |',
         '|---|---|---|---|',
-        '| morphemes | Ali-di |  |  |',
+        '| Morphemes | Ali-di |  |  |',
         '| Gloss | Ali-ERG | fish |  |',
         '',
         '*Translation:* Ali saw a fish.',
@@ -48,12 +48,12 @@ describe('replyToMarkdown', () => {
       [cite],
       ctx,
     );
-    expect(md).toContain('Example:\n**[Text 1 s3.w2]');
+    expect(md).toContain('Example:\n**[Text 1, sentence 3, word 2]');
     expect(md).toContain('see also {Text 1 s3} and {{Nope s9}}.'); // the single-brace one is a different key: left alone
     expect(md).not.toContain('Cited examples');
     const md2 = replyToMarkdown('Inline {{Text 1 s3}} only.', [cite], ctx);
     expect(md2).toMatch(
-      /^Inline \[Text 1 s3\.w2\]\(http:\/\/x\/#\/projects\/p1\/documents\/d1\?tab=analyze&focusSentence=s-3\) only\.\n\n\*\*Cited examples\*\*/,
+      /^Inline \[Text 1, sentence 3, word 2\]\(http:\/\/x\/#\/projects\/p1\/documents\/d1\?tab=analyze&focusSentence=s-3\) only\.\n\n\*\*Cited examples\*\*/,
     );
   });
 });
