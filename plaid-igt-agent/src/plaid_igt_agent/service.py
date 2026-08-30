@@ -22,8 +22,10 @@ Result data:
 """
 
 import argparse
+import os
 import re
 import time
+from urllib.parse import urlsplit
 
 from plaid_client import BaseService, TASKS, service_source
 
@@ -33,6 +35,7 @@ from .plan import execute_plan, summarize, PlanError
 from .project import load_project
 from .prompt import build_system_prompt
 from .tools import Workspace
+from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 SUMMARY = """\
 **IGT Assistant** is a chat assistant over this project, powered by whatever
@@ -61,6 +64,7 @@ class AssistantService(BaseService):
             'Chat about the project and plan edits, with the operator\'s model',
             tasks=[TASKS.ASSIST], summary=SUMMARY, delegation=True)
         self.cfg: ModelConfig | None = None
+        self.web_cfg: WebConfig | None = None
         # Plan ids already applied by this process, so a second approval of
         # the same plan (a retried request after a client timeout, a double
         # click) does not write it twice. Bounded, most recent last.
@@ -81,6 +85,12 @@ class AssistantService(BaseService):
                                  'offers a picker.')
         parser.add_argument('--service-name', default=None,
                             help='Display name (default "IGT Assistant (<model>)")')
+        parser.add_argument('--web-search', default=None, choices=BACKENDS,
+                            help='Let the assistant look things up on the web with this provider. '
+                                 'Off unless given: without it the web tools are not offered to the '
+                                 'model and the prompt does not mention them.')
+        parser.add_argument('--web-search-key', default=None,
+                            help='Key for --web-search (else BRAVE_SEARCH_API_KEY / TAVILY_API_KEY)')
 
     def setup(self, args) -> None:
         self.cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key,
@@ -106,6 +116,19 @@ class AssistantService(BaseService):
                   '(--api-key or the provider\'s environment variable).')
             raise SystemExit(1)
         print(f'  Answered in {time.monotonic() - started:.1f}s.')
+        self.web_cfg = build_web_config(args)
+        if self.web_cfg is None:
+            print('Web lookup: off (--web-search to turn it on)')
+        else:
+            # Same reasoning as the model ping: a bad key should be the
+            # operator's problem now, not a user's mid-conversation.
+            print(f'Web lookup: {self.web_cfg.backend}')
+            try:
+                print(f'  {ping_search(self.web_cfg)} results for a test search.')
+            except Exception as e:  # noqa: BLE001 - the provider's own complaint is what helps
+                print(f'  The search provider did not answer: {e}')
+                print(f'  Check --web-search-key (or {ENV_KEYS[self.web_cfg.backend]}).')
+                raise SystemExit(1)
 
     def process_request(self, request_data: dict, response_helper) -> None:
         client = request_data.get('requester_client')
@@ -171,7 +194,10 @@ class AssistantService(BaseService):
             response_helper.progress(state['pct'], msg)
 
         ws = Workspace(client, project, on_progress=lambda msg: response_helper.progress(state['pct'], msg))
-        turn = run_turn(self.cfg, ws, build_system_prompt(project), transcript, on_progress)
+        if self.web_cfg is not None:
+            ws.web = session_for(self.web_cfg, transcript)
+        turn = run_turn(self.cfg, ws, build_system_prompt(project, web=ws.web is not None),
+                        transcript, on_progress)
         response_helper.progress(100, 'Done')
         response_helper.complete({'kind': 'turn', 'message': turn.text, 'messages': turn.messages,
                                   'plan': ws.plan_payload(), 'citations': resolve_citations(ws, turn.text),
@@ -181,6 +207,24 @@ class AssistantService(BaseService):
     def _remember_applied(self, plan_id: str) -> None:
         self._applied_plans.append(plan_id)
         del self._applied_plans[:-500]
+
+
+ENV_KEYS = {'brave': 'BRAVE_SEARCH_API_KEY', 'tavily': 'TAVILY_API_KEY'}
+
+
+def build_web_config(args) -> 'WebConfig | None':
+    """The web configuration, or None when the operator did not ask for one.
+    The Plaid server's own host is denied outright: a fetch aimed at it would
+    be this service reaching back into the network it is trusted inside."""
+    if not args.web_search:
+        return None
+    key = args.web_search_key or os.environ.get(ENV_KEYS[args.web_search]) or ''
+    if not key:
+        print(f'--web-search {args.web_search} needs a key: --web-search-key or '
+              f'{ENV_KEYS[args.web_search]} in the environment.')
+        raise SystemExit(1)
+    host = urlsplit(args.url).hostname
+    return WebConfig(backend=args.web_search, api_key=key, deny_hosts=tuple(h for h in (host,) if h))
 
 
 def stale_documents(client, documents: list) -> list:

@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import litellm
 
-from .tools import TOOLS, Workspace, call_tool
+from .tools import Workspace, call_tool, tools_for
 from .trace import progress_label, summarize_steps, trace_step
 
 litellm.drop_params = True  # providers that lack a param get it dropped, not an error
@@ -146,7 +146,7 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
 
     while True:
         on_progress(min(85, 8 + rounds * 5), 'Thinking…' if rounds == 0 else 'Thinking more…')
-        kwargs: Dict[str, Any] = dict(**_provider_kwargs(cfg), tools=list(TOOLS), tool_choice='auto',
+        kwargs: Dict[str, Any] = dict(**_provider_kwargs(cfg), tools=tools_for(ws), tool_choice='auto',
                                       messages=[{'role': 'system', 'content': system}] + history + new)
         if cfg.temperature is not None:
             kwargs['temperature'] = cfg.temperature

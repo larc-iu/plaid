@@ -41,10 +41,16 @@ def test_ping_fails_on_a_provider_error_or_an_empty_answer(monkeypatch):
         ping_model(cfg())
 
 
+def service_args(**kw):
+    base = dict(model='openai/x', api_base=None, api_key=None, max_steps=50, temperature=None,
+                max_tokens=None, service_id=None, service_name=None, url='http://localhost:8085',
+                web_search=None, web_search_key=None)
+    return argparse.Namespace(**{**base, **kw})
+
+
 def test_setup_stops_the_service_when_the_model_does_not_answer(monkeypatch, capsys):
     from plaid_igt_agent.service import AssistantService
-    args = argparse.Namespace(model='openai/x', api_base=None, api_key=None, max_steps=50, temperature=None,
-                              max_tokens=None, service_id=None, service_name=None)
+    args = service_args()
 
     monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: (_ for _ in ()).throw(RuntimeError('bad key')))
     with pytest.raises(SystemExit) as exc:
@@ -55,3 +61,29 @@ def test_setup_stops_the_service_when_the_model_does_not_answer(monkeypatch, cap
     svc = AssistantService()
     svc.setup(args)  # answered: registration goes ahead
     assert svc.service_id == 'igt:assist:openai-x' and svc.extras['model'] == 'openai/x'
+    assert svc.web_cfg is None and 'Web lookup: off' in capsys.readouterr().out
+
+
+def test_setup_stops_the_service_when_the_search_provider_does_not_answer(monkeypatch, capsys):
+    from plaid_igt_agent import service as service_mod
+    from plaid_igt_agent.service import AssistantService
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: SimpleNamespace(choices=[SimpleNamespace()]))
+
+    # Asked for, but with no key anywhere.
+    monkeypatch.delenv('BRAVE_SEARCH_API_KEY', raising=False)
+    with pytest.raises(SystemExit) as exc:
+        AssistantService().setup(service_args(web_search='brave'))
+    assert exc.value.code == 1 and 'needs a key' in capsys.readouterr().out
+
+    # Keyed, but the provider refuses.
+    monkeypatch.setattr(service_mod, 'ping_search',
+                        lambda cfg: (_ for _ in ()).throw(RuntimeError('rejected the key')))
+    with pytest.raises(SystemExit) as exc:
+        AssistantService().setup(service_args(web_search='brave', web_search_key='k'))
+    assert exc.value.code == 1 and 'rejected the key' in capsys.readouterr().out
+
+    # Keyed and answering: the Plaid host is denied to any fetch.
+    monkeypatch.setattr(service_mod, 'ping_search', lambda cfg: 3)
+    svc = AssistantService()
+    svc.setup(service_args(web_search='brave', web_search_key='k', url='https://plaid.example.org'))
+    assert svc.web_cfg.backend == 'brave' and svc.web_cfg.deny_hosts == ('plaid.example.org',)

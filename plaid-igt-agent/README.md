@@ -52,8 +52,47 @@ does not write with its own credentials: it declares *delegation*, so Plaid
 mints a short-lived token for each requesting user and every read and write
 runs as that user. Readers get a read-only assistant; writers can apply plans.
 
+### Web lookup (off by default)
+
+`--web-search brave` or `--web-search tavily` lets the assistant look things
+up outside the project: what a gloss abbreviation conventionally means, how a
+construction is described in the literature, a reference for a claim. The key
+comes from `--web-search-key` or `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY`,
+and the service runs one real search at startup so a bad key stops it there.
+
+```sh
+plaid-igt-agent --url http://localhost:8080 --model openai/gpt-4o --web-search brave
+```
+
+Without the flag the two tools are not offered to the model and the prompt
+does not mention them, so an assistant that cannot look anything up is never
+told that it can. **Leave it off for a corpus under a community protocol or
+an embargoed deposit**: a search query carries whatever the assistant puts in
+it, which can include forms, glosses and document metadata.
+
+This is the one place where text by strangers enters a turn, so it is fenced:
+
+- `read_url` opens only a link that `web_search` returned in this
+  conversation or that the user pasted into the chat.
+- A fetch is refused if the URL, or anything it redirects to, resolves onto
+  the network the service runs on (loopback, private ranges, link-local, and
+  the Plaid server itself). The service usually runs beside Plaid, so an
+  unrestricted fetch would be a request-forgery primitive.
+- HTML and plain text only. Most linguistics references are PDFs, and the
+  tool says so rather than letting the model guess at a title.
+- What comes back is labelled untrusted and fenced, and the prompt tells the
+  model it is a claim to weigh, never an instruction, and never evidence
+  about the language's own data.
+- **A turn that reads the web cannot also plan changes.** The assistant
+  reports what it found and the user asks for the change in the next message.
+  So nothing a page says can become a proposed edit in the same breath as
+  being read. It is not a complete answer to prompt injection (the page is
+  still in the transcript on the next turn), but the user always sees what
+  was found before anything is proposed, and no plan is applied unapproved.
+
 ## How it works
 
+- `web.py`: the optional web tools, the URL guard, and HTML to text.
 - `project.py`: loads a project's IGT shape (layers by role, fields by scope,
   orthographies, lexicons) and documents, and renders documents as compact
   interlinear text. Everything is addressed positionally (`s3.w2.m1`); the

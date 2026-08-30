@@ -8,7 +8,8 @@ version = "0.0.0"
 description = "A bring-your-own-model LLM assistant service for Plaid IGT projects"
 requires-python = ">=3.11"
 # The client floor is stamped to the release version at build time (bb build).
-dependencies = ["larc-plaid-client", "litellm>=1.70", "regex"]
+# httpx already arrives with litellm, but the web tools use it directly.
+dependencies = ["larc-plaid-client", "litellm>=1.70", "regex", "httpx"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

@@ -14,13 +14,14 @@ with no line of its own falls back to its name, and
 
 from typing import Any, Dict, List, Optional
 
-from .tools import WRITE_TOOLS
+from .tools import WEB_TOOLS, WRITE_TOOLS
 
 # What a step was for. The summary counts documents and searches separately,
 # and planning steps are what the plan card then shows.
 DOCUMENT = 'document'   # read one document
 READ = 'read'           # looked at the data some other way
 PLAN = 'plan'           # proposed a change
+WEB = 'web'             # looked outside the project altogether
 META = 'meta'           # bookkeeping: the overview, the plan so far, the query reference
 
 _META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status', 'query_help',
@@ -30,6 +31,8 @@ _META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status', 'q
 def step_kind(name: str) -> str:
     if name == 'read_document':
         return DOCUMENT
+    if name in WEB_TOOLS:
+        return WEB
     if name in WRITE_TOOLS:
         return PLAN
     if name in _META_TOOLS:
@@ -106,6 +109,12 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return 'Ran a query'
     if name == 'plan_status':
         return 'Reviewed the plan so far'
+
+    # --- outside the project ---------------------------------------------------
+    if name == 'web_search':
+        return f'Searched the web for {_q(a.get("query"))}'
+    if name == 'read_url':
+        return f'Read the web page {a.get("url")}'
 
     # --- plans: one item at a time -------------------------------------------
     if name == 'set_field':
@@ -202,6 +211,9 @@ def summarize_steps(steps: List[Dict[str, Any]]) -> str:
     reads = sum(1 for s in steps if s['kind'] == READ)
     if reads:
         parts.append(_plural(reads, 'search', 'searches'))
+    web = sum(1 for s in steps if s['kind'] == WEB)
+    if web:
+        parts.append(_plural(web, 'web lookup'))
     planned = sum(1 for s in steps if s['kind'] == PLAN)
     if planned:
         parts.append(_plural(planned, 'planned change'))
@@ -232,6 +244,8 @@ _PROGRESS = {
     'sequence_search': lambda a: 'Searching for the sequence…',
     'query_help': lambda a: 'Reading the query reference…',
     'query': lambda a: 'Running a query…',
+    'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
+    'read_url': lambda a: f'Reading {a.get("url", "")}…',
 }
 
 
