@@ -90,7 +90,10 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
   Two conventions the engine does not know are applied in Python on grouped
   results: ignored (punctuation) tokens are left out of word counts, and
   forms are compared case-insensitively. `check_integrity` still reads whole
-  documents (it inspects raw text).
+  documents (it inspects raw text). Parsed documents are cached in the
+  service process across turns and users, keyed by `(id, version)` (every
+  write inside a document bumps its version), so rendering hits costs a
+  fetch only the first time a document is touched.
 - `plan.py`: validates and normalizes an approved plan (a later op on the same
   target wins; links to entries the plan deletes are dropped; overlapping
   respells are refused; ops on tokens a split, merge, or delete removes are

@@ -96,6 +96,7 @@ class Recorder:
 class FakeClient:
     base_url = 'http://plaid.test'
     token = 't'
+    no_doc_cache = True  # fixtures reuse document ids with different content
 
     def __init__(self, project=None, documents=None, lexicon=None):
         self.log = []
@@ -126,7 +127,8 @@ class FakeClient:
             return self.c.audit
 
         def list_documents(self, pid):
-            return [{'id': d['id'], 'name': d['name']} for d in self.c._documents.values()]
+            return [{'id': k, 'name': v.get('name'), 'version': v.get('version'), 'time_modified': v.get('time_modified')}
+                    for k, v in self.c._documents.items()]
 
     class _Documents:
         def __init__(self, c):

@@ -399,3 +399,26 @@ def test_list_documents_pages_and_filters_and_overview_caps():
     out = call_tool(w, 'list_documents', {'metadata_field': 'Date', 'value': '2021', 'limit': 500})
     assert out.startswith('53 documents matching:')
     assert 'No document metadata field "Genre"' in call_tool(w, 'list_documents', {'metadata_field': 'Genre', 'value': 'x'})
+
+
+def test_parsed_documents_are_cached_across_workspaces_by_version():
+    from plaid_igt_agent import tools as T
+    from fixtures import document_raw
+    T._DOC_CACHE.clear()
+    c = FakeClient()
+    c.no_doc_cache = False
+    c._documents['d1']['version'] = 3
+    a = scan_ws(c)
+    d = a.doc('d1')
+    fetched = lambda: len([1 for e in c.log if e[:2] == ('documents', 'get')])  # noqa: E731
+    n0 = len(c.calls('documents', 'get')) if hasattr(c, 'calls') else None
+    b = scan_ws(c)
+    assert b.doc('d1') is d  # a second turn reuses the parsed document
+    # A newer version is fetched afresh and replaces the cached one.
+    raw = document_raw()
+    raw['version'] = 4
+    c._documents['d1'] = raw
+    w = scan_ws(c)
+    fresh = w.doc('d1')
+    assert fresh is not d and fresh.version == 4 and T._DOC_CACHE[('d1', 4)] is fresh
+    T._DOC_CACHE.clear()

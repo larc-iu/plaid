@@ -629,8 +629,14 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
         lines.append(f'Word "{form}": no occurrences.')
     else:
         lines.append(f'Word "{form}": {n} occurrence{"s" if n != 1 else ""}.')
+        # One query for every word field: spans on any layer covering the word.
+        per_field: Dict[str, Counter] = defaultdict(Counter)
+        for layer, v, k in c.group(word + [['span', '?s', {'layer': '?sl'}], ['covers', '?s', '?w']], ['?sl', '?s.value']):
+            f = p.field_by_layer(layer)
+            if f and v not in (None, ''):
+                per_field[f.name][v] += k
         for f in p.fields_by_scope('Word'):
-            line = _tally_line(f.name, ((v, k) for v, k in c.group(word + [c.span('?s', f.layer_id), ['covers', '?s', '?w']], ['?s.value'])))
+            line = _tally_line(f.name, per_field.get(f.name, {}).items())
             if line:
                 lines.append(line)
         if c.M:
@@ -643,16 +649,18 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
                 lines.append('  Segmentation by slot: ' + '; '.join(
                     f'm{prec}: ' + ', '.join(f'{k} ({n2})' for k, n2 in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0])))
                     for prec, cnt in sorted(slots.items())))
+            # One query for every morpheme field, by slot.
+            fslots: Dict[str, Dict[int, Counter]] = defaultdict(lambda: defaultdict(Counter))
+            for layer, prec, value, k in c.group(word + c.in_word('?m', '?w') + [['span', '?s', {'layer': '?sl'}], ['covers', '?s', '?m']],
+                                                 ['?sl', '?m.precedence', '?s.value']):
+                f = p.field_by_layer(layer)
+                if f and value not in (None, ''):
+                    fslots[f.name][prec or 0][value] += k
             for f in p.fields_by_scope('Morpheme'):
-                fslots: Dict[int, Counter] = defaultdict(Counter)
-                for prec, value, k in c.group(word + c.in_word('?m', '?w') + [c.span('?s', f.layer_id), ['covers', '?s', '?m']],
-                                              ['?m.precedence', '?s.value']):
-                    if value not in (None, ''):
-                        fslots[prec or 0][value] += k
-                if fslots:
+                if fslots.get(f.name):
                     lines.append(f'  {f.name} by slot: ' + '; '.join(
                         f'm{prec}: ' + ', '.join(f'{k} ({n2})' for k, n2 in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0])))
-                        for prec, cnt in sorted(fslots.items())))
+                        for prec, cnt in sorted(fslots[f.name].items())))
         if p.vocabs:
             line = _tally_line('Links', ((iid, k) for iid, k in c.group(word + [['vocab-link', '?w', '?v']], ['?v'])),
                                lambda iid: item_form.get(iid, iid))
@@ -673,17 +681,33 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
             lines.append(f'Morpheme "{form}": no occurrences.')
         else:
             lines.append(f'Morpheme "{form}": {n} occurrence{"s" if n != 1 else ""}.')
-            line = _tally_line('In words', ((v.casefold(), k) for v, k in c.group(morph, ['?w.value']) if v))
+            # Containing words, type and slot from one grouped query; every
+            # morpheme field from one more.
+            words_t: Counter = Counter()
+            types_t: Counter = Counter()
+            slots_t: Counter = Counter()
+            for wv, mtype, prec, k in c.group(morph, ['?w.value', '?m.metadata.morphType', '?m.precedence']):
+                if wv:
+                    words_t[wv.casefold()] += k
+                if mtype:
+                    types_t[mtype] += k
+                slots_t[f'm{prec}'] += k
+            line = _tally_line('In words', words_t.items())
             if line:
                 lines.append(line)
+            per_field = defaultdict(Counter)
+            for layer, v, k in c.group(morph + [['span', '?s', {'layer': '?sl'}], ['covers', '?s', '?m']], ['?sl', '?s.value']):
+                f = p.field_by_layer(layer)
+                if f and v not in (None, ''):
+                    per_field[f.name][v] += k
             for f in p.fields_by_scope('Morpheme'):
-                line = _tally_line(f.name, ((v, k) for v, k in c.group(morph + [c.span('?s', f.layer_id), ['covers', '?s', '?m']], ['?s.value'])))
+                line = _tally_line(f.name, per_field.get(f.name, {}).items())
                 if line:
                     lines.append(line)
-            line = _tally_line('Type', ((t, k) for t, k in c.group(morph, ['?m.metadata.morphType'])))
+            line = _tally_line('Type', types_t.items())
             if line:
                 lines.append(line)
-            line = _tally_line('Slot', ((f'm{prec}', k) for prec, k in c.group(morph, ['?m.precedence'])))
+            line = _tally_line('Slot', slots_t.items())
             if line:
                 lines.append(line)
             if p.vocabs:

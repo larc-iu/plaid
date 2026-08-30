@@ -29,6 +29,14 @@ from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, load_documen
 MAX_RESULT_CHARS = 12000
 MAX_DOCS_PER_SEARCH = 1000
 
+# Parsed documents, shared across turns and users of this process, keyed by
+# (document id, version): every write inside a document bumps its version,
+# and the document list a turn starts from carries the current versions, so a
+# cached document is exact or unused. Any reader of a project may read all
+# of its documents, so sharing is safe. Bounded, least recently used out.
+_DOC_CACHE: "OrderedDict[tuple, IgtDoc]" = __import__('collections').OrderedDict()
+DOC_CACHE_SIZE = 400
+
 
 class ToolError(Exception):
     """A tool-level failure whose message goes back to the model as the result."""
@@ -92,9 +100,22 @@ class Workspace:
     def doc(self, document: str) -> IgtDoc:
         did = self.resolve_document_id(document)
         if did not in self._docs:
-            name = next((d.get('name') for d in self.documents() if d['id'] == did), did)
-            self.on_progress(f'Reading "{name}"…')
-            self._docs[did] = load_document(self.client, self.project, did)
+            entry = next((d for d in self.documents() if d['id'] == did), {})
+            # A client may opt out (test doubles reuse ids with different content).
+            version = None if getattr(self.client, 'no_doc_cache', False) else entry.get('version')
+            key = (did, version)
+            cached = _DOC_CACHE.get(key) if version is not None else None
+            if cached is not None:
+                _DOC_CACHE.move_to_end(key)
+                self._docs[did] = cached
+                return cached
+            self.on_progress(f'Reading "{entry.get("name") or did}"…')
+            doc = load_document(self.client, self.project, did)
+            self._docs[did] = doc
+            if version is not None and doc.version == version:
+                _DOC_CACHE[key] = doc
+                while len(_DOC_CACHE) > DOC_CACHE_SIZE:
+                    _DOC_CACHE.popitem(last=False)
         return self._docs[did]
 
     def all_docs(self) -> List[IgtDoc]:
