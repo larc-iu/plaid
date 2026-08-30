@@ -45,6 +45,7 @@ class Workspace:
         self.ops: List[Dict[str, Any]] = []
         self.replaced = 0  # ops superseded by a later op on the same target this turn
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
+        self._doc_ids: Dict[str, set] = {}  # document id -> every id the document contains
 
     # --- loading ---------------------------------------------------------
 
@@ -186,7 +187,36 @@ class Workspace:
         # A snapshot: the payload must not alias the live list (discard_plan
         # clears it) since it is what the user approves later.
         return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
-                'labels': [op['label'] for op in self.ops], 'ops': copy.deepcopy(self.ops)}
+                'labels': [op['label'] for op in self.ops], 'ops': copy.deepcopy(self.ops),
+                'documents': self.touched_documents()}
+
+    def touched_documents(self) -> List[Dict[str, Any]]:
+        """The documents the plan's ops refer to, with the version each was
+        read at, so approval can refuse a plan made against stale data (ops
+        carry ids and character offsets from plan time)."""
+        out = []
+        for did, doc in self._docs.items():
+            ids = self._doc_ids.get(did)
+            if ids is None:
+                ids = {doc.id, doc.text_id}
+                for s in doc.sentences:
+                    ids.add(s.id)
+                    ids.update(sp.id for sp in s.fields.values())
+                    for w in s.words:
+                        ids.add(w.id)
+                        ids.update(sp.id for sp in w.fields.values())
+                        if w.link:
+                            ids.add(w.link.id)
+                        for m in w.morphemes:
+                            ids.add(m.id)
+                            ids.update(sp.id for sp in m.fields.values())
+                            if m.link:
+                                ids.add(m.link.id)
+                ids.discard(None)
+                self._doc_ids[did] = ids
+            if any(_op_mentions(op, ids) for op in self.ops):
+                out.append({'id': doc.id, 'name': doc.name, 'version': doc.version})
+        return out
 
     def planned_note(self, n: int) -> str:
         note = (f'Planned {n} change{"s" if n != 1 else ""} (nothing is written until the user approves; '
@@ -195,6 +225,16 @@ class Workspace:
             note += f' {self.replaced} earlier planned change{"s" if self.replaced != 1 else ""} on the same target{"s" if self.replaced != 1 else ""} superseded.'
             self.replaced = 0
         return note
+
+
+def _op_mentions(value, ids: set) -> bool:
+    if isinstance(value, str):
+        return value in ids
+    if isinstance(value, dict):
+        return any(_op_mentions(v, ids) for k, v in value.items() if k != 'label')
+    if isinstance(value, list):
+        return any(_op_mentions(v, ids) for v in value)
+    return False
 
 
 def op_target(op: Dict[str, Any]):
@@ -1175,6 +1215,30 @@ def t_discard_plan(ws: Workspace) -> str:
     return f'Discarded {n} planned change{"s" if n != 1 else ""}.'
 
 
+def t_drop_planned(ws: Workspace, indexes) -> str:
+    """Drop some planned changes by their plan_status numbers, keeping the rest."""
+    if isinstance(indexes, (int, str)):
+        indexes = [indexes]
+    try:
+        wanted = {int(i) for i in (indexes or [])}
+    except (TypeError, ValueError):
+        raise ToolError('indexes must be the numbers shown by plan_status, e.g. [2, 5]')
+    bad = sorted(i for i in wanted if not 1 <= i <= len(ws.ops))
+    if bad:
+        raise ToolError(f'No planned change number {", ".join(map(str, bad))}; the plan holds {len(ws.ops)} (see plan_status)')
+    if not wanted:
+        raise ToolError('Give at least one number.')
+    dropped = [ws.ops[i - 1] for i in sorted(wanted)]
+    # A dropped new entry takes the links to it along: they could not be written.
+    keys = {op['key'] for op in dropped if op.get('kind') == 'create_entry'}
+    for k in keys:
+        ws.new_entries.pop(k, None)
+    ws.ops = [op for i, op in enumerate(ws.ops, start=1)
+              if i not in wanted and not (op.get('kind') == 'link' and op.get('new_entry_key') in keys)]
+    return f'Dropped {len(dropped)} planned change{"s" if len(dropped) != 1 else ""}.' + \
+        (' Links to the dropped new entries were dropped with them.' if keys else '') + '\n' + t_plan_status(ws)
+
+
 # --- schema + dispatch ----------------------------------------------------------
 
 def _fn(name, description, properties, required):
@@ -1305,6 +1369,8 @@ TOOLS = [
          'metadata': {'type': 'object', 'additionalProperties': {'type': 'string'}}},
         ['name', 'text']),
     _fn('discard_plan', 'Drop every change planned so far in this turn.', {}, []),
+    _fn('drop_planned', 'Drop some of the planned changes by their plan_status numbers; the rest stay.',
+        {'indexes': {'type': 'array', 'items': {'type': 'integer'}}}, ['indexes']),
     _fn('confirm',
         'PLAN: mark machine-made annotations (from other services or earlier assistant plans; see worklist '
         'kind="unverified") as verified, after checking them. refs: sentences, words, or morphemes (a sentence '
@@ -1325,7 +1391,7 @@ _IMPL = {
     'concordance': t_concordance, 'analyses_of': t_analyses_of, 'lexicon_entry': t_lexicon_entry,
     'check_consistency': t_check_consistency, 'recent_changes': t_recent_changes, 'plan_status': t_plan_status,
     'set_document_metadata': t_set_document_metadata, 'create_document': t_create_document,
-    'confirm': t_confirm, 'discard_analysis': t_discard_analysis,
+    'confirm': t_confirm, 'discard_analysis': t_discard_analysis, 'drop_planned': t_drop_planned,
 }
 
 WRITE_TOOLS = {'set_field', 'set_analysis', 'set_orthography', 'respell', 'link_entry', 'unlink_entry',

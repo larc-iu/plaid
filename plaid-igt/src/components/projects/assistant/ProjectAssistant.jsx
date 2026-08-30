@@ -618,7 +618,15 @@ export const ProjectAssistant = ({ projectId, client, userId, canWrite }) => {
         service.serviceId,
         {
           projectId,
-          approve: { id: plan.id, ops: plan.ops, label: `Assistant: ${plan.summary}`, asHuman },
+          approve: {
+            id: plan.id,
+            ops: plan.ops,
+            label: `Assistant: ${plan.summary}`,
+            asHuman,
+            // Versions the plan was made against; the service refuses a plan
+            // whose documents changed since (its offsets and ids may not fit).
+            documents: plan.documents || [],
+          },
         },
         TURN_TIMEOUT_MS,
         (p) => setProgress(p?.message || ''),

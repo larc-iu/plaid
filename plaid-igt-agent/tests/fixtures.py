@@ -36,7 +36,7 @@ BODY = 'Ali-di gam akuna. Gam-ar.'
 
 def document_raw():
     return {
-        'id': 'd1', 'name': 'Text 1', 'metadata': {'Date': '2020'},
+        'id': 'd1', 'name': 'Text 1', 'version': 7, 'metadata': {'Date': '2020'},
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'text': {'id': TEXT_ID, 'body': BODY},
             'token_layers': [

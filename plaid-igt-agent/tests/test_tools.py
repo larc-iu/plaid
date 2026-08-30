@@ -281,3 +281,57 @@ def test_entry_gloss_singles_out_a_homograph():
     call_tool(w, 'merge_entries', {'keep_form': 'gam', 'keep_gloss': 'fish', 'remove_form': 'gam', 'remove_gloss': 'net'})
     assert w.ops[-1]['kind'] == 'merge_entries' and (w.ops[-1]['keep_id'], w.ops[-1]['remove_id']) == ('vi-gam', 'vi-gam2')
     assert 'No lexicon entry "gam" with a field valued "boat"' in call_tool(w, 'delete_entry', {'entry_form': 'gam', 'entry_gloss': 'boat'})
+
+
+def test_reads_mark_unverified_machine_material():
+    from plaid_igt_agent.project import render_document
+    c = FakeClient(documents={'d1': _machine_doc()})
+    w = Workspace(c, load_project(c, 'p1'))
+    out = render_document(w.doc('d1'), w.project)
+    assert 'w1 Ali-di | seg=Ali-di~ types=?,suffix | Morph Gloss=Ali-ERG~ | Gloss=Ali~ | IPA=alidi | link=Ali~ | mlinks=m2:-di~' in out
+    assert 'w1 Gam-ar | seg=Gam=ar~' in out  # m-4b is machine-made
+    assert 'Translation: Ali saw a fish.\n' in out  # human: unmarked
+    assert 'A trailing ~ marks' in out
+    plain = render_document(ws().doc('d1'), ws().project)
+    assert '~' not in plain.replace('A trailing ~ marks', '')
+
+
+def test_plan_payload_records_the_documents_it_touches_with_versions():
+    w = ws()
+    assert w.plan_payload() is None
+    call_tool(w, 'set_entry_field', {'entry_form': 'Ali', 'field': 'pos', 'value': 'PN'})
+    assert w.plan_payload()['documents'] == []  # a lexicon-only plan touches no document
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'})
+    assert w.plan_payload()['documents'] == [{'id': 'd1', 'name': 'Text 1', 'version': 7}]
+    w2 = ws()
+    call_tool(w2, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})  # text id only
+    assert [d['id'] for d in w2.plan_payload()['documents']] == ['d1']
+    w3 = ws()
+    call_tool(w3, 'rename_document', {'document': 'd1', 'new_name': 'T'})
+    assert [d['id'] for d in w3.plan_payload()['documents']] == ['d1']
+
+
+def test_stale_documents_refuse_a_plan_made_against_older_data():
+    from plaid_igt_agent.service import stale_documents
+    c = FakeClient()
+    assert stale_documents(c, [{'id': 'd1', 'name': 'Text 1', 'version': 7}]) == []
+    assert stale_documents(c, [{'id': 'd1', 'name': 'Text 1', 'version': 6}]) == ['document "Text 1" has changed since the plan was made']
+    assert stale_documents(c, [{'id': 'd1', 'version': None}, 'junk']) == []
+    out = stale_documents(c, [{'id': 'nope', 'name': 'Gone', 'version': 1}])
+    assert len(out) == 1 and 'could not be read' in out[0]
+
+
+def test_drop_planned_keeps_the_rest_and_takes_links_to_dropped_entries_along():
+    w = ws()
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2', 's1.w3'], 'field': 'Gloss', 'value': 'x'})
+    out = call_tool(w, 'create_entry', {'form': 'akun', 'fields': {'gloss': 'see'}})
+    key = out.split('entry_id: ')[1].split()[0]
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3'], 'entry_id': key})
+    call_tool(w, 'set_orthography', {'document': 'd1', 'refs': ['s1.w3'], 'orthography': 'IPA', 'value': 'akuna'})
+    assert [o['kind'] for o in w.ops] == ['set_span', 'set_span', 'create_entry', 'link', 'set_orthography']
+    assert 'No planned change number 9' in call_tool(w, 'drop_planned', {'indexes': [9]})
+    out = call_tool(w, 'drop_planned', {'indexes': [1, 3]})
+    assert out.startswith('Dropped 2 planned changes. Links to the dropped new entries were dropped with them.')
+    assert [o['kind'] for o in w.ops] == ['set_span', 'set_orthography'] and w.ops[0]['token_id'] == 'w-3'
+    assert w.new_entries == {} and '2 planned changes' in out
+    assert 'Dropped 1' in call_tool(w, 'drop_planned', {'indexes': 2}) and len(w.ops) == 1

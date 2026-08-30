@@ -75,7 +75,9 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
   respells are refused; ops on tokens a split, merge, or delete removes are
   refused), then applies it with the requester's client in atomic batches
   under one operation (`stamp_mode` verified or human), reporting how much
-  was applied if a later batch fails.
+  was applied if a later batch fails. A plan carries the version of every
+  document it touches; approval is refused if any of them changed since, as
+  the plan's ids and character offsets were read from that state.
 - `agent.py`: the litellm loop. `service.py`: the Plaid service; one request
   is one turn (the browser keeps the transcript) or one approval.
 

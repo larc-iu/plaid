@@ -9,8 +9,9 @@ may read and approved edits are attributed to them in the audit log.
 Request data:
     project_id   the project (a service instance may serve many)
     messages     the transcript so far (OpenAI-shaped message dicts, no system)
-    approve      instead of a turn: {id, ops, label, as_human} of a plan the user approved
-                 (as_human: record the writes as human-made instead of verified machine-made)
+    approve      instead of a turn: {id, ops, label, as_human, documents} of a plan the user approved
+                 (as_human: record the writes as human-made instead of verified machine-made;
+                 documents: [{id, name, version}] read at plan time, refused if any changed since)
 
 Result data:
     {kind: 'turn', message, messages: [new transcript messages], plan: {id, summary, labels, ops} | null}
@@ -115,6 +116,12 @@ class AssistantService(BaseService):
                 return
             label = approve.get('label') or f'Assistant: {summarize(ops)}'
             stamp_mode = 'human' if approve.get('as_human') else 'verified'
+            stale = stale_documents(client, approve.get('documents') or [])
+            if stale:
+                response_helper.error('Nothing was written: ' + '; '.join(stale)
+                                      + '. The plan was made against an older state of the data (its character '
+                                      'offsets and ids may no longer fit). Ask the assistant to plan again.')
+                return
             response_helper.progress(10, 'Applying changes…')
             try:
                 counts = execute_plan(client, ops, source=service_source(self.service_id), label=label, project=project,
@@ -156,6 +163,24 @@ class AssistantService(BaseService):
     def _remember_applied(self, plan_id: str) -> None:
         self._applied_plans.append(plan_id)
         del self._applied_plans[:-500]
+
+
+def stale_documents(client, documents: list) -> list:
+    """Which of the plan's documents changed since it was made: every write
+    inside a document bumps its version, so a version mismatch means the
+    plan's ids and offsets were read from data that is no longer there."""
+    out = []
+    for d in documents:
+        if not isinstance(d, dict) or not d.get('id') or d.get('version') is None:
+            continue
+        try:
+            now = client.documents.get(d['id'])
+        except Exception as e:  # noqa: BLE001 - deleted or unreadable: the plan cannot apply
+            out.append(f'document "{d.get("name") or d["id"]}" could not be read ({e})')
+            continue
+        if now.get('version') != d['version']:
+            out.append(f'document "{now.get("name") or d.get("name") or d["id"]}" has changed since the plan was made')
+    return out
 
 
 def main():

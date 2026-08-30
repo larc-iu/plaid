@@ -31,7 +31,8 @@ search for finding items, concordance for context around a form or gloss, sequen
 analyses_of before proposing any analysis; check_consistency, check_lexicon, check_integrity for quality reports; \
 for project-wide edits use replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography rather than \
 many single set_field calls; confirm marks machine-made annotations (another service's output, listed by worklist \
-kind="unverified") as verified once checked, discard_analysis deletes a word's unverified machine analysis; \
+kind="unverified"; shown with a trailing ~ in reads) as verified once checked, discard_analysis deletes a word's \
+unverified machine analysis; drop_planned removes single planned changes when the user wants most of a plan; \
 split_word, merge_words, delete_word, split_sentence, merge_sentences change the segmentation of the text (a word \
 split or merge deletes the affected morpheme analyses). When \
 none of these can express a question, read query_help and write a query.

@@ -15,6 +15,14 @@ them no annotation cells.
 import re
 import unicodedata
 from dataclasses import dataclass, field
+
+from plaid_client.provenance import prov_state, MACHINE
+
+UNVERIFIED = '~'  # after a value: machine-made, nobody has confirmed it
+
+
+def _mark(value: str, metadata) -> str:
+    return value + UNVERIFIED if prov_state(metadata) == MACHINE else value
 from typing import Dict, List, Optional, Tuple
 
 import regex as uregex
@@ -267,6 +275,7 @@ class IgtDoc:
     body: str
     sentences: List[Sentence]
     metadata: dict
+    version: Optional[int] = None
 
     def word_count(self):
         return sum(len(s.words) for s in self.sentences)
@@ -319,7 +328,8 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
     body = text.get('body') or ''
     chars = list(body)
     if not word_layer or not sent_layer:
-        return IgtDoc(raw['id'], raw.get('name') or '', text.get('id'), body, [], raw.get('metadata') or {})
+        return IgtDoc(raw['id'], raw.get('name') or '', text.get('id'), body, [], raw.get('metadata') or {},
+                      raw.get('version'))
 
     word_spans = _spans_by_token(word_layer, project)
     word_links = _links_by_token(word_layer)
@@ -370,7 +380,8 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
         sentences.append(Sentence(
             id=s['id'], index=si, text=''.join(chars[s['begin']:s['end']]).strip(),
             begin=s['begin'], end=s['end'], fields=sent_spans.get(s['id'], {}), words=ws))
-    return IgtDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences, raw.get('metadata') or {})
+    return IgtDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences, raw.get('metadata') or {},
+                  raw.get('version'))
 
 
 # --- addressing -------------------------------------------------------------
@@ -430,7 +441,7 @@ def morpheme_field_line(w: Word, name: str) -> Optional[str]:
         if i:
             out += joiner(w.morphemes[i - 1].morph_type, m.morph_type)
         sp = m.fields.get(name)
-        out += (sp.value if sp and sp.value != '' else MISSING)
+        out += (_mark(sp.value, sp.metadata) if sp and sp.value != '' else MISSING)
     return out
 
 
@@ -439,6 +450,8 @@ def render_word(w: Word, project: IgtProject) -> str:
     seg = segmentation(w)
     if len(w.morphemes) > 1 or (w.morphemes and seg != w.surface):
         types = [m.morph_type for m in w.morphemes if m.morph_type]
+        if any(prov_state(m.metadata) == MACHINE for m in w.morphemes):
+            seg += UNVERIFIED
         parts.append(f'seg={seg}' + (f' types={",".join(m.morph_type or "?" for m in w.morphemes)}' if types else ''))
     for f in project.fields_by_scope('Morpheme'):
         line = morpheme_field_line(w, f.name)
@@ -447,12 +460,12 @@ def render_word(w: Word, project: IgtProject) -> str:
     for f in project.fields_by_scope('Word'):
         sp = w.fields.get(f.name)
         if sp and sp.value != '':
-            parts.append(f'{f.name}={sp.value}')
+            parts.append(f'{f.name}={_mark(sp.value, sp.metadata)}')
     for o, v in w.orthographies.items():
         parts.append(f'{o}={v}')
     if w.link:
-        parts.append(f'link={w.link.form}')
-    mlinks = [f'm{m.index}:{m.link.form}' for m in w.morphemes if m.link]
+        parts.append(f'link={_mark(w.link.form, w.link.metadata)}')
+    mlinks = [f'm{m.index}:{_mark(m.link.form, m.link.metadata)}' for m in w.morphemes if m.link]
     if mlinks:
         parts.append('mlinks=' + ' '.join(mlinks))
     return ' | '.join(parts)
@@ -463,7 +476,7 @@ def render_sentence(s: Sentence, project: IgtProject) -> str:
     for f in project.fields_by_scope('Sentence'):
         sp = s.fields.get(f.name)
         if sp and sp.value != '':
-            lines.append(f'  {f.name}: {sp.value}')
+            lines.append(f'  {f.name}: {_mark(sp.value, sp.metadata)}')
     for w in s.words:
         lines.append('  ' + render_word(w, project))
     return '\n'.join(lines)
@@ -472,7 +485,9 @@ def render_sentence(s: Sentence, project: IgtProject) -> str:
 FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one line per word: '
                  'wN surface | seg=morphemes joined by - (or = at a clitic) | <morpheme field>=values '
                  'in the same order (_ = missing) | <word field>=value | <orthography>=value | '
-                 'link=lexicon entry | mlinks=per-morpheme entries. Address items as sN, sN.wN, sN.wN.mN.')
+                 'link=lexicon entry | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or '
+                 'segmentation that is machine-made and not yet confirmed (confirm / discard_analysis). '
+                 'Address items as sN, sN.wN, sN.wN.mN.')
 
 
 def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,
