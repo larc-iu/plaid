@@ -1144,3 +1144,38 @@ describe('an entry may be linked from words and morphemes alike', () => {
     expect(bulk.args[0].map((l) => l.tokens[0])).toEqual(['m-1', 'w-1']);
   });
 });
+
+describe('confirmSentenceSpan', () => {
+  const machine = { prov: 'inferred', provSource: 'service:llm-translator' };
+  const withTranslation = (metadata) => {
+    const raw = buildRawDoc();
+    const sid = raw.textLayers[0].tokenLayers[0].tokens[0].id;
+    raw.textLayers[0].tokenLayers[0].spanLayers[0].spans = [
+      { id: 'tr-1', tokens: [sid], value: 'the cat', ...(metadata ? { metadata } : {}) },
+    ];
+    return { raw, sid };
+  };
+
+  it('patches provConfirmed onto a machine-made translation and keeps its value', async () => {
+    const { raw, sid } = withTranslation({ ...machine });
+    const doc = makeDoc({ raw });
+    expect(await doc.confirmSentenceSpan(sid, 'Translation')).toBe(true);
+    const patch = doc.client.calls.find((c) => c.kind === 'spans.patchMetadata');
+    expect(patch.args).toEqual(['tr-1', { provConfirmed: true }]);
+    const span = doc.sentences[0].annotations.Translation;
+    expect(span.value).toBe('the cat');
+    expect(span.metadata).toMatchObject({ ...machine, provConfirmed: true });
+  });
+
+  it('is a no-op for human, verified, or absent translations', async () => {
+    for (const meta of [null, { ...machine, provConfirmed: true }]) {
+      const { raw, sid } = withTranslation(meta);
+      const doc = makeDoc({ raw });
+      expect(await doc.confirmSentenceSpan(sid, 'Translation')).toBe(true);
+      expect(kinds(doc.client)).not.toContain('spans.patchMetadata');
+    }
+    const doc = makeDoc();
+    expect(await doc.confirmSentenceSpan(doc.sentences[0].id, 'Translation')).toBe(true);
+    expect(await doc.confirmSentenceSpan(doc.sentences[0].id, 'Nope')).toBe(false);
+  });
+});

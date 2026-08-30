@@ -863,6 +863,20 @@ export class IgtEditor {
         (el.matches('input, button') ? el : col.querySelector('button.igt-vocab__hint--machine'));
       if (target) anchors.push({ wordId, el: target });
     }
+    // Machine-made sentence values (a proposed translation) are stops too,
+    // keyed by their cell so the sweep can tell where it is.
+    for (const el of this.container.querySelectorAll(
+      'textarea.igt-field--sentence.igt-field--machine',
+    )) {
+      anchors.push({ wordId: `sentence:${el.dataset.cellKey}`, el });
+    }
+    anchors.sort((a, b) =>
+      a.el === b.el
+        ? 0
+        : a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING
+          ? -1
+          : 1,
+    );
     return anchors;
   }
 
@@ -872,7 +886,11 @@ export class IgtEditor {
     const anchors = this._unverifiedWordAnchors();
     if (!anchors.length) return false;
     const active = document.activeElement;
-    const curWord = active?.closest?.('[data-word-col]')?.dataset.wordCol ?? null;
+    const curWord =
+      active?.closest?.('[data-word-col]')?.dataset.wordCol ??
+      (active?.classList?.contains('igt-field--sentence')
+        ? `sentence:${active.dataset.cellKey}`
+        : null);
     let idx = anchors.findIndex((a) => a.wordId === curWord);
     let target;
     if (idx === -1) {
@@ -1192,6 +1210,8 @@ export class IgtEditor {
     prov = null,
     confirmWord = null,
     alternatives = null,
+    confirmSentence = null,
+    fieldName = null,
   }) {
     const v = value ?? '';
     const filled = v !== '';
@@ -1202,12 +1222,18 @@ export class IgtEditor {
     // Sentence-scoped fields (e.g. free Translation) are full free-text values —
     // an auto-growing textarea that wraps, rather than a one-line scrolling input.
     if (sentence) {
+      // Provenance renders exactly as on cells (a proposed translation is
+      // violet italic until a person edits or Ctrl+Enter-confirms it).
+      const ps = filled ? prov : null;
       return html`<textarea
         class="igt-field igt-field--sentence ${filled
           ? 'igt-field--filled'
-          : 'igt-field--empty'} ${extraClass}"
+          : 'igt-field--empty'} ${provClass('igt-field', ps)} ${extraClass}"
         data-cell-key=${key}
+        data-confirm-sentence=${confirmSentence ?? nothing}
+        data-field-name=${fieldName ?? nothing}
         aria-label=${ariaLabel ?? nothing}
+        title=${ps ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is` : nothing}
         rows="1"
         ?disabled=${this.readOnly}
         ${uncontrolledValue(v)}
@@ -1270,6 +1296,21 @@ export class IgtEditor {
     // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
     // it alone so the chip hop wins over cell navigation.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      // Ctrl+Enter: accept a machine-made value as is (the sentence
+      // counterpart of the word gesture) and hop to the same field of the
+      // next sentence. An edited value commits instead, which verifies it.
+      e.preventDefault();
+      const el = e.target;
+      const sid = el.dataset.confirmSentence;
+      const field = el.dataset.fieldName;
+      if (this.readOnly || !sid || !field) return;
+      if (el.value === (el.dataset.orig ?? '')) {
+        this._run(() => this.doc.confirmSentenceSpan(sid, field));
+      }
+      if (!this._navMove(el, 'next')) el.blur();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       e.target.blur();
@@ -1839,8 +1880,8 @@ export class IgtEditor {
             machine-made, confirmed by a person · plain = made by a person · editing a value
             confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> confirms a whole word and jumps to the next ·
             <kbd>Ctrl</kbd>+<kbd>⌫</kbd> discards a word's unverified proposal ·
-            <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between words with unverified
-            proposals</span
+            <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between words and
+            translations with unverified proposals</span
           >
         </div>
         <div class="igt-legend__row">
@@ -2486,6 +2527,9 @@ export class IgtEditor {
                 apply: (v) => this.doc.updateSentenceSpan(sentence.id, name, v),
                 sentence: true,
                 ariaLabel: `${name} for sentence ${index + 1}`,
+                prov: provDisplay(sentence.annotations?.[name]?.metadata),
+                confirmSentence: sentence.id,
+                fieldName: name,
               })}
             </div>
           `,

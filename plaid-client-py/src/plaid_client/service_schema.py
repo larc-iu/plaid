@@ -32,6 +32,8 @@ class TASKS:
     LINK_VOCAB = 'link-vocab'
     # Propose an interlinear analysis (morpheme segmentation + glosses) for words.
     ANALYZE = 'analyze'
+    # Propose a free translation for each sentence.
+    TRANSLATE = 'translate'
     # A conversational assistant over a project (chat turns; see plaid-igt-agent).
     ASSIST = 'assist'
 

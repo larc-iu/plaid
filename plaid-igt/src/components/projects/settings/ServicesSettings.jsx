@@ -42,16 +42,22 @@ const SPOTS = [
     builtins: [],
   },
   {
-    key: TASKS.LINK_VOCAB,
-    label: 'Auto-link vocabulary',
-    description: 'Proposes vocabulary links for unlinked words/morphemes (Auto-analyze, step 3).',
-    builtins: [{ name: BUILTIN_LINK_PRECEDENT, label: 'Follow precedent & unique matches' }],
+    key: TASKS.TRANSLATE,
+    label: 'Translation',
+    description: 'Proposes a free translation for each sentence (Auto-analyze, step 1).',
+    builtins: [],
   },
   {
     key: TASKS.ANALYZE,
     label: 'Analysis (segmentation + glosses)',
-    description: 'Proposes morpheme segmentation and glosses for words (Auto-analyze, step 2).',
+    description: 'Proposes morpheme segmentation and glosses for words (Auto-analyze, step 3).',
     builtins: [],
+  },
+  {
+    key: TASKS.LINK_VOCAB,
+    label: 'Auto-link vocabulary',
+    description: 'Proposes vocabulary links for unlinked words/morphemes (Auto-analyze, step 4).',
+    builtins: [{ name: BUILTIN_LINK_PRECEDENT, label: 'Follow precedent & unique matches' }],
   },
 ];
 

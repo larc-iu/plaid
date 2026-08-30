@@ -37,17 +37,22 @@ const LINK_STORAGE_KEY = 'plaid_igt_link_vocab_service';
 const LINK_PARAMS_PREFIX = 'plaid_igt_link_vocab_params_';
 const ANALYZE_STORAGE_KEY = 'plaid_igt_analyze_service';
 const ANALYZE_PARAMS_PREFIX = 'plaid_igt_analyze_params_';
+const TRANSLATE_STORAGE_KEY = 'plaid_igt_translate_service';
+const TRANSLATE_PARAMS_PREFIX = 'plaid_igt_translate_params_';
 const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
 // A whole-document model pass can take a few minutes on a large document.
 const ANALYZE_TIMEOUT_MS = 20 * 60 * 1000;
 
-// Auto-analyze: one dialog, three ordered steps, each toggleable, one Run.
-//   1. copy previous analyses (built-in analysis memory) — words that already
+// Auto-analyze: one dialog, four ordered steps, each toggleable, one Run.
+//   1. translate — a service advertising the `translate` task fills the
+//      sentence-scope translation field, first because the analyzers take
+//      the free translation as input;
+//   2. copy previous analyses (built-in analysis memory) — words that already
 //      have an uncontested project-wide analysis get it copied, so the model
 //      only sees what precedent can't answer;
-//   2. propose segmentation + glosses — a service advertising the `analyze`
+//   3. propose segmentation + glosses — a service advertising the `analyze`
 //      task (e.g. PolyGloss), over the whole document;
-//   3. link to the lexicon — the built-in precedent-or-unique rule or a
+//   4. link to the lexicon — the built-in precedent-or-unique rule or a
 //      `link-vocab` service, last so it can resolve the model's stems.
 // Every step writes provenance-stamped material that renders violet until a
 // person confirms it. Service steps use the same selection idiom as the
@@ -75,9 +80,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     progressMessage,
   } = useServiceRequest();
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState(null); // 'copy' | 'analyze' | 'link' while running
+  const [phase, setPhase] = useState(null); // 'translate' | 'copy' | 'analyze' | 'link' while running
   const [linkChoice, setLinkChoice] = useState(null);
   const [analyzeChoice, setAnalyzeChoice] = useState(null);
+  const [translateChoice, setTranslateChoice] = useState(null);
 
   const autoCfg = resolveAutoAnalysis(project?.config);
   const hasVocabs = Object.keys(doc?.vocabularies || {}).length > 0;
@@ -86,17 +92,19 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
   // previously-seen offline services).
   const online = (task) =>
     filterServicesByTask(availableServices, task).filter((s) => s.online !== false);
+  const translateServices = online(TASKS.TRANSLATE);
   const analyzeServices = online(TASKS.ANALYZE);
   const linkServices = online(TASKS.LINK_VOCAB);
 
   // Step toggles: remembered per user; the copy step's default comes from the
   // project's built-in-analysis settings, the model step defaults on whenever
   // a service is online, linking defaults on when the project has a lexicon.
-  const [steps, setSteps] = useState({ copy: true, analyze: true, link: true });
+  const [steps, setSteps] = useState({ translate: true, copy: true, analyze: true, link: true });
   useEffect(() => {
     if (!open) return;
     const saved = readSteps();
     setSteps({
+      translate: saved.translate ?? true,
       copy: saved.copy ?? autoCfg.copyAnalyses,
       analyze: saved.analyze ?? true,
       link: saved.link ?? true,
@@ -114,7 +122,38 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     }
   };
 
-  // --- step 2: analysis service ---
+  // --- step 1: translation service ---
+  const translateOptions = translateServices.map((s) => ({
+    value: encodeServiceSelection(s.serviceId),
+    label: s.serviceName,
+    service: s,
+  }));
+  const translateResolved = resolveInitialSelection({
+    services: translateServices,
+    builtins: [],
+    cached: localStorage.getItem(TRANSLATE_STORAGE_KEY),
+    projectDefault: readSpotDefault(project, TASKS.TRANSLATE),
+  });
+  const translateSel = translateChoice ?? translateResolved;
+  const translateEffective = translateOptions.some((o) => o.value === translateSel)
+    ? translateSel
+    : (translateOptions[0]?.value ?? null);
+  const translateService =
+    translateOptions.find((o) => o.value === translateEffective)?.service ?? null;
+  const translateDefault = readSpotDefault(project, TASKS.TRANSLATE);
+  const translateParams = useServiceParams(
+    translateService,
+    TRANSLATE_PARAMS_PREFIX,
+    translateDefault?.service?.serviceId === translateService?.serviceId
+      ? translateDefault?.params
+      : null,
+  );
+  const chooseTranslate = (v) => {
+    setTranslateChoice(v);
+    localStorage.setItem(TRANSLATE_STORAGE_KEY, v);
+  };
+
+  // --- step 3: analysis service ---
   const analyzeOptions = analyzeServices.map((s) => ({
     value: encodeServiceSelection(s.serviceId),
     label: s.serviceName,
@@ -144,7 +183,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     localStorage.setItem(ANALYZE_STORAGE_KEY, v);
   };
 
-  // --- step 3: linking method ---
+  // --- step 4: linking method ---
   const linkOptions = [
     { value: BUILTIN_LINK, label: 'Built-in (precedent & unique matches)' },
     ...linkServices.map((s) => ({
@@ -175,15 +214,25 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
   };
 
   const running = busy || isProcessing;
+  const translateOn = steps.translate && !!translateService;
   const analyzeOn = steps.analyze && !!analyzeService;
   const linkOn = steps.link && hasVocabs;
-  const nothingToRun = !steps.copy && !analyzeOn && !linkOn;
+  const nothingToRun = !translateOn && !steps.copy && !analyzeOn && !linkOn;
   const blockingErrors = useMemo(() => {
     const out = [];
+    if (translateOn) out.push(...Object.values(translateParams.errors || {}));
     if (analyzeOn) out.push(...Object.values(analyzeParams.errors || {}));
     if (linkOn && linkService) out.push(...Object.values(linkParams.errors || {}));
     return out;
-  }, [analyzeOn, analyzeParams.errors, linkOn, linkService, linkParams.errors]);
+  }, [
+    translateOn,
+    translateParams.errors,
+    analyzeOn,
+    analyzeParams.errors,
+    linkOn,
+    linkService,
+    linkParams.errors,
+  ]);
 
   const run = async () => {
     if (running || !doc || nothingToRun) return;
@@ -196,7 +245,34 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     const parts = [];
     const plural = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
     try {
-      // 1. copy previous analyses (built-in)
+      // 1. translate (service)
+      if (translateOn) {
+        setPhase('translate');
+        const result = await requestService(
+          project.id,
+          doc.id,
+          translateService.serviceId,
+          {
+            ...translateParams.coerced(),
+            documentId: doc.id,
+            projectId: project.id,
+            wordTokenLayerId: info.primaryTokenLayer?.id,
+            morphemeTokenLayerId: info.morphemeTokenLayer?.id,
+            sentenceTokenLayerId: info.sentenceTokenLayer?.id,
+          },
+          {
+            successTitle: 'Translation complete',
+            successMessage: `${translateService.serviceName} finished.`,
+            errorTitle: 'Translation failed',
+            errorMessage: `${translateService.serviceName} reported an error.`,
+            timeout: ANALYZE_TIMEOUT_MS,
+          },
+        );
+        await doc._reload();
+        const n = result?.sentencesWritten ?? result?.sentences_written;
+        if (typeof n === 'number') parts.push(`proposed translations for ${plural(n, 'sentence')}`);
+      }
+      // 2. copy previous analyses (built-in)
       if (steps.copy) {
         setPhase('copy');
         const { copied, ok } = await runBuiltinAnalysis(doc, {
@@ -211,7 +287,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
         if (!ok) return; // the domain layer toasted the failure
         if (copied) parts.push(`copied previous analyses onto ${plural(copied, 'word')}`);
       }
-      // 2. propose segmentation + glosses (service)
+      // 3. propose segmentation + glosses (service)
       if (analyzeOn) {
         setPhase('analyze');
         const result = await requestService(
@@ -242,7 +318,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
         const prot = skipped.protected ?? 0;
         if (prot) parts.push(`left ${plural(prot, 'human-analyzed word')} alone`);
       }
-      // 3. link to the lexicon
+      // 4. link to the lexicon
       if (linkOn) {
         setPhase('link');
         if (linkEffective === BUILTIN_LINK) {
@@ -331,10 +407,61 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
 
         {/* -mx-1/px-1 keeps focus rings from being clipped by the scroll box. */}
         <div className="-mx-1 flex flex-col gap-5 overflow-y-auto px-1">
-          {/* 1. copy */}
-          <section className="flex flex-col gap-1.5">
+          {/* 1. translate */}
+          <section className="flex flex-col gap-2">
             <StepHeader
               n={1}
+              stepKey="translate"
+              label="Propose translations"
+              on={steps.translate}
+              disabled={!translateService}
+              hint={
+                translateService
+                  ? 'A model drafts a free translation for every sentence, from the words and any glosses. Translations a person wrote are left alone; earlier machine drafts are refreshed.'
+                  : isDiscovering
+                    ? 'Discovering services…'
+                    : 'No translation service is online.'
+              }
+            />
+            {steps.translate && translateService && (
+              <div className="ml-6 flex flex-col gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs">Service</Label>
+                  <ServiceSummary service={translateService} />
+                </div>
+                <Select
+                  value={translateEffective}
+                  onValueChange={chooseTranslate}
+                  disabled={running}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {translateOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {translateParams.schema?.length > 0 && (
+                  <ServiceParamForm
+                    schema={translateParams.schema}
+                    values={translateParams.values}
+                    errors={translateParams.errors}
+                    onChange={translateParams.setParam}
+                    disabled={running}
+                  />
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* 2. copy */}
+          <section className="flex flex-col gap-1.5">
+            <StepHeader
+              n={2}
               stepKey="copy"
               label="Copy previous analyses"
               on={steps.copy}
@@ -342,10 +469,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             />
           </section>
 
-          {/* 2. analyze */}
+          {/* 3. analyze */}
           <section className="flex flex-col gap-2">
             <StepHeader
-              n={2}
+              n={3}
               stepKey="analyze"
               label="Propose segmentation and glosses"
               on={steps.analyze}
@@ -389,10 +516,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             )}
           </section>
 
-          {/* 3. link */}
+          {/* 4. link */}
           <section className="flex flex-col gap-2">
             <StepHeader
-              n={3}
+              n={4}
               stepKey="link"
               label="Link to the lexicon"
               on={steps.link}

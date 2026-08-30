@@ -5,7 +5,7 @@
 // (setError + return false) so a misconfigured-field edit reports failure
 // rather than silently "succeeding" via the saving wrapper.
 
-import { verifyOnEdit } from '@larc-iu/plaid-client';
+import { verifyOnEdit, isMachine, PROV_CONFIRMED } from '@larc-iu/plaid-client';
 
 const findSpanLayer = (doc, scope, fieldName) => {
   const spanLayers = doc.layerInfo.spanLayers?.[scope] || [];
@@ -105,4 +105,33 @@ export const spanMutations = {
   updateTokenSpan: makeSpanUpdater('word'),
   updateSentenceSpan: makeSpanUpdater('sentence'),
   updateMorphemeSpan: makeSpanUpdater('morpheme'),
+
+  // Confirm a machine-made sentence value as-is (Ctrl+Enter in a Translation
+  // field): the span keeps its value and gains provConfirmed, the sentence
+  // counterpart of confirmWordAnalysis. No-op (true) for human, verified or
+  // absent values.
+  async confirmSentenceSpan(sentenceId, fieldName) {
+    const layer = findSpanLayer(this, 'sentence', fieldName);
+    if (!layer) {
+      this.setError(`Annotation layer "${fieldName}" not found`);
+      return false;
+    }
+    const span = (layer.spans || []).find(
+      (s) => Array.isArray(s.tokens) && s.tokens.includes(sentenceId),
+    );
+    if (!span || !isMachine(span.metadata)) return true;
+    return this._withSaving(`Failed to confirm ${fieldName}`, async () => {
+      await this._client.spans.patchMetadata(span.id, PROV_CONFIRMED);
+      this._applyRawPatch((next, infoNext) => {
+        const layerDoc = (infoNext.spanLayers?.sentence || []).find((sl) => sl.id === layer.id);
+        const idx = layerDoc?.spans?.findIndex((s) => s.id === span.id) ?? -1;
+        if (idx !== -1) {
+          layerDoc.spans[idx].metadata = {
+            ...(layerDoc.spans[idx].metadata || {}),
+            ...PROV_CONFIRMED,
+          };
+        }
+      });
+    });
+  },
 };

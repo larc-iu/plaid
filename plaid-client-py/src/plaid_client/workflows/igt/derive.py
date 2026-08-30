@@ -88,7 +88,8 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
     ``text`` is the word as the proposer should see it: the baseline surface,
     or the named word orthography when ``orthography`` is given. Ignored
     tokens (punctuation) are left out. Raises ValueError with a user-facing
-    message when a layer or the gloss field is missing."""
+    message when a layer or the gloss field is missing; ``gloss_field=None``
+    asks for no gloss layer (the second item is then None)."""
     tl, word_layer = _find_layer(doc['text_layers'], word_layer_id)
     if not word_layer:
         raise ValueError(f'Word token layer {word_layer_id} not found in document')
@@ -98,8 +99,8 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
     _, sent_layer = _find_layer(doc['text_layers'], sentence_layer_id)
     if not sent_layer:
         raise ValueError(f'Sentence token layer {sentence_layer_id} not found in document')
-    gloss_layer = _span_layer(morph_layer, gloss_field, 'Morpheme')
-    if not gloss_layer:
+    gloss_layer = _span_layer(morph_layer, gloss_field, 'Morpheme') if gloss_field else None
+    if gloss_field and not gloss_layer:
         raise ValueError(f'No morpheme-scope field named "{gloss_field}" — set the Gloss field parameter '
                          f'to one of: {", ".join(sl["name"] for sl in morph_layer.get("span_layers", [])) or "(none)"}')
     trans_layer = _span_layer(sent_layer, translation_field) if translation_field else None
@@ -151,7 +152,7 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
                 'morph_links': {m['id']: morph_links.get(m['id'], []) for m in ms},
             })
         sentences.append({'id': s['id'], 'translation': translations.get(s['id'], ''), 'words': ws})
-    return sentences, gloss_layer['id']
+    return sentences, (gloss_layer['id'] if gloss_layer else None)
 
 
 # --- the write contract, per word ----------------------------------------------
