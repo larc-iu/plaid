@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Bot,
   Send,
@@ -39,6 +47,14 @@ import {
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
+import {
+  centeredScrollLeft,
+  citationHighlights,
+  citationRows,
+  citationTitle,
+  linkifyCitations,
+  sentenceHref,
+} from './citations.js';
 import { applyingIndex, rewindForRetry, unansweredTurn } from './resume.js';
 
 // The Assistant tab: a chat with whatever `assist` service(s) the operator
@@ -1146,56 +1162,46 @@ const ExportMenu = ({ conv, meta, projectId, projectName }) => {
 };
 
 // ---- sentence citations -----------------------------------------------------
-// The model cites evidence as `{{<document> sN}}` (or `sN.wM` for a word); the
-// service resolves each to interlinear data (see citations.py). A citation
-// alone on a line becomes an example card in place; one inside a sentence
-// becomes a link, and its card is listed under the reply. Citations the
-// service could not resolve stay as written.
+// The model cites evidence as `<cite doc="Text 1" ref="s3"/>`; the service
+// resolves each to interlinear data (see citations.js and citations.py). A
+// citation alone on a line becomes an example card in place; one inside a
+// sentence becomes a link, and its card is listed under the reply.
 
-// Braced citations, plus bare "s32.w16" references (the service resolves
-// those only when the turn read a single document; unknown ones stay text).
-const CITE_RE = /\{\{?\s*[^{}\n]+?\s+s\d+(?:\.w\d+)?\s*\}\}?|(?<![\w{.])s\d+(?:\.w\d+)?\b/g;
-
-const sentenceHref = (projectId, c) =>
-  `#/projects/${projectId}/documents/${c.documentId}?tab=analyze&focusSentence=${c.sentenceId}`;
-
-// The rows of a cited sentence, in the Analyze grid's order (the service
-// sends `tiers`; older stored citations without it fall back to the order
-// the cells appear in). Rows nobody fills are left out.
-export const citationRows = (c) => {
-  const words = c.words || [];
-  let tiers = c.tiers;
-  if (!tiers) {
-    tiers = [];
-    words.forEach((w) =>
-      (w.lines || []).forEach((l) => {
-        if (!tiers.some((t) => t.name === l.field)) tiers.push({ name: l.field, kind: 'field' });
-      }),
-    );
-    if (words.some((w) => w.seg)) tiers.unshift({ name: 'Morphemes', kind: 'morphemes' });
-  }
-  const rows = [{ label: '', kind: 'surface', cells: words.map((w) => w.surface) }];
-  for (const t of tiers) {
-    const cells =
-      t.kind === 'morphemes'
-        ? words.map((w) => w.seg || '')
-        : words.map((w) => (w.lines || []).find((l) => l.field === t.name)?.value || '');
-    if (cells.some(Boolean)) rows.push({ label: t.name, kind: t.kind, cells });
-  }
-  return rows;
-};
-
-export const citationTitle = (c) =>
-  `${c.documentName}, sentence ${c.sentence}${c.word ? `, word ${c.word}` : ''}`;
+// A morpheme row's cell for a word whose morphemes the citation names: drawn
+// morpheme by morpheme, so the named ones stand out inside the word.
+const MorphemeCell = ({ parts, joiners, marked }) =>
+  parts.map((part, k) => (
+    <Fragment key={k}>
+      {k > 0 && (joiners[k - 1] ?? '-')}
+      <span className={cn(marked.has(k + 1) && 'rounded-sm bg-primary/35 px-0.5')}>{part}</span>
+    </Fragment>
+  ));
 
 const ExampleCard = ({ c, projectId }) => {
   const words = c.words || [];
-  const rows = citationRows(c);
+  const rows = words.length ? citationRows(c) : [];
+  const highlights = citationHighlights(c);
+  const scroller = useRef(null);
+
+  // A long sentence scrolls inside the card, so bring what is cited into view:
+  // centre the highlighted columns before the card is painted (only the card
+  // scrolls, never the page).
+  useLayoutEffect(() => {
+    const box = scroller.current;
+    if (!box || box.scrollWidth <= box.clientWidth) return;
+    const marks = [...box.querySelectorAll('[data-cited]')].map((m) => m.getBoundingClientRect());
+    if (!marks.length) return;
+    const outer = box.getBoundingClientRect();
+    const left = Math.min(...marks.map((r) => r.left)) - outer.left + box.scrollLeft;
+    const right = Math.max(...marks.map((r) => r.right)) - outer.left + box.scrollLeft;
+    box.scrollLeft = centeredScrollLeft(left, right, box.clientWidth, box.scrollWidth);
+  }, [c]);
+
   return (
     <div className="my-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
       <div className="mb-1.5 text-xs">
         <a
-          href={sentenceHref(projectId, c)}
+          href={sentenceHref('', projectId, c)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 font-medium text-foreground hover:underline"
@@ -1205,7 +1211,8 @@ const ExampleCard = ({ c, projectId }) => {
           {citationTitle(c)}
         </a>
       </div>
-      <div className="overflow-x-auto">
+      {!words.length && <div className="py-0.5">{c.text}</div>}
+      <div ref={scroller} className="overflow-x-auto">
         <table className="border-separate border-spacing-0 whitespace-nowrap">
           <tbody>
             {rows.map((r, i) => (
@@ -1216,22 +1223,41 @@ const ExampleCard = ({ c, projectId }) => {
                 >
                   {r.label}
                 </th>
-                {r.cells.map((v, j) => (
-                  <td
-                    key={j}
-                    className={cn(
-                      'px-1.5 align-top leading-5',
-                      r.kind === 'surface' && 'font-medium',
-                      r.kind === 'morphemes' && 'font-mono text-xs',
-                      r.kind !== 'surface' && r.kind !== 'morphemes' && 'text-xs',
-                      c.word === words[j].index && 'bg-primary/15',
-                      c.word === words[j].index && i === 0 && 'rounded-t',
-                      c.word === words[j].index && i === rows.length - 1 && 'rounded-b',
-                    )}
-                  >
-                    {v}
-                  </td>
-                ))}
+                {r.cells.map((v, j) => {
+                  const w = words[j] || {};
+                  const cited = highlights.get(w.index);
+                  const morphemes = cited instanceof Set ? cited : null;
+                  const parts =
+                    morphemes &&
+                    (r.kind === 'morphemes'
+                      ? w.morphs
+                      : r.kind === 'morpheme'
+                        ? (w.lines || []).find((l) => l.field === r.label)?.parts
+                        : null);
+                  return (
+                    <td
+                      key={j}
+                      data-cited={cited && i === 0 ? '' : undefined}
+                      className={cn(
+                        'px-1.5 align-top leading-5',
+                        r.kind === 'surface' && 'font-medium',
+                        r.kind === 'morphemes' && 'font-mono text-xs',
+                        r.kind !== 'surface' && r.kind !== 'morphemes' && 'text-xs',
+                        // A word cited whole is filled; one cited for its
+                        // morphemes is tinted, with the morphemes filled.
+                        cited && (morphemes ? 'bg-primary/10' : 'bg-primary/15'),
+                        cited && i === 0 && 'rounded-t',
+                        cited && i === rows.length - 1 && 'rounded-b',
+                      )}
+                    >
+                      {parts ? (
+                        <MorphemeCell parts={parts} joiners={w.joiners || []} marked={morphemes} />
+                      ) : (
+                        v
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -1248,10 +1274,10 @@ const ExampleCard = ({ c, projectId }) => {
 };
 
 // Reply text with its citations: block cards in place, links inline, and the
-// inline-only citations' cards after the text.
+// inline-only citations' cards after the text. A citation the service could not
+// resolve is flattened to its plain reference rather than shown as markup.
 const CitedMarkdown = ({ text, citations, projectId }) => {
   const byKey = new Map((citations || []).map((c) => [c.key, c]));
-  if (byKey.size === 0) return <AssistantMarkdown>{text}</AssistantMarkdown>;
   const segments = [];
   const shown = new Set();
   let buf = [];
@@ -1272,11 +1298,11 @@ const CitedMarkdown = ({ text, citations, projectId }) => {
   flush();
   const inline = [];
   const linkify = (md) =>
-    md.replace(CITE_RE, (m) => {
-      const c = byKey.get(m);
-      if (!c) return m;
-      if (!shown.has(m) && !inline.includes(c)) inline.push(c);
-      return `[${citationTitle(c)}](${sentenceHref(projectId, c)})`;
+    linkifyCitations(md, byKey, {
+      projectId,
+      onCited: (m, c) => {
+        if (!shown.has(m) && !inline.includes(c)) inline.push(c);
+      },
     });
   return (
     <div>

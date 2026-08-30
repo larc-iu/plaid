@@ -544,15 +544,20 @@ FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one
                  'in the same order (_ = missing) | <word field>=value | <orthography>=value | '
                  'link=lexicon entry | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or '
                  'segmentation that is machine-made and not yet confirmed (confirm / discard_analysis). '
-                 'Address items as sN, sN.wN, sN.wN.mN; cite a sentence to the user as {{<document name> sN}}.')
+                 'Address items as sN, sN.wN, sN.wN.mN; cite one to the user as '
+                 '<cite doc="<document name>" ref="sN"/>.')
 
 
 def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,
-                    max_sentences: int = 40) -> str:
+                    max_sentences: int = 40, ref_name: Optional[str] = None) -> str:
+    """``ref_name`` is how a reference to this document must name it (its id
+    where another document shares its name): shown so what is read back is
+    unambiguous."""
     n = len(doc.sentences)
     start = max(1, start)
     end = min(n, end if end is not None else start + max_sentences - 1)
-    head = f'Document "{doc.name}": {n} sentences, {doc.word_count()} words'
+    head = f'Document "{doc.name}"' + (f' id={doc.id}' if ref_name and ref_name != doc.name else '') \
+        + f': {n} sentences, {doc.word_count()} words'
     shown = {k: v for k, v in doc.metadata.items() if k in project.document_metadata and v not in (None, '')}
     if shown:
         head += ' | ' + ', '.join(f'{k}={v}' for k, v in shown.items())

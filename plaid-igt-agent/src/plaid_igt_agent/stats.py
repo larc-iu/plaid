@@ -24,8 +24,8 @@ def _docs(ws: Workspace, document: Optional[str]) -> List[IgtDoc]:
     return [ws.doc(document)] if document else ws.all_docs()
 
 
-def _tag(docs, doc):
-    return f'"{doc.name}" ' if len(docs) > 1 else ''
+def _tag(ws, docs, doc):
+    return ws.doc_tag(doc, len(docs) > 1)
 
 
 def _analyzed(w: Word) -> bool:
@@ -319,7 +319,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
         return _worklist_lines(kind, f, lvl, limit, counts, examples)
     groups: Dict[str, List[str]] = defaultdict(list)
     for d in docs:
-        tag = _tag(docs, d)
+        tag = _tag(ws, docs, d)
         for s in d.sentences:
             if lvl == 'sentence':
                 # Sentences have no form to group by: group by document.
@@ -418,7 +418,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         uses, use_docs, corpus_gloss, gloss_items, stale = q_lexicon_usage(ws, vocabs, items)
         docs = []
     for d in docs:
-        tag = _tag(docs, d)
+        tag = _tag(ws, docs, d)
         for s in d.sentences:
             for w in s.words:
                 units = [(w, w.surface, first_w, f'{tag}{word_ref(s, w)}')] + \
@@ -537,7 +537,7 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
     chars: Counter = Counter()
     apos: Counter = Counter()
     for d in docs:
-        tag = _tag(docs, d)
+        tag = _tag(ws, docs, d)
         if unicodedata.normalize('NFC', d.body) != d.body:
             non_nfc.append(d.name)
         for c in d.body:
@@ -639,7 +639,7 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
     else:
         docs = _docs(ws, document)
         for d in docs:
-            tag = _tag(docs, d)
+            tag = _tag(ws, docs, d)
             for s in d.sentences:
                 matches = _find_sequence(s, sequence, adjacent, ws.project, regex)
                 if not matches:

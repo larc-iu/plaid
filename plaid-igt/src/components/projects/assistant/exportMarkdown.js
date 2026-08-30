@@ -3,56 +3,35 @@
 // the editor), plans with their changes and outcome, and errors. Tool traces
 // are summarized in one line per reply. Pure: no DOM, so it is unit-tested.
 
-const CITE_RE = /\{\{?\s*[^{}\n]+?\s+s\d+(?:\.w\d+)?\s*\}\}?|(?<![\w{.])s\d+(?:\.w\d+)?\b/g;
+import {
+  citationHighlights,
+  citationRows,
+  citationTitle,
+  linkifyCitations,
+  sentenceHref,
+} from './citations.js';
 
 const esc = (s) =>
   String(s ?? '')
     .replace(/\|/g, '\\|')
     .replace(/\n/g, ' ');
 
-export const sentenceUrl = (origin, projectId, c) =>
-  `${origin}#/projects/${projectId}/documents/${c.documentId}?tab=analyze&focusSentence=${c.sentenceId}`;
-
-const citeLabel = (c) =>
-  `${c.documentName}, sentence ${c.sentence}${c.word ? `, word ${c.word}` : ''}`;
-
-// Rows in the Analyze grid's order (`tiers` from the service; older stored
-// citations fall back to the order the cells appear in). Empty rows are left out.
-const citationRows = (c) => {
-  const words = c.words || [];
-  let tiers = c.tiers;
-  if (!tiers) {
-    tiers = [];
-    words.forEach((w) =>
-      (w.lines || []).forEach((l) => {
-        if (!tiers.some((t) => t.name === l.field)) tiers.push({ name: l.field, kind: 'field' });
-      }),
-    );
-    if (words.some((w) => w.seg)) tiers.unshift({ name: 'Morphemes', kind: 'morphemes' });
-  }
-  const rows = [];
-  for (const t of tiers) {
-    const cells =
-      t.kind === 'morphemes'
-        ? words.map((w) => w.seg || '')
-        : words.map((w) => (w.lines || []).find((l) => l.field === t.name)?.value || '');
-    if (cells.some(Boolean)) rows.push([t.name, ...cells]);
-  }
-  return rows;
-};
-
 // One cited sentence as a Markdown table: a column per word, a row per tier
-// (words, morphemes, each field), then the sentence fields.
+// (words, morphemes, each field), then the sentence fields. Cited words are
+// bold (a table cannot mark a morpheme inside one, the card and the editor do).
 export const citationToMarkdown = (c, { origin, projectId }) => {
   const words = c.words || [];
-  const rows = citationRows(c);
-  const out = [`**[${esc(citeLabel(c))}](${sentenceUrl(origin, projectId, c)})**`, ''];
+  const cited = citationHighlights(c);
+  const [surface, ...rows] = citationRows(c);
+  const out = [`**[${esc(citationTitle(c))}](${sentenceHref(origin, projectId, c)})**`, ''];
   if (words.length) {
     out.push(
-      `| | ${words.map((w) => (c.word === w.index ? `**${esc(w.surface)}**` : esc(w.surface))).join(' | ')} |`,
+      `| | ${surface.cells
+        .map((v, j) => (cited.has(words[j].index) ? `**${esc(v)}**` : esc(v)))
+        .join(' | ')} |`,
     );
     out.push(`|---|${words.map(() => '---').join('|')}|`);
-    rows.forEach((r) => out.push(`| ${r.map(esc).join(' | ')} |`));
+    rows.forEach((r) => out.push(`| ${[r.label, ...r.cells].map(esc).join(' | ')} |`));
   } else {
     out.push(esc(c.text));
   }
@@ -65,7 +44,6 @@ export const citationToMarkdown = (c, { origin, projectId }) => {
 // follow the text (the same rules as the tab).
 export const replyToMarkdown = (text, citations, ctx) => {
   const byKey = new Map((citations || []).map((c) => [c.key, c]));
-  if (byKey.size === 0) return text || '';
   const inline = [];
   const shown = new Set();
   const lines = (text || '').split('\n').map((line) => {
@@ -74,11 +52,11 @@ export const replyToMarkdown = (text, citations, ctx) => {
       shown.add(key);
       return citationToMarkdown(byKey.get(key), ctx);
     }
-    return line.replace(CITE_RE, (m) => {
-      const c = byKey.get(m);
-      if (!c) return m;
-      if (!shown.has(m) && !inline.includes(c)) inline.push(c);
-      return `[${citeLabel(c)}](${sentenceUrl(ctx.origin, ctx.projectId, c)})`;
+    return linkifyCitations(line, byKey, {
+      ...ctx,
+      onCited: (m, c) => {
+        if (!shown.has(m) && !inline.includes(c)) inline.push(c);
+      },
     });
   });
   const out = lines.join('\n');

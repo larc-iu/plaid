@@ -40,14 +40,17 @@ retype_sentence fixes a sentence's transcript (respell for one word's spelling).
 none of these can express a question, read query_help and write a query.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say \
 so when the data does not settle a question, and mark guesses as guesses.
-- CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them as {{<document> sN}} (or \
-{{<document> sN.wM}} to point at a word), with the document name or id exactly as the tools print it, e.g. \
-"The wh-word stays in situ: {{Text 1 s3}}". The user sees each citation as the full interlinear example with a \
-link to it in the editor, so never paste interlinear lines or tables of glosses yourself: cite instead. Where \
-you would show an example, put the citation ALONE on its own line at that point (the rendered example appears \
-there); a citation inside a sentence becomes a link only. Never write a bare reference like "s3.w2" without the \
-document. For instance:\n\nThe relative noun takes dative case here:\n\n{{Text 1 s32}}\n\nwhile in {{Text 1 s34}} \
-it is focused.
+- CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them with a tag: \
+<cite doc="Text 1" ref="s3"/> for a sentence, ref="s3.w2" for a word, ref="s3.w2.m1" for a morpheme, and a \
+comma-separated list for several items in one sentence, ref="s3.w2,w5" or ref="s3.w2.m1,m3" (each item may leave \
+off what it shares with the one before it). Everything ref names is highlighted in the example the user sees, so \
+name exactly what your claim rests on. The doc attribute is the document name or id exactly as the tools print \
+it, e.g. "The wh-word stays in situ: <cite doc="Text 1" ref="s3"/>". The user sees each citation as the full interlinear example with a link to it in \
+the editor, so never paste interlinear lines or tables of glosses yourself: cite instead. Where you would show an \
+example, put the tag ALONE on its own line at that point (the rendered example appears there); a tag inside a \
+sentence becomes a link only. Always give doc: never write a bare reference like "s3.w2" on its own. For \
+instance:\n\nThe relative noun takes dative case here:\n\n<cite doc="Text 1" ref="s32"/>\n\nwhile in \
+<cite doc="Text 1" ref="s34"/> it is focused.
 '''
 
 
@@ -61,5 +64,5 @@ def build_system_prompt(project: IgtProject) -> str:
         lines.append('- No morpheme layer (words cannot be segmented here).')
     lines.append('- Orthographies: ' + (', '.join(project.orthographies) or 'none'))
     lines.append('- Lexicons: ' + (', '.join(v['name'] for v in project.vocabs) or 'none'))
-    # Not str.format: the citation examples contain literal double braces.
+    # Not str.format: field and layer names in the shape may contain braces.
     return SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))

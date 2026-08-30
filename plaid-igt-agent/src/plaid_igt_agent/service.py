@@ -15,7 +15,7 @@ Request data:
 
 Result data:
     {kind: 'turn', message, messages: [new transcript messages], plan: {id, summary, labels, ops, documents} | null,
-     citations: [{key, document_id, document_name, sentence_id, sentence, word, text, words, fields}]}
+     citations: [{key, document_id, document_name, sentence_id, sentence, focus, text, words, fields}]}
     {kind: 'applied', applied: n, counts: [{kind, count}], message}
 """
 

@@ -55,6 +55,7 @@ class Corpus:
         self.ws = ws
         self.p = ws.project
         self.W, self.M, self.S = self.p.word_layer_id, self.p.morpheme_layer_id, self.p.sentence_layer_id
+        self._ref_names: Optional[Dict[str, str]] = None
 
     # --- running queries ------------------------------------------------------
 
@@ -215,10 +216,20 @@ class Corpus:
         loaded.add(doc_id)
         return True
 
+    def ref_name(self, doc_id: str) -> str:
+        """How a printed reference names a document so that it can be read
+        back: its name, or its id where another document shares that name
+        (nothing forbids it, and imports produce it). resolve_document_id
+        matches names case-insensitively, so collisions are judged that way."""
+        if self._ref_names is None:
+            names = self.doc_names()
+            taken = Counter(n.casefold() for n in names.values())
+            self._ref_names = {i: (i if taken[n.casefold()] > 1 else n) for i, n in names.items()}
+        return self._ref_names.get(doc_id, doc_id)
+
     def tag(self, doc_id: str) -> str:
         """The document prefix on a reference; none in a one-document project."""
-        names = self.doc_names()
-        return f'"{names.get(doc_id, doc_id)}" ' if len(names) > 1 else ''
+        return f'"{self.ref_name(doc_id)}" ' if len(self.doc_names()) > 1 else ''
 
 
 # --- search ---------------------------------------------------------------------

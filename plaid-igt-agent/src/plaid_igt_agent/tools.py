@@ -66,6 +66,11 @@ class Workspace:
             self._corpus = Corpus(self)
         return self._corpus
 
+    def doc_tag(self, doc, show: bool = True) -> str:
+        """The ``"<document>" `` prefix on a printed reference: the document's
+        name, or its id where another document shares that name."""
+        return f'"{self.corpus.ref_name(doc.id)}" ' if show else ''
+
     def use_scan(self, document: Optional[str]) -> bool:
         """Scan (one document, or everything when asked) rather than query."""
         return bool(document) or self.prefer_scan
@@ -482,7 +487,8 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
 def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sentence: Optional[int] = None) -> str:
     doc = ws.doc(document)
     return render_document(doc, ws.project, start=int(from_sentence or 1),
-                           end=int(to_sentence) if to_sentence else None)
+                           end=int(to_sentence) if to_sentence else None,
+                           ref_name=ws.corpus.ref_name(doc.id))
 
 
 def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,
@@ -517,7 +523,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
         return _finish(out, total, limit, 'hits')
     docs = [ws.doc(document)] if document else ws.all_docs()
     for doc in docs:
-        tag = f'"{doc.name}" ' if len(docs) > 1 else ''
+        tag = ws.doc_tag(doc, len(docs) > 1)
         for s in doc.sentences:
             if field and field.scope == 'Sentence':
                 sp = s.fields.get(field.name)
@@ -688,7 +694,7 @@ def t_analyses_of(ws: Workspace, form: str, document: Optional[str] = None) -> s
     word_tally: Dict[str, List[str]] = {}
     morph_tally: Dict[str, List[str]] = {}
     for doc in docs:
-        tag = f'"{doc.name}" ' if len(docs) > 1 else ''
+        tag = ws.doc_tag(doc, len(docs) > 1)
         for s in doc.sentences:
             for w in s.words:
                 ref = f'{tag}{word_ref(s, w)}'
@@ -761,7 +767,7 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
         from .corpus import q_entry_usage
         word_links, morph_links, exs = q_entry_usage(ws, target['id'], examples)
     for doc in (ws.all_docs() if ws.prefer_scan else []):
-        tag = f'"{doc.name}" ' if True else ''
+        tag = ws.doc_tag(doc)
         for s in doc.sentences:
             for w in s.words:
                 hit = False
@@ -804,7 +810,7 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     linked_empty: List[str] = []
     linked_empty_n = 0
     for doc in docs:
-        tag = f'"{doc.name}" ' if len(docs) > 1 else ''
+        tag = ws.doc_tag(doc, len(docs) > 1)
         for s in doc.sentences:
             if f.scope == 'Sentence':
                 sp = s.fields.get(f.name)

@@ -79,6 +79,9 @@ const DocumentEditor = () => {
   // tell an explicit tab request apart from the default.
   const tabParam = searchParams.get('tab');
   const focusParam = searchParams.get('focusSentence');
+  // ?focusWord= is a character offset in the text: an assistant citation names
+  // the word it cites, so the link lands on the word and not just the sentence.
+  const focusWordParam = Number.parseInt(searchParams.get('focusWord') ?? '', 10);
 
   // Seed the Analyze island's focus key from ?focusSentence= once; the island
   // consumes + clears it (StrictMode-aware). Done in render so it's set before
@@ -90,15 +93,16 @@ const DocumentEditor = () => {
       // An in-app click-through (search) writes this key first, and its version
       // carries `begin` so the caret lands on the matched word. Both paths now
       // put the sentence in the URL, so seed only when there ISN'T already a key
-      // for this same target — otherwise the URL's sentence-only version would
-      // clobber the richer one written a moment earlier.
+      // for this same target — otherwise the URL's version would clobber the
+      // richer one written a moment earlier, unless the URL names a word too.
       const existing = JSON.parse(sessionStorage.getItem('igt:focus-sentence') || 'null');
       const sameTarget =
         existing && existing.docId === documentId && existing.sentenceId === focusParam;
-      if (!sameTarget) {
+      const begin = Number.isInteger(focusWordParam) ? focusWordParam : null;
+      if (!sameTarget || begin !== null) {
         sessionStorage.setItem(
           'igt:focus-sentence',
-          JSON.stringify({ docId: documentId, sentenceId: focusParam }),
+          JSON.stringify({ docId: documentId, sentenceId: focusParam, begin }),
         );
       }
     } catch {

@@ -8,7 +8,7 @@ import {
 
 const ctx = { origin: 'http://x/', projectId: 'p1', projectName: 'Demo' };
 const cite = {
-  key: '{{Text 1 s3}}',
+  key: '<cite doc="Text 1" ref="s3.w2"/>',
   documentId: 'd1',
   documentName: 'Text 1',
   sentenceId: 's-3',
@@ -39,19 +39,35 @@ describe('citationToMarkdown', () => {
       ].join('\n'),
     );
   });
+
+  it('bolds every word a citation names', () => {
+    const md = citationToMarkdown(
+      {
+        ...cite,
+        word: undefined,
+        focus: [
+          { word: 1, morpheme: 2 },
+          { word: 3, morpheme: null },
+        ],
+      },
+      ctx,
+    );
+    expect(md).toContain('| | **Ali-di** | gam | **akuna** |');
+  });
 });
 
 describe('replyToMarkdown', () => {
   it('expands a standalone citation in place and links an inline one, listing its table after', () => {
     const md = replyToMarkdown(
-      'Example:\n{{Text 1 s3}}\nsee also {Text 1 s3} and {{Nope s9}}.',
+      'Example:\n<cite doc="Text 1" ref="s3.w2"/>\nsee also <cite doc="Nope" ref="s9"/> and {{Nope s9}}.',
       [cite],
       ctx,
     );
     expect(md).toContain('Example:\n**[Text 1, sentence 3, word 2]');
-    expect(md).toContain('see also {Text 1 s3} and {{Nope s9}}.'); // the single-brace one is a different key: left alone
+    // Unresolved citations are flattened to what they name, never left as markup.
+    expect(md).toContain('see also Nope s9 and Nope s9.');
     expect(md).not.toContain('Cited examples');
-    const md2 = replyToMarkdown('Inline {{Text 1 s3}} only.', [cite], ctx);
+    const md2 = replyToMarkdown('Inline <cite doc="Text 1" ref="s3.w2"/> only.', [cite], ctx);
     expect(md2).toMatch(
       /^Inline \[Text 1, sentence 3, word 2\]\(http:\/\/x\/#\/projects\/p1\/documents\/d1\?tab=analyze&focusSentence=s-3\) only\.\n\n\*\*Cited examples\*\*/,
     );

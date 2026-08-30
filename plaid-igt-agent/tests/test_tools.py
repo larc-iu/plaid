@@ -340,22 +340,104 @@ def test_drop_planned_keeps_the_rest_and_takes_links_to_dropped_entries_along():
 def test_citations_resolve_to_interlinear_examples():
     from plaid_igt_agent.citations import resolve_citations
     w = ws()
-    text = ('Wh-words stay in situ, e.g. {{Text 1 s1}} and {{"Text 1" s2.w1}}; see also {{Text 1 s1}} again, '
-            '{{Nope s1}} (no such document) and {{Text 1 s9}} (no such sentence).')
+    text = ('Wh-words stay in situ, e.g. <cite doc="Text 1" ref="s1"/> and <cite ref="s2.w1" doc=\'Text 1\'></cite>; '
+            'the ergative suffix <cite doc="Text 1" ref="s1.w1.m2"/>; see also <cite doc="Text 1" ref="s1"/> again, '
+            '<cite doc="Nope" ref="s1"/> (no such document), <cite doc="Text 1" ref="s9"/> (no such sentence) and '
+            '<cite doc="Text 1"/> (no reference).')
     out = resolve_citations(w, text)
-    assert [c['key'] for c in out] == ['{{Text 1 s1}}', '{{"Text 1" s2.w1}}']
-    a, b = out
-    assert (a['document_id'], a['document_name'], a['sentence_id'], a['sentence'], a['word']) == ('d1', 'Text 1', 's-1', 1, None)
+    assert [c['key'] for c in out] == ['<cite doc="Text 1" ref="s1"/>',
+                                       '<cite ref="s2.w1" doc=\'Text 1\'></cite>',
+                                       '<cite doc="Text 1" ref="s1.w1.m2"/>']
+    a, b, m = out
+    assert (a['document_id'], a['document_name'], a['sentence_id'], a['sentence'], a['focus']) == \
+        ('d1', 'Text 1', 's-1', 1, [])
     assert a['text'] == 'Ali-di gam akuna.' and a['fields'] == [{'field': 'Translation', 'value': 'Ali saw a fish.'}]
     # Cells and tiers follow the Analyze grid: orthographies, word fields, morphemes, morpheme fields.
-    assert a['words'][0] == {'index': 1, 'surface': 'Ali-di', 'seg': 'Ali-di',
+    assert a['words'][0] == {'index': 1, 'surface': 'Ali-di', 'begin': 0, 'seg': 'Ali-di',
                              'lines': [{'field': 'IPA', 'value': 'alidi'}, {'field': 'Gloss', 'value': 'Ali'},
                                        {'field': 'Morph Gloss', 'value': 'Ali-ERG'}]}
     assert a['tiers'] == [{'name': 'IPA', 'kind': 'orthography'}, {'name': 'Gloss', 'kind': 'word'},
                           {'name': 'Morphemes', 'kind': 'morphemes'}, {'name': 'Morph Gloss', 'kind': 'morpheme'}]
-    assert a['words'][1] == {'index': 2, 'surface': 'gam', 'seg': None, 'lines': []}
-    assert (b['sentence'], b['word'], b['words'][0]['seg']) == (2, 1, 'Gam=ar')
+    # begin rides along so a card's link can land on the word in the editor.
+    assert a['words'][1] == {'index': 2, 'surface': 'gam', 'begin': 7, 'seg': None, 'lines': []}
+    assert (b['sentence'], b['focus'], b['words'][0]['seg']) == (2, [{'word': 1, 'morpheme': None}], 'Gam=ar')
+    # A morpheme citation shows its sentence, pointing inside the word it is in.
+    assert (m['sentence'], m['focus']) == (1, [{'word': 1, 'morpheme': 2}])
     assert resolve_citations(w, 'no citations here') == []
+
+
+def test_a_citation_may_highlight_several_words_and_morphemes():
+    from plaid_igt_agent.citations import parse_refs, resolve_citations
+    assert parse_refs('s3.w2, w5') == ['s3.w2', 's3.w5']
+    assert parse_refs('s3.w2.m1 m3') == ['s3.w2.m1', 's3.w2.m3']  # each part inherits what it leaves out
+    assert parse_refs('s3') == ['s3']
+    w = ws()
+    out = resolve_citations(w, '<cite doc="Text 1" ref="s1.w1.m2,w2"/> then <cite doc="Text 1" ref="s1.w9,w1"/>')
+    a, b = out
+    assert a['focus'] == [{'word': 1, 'morpheme': 2}, {'word': 2, 'morpheme': None}]
+    # Morpheme rows come piece by piece for a word whose morphemes are named,
+    # so the card can mark the morpheme rather than the whole word.
+    assert a['words'][0]['morphs'] == ['Ali', 'di'] and a['words'][0]['joiners'] == ['-']
+    assert a['words'][0]['lines'][-1] == {'field': 'Morph Gloss', 'value': 'Ali-ERG', 'parts': ['Ali', 'ERG']}
+    assert 'morphs' not in a['words'][1] and 'parts' not in b['words'][0]['lines'][-1]
+    # A reference that does not resolve is dropped, the rest of the citation stands.
+    assert b['focus'] == [{'word': 1, 'morpheme': None}]
+    assert resolve_citations(w, '<cite doc="Text 1" ref="s9.w1,s1.w1"/>')[0]['sentence'] == 1
+
+
+def test_citations_come_back_in_the_order_written_and_stop_at_the_read_budget():
+    from plaid_igt_agent import citations as C
+    w = ws()
+    call_tool(w, 'read_document', {'document': 'd1'})
+    # Tags, the old braces and bare references interleave: the reader's cards
+    # follow the reply, so the order is the order they are written in.
+    out = C.resolve_citations(w, 'first s2, then {{Text 1 s1.w1}}, last <cite doc="Text 1" ref="s1.w2"/>')
+    assert [c['key'] for c in out] == ['s2', '{{Text 1 s1.w1}}', '<cite doc="Text 1" ref="s1.w2"/>']
+    # A stray word inside a reference list is skipped, not fatal to the citation.
+    assert C.parse_refs('s3.w2 and w5') == ['s3.w2', 's3.w5']
+
+
+def test_citations_do_not_fetch_more_documents_than_the_budget():
+    from fixtures import document_raw
+    from plaid_igt_agent.citations import resolve_citations, CITE_DOC_BUDGET
+    docs = {}
+    for i in range(CITE_DOC_BUDGET + 3):
+        raw = document_raw()
+        raw['id'], raw['name'] = f'd{i}', f'Text {i}'
+        docs[raw['id']] = raw
+    w = scan_ws(FakeClient(documents=docs))
+    text = ' '.join(f'<cite doc="Text {i}" ref="s1"/>' for i in range(CITE_DOC_BUDGET + 3))
+    # The user is waiting on the reply: cite from what was read, plus a few
+    # fetches; the rest stay plain text.
+    assert len(resolve_citations(w, text)) == CITE_DOC_BUDGET
+    w2 = scan_ws(FakeClient(documents=docs))
+    call_tool(w2, 'read_document', {'document': 'd9'})  # already read: not counted against the budget
+    assert len(resolve_citations(w2, text)) == CITE_DOC_BUDGET + 1
+
+
+def test_documents_sharing_a_name_are_printed_and_cited_by_id():
+    from fixtures import document_raw
+    from plaid_igt_agent.citations import resolve_citations
+    docs = {}
+    for i, name in enumerate(['Text 1', 'Text 1', 'Text 2'], 1):
+        raw = document_raw()
+        raw['id'], raw['name'] = f'd{i}', name
+        docs[raw['id']] = raw
+    w = scan_ws(FakeClient(documents=docs))
+    # Nothing forbids two documents with one name, so a reference to either
+    # names it by id; the unique name still prints as itself.
+    assert (w.corpus.ref_name('d1'), w.corpus.ref_name('d2'), w.corpus.ref_name('d3')) == ('d1', 'd2', 'Text 2')
+    out = call_tool(w, 'search', {'pattern': 'gam'})
+    assert '"d1" s1.w2 gam' in out and '"d2" s1.w2 gam' in out and '"Text 2" s1.w2 gam' in out
+    assert 'Document "Text 1" id=d2:' in call_tool(w, 'read_document', {'document': 'd2'})
+    assert 'Document "Text 2": ' in call_tool(w, 'read_document', {'document': 'd3'})
+    # Naming the shared name is refused, with the ids to pick from.
+    assert 'Several documents are named "Text 1"; use an id: d1, d2' in call_tool(
+        w, 'read_document', {'document': 'Text 1'})
+    # A citation by that id resolves and still shows the reader the name.
+    cites = resolve_citations(w, 'see <cite doc="d2" ref="s1"/>, not <cite doc="Text 1" ref="s1"/>')
+    assert [(c['key'], c['document_id'], c['document_name']) for c in cites] == [
+        ('<cite doc="d2" ref="s1"/>', 'd2', 'Text 1')]
 
 
 def test_bare_references_are_citations_when_one_document_was_read():
@@ -363,16 +445,21 @@ def test_bare_references_are_citations_when_one_document_was_read():
     w = ws()
     assert resolve_citations(w, 'see s1.w2 and s2') == []  # nothing read yet: ambiguous, left alone
     call_tool(w, 'read_document', {'document': 'd1'})
-    out = resolve_citations(w, 'Relatives: {{Text 1 s1}}; cf. the data in s1.w2, s2 and s9 (none), not words2 or x.s1')
-    assert [(c['key'], c['sentence'], c['word']) for c in out] == [('{{Text 1 s1}}', 1, None), ('s1.w2', 1, 2), ('s2', 2, None)]
+    out = resolve_citations(w, 'Relatives: <cite doc="Text 1" ref="s1"/>; cf. the data in s1.w2, s1.w1.m1, s2 and '
+                               's9 (none), not words2 or x.s1')
+    assert [(c['key'], c['sentence'], c['focus']) for c in out] == [
+        ('<cite doc="Text 1" ref="s1"/>', 1, []), ('s1.w2', 1, [{'word': 2, 'morpheme': None}]),
+        ('s1.w1.m1', 1, [{'word': 1, 'morpheme': 1}]), ('s2', 2, [])]
+    # A tag with no doc= means the one document too.
+    assert [c['sentence'] for c in resolve_citations(w, 'see <cite ref="s2"/>')] == [2]
 
 
-def test_prompt_shows_double_brace_citations_and_single_braces_still_resolve():
+def test_prompt_teaches_cite_tags_and_the_old_braces_still_resolve():
     from plaid_igt_agent.prompt import build_system_prompt
     from plaid_igt_agent.citations import resolve_citations
     w = ws()
     prompt = build_system_prompt(w.project)
-    assert '{{Text 1 s32}}' in prompt and 'Demo' in prompt and '{project_name}' not in prompt
+    assert '<cite doc="Text 1" ref="s32"/>' in prompt and 'Demo' in prompt and '{project_name}' not in prompt
     out = resolve_citations(w, 'see {Text 1 s2} and {{Text 1 s1.w1}}')
     assert [(c['key'], c['sentence']) for c in out] == [('{Text 1 s2}', 2), ('{{Text 1 s1.w1}}', 1)]
 
