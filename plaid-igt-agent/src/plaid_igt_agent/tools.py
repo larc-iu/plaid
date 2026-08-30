@@ -208,6 +208,10 @@ def op_target(op: Dict[str, Any]):
         return ('orth', op.get('word_id'), op.get('key'))
     if k == 'set_morpheme_form':
         return ('morph_form', op.get('morpheme_id'))
+    if k in ('split_word', 'merge_words', 'delete_word'):
+        return ('word_shape', op.get('word_id'))
+    if k in ('split_sentence', 'merge_sentences'):
+        return ('sentence_shape', op.get('sentence_id'))
     if k == 'respell':
         return ('respell', op.get('text_id'), op.get('begin'), op.get('end'))
     if k in ('link', 'unlink'):
@@ -1447,6 +1451,38 @@ _IMPL.update({
 })
 WRITE_TOOLS |= {'replace_in_field', 'respell_all', 'copy_to_orthography', 'set_analysis_for_form', 'set_field_for_form', 'merge_entries',
                 'delete_entry', 'rename_entry', 'rename_document'}
+
+from .shape import (t_split_word, t_merge_words, t_delete_word, t_split_sentence,  # noqa: E402
+                    t_merge_sentences)
+
+TOOLS += [
+    _fn('split_word',
+        'PLAN: split one word token into two. at: the left part ("Ali") or the number of characters in it. The '
+        'word\'s morpheme analysis is deleted (re-analyse both parts after); its values and link stay on the left part.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'},
+         'at': {'type': 'string', 'description': 'The left part, or its length.'}}, ['document', 'ref', 'at']),
+    _fn('merge_words',
+        'PLAN: merge adjacent words of one sentence into one token. Their morpheme analyses are deleted; word '
+        'values are combined losslessly (distinct values joined with " | "); one lexicon link is kept.',
+        {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
+    _fn('delete_word',
+        'PLAN: delete word tokens. The text is unchanged (use respell to change spelling); the words\' analyses, '
+        'values, and links go with them.',
+        {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
+    _fn('split_sentence',
+        'PLAN: split a sentence so that word before_word starts a new sentence. Words and their analyses are '
+        'untouched; sentence values (translation) stay with the first part.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'The sentence, sN.'},
+         'before_word': {'type': 'integer', 'description': 'Number of the word that starts the new sentence (2 or more).'}},
+        ['document', 'ref', 'before_word']),
+    _fn('merge_sentences',
+        'PLAN: merge a sentence into the one before it. Sentence values are combined losslessly.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'The later sentence, sN (N ≥ 2).'}},
+        ['document', 'ref']),
+]
+_IMPL.update({'split_word': t_split_word, 'merge_words': t_merge_words, 'delete_word': t_delete_word,
+              'split_sentence': t_split_sentence, 'merge_sentences': t_merge_sentences})
+WRITE_TOOLS |= {'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences'}
 
 from .query import t_query, t_query_help  # noqa: E402
 

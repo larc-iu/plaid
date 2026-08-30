@@ -206,6 +206,7 @@ class Span:
     id: str
     value: str
     metadata: Optional[dict] = None
+    layer_id: Optional[str] = None
 
 
 @dataclass
@@ -289,7 +290,7 @@ def _spans_by_token(token_layer, project: IgtProject):
         for sp in sl.get('spans') or []:
             for tid in sp.get('tokens') or []:
                 out.setdefault(tid, {})[f.name] = Span(sp['id'], sp.get('value') if sp.get('value') is not None else '',
-                                                       sp.get('metadata'))
+                                                       sp.get('metadata'), sl['id'])
     return out
 
 

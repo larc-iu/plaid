@@ -32,6 +32,12 @@ wire's key recasing):
   rename_entry    {item_id, form}
   rename_document {document_id, name}
   set_morpheme_form {morpheme_id, form}   (a respelling carried into a morpheme's own form; no restamp, as in Bulk Edit)
+  split_word      {word_id, position, morpheme_ids}          (coincident morphemes deleted first, as the editor does)
+  merge_words     {word_id, other_ids, morpheme_ids, spans: [{layer_id, keep_id, value|null, delete_ids}],
+                   links: {keep_id, delete_ids}}              (sequential merges, then the lossless span/link dedup)
+  delete_word     {word_id, morpheme_ids}
+  split_sentence  {sentence_id, position}
+  merge_sentences {sentence_id, other_id, spans: [...]}
   confirm         {span_ids, token_ids, link_ids}   (provConfirmed on machine-made material, any producer)
   discard_analysis {word_id, link_ids, span_ids, morpheme_ids, reset_first_id|null, renumber: [{id, precedence}]}
 
@@ -111,7 +117,8 @@ class PlanError(Exception):
 
 KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'create_entry',
          'set_entry_field', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
-         'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form')
+         'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form',
+         'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences')
 REQUIRED = {
     'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
     'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
@@ -120,6 +127,8 @@ REQUIRED = {
     'create_document': ('name', 'text'), 'merge_entries': ('keep_id', 'remove_id'), 'delete_entry': ('item_id',),
     'rename_entry': ('item_id', 'form'), 'rename_document': ('document_id', 'name'),
     'confirm': (), 'discard_analysis': ('word_id',), 'set_morpheme_form': ('morpheme_id', 'form'),
+    'split_word': ('word_id', 'position'), 'merge_words': ('word_id', 'other_ids'), 'delete_word': ('word_id',),
+    'split_sentence': ('sentence_id', 'position'), 'merge_sentences': ('sentence_id', 'other_id'),
 }
 
 
@@ -139,6 +148,29 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError(f'op {i + 1} (link): needs item_id or new_entry_key')
         if kind == 'confirm' and not any(op.get(k) for k in ('span_ids', 'token_ids', 'link_ids')):
             raise ValueError(f'op {i + 1} (confirm): nothing to confirm')
+        if kind == 'merge_words' and not isinstance(op['other_ids'], list):
+            raise ValueError(f'op {i + 1} (merge_words): other_ids must be a list')
+
+
+def _dead_tokens(ops) -> set:
+    """Tokens (words and morphemes) shape ops in the plan delete."""
+    dead = set()
+    for op in ops:
+        k = op.get('kind')
+        if k in ('split_word', 'merge_words', 'delete_word'):
+            dead.update(op.get('morpheme_ids') or [])
+        if k == 'delete_word':
+            dead.add(op['word_id'])
+        elif k == 'merge_words':
+            dead.update(op.get('other_ids') or [])
+        elif k == 'merge_sentences':
+            dead.add(op['other_id'])
+    return dead
+
+
+_TOKEN_KEYS = {'set_span': 'token_id', 'set_analysis': 'word_id', 'set_orthography': 'word_id', 'link': 'token_id',
+               'set_morpheme_form': 'morpheme_id', 'discard_analysis': 'word_id', 'split_word': 'word_id',
+               'split_sentence': 'sentence_id'}
 
 
 def _doomed_ids(ops) -> set:
@@ -166,6 +198,11 @@ def _doomed_ids(ops) -> set:
             gone.update(op.get('link_ids') or [])
             gone.update(op.get('span_ids') or [])
             gone.update(op.get('morpheme_ids') or [])
+        elif k in ('merge_words', 'merge_sentences'):
+            for sp in op.get('spans') or []:
+                gone.update(sp.get('delete_ids') or [])
+            gone.update((op.get('links') or {}).get('delete_ids') or [])
+    gone.update(_dead_tokens(ops))
     return gone
 
 
@@ -194,8 +231,13 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     seen_delete = set()
     respell_at: Dict[tuple, int] = {}
     doomed = _doomed_ids(ops)
+    dead = _dead_tokens(ops)
     for op in ops:
         k = op.get('kind')
+        key = _TOKEN_KEYS.get(k)
+        if key and op.get(key) in dead:
+            raise ValueError(f'{op.get("label") or k}: that word or morpheme is deleted or merged away by another '
+                             'op in this plan')
         if k == 'link' and op.get('item_id') in removed:
             notes.append(f'dropped: {op.get("label") or "a link"} (its entry is deleted in this plan)')
             continue
@@ -394,6 +436,39 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode) 
                 b.add(lambda o=op: client.tokens.patch_metadata(o['morpheme_id'], {'form': o['form']}))
                 counts['morpheme forms'] += 1
 
+            elif kind == 'split_word':
+                if op.get('morpheme_ids'):
+                    b.add(lambda o=op: client.tokens.bulk_delete(list(o['morpheme_ids'])))
+                b.add(lambda o=op: client.tokens.split(o['word_id'], o['position']))
+                counts['split words'] += 1
+
+            elif kind in ('merge_words', 'merge_sentences'):
+                if op.get('morpheme_ids'):
+                    b.add(lambda o=op: client.tokens.bulk_delete(list(o['morpheme_ids'])))
+                others = op['other_ids'] if kind == 'merge_words' else [op['other_id']]
+                key = 'word_id' if kind == 'merge_words' else 'sentence_id'
+                # Sequential merges into the survivor: the server runs batch ops
+                # in order, so each merge sees the widened extent. The dedup
+                # ops after them see the reparented spans and links.
+                for oid in others:
+                    b.add(lambda o=op, x=oid, key=key: client.tokens.merge(o[key], x))
+                for sp in op.get('spans') or []:
+                    if sp.get('value') is not None:
+                        b.add(lambda sp=sp: client.spans.update(sp['keep_id'], sp['value']))
+                    for sid in sp.get('delete_ids') or []:
+                        b.add(lambda i=sid: client.spans.delete(i))
+                for lid in (op.get('links') or {}).get('delete_ids') or []:
+                    b.add(lambda i=lid: client.vocab_links.delete(i))
+                counts['merged words' if kind == 'merge_words' else 'merged sentences'] += 1
+
+            elif kind == 'delete_word':
+                b.add(lambda o=op: client.tokens.delete(o['word_id']))  # cascades morphemes, spans, links
+                counts['deleted words'] += 1
+
+            elif kind == 'split_sentence':
+                b.add(lambda o=op: client.tokens.split(o['sentence_id'], o['position']))
+                counts['split sentences'] += 1
+
             elif kind == 'confirm':
                 for tid in op.get('token_ids') or []:
                     b.add(lambda i=tid: client.tokens.patch_metadata(i, CONFIRM))
@@ -500,7 +575,10 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
              'merge_entries': ('merged entry', 'merged entries'), 'delete_entry': ('deleted entry', 'deleted entries'),
              'rename_entry': ('renamed entry', 'renamed entries'), 'rename_document': ('renamed document', 'renamed documents'),
              'confirm': ('confirmation', 'confirmations'), 'discard_analysis': ('discarded analysis', 'discarded analyses'),
-             'set_morpheme_form': ('morpheme form', 'morpheme forms')}
+             'set_morpheme_form': ('morpheme form', 'morpheme forms'),
+             'split_word': ('split word', 'split words'), 'merge_words': ('word merge', 'word merges'),
+             'delete_word': ('deleted word', 'deleted words'), 'split_sentence': ('split sentence', 'split sentences'),
+             'merge_sentences': ('sentence merge', 'sentence merges')}
     parts = []
     for kind, n in counts.items():
         one, many = names.get(kind, (kind, kind))
