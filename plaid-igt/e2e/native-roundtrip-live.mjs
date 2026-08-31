@@ -10,9 +10,24 @@
 //      both sides are normalized to id-free shapes; the importer's bookkeeping
 //      stamps — nativeImportId, nativeImported — are stripped)
 //
-//   node e2e/native-roundtrip-live.mjs [--keep]
+//   PLAID_E2E_HEAVY=1 node e2e/native-roundtrip-live.mjs [--keep]
 //
 // Projects are deleted at the end unless --keep is given.
+//
+// !! MEMORY HAZARD, 2026-08-31. Three runs against the full Lezgi backup grew
+// !! past 20 GB and were OOM-killed, and the kernel took unrelated processes on
+// !! the machine (another agent's test JVM) with them each time. The bulk is
+// !! OFF-HEAP: the whole .fwbackup is materialized with
+// !! new Uint8Array(readFileSync(BACKUP)) and each archive with
+// !! new Uint8Array(await blob.arrayBuffer()), and external ArrayBuffer memory
+// !! is NOT bounded by --max-old-space-size, so raising that flag does nothing.
+// !! The growth was sustained (~1 GB every 5s), so it is a runaway and not just
+// !! a large working set. Nobody has found the cause yet.
+// !!
+// !! Hence the PLAID_E2E_HEAVY gate: this must be a deliberate act, never a
+// !! casual re-run. Cap it so the kernel kills THIS process and nothing else:
+// !!
+// !!   ( ulimit -v 8000000; PLAID_E2E_HEAVY=1 node e2e/native-roundtrip-live.mjs )
 
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
@@ -32,6 +47,17 @@ import { deriveSetupData, runNativeImport } from '../src/import/native/importEng
 
 const BACKUP = '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
 const KEEP = process.argv.includes('--keep');
+
+// See the memory hazard above. Refuse to start rather than risk the machine.
+if (!process.env.PLAID_E2E_HEAVY) {
+  console.error(
+    'Refusing to run: this script has been OOM-killed at 20+ GB and took other\n' +
+      'processes on the machine down with it. Read the hazard note at the top of\n' +
+      'the file, then run it deliberately and under a cap:\n\n' +
+      '  ( ulimit -v 8000000; PLAID_E2E_HEAVY=1 node e2e/native-roundtrip-live.mjs )\n',
+  );
+  process.exit(2);
+}
 
 const failures = [];
 const check = (cond, label, detail = '') => {
