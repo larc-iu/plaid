@@ -109,24 +109,66 @@ export function tierSchema(eaf) {
 }
 
 /**
- * Groups of nodes whose base names differ ONLY in case ("Phrase" / "phrase").
+ * Groups of tier names that are NOT equal but read as though they were.
  *
- * TIER_ID is case-sensitive in EAF, so this is a legal file and the two tiers
- * stay distinct everywhere here. But it is nearly always a mistake in the
- * corpus, and two rows a reader cannot tell apart is a bad way to ask someone
- * to map tiers, so it is reported rather than quietly tolerated.
+ * Tier identity here is exact string equality, because that is what EAF itself
+ * uses: TIER_ID carries an xsd:key and is case- and byte-sensitive, so "Phrase"
+ * and "phrase" are two tiers and no amount of guessing should merge them.
+ *
+ * The danger is the other direction. A corpus that MEANT one tier but spelled
+ * it two ways gets two rows in the mapping table that a reader cannot tell
+ * apart, and whichever one is left unmapped is dropped. So names that fold
+ * together are reported as near misses and the import will not proceed until
+ * the user says they really are distinct.
  */
-export function caseCollisions(nodes) {
+
+// The form a person reads a tier name as: canonical Unicode, no invisibles,
+// runs of whitespace flattened, case ignored.
+const foldName = (name) =>
+  String(name ?? '')
+    .normalize('NFC')
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+/** How two names that fold alike actually differ, in the user's words. */
+export function differenceKind(a, b) {
+  const strip = (x) => String(x).replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
+  if (strip(a) !== a || strip(b) !== b) return 'invisible characters';
+  // Equal once normalized, but not before: the same letters spelled two ways.
+  if (a.normalize('NFC') === b.normalize('NFC')) return 'Unicode spelling';
+  if (a.toLowerCase() === b.toLowerCase()) return 'capitalization';
+  if (a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim()) return 'spacing';
+  return 'capitalization and spacing';
+}
+
+/**
+ * Near-miss groups among a schema's tier names.
+ *
+ * @returns {Array<{names: string[], differsBy: string}>}
+ */
+export function nearMisses(nodes) {
   const byFolded = new Map();
   for (const node of nodes) {
-    const folded = node.baseName.toLowerCase();
+    const folded = foldName(node.baseName);
+    if (!folded) continue;
     if (!byFolded.has(folded)) byFolded.set(folded, []);
     byFolded.get(folded).push(node);
   }
   return [...byFolded.values()]
     .filter((group) => new Set(group.map((n) => n.baseName)).size > 1)
-    .map((group) => group.map(nodeLabel).sort());
+    .map((group) => {
+      const names = [...new Set(group.map(nodeLabel))].sort();
+      return { names, differsBy: differenceKind(names[0], names[1]) };
+    });
 }
+
+/** Names in `a` that have a near-miss twin in `b` rather than a real absence. */
+export const nearMissesAcross = (a, b) => {
+  const folded = new Set(b.map(foldName));
+  return a.filter((n) => folded.has(foldName(n)));
+};
 
 /** A stable string identifying a schema, for grouping files. */
 export const signatureOf = (nodes) =>
@@ -163,7 +205,7 @@ export function compareSchemas(files) {
       nodes,
       groups: list,
       differences: [],
-      caseCollisions: caseCollisions(nodes),
+      nearMisses: nearMisses(nodes),
     };
   }
 
@@ -175,18 +217,17 @@ export function compareSchemas(files) {
     const missing = main.nodes.filter((n) => !keys.has(n.key)).map(nodeLabel);
     const extra = group.nodes.filter((n) => !mainKeys.has(n.key)).map(nodeLabel);
     // "missing Phrase, extra phrase" is a baffling thing to read. Name it for
-    // what it is, since a case-only difference between files is the likeliest
-    // way a batch fails this gate by accident.
-    const folded = new Set(extra.map((n) => n.toLowerCase()));
-    const caseOnly = missing.filter((n) => folded.has(n.toLowerCase()));
-    return { files: group.files.map((f) => f.fileName), missing, extra, caseOnly };
+    // what it is, since a near miss between files is the likeliest way a batch
+    // fails this gate by accident.
+    const nearMiss = nearMissesAcross(missing, extra);
+    return { files: group.files.map((f) => f.fileName), missing, extra, nearMiss };
   });
   return {
     consistent: false,
     nodes: main.nodes,
     groups: list,
     differences,
-    caseCollisions: caseCollisions(main.nodes),
+    nearMisses: nearMisses(main.nodes),
   };
 }
 

@@ -82,6 +82,10 @@ export const ImportElanProject = () => {
   const fileInputRef = useRef(null);
 
   const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
+  // Near misses block the import until the user says the tiers really are
+  // distinct. Reset on every new pick, so an override never carries over to a
+  // different batch.
+  const [nearMissOverride, setNearMissOverride] = useState(false);
   const [files, setFiles] = useState(null); // parsed .eaf objects
   const [comparison, setComparison] = useState(null);
   const [roles, setRoles] = useState({});
@@ -129,6 +133,7 @@ export const ImportElanProject = () => {
       const suggested = result.consistent ? suggestRoles(result.nodes) : {};
       setFiles(parsed);
       setComparison(result);
+      setNearMissOverride(false);
       setRoles(suggested);
       setFieldNames(Object.fromEntries(result.nodes.map((n) => [n.key, defaultFieldName(n)])));
       setProjectName((name) => name || 'ELAN corpus');
@@ -200,8 +205,10 @@ export const ImportElanProject = () => {
     }
   };
 
+  const nearMisses = comparison?.nearMisses ?? [];
   const editable = stage === 'review';
-  const canRun = editable && !!build && !!projectName.trim();
+  const canRun =
+    editable && !!build && !!projectName.trim() && (nearMisses.length === 0 || nearMissOverride);
 
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">
@@ -285,11 +292,11 @@ export const ImportElanProject = () => {
                       {d.files.length > 3 ? `, +${d.files.length - 3} more` : ''}):
                       {d.missing.length > 0 && <> missing {d.missing.join(', ')}.</>}
                       {d.extra.length > 0 && <> extra {d.extra.join(', ')}.</>}
-                      {d.caseOnly?.length > 0 && (
+                      {d.nearMiss?.length > 0 && (
                         <>
                           {' '}
                           <span className="font-medium">
-                            {d.caseOnly.join(', ')} differs only in capitalization
+                            {d.nearMiss.join(', ')} differs only in how it is spelled
                           </span>
                           , which is likely a typo in the tier name rather than a real difference.
                         </>
@@ -325,17 +332,34 @@ export const ImportElanProject = () => {
                   />
                 </div>
 
-                {comparison.caseCollisions?.length > 0 && (
+                {nearMisses.length > 0 && (
                   <Panel
-                    tone="warn"
+                    tone="error"
                     icon={AlertTriangle}
-                    title="Some tier names differ only in capitalization"
+                    title={`${nearMisses.length} pair${nearMisses.length === 1 ? '' : 's'} of tier names read alike`}
                   >
-                    <p className="mt-1 text-xs">
-                      {comparison.caseCollisions.map((g) => g.join(' / ')).join('; ')}. ELAN treats
-                      these as different tiers and so do we, but they are easy to confuse in the
-                      table below. Check you are mapping the one you mean.
+                    <ul className="mt-1 list-inside list-disc text-xs">
+                      {nearMisses.map((g) => (
+                        <li key={g.names.join('/')}>
+                          <span className="font-medium">{g.names.join(' / ')}</span> — differ only
+                          in {g.differsBy}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs">
+                      Tiers are matched by their exact names, so these are separate tiers and each
+                      needs its own decision below. Two rows that read alike is how a tier gets
+                      mapped by mistake and its twin silently dropped, so this usually means a typo
+                      in the corpus. Fixing the names in ELAN is the reliable way out.
                     </p>
+                    <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs font-medium">
+                      <input
+                        type="checkbox"
+                        checked={nearMissOverride}
+                        onChange={(e) => setNearMissOverride(e.target.checked)}
+                      />
+                      These really are different tiers. Import anyway.
+                    </label>
                   </Panel>
                 )}
 

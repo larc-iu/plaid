@@ -739,10 +739,12 @@ describe('tier names differing only in case', () => {
 
   it('reports the collision so the mapping table is not two rows that read alike', () => {
     const result = compareSchemas([readEaf(abuiShaped(), 'abui.eaf')]);
-    expect(result.caseCollisions).toEqual([['Phrase', 'phrase']]);
+    expect(result.nearMisses).toEqual([
+      { names: ['Phrase', 'phrase'], differsBy: 'capitalization' },
+    ]);
   });
 
-  it('names a case-only difference across the batch for what it is', () => {
+  it('names a near-miss difference across the batch for what it is', () => {
     const upper = eafXml({
       types: { u: null },
       tiers: [{ id: 'Phrase', type: 'u', anns: [['a1', 'hola', 0, 100]] }],
@@ -753,11 +755,38 @@ describe('tier names differing only in case', () => {
     });
     const result = compareSchemas([readEaf(upper, 'a.eaf'), readEaf(lower, 'b.eaf')]);
     expect(result.consistent).toBe(false);
-    expect(result.differences[0].caseOnly).toEqual(['Phrase']);
+    expect(result.differences[0].nearMiss).toEqual(['Phrase']);
   });
 
   it('has no collisions to report in an ordinary file', () => {
-    expect(compareSchemas([readEaf(ANA, 'a.eaf')]).caseCollisions).toEqual([]);
+    expect(compareSchemas([readEaf(ANA, 'a.eaf')]).nearMisses).toEqual([]);
+  });
+
+  it('catches near misses that are not about case at all', () => {
+    const twoTiers = (a, b) =>
+      eafXml({
+        types: { u: null, s: 'Symbolic_Association' },
+        tiers: [
+          { id: a, type: 'u', anns: [['a1', 'hola', 0, 100]] },
+          { id: b, type: 'u', anns: [['a2', 'adios', 100, 200]] },
+        ],
+      });
+    // A trailing space, which nothing in the table would show.
+    expect(compareSchemas([readEaf(twoTiers('ft', 'ft '), 'x.eaf')]).nearMisses).toEqual([
+      { names: ['ft', 'ft '], differsBy: 'spacing' },
+    ]);
+    // Composed vs decomposed accents: the same word to a reader, two TIER_IDs.
+    const nfc = 'caf\u00e9';
+    const nfd = 'cafe\u0301';
+    expect(compareSchemas([readEaf(twoTiers(nfc, nfd), 'y.eaf')]).nearMisses).toEqual([
+      { names: [nfc, nfd].sort(), differsBy: 'Unicode spelling' },
+    ]);
+    // A zero-width space, which is invisible everywhere.
+    expect(compareSchemas([readEaf(twoTiers('ref', 'ref\u200b'), 'z.eaf')]).nearMisses).toEqual([
+      { names: ['ref', 'ref\u200b'].sort(), differsBy: 'invisible characters' },
+    ]);
+    // And an ordinary pair of distinct names is not a near miss.
+    expect(compareSchemas([readEaf(twoTiers('ref', 'gloss'), 'w.eaf')]).nearMisses).toEqual([]);
   });
 });
 
