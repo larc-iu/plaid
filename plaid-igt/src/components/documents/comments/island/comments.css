@@ -1,0 +1,240 @@
+/* Comment thread styling.
+ *
+ * Follows the Analyze island's own idiom rather than the shadcn primitives:
+ * plain class names, literal colors, no Tailwind. Tailwind's preflight is off
+ * globally and only re-added under `.tw`, so island CSS has to stand alone.
+ * Shared by the in-grid popover and the Comments tab.
+ */
+
+.igt-cmt {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #111827;
+}
+
+.igt-cmt__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.igt-cmt__row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Optimistic comments: visible immediately, but visibly not yet acknowledged. */
+.igt-cmt__row--pending {
+  opacity: 0.55;
+}
+
+.igt-cmt__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.igt-cmt__avatar {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #4b5563;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.igt-cmt__author {
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.igt-cmt__you {
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.igt-cmt__time,
+.igt-cmt__edited {
+  flex: none;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.igt-cmt__edited {
+  font-style: italic;
+}
+
+.igt-cmt__body {
+  /* Preserve the author's line breaks without letting a pasted URL widen the
+     popover. `pre-wrap` + `break-word` is the pair that does both. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  padding-left: 26px;
+}
+
+.igt-cmt__body p {
+  margin: 0 0 6px;
+}
+.igt-cmt__body p:last-child {
+  margin-bottom: 0;
+}
+.igt-cmt__body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: #f3f4f6;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+.igt-cmt__body pre {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.igt-cmt__body pre code {
+  background: none;
+  padding: 0;
+}
+.igt-cmt__body ul,
+.igt-cmt__body ol {
+  margin: 0 0 6px;
+  padding-left: 20px;
+}
+.igt-cmt__body blockquote {
+  margin: 0 0 6px;
+  padding-left: 8px;
+  border-left: 2px solid #d1d5db;
+  color: #4b5563;
+}
+.igt-cmt__body a {
+  color: #1d4ed8;
+}
+
+.igt-cmt__empty {
+  margin: 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* ---- composer + edit ---------------------------------------------------- */
+
+.igt-cmt__composer {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 9px;
+}
+
+.igt-cmt__input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: inherit;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  resize: vertical;
+  min-height: 42px;
+  max-height: 200px;
+}
+
+.igt-cmt__input:focus {
+  outline: 2px solid var(--igt-blue, #2563eb);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.igt-cmt__composer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.igt-cmt__hint {
+  font-size: 10px;
+  color: #9ca3af;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.igt-cmt__actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* Row actions stay quiet until the row is hovered or focused, so a thread
+   reads as prose rather than as a list of buttons. Same reasoning (and the
+   same opacity-not-display mechanics) as .igt-vocab__link in the grid. */
+.igt-cmt__actions--rest {
+  padding-left: 26px;
+  justify-content: flex-start;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.igt-cmt__row:hover .igt-cmt__actions--rest,
+.igt-cmt__row:focus-within .igt-cmt__actions--rest {
+  opacity: 1;
+}
+
+.igt-cmt__btn {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 3px 9px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+}
+
+.igt-cmt__btn:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.igt-cmt__btn:focus-visible {
+  outline: 2px solid var(--igt-blue, #2563eb);
+  outline-offset: 1px;
+}
+
+.igt-cmt__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.igt-cmt__btn--primary {
+  background: var(--igt-blue, #2563eb);
+  border-color: var(--igt-blue, #2563eb);
+  color: #fff;
+}
+.igt-cmt__btn--primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.igt-cmt__btn--danger {
+  color: #b91c1c;
+}
+.igt-cmt__btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
