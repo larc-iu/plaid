@@ -243,11 +243,53 @@ function buildModel(igtDoc, options, nextAnn) {
     return id;
   };
 
-  const sentences = (igtDoc.sortedSentences || []).map((sentence) => {
-    const inside = containedAlignments(sentence, validAlignment);
-    const timing = sentenceTiming(sentence, validAlignment);
+  // Pass 0: speaker, timing and contained segments per sentence, before any
+  // slot is allocated, because whether a timing survives depends on which tier
+  // the sentence lands on.
+  const prelim = (igtDoc.sortedSentences || []).map((sentence) => ({
+    sentence,
+    speaker: sentenceSpeaker(sentence, alignmentTokens),
+    timing: sentenceTiming(sentence, validAlignment),
+    inside: containedAlignments(sentence, validAlignment),
+  }));
+
+  // One tier set per speaker when asked and speakers exist; otherwise one set.
+  const speakers =
+    options?.perSpeaker && prelim.some((p) => p.speaker)
+      ? [...new Set(prelim.map((p) => p.speaker))]
+      : [null];
+  const groupOf = (p) => (speakers.length === 1 ? null : p.speaker);
+
+  // EAF's base constraints, stated in the spec's prose rather than in the
+  // schema: annotations on one tier may not overlap in time. Two people talking
+  // over each other is ordinary, and with the tiers not split by speaker their
+  // sentences land on the SAME tier, so the overlap is real and the file would
+  // be one ELAN refuses. The later annotation keeps its text and loses its time
+  // rather than asserting an interval that is not allowed: the same
+  // degrade-to-less-precision rule the rest of this module follows. Its
+  // segments go with it, since Included_In children need an aligned parent.
+  for (const speaker of speakers) {
+    let lastEnd = -Infinity;
+    for (const p of prelim) {
+      if (groupOf(p) !== speaker || !p.timing) continue;
+      if (p.timing.beginMs < lastEnd) {
+        p.timing = null;
+        p.inside = [];
+        p.overlapped = true;
+      } else {
+        lastEnd = p.timing.endMs;
+      }
+    }
+  }
+
+  // The Segment tier earns its place only when it says something the Sentence
+  // tier does not. Decided BEFORE slots are allocated, so a document that will
+  // not have one does not carry time slots nothing references.
+  const wantSegmentTier = prelim.some((p) => p.inside.length > 1);
+
+  const sentences = prelim.map(({ sentence, speaker, timing, inside }) => {
     const beginSlot = nextSlot(timing ? timing.beginMs : null);
-    const segments = inside.map((t) => ({
+    const segments = (wantSegmentTier ? inside : []).map((t) => ({
       annId: nextAnn(),
       beginSlot: nextSlot(Math.round(t.metadata.timeBegin * 1000)),
       endSlot: nextSlot(Math.round(t.metadata.timeEnd * 1000)),
@@ -275,24 +317,15 @@ function buildModel(igtDoc, options, nextAnn) {
       beginSlot,
       endSlot,
       value: slice(sentence.begin, sentence.end).trim(),
-      speaker: sentenceSpeaker(sentence, alignmentTokens),
+      speaker,
       segments,
       words,
       annotations: sentence.annotations || {},
     };
   });
 
-  // The Segment tier earns its place only when it says something the Sentence
-  // tier does not.
-  const wantSegmentTier = sentences.some((s) => s.segments.length > 1);
-
-  // One tier set per speaker when asked and speakers exist; otherwise one set.
-  const speakers =
-    options?.perSpeaker && sentences.some((s) => s.speaker)
-      ? [...new Set(sentences.map((s) => s.speaker))]
-      : [null];
-
-  return { timeSlots, sentences, speakers, wantSegmentTier };
+  const overlapped = prelim.filter((p) => p.overlapped).length;
+  return { timeSlots, sentences, speakers, wantSegmentTier, overlapped };
 }
 
 // ---- tier emission ---------------------------------------------------------
@@ -348,16 +381,29 @@ const associationTier = (id, parentTier, participant, rows) =>
  *   perSpeaker        bool: one tier set per speaker, suffixed "@Speaker"
  *   tierNames         {sentence, segment, word, morph}: structural tier names
  *
- * context: { exportedAt, author, mediaHref, mediaType }
+ * context: { exportedAt, author, mediaHref, mediaType, onWarning }
  */
 export function buildEafDocument(igtDoc, options = {}, context = {}) {
-  const { exportedAt, author = 'plaid-igt', mediaHref = null, mediaType = null } = context;
+  const {
+    exportedAt,
+    author = 'plaid-igt',
+    mediaHref = null,
+    mediaType = null,
+    onWarning = null,
+  } = context;
   const docData = igtDoc.document || {};
   // ANNOTATION_ID is xsd:ID, so ids must be NCNames, never built from tier or
   // field names, which are free text. One counter serves the whole document.
   let annSeq = 0;
   const nextAnn = () => `a${++annSeq}`;
   const model = buildModel(igtDoc, options, nextAnn);
+  if (model.overlapped && onWarning) {
+    onWarning(
+      `${model.overlapped} sentence${model.overlapped === 1 ? '' : 's'} overlap in time with ` +
+        'another on the same tier, so they were written without times. Turn on "One tier set per ' +
+        'speaker" to keep the alignment of overlapping speech.',
+    );
+  }
 
   // Tier names are allocated once, before the speaker suffix, so every
   // speaker's copy of a tier is named consistently.

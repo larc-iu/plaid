@@ -264,6 +264,7 @@ export async function runExport({
             ? toJson(serializeDocumentNative(igtDoc, { mediaFile }))
             : serializeDoc(igtDoc, preset, layers, {
                 exportedAt,
+                onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
                 // A bundled .eaf lands in documents/ and its media in
                 // media/, so the href that resolves climbs one level.
                 mediaHref: mediaFile ? `../${mediaFile}` : null,
