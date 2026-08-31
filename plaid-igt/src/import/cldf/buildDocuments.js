@@ -6,8 +6,10 @@
 // Two things make it harder than FLEx:
 //
 //  - An analyzed word carries morpheme joints that the primary text does not
-//    ("perro=s" vs "perros"), so each form is tried verbatim FIRST (a real
-//    hyphen in the surface, "well-known") and then with its joints removed.
+//    ("perro=s" vs "perros"), and often is not in the text at ALL: real corpora
+//    give the morphophonemic form, so Tsez writes "Allah-s" for surface
+//    *Allahes*. Alignment is therefore POSITIONAL, refined by a character match
+//    where one exists. See alignWords.
 //  - A dataset may have no usable Primary_Text at all, in which case the
 //    baseline is synthesized by joining the analyzed words. That is a real
 //    loss of the original spacing and punctuation, and it is reported.
@@ -21,8 +23,7 @@
 // "=" does mean clitic, and inferring just that inverts the exporter's joiner
 // rule exactly, so a round trip reproduces the same joints.
 
-import { utf16ToCp } from '@larc-iu/plaid-client';
-import { matchesAt } from '../align.js';
+import { matchesAt, makeCpIndexer } from '../align.js';
 import { cell, list, customColumnsOf } from './readDataset.js';
 
 /** Leipzig morpheme joints. */
@@ -66,50 +67,105 @@ export const surfaceOf = (word) =>
     .map((p) => p.form)
     .join('');
 
+// Punctuation and symbols, minus emoji: the same rule the app's ignored-token
+// config applies to whole tokens (domain/igtConfig.js).
+const PUNCT_RE = /[\p{P}\p{S}]/u;
+const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
+const isPunct = (c) => PUNCT_RE.test(c) && !PICTOGRAPH_RE.test(c);
+
+/** The whitespace-delimited runs of body[begin, end), as UTF-16 spans. */
+function textRuns(body, begin, end) {
+  const runs = [];
+  let i = begin;
+  while (i < end) {
+    while (i < end && /\s/.test(body[i])) i += 1;
+    if (i >= end) break;
+    const start = i;
+    while (i < end && !/\s/.test(body[i])) i += 1;
+    runs.push({ beginU16: start, endU16: i });
+  }
+  return runs;
+}
+
+/** A run with its edge punctuation dropped, never trimmed away to nothing. */
+function trimEdges(body, run) {
+  let { beginU16: b, endU16: e } = run;
+  while (b < e && isPunct(body[b])) b += 1;
+  while (e > b && isPunct(body[e - 1])) e -= 1;
+  return b < e ? { beginU16: b, endU16: e } : run;
+}
+
+/** Where `form` sits inside a run, verbatim or joint-stripped, else null. */
+function matchInside(body, run, form) {
+  const candidates = [...new Set([form, surfaceOf(form)])].filter((c) => c !== '');
+  for (const c of candidates) {
+    for (let at = run.beginU16; at <= run.endU16; at += 1) {
+      const hit = matchesAt(body, at, c);
+      if (hit !== false && hit <= run.endU16) return { beginU16: at, endU16: hit };
+    }
+  }
+  return null;
+}
+
 /**
- * Align an ordered list of word forms against body[begin, end).
- * Each form is tried verbatim before its joint-stripped surface, so a real
- * hyphen in the text wins over a morpheme boundary reading.
+ * Align an ordered list of analyzed words against body[begin, end).
+ *
+ * CLDF calls Analyzed_Word "the sequence of words of the primary text to be
+ * aligned with glosses", and that correspondence is POSITIONAL. It is not a
+ * promise that the analyzed form occurs in the text: real corpora routinely
+ * give the morphophonemic form, so Tsez writes "Allah-s" for surface
+ * *Allahes*, "b-ukad-n" for *bukayn*, "yisi-a" for *yisä*. In the Tsez
+ * Annotated Corpus only 2.4% of lines have analyzed words that concatenate
+ * back to their own primary text, so matching characters cannot be the primary
+ * strategy the way it is for FLEx (where the analysis IS derived from the
+ * surface).
+ *
+ * So: walk the text's whitespace-delimited runs and the analyzed words in
+ * lockstep. Where the form really does occur inside its run, take that exact
+ * sub-span; otherwise take the run itself, minus edge punctuation. Looking
+ * ahead is allowed only by the number of runs the analysis can afford to skip
+ * (extra runs are punctuation the analysis left out), which keeps the two
+ * sequences in step and cannot drift.
+ *
  * Returns {spans: [{beginU16, endU16} | null], warnings}.
  */
 export function alignWords(body, begin, end, forms) {
+  const runs = textRuns(body, begin, end);
   const spans = [];
   const warnings = [];
-  let cursor = begin;
-  for (const form of forms) {
-    const candidates = [...new Set([form, surfaceOf(form)])].filter((c) => c !== '');
-    if (!candidates.length) {
-      spans.push(null);
-      continue;
-    }
-    while (cursor < end && /\s/.test(body[cursor])) cursor += 1;
-    let at = cursor;
-    let matchEnd = false;
-    for (const c of candidates) {
-      matchEnd = matchesAt(body, at, c);
-      if (matchEnd !== false) break;
-    }
-    if (matchEnd === false) {
-      // Bounded forward search inside the sentence: punctuation, a dropped
-      // word, or an analysis that does not match its own primary text.
-      outer: for (let probe = cursor + 1; probe < end; probe += 1) {
-        for (const c of candidates) {
-          const m = matchesAt(body, probe, c);
-          if (m !== false && m <= end) {
-            at = probe;
-            matchEnd = m;
-            break outer;
-          }
-        }
-      }
-      if (matchEnd === false) {
-        warnings.push(`could not align "${form}"`);
-        spans.push(null);
-        continue;
+  let ri = 0;
+
+  forms.forEach((form, fi) => {
+    // How many runs we may skip without starving the forms still to come.
+    const slack = Math.max(0, runs.length - ri - (forms.length - fi));
+    let hit = null;
+    for (let j = ri; j <= Math.min(ri + slack, runs.length - 1); j += 1) {
+      const span = matchInside(body, runs[j], form);
+      if (span) {
+        hit = { index: j, span };
+        break;
       }
     }
-    spans.push({ beginU16: at, endU16: matchEnd });
-    cursor = matchEnd;
+    if (hit) {
+      spans.push(hit.span);
+      ri = hit.index + 1;
+      return;
+    }
+    if (ri < runs.length) {
+      // No character match. The positional correspondence is what the format
+      // actually asserts, so trust it and take the whole word.
+      spans.push(trimEdges(body, runs[ri]));
+      ri += 1;
+      return;
+    }
+    warnings.push(`no text left to align "${form}" to`);
+    spans.push(null);
+  });
+
+  if (runs.length !== forms.length && forms.length) {
+    warnings.push(
+      `${forms.length} analyzed words for ${runs.length} words of text; aligned by position`,
+    );
   }
   return { spans, warnings };
 }
@@ -165,9 +221,20 @@ export function deriveImportOptions(dataset) {
     }
   }
 
+  // How the examples split into texts. CLDF's own answer is
+  // contributionReference, but a dataset without a ContributionTable often
+  // carries a plain text-id column instead, and one document of every sentence
+  // in the corpus is not a usable import.
+  const groupBy =
+    examples?.byTerm?.contributionReference || !examples
+      ? null
+      : (customColumnsOf(examples).find((n) => /^text[_ ]?id$/i.test(n)) ??
+        customColumnsOf(examples).find((n) => /text[_ ]?id$/i.test(n)) ??
+        null);
+
   const customColumns = {};
   for (const name of customColumnsOf(examples)) {
-    if (SKIP_COLUMNS.has(name)) continue;
+    if (SKIP_COLUMNS.has(name) || name === groupBy) continue;
     const known = recognizePrefix(name);
     if (known) {
       customColumns[name] = known;
@@ -184,8 +251,16 @@ export function deriveImportOptions(dataset) {
     glossField: 'Gloss',
     translationField: 'Translation',
     commentField: 'Note',
+    groupBy,
     customColumns,
   };
+}
+
+/** Columns that could stand in for a ContributionTable, for the review UI. */
+export function groupingChoices(dataset) {
+  const examples = dataset.components?.ExampleTable;
+  if (!examples || examples.byTerm?.contributionReference) return [];
+  return customColumnsOf(examples).filter((n) => !SKIP_COLUMNS.has(n));
 }
 
 /** The columns a dataset offers for mapping, with whether they can be per-word. */
@@ -297,8 +372,10 @@ export function buildCldfDocuments(dataset, options = {}) {
 
   // --- group example rows into documents ---
   const groups = new Map();
+  const keyOf = (row) =>
+    o.groupBy ? (row[o.groupBy] ?? '') : cell(examples, row, 'contributionReference') || '';
   for (const row of examples?.rows || []) {
-    const key = cell(examples, row, 'contributionReference') || '';
+    const key = keyOf(row);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
@@ -345,6 +422,10 @@ export function buildCldfDocuments(dataset, options = {}) {
     if (!parsed.length) continue;
 
     const body = texts.join('\n');
+    // One prebuilt converter for the whole document: the client's per-call
+    // conversion spreads the entire prefix, which is quadratic across
+    // thousands of tokens (see makeCpIndexer).
+    const toCp = makeCpIndexer(body);
     const sentences = [];
     const words = [];
     let offset = 0;
@@ -368,8 +449,8 @@ export function buildCldfDocuments(dataset, options = {}) {
         if (v) fields[c.name] = v;
       }
       sentences.push({
-        begin: utf16ToCp(body, beginU16),
-        end: utf16ToCp(body, endU16),
+        begin: toCp(beginU16),
+        end: toCp(endU16),
         fields,
       });
 
@@ -418,8 +499,8 @@ export function buildCldfDocuments(dataset, options = {}) {
         }
 
         words.push({
-          begin: utf16ToCp(body, span.beginU16),
-          end: utf16ToCp(body, span.endU16),
+          begin: toCp(span.beginU16),
+          end: toCp(span.endU16),
           sentenceIndex: si,
           fields: wordFields,
           morphemes: pieces.map((p, mi) => {
@@ -441,7 +522,9 @@ export function buildCldfDocuments(dataset, options = {}) {
     const media = resolveMedia(dataset, key, docWarnings);
     documents.push({
       id: key || 'cldf',
-      name: contribution?.name || dataset.title || 'Imported text',
+      // A ContributionTable names the text; a grouping column's value is the
+      // next best name, since it is what the dataset itself calls the text.
+      name: contribution?.name || (o.groupBy && key) || dataset.title || 'Imported text',
       metadata: contribution?.metadata || {},
       body,
       sentences,
@@ -556,7 +639,7 @@ export function buildCldfDocuments(dataset, options = {}) {
       0,
     ),
     unalignedWords: documents.reduce(
-      (n, d) => n + d.warnings.filter((w) => w.includes('could not align')).length,
+      (n, d) => n + d.warnings.filter((w) => w.includes('no text left to align')).length,
       0,
     ),
     lexiconEntries: lexicon.length,

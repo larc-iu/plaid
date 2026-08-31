@@ -3,7 +3,7 @@
 // here rather than new buttons there.
 
 import { Link } from 'react-router-dom';
-import { PenLine, FileUp, Archive, ChevronRight } from 'lucide-react';
+import { PenLine, FileUp, Archive, Table2, ChevronRight } from 'lucide-react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const OPTIONS = [
@@ -19,6 +19,13 @@ const OPTIONS = [
     title: 'Import from FLEx',
     description:
       'Create a project from a FLEx backup (.fwbackup): texts, glosses, morpheme analyses, translations, and the full lexicon.',
+  },
+  {
+    to: '/projects/import-cldf',
+    icon: Table2,
+    title: 'Import from CLDF',
+    description:
+      'Create a project from a Cross-Linguistic Data Formats dataset (.zip): its examples become interlinear texts, its lexicon a vocabulary, and its language the project identity.',
   },
   {
     to: '/projects/import-archive',

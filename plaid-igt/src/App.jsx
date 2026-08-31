@@ -8,6 +8,7 @@ import { ProjectDetail } from './components/projects/ProjectDetail';
 import { ProjectSetup } from './components/projects/ProjectSetup';
 import { ImportFlexProject } from './components/projects/ImportFlexProject';
 import { ImportNativeProject } from './components/projects/ImportNativeProject';
+import { ImportCldfProject } from './components/projects/ImportCldfProject';
 import { NewProjectChooser } from './components/projects/NewProjectChooser';
 import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { DocumentDetail } from './components/documents/DocumentDetail';
@@ -93,6 +94,17 @@ function App() {
                 <ProtectedRoute>
                   <AppLayout>
                     <ImportNativeProject />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/projects/import-cldf"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ImportCldfProject />
                   </AppLayout>
                 </ProtectedRoute>
               }
