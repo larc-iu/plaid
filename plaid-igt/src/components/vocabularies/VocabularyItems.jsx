@@ -521,9 +521,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       const bf = b.form.toLowerCase();
       if (af < bf) return -1;
       if (af > bf) return 1;
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; // homonyms in creation order
+      // Homonyms in subscript order, so the list reads ₁, ₂, ₃. Not by id:
+      // ids do not sort into creation order within a bulk write.
+      return (homonyms.get(a.id) ?? 0) - (homonyms.get(b.id) ?? 0);
     });
-  }, [items, search, fieldNames]);
+  }, [items, search, fieldNames, homonyms]);
 
   const pageCount = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
