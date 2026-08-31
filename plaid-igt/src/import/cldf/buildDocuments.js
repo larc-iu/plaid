@@ -239,6 +239,34 @@ const recognizePrefix = (name, own) => {
 };
 
 /**
+ * Does this column read as one value per analyzed word?
+ *
+ * CLDF aligns a per-word tier with a tab, exactly as it does Analyzed_Word and
+ * Gloss, so a column whose tab-separated pieces count out against the analysis
+ * on most rows is a word tier and cannot readily be anything else. tsezacp
+ * ships Part_of_Speech that way: 53024 tags, lining up on 4851 of its 4948
+ * analyzed rows. Leaving that off by default threw the whole tier away.
+ *
+ * Only rows with more than one word count as evidence. A one-word sentence
+ * matches any single value at all, so counting it would let a column that is
+ * nothing of the kind qualify on a small or one-word-heavy dataset.
+ */
+function isPerWordColumn(examples, name) {
+  const col = (examples?.columns || []).find((c) => c.name === name);
+  if (!col?.separator) return false;
+  let agree = 0;
+  let total = 0;
+  for (const row of examples.rows || []) {
+    const words = list(examples, row, 'analyzedWord').length;
+    const value = String(row[name] ?? '');
+    if (words < 2 || value === '') continue;
+    total += 1;
+    if (value.split('\t').length === words) agree += 1;
+  }
+  return total > 0 && agree > total / 2;
+}
+
+/**
  * Heuristic import options for a dataset: whether the gloss is morpheme- or
  * word-scoped, and what to do with each custom column.
  *
@@ -296,9 +324,16 @@ export function deriveImportOptions(dataset) {
       customColumns[name] = known;
       continue;
     }
-    // A column we do not recognize is off by default, at sentence scope: with
-    // no prefix telling us otherwise, the whole row is the only extent we can
-    // honestly claim it applies to.
+    // A tier that counts out per word is a word tier, and is imported: the
+    // data says what its extent is, so dropping it would be a choice, not
+    // caution.
+    if (isPerWordColumn(examples, name)) {
+      customColumns[name] = { scope: 'Word', name, enabled: true };
+      continue;
+    }
+    // Anything else is off by default, at sentence scope: with no prefix and
+    // no per-word shape telling us otherwise, the whole row is the only extent
+    // we can honestly claim it applies to.
     customColumns[name] = { scope: 'Sentence', name, enabled: false };
   }
 
@@ -446,8 +481,11 @@ export function buildCldfDocuments(dataset, options = {}) {
       ['description', 'Description'],
       ['contributor', 'Contributor'],
       ['citation', 'Citation'],
+      ['source', 'Source'],
     ]) {
-      const v = cell(contributions, row, term);
+      // Source is a list column (tsezacp cites "Abdulaev2010" on all 78 of its
+      // texts), and provenance is the last thing a corpus should lose.
+      const v = list(contributions, row, term).filter(Boolean).join('; ');
       if (v) meta[label] = v;
     }
     // Columns the ContributionTable carries beyond the CLDF terms are document
