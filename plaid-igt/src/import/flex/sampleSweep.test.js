@@ -18,11 +18,18 @@ const DIR = '/home/luke/Downloads/fwsamples';
 // lexicon straight back out as LIFT without a server.
 function lexiconCapture() {
   const items = [];
+  const config = { igt: {} };
   return {
     items,
+    config,
     vocabLayers: {
       get: async () => ({ id: 'v1', items: [], config: {} }),
-      setConfig: async () => {},
+      // Kept, because the field schema is where the importer records which
+      // writing system a single-writing-system field is in, and the LIFT
+      // export reads it back out.
+      setConfig: async (_id, _ns, key, value) => {
+        config.igt[key] = value;
+      },
     },
     vocabItems: {
       bulkCreate: async (body) => {
@@ -90,9 +97,10 @@ describe.skipIf(samples.length === 0)('fwbackup sample sweep', () => {
       baselineWs: config.baselineWs,
       primaryAnalysisWs: config.primaryAnalysisWs,
       lexiconFields: config.lexiconFields,
+      customFieldWs: config.customFieldWs,
     });
     const { lift, ranges, entryCount, senseCount } = buildLiftLexicon({
-      vocabularies: [{ id: 'v1', items: client.items }],
+      vocabularies: [{ id: 'v1', items: client.items, config: client.config }],
       options: { langs: { baseline: config.baselineWs, analysis: config.primaryAnalysisWs } },
       rangesHref: 'sweep.lift-ranges',
     });
@@ -121,6 +129,22 @@ describe.skipIf(samples.length === 0)('fwbackup sample sweep', () => {
     const distinctEntries = new Set(formed.map((i) => i.metadata?.flexEntry ?? `item:${i.id}`))
       .size;
     expect(entryCount).toBe(distinctEntries);
+
+    // A FLEx custom field pinned to the vernacular has to come out tagged
+    // vernacular. Sena's "Plural" is the real case: its values are bare
+    // strings, so the field's own writing system is the only record of what
+    // language they are in. The expectation is read straight off the file's
+    // own <CustomField wsSelector> rather than from the importer's reading of
+    // it, or this would just be the pipeline agreeing with itself.
+    for (const f of ir.customFields ?? []) {
+      if (f.class !== 'LexEntry' && f.class !== 'LexSense') continue;
+      const form = dom.querySelector(`sense field[type="${f.name}"] form`);
+      if (!form) continue;
+      const vernacular = String(f.wsSelector) === '-2';
+      expect(form.getAttribute('lang'), `custom field "${f.name}"`).toBe(
+        vernacular ? config.baselineWs : config.primaryAnalysisWs,
+      );
+    }
 
     // ...and where the source lexicon actually has multi-sense entries, the
     // export has to show them rejoined, not flattened back into one entry each.

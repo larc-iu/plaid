@@ -70,6 +70,23 @@ const fieldName = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} (
  * GeneralNote, …; see ir.lexiconFields) to import as vocab item fields
  * (default: none).
  */
+// FLEx pins each custom field to one writing system in <CustomField
+// wsSelector>: -1 analysis, -2 vernacular, and the plural -3..-6 forms of the
+// same two. A value itself arrives as a bare string, so the field's writing
+// system is the only record of what language it is in, and the LIFT export
+// needs it to tag the <form> correctly. Lexicon classes only.
+const VERNACULAR_SELECTORS = new Set(['-2', '-4', '-6']);
+
+function customFieldWritingSystems(ir, baselineWs, primaryAnalysisWs) {
+  const out = {};
+  for (const f of ir?.customFields ?? []) {
+    if (f?.class !== 'LexEntry' && f?.class !== 'LexSense') continue;
+    if (!f?.name) continue;
+    out[f.name] = VERNACULAR_SELECTORS.has(String(f.wsSelector)) ? baselineWs : primaryAnalysisWs;
+  }
+  return out;
+}
+
 export function deriveImportConfig(ir, build, opts = {}) {
   const primaryAnalysisWs = ir.writingSystems.analysis[0] ?? 'en';
   const wsAllowed = opts.analysisWss ? new Set(opts.analysisWss) : null;
@@ -110,6 +127,7 @@ export function deriveImportConfig(ir, build, opts = {}) {
     // {ws, name}: ws is the FLEx writing-system tag, name the (renamable)
     // plaid orthography name shown in the UI.
     orthographies: build.orthographyWss.map((ws) => ({ ws, name: ws })),
+    customFieldWs: customFieldWritingSystems(ir, build.baselineWs, primaryAnalysisWs),
     fields,
     documentMetadata,
     primaryAnalysisWs,
@@ -180,6 +198,7 @@ export async function importLexicon({
   primaryAnalysisWs = 'en',
   analysisWss = null,
   lexiconFields = [],
+  customFieldWs = {},
   onProgress,
   shouldStop,
 }) {
@@ -271,7 +290,14 @@ export async function importLexicon({
   // keeps its fields, order and inline flags; keys new to it are appended.
   const fieldsConfig = { ...(readVocabFields(existing.config) ?? {}) };
   for (const n of fieldKeys) {
-    if (!(n in fieldsConfig)) fieldsConfig[n] = { inline: n === 'gloss' || n === 'pos' };
+    if (n in fieldsConfig) continue;
+    // `lang` records the writing system for the fields that have exactly one
+    // (FLEx's custom fields). The multilingual fields carry theirs in the name
+    // instead ("gloss (ru)"), so they get none here.
+    fieldsConfig[n] = {
+      inline: n === 'gloss' || n === 'pos',
+      ...(customFieldWs[n] ? { lang: customFieldWs[n] } : {}),
+    };
   }
   await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
 
@@ -543,6 +569,7 @@ async function runImportImpl({
     lexicon,
     baselineWs: config.baselineWs,
     primaryAnalysisWs: config.primaryAnalysisWs,
+    customFieldWs: config.customFieldWs ?? {},
     analysisWss: config.analysisWss ?? null,
     lexiconFields: config.lexiconFields ?? [],
     onProgress,
