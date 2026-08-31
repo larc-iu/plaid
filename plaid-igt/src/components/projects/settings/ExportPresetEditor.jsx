@@ -13,6 +13,7 @@ import { readExportPresets, writeExportPresets, EXPORT_FORMATS } from '@/export/
 import { PlainTextOptions } from '@/components/export/PlainTextOptions.jsx';
 import { CldfOptions } from '@/components/export/CldfOptions.jsx';
 import { FlextextOptions } from '@/components/export/FlextextOptions.jsx';
+import { ElanOptions } from '@/components/export/ElanOptions.jsx';
 import { NativeOptions } from '@/components/export/NativeOptions.jsx';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
@@ -166,6 +167,12 @@ export const ExportPresetEditor = ({ projectId, client, presetId }) => {
             projectId={projectId}
             onChange={(options) => update({ options })}
           />
+        ) : draft.format === 'elan' ? (
+          <ElanOptions
+            options={draft.options || {}}
+            layers={layers}
+            onChange={(options) => update({ options })}
+          />
         ) : draft.format === 'plaid-igt-json' ? (
           <NativeOptions
             options={draft.options || {}}
@@ -187,6 +194,11 @@ export const ExportPresetEditor = ({ projectId, client, presetId }) => {
           <p className="border-t pt-3 text-xs text-muted-foreground">
             This format always produces a .zip dataset: one CSV per CLDF component table, described
             by a cldf-metadata.json.
+          </p>
+        ) : draft.format === 'elan' ? (
+          <p className="border-t pt-3 text-xs text-muted-foreground">
+            One .eaf per document. A document with media is bundled into a .zip alongside it, so the
+            file ELAN opens finds its recording.
           </p>
         ) : (
           hasVocabularies && (

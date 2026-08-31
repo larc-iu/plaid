@@ -16,6 +16,7 @@ import { readVocabFields, readLanguages } from '../domain/igtConfig.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
 import { buildFlextextDocument } from './flextext.js';
+import { buildEafDocument } from './elan.js';
 import { serializeVocabTsv } from './vocabTsv.js';
 import { buildCldfDataset } from './cldf.js';
 import {
@@ -35,9 +36,12 @@ export class ExportCancelled extends Error {
 
 const toJson = (obj) => JSON.stringify(obj, null, 2);
 
-function serializeDoc(igtDoc, preset, layers) {
+function serializeDoc(igtDoc, preset, layers, context = {}) {
   if (preset.format === 'flextext') {
     return buildFlextextDocument([igtDoc], preset.options || {});
+  }
+  if (preset.format === 'elan') {
+    return buildEafDocument(igtDoc, intersectSelection(preset.options || {}, layers), context);
   }
   // Drop tier names that no longer exist in the project configuration.
   return serializeDocumentPlain(igtDoc, intersectSelection(preset.options || {}, layers));
@@ -129,7 +133,9 @@ export async function runExport({
   const warnings = [];
   const isNative = preset.format === 'plaid-igt-json';
   const isCldf = preset.format === 'cldf';
-  const includeMedia = (isNative || isCldf) && preset.options?.includeMedia !== false;
+  const isElan = preset.format === 'elan';
+  const includeMedia = (isNative || isCldf || isElan) && preset.options?.includeMedia !== false;
+  const exportedAt = new Date().toISOString();
 
   // Document id list for the scope.
   let docIds;
@@ -141,7 +147,7 @@ export async function runExport({
   // Document scope downloads the bare file; project/multi-doc scopes always
   // produce a zip — and the native archive is a zip at every scope. A CLDF
   // dataset is a set of files by definition, so it is always a zip too.
-  const wantZip = isNative || isCldf || scope.type !== 'document';
+  let wantZip = isNative || isCldf || scope.type !== 'document';
 
   // Vocabularies are fetched for the TSVs (opt-in) or the native archive
   // (always — links reference items by id), and snapshotted BEFORE the
@@ -215,7 +221,13 @@ export async function runExport({
           ? null
           : isNative
             ? toJson(serializeDocumentNative(igtDoc, { mediaFile }))
-            : serializeDoc(igtDoc, preset, layers),
+            : serializeDoc(igtDoc, preset, layers, {
+                exportedAt,
+                // A bundled .eaf lands in documents/ and its media in
+                // media/, so the href that resolves climbs one level.
+                mediaHref: mediaFile ? `../${mediaFile}` : null,
+                mediaType,
+              }),
         igtDoc,
         id: igtDoc.document?.id ?? docIds[i],
         docName: name,
@@ -230,6 +242,9 @@ export async function runExport({
     }
   }
   onProgress({ done: docIds.length, total: docIds.length, name: null });
+  // A single .eaf that came with media becomes a zip, so its RELATIVE_MEDIA_URL
+  // resolves to a file that is actually there.
+  if (!wantZip && mediaEntries.length) wantZip = true;
   if (!docFiles.length) {
     throw new Error(
       warnings.length ? `Nothing exported. ${warnings.join('; ')}` : 'Nothing to export',
@@ -239,7 +254,9 @@ export async function runExport({
   // Single document → the bare file.
   if (!wantZip) {
     const mime =
-      preset.format === 'flextext' ? 'text/xml;charset=utf-8' : 'text/plain;charset=utf-8';
+      preset.format === 'flextext' || isElan
+        ? 'text/xml;charset=utf-8'
+        : 'text/plain;charset=utf-8';
     return {
       filename: docFiles[0].name,
       blob: new Blob([docFiles[0].data], { type: mime }),
@@ -259,7 +276,7 @@ export async function runExport({
       })),
       vocabularies: vocabs,
       options: preset.options || {},
-      exportedAt: new Date().toISOString(),
+      exportedAt,
     });
     warnings.push(...cldfWarnings);
     checkStop();
@@ -276,6 +293,8 @@ export async function runExport({
     path: `documents/${name}`,
     data: docFiles[i].data,
   }));
+
+  if (isElan) entries.push(...mediaEntries);
 
   if (isNative) {
     const vocabNames = dedupeFilenames(
@@ -305,7 +324,7 @@ export async function runExport({
             file: `vocabularies/${vocabNames[i]}`,
           })),
           asOf,
-          exportedAt: new Date().toISOString(),
+          exportedAt,
         }),
       ),
     });
