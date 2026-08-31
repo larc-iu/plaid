@@ -204,16 +204,16 @@
                                :body :comment/body)))))))
 
 (deftest editing-marks-the-comment-edited
-  (testing "edited? is derived from updated-at moving past created-at"
+  (testing "edited is derived from updated-at moving past created-at"
     (let [{:keys [span]} (setup-corpus "EditedFlagProj")
           created (-> (post-comment admin-request "span" span "v1") :body)]
-      (is (false? (:comment/edited? created)))
+      (is (false? (:comment/edited created)))
       (let [updated (-> (api-call admin-request
                                   {:method :patch
                                    :path (str "/api/v1/comments/" (:comment/id created))
                                    :body {:body "v2"}})
                         :body)]
-        (is (true? (:comment/edited? updated)))
+        (is (true? (:comment/edited updated)))
         (is (= (:comment/created-at created) (:comment/created-at updated))
             "created-at is immutable")))))
 

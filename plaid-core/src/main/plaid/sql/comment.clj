@@ -95,7 +95,7 @@
 ;; ============================================================
 
 (defn- row->comment
-  "External shape. `:comment/edited?` is derived rather than stored — a
+  "External shape. `:comment/edited` is derived rather than stored — a
   comment is edited iff its body has been rewritten since it was posted."
   [row]
   (when row
@@ -108,7 +108,7 @@
      :comment/body        (:body row)
      :comment/created-at  (:created_at row)
      :comment/updated-at  (:updated_at row)
-     :comment/edited?     (not= (:created_at row) (:updated_at row))}))
+     :comment/edited      (not= (:created_at row) (:updated_at row))}))
 
 (defn get
   "One comment by id in external shape, or nil."

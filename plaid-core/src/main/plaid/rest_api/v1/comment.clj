@@ -201,7 +201,7 @@
                           {:status 404 :body {:error (str "Comment not found with id `" comment-id "`")}}))}
 
        :patch {:summary (str "Edit a comment's body. Only the comment's AUTHOR may do this — "
-                             "not maintainers, not admins. Sets <code>edited?</code> on the "
+                             "not maintainers, not admins. Sets <code>edited</code> on the "
                              "comment by moving <code>updated-at</code> past "
                              "<code>created-at</code>.")
                :middleware [[pra/wrap-writer-required comment-project-id]
