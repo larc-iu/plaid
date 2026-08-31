@@ -345,6 +345,18 @@ describe('buildCldfDataset — metadata descriptor', () => {
     );
   });
 
+  it('declares that no string means null in the aligned list columns', () => {
+    // A column's `null` defaults to "", so an empty item in a tab-separated
+    // list would parse back as a missing value and break the alignment
+    // (pycldf's Example.igt raises on it). An unglossed word is a present,
+    // empty slot, not a missing one.
+    const { files } = build();
+    expect(columnNamed(files, 'examples.csv', 'Gloss').null).toEqual([]);
+    expect(columnNamed(files, 'examples.csv', 'Word_POS').null).toEqual([]);
+    // Scalar columns keep the default, where empty does mean absent.
+    expect(columnNamed(files, 'examples.csv', 'Primary_Text').null).toBeUndefined();
+  });
+
   it('declares foreign keys only for columns it kept', () => {
     const { files } = build();
     const fks = tableSpec(files, 'examples.csv').tableSchema.foreignKeys;
@@ -384,7 +396,7 @@ describe('buildCldfDataset — metadata descriptor', () => {
     });
     expect(table(files, 'media.csv')[0]).toMatchObject({
       Media_Type: 'audio/wav',
-      Path_In_Zip: 'media/a.wav',
+      Download_URL: 'media/a.wav',
       Contribution_ID: '1',
     });
   });

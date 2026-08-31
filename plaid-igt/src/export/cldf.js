@@ -87,7 +87,15 @@ const columnSchema = (c) => {
   if (c.propertyUrl) out.propertyUrl = term(c.propertyUrl);
   if (c.description) out['dc:description'] = c.description;
   out.datatype = c.datatype || 'string';
-  if (c.separator) out.separator = c.separator;
+  if (c.separator) {
+    out.separator = c.separator;
+    // A column's `null` defaults to "", so an empty item in a separated list
+    // parses back as a missing value and breaks the alignment (pycldf's
+    // Example.igt() raises on it). In an aligned list an empty item is a real,
+    // present, empty slot — an unglossed word — so declare that no string in
+    // these columns means null.
+    out.null = [];
+  }
   return out;
 };
 
@@ -358,7 +366,10 @@ export function buildCldfDataset({
         ID: `m${docIndex + 1}`,
         Name: doc.name ?? '',
         Media_Type: mediaType || 'application/octet-stream',
-        Path_In_Zip: mediaFile,
+        // The file rides in this same archive, so the URL is relative to the
+        // metadata descriptor. Path_In_Zip is for a file inside a DIFFERENT
+        // zip that Download_URL points at, which is not our situation.
+        Download_URL: mediaFile,
         Contribution_ID: contributionId,
       });
     }
@@ -597,7 +608,7 @@ export function buildCldfDataset({
       col('ID', { required: true, propertyUrl: 'id' }),
       col('Name', { propertyUrl: 'name' }),
       col('Media_Type', { required: true, propertyUrl: 'mediaType' }),
-      col('Path_In_Zip', { propertyUrl: 'pathInZip' }),
+      col('Download_URL', { propertyUrl: 'downloadUrl', datatype: 'anyURI' }),
       col('Contribution_ID', { propertyUrl: 'contributionReference' }),
     ],
   });

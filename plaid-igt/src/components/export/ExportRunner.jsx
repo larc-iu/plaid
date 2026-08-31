@@ -11,6 +11,18 @@ import { ScopeStep } from './ScopeStep.jsx';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
+// Formats that assemble ONE dataset rather than a file per document: they zip
+// at every scope and handle the project's vocabularies themselves, so the
+// per-run vocabularies toggle does not apply.
+const ZIP_NOTES = {
+  'plaid-igt-json':
+    'This format always produces a .zip archive including all vocabularies and the project ' +
+    'configuration, whatever the scope.',
+  cldf:
+    'This format always produces a .zip dataset (one CSV per CLDF component table) whatever the ' +
+    'scope. Whether the lexicon is included is set in the preset.',
+};
+
 // Run an export with one of the project's saved presets. Presets themselves
 // (format, layers, options) are configured under project Settings → Export
 // (ExportPresetsSettings); this surface only picks one and runs it.
@@ -197,7 +209,7 @@ export const ExportRunner = ({
                 includeVocabularies={includeVocabularies ?? preset.includeVocabularies}
                 onIncludeVocabulariesChange={setIncludeVocabularies}
                 hasVocabularies={(project?.vocabs?.length ?? 0) > 0}
-                vocabulariesForced={preset.format === 'plaid-igt-json'}
+                zipNote={ZIP_NOTES[preset.format] ?? null}
               />
             </div>
           )}
