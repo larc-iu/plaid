@@ -133,16 +133,18 @@ export async function importDocument({
 
     check();
     progress('Creating sentences');
-    const sentenceIds = await bulkInChunks(
+    // The sentence layer PARTITIONS the text and the server checks that the
+    // tokens tile the whole extent on EVERY bulk call, so this one cannot be
+    // chunked: a first chunk ending mid-text is rejected outright.
+    const sentenceRes = await client.tokens.bulkCreate(
       doc.sentences.map((s) => ({
         tokenLayerId: targets.sentenceLayerId,
         text: textId,
         begin: s.begin,
         end: s.end,
       })),
-      check,
-      (specs) => client.tokens.bulkCreate(specs),
     );
+    const sentenceIds = sentenceRes.ids ?? sentenceRes;
 
     // Time alignment. Seconds in metadata, matching the editor's own writes.
     if (doc.alignments.length && targets.alignmentLayerId) {

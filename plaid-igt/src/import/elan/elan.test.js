@@ -359,7 +359,28 @@ const buildFrom = (files, overrides = {}) => {
   const parsed = files.map(([xml, name]) => readEaf(xml, name));
   const { nodes } = compareSchemas(parsed);
   const roles = { ...suggestRoles(nodes), ...overrides };
-  return { build: buildElanDocuments(parsed, nodes, roles), nodes, roles };
+  const build = buildElanDocuments(parsed, nodes, roles);
+  // Every fixture, not just the one written for it, has to satisfy the
+  // partition invariant the server enforces.
+  build.documents.forEach(expectSentencesTile);
+  return { build, nodes, roles };
+};
+
+// The sentence layer is `partitioning`, so the server rejects any bulk call
+// whose sentence tokens do not tile [0, len) exactly. The engine tests run
+// against a stub client that cannot enforce that, so it is asserted here on the
+// model instead. A real .eaf with several utterances broke on a live server
+// because each sentence stopped short of the newline joining it to the next.
+const expectSentencesTile = (doc) => {
+  const len = [...doc.body].length;
+  if (!len) return;
+  let at = 0;
+  for (const s of doc.sentences) {
+    expect(s.begin).toBe(at);
+    expect(s.end).toBeGreaterThanOrEqual(s.begin);
+    at = s.end;
+  }
+  expect(at).toBe(len);
 };
 
 describe('buildElanDocuments', () => {
@@ -380,6 +401,27 @@ describe('buildElanDocuments', () => {
     expect(doc.alignments).toEqual([
       { begin: 0, end: 17, timeBegin: 0.5, timeEnd: 2.25, speaker: 'Ana' },
     ]);
+  });
+
+  it('tiles the body with sentences, absorbing the joining newlines', () => {
+    const three = toolboxFile('Ana', [
+      { id: 'a1', text: 'uno', begin: 0, end: 1000, words: [{ id: 'w1', form: 'uno' }] },
+      { id: 'a2', text: 'dos tres', begin: 1000, end: 2000, words: [{ id: 'w2', form: 'dos' }] },
+      { id: 'a3', text: 'cuatro', begin: 2000, end: 3000, words: [{ id: 'w3', form: 'cuatro' }] },
+    ]);
+    const { build } = buildFrom([[three, 'three.eaf']]);
+    const doc = build.documents[0];
+    expect(doc.body).toBe('uno\ndos tres\ncuatro');
+    // Each sentence runs up to the start of the next, so the newline belongs to
+    // the sentence before it and there is no gap anywhere.
+    expect(doc.sentences.map((s) => [s.begin, s.end])).toEqual([
+      [0, 4],
+      [4, 13],
+      [13, 19],
+    ]);
+    expectSentencesTile(doc);
+    // Words still sit on the text itself, never on a joining newline.
+    expect(doc.words.map((w) => doc.body.slice(w.begin, w.end))).toEqual(['uno', 'dos', 'cuatro']);
   });
 
   it('interleaves speakers by start time across one file', () => {
@@ -494,6 +536,16 @@ describe('buildElanDocuments', () => {
     const { build } = buildFrom([[xml, 'x.eaf']]);
     expect(build.documents[0].metadata['Media file']).toBe('rec.wav');
     expect(build.warnings[0]).toMatch(/not imported/);
+  });
+
+  it('keeps HEADER properties as metadata but drops ELAN bookkeeping', () => {
+    const xml = eafXml({
+      types: { u: null },
+      properties: { Researcher: 'Ana', lastUsedAnnotationId: 'a417' },
+      tiers: [{ id: 'T', type: 'u', anns: [['a1', 'hola', 0, 500]] }],
+    });
+    const { build } = buildFrom([[xml, 'x.eaf']]);
+    expect(build.documents[0].metadata).toEqual({ Researcher: 'Ana' });
   });
 
   it('keeps the first value when a field tier has several per parent', () => {
