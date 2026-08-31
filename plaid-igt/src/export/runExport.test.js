@@ -153,6 +153,20 @@ describe('runExport', () => {
     expect(readme).toContain('Flex.flextext: 1 interlinear text');
   });
 
+  it('includes the lexicon for a preset saved before the option existed', async () => {
+    const client = stubClient({ docs: [rawDoc('d1', 'Flex', 'hi yo')] });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    delete preset.options.lexicon;
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'document', id: 'd1' },
+    });
+    expect(result.filename).toBe('Flex-flex.zip');
+    expect(Object.keys(await unzipBlob(result.blob))).toContain('Flex.lift');
+  });
+
   it('exports the bare flextext when the lexicon is switched off', async () => {
     const docs = [rawDoc('d1', 'Flex', 'hi yo')];
     const client = stubClient({ docs });
