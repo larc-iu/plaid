@@ -124,9 +124,19 @@ function multiAnyOf(el) {
   const out = {};
   for (const a of el.children) {
     let t = null;
+    let ws = a.attrs.ws;
     if (a.tag === 'AUni') t = a.text;
     else if (a.tag === 'AStr') t = runText(a);
-    if (t != null && t.trim() !== '') out[a.attrs.ws] = nfc(t);
+    else if (a.tag === 'Str') {
+      // A MONOLINGUAL field (ScientificName, Source, …): one <Str> whose
+      // writing system sits on its runs rather than on the field. Without
+      // this branch such a field is invisible: it is not a <Custom> (which
+      // customValues() reads, Str included) and not one of the handled tags,
+      // so extraFields is its only route in and it found nothing to read.
+      t = runText(a);
+      ws = a.children.find((r) => r.attrs.ws)?.attrs.ws ?? ws;
+    }
+    if (t != null && t.trim() !== '' && ws) out[ws] = nfc(t);
   }
   return Object.keys(out).length ? out : null;
 }

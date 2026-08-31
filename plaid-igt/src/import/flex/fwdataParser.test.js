@@ -160,6 +160,23 @@ describe.skipIf(!existsSync(SENA))('parseFwdata — Sena 3 sample (newer format)
     expect(senseNotes.length).toBeGreaterThan(50); // 60 in the sample
   });
 
+  // A monolingual field is a single <Str> whose writing system lives on its
+  // runs, not on the field. multiAnyOf only read AUni/AStr, so these were
+  // invisible: not a <Custom>, not a handled tag, and nothing extraFields
+  // could read. A fidelity census found 138 such values across the samples.
+  it('extracts monolingual <Str> lexicon fields, not just AUni/AStr ones', () => {
+    const senses = ir.lexicon.flatMap((e) => e.senses);
+    const sci = senses.filter((s) => s.extra?.ScientificName);
+    expect(sci.length).toBeGreaterThan(10); // 15 in the sample
+    expect(typeof Object.values(sci[0].extra.ScientificName)[0]).toBe('string');
+    // The writing system comes off the <Run>, so it must not be blank.
+    expect(Object.keys(sci[0].extra.ScientificName)[0]).toBeTruthy();
+    expect(senses.filter((s) => s.extra?.Source).length).toBeGreaterThan(20); // 31 here, 93 corpus-wide
+    expect(ir.lexiconFields.map((f) => f.name)).toEqual(
+      expect.arrayContaining(['ScientificName', 'Source']),
+    );
+  });
+
   it('extracts citation forms (most Sena entries cite differently from the lexeme)', () => {
     const cited = ir.lexicon.filter((e) => e.citationForm);
     expect(cited.length).toBeGreaterThan(800); // 887 in the sample
