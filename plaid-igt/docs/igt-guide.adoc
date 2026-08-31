@@ -186,7 +186,9 @@ Whatever a service produces is stamped unverified, the same violet-italic state 
 Start a project from existing data on the **New Project** screen.
 Currently supported formats include:
 
-* **FieldWorks (FLEx)**: a project backup (`.fwbackup`) or a single interlinear file (`.flextext`), bringing in its words, morphemes, glosses, and lexicon. Some FLEx detail that Plaid does not model is dropped on import.
+* **FieldWorks (FLEx)**: a project backup (`.fwbackup`), bringing in its texts, words, morphemes, glosses, translations, and the full lexicon. Some FLEx detail that Plaid does not model is dropped on import.
+* **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity.
+* **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, and time alignment.
 * **Native Plaid IGT archive** (`.zip`): restores a project exactly, including its vocabularies and media.
 
 == Exporting
@@ -196,6 +198,8 @@ Currently supported formats include:
 
 * **Plain text**: an aligned, human-readable interlinear rendering.
 * **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped with a note on the order to import them in. Leave the lexicon out to get the `.flextext` on its own.
+* **CLDF TextCorpus** (`.zip`): a Cross-Linguistic Data Formats dataset, one CSV per component table with a `cldf-metadata.json` describing them.
+* **ELAN** (`.eaf`): one annotation file per document, bundled into a `.zip` with its recording when it has one.
 * **Native Plaid IGT archive** (`.zip`): a lossless export you can import again later.
 
 Maintainers can save reusable export presets on the project.
