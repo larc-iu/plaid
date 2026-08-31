@@ -859,6 +859,92 @@ describe('alignSegments', () => {
 
 // ---- round trip against our own exporter -----------------------------------
 
+describe('round trip starting from a .eaf', () => {
+  // The other direction from the test below: begin at a file, import it, export
+  // it, and compare the two FILES. Tier names legitimately change (structural
+  // tiers take our own default names), so the comparison is by role.
+  const rolesToValues = (xml) => {
+    const eaf = readEaf(xml, 'x.eaf');
+    const { nodes } = compareSchemas([eaf]);
+    const roles = suggestRoles(nodes);
+    const roleOfTier = new Map();
+    for (const n of nodes)
+      for (const id of n.tierIds) roleOfTier.set(id, roles[n.key] ?? ROLES.OFF);
+    const out = {};
+    for (const tier of eaf.tiers) {
+      const role = roleOfTier.get(tier.id) ?? ROLES.OFF;
+      const field = [ROLES.SENTENCE_FIELD, ROLES.WORD_FIELD, ROLES.MORPH_FIELD].includes(role);
+      const key = field ? `${role}:${tier.baseName}` : role;
+      const vals = tier.annotations.map((a) => String(a.value ?? '').trim()).filter(Boolean);
+      out[key] = [...(out[key] || []), ...vals];
+    }
+    return out;
+  };
+
+  // The build model in the shape buildEafDocument reads.
+  const toIgtDoc = (doc) => ({
+    document: { id: 'd1', name: doc.name, mediaUrl: null, metadata: doc.metadata },
+    body: doc.body,
+    sortedSentences: doc.sentences.map((s, si) => ({
+      id: `s${si}`,
+      begin: s.begin,
+      end: s.end,
+      annotations: Object.fromEntries(Object.entries(s.fields).map(([k, v]) => [k, { value: v }])),
+      tokens: doc.words
+        .filter((w) => w.sentenceIndex === si)
+        .map((w, wi) => ({
+          id: `w${si}_${wi}`,
+          begin: w.begin,
+          end: w.end,
+          content: doc.body.slice(w.begin, w.end),
+          orthographies: {},
+          annotations: Object.fromEntries(
+            Object.entries(w.fields).map(([k, v]) => [k, { value: v }]),
+          ),
+          morphemes: w.morphemes.map((m, mi) => ({
+            id: `m${si}_${wi}_${mi}`,
+            metadata: { form: m.form, morphType: m.morphType },
+            annotations: Object.fromEntries(
+              Object.entries(m.fields).map(([k, v]) => [k, { value: v }]),
+            ),
+          })),
+        })),
+    })),
+  });
+
+  it('reproduces every value when the source file agrees with itself', () => {
+    const original = ANA;
+    const parsed = [readEaf(original, 'ana.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const roles = suggestRoles(nodes);
+    const build = buildElanDocuments(parsed, nodes, roles);
+
+    const exported = buildEafDocument(
+      toIgtDoc(build.documents[0]),
+      {
+        orthographies: [],
+        wordFields: ['ps'],
+        morphFields: ['ge'],
+        sentFields: ['ft'],
+        segmentMorphemes: true,
+        // On, which is what makes the morph tier come back spelling its
+        // boundaries the way the source file spelled them ("-s", not "s").
+        affixMarkers: true,
+        perSpeaker: false,
+      },
+      { exportedAt: '2026-01-01T00:00:00Z', author: 'test' },
+    );
+
+    const before = rolesToValues(original);
+    const after = rolesToValues(exported);
+    expect(after[ROLES.UTTERANCE]).toEqual(before[ROLES.UTTERANCE]);
+    expect(after[ROLES.WORD]).toEqual(before[ROLES.WORD]);
+    expect(after[ROLES.MORPHEME]).toEqual(before[ROLES.MORPHEME]);
+    expect(after[`${ROLES.SENTENCE_FIELD}:ft`]).toEqual(before[`${ROLES.SENTENCE_FIELD}:ft`]);
+    expect(after[`${ROLES.MORPH_FIELD}:ge`]).toEqual(before[`${ROLES.MORPH_FIELD}:ge`]);
+  });
+});
+
 describe('round trip through the .eaf exporter', () => {
   const span = (v) => ({ value: v });
   const sourceDoc = {
