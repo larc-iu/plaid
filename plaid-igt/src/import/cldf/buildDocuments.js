@@ -463,6 +463,28 @@ export function buildCldfDocuments(dataset, options = {}) {
     .filter(([, m]) => m && m.enabled !== false)
     .map(([column, m]) => ({ column, ...m }));
 
+  // A per-word tier is read by position, so on a row whose tag count does not
+  // match the analyzed words the tags shift or run out. tsezacp does this on 97
+  // of its 4948 rows. Nothing else notices, so say so once per column rather
+  // than let the tier look complete.
+  for (const c of custom) {
+    if (c.scope !== 'Word' && c.scope !== 'Morpheme') continue;
+    let off = 0;
+    for (const row of examples?.rows || []) {
+      const words = list(examples, row, 'analyzedWord').length;
+      const value = String(row[c.column] ?? '');
+      if (!words || value === '') continue;
+      if (value.split('\t').length !== words) off += 1;
+    }
+    if (off) {
+      warnings.push(
+        `"${c.column}" does not line up with the analyzed words on ${off} ` +
+          `${off === 1 ? 'example' : 'examples'}; its values there are read by position ` +
+          'and may be shifted or missing.',
+      );
+    }
+  }
+
   // --- languages ---
   const languageTable = dataset.components?.LanguageTable;
   const languageById = new Map();

@@ -567,6 +567,31 @@ describe('deriveImportOptions — a per-word tier is not thrown away', () => {
     expect(documents[0].words.map((w) => w.fields.Part_of_Speech)).toEqual(['n', 'v', 'n', 'v']);
   });
 
+  it('says so when a tier does not line up, since it is then read by position', () => {
+    // Row 2 has three tags for two words. An empty tag is NOT a mismatch: it
+    // is a word the source left untagged and it still aligns, which is all
+    // 118 of tsezacp's apparent gaps.
+    const ds = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,POS\r\n' +
+        '1,perros corren,perro=s\tcorren,dog=PL\trun,n\t\r\n' +
+        '2,gatos duermen,gato=s\tduermen,cat=PL\tsleep,n\tv\tx\r\n' +
+        '3,hola amigo,hola\tamigo,hi\tfriend,intj\tn\r\n',
+      [...BASIC_COLUMNS, col('POS', null, { separator: '\t' })],
+    );
+    const { warnings } = buildCldfDocuments(ds, deriveImportOptions(ds));
+    expect(warnings.join(' ')).toMatch(/"POS" does not line up .* on 1 example/);
+  });
+
+  it('stays quiet when every row lines up', () => {
+    const ds = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,POS\r\n' +
+        '1,perros corren,perro=s\tcorren,dog=PL\trun,n\tv\r\n' +
+        '2,gatos duermen,gato=s\tduermen,cat=PL\tsleep,n\t\r\n',
+      [...BASIC_COLUMNS, col('POS', null, { separator: '\t' })],
+    );
+    expect(buildCldfDocuments(ds, deriveImportOptions(ds)).warnings).toEqual([]);
+  });
+
   it('needs a multi-word sentence as evidence, since one word matches anything', () => {
     const ds = dataset('ID,Primary_Text,Analyzed_Word,Gloss,Word_POS\r\n1,ab,ab,x,N\r\n', [
       ...BASIC_COLUMNS,
