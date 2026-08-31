@@ -4,6 +4,7 @@
   validates that the SQLite + Hikari + busy_timeout stack handles
   contended writers without surfacing SQLITE_BUSY to callers."
   (:require [clojure.test :refer :all]
+            [plaid.fixtures :refer [sqlite-only]]
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
@@ -12,6 +13,8 @@
             [plaid.sql.user :as user])
   (:import (java.io File)
            (java.util.concurrent Executors TimeUnit)))
+
+(use-fixtures :once sqlite-only)
 
 (defn- temp-db-path []
   (let [dir (File. (System/getProperty "java.io.tmpdir")
@@ -32,7 +35,7 @@
         ;; queueing on the SQLite write lock) without being so small
         ;; that Hikari connectionTimeout fires before BEGIN IMMEDIATE
         ;; can grab the lock.
-        ds (psc/build-datasource db-path {:max-pool-size 20})
+        ds (psc/build-datasource {:backend :sqlite :main-db-path db-path} {:max-pool-size 20})
         n 20]
     (try
       (migratus/migrate {:store :database
@@ -83,7 +86,7 @@
 
 (deftest twenty-concurrent-same-row-updates
   (let [db-path (temp-db-path)
-        ds (psc/build-datasource db-path {:max-pool-size 20})
+        ds (psc/build-datasource {:backend :sqlite :main-db-path db-path} {:max-pool-size 20})
         n 20]
     (try
       (migratus/migrate {:store :database

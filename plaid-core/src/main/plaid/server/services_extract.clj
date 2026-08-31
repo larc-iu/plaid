@@ -23,6 +23,7 @@
   register the defstate JVM-wide and perturb the full-mount lifecycle tests."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [plaid.server.paths :as paths]
             [mount.core :refer [defstate]]
             [plaid.server.config :refer [config]]
             [taoensso.timbre :as log])
@@ -83,12 +84,9 @@
       (.toByteArray out))))
 
 (defn- data-dir
-  "The data directory, derived from the configured SQLite path (its parent),
-  same as the rest of the default `data/` layout. Falls back to ./data."
+  "The server's data directory. See `plaid.server.paths/data-dir-file`."
   [cfg]
-  (let [db-path (get-in cfg [:plaid.server.sql/config :main-db-path])
-        parent (some-> db-path io/file .getParentFile)]
-    (or parent (io/file "data"))))
+  (paths/data-dir-file cfg))
 
 (defn extract-bundled-services!
   "Extract bundled services per `plan-extraction`. No-op when the jar carries

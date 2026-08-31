@@ -142,8 +142,8 @@ JavaScript, JSX, and CSS in both projects are formatted by Prettier, enforced by
 
 == Database Access
 
-Plaid stores everything in a single SQLite database at `data/plaid.db` (configurable via `[database] path`).
-You can inspect it with any SQLite client:
+By default Plaid stores everything in a single SQLite database at `data/plaid.db` (configurable via
+`[database] path`; see below for the PostgreSQL alternative). You can inspect it with any SQLite client:
 
 [,bash]
 ----
@@ -159,3 +159,35 @@ sqlite3 data/plaid.db ".backup /path/to/backup-$(date +%F).db"
 ----
 
 The server also takes automatic nightly snapshots. See the `[backup]` section of `data/config.toml`.
+
+=== Running against PostgreSQL
+
+SQLite is the default and what almost every deployment should use. PostgreSQL is available as an
+alternative for sites that already run one and want Plaid's data alongside everything else they back
+up and monitor. Set `backend = "postgres"` and a `url` in the `[database]` section of
+`data/config.toml`. It is not faster: Plaid serializes writers on either backend, so a single
+instance behaves the same way on both. There is no migration path between the two, so pick one
+before you have data.
+
+The parts of the system that differ between the two engines all live in `plaid.sql.dialect`, whose
+docstring is the reference for what those differences are and the two places where query behavior is
+not identical. Everything else under `plaid.sql.*` is portable HoneySQL that runs unchanged.
+
+Schema changes need a migration in *both* `resources/migrations` (SQLite) and
+`resources/migrations-postgres`. Most are byte-identical. The four things that are not are `BLOB`
+(`BYTEA`), `json_extract` (`::jsonb ->>`), `instr` (`strpos`), and `datetime('now')` (`now()::text`).
+Postgres `TEXT` columns are declared `COLLATE "C"` so ordering matches SQLite's byte order.
+
+The whole test suite is the acceptance test for the backend. Point it at a throwaway database, since
+it drops and recreates the `public` schema on the way in:
+
+[,bash]
+----
+PLAID_TEST_POSTGRES_URL=jdbc:postgresql://localhost:5432/plaid_test \
+PLAID_TEST_POSTGRES_USER=plaid PLAID_TEST_POSTGRES_PASSWORD=... \
+  clojure -M:test
+----
+
+Namespaces that test SQLite mechanism rather than Plaid behavior (PRAGMAs, `BEGIN IMMEDIATE`, the WAL
+checkpoint, the instance file lock) carry the `plaid.fixtures/sqlite-only` fixture and skip
+themselves; `plaid.fixtures/postgres-only` is its mirror.

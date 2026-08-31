@@ -4,10 +4,13 @@
   migrations during boot without fear of partial failure when nothing
   has changed."
   (:require [clojure.test :refer :all]
+            [plaid.fixtures :refer [sqlite-only]]
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
             [plaid.sql.common :as psc])
   (:import (java.io File)))
+
+(use-fixtures :once sqlite-only)
 
 (defn- temp-db-path []
   (let [dir (File. (System/getProperty "java.io.tmpdir")
@@ -29,7 +32,7 @@
 
 (deftest migrate-twice-against-populated-db
   (let [db-path (temp-db-path)
-        ds (psc/build-datasource db-path)]
+        ds (psc/build-datasource {:backend :sqlite :main-db-path db-path})]
     (try
       ;; First migrate: fresh DB → all migrations applied.
       (is (nil? (migratus/migrate (migr-cfg ds)))

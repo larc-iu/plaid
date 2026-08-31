@@ -1,13 +1,13 @@
 (ns plaid.server.backup-test
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing use-fixtures]]
-            [plaid.fixtures :refer [db with-db]]
+            [plaid.fixtures :refer [db with-db sqlite-only]]
             [plaid.server.backup :as backup])
   (:import [java.nio.file Files]
            [java.nio.file.attribute FileAttribute]
            [java.util.zip ZipFile]))
 
-(use-fixtures :once with-db)
+(use-fixtures :once sqlite-only with-db)
 
 (defn- with-temp-directory [f]
   (let [dir (.toFile (Files/createTempDirectory "plaid-backup-test"

@@ -3,6 +3,7 @@
   backed by the REGEXP UDF registered per query connection. :value is matched
   against the JSON-decoded scalar so anchors work."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [plaid.fixtures :as fixtures]
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
@@ -98,10 +99,20 @@
         text (id (h/create-text admin-request txtl doc "x"))
         t0   (id (h/create-token admin-request tokl text 0 1))]
     (h/create-span admin-request sl [t0] (apply str (repeat 32 "a")))
-    (testing "a catastrophic-backtracking pattern is aborted by the watchdog, not hung"
+    (testing "a catastrophic-backtracking pattern is bounded, not hung"
       ;; (.*a){28} over 32 a's runs ~6.7s unbounded in pure Java, which SQLite's
       ;; interrupt can't reach — interruptible-cs + worker interrupt must. (A
       ;; trivial "(a+)+b" is optimized away by the JDK, so use this measured one.)
+      ;;
+      ;; The INVARIANT, that a pathological pattern cannot tie up the server,
+      ;; holds on both backends, but they get there differently, so the assertion has to
+      ;; split. SQLite runs the pattern through java.util.regex on our own thread,
+      ;; where it really does backtrack catastrophically, and the watchdog aborts
+      ;; it: a 408. Postgres runs it in the SERVER, whose hybrid DFA/NFA engine is
+      ;; not vulnerable to this class at all and answers in well under a
+      ;; millisecond: no timeout to report, nothing to abort. (That Postgres's
+      ;; statement_timeout path DOES produce a 408 when a query genuinely
+      ;; overruns is pinned by plaid.sql.query.exec-timeout-test.)
       (binding [qe/*query-timeout-ms* 1000]
         (let [start (System/nanoTime)
               code (try (qe/run db "admin@example.com"
@@ -110,7 +121,9 @@
                         nil
                         (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))
               ms   (/ (- (System/nanoTime) start) 1e6)]
-          (is (= 408 code) "must abort with a 408 timeout")
+          (if (fixtures/postgres-test-run?)
+            (is (nil? code) "Postgres's regex engine does not backtrack catastrophically here")
+            (is (= 408 code) "must abort with a 408 timeout"))
           (is (< ms 20000) (str "must not hang past the limit (took " (long ms) "ms)")))))))
 
 (deftest regex-validation

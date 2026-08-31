@@ -5,6 +5,7 @@
             [muuntaja.core :as m]
             [next.jdbc :as jdbc]
             [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d]
             [plaid.sql.operation :as op]
             [taoensso.timbre :as log])
   (:import [java.sql SQLException]))
@@ -164,12 +165,12 @@
               (do (log/error e "Unexpected batch error" batch-id)
                   {:status 500 :body {:error "Internal error"}})))
           ;; Outer SQLException catch — BEGIN IMMEDIATE can fail at tx
-          ;; acquisition before any sub-op runs (SQLITE_BUSY after the
+          ;; acquisition before any sub-op runs (a write conflict after the
           ;; configured busy_timeout). Surface that as 503 so clients
           ;; can retry, instead of a generic 500 that looks like a bug.
           ;; MUST precede the generic Exception catch.
           (catch SQLException e
-            (if (psc/sqlite-busy? e)
+            (if (d/retryable-conflict? e)
               (do (log/warn e "Batch" batch-id "could not acquire write lock (busy/locked)")
                   {:status 503 :body {:error "Database busy, please retry"}})
               (do (log/error e "Unexpected batch SQL error" batch-id)
@@ -179,7 +180,7 @@
             ;; failed BEGIN's rollback attempt in a plain ex-info carrying the
             ;; real busy underneath, so check the chain here too rather than
             ;; reporting a retryable contention failure as a 500.
-            (if (psc/sqlite-busy? e)
+            (if (d/retryable-conflict? e)
               (do (log/warn e "Batch" batch-id "could not acquire write lock (busy/locked)")
                   {:status 503 :body {:error "Database busy, please retry"}})
               (do (log/error e "Unexpected batch error" batch-id)

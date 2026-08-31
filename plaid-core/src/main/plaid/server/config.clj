@@ -88,7 +88,12 @@
    [["media" "avatar_size_px"]            [:plaid.media/config :avatar-size-px]                              identity]
    [["media" "avatar_max_upload_mb"]      [:plaid.media/config :avatar-max-upload-mb]                        identity]
 
+   [["database" "backend"]                [:plaid.server.sql/config :backend]                                ->kw]
    [["database" "path"]                   [:plaid.server.sql/config :main-db-path]                           identity]
+   [["database" "data_dir"]               [:plaid.server.sql/config :data-dir]                               identity]
+   [["database" "url"]                    [:plaid.server.sql/config :url]                                    identity]
+   [["database" "user"]                   [:plaid.server.sql/config :user]                                   identity]
+   [["database" "password"]               [:plaid.server.sql/config :password]                               identity]
    [["database" "slow_query_threshold_ms"] [:plaid.server.sql/config :slow-query-threshold-ms]              identity]
    [["database" "min_name_length"]        [:plaid.sql.common/config :min-name-length]                        identity]
    [["database" "max_name_length"]        [:plaid.sql.common/config :max-name-length]                        identity]

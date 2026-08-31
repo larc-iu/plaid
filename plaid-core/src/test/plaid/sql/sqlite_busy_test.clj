@@ -16,10 +16,10 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.sql.operation :as op]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
-                                    admin-request with-admin with-clean-db]])
+                                    admin-request with-admin with-clean-db sqlite-only]])
   (:import [org.sqlite SQLiteException SQLiteErrorCode]))
 
-(use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
+(use-fixtures :once sqlite-only with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
 
 (deftest sqlite-busy-translated-to-503

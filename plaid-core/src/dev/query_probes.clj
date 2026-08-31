@@ -47,7 +47,7 @@
                                 (instance? java.sql.Connection val))
                         val)))
                   (catch Throwable _ nil))]
-    (or running (psc/build-datasource (db-path)))))
+    (or running (psc/build-datasource {:backend :sqlite :main-db-path (db-path)}))))
 
 ;; ---------- ID helpers ----------
 

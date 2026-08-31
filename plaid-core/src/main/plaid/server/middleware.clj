@@ -7,6 +7,7 @@
             [plaid.server.config :refer [config]]
             [plaid.server.sql :refer [datasource]]
             [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d]
             [plaid.rest-api.v1.core :refer [rest-handler]]
             [clojure.data.json :as json]
             [clojure.edn :as edn]
@@ -100,13 +101,12 @@
 (defn- audit-block
   "Build the /health :audit block — disk visibility for the audit log,
    which effectively IS the database (98% of file size in practice) and
-   is also the as-of read source. Cheap: one pragma pair + one count(*)
+   is also the as-of read source. Cheap: one size probe + one count(*)
    (an index-only scan). Degrades to {:error ...} rather than tanking
    /health."
   [ds]
   (try
-    (let [size-bytes (:bytes (psc/q1 ds ["SELECT page_count*page_size AS bytes
-                                          FROM pragma_page_count(), pragma_page_size()"]))
+    (let [size-bytes (:bytes (psc/q1 ds (d/db-size-bytes-sql)))
           audit-rows (:n (psc/q1 ds ["SELECT count(*) AS n FROM audit_writes"]))]
       {:db_size_mb (long (Math/round (double (/ size-bytes bytes-per-mb))))
        :audit_rows audit-rows})

@@ -32,6 +32,9 @@
         com.github.seancorfield/next.jdbc {:mvn/version "1.3.1048"}
         com.github.seancorfield/honeysql {:mvn/version "2.7.1310"}
         org.xerial/sqlite-jdbc {:mvn/version "3.50.3.0"}
+        ;; Optional alternative backend, selected with [database] backend = "postgres".
+        ;; SQLite stays the default; see plaid.sql.dialect for what differs.
+        org.postgresql/postgresql {:mvn/version "42.7.9"}
         com.zaxxer/HikariCP {:mvn/version "6.3.0"}
         migratus/migratus {:mvn/version "1.6.4"}
 

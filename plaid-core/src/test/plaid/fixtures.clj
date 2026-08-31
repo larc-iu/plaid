@@ -3,6 +3,7 @@
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
             [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d]
             [plaid.sql.user :as pxu]
             [ring.middleware.defaults :refer [wrap-defaults]]
             [ring.mock.request :as mock]
@@ -11,21 +12,54 @@
 
 (log/set-min-level! :info)
 
-;; Single shared SQLite datasource for all test namespaces — started once per JVM.
-;; Using a file under java.io.tmpdir gives WAL mode + concurrent readers; an
-;; in-memory database would force Hikari to a single connection (cache=shared
-;; is fragile across JDBC pools).
+;; Single shared datasource for all test namespaces, started once per JVM.
+;;
+;; SQLite by default, in a file under java.io.tmpdir: that gives WAL mode +
+;; concurrent readers, where an in-memory database would force Hikari to a
+;; single connection (cache=shared is fragile across JDBC pools).
+;;
+;; Setting PLAID_TEST_POSTGRES_URL runs the ENTIRE suite against that Postgres
+;; database instead. The point of the exercise is that the suite is the
+;; backend's acceptance test, not a separate smaller one. The database is
+;; DROPPED AND RECREATED (every table in the baseline migration) on the way in,
+;; so point it at a throwaway.
+(defonce ^:private postgres-url (System/getenv "PLAID_TEST_POSTGRES_URL"))
+
+(defn postgres-test-run?
+  "True when the suite is running against Postgres. A handful of tests assert
+  on SQLite-specific machinery (PRAGMAs, the busy/locked path, the instance
+  file lock) and skip themselves on this."
+  []
+  (some? postgres-url))
+
 (defonce ^:private shared-db-file
-  (let [f (java.io.File/createTempFile "plaid-test-" ".db")]
-    (.deleteOnExit f)
-    (.delete f)
-    (.getAbsolutePath f)))
+  (when-not postgres-url
+    (let [f (java.io.File/createTempFile "plaid-test-" ".db")]
+      (.deleteOnExit f)
+      (.delete f)
+      (.getAbsolutePath f))))
 
 (defonce ^:private shared-ds
-  (let [ds (psc/build-datasource shared-db-file)]
-    (migratus/migrate {:store :database
-                       :migration-dir "migrations"
-                       :db {:datasource ds}})
+  (let [db-cfg (if postgres-url
+                 {:backend :postgres
+                  :url postgres-url
+                  :user (System/getenv "PLAID_TEST_POSTGRES_USER")
+                  :password (System/getenv "PLAID_TEST_POSTGRES_PASSWORD")}
+                 {:backend :sqlite :main-db-path shared-db-file})
+        ds (psc/build-datasource db-cfg)
+        migratus-cfg {:store :database
+                      :migration-dir (d/migration-dir)
+                      :db {:datasource ds}}]
+    ;; Start from a genuinely empty schema on Postgres. `reset-db!` below
+    ;; deletes ROWS, not tables, so anything left over from a previous run
+    ;; (or from an older migration baseline) would otherwise be inherited, and
+    ;; migratus would then fail on "relation already exists". Dropping the
+    ;; schema (rather than `migratus/reset`) does not depend on
+    ;; `schema_migrations` being in sync with what is actually there.
+    (when postgres-url
+      (jdbc/execute! ds ["DROP SCHEMA public CASCADE"])
+      (jdbc/execute! ds ["CREATE SCHEMA public"]))
+    (migratus/migrate migratus-cfg)
     ds))
 
 (def ^:dynamic db nil)
@@ -60,6 +94,27 @@
 
 (defn with-db [f]
   (binding [db shared-ds]
+    (f)))
+
+(defn sqlite-only
+  "Once-fixture for namespaces whose subject is SQLite MECHANISM rather than
+  Plaid behavior: PRAGMAs, `BEGIN IMMEDIATE` serialization, the driver's
+  autocommit bug, the WAL checkpoint, the SQLite migration history. They skip
+  themselves on a Postgres run.
+
+  Skipping is not merely tidy here: these namespaces build their OWN SQLite
+  datasource, and `psc/build-datasource` pins the process-wide dialect, so
+  letting one run mid-suite would leave every namespace after it emitting
+  SQLite SQL against Postgres."
+  [f]
+  (when-not (postgres-test-run?)
+    (f)))
+
+(defn postgres-only
+  "The mirror of `sqlite-only`: a namespace whose subject is Postgres
+  mechanism, skipped on the (default) SQLite run."
+  [f]
+  (when (postgres-test-run?)
     (f)))
 
 (defn with-mount-states
@@ -138,7 +193,7 @@
    "projects"])
 
 (defn reset-db!
-  "TRUNCATE-equivalent for SQLite: delete all rows from data tables in
+  "TRUNCATE-equivalent: delete all rows from data tables in
   FK-safe order, preserving the standing test users (so JWT tokens
   remain valid) and the `schema_migrations` table.
 

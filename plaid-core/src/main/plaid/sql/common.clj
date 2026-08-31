@@ -8,9 +8,11 @@
             [clojure.string :as str]
             [honey.sql :as sql]
             [next.jdbc :as jdbc]
+            [next.jdbc.prepare :as prepare]
             [next.jdbc.result-set :as rs]
             [taoensso.timbre :as log]
-            [plaid.server.config :refer [config]])
+            [plaid.server.config :refer [config]]
+            [plaid.sql.dialect :as d])
   (:import (com.zaxxer.hikari HikariConfig HikariDataSource)
            (java.security SecureRandom)
            (java.time Instant)
@@ -127,6 +129,23 @@
                     v)))
         (transient {})
         row)))))
+
+;; Bind a java.util.UUID parameter as a STRING on every backend.
+;;
+;; Ids are TEXT in the schema (see the initial-schema migration for why:
+;; `users.id` is an email address and `audit_writes.target_id` follows its
+;; target table's identity type), but `new-uuid` and `coerce-id-cols` hand
+;; real `java.util.UUID` objects around in Clojure. sqlite-jdbc happens to
+;; stringify a UUID parameter for us. pgjdbc does not: its default
+;; `setObject` binds a UUID as the Postgres `uuid` TYPE, which against a
+;; `text` column fails with "column is of type text but expression is of
+;; type uuid". Extending the protocol here fixes it at the one place every
+;; parameter passes through, for both backends identically, rather than
+;; making ~200 call sites remember to call `uuid-str`.
+(extend-protocol prepare/SettableParameter
+  UUID
+  (set-parameter [^UUID v ^java.sql.PreparedStatement ps ^long i]
+    (.setString ps i (.toString v))))
 
 ;; ============================================================
 ;; JSON helpers (config blobs, JSON-encoded scalar values, audit images)
@@ -309,7 +328,8 @@
 (def default-pool-config
   "Defaults baked into `build-datasource` when the caller passes no
   override. Mirror these under [database] in resources/config.toml so
-  operators can see the available pool/PRAGMA knobs."
+  operators can see the available pool/PRAGMA knobs. The three PRAGMA
+  keys apply to SQLite only and are ignored by the Postgres backend."
   {:max-pool-size 10
    :connection-timeout-ms 30000
    :busy-timeout-ms 5000
@@ -323,6 +343,23 @@
   "PRAGMA synchronous name → the integer SQLite reports back."
   {"off" 0 "normal" 1 "full" 2 "extra" 3
    "0" 0 "1" 1 "2" 2 "3" 3})
+
+(defn- coerce-numeric
+  "Defensive coercion: env-var-fed configs commonly arrive as strings (TOML's
+  typed parse handles the typed case, and this covers the untyped/raw-string
+  case with a clear error message rather than letting `long` throw
+  ClassCastException downstream)."
+  [k v]
+  (cond
+    (nil? v) nil
+    (number? v) (long v)
+    (string? v)
+    (try (Long/parseLong (str/trim ^String v))
+         (catch NumberFormatException _
+           (throw (ex-info (str k " must be numeric, got: " (pr-str v))
+                           {:key k :value v :code 500}))))
+    :else (throw (ex-info (str k " must be numeric, got: " (pr-str v))
+                          {:key k :value v :code 500}))))
 
 (defn- read-pragmas
   [^javax.sql.DataSource ds]
@@ -358,19 +395,10 @@
                            ", got " actual)
                       {:expected expected :actual actual :code 500})))))
 
-(defn build-datasource
-  "Build a HikariCP DataSource for a SQLite database at the given path.
-  `db-path` may be nil/empty for an in-memory database (used in tests).
-  Ensures the parent directory exists for file-backed databases.
-
-  Optional second arg `pool-config` is a map that overrides the
-  defaults in `default-pool-config`. Recognized keys:
-    - :max-pool-size           — Hikari maximumPoolSize (default 10)
-    - :connection-timeout-ms   — Hikari connectionTimeout (default 30000)
-    - :busy-timeout-ms         — SQLite `busy_timeout` PRAGMA (default 5000)
-    - :journal-mode            — SQLite `journal_mode` PRAGMA (default \"WAL\")
-    - :synchronous             — SQLite `synchronous` PRAGMA (default \"NORMAL\")
-  Unknown keys are ignored; nil/missing keys take the default.
+(defn- build-sqlite-datasource
+  "HikariCP DataSource over a SQLite database at `db-path`. `db-path` may be
+  nil/empty for an in-memory database (used in tests). Ensures the parent
+  directory exists for file-backed databases.
 
   Note on `transaction_mode=IMMEDIATE`: under WAL the default
   `BEGIN DEFERRED` gives snapshot isolation for readers but does NOT
@@ -385,98 +413,135 @@
   unaffected. NB: setting `setTransactionIsolation(SERIALIZABLE)`
   is NOT a substitute — in sqlite-jdbc 3.50.x that only flips
   `PRAGMA read_uncommitted`, not the BEGIN command."
-  (^HikariDataSource [db-path]
-   (build-datasource db-path nil))
-  (^HikariDataSource [db-path pool-config]
-   (when (and (string? db-path) (not= "" db-path))
-     (let [parent (some-> ^String db-path (java.io.File.) (.getParentFile))]
-       (when parent (.mkdirs parent))))
-   (let [cfg (merge default-pool-config (or pool-config {}))
-         ;; Defensive coercion: env-var-fed configs commonly arrive as
-         ;; strings (Aero's #int/#long tags handle the typed case; this
-         ;; covers the untyped/raw-string case with a clear error message
-         ;; rather than letting `long` throw ClassCastException downstream).
-         coerce-numeric (fn coerce-numeric [k v]
-                          (cond
-                            (nil? v) nil
-                            (number? v) (long v)
-                            (string? v)
-                            (try (Long/parseLong (str/trim ^String v))
-                                 (catch NumberFormatException _
-                                   (throw (ex-info
-                                           (str k " must be numeric, got: " (pr-str v))
-                                           {:key k :value v :code 500}))))
-                            :else (throw (ex-info
-                                          (str k " must be numeric, got: " (pr-str v))
-                                          {:key k :value v :code 500}))))
-         max-pool-size (some->> (:max-pool-size cfg)
-                                (coerce-numeric :max-pool-size))
-         connection-timeout-ms (some->> (:connection-timeout-ms cfg)
-                                        (coerce-numeric :connection-timeout-ms))
-         busy-timeout-ms (some->> (:busy-timeout-ms cfg)
-                                  (coerce-numeric :busy-timeout-ms))
-         journal-mode (let [jm (str (:journal-mode cfg))]
-                        (when-not (contains? valid-journal-modes (str/lower-case jm))
-                          (throw (ex-info (str ":journal-mode must be one of "
-                                               (sort valid-journal-modes)
-                                               ", got: " (pr-str jm))
-                                          {:key :journal-mode :value jm :code 500})))
-                        jm)
-         synchronous (let [sv (str (:synchronous cfg))]
-                       (when-not (contains? synchronous-levels (str/lower-case sv))
-                         (throw (ex-info (str ":synchronous must be one of "
-                                              "(off normal full extra), got: " (pr-str sv))
-                                         {:key :synchronous :value sv :code 500})))
-                       sv)
-         in-memory? (or (nil? db-path) (= "" db-path))
-         ;; URI form `file::memory:?cache=shared&mode=memory` names the
-         ;; in-memory DB so multiple connections share state robustly.
-         ;; The bare `:memory:` form would give each connection its own DB.
-         jdbc-url (if in-memory?
-                    "jdbc:sqlite:file::memory:?cache=shared&mode=memory&transaction_mode=IMMEDIATE"
-                    (str "jdbc:sqlite:" db-path "?transaction_mode=IMMEDIATE"))
-         max-pool (long max-pool-size)
-         hc (doto (HikariConfig.)
-              (.setJdbcUrl jdbc-url)
-              (.setDriverClassName "org.sqlite.JDBC")
-              ;; WAL mode allows concurrent readers alongside the single writer,
-              ;; so a small pool is fine. busy_timeout gives SQLite room to retry the
-              ;; writer lock before we surface SQLITE_BUSY to the caller; set Hikari's
-              ;; connection timeout higher than that.
-              (.setMaximumPoolSize max-pool)
-              (.setConnectionTimeout (long connection-timeout-ms))
-              (.setPoolName "plaid-sqlite")
-              ;; PRAGMAs ride on connection properties (sqlite-jdbc reads
-              ;; them into SQLiteConfig and applies per connection — same
-              ;; channel as the URL's transaction_mode). Do NOT move these
-              ;; to setConnectionInitSql: Hikari hands init SQL to the
-              ;; driver as one Statement.execute, and sqlite-jdbc silently
-              ;; drops everything after the first ';' — a multi-statement
-              ;; init string applied only foreign_keys and never enabled
-              ;; WAL. verify-pragmas! below guards this channel.
-              (.addDataSourceProperty "foreign_keys" "on")
-              (.addDataSourceProperty "journal_mode" journal-mode)
-              (.addDataSourceProperty "synchronous" synchronous)
-              (.addDataSourceProperty "busy_timeout" (str (long busy-timeout-ms))))]
-     ;; In-memory SQLite lives only as long as at least one connection is open
-     ;; to the named database. One pinned idle connection is enough to keep
-     ;; the named in-memory DB alive across the pool's lifetime; pinning
-     ;; minimumIdle = maximumPoolSize would force the pool to hold a fan-out
-     ;; of connections it doesn't otherwise need (and would conflate the
-     ;; "keep the DB alive" knob with the user-tunable "concurrent writers"
-     ;; knob). Keep it to 1.
-     (when in-memory?
-       (.setMinimumIdle hc 1))
-     (let [ds (HikariDataSource. hc)]
-       (try
-         (verify-pragmas! ds {:journal-mode journal-mode
-                              :synchronous synchronous
-                              :busy-timeout-ms busy-timeout-ms
-                              :in-memory? in-memory?})
-         ds
-         (catch Throwable t
-           (.close ds)
-           (throw t)))))))
+  ^HikariDataSource [db-path cfg]
+  (when (and (string? db-path) (not= "" db-path))
+    (let [parent (some-> ^String db-path (java.io.File.) (.getParentFile))]
+      (when parent (.mkdirs parent))))
+  (let [max-pool-size (some->> (:max-pool-size cfg) (coerce-numeric :max-pool-size))
+        connection-timeout-ms (some->> (:connection-timeout-ms cfg)
+                                       (coerce-numeric :connection-timeout-ms))
+        busy-timeout-ms (some->> (:busy-timeout-ms cfg) (coerce-numeric :busy-timeout-ms))
+        journal-mode (let [jm (str (:journal-mode cfg))]
+                       (when-not (contains? valid-journal-modes (str/lower-case jm))
+                         (throw (ex-info (str ":journal-mode must be one of "
+                                              (sort valid-journal-modes)
+                                              ", got: " (pr-str jm))
+                                         {:key :journal-mode :value jm :code 500})))
+                       jm)
+        synchronous (let [sv (str (:synchronous cfg))]
+                      (when-not (contains? synchronous-levels (str/lower-case sv))
+                        (throw (ex-info (str ":synchronous must be one of "
+                                             "(off normal full extra), got: " (pr-str sv))
+                                        {:key :synchronous :value sv :code 500})))
+                      sv)
+        in-memory? (or (nil? db-path) (= "" db-path))
+        ;; URI form `file::memory:?cache=shared&mode=memory` names the
+        ;; in-memory DB so multiple connections share state robustly.
+        ;; The bare `:memory:` form would give each connection its own DB.
+        jdbc-url (if in-memory?
+                   "jdbc:sqlite:file::memory:?cache=shared&mode=memory&transaction_mode=IMMEDIATE"
+                   (str "jdbc:sqlite:" db-path "?transaction_mode=IMMEDIATE"))
+        hc (doto (HikariConfig.)
+             (.setJdbcUrl jdbc-url)
+             (.setDriverClassName "org.sqlite.JDBC")
+             ;; WAL mode allows concurrent readers alongside the single writer,
+             ;; so a small pool is fine. busy_timeout gives SQLite room to retry the
+             ;; writer lock before we surface SQLITE_BUSY to the caller; set Hikari's
+             ;; connection timeout higher than that.
+             (.setMaximumPoolSize (long max-pool-size))
+             (.setConnectionTimeout (long connection-timeout-ms))
+             (.setPoolName "plaid-sqlite")
+             ;; PRAGMAs ride on connection properties (sqlite-jdbc reads
+             ;; them into SQLiteConfig and applies per connection, the same
+             ;; channel as the URL's transaction_mode). Do NOT move these
+             ;; to setConnectionInitSql: Hikari hands init SQL to the
+             ;; driver as one Statement.execute, and sqlite-jdbc silently
+             ;; drops everything after the first ';', so a multi-statement
+             ;; init string applied only foreign_keys and never enabled
+             ;; WAL. verify-pragmas! below guards this channel.
+             (.addDataSourceProperty "foreign_keys" "on")
+             (.addDataSourceProperty "journal_mode" journal-mode)
+             (.addDataSourceProperty "synchronous" synchronous)
+             (.addDataSourceProperty "busy_timeout" (str (long busy-timeout-ms))))]
+    ;; In-memory SQLite lives only as long as at least one connection is open
+    ;; to the named database. One pinned idle connection is enough to keep
+    ;; the named in-memory DB alive across the pool's lifetime; pinning
+    ;; minimumIdle = maximumPoolSize would force the pool to hold a fan-out
+    ;; of connections it doesn't otherwise need (and would conflate the
+    ;; "keep the DB alive" knob with the user-tunable "concurrent writers"
+    ;; knob). Keep it to 1.
+    (when in-memory?
+      (.setMinimumIdle hc 1))
+    (let [ds (HikariDataSource. hc)]
+      (try
+        (verify-pragmas! ds {:journal-mode journal-mode
+                             :synchronous synchronous
+                             :busy-timeout-ms busy-timeout-ms
+                             :in-memory? in-memory?})
+        ds
+        (catch Throwable t
+          (.close ds)
+          (throw t))))))
+
+(defn- build-postgres-datasource
+  "HikariCP DataSource over a Postgres database. `:url` is a full JDBC URL
+  (`jdbc:postgresql://host:port/dbname`); `:user` / `:password` are optional
+  when the URL, a .pgpass, or the environment already carry them.
+
+  No PRAGMA equivalent to verify: the two things SQLite needs a PRAGMA for
+  are always on in Postgres (foreign keys) or meaningless (journal mode,
+  synchronous). What SQLite gets from `BEGIN IMMEDIATE`, one writer at a
+  time, comes instead from the advisory lock `with-tx*` takes. See
+  `plaid.sql.dialect/advisory-lock-sql`.
+
+  The connection is opened eagerly so a bad URL / wrong password fails at
+  boot with the driver's own message, rather than on the first request."
+  ^HikariDataSource [{:keys [url user password]} cfg]
+  (when (str/blank? url)
+    (throw (ex-info (str "[database] backend = \"postgres\" requires a `url`, e.g. "
+                         "url = \"jdbc:postgresql://localhost:5432/plaid\"")
+                    {:code 500})))
+  (let [max-pool-size (some->> (:max-pool-size cfg) (coerce-numeric :max-pool-size))
+        connection-timeout-ms (some->> (:connection-timeout-ms cfg)
+                                       (coerce-numeric :connection-timeout-ms))
+        hc (doto (HikariConfig.)
+             (.setJdbcUrl url)
+             (.setDriverClassName "org.postgresql.Driver")
+             (.setMaximumPoolSize (long max-pool-size))
+             (.setConnectionTimeout (long connection-timeout-ms))
+             (.setPoolName "plaid-postgres"))
+        _ (when-not (str/blank? user) (.setUsername hc user))
+        _ (when-not (str/blank? password) (.setPassword hc password))
+        ds (HikariDataSource. hc)]
+    (try
+      (with-open [c (.getConnection ds)] (.isValid c 5))
+      ds
+      (catch Throwable t
+        (.close ds)
+        (throw t)))))
+
+(defn build-datasource
+  "Build the connection pool for the configured backend and pin the process
+  dialect (`plaid.sql.dialect/*dialect*`) to match.
+
+  `db-cfg` is the `[database]` config map:
+    :backend       :sqlite (default) or :postgres
+    :main-db-path  SQLite only. nil/empty means an in-memory database (tests)
+    :url/:user/:password   Postgres only
+
+  `pool-cfg` overrides `default-pool-config`; unknown keys are ignored and
+  nil/missing keys take the default. Its three PRAGMA keys are SQLite-only."
+  (^HikariDataSource [db-cfg] (build-datasource db-cfg nil))
+  (^HikariDataSource [db-cfg pool-cfg]
+   (let [backend (or (:backend db-cfg) :sqlite)
+         cfg (merge default-pool-config (or pool-cfg {}))]
+     ;; Set the dialect BEFORE opening the pool: build-postgres-datasource's
+     ;; validation error message, and every query issued from here on, ask
+     ;; the dialect var which backend they are on.
+     (d/set-dialect! backend)
+     (case backend
+       :sqlite (build-sqlite-datasource (:main-db-path db-cfg) cfg)
+       :postgres (build-postgres-datasource db-cfg cfg)))))
 
 ;; ============================================================
 ;; Query execution (HoneySQL + next.jdbc)
@@ -607,33 +672,6 @@
       (fn [] (mapv #(coerce-id-cols query nil %)
                    (jdbc/execute! db sql-vec jdbc-opts))))))
 
-(defn sqlite-busy?
-  "True when `e` or anything in its cause/suppressed chain is a SQLite
-  busy/locked error. The common case is a top-level SQLITE_BUSY, but a busy
-  raised while OPENING the transaction arrives wrapped: next.jdbc's
-  `transact*` catches the failure, attempts a rollback that itself fails
-  (\"cannot rollback - no transaction is active\"), and rethrows that wrapper
-  instead. So walk the whole chain, checking the SQLite result code
-  (BUSY=5, LOCKED=6) and the message text on each link."
-  [^Throwable e]
-  (loop [stack [e]]
-    (if (empty? stack)
-      false
-      (let [^Throwable t (peek stack)
-            stack' (pop stack)]
-        (cond
-          (nil? t) (recur stack')
-          (let [rc (when (instance? org.sqlite.SQLiteException t)
-                     (try (.code (.getResultCode ^org.sqlite.SQLiteException t))
-                          (catch Throwable _ nil)))
-                msg (or (.getMessage t) "")]
-            (or (= 5 rc) (= 6 rc)
-                (str/includes? msg "SQLITE_BUSY")
-                (str/includes? msg "SQLITE_LOCKED")
-                (str/includes? msg "database is locked")))
-          true
-          :else (recur (into stack' (remove nil? (cons (.getCause t) (seq (.getSuppressed t)))))))))))
-
 (defn heal-autocommit!
   "Undo a half-applied `setAutoCommit(false)` before `con` returns to the pool.
 
@@ -687,13 +725,25 @@
   We check the connection out ourselves rather than handing the DataSource to
   `jdbc/with-transaction` so that `heal-autocommit!` gets a chance to run
   before the connection is recycled — see its docstring for what happens
-  when it doesn't."
+  when it doesn't.
+
+  On Postgres the first statement in the transaction is an advisory lock
+  that makes this the only write transaction in flight, reproducing the
+  single-writer model SQLite gives us for free at `BEGIN IMMEDIATE`. Every
+  caller of this fn is a write path (`plaid.sql.operation/submit-operation*`
+  and the REST batch handler). Reads go through `q`/`q1` in autocommit and
+  never reach here, so they are not serialized. See
+  `plaid.sql.dialect/advisory-lock-sql` for why per-row locking is not a
+  substitute."
   [db f]
   (if (instance? java.sql.Connection db)
     (f db)
     (with-open [con (jdbc/get-connection db)]
       (try
-        (jdbc/with-transaction [tx con] (f tx))
+        (jdbc/with-transaction [tx con]
+          (when-let [lock-sql (d/advisory-lock-sql)]
+            (jdbc/execute-one! tx lock-sql))
+          (f tx))
         (finally
           (heal-autocommit! con))))))
 
@@ -824,7 +874,8 @@
 ;; The batched INSERT specifies 9 columns per row (every audit column
 ;; except the never-written `pre_image`), so each row contributes 9
 ;; placeholders. Chunk at 3000 rows (27000 params) to stay under SQLite's
-;; SQLITE_MAX_VARIABLE_NUMBER (32766). (The general `bulk-chunk-size` of
+;; SQLITE_MAX_VARIABLE_NUMBER (32766), the lower of the two backends'
+;; parameter ceilings. (The general `bulk-chunk-size` of
 ;; 4000 is sized for ~7-column rows; it is also defined later in the file.)
 (def ^:private audit-bulk-chunk-size 3000)
 
@@ -990,7 +1041,9 @@
                            attrs))}))
 
 ;; SQLite-jdbc 3.50.x ships SQLite >= 3.46, which sets
-;; SQLITE_MAX_VARIABLE_NUMBER = 32766. Multi-row INSERTs and IN-list
+;; SQLITE_MAX_VARIABLE_NUMBER = 32766, the lower of the two backends'
+;; ceilings (Postgres allows 65535 parameters per statement), so sizing
+;; for SQLite covers both. Multi-row INSERTs and IN-list
 ;; SELECTs build one `?` per parameter, so any helper that takes an
 ;; arbitrarily-sized `ids` collection or `rows` collection has to
 ;; chunk to stay under that ceiling. We target ~4000 rows per chunk:

@@ -30,9 +30,11 @@ dist-artifacts/
 /plaid-core/resources/
 /plaid-core/services/
 # keep DB migrations tracked (schema lives here — must ship)
+# one directory per storage backend; both ship in the jar
 !/plaid-core/resources/
 /plaid-core/resources/*
 !/plaid-core/resources/migrations/
+!/plaid-core/resources/migrations-postgres/
 # keep the hand-authored TOML config template + dev overlay tracked (they
 # ship in the jar and are the source of operator-facing defaults)
 !/plaid-core/resources/config.toml

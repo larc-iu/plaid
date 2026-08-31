@@ -125,21 +125,31 @@
 
 ;; writes --------------------------------------------------------------------------
 
-(defn- account-taken-violation?
-  "True iff `e` (or any cause in its chain) is the SQLite uniqueness
-  violation for an account that already exists. Two columns can report it
-  and both mean the same thing, because a row always inserts `username`
-  equal to `id`: the PK index on `users.id` and the UNIQUE index on
-  `users.username`, whichever SQLite happens to check first.
+(def ^:private account-taken-messages
+  "Message fragments that identify a uniqueness violation on the `users`
+  table's identity: the PK on `users.id` and the UNIQUE index on
+  `users.username`. Both mean the same thing, because a row always inserts
+  `username` equal to `id`; which one the engine reports is up to it.
 
-  NARROW on purpose: a CHECK violation on `is_admin IN (0,1)` would also
-  raise SQLState 23000 with `SQLITE_CONSTRAINT` in the message, but that is
-  NOT 'account taken' — it's a real server bug that must surface as a 500
-  with its original message, not be silently re-projected to 409. We match
-  on the SQLite message tail because it's the cleanest portable
-  distinguisher across sqlite-jdbc versions; the extended result code
-  SQLITE_CONSTRAINT_UNIQUE (2067) is driver-specific and not exposed
-  uniformly.
+  NARROW on purpose: a CHECK violation on `is_admin IN (0,1)` is also a
+  constraint violation, but it is NOT 'account taken'. It is a real server
+  bug that must surface as a 500 with its original message, not be silently
+  re-projected to 409. So this matches the specific index names rather than
+  SQLState 23xxx, which covers every constraint on the table.
+
+  Two spellings because two backends: SQLite names the columns, Postgres
+  names the indexes (`<table>_pkey`, `<table>_<column>_key`). Matching both
+  unconditionally is simpler than asking which backend we are on, and stays
+  exactly as narrow either way, since no other constraint in the schema produces
+  any of these four strings."
+  ["UNIQUE constraint failed: users.username"    ; SQLite
+   "UNIQUE constraint failed: users.id"          ; SQLite
+   "unique constraint \"users_pkey\""            ; Postgres, users.id
+   "unique constraint \"users_username_key\""])  ; Postgres, users.username
+
+(defn- account-taken-violation?
+  "True iff `e` (or any cause in its chain) is the uniqueness violation for
+  an account that already exists. See `account-taken-messages`.
 
   Walks the cause chain because next.jdbc may wrap the driver
   exception."
@@ -150,8 +160,7 @@
       (instance? SQLException t)
       (let [^SQLException sqle t
             msg (or (.getMessage sqle) "")]
-        (or (.contains msg "UNIQUE constraint failed: users.username")
-            (.contains msg "UNIQUE constraint failed: users.id")
+        (or (boolean (some #(.contains msg ^String %) account-taken-messages))
             (recur (.getCause t))))
       :else (recur (.getCause t)))))
 
@@ -220,7 +229,8 @@
   message — important for diagnostics.
 
   `username` is written equal to `id` and never read again: it survives only
-  as a UNIQUE-indexed column SQLite cannot drop without a full table rebuild.
+  as a UNIQUE-indexed column SQLite could not drop without a full table
+  rebuild (and which the Postgres baseline carries for parity).
   See the user-display-name migration."
   ([tx id is-admin password] (insert-user-row! tx id is-admin password nil))
   ([tx id is-admin password display-name]

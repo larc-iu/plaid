@@ -22,6 +22,7 @@
   startup hook `ensure-converted!` (wired in plaid.server.sql). Use `detect`
   for a read-only pre-flight."
   (:require [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.text :as text]
             [plaid.util.codepoint :as cp]
@@ -54,7 +55,8 @@
   non-ASCII bodies (a cheap superset — any astral body is necessarily multibyte
   UTF-8) so the JVM only loads candidate rows, then confirms astral in-JVM."
   [db]
-  (->> (psc/q db ["SELECT id, body FROM texts WHERE length(body) <> length(CAST(body AS BLOB))"])
+  (->> (psc/q db [(str "SELECT id, body FROM texts WHERE "
+                       (d/non-ascii-text-predicate "body"))])
        (filter #(astral? (:body %)))
        (mapv :id)))
 

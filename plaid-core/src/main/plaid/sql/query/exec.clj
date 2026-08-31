@@ -26,6 +26,7 @@
   (:require [next.jdbc :as jdbc]
             [plaid.query.ast :as ast]
             [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d]
             [plaid.sql.query.compile :as qc]
             [plaid.sql.query.resolve :as qr]
             [plaid.sql.span :as span]
@@ -130,15 +131,42 @@
 
 (def ^:dynamic *query-timeout-ms*
   "Wall-clock ceiling for a single query's SQL execution. A query past this is
-  aborted (SQLite `interrupt()`) and reported as a 408. SQLite ignores JDBC
-  `setQueryTimeout` for CPU-bound work, so we use a watchdog + connection
-  interrupt, which IS reliable. Dynamic so tests/operators can rebind it."
+  aborted and reported as a 408. Dynamic so tests/operators can rebind it."
   30000)
 
-(defn- run-bounded
+(defn- run-bounded-postgres
+  "Postgres bounds the query itself: `statement_timeout` aborts the running
+  statement server-side and raises SQLState 57014 (query_canceled), which we
+  translate to the same 408 the SQLite watchdog produces. Nothing to interrupt
+  from this side. Unlike the SQLite path the regex runs in the SERVER, so
+  there is no runaway Java `Pattern` on our thread to kill, and no REGEXP UDF
+  to register (Postgres has native `~`/`~*`).
+
+  `SET LOCAL` inside a read-only transaction, NOT a plain `SET` with a reset
+  afterwards: the setting reverts when the transaction ends, so there is no
+  path (a timeout firing on the reset statement itself, an exception between
+  the two) that returns a connection to the pool still carrying a tiny
+  statement_timeout and silently capping unrelated work."
+  [db f]
+  (with-open [conn (jdbc/get-connection db)]
+    (jdbc/with-transaction [tx conn {:read-only true}]
+      (jdbc/execute-one! tx [(str "SET LOCAL statement_timeout = " (long *query-timeout-ms*))])
+      (try
+        (f tx)
+        (catch java.sql.SQLException e
+          (if (= "57014" (.getSQLState e))
+            (throw (ex-info (str "Query exceeded the " (quot *query-timeout-ms* 1000)
+                                 "s time limit. Narrow it with more selective clauses or a tighter :scope.")
+                            {:code 408 :query-error/stage :exec}))
+            (throw e)))))))
+
+(defn- run-bounded-sqlite
   "Run `(f conn)` on a dedicated pooled connection, aborting via SQLite's
   `interrupt()` if it overruns `query-timeout-ms`. Returns `(f conn)`'s value, or
-  throws a 408 `ex-info` on timeout. Any other SQL error propagates as its cause."
+  throws a 408 `ex-info` on timeout. Any other SQL error propagates as its cause.
+
+  SQLite ignores JDBC `setQueryTimeout` for CPU-bound work, so we use a
+  watchdog + connection interrupt, which IS reliable."
   [db f]
   (with-open [conn (jdbc/get-connection db)]
     (let [sqlite (.unwrap conn SQLiteConnection)
@@ -168,6 +196,14 @@
                               {:code 408 :query-error/stage :exec}))
               (throw cause))))
         (finally (future-cancel watchdog))))))
+
+(defn- run-bounded
+  "Run `(f conn)` on a dedicated pooled connection under the query time limit,
+  by whichever mechanism the backend supports."
+  [db f]
+  (if (d/postgres?)
+    (run-bounded-postgres db f)
+    (run-bounded-sqlite db f)))
 
 (defn- find-cols
   "Column names for the result envelope: `:find` var names without the `?`."
@@ -219,12 +255,24 @@
                        [(if (= op :count) :%count.* [op col]) (keyword (str "__c_" j))])
                      (:aggs plan))
         read-kws (into (vec group-cols) (map second agg-selects))
+        ;; Per-column result coercion, so an aggregate reads identically on both
+        ;; backends. `d/normalize-number` folds Postgres's BigDecimal `numeric`
+        ;; to Long or Double by value; :avg additionally pins Double, because
+        ;; SQLite's AVG is always REAL while Postgres's AVG of integers is an
+        ;; exact `numeric` that would otherwise come back as a Long. Group keys
+        ;; pass through untouched.
+        normalizers (into (vec (repeat (count group-cols) identity))
+                          (map (fn [{:keys [op]}]
+                                 (if (= op :avg)
+                                   #(some-> % d/normalize-number double)
+                                   d/normalize-number)))
+                          (:aggs plan))
         labels (into (vec (:group-labels plan)) (map :label (:aggs plan)))
         hq (cond-> {:select (into (vec group-cols) agg-selects)
                     :from [[inner :_agg]]
                     :limit limit}
              (seq group-cols) (assoc :group-by (vec group-cols)))]
-    {:hq hq :read-kws read-kws :labels labels}))
+    {:hq hq :read-kws read-kws :labels labels :normalizers normalizers}))
 
 (defn- hydrate
   "Replace each id cell in `id-results` with its full REST-shape entity map.
@@ -264,13 +312,13 @@
       (ast/aggregate? head)
       (let [plan (qc/aggregate-plan (first hqs))
             lim (min (or (:limit head) agg-group-cap) agg-group-cap)
-            {:keys [hq read-kws labels]} (aggregate-query hqs plan (inc lim))
+            {:keys [hq read-kws labels normalizers]} (aggregate-query hqs plan (inc lim))
             rows (run-bounded db (fn [conn] (psc/q conn hq)))
             truncated? (> (count rows) lim)
             rows (vec (take lim rows))]
         {:return :aggregate
          :columns labels
-         :results (mapv (fn [r] (mapv #(get r %) read-kws)) rows)
+         :results (mapv (fn [r] (mapv (fn [k f] (f (get r k))) read-kws normalizers)) rows)
          :count (count rows)
          :truncated truncated?})
 

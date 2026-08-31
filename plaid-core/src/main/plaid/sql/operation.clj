@@ -13,6 +13,7 @@
   serializes concurrent batches naturally."
   (:require [clojure.string]
             [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d]
             [plaid.server.events :as events]
             [plaid.server.locks :as locks]
             [taoensso.timbre :as log])
@@ -443,8 +444,9 @@
         {:success false
          :error (if (>= code 500) "Internal error" (ex-message e))
          :code code}))
-    ;; SQLite busy / locked → 503 so clients see a retry-friendly signal
-    ;; (instead of a generic 500 that looks like a server bug). Fires
+    ;; A retryable write conflict → 503 so clients see a retry-friendly
+    ;; signal (instead of a generic 500 that looks like a server bug).
+    ;; On SQLite this fires
     ;; only after busy_timeout has elapsed (~5s of contention) — at
     ;; that point the write genuinely couldn't acquire the lock. We
     ;; check both the result code (SQLITE_BUSY = 5, SQLITE_LOCKED = 6)
@@ -455,8 +457,8 @@
       ;; Walk the cause/suppressed chain (not just the top exception) so a
       ;; busy masked by a "cannot rollback - no transaction is active"
       ;; rollback failure is still surfaced as a retryable 503 instead of
-      ;; an opaque 500. See `psc/sqlite-busy?`.
-      (if (psc/sqlite-busy? e)
+      ;; an opaque 500. See `d/retryable-conflict?`.
+      (if (d/retryable-conflict? e)
         (do
           (log/warn e "Database busy/locked after busy_timeout:" (ex-message e))
           {:success false :error "Database busy, please retry" :code 503})
@@ -471,7 +473,7 @@
     (catch Exception e
       ;; A non-SQLException can still WRAP a busy (e.g. a rollback-failure
       ;; wrapper) — check the chain before falling back to 500.
-      (if (psc/sqlite-busy? e)
+      (if (d/retryable-conflict? e)
         (do
           (log/warn e "Database busy/locked after busy_timeout:" (ex-message e))
           {:success false :error "Database busy, please retry" :code 503})

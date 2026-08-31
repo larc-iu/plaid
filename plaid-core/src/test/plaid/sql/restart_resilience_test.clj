@@ -10,6 +10,7 @@
   available too; we boot both with a one-shot in-memory config map
   pointing at our test DB path."
   (:require [clojure.test :refer :all]
+            [plaid.fixtures :refer [sqlite-only]]
             [migratus.core :as migratus]
             [mount.core :as mount]
             [next.jdbc :as jdbc]
@@ -20,6 +21,8 @@
             [plaid.sql.project :as project]
             [plaid.sql.user :as user])
   (:import (java.io File)))
+
+(use-fixtures :once sqlite-only)
 
 (defn- temp-db-path []
   (let [dir (File. (System/getProperty "java.io.tmpdir")

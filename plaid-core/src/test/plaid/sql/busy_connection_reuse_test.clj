@@ -14,10 +14,14 @@
   independent failure for writes that are already durable. `psc/heal-autocommit!`
   is what keeps that from happening; these tests pin both halves of it."
   (:require [clojure.test :refer :all]
+            [plaid.fixtures :refer [sqlite-only]]
             [next.jdbc :as jdbc]
-            [plaid.sql.common :as psc])
+            [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d])
   (:import (java.io File)
            (java.sql DriverManager)))
+
+(use-fixtures :once sqlite-only)
 
 (defn- temp-db-path []
   (let [dir (File. (System/getProperty "java.io.tmpdir")
@@ -43,7 +47,7 @@
         ;; Pool of one, so the connection the blocked write poisons is
         ;; necessarily the one every later write draws. A short busy_timeout
         ;; keeps the test fast; the mechanism is timeout-independent.
-        ds (psc/build-datasource db-path {:busy-timeout-ms 300 :max-pool-size 1})]
+        ds (psc/build-datasource {:backend :sqlite :main-db-path db-path} {:busy-timeout-ms 300 :max-pool-size 1})]
     (try
       (with-open [c (.getConnection ds)]
         (jdbc/execute! c ["create table t (id integer primary key, v text)"]))
@@ -55,7 +59,7 @@
           (.execute "INSERT INTO t (v) VALUES ('blocker')"))
         (testing "a write that can't get the lock fails, and fails AS a busy"
           (let [e (is (thrown? Exception (write! ds "blocked")))]
-            (is (psc/sqlite-busy? e)
+            (is (d/retryable-conflict? e)
                 "must stay recognizable as contention so the REST layer says 503, not 500")))
         (testing "the blocked write left nothing behind"
           ;; Read on the raw connection: it owns the uncommitted blocker row.
@@ -83,7 +87,7 @@
 
 (deftest heal-autocommit-leaves-a-healthy-connection-alone
   (let [db-path (temp-db-path)
-        ds (psc/build-datasource db-path {:max-pool-size 1})]
+        ds (psc/build-datasource {:backend :sqlite :main-db-path db-path} {:max-pool-size 1})]
     (try
       (with-open [c (.getConnection ds)]
         (jdbc/execute! c ["create table t (id integer primary key, v text)"])

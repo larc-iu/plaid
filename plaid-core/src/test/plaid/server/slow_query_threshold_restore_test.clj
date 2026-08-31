@@ -12,11 +12,14 @@
   a passing test wouldn't actually distinguish 'restore worked' from
   'install was a no-op'."
   (:require [clojure.test :refer :all]
+            [plaid.fixtures :refer [sqlite-only]]
             [mount.core :as mount]
             [plaid.server.config :as scfg]
             [plaid.server.sql :as ssql]
             [plaid.sql.common :as psc])
   (:import (java.io File)))
+
+(use-fixtures :once sqlite-only)
 
 (defn- temp-db-path []
   (let [dir (File. (System/getProperty "java.io.tmpdir")

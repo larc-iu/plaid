@@ -1,25 +1,33 @@
 (ns plaid.server.sql
-  "Mount state for the SQL datasource. Replaces plaid.server.xtdb.
-  Starts a HikariCP pool around SQLite, runs Migratus migrations, and
-  prompts to create an admin user if none exists."
+  "Mount state for the SQL datasource. Starts a HikariCP pool around the
+  configured backend (SQLite by default, Postgres when `[database] backend =
+  \"postgres\"`), runs Migratus migrations, and prompts to create an admin
+  user if none exists.
+
+  Three things here are SQLite-only and no-op on Postgres: the migration
+  directory (see `plaid.sql.dialect/migration-dir`), the single-instance
+  file lock, and the shutdown WAL checkpoint. Each says why at its own
+  definition."
   (:require [migratus.core :as migratus]
             [mount.core :refer [defstate]]
             [plaid.migrate.codepoint-offsets :as codepoint-offsets]
             [plaid.server.config :refer [config]]
             [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d]
             [plaid.sql.user :as pxu]
             [taoensso.timbre :as log]))
 
 (defn migratus-config
-  "Build a Migratus config map for the given DataSource."
+  "Build a Migratus config map for the given DataSource. The migration
+  directory is per-backend. See `plaid.sql.dialect/migration-dir`."
   [datasource]
   {:store :database
-   :migration-dir "migrations"
+   :migration-dir (d/migration-dir)
    :migration-table-name "schema_migrations"
    :db {:datasource datasource}})
 
 (defn- run-migrations! [datasource]
-  (log/info "Running Migratus migrations...")
+  (log/info (str "Running Migratus migrations from " (d/migration-dir) " ..."))
   (migratus/migrate (migratus-config datasource))
   (log/info "Migrations complete."))
 
@@ -70,7 +78,9 @@
 (defn- checkpoint-wal!
   "Run `PRAGMA wal_checkpoint(TRUNCATE)` so the WAL is flushed into the
    main DB file before the pool closes. Without this the `.db-wal` /
-   `.db-shm` sidecars can linger non-empty after shutdown."
+   `.db-shm` sidecars can linger non-empty after shutdown.
+
+   SQLite only: Postgres owns its own WAL and checkpoints it itself."
   [datasource]
   (try
     (with-open [conn (.getConnection datasource)
@@ -110,13 +120,19 @@
   instead.
 
   Returns {:channel :lock :file} on success; nil (no-op) for in-memory
-  databases (tests). Throws a readable operator error when the lock is
+  databases (tests) and for Postgres, where there is no local file to
+  lock. A Postgres deployment that wants this guarantee has the database
+  itself to enforce it, and the in-memory divergence the lock guards
+  against (document locks, the SSE and service registries) is a property
+  of running two app processes, not of the storage engine.
+
+  Throws a readable operator error when the lock is
   held. The lock file is deliberately never deleted — deleting after
   release races a successor's acquire (the successor can lock the
   doomed inode) — it just holds the PID of the current/most-recent
   holder for diagnostics."
   [db-path]
-  (when (and (string? db-path) (not= "" db-path))
+  (when (and (d/sqlite?) (string? db-path) (not= "" db-path))
     (let [lock-file (java.io.File. (str db-path ".lock"))
           _ (some-> (.getParentFile lock-file) (.mkdirs))
           channel (.getChannel (java.io.RandomAccessFile. lock-file "rw"))
@@ -164,6 +180,12 @@
 
 (defstate datasource
   :start (let [cfg (::config config)
+               backend (or (:backend cfg) :sqlite)
+               ;; Pin the dialect before anything else reads it: the instance
+               ;; lock below asks whether we are on SQLite, and it runs before
+               ;; build-datasource (which also sets it, for the test fixtures
+               ;; that build a datasource without going through this state).
+               _ (d/set-dialect! backend)
                db-path (:main-db-path cfg)
                ;; Refuse to double-run against the same SQLite file —
                ;; see acquire-instance-lock!. Guarded so a re-entrant
@@ -193,7 +215,8 @@
                                    (var-get #'psc/*slow-query-threshold-ms*))
                _ (alter-var-root #'psc/*slow-query-threshold-ms*
                                  (constantly threshold-ms))
-               ds (psc/build-datasource db-path pool-cfg)]
+               ds (psc/build-datasource (assoc cfg :backend backend) pool-cfg)]
+           (log/info (str "Storage backend: " (d/backend-name)))
            (run-migrations! ds)
            (when (and (empty? (pxu/get-all ds))
                       (not (System/getenv "SKIP_ACCOUNT_CREATION_PROMPT")))
@@ -205,7 +228,7 @@
            ds)
   :stop (do
           (when datasource
-            (checkpoint-wal! datasource)
+            (when (d/sqlite?) (checkpoint-wal! datasource))
             (.close datasource))
           (release-instance-lock!)
           ;; Symmetric restore of the slow-query threshold root captured

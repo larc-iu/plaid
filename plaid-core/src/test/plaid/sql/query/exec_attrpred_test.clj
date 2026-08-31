@@ -6,6 +6,7 @@
   fork). Plus the new-op validation 400s, a ReDoS 408, and cross-project ACL
   parity (the centerpiece)."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [plaid.fixtures :as fixtures]
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
                                     db admin-request]]
@@ -220,7 +221,10 @@
         text (id (h/create-text admin-request txtl doc "x"))
         t0   (id (h/create-token admin-request tokl text 0 1))]
     (h/create-span admin-request sl [t0] (apply str (repeat 32 "a")))
-    (testing "a `~` catastrophic-backtracking pattern is aborted by the watchdog"
+    (testing "a `~` catastrophic-backtracking pattern is bounded, not hung"
+      ;; Same split as plaid.sql.query.exec-regex-test/regex-redos-is-aborted.
+      ;; See the long comment there for why the two backends reach the same
+      ;; invariant by different routes.
       (binding [qe/*query-timeout-ms* 1000]
         (let [start (System/nanoTime)
               code  (try (qe/run db "admin@example.com"
@@ -229,7 +233,9 @@
                          nil
                          (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))
               ms    (/ (- (System/nanoTime) start) 1e6)]
-          (is (= 408 code) "must abort with a 408 timeout")
+          (if (fixtures/postgres-test-run?)
+            (is (nil? code) "Postgres's regex engine does not backtrack catastrophically here")
+            (is (= 408 code) "must abort with a 408 timeout"))
           (is (< ms 20000) (str "must not hang (took " (long ms) "ms)")))))))
 
 ;; ---------------------------------------------------------------------------

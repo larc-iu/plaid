@@ -1,6 +1,13 @@
 (ns plaid.server.backup
   "Nightly SQLite backups.
 
+   SQLite ONLY. The whole mechanism is `VACUUM INTO`, which has no Postgres
+   equivalent we could honestly stand behind. A Postgres deployment's backups
+   belong to whoever runs the server (pg_dump, WAL archiving, a managed
+   provider's snapshots), and shipping a half-measure that silently produced
+   an incomplete dump would be worse than shipping nothing. The scheduler
+   declines to start on Postgres and says so once, at boot.
+
    A single daemon thread that, once a day at a configured wall-clock time,
    writes a consistent, compacted snapshot of the database via `VACUUM INTO`
    (WAL-safe with the server running — it only reads the source DB), zips it
@@ -17,6 +24,7 @@
             [next.jdbc :as jdbc]
             [plaid.server.config :refer [config]]
             [plaid.server.sql :refer [datasource]]
+            [plaid.sql.dialect :as d]
             [taoensso.timbre :as log])
   (:import [java.io File]
            [java.nio.file AtomicMoveNotSupportedException CopyOption Files StandardCopyOption]
@@ -163,8 +171,18 @@
 
 (defstate backup-scheduler
   :start (let [{:keys [enabled? directory retention time]} (backup-config)]
-           (if-not enabled?
+           (cond
+             (d/postgres?)
+             (do (log/info (str "Nightly database backup not started: it is implemented with "
+                                "SQLite's VACUUM INTO and has no Postgres equivalent. Back this "
+                                "database up with your Postgres tooling (pg_dump, WAL archiving, "
+                                "or your provider's snapshots)."))
+                 nil)
+
+             (not enabled?)
              (do (log/info "Nightly database backup disabled ([backup] enabled = false).") nil)
+
+             :else
              (let [exec (Executors/newSingleThreadScheduledExecutor
                          (reify ThreadFactory
                            (newThread [_ r]

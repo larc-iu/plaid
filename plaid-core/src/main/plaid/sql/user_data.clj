@@ -39,8 +39,15 @@
                   :from :user_data
                   :where (cond-> [:and [:= :user_id user-id]]
                            ;; substr, not LIKE: keys routinely contain `_`,
-                           ;; which LIKE would treat as a wildcard.
-                           (seq prefix) (conj [:= [:substr :key 1 (count prefix)] prefix]))
+                           ;; which LIKE would treat as a wildcard. The two
+                           ;; offsets are INLINED, not bound: a bound Clojure
+                           ;; long arrives at Postgres as `bigint`, and there is
+                           ;; no `substr(text, bigint, bigint)`, so the literals
+                           ;; type-resolve to `integer` and pick the real one.
+                           (seq prefix) (conj [:= [:substr :key
+                                                   [:inline 1]
+                                                   [:inline (count prefix)]]
+                                               prefix]))
                   :order-by [:key]})
        (mapv #(row->entry % include-values?))))
 

@@ -9,6 +9,7 @@
             [clojure.string]
             [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.token-layer :as token-layer]
@@ -99,16 +100,15 @@
 ;; to fix. The result map is intentionally shape-identical to the old
 ;; recursive walker — the REST consumers depend on the exact key set.
 ;;
-;; SQLite-specific note: span/vocab-link token-id arrays are aggregated
-;; with `json_group_array(token_id ORDER BY order_idx)` then decoded
-;; Clojure-side. Postgres would use `json_agg(token_id ORDER BY
-;; order_idx)` (or `array_agg(...)`); portability is deferred for
-;; this task.
+;; span/vocab-link token-id arrays are aggregated in SQL into a JSON array
+;; and decoded Clojure-side. The aggregate spelling differs per backend
+;; (`json_group_array` vs `json_agg`) and lives in
+;; `plaid.sql.dialect/ordered-id-array-sql`.
 ;; ============================================================
 
 (defn- decode-token-id-array
-  "Parse the JSON array string produced by `json_group_array(token_id ORDER BY ...)`.
-  SQLite returns the raw JSON string; we parse to a vector. The
+  "Parse the JSON array string produced by `d/ordered-id-array-sql`.
+  Both backends hand back a raw JSON string, which we parse to a vector. The
   values inside are TEXT-encoded UUIDs (this layer pre-stores UUIDs
   as TEXT — see plaid.sql.common/coerce-id-cols); coerce each back
   to java.util.UUID to match the row-shape produced by the
@@ -165,7 +165,7 @@
 
   Implementation: ~11 batched queries (vs the previous walker's
   O(layers × kinds + rows) round trips). Token-id arrays for spans
-  and vocab-links are aggregated via SQLite `json_group_array` then
+  and vocab-links are aggregated into a JSON array in SQL then
   parsed Clojure-side. The layer tree is built in-Clojure from flat
   rows grouped by parent-id.
 
@@ -244,11 +244,8 @@
                                              [:id :asc]]}))
           ;; --- 4. All spans + their ordered token-id arrays, one query.
           ;; LEFT JOIN + FILTER keeps spans with no span_tokens rows
-          ;; (json_group_array of zero rows would be the literal "[null]"
-          ;; without the FILTER). Postgres would write
-          ;;   array_agg(st.token_id ORDER BY st.order_idx)
-          ;;     FILTER (WHERE st.token_id IS NOT NULL)
-          ;; (or json_agg(...)). ---
+          ;; (the aggregate over zero rows would be the literal "[null]"
+          ;; without the FILTER). See d/ordered-id-array-sql. ---
           ;; ORDER BY s.id: deterministic ordering so the OLTP↔history
           ;; parity test doesn't rely on coincidental row order matching
           ;; across SQLite and XTDB v2 (neither guarantees one without
@@ -260,10 +257,9 @@
                                      (str " AND s.span_layer_id IN ("
                                           (clojure.string/join ", " (repeat (count span-sl-ids) "?"))
                                           ")"))]
-                        (psc/q db (into [(str "SELECT s.id, s.span_layer_id, s.document_id, s.value,
-                                       json_group_array(st.token_id ORDER BY st.order_idx)
-                                         FILTER (WHERE st.token_id IS NOT NULL)
-                                         AS token_ids
+                        (psc/q db (into [(str "SELECT s.id, s.span_layer_id, s.document_id, s.value, "
+                                              (d/ordered-id-array-sql "st.token_id" "st.order_idx")
+                                              " AS token_ids
                                   FROM spans s
                                   LEFT JOIN span_tokens st ON st.span_id = s.id
                                   WHERE s.document_id = ?" in-sql "
@@ -281,20 +277,19 @@
                                               named (conj [:in :relation_layer_id relation-rl-ids]))
                                      :order-by [:id]}))
           ;; --- 6. Vocab links scoped to this doc + their token arrays,
-          ;; one query. Same Postgres-shape note as above. ---
+          ;; one query. Same aggregate shape as above. ---
           ;; Vocab links hang off the TOKEN layers their tokens live in, so with
           ;; no fetched tokens there is nothing for them to attach to.
           vl-rows (if (and named (empty? token-rows))
                     []
-                    (psc/q db ["SELECT vl.id, vl.vocab_item_id, vl.document_id,
-                                     json_group_array(vlt.token_id ORDER BY vlt.order_idx)
-                                       FILTER (WHERE vlt.token_id IS NOT NULL)
-                                       AS token_ids
+                    (psc/q db [(str "SELECT vl.id, vl.vocab_item_id, vl.document_id, "
+                                    (d/ordered-id-array-sql "vlt.token_id" "vlt.order_idx")
+                                    " AS token_ids
                                 FROM vocab_links vl
                                 LEFT JOIN vocab_link_tokens vlt
                                        ON vlt.vocab_link_id = vl.id
                                 WHERE vl.document_id = ?
-                                GROUP BY vl.id"
+                                GROUP BY vl.id")
                                id]))
           ;; --- 7. Vocab item / vocab layer / maintainers hydration. ---
           vi-ids (->> vl-rows (map :vocab_item_id) distinct vec)

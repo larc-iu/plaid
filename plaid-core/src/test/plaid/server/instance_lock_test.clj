@@ -6,8 +6,11 @@
   same file raises OverlappingFileLockException, which exercises the
   exact contention branch a second process would hit via a null tryLock."
   (:require [clojure.test :refer :all]
+            [plaid.fixtures :refer [sqlite-only]]
             [plaid.server.sql])
   (:import (java.nio.file Files)))
+
+(use-fixtures :once sqlite-only)
 
 (def ^:private acquire! #'plaid.server.sql/acquire-instance-lock!)
 

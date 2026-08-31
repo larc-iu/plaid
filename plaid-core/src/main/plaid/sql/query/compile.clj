@@ -25,6 +25,7 @@
             [clojure.string :as str]
             [plaid.query.ast :as ast]
             [plaid.sql.common :as psc]
+            [plaid.sql.dialect :as d]
             [plaid.sql.query.resolve :as qr]))
 
 (def ^:private entity-table
@@ -126,17 +127,12 @@
     [:= col (enc v)]))
 
 (defn- regex-pred
-  "Portable case-(in)sensitive regex match of `col` against `pattern`.
-  *** Dialect seam *** — the ONE place a regex predicate is emitted:
-    SQLite:   REGEXP(pattern, col) — a UDF registered per query connection in
-              exec.clj (Java Pattern under the hood). Case-insensitivity is an
-              inline `(?iu)` on the pattern — `u` adds UNICODE_CASE so folding
-              works for non-ASCII letters too (e.g. Cyrillic Ц/ц), not just ASCII.
-    Postgres: would be `col ~ pattern` / `col ~* pattern` — change THIS fn only."
+  "Case-(in)sensitive regex match of `col` against `pattern`. The ONE place a
+  regex predicate is emitted; `plaid.sql.dialect/regex-match` picks the
+  backend's spelling (a Java-Pattern UDF on SQLite, native `~`/`~*` on
+  Postgres) and documents where the two flavors disagree."
   [col pattern case-insensitive?]
-  ;; HoneySQL renders :regexp as the infix `col REGEXP pattern`, which SQLite
-  ;; maps to `regexp(pattern, col)` — exactly our UDF's (pattern, value) arg order.
-  [:regexp col (if case-insensitive? (str "(?iu)" pattern) pattern)])
+  (d/regex-match col pattern case-insensitive?))
 
 (defn- value-pred
   "The predicate for one text-match spec: a regex spec `{:regex .. :flags}` ->
@@ -173,7 +169,7 @@
                       [:= (col em :entity_id) (col a :id)]
                       [:= (col em :key) mk]
                       (value-pred (col em :value) spec psc/write-json
-                                  [:json_extract (col em :value) [:inline "$"]])]}]))
+                                  (d/json-text (col em :value)))]}]))
 
 (defn- bind-scalar!
   "Bind scalar var `v` to column `col-ref` (with literal-encoder `enc`; `json?`
@@ -189,7 +185,7 @@
     ;; begin/end) stores cat. Decode whichever side is JSON-encoded before comparing —
     ;; mirroring resolve-term — else a value<->form join is `"cat" = cat` and silently
     ;; never matches. (value<->value: both decode, still equal.)
-    (let [decode (fn [sql j?] (if j? [:json_extract sql [:inline "$"]] sql))]
+    (let [decode (fn [sql j?] (if j? (d/json-text sql) sql))]
       (add-where! st [:= (decode (:sql bound) (:json? bound)) (decode col-ref json?)]))
     (swap! st assoc-in [:scalar-col v] {:sql col-ref :enc enc :json? json?})))
 
@@ -237,7 +233,7 @@
       (let [surf (token-surface-sql st a)]
         (emit-field! st surf (:value cmap) identity surf false))
       (emit-field! st (col a :value) (:value cmap) psc/write-json
-                   [:json_extract (col a :value) [:inline "$"]] true)))
+                   (d/json-text (col a :value)) true)))
   ;; :form (vocab_items.form) is plain TEXT — regex runs on the column directly.
   (when (contains? cmap :form)
     (emit-field! st (col a :form) (:form cmap) identity (col a :form) false))
@@ -717,16 +713,39 @@
    :doc        {:column :document_id :enc str      :json? false}
    :id         {:column :id          :enc str      :json? false}})
 
-(defn- json-path
-  "A SQLite `$`-path string from verbatim (case-sensitive) key segments. Used as a
-  BOUND parameter to json_extract (never inlined), so user keys can't inject SQL."
-  [segs]
-  (str "$" (apply str (map #(str "." %) segs))))
+(defn- plain-field
+  "A field whose column needs no JSON decoding: one expression serves text
+  matching, ordered comparison and aggregation alike."
+  [sql enc]
+  {:sql sql :enc enc :cmp sql :cmp-enc enc :num sql :json? false})
+
+(defn- json-field
+  "A JSON-encoded column (`:value`, `config.k`, `metadata.k`) in its THREE
+  decodings. See the `json-text` / `json-comparable` / `json-numeric` comment
+  in `plaid.sql.dialect` for why one expression cannot serve all three on
+  Postgres. `wrap` lets the metadata case rebuild its correlated scalar
+  subquery around each decoding. Elsewhere it is `identity`.
+
+  On SQLite all three are the same `json_extract(col, path)`, so this costs
+  nothing there."
+  ([col segs] (json-field col segs identity))
+  ([col segs wrap]
+   {:sql     (wrap (d/json-text col segs))
+    :enc     identity
+    :cmp     (wrap (d/json-comparable col segs))
+    :cmp-enc #(d/encode-comparable psc/write-json %)
+    :num     (wrap (d/json-numeric col segs))
+    :json?   true}))
 
 (defn- field-expr
-  "Resolve a field-ref term to {:sql expr :enc enc}. `ast/field-resolve` interprets
-  the path against the host var's kind; this builds the column / decoded column /
-  config json_extract / correlated metadata scalar-subquery on the var's alias."
+  "Resolve a field-ref term to {:sql expr :enc enc :cmp expr :cmp-enc enc :num expr}.
+  `ast/field-resolve` interprets the path against the host var's kind; this builds
+  the column / decoded column / config JSON extraction / correlated metadata
+  scalar-subquery on the var's alias.
+
+  `:sql`/`:enc` are the TEXT form (regex matching, group keys), `:cmp`/`:cmp-enc`
+  the ordered-comparison form (predicates), `:num` the numeric form (aggregate
+  sources). They differ only on Postgres, and only for JSON-encoded columns."
   [st fr]
   (let [v    (ast/field-var fr)
         kind (get-in @st [:kinds v])
@@ -740,37 +759,40 @@
       (cond
         ;; a token's :value is the surface substring (no column), not a JSON annotation
         (and (= kind :token) (= (:attr res) :value))
-        {:sql (token-surface-sql st a) :enc identity}
+        (plain-field (token-surface-sql st a) identity)
         :else
         (let [{:keys [column enc json?]} (attr->col (:attr res))]
-          {:sql (if json? [:json_extract (col a column) [:inline "$"]] (col a column)) :enc enc}))
+          (if json?
+            (json-field (col a column) nil)
+            (plain-field (col a column) enc))))
       :ref
       ;; a FK reference column: ?s.layer -> the kind-aware *_layer_id; a relation's
       ;; ?r.source/?r.target -> source_span_id/target_span_id. Opaque ids (enc str),
       ;; so `["=" "?s.layer" "?sl"]` joins to the layer var's id exactly like {:layer ?sl}.
-      {:sql (col a (case (:attr res)
-                     :layer  (layer-fk kind)
-                     :source :source_span_id
-                     :target :target_span_id))
-       :enc str}
+      (plain-field (col a (case (:attr res)
+                            :layer  (layer-fk kind)
+                            :source :source_span_id
+                            :target :target_span_id))
+                   str)
       :config
-      {:sql [:json_extract (col a :config) (json-path (:subpath res))] :enc identity}
+      (json-field (col a :config) (:subpath res))
       :metadata
       (let [em (next-alias! st "emf")
             et (or (kind->meta-type kind) (err-500! (str "kind " kind " has no metadata entity-type") {:kind kind}))]
-        {:sql {:select [[[:json_extract (col em :value) (json-path (:subpath res))] :v]]
-               :from   [[:entity_metadata em]]
-               :where  [:and
-                        [:= (col em :entity_type) et]
-                        [:= (col em :entity_id) (col a :id)]
-                        [:= (col em :key) (:key res)]]
-               :limit  1}
-         :enc identity}))))
+        (json-field (col em :value) (:subpath res)
+                    (fn [decoded]
+                      {:select [[decoded :v]]
+                       :from   [[:entity_metadata em]]
+                       :where  [:and
+                                [:= (col em :entity_type) et]
+                                [:= (col em :entity_id) (col a :id)]
+                                [:= (col em :key) (:key res)]]
+                       :limit  1}))))))
 
 (defn- resolve-term
-  "Resolve a predicate term to {:sql expr :enc enc} (a field path -> its column/
-  subquery, a bound var: entity -> its .id, scalar -> its bound column) or
-  {:lit v} (a literal)."
+  "Resolve a predicate term to a decoding map (see `plain-field` / `json-field`):
+  a field path -> its column/subquery, a bound var: entity -> its .id, scalar
+  -> its bound column. A literal resolves to {:lit v} instead."
   [st t]
   (cond
     (ast/field-ref? t) (field-expr st t)
@@ -779,17 +801,34 @@
       (if (= :scalar kind)
         (let [{:keys [sql enc json?]} (or (get-in @st [:scalar-col t])
                                           (err-500! (str "Scalar var " t " used in a predicate was never bound") {:var t}))]
-          ;; a JSON-encoded scalar (:value) is DECODED for comparison, so e.g.
-          ;; `[< ?v 5]` is a numeric compare, not a lexical one on quoted JSON;
-          ;; the other-side literal is then taken raw (enc identity).
-          (if json?
-            {:sql [:json_extract sql [:inline "$"]] :enc identity}
-            {:sql sql :enc enc}))
-        {:sql (col (or (get-in @st [:var->alias t])
-                       (err-500! (str "Entity var " t " in a predicate was never bound") {:var t}))
-                   :id)
-         :enc str}))
+          (if json? (json-field sql nil) (plain-field sql enc)))
+        (plain-field (col (or (get-in @st [:var->alias t])
+                              (err-500! (str "Entity var " t " in a predicate was never bound") {:var t}))
+                          :id)
+                     str)))
     :else {:lit t}))
+
+(defn- comparison-encoding
+  "Which of a term's two decodings both sides of a comparison should use.
+
+  `:cmp` is the ordered-comparison decoding. On Postgres it is `jsonb`, so that
+  `[\"<\" ?v 5]` on a JSON-encoded :value is a NUMERIC compare rather than a
+  lexical one on the quoted JSON. It is the right choice when both sides agree
+  on whether they are JSON: two jsonb operands, or two plain columns (where the
+  two decodings are the same expression anyway), or an expression against a
+  literal (which `:cmp-enc` encodes to match).
+
+  It is the WRONG choice for a MIXED comparison (a span's JSON `:value`
+  against a vocab item's plain `:form`, say), because Postgres has no
+  `jsonb = text` operator and would fail the query outright. There both sides
+  fall back to `:sql`, the TEXT decoding, which is what the SQLite path
+  compares in that case too."
+  [ta tb]
+  (let [expr? (fn [t] (not (contains? t :lit)))]
+    (if (and (expr? ta) (expr? tb)
+             (not= (boolean (:json? ta)) (boolean (:json? tb))))
+      [:sql :enc]
+      [:cmp :cmp-enc])))
 
 (defn- compile-pred!
   "Compile `[op a b]` to a WHERE comparison. A literal is encoded with the OTHER
@@ -799,7 +838,10 @@
   (let [[op a b] clause
         ta (resolve-term st a)
         tb (resolve-term st b)
-        side (fn [t other] (if (contains? t :lit) ((or (:enc other) identity) (:lit t)) (:sql t)))]
+        [sql-k enc-k] (comparison-encoding ta tb)
+        side (fn [t other] (if (contains? t :lit)
+                             ((or (enc-k other) identity) (:lit t))
+                             (sql-k t)))]
     (add-where! st [(pred-honeysql-op op) (side ta tb) (side tb ta)])))
 
 (defn- compile-regex-pred!
@@ -820,8 +862,10 @@
   the constraint-map path's raw-column-vs-JSON-encoded-members `IN`."
   [st clause]
   (let [[_ lhs members] clause
-        {:keys [sql enc]} (resolve-term st lhs)]
-    (add-where! st (atomic-pred sql (vec members) (or enc identity)))))
+        ;; single-sided: the members are literals, so the ordered-comparison
+        ;; decoding always applies (see `comparison-encoding`).
+        {:keys [cmp cmp-enc]} (resolve-term st lhs)]
+    (add-where! st (atomic-pred cmp (vec members) (or cmp-enc identity)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Assemble
@@ -879,23 +923,30 @@
                         (map #(str/replace % #"[^A-Za-z0-9]+" "") (ast/field-path t))))
     (subs (name t) 1)))
 
-(defn- scalar-agg-expr
-  "SQL for an aggregate/group VALUE: a field path -> its (decoded) expression; a
-  scalar var -> its bound column (json_extract-decoded if JSON-encoded, e.g. :value)."
-  [st src]
+(defn- scalar-decoding
+  "Pull one of the three decodings (`:sql` text / `:num` numeric) out of a
+  field-path or bound scalar var."
+  [st src which]
   (if (ast/field-ref? src)
-    (:sql (field-expr st src))
+    (which (field-expr st src))
     (let [{:keys [sql json?]} (or (get-in @st [:scalar-col src])
                                   (err-500! (str "Aggregate/group var " src " was never bound to a column") {:var src}))]
-      (if json? [:json_extract sql [:inline "$"]] sql))))
+      (if json? (which (json-field sql nil)) sql))))
+
+(defn- scalar-agg-expr
+  "SQL for an aggregate SOURCE (sum/avg/min/max). Numeric decoding: these are
+  numeric operations, and on Postgres a JSON column has to commit to one type."
+  [st src]
+  (scalar-decoding st src :num))
 
 (defn- group-expr
-  "SQL for a group key: a field path / scalar var -> its (decoded) value; an
-  entity/layer var -> its id."
+  "SQL for a group key: a field path / scalar var -> its (text-decoded) value; an
+  entity/layer var -> its id. Text, not numeric: a group key is an identity, and
+  the result envelope renders it as-is."
   [st g]
   (cond
     (ast/field-ref? g) (:sql (field-expr st g))
-    (= :scalar (get-in @st [:kinds g])) (scalar-agg-expr st g)
+    (= :scalar (get-in @st [:kinds g])) (scalar-decoding st g :sql)
     :else (col (or (get-in @st [:var->alias g])
                    (err-500! (str "Group var " g " was never bound to a table") {:var g}))
                :id)))

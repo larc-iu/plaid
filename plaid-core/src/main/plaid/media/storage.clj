@@ -2,6 +2,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [plaid.server.config :refer [config]]
+            [plaid.server.paths :as paths]
             [plaid.sql.common :as psc]
             [taoensso.timbre :as log])
   (:import [java.io File]
@@ -26,13 +27,10 @@
   (Tika.))
 
 (defn get-media-dir
-  "Get the media directory path. Co-located with the SQLite file under
-  the parent dir of `:plaid.server.sql/config :main-db-path`."
+  "Get the media directory path: `media/` under the server's data directory
+  (see `plaid.server.paths/data-dir` for how that is resolved)."
   []
-  (let [db-path (-> config :plaid.server.sql/config :main-db-path)
-        parent (or (some-> ^String db-path (java.io.File.) (.getParentFile) (.getPath))
-                   "data")]
-    (str parent File/separator "media")))
+  (str (paths/data-dir) File/separator "media"))
 
 (defn ensure-media-dir!
   "Ensure the media directory exists"
