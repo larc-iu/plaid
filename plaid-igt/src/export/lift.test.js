@@ -155,6 +155,42 @@ describe('buildLiftLexicon', () => {
     expect(dom.querySelector('header fields field').getAttribute('tag')).toBe('Source Note');
   });
 
+  it('groups a field written in several writing systems into one <field>', () => {
+    const dom = parse(
+      build([
+        {
+          id: 'v1',
+          items: [item('i1', 'a', { Comment: 'checked', 'Comment (ru)': 'проверено' })],
+        },
+      ]).lift,
+    );
+    const fields = [...dom.querySelectorAll('sense field')];
+    expect(fields.length).toBe(1);
+    expect(fields[0].getAttribute('type')).toBe('Comment');
+    expect([...fields[0].querySelectorAll('form')].map((f) => f.getAttribute('lang'))).toEqual([
+      'en',
+      'ru',
+    ]);
+  });
+
+  it('tags a single-writing-system field with the language the vocabulary records', () => {
+    const dom = parse(
+      build([
+        {
+          id: 'v1',
+          config: { igt: { fields: { Plural: { lang: 'seh' }, Note: {} } } },
+          items: [item('i1', 'a', { Plural: 'mabvi', Note: 'checked' })],
+        },
+      ]).lift,
+    );
+    const langOf = (type) =>
+      dom.querySelector(`sense field[type="${type}"] form`).getAttribute('lang');
+    // FLEx pins each custom field to one writing system, so "Plural" is
+    // vernacular even though its value is a bare string.
+    expect(langOf('Plural')).toBe('seh');
+    expect(langOf('Note')).toBe('en');
+  });
+
   it('skips bookkeeping keys, empty values and non-scalars', () => {
     const dom = parse(build().lift);
     const types = [...dom.querySelectorAll('sense field')].map((f) => f.getAttribute('type'));

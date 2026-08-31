@@ -29,6 +29,7 @@
 // such guids, so each of its items is an entry of its own.
 
 import { xmlEscape } from './flextext.js';
+import { readVocabFields } from '../domain/igtConfig.js';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 
 export const LIFT_VERSION = '0.13';
@@ -122,7 +123,7 @@ function partitionMetadata(metadata, analysisLang) {
       (base === 'gloss' ? glosses : definitions).push({ lang: ws ?? analysisLang, text, ws });
       continue;
     }
-    fields.push([key, text]);
+    fields.push({ base, ws, text });
   }
   const primaryFirst = (list) =>
     list
@@ -130,6 +131,24 @@ function partitionMetadata(metadata, analysisLang) {
       .sort(([a, ai], [b, bi]) => (a.ws == null ? 0 : 1) - (b.ws == null ? 0 : 1) || ai - bi)
       .map(([v]) => [v.lang, v.text]);
   return { glosses: primaryFirst(glosses), definitions: primaryFirst(definitions), fields };
+}
+
+/**
+ * Custom fields grouped by base name, so "Comment" and "Comment (ru)" become
+ * ONE <field type="Comment"> holding a form per writing system rather than two
+ * fields whose names happen to differ. Each form's language is the key's own
+ * suffix when it has one, else the writing system the vocabulary records for
+ * that field (the FLEx importer stamps it for custom fields, which are
+ * single-writing-system and carry no suffix), else the analysis language.
+ */
+function groupFields(fields, fieldLangs, analysisLang) {
+  const byBase = new Map();
+  for (const { base, ws, text } of fields) {
+    const lang = ws ?? fieldLangs[base] ?? analysisLang;
+    if (!byBase.has(base)) byBase.set(base, []);
+    byBase.get(base).push([lang, text]);
+  }
+  return byBase;
 }
 
 function examplesXml(indent, examples, vern, analysisLang) {
@@ -154,7 +173,8 @@ function examplesXml(indent, examples, vern, analysisLang) {
 function senseXml(indent, item, ctx, index) {
   const meta = item.metadata || {};
   const { glosses, definitions, fields } = partitionMetadata(meta, ctx.analysisLang);
-  for (const [name] of fields) ctx.customNames.add(name);
+  const grouped = groupFields(fields, ctx.fieldLangs, ctx.analysisLang);
+  for (const base of grouped.keys()) ctx.customNames.add(base);
 
   const id = scalar(meta.flexSense) ?? `${ctx.entryId}_${index + 1}`;
   const pos = scalar(meta.pos);
@@ -175,10 +195,10 @@ function senseXml(indent, item, ctx, index) {
   }
   inner.push(...wrap(`${indent}  `, 'definition', multitext(`${indent}    `, definitions)));
   inner.push(...examplesXml(`${indent}  `, meta.examples, ctx.vern, ctx.analysisLang));
-  for (const [name, text] of fields) {
+  for (const [base, values] of grouped) {
     inner.push(
-      `${indent}  <field type="${xmlEscape(name)}">`,
-      ...multitext(`${indent}    `, [[ctx.analysisLang, text]]),
+      `${indent}  <field type="${xmlEscape(base)}">`,
+      ...multitext(`${indent}    `, values),
       `${indent}  </field>`,
     );
   }
@@ -289,7 +309,16 @@ function rangesXml(posValues, analysisLang) {
 export function buildLiftLexicon({ vocabularies = [], options = {}, rangesHref = null }) {
   const vern = options?.langs?.baseline || 'und';
   const analysisLang = options?.langs?.analysis || 'en';
-  const ctx = { vern, analysisLang, posValues: new Set(), customNames: new Set() };
+  // A vocabulary can say which writing system a field is in (config.igt.fields
+  // <name>.lang). Merged across vocabularies: a name shared by two lexicons is
+  // the same field for LIFT's purposes.
+  const fieldLangs = {};
+  for (const vocab of vocabularies) {
+    for (const [name, spec] of Object.entries(readVocabFields(vocab?.config) ?? {})) {
+      if (typeof spec?.lang === 'string' && spec.lang !== '') fieldLangs[name] = spec.lang;
+    }
+  }
+  const ctx = { vern, analysisLang, fieldLangs, posValues: new Set(), customNames: new Set() };
   const warnings = [];
 
   const groups = groupEntries(vocabularies);
