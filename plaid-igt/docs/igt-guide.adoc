@@ -195,7 +195,7 @@ The **Export** button on a document opens a dialog where you choose a preset and
 Currently supported formats include:
 
 * **Plain text**: an aligned, human-readable interlinear rendering.
-* **FLEx interlinear** (`.flextext`): an export in FieldWorks' interlinear XML format.
+* **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped with a note on the order to import them in. Leave the lexicon out to get the `.flextext` on its own.
 * **Native Plaid IGT archive** (`.zip`): a lossless export you can import again later.
 
 Maintainers can save reusable export presets on the project.
