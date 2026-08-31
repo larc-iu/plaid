@@ -290,28 +290,57 @@ export class IgtEditor {
   }
 
   // ---- vocab popover ----
+  // ---- popover plumbing (variant-agnostic) --------------------------------
+  //
+  // The anchoring machinery below (position, re-anchor on scroll, fit after
+  // render, focus return) is generic; only its SELECTORS were vocab-specific.
+  // Rather than rename `.igt-vocab-pop` / `[data-vocab-opener]` — which the
+  // vocab e2e specs select on — every popover root also carries `data-igt-pop`
+  // and every opener also carries `data-pop-opener="<variant>:<id>"`. The
+  // variant is part of the opener key because one word can have both a vocab
+  // opener and a comment badge, and an id alone would re-anchor a comment
+  // popover onto the vocab chip.
+
+  _popEl() {
+    return this.container.querySelector('[data-igt-pop]');
+  }
+
+  _openerEl(key) {
+    return key ? this.container.querySelector(`[data-pop-opener="${key}"]`) : null;
+  }
+
+  // Focus whatever the open popover nominates, once it is in the DOM.
+  // (lit-html `autofocus` is unreliable on nodes inserted by a re-render
+  // rather than initial parse.)
+  _focusPopover() {
+    const el = this.container.querySelector('[data-pop-autofocus]');
+    if (!el) return;
+    try {
+      el.focus();
+    } catch {
+      /* noop */
+    }
+  }
+
+  // How wide each popover variant is, for the placement math. Must match the
+  // width its CSS actually renders at.
+  _popWidth(variant = this._popover?.variant) {
+    return variant === 'comment' ? 320 : 240;
+  }
+
   _openPopover(tokenId, kind, anchorEl) {
-    this._popover = { tokenId, kind };
+    this._popover = { tokenId, kind, variant: 'vocab' };
     this._popoverSearch = '';
     this._popoverActiveIndex = 0;
     this._popoverVocabId = null; // re-default to the linked item's vocab each open
     this._popoverCreateEdit = null; // string while the "+ Create" row is being edited
     clearTimeout(this._createClickTimer);
     this._createClickTimer = null;
-    this._popoverReturnId = tokenId;
-    this._popoverPos = this._computePopoverPos(anchorEl);
+    this._popoverReturnId = `vocab:${tokenId}`;
+    this._popoverPos = this._computePopoverPos(anchorEl, undefined, this._popWidth('vocab'));
     this._ensurePrecedent();
     this._render(true);
-    // Focus the search box now that it's in the DOM (lit-html `autofocus` is
-    // unreliable on nodes inserted by a re-render rather than initial parse).
-    const search = this.container.querySelector('.igt-vocab-pop__search');
-    if (search) {
-      try {
-        search.focus();
-      } catch {
-        /* noop */
-      }
-    }
+    this._focusPopover();
   }
 
   // Move the highlighted popover row. `total` includes the virtual "create" row
@@ -323,7 +352,7 @@ export class IgtEditor {
     this._render(true);
     // lit-html reuses the search node across this render, so focus is retained;
     // keep the active row visible.
-    const active = this.container.querySelector('.igt-vocab-pop .is-active');
+    const active = this._popEl()?.querySelector('.is-active');
     if (active?.scrollIntoView) active.scrollIntoView({ block: 'nearest' });
   }
   // Keep an open popover glued to its opener while the page/grid scrolls or
@@ -335,14 +364,14 @@ export class IgtEditor {
     this._repositionRaf = requestAnimationFrame(() => {
       this._repositionRaf = null;
       if (!this._popover) return;
-      const opener = this.container.querySelector(`[data-vocab-opener="${this._popoverReturnId}"]`);
-      const pos = opener ? this._computePopoverPos(opener) : null;
+      const opener = this._openerEl(this._popoverReturnId);
+      const pos = opener ? this._computePopoverPos(opener, undefined, this._popWidth()) : null;
       if (!pos) {
         this._closePopover();
         return;
       }
       this._popoverPos = pos;
-      const el = this.container.querySelector('.igt-vocab-pop');
+      const el = this._popEl();
       if (el) {
         el.style.left = `${pos.left}px`;
         el.style.top = `${pos.top}px`;
@@ -355,10 +384,10 @@ export class IgtEditor {
   // scroll container can't clip it.
   // `height`: the popover's measured height once rendered (see _fitPopover);
   // before the first paint an estimate is used.
-  _computePopoverPos(anchorEl, height = 280) {
+  _computePopoverPos(anchorEl, height = 280, width = 240) {
     const r = anchorEl?.getBoundingClientRect?.();
     if (!r) return null;
-    const W = 240,
+    const W = width,
       Hest = height,
       pad = 8;
     let left = r.left + r.width / 2 - W / 2;
@@ -388,7 +417,7 @@ export class IgtEditor {
     this._popoverReturnId = null;
     this._render(true);
     if (returnFocus && returnId != null) {
-      const opener = this.container.querySelector(`[data-vocab-opener="${returnId}"]`);
+      const opener = this._openerEl(returnId);
       if (opener) {
         try {
           opener.focus();
@@ -545,10 +574,10 @@ export class IgtEditor {
   // viewport flipped it above the word and let it cover the word itself.
   _fitPopover() {
     if (!this._popover) return;
-    const el = this.container.querySelector('.igt-vocab-pop');
-    const opener = this.container.querySelector(`[data-vocab-opener="${this._popoverReturnId}"]`);
+    const el = this._popEl();
+    const opener = this._openerEl(this._popoverReturnId);
     if (!el || !opener) return;
-    const pos = this._computePopoverPos(opener, el.offsetHeight || undefined);
+    const pos = this._computePopoverPos(opener, el.offsetHeight || undefined, this._popWidth());
     if (!pos || (pos.left === this._popoverPos?.left && pos.top === this._popoverPos?.top)) return;
     this._popoverPos = pos;
     el.style.left = `${pos.left}px`;
@@ -2570,6 +2599,7 @@ export class IgtEditor {
         type="button"
         class="igt-vocab__opener igt-vocab__hint ${stateClass}"
         data-vocab-opener=${id}
+        data-pop-opener=${`vocab:${id}`}
         ?disabled=${!canLink}
         title=${title}
         @click=${openerClick}
@@ -2581,6 +2611,7 @@ export class IgtEditor {
         type="button"
         class="igt-vocab__opener igt-vocab__link"
         data-vocab-opener=${id}
+        data-pop-opener=${`vocab:${id}`}
         title="Link to a lexicon entry"
         @click=${openerClick}
       >
@@ -2864,6 +2895,7 @@ export class IgtEditor {
     return html`
       <div
         class="igt-vocab-pop"
+        data-igt-pop
         style=${posStyle}
         role="dialog"
         aria-label="Link to lexicon"
@@ -2871,6 +2903,7 @@ export class IgtEditor {
       >
         <input
           class="igt-vocab-pop__search"
+          data-pop-autofocus
           placeholder="Search lexicon…"
           aria-label="Search lexicon"
           .value=${live(this._popoverSearch || '')}
