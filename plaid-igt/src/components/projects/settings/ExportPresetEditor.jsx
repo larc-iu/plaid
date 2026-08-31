@@ -10,6 +10,7 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { discoverExportLayers } from '@/export/exportLayers';
 import { readLanguages } from '@/domain/igtConfig';
 import { readExportPresets, writeExportPresets, EXPORT_FORMATS } from '@/export/presets';
+import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { PlainTextOptions } from '@/components/export/PlainTextOptions.jsx';
 import { CldfOptions } from '@/components/export/CldfOptions.jsx';
 import { FlextextOptions } from '@/components/export/FlextextOptions.jsx';
@@ -224,6 +225,23 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
               />
             </label>
           )
+        )}
+      </div>
+
+      <div className="rounded-md border bg-muted/20 p-4">
+        {dirty ? (
+          <p className="text-sm text-muted-foreground">
+            Save this preset to run it. An export always uses the saved settings, not the unsaved
+            ones on screen.
+          </p>
+        ) : (
+          <ExportRunner
+            client={client}
+            project={project}
+            canManage
+            presetId={presetId}
+            showPresetsLink={false}
+          />
         )}
       </div>
     </div>

@@ -159,7 +159,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
           <h2 className="text-lg font-semibold">Export Presets</h2>
           <p className="text-sm text-muted-foreground">
             A preset fixes an export format and which orthographies, fields and options it includes.
-            Export with one above, or from a document's own Export tab.
+            Open one to edit it and to run it.
           </p>
         </div>
         <Button onClick={openCreate}>
