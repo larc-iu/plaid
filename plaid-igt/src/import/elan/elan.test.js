@@ -280,6 +280,65 @@ describe('tier schema', () => {
     expect(validateRoles(nodes, roles)).toEqual([]);
   });
 
+  // Found by running real corpora through the pipeline: the Poio sample's word
+  // tier is a Time_Subdivision, and treating only Symbolic_Subdivision as words
+  // collapsed the whole interlinear hierarchy beneath it to "off".
+  it('takes a Time_Subdivision tier as the words, not as time alignment', () => {
+    const xml = eafXml({
+      types: { u: null, wd: 'Time_Subdivision', ps: 'Symbolic_Association' },
+      tiers: [
+        { id: 'T', type: 'u', anns: [['a1', 'los perros', 0, 1000]] },
+        {
+          id: 'W-Words',
+          type: 'wd',
+          parent: 'T',
+          anns: [
+            ['w1', 'los', 0, 400],
+            ['w2', 'perros', 400, 1000],
+          ],
+        },
+        {
+          id: 'W-POS',
+          type: 'ps',
+          parent: 'W-Words',
+          anns: [
+            ['p1', 'DET', 'w1', null],
+            ['p2', 'NOUN', 'w2', null],
+          ],
+        },
+      ],
+    });
+    const parsed = [readEaf(xml, 'x.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const roles = suggestRoles(nodes);
+    const roleOf = (name) => roles[nodes.find((n) => n.baseName === name).key];
+    expect(roleOf('W-Words')).toBe(ROLES.WORD);
+    expect(roleOf('W-POS')).toBe(ROLES.WORD_FIELD);
+
+    // Time_Subdivision children are ALIGNABLE annotations with no
+    // ANNOTATION_REF, so they are found by time containment, not by reference.
+    const doc = buildElanDocuments(parsed, nodes, roles).documents[0];
+    expect(doc.words.map((w) => doc.body.slice(w.begin, w.end))).toEqual(['los', 'perros']);
+    expect(doc.words.map((w) => w.fields['W-POS'])).toEqual(['DET', 'NOUN']);
+  });
+
+  // Also from real data: the Abui sample's tiers all hold one annotation, so the
+  // annotation count says nothing and picking alphabetically chose `gloss`.
+  it('prefers a transcription-shaped name when root tiers tie', () => {
+    const xml = eafXml({
+      types: { a: null },
+      tiers: [
+        { id: 'gloss', type: 'a', anns: [['g1', 'add gloss here', 0, 500]] },
+        { id: 'transcription', type: 'a', anns: [['t1', 'real text here', 0, 500]] },
+      ],
+    });
+    const parsed = [readEaf(xml, 'x.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const roles = suggestRoles(nodes);
+    expect(roles[nodes.find((n) => n.baseName === 'transcription').key]).toBe(ROLES.UTTERANCE);
+    expect(roles[nodes.find((n) => n.baseName === 'gloss').key]).not.toBe(ROLES.UTTERANCE);
+  });
+
   it('reports an unusable mapping', () => {
     const nodes = tierSchema(readEaf(ANA, 'a.eaf'));
     const roles = suggestRoles(nodes);
@@ -460,6 +519,56 @@ describe('buildElanDocuments', () => {
     const { build } = buildFrom([[xml, 'x.eaf']], { [noteKey]: ROLES.SENTENCE_FIELD });
     expect(build.documents[0].sentences[0].fields).toEqual({ note: 'first' });
     expect(build.documents[0].warnings[0]).toMatch(/kept the first/);
+  });
+});
+
+describe('several tier trees in one file', () => {
+  // A corpus may give each speaker a whole tier tree named by prefix rather than
+  // by @participant (the Poio sample does). Taking only the first would silently
+  // drop a speaker.
+  const twoTrees = () =>
+    eafXml({
+      types: { u: null, ft: 'Symbolic_Association' },
+      tiers: [
+        {
+          id: 'W-Spch',
+          type: 'u',
+          anns: [
+            ['w1', 'primero', 0, 1000],
+            ['w2', 'tercero', 4000, 5000],
+          ],
+        },
+        { id: 'W-ft', type: 'ft', parent: 'W-Spch', anns: [['wf1', 'first', 'w1', null]] },
+        { id: 'K-Spch', type: 'u', anns: [['k1', 'segundo', 2000, 3000]] },
+        { id: 'K-ft', type: 'ft', parent: 'K-Spch', anns: [['kf1', 'second', 'k1', null]] },
+      ],
+    });
+
+  it('takes every root of the same shape and interleaves them by time', () => {
+    const { build } = buildFrom([[twoTrees(), 'x.eaf']]);
+    const doc = build.documents[0];
+    expect(doc.body).toBe('primero\nsegundo\ntercero');
+    expect(doc.sentences.map((s) => s.fields['W-ft'] ?? s.fields['K-ft'])).toEqual([
+      'first',
+      'second',
+      undefined,
+    ]);
+  });
+
+  it('lets two tiers be renamed onto one field, and asks for that layer once', () => {
+    const parsed = [readEaf(twoTrees(), 'x.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const roles = suggestRoles(nodes);
+    const names = Object.fromEntries(
+      nodes.filter((n) => n.baseName.endsWith('-ft')).map((n) => [n.key, 'Translation']),
+    );
+    const build = buildElanDocuments(parsed, nodes, roles, { fieldNames: names });
+    expect(build.schema.fields).toEqual([{ name: 'Translation', scope: 'Sentence' }]);
+    expect(build.documents[0].sentences.map((s) => s.fields.Translation)).toEqual([
+      'first',
+      'second',
+      undefined,
+    ]);
   });
 });
 
