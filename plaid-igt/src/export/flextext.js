@@ -20,10 +20,14 @@
 //   </document>
 //
 // Every <item> carries type + lang. <morph type> takes exactly the FLEx
-// MoMorphType names — our metadata.morphType inventory (FLEX_MORPH_TYPES)
-// maps 1:1; the attribute is omitted when absent/invalid. GUIDs are always
-// omitted (FLEx creates fresh objects on import). Affix markers are NEVER
-// written into txt items — FLEx re-derives them from the morph type.
+// MoMorphType names, matching our metadata.morphType inventory
+// (FLEX_MORPH_TYPES) 1:1, and the attribute is omitted when absent or invalid.
+// GUIDs are always omitted (FLEx creates fresh objects on import).
+//
+// Morpheme forms go out WITH their affix markers ("-ar", "=ni"), which is what
+// FLEx's own export writes and what its importer compares against. Plaid still
+// never stores a marker: they are put back on here, at the boundary, from the
+// morph type. See decorateWithAffixMarkers.
 // Missing/empty values omit the <item> entirely; odd configs must degrade,
 // not throw.
 //
@@ -31,9 +35,9 @@
 //   langs: { baseline, analysis, orthographies: {name→tag}, fieldOverrides: {field→tag} }
 //   fieldMap: { sentence: {field→'gls'|'lit'|'note'}, word: {field→'gls'|'pos'},
 //               morpheme: {field→'gls'|'msa'} }   (unmapped fields are omitted)
-//   citationForms: bool   — emit <item type="cf"> from morpheme.vocabItem.form
+//   citationForms: bool   — emit <item type="cf"> (and "hn") for a linked morpheme
 
-import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
+import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
 
 // Shared with the .eaf exporter (src/export/elan.js). The two XML formats
@@ -66,9 +70,41 @@ function morphXml(indent, m, options) {
   const morphType = m?.morphType ?? m?.metadata?.morphType;
   const typeAttr = FLEX_MORPH_TYPES.includes(morphType) ? ` type="${xmlEscape(morphType)}"` : '';
   const lines = [`${indent}<morph${typeAttr}>`];
-  lines.push(...item(`${indent}  `, 'txt', baselineLang(options), morphFormOf(m)));
-  if (options?.citationForms && m?.vocabItem?.form) {
-    lines.push(...item(`${indent}  `, 'cf', baselineLang(options), m.vocabItem.form));
+  // Decorated, because that is what FLEx writes in its own export and what its
+  // allomorph lookup compares against.
+  lines.push(
+    ...item(
+      `${indent}  `,
+      'txt',
+      baselineLang(options),
+      decorateWithAffixMarkers(morphType, morphFormOf(m)),
+    ),
+  );
+  if (options?.citationForms && m?.vocabItem) {
+    // FLEx matches <item type="cf"> against the entry's LEXEME form, decorated
+    // with its affix markers. BIRDInterlinearImporter.cs is explicit about it:
+    // "cf records the lexeme, not the headword/citation form (in spite of the
+    // name)", compared as DecorateFormWithAffixMarkers(LexemeFormOA.MorphTypeRA,
+    // LexemeFormOA.Form). So this is NOT the vocab item's form, which the
+    // .fwbackup importer set to the CITATION form. Across the sample corpus the
+    // two differ for 29% of entries (59% in Sena), and every one of those would
+    // have failed to link.
+    const meta = m.vocabItem.metadata ?? {};
+    const lexeme = meta.lexemeForm ?? m.vocabItem.form;
+    lines.push(
+      ...item(
+        `${indent}  `,
+        'cf',
+        baselineLang(options),
+        decorateWithAffixMarkers(meta.morphType, lexeme),
+      ),
+    );
+    // Narrows the match when entries share a lexeme form. FLEx reads a missing
+    // hn as 0 and falls back to the unfiltered set, so omitting it is safe.
+    const hn = Number(meta.homograph);
+    if (Number.isInteger(hn) && hn > 0) {
+      lines.push(...item(`${indent}  `, 'hn', analysisLang(options), String(hn)));
+    }
   }
   for (const [field, type] of Object.entries(options?.fieldMap?.morpheme || {})) {
     if (type !== 'gls' && type !== 'msa') continue;

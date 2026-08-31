@@ -60,6 +60,42 @@ export const isStemType = (morphType) =>
 export const morphemeJoiner = (prevMorphType, morphType) =>
   isClitic(prevMorphType) || isClitic(morphType) ? '=' : '-';
 
+// --- Per-type markers, for talking to FLEx ---------------------------------
+// The Prefix/Postfix of each MoMorphType, read off the factory objects in real
+// .fwbackup files (identical in Lezgi, Sena and Arabic, so they are constants
+// and not per-project settings). The joiner rule above is what Plaid renders
+// for a chain of morphemes. THIS is different: it is how FLEx spells one
+// morpheme's form on its own, and FLEx compares decorated forms when it
+// matches an imported morph against the lexicon, so an exporter that leaves
+// the markers off matches nothing for any bound morph.
+const MORPH_TYPE_MARKERS = {
+  'bound root': ['*', ''],
+  'bound stem': ['*', ''],
+  enclitic: ['=', ''],
+  infix: ['-', '-'],
+  'infixing interfix': ['-', '-'],
+  prefix: ['', '-'],
+  'prefixing interfix': ['', '-'],
+  proclitic: ['', '='],
+  simulfix: ['=', '='],
+  suffix: ['-', ''],
+  'suffixing interfix': ['-', ''],
+  suprafix: ['~', '~'],
+};
+
+/**
+ * A morpheme form written the way FLEx writes it standing alone: "-ar" for a
+ * suffix, "ka-" for a prefix, "=ni" for an enclitic, unchanged for a stem.
+ * Mirrors DecorateFormWithAffixMarkers in FieldWorks' BIRDInterlinearImporter.
+ * An unknown or absent type decorates nothing, which is right for the
+ * hand-entered morphemes that have no type at all.
+ */
+export function decorateWithAffixMarkers(morphType, form) {
+  if (form == null || form === '') return form;
+  const marks = MORPH_TYPE_MARKERS[String(morphType ?? '').toLowerCase()];
+  return marks ? `${marks[0]}${form}${marks[1]}` : form;
+}
+
 // --- Typing the clitic side of a "=" boundary ------------------------------
 // A "=" names a BOUNDARY (Leipzig rule 2: clitic boundary), but Plaid stores
 // cliticness on the morpheme, so something has to decide which side is the

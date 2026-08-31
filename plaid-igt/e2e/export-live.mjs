@@ -202,7 +202,17 @@ try {
   check(allFlex.includes('<morph type="stem">'), 'flextext has stem morph types');
   check(allFlex.includes('type="segnum"'), 'flextext has segment numbers');
   check(allFlex.includes('type="gls"'), 'flextext has glosses');
-  check(allFlex.includes('type="cf"'), 'flextext has citation forms from vocab links');
+  check(allFlex.includes('type="cf"'), 'flextext has lexeme forms from vocab links');
+  // FLEx compares DECORATED forms when it matches a morph to the lexicon, so
+  // bound morphemes have to go out marked or they link to nothing.
+  check(
+    /<item type="txt" lang="lez">[-=]/.test(allFlex),
+    'bound morphemes carry their affix marker in txt',
+  );
+  check(
+    /<item type="cf" lang="lez">[-=]/.test(allFlex),
+    'bound entries carry their affix marker in cf',
+  );
   check(allFlex.includes('vernacular="true"'), 'flextext declares vernacular languages');
   check(
     (allFlex.match(/<interlinear-text>/g) || []).length === 3,
