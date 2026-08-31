@@ -347,15 +347,18 @@ export async function importDocument({
             notes: [],
           },
         ];
-    const sentenceIds = await bulkInChunks(
+    // The sentence layer PARTITIONS the text, and the server checks that the
+    // tokens tile the whole extent on every bulk call. So this one cannot be
+    // chunked: a first chunk ending mid-text is rejected with "Partition must
+    // end at the extent's end". A long text therefore holds the write lock for
+    // one big transaction, which is the cost of the invariant.
+    const { ids: sentenceIds } = await client.tokens.bulkCreate(
       sentenceSpansSpec.map((s) => ({
         tokenLayerId: targets.sentenceLayerId,
         text: textId,
         begin: s.begin,
         end: s.end,
       })),
-      check,
-      (specs) => client.tokens.bulkCreate(specs),
     );
 
     // Word tokens, with orthography metadata

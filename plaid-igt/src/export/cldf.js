@@ -175,18 +175,33 @@ function lgrConformance(tokens, field, scope) {
   return 'WORD_ALIGNED';
 }
 
-/** The sentence's baseline text, gaps included, or a chosen orthography. */
+/**
+ * The sentence's baseline text, gaps included, or a chosen orthography.
+ *
+ * Trimmed, because the sentence layer PARTITIONS the text: a sentence span
+ * runs to the start of the next one, so it carries the newline that separates
+ * them. That separator is not part of the sentence, and leaving it in puts a
+ * trailing newline inside a CSV cell.
+ */
 function primaryTextOf(sentence, source) {
   const tokens = sentence.tokens || [];
   if (source && source !== BASELINE) {
     return tokens
       .map((t) => t.orthographies?.[source] ?? '')
       .filter((s) => s !== '')
-      .join(' ');
+      .join(' ')
+      .trim();
   }
   const pieces = sentence.pieces || [];
-  if (pieces.length) return pieces.map((p) => p.content ?? '').join('');
-  return tokens.map((t) => t.content ?? '').join(' ');
+  if (pieces.length)
+    return pieces
+      .map((p) => p.content ?? '')
+      .join('')
+      .trim();
+  return tokens
+    .map((t) => t.content ?? '')
+    .join(' ')
+    .trim();
 }
 
 // ---- options ---------------------------------------------------------------

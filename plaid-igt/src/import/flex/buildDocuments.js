@@ -11,9 +11,8 @@
 // the plaid API. Sentence spans tile the body exactly (the sentence layer is
 // partitioning): each paragraph's last sentence absorbs the trailing newline.
 
-import { utf16ToCp } from '@larc-iu/plaid-client';
 import { pickEn } from './fwdataParser.js';
-import { matchesAt } from '../align.js';
+import { matchesAt, makeCpIndexer } from '../align.js';
 
 /**
  * Align one segment's ordered analyses against body[begin, end).
@@ -112,6 +111,11 @@ export function buildDocuments(ir, opts = {}) {
       sentences[sentences.length - 1].endU16 = body.length;
     }
 
+    // One prebuilt converter for the whole document: the client's per-call
+    // conversion spreads the entire prefix, which is quadratic across
+    // thousands of tokens (see makeCpIndexer).
+    const toCp = makeCpIndexer(body);
+
     const words = [];
     for (const s of sentences) {
       if (!s.seg) continue;
@@ -129,16 +133,16 @@ export function buildDocuments(ir, opts = {}) {
       genres: text.genres,
       body,
       sentences: sentences.map((s) => ({
-        begin: utf16ToCp(body, s.beginU16),
-        end: utf16ToCp(body, s.endU16),
+        begin: toCp(s.beginU16),
+        end: toCp(s.endU16),
         freeTranslation: s.seg?.freeTranslation ?? null,
         literalTranslation: s.seg?.literalTranslation ?? null,
         notes: s.seg?.notes ?? [],
       })),
       words: words.map(({ beginU16, endU16, kind: _kind, ...w }) => ({
         ...w,
-        begin: utf16ToCp(body, beginU16),
-        end: utf16ToCp(body, endU16),
+        begin: toCp(beginU16),
+        end: toCp(endU16),
       })),
       warnings,
     });

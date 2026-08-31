@@ -183,7 +183,17 @@ const PREFIXES = [
   ['Orthography_', 'Orthography'],
 ];
 
-const recognizePrefix = (name) => {
+/**
+ * Was this dataset written by our own exporter? Only then do the scope
+ * prefixes below mean anything: a foreign column that merely happens to start
+ * with "Sentence_" is somebody else's name for something else, and truncating
+ * it would be us reading our own convention into their data. Our exporter
+ * always writes a Plaid_ID column, so its presence is the signal.
+ */
+const isOwnExport = (component) => (component?.columns || []).some((c) => c.name === 'Plaid_ID');
+
+const recognizePrefix = (name, own) => {
+  if (!own) return null;
   for (const [prefix, scope] of PREFIXES) {
     if (name.startsWith(prefix) && name.length > prefix.length) {
       return { scope, name: name.slice(prefix.length) };
@@ -232,10 +242,11 @@ export function deriveImportOptions(dataset) {
         customColumnsOf(examples).find((n) => /text[_ ]?id$/i.test(n)) ??
         null);
 
+  const own = isOwnExport(examples);
   const customColumns = {};
   for (const name of customColumnsOf(examples)) {
     if (SKIP_COLUMNS.has(name) || name === groupBy) continue;
-    const known = recognizePrefix(name);
+    const known = recognizePrefix(name, own);
     if (known) {
       customColumns[name] = known;
       continue;
@@ -272,7 +283,7 @@ export function customColumnChoices(dataset) {
       name,
       // Only a list column can align with Analyzed_Word.
       canBePerWord: !!examples.columns.find((c) => c.name === name)?.separator,
-      suggested: recognizePrefix(name),
+      suggested: recognizePrefix(name, isOwnExport(examples)),
     }));
 }
 
@@ -370,11 +381,38 @@ export function buildCldfDocuments(dataset, options = {}) {
     });
   }
 
+  // --- alternative translations ---
+  // A row with an exampleReference is not a line of its own: the TextCorpus
+  // spec uses it for "linking alternative translations", and tsezacp writes
+  // every line twice, once with an English Translated_Text and once with a
+  // Russian one pointing back at the first. Taken literally that doubles the
+  // corpus and buries half of it in an untitled document. A row carrying its
+  // OWN analysis is still a line, so the test is a reference plus no analysis.
+  const alternativesFor = new Map();
+  const isAlternative = (row) =>
+    !!cell(examples, row, 'exampleReference') && list(examples, row, 'analyzedWord').length === 0;
+  const languageLabel = (id) => languageById.get(id)?.name || id;
+  // Only qualify the field name when the dataset really does translate into
+  // more than one meta language. One language needs no disambiguation, and
+  // "Translation (English)" would be noise.
+  const translationFieldFor = (metaLanguageId) =>
+    metaLanguageId && metaLanguageIds.size > 1
+      ? `${o.translationField} (${languageLabel(metaLanguageId)})`
+      : o.translationField;
+
+  for (const row of examples?.rows || []) {
+    if (!isAlternative(row)) continue;
+    const target = cell(examples, row, 'exampleReference');
+    if (!alternativesFor.has(target)) alternativesFor.set(target, []);
+    alternativesFor.get(target).push(row);
+  }
+
   // --- group example rows into documents ---
   const groups = new Map();
   const keyOf = (row) =>
     o.groupBy ? (row[o.groupBy] ?? '') : cell(examples, row, 'contributionReference') || '';
   for (const row of examples?.rows || []) {
+    if (isAlternative(row)) continue;
     const key = keyOf(row);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
@@ -383,6 +421,17 @@ export function buildCldfDocuments(dataset, options = {}) {
 
   const objectLanguageIds = new Set();
   const metaLanguageIds = new Set();
+  // The project's meta language comes from the lines that become sentences,
+  // not from the alternative translations hanging off them: tsezacp's primary
+  // translation is English and its alternatives Russian, and "two meta
+  // languages, so none" would be a worse answer than "English".
+  const primaryMetaLanguageIds = new Set();
+  // Collected up front: the translation field is named after its meta language
+  // only when the dataset actually uses more than one.
+  for (const row of examples?.rows || []) {
+    const m = cell(examples, row, 'metaLanguageReference');
+    if (m) metaLanguageIds.add(m);
+  }
   const documents = [];
   let synthesizedBodies = 0;
 
@@ -415,7 +464,7 @@ export function buildCldfDocuments(dataset, options = {}) {
       const lang = cell(examples, row, 'languageReference');
       if (lang) objectLanguageIds.add(lang);
       const metaLang = cell(examples, row, 'metaLanguageReference');
-      if (metaLang) metaLanguageIds.add(metaLang);
+      if (metaLang) primaryMetaLanguageIds.add(metaLang);
       texts.push(text);
       parsed.push({ row, analyzed, text });
     }
@@ -440,7 +489,15 @@ export function buildCldfDocuments(dataset, options = {}) {
 
       const fields = {};
       const translated = cell(examples, row, 'translatedText');
-      if (translated && o.translationField) fields[o.translationField] = translated;
+      if (translated && o.translationField) {
+        fields[translationFieldFor(cell(examples, row, 'metaLanguageReference'))] = translated;
+      }
+      // Translations of this same line into other meta languages.
+      for (const alt of alternativesFor.get(cell(examples, row, 'id')) || []) {
+        const value = cell(examples, alt, 'translatedText');
+        if (!value || !o.translationField) continue;
+        fields[translationFieldFor(cell(examples, alt, 'metaLanguageReference'))] = value;
+      }
       const comment = cell(examples, row, 'comment');
       if (comment && o.commentField) fields[o.commentField] = comment;
       for (const c of custom) {
@@ -548,6 +605,20 @@ export function buildCldfDocuments(dataset, options = {}) {
     }
   }
 
+  // Per-example media (APiCS gives most of its examples an .mp3) has no home:
+  // Plaid attaches ONE media file per document, with timing inside it handled
+  // by the alignment layer, so a file per sentence cannot be represented.
+  const perExampleMedia = (examples?.rows || []).filter(
+    (r) => cell(examples, r, 'mediaReference') !== '',
+  ).length;
+  if (perExampleMedia) {
+    warnings.push(
+      `${perExampleMedia} example${perExampleMedia === 1 ? ' has' : 's have'} their own media ` +
+        'file. A Plaid document holds one media file for the whole text, so per-example media ' +
+        'is not imported.',
+    );
+  }
+
   if (synthesizedBodies) {
     warnings.push(
       `${synthesizedBodies} example${synthesizedBodies === 1 ? '' : 's'} had no Primary_Text, so ` +
@@ -588,29 +659,25 @@ export function buildCldfDocuments(dataset, options = {}) {
   }
 
   // --- schema for the setup wizard ---
+  // Read off the documents that were actually built rather than from the
+  // option names: a translation field is named after its meta language when
+  // the dataset has several, so the names are not known in advance, and a
+  // field the setup never creates silently loses its annotations.
   const fieldSet = new Map();
   const addField = (name, scope) => {
     if (name) fieldSet.set(`${scope}:${name}`, { name, scope });
   };
-  if (documents.some((d) => d.sentences.some((s) => o.translationField in s.fields))) {
-    addField(o.translationField, 'Sentence');
-  }
-  if (documents.some((d) => d.sentences.some((s) => o.commentField in s.fields))) {
-    addField(o.commentField, 'Sentence');
-  }
-  const usesGloss = (scope) =>
-    documents.some((d) =>
-      d.words.some((w) =>
-        scope === 'Word'
-          ? o.glossField in w.fields
-          : w.morphemes.some((m) => o.glossField in m.fields),
-      ),
-    );
-  if (usesGloss('Word')) addField(o.glossField, 'Word');
-  if (usesGloss('Morpheme')) addField(o.glossField, 'Morpheme');
-  for (const c of custom) {
-    if (c.scope === 'Orthography') continue;
-    addField(c.name, c.scope);
+  for (const d of documents) {
+    for (const s of d.sentences)
+      for (const name of Object.keys(s.fields)) addField(name, 'Sentence');
+    for (const w of d.words) {
+      // Orthographies ride in token metadata, not in a span layer.
+      for (const name of Object.keys(w.fields)) {
+        if (!name.startsWith('orthog:')) addField(name, 'Word');
+      }
+      for (const m of w.morphemes)
+        for (const name of Object.keys(m.fields)) addField(name, 'Morpheme');
+    }
   }
   const orthographies = custom.filter((c) => c.scope === 'Orthography').map((c) => c.name);
   const documentMetadata = [...new Set(documents.flatMap((d) => Object.keys(d.metadata)))].map(
@@ -621,7 +688,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   const pick = (ids) => (ids.size === 1 ? languageById.get([...ids][0]) : null);
   const languages = {
     object: pick(objectLanguageIds) || null,
-    meta: pick(metaLanguageIds) || null,
+    meta: pick(primaryMetaLanguageIds) || null,
   };
   if (objectLanguageIds.size > 1) {
     warnings.push(

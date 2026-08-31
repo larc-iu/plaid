@@ -362,6 +362,33 @@ export const ImportCldfProject = () => {
               </div>
             )}
 
+            {build.documents.length === 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div>
+                  {build.lexicon.length > 0 ? (
+                    <>
+                      <p className="font-medium">
+                        Importing a dictionary on its own is not yet implemented
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        This dataset has {build.lexicon.length.toLocaleString()} entries but no
+                        ExampleTable, so there are no texts to build a project around. Bringing a
+                        CLDF dictionary in as a standalone vocabulary is still to do.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-medium">Nothing to import</p>
+                      <p className="text-xs text-muted-foreground">
+                        No examples were found in this dataset.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
             {build.warnings.length > 0 && (
               <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
