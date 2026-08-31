@@ -26,6 +26,14 @@
 import { matchesAt, makeCpIndexer } from '../align.js';
 import { cell, list, customColumnsOf } from './readDataset.js';
 
+/**
+ * Grouping sentinel: one document per example row. Not every corpus is running
+ * text. APiCS is a survey whose examples are standalone illustrations, each
+ * with its own audio, and one document apiece is the faithful reading of that,
+ * not a workaround.
+ */
+export const PER_EXAMPLE = '__example__';
+
 /** Leipzig morpheme joints. */
 const JOINT_RE = /([-=])/;
 
@@ -235,12 +243,21 @@ export function deriveImportOptions(dataset) {
   // contributionReference, but a dataset without a ContributionTable often
   // carries a plain text-id column instead, and one document of every sentence
   // in the corpus is not a usable import.
-  const groupBy =
-    examples?.byTerm?.contributionReference || !examples
-      ? null
-      : (customColumnsOf(examples).find((n) => /^text[_ ]?id$/i.test(n)) ??
-        customColumnsOf(examples).find((n) => /text[_ ]?id$/i.test(n)) ??
-        null);
+  // An example with its own media is a self-contained unit, so it gets its own
+  // document. That is the only grouping under which the media survives, since
+  // a Plaid document holds one file for the whole text.
+  const hasPerExampleMedia = (examples?.rows || []).some(
+    (r) => cell(examples, r, 'mediaReference') !== '',
+  );
+  const groupBy = !examples
+    ? null
+    : hasPerExampleMedia
+      ? PER_EXAMPLE
+      : examples.byTerm?.contributionReference
+        ? null
+        : (customColumnsOf(examples).find((n) => /^text[_ ]?id$/i.test(n)) ??
+          customColumnsOf(examples).find((n) => /text[_ ]?id$/i.test(n)) ??
+          null);
 
   const own = isOwnExport(examples);
   const customColumns = {};
@@ -267,11 +284,35 @@ export function deriveImportOptions(dataset) {
   };
 }
 
-/** Columns that could stand in for a ContributionTable, for the review UI. */
+/**
+ * How the examples could be split into texts, for the review UI:
+ * `{value, label}` entries. One document per example is always on offer, since
+ * whether a corpus is running text or a bag of illustrations is a judgement
+ * the data cannot always settle.
+ */
 export function groupingChoices(dataset) {
   const examples = dataset.components?.ExampleTable;
-  if (!examples || examples.byTerm?.contributionReference) return [];
-  return customColumnsOf(examples).filter((n) => !SKIP_COLUMNS.has(n));
+  if (!examples) return [];
+  const choices = [];
+  if (examples.byTerm?.contributionReference) {
+    choices.push({ value: '', label: 'By the dataset\u2019s own text ids' });
+  }
+  // Drop only the columns that provably cannot group: APiCS offers markup_text
+  // and sort, which hold a near-unique value per row, so grouping by them is
+  // per-example grouping with a confusing name on it. No threshold separates
+  // the rest (Source at 0.24 distinct/row is a plausible text id, markup_gloss
+  // at 0.79 is not), so everything that does repeat stays on offer and the
+  // choice is the user's.
+  const rows = examples.rows || [];
+  for (const name of customColumnsOf(examples)) {
+    if (SKIP_COLUMNS.has(name)) continue;
+    const distinct = new Set(rows.map((r) => r[name] ?? '')).size;
+    if (distinct <= 1) continue;
+    if (rows.length >= 10 && distinct > rows.length / 2) continue;
+    choices.push({ value: name, label: `By ${name}` });
+  }
+  choices.push({ value: PER_EXAMPLE, label: 'One document per example' });
+  return choices;
 }
 
 /** The columns a dataset offers for mapping, with whether they can be per-word. */
@@ -290,18 +331,30 @@ export function customColumnChoices(dataset) {
 // ---- media -------------------------------------------------------------------
 
 /**
- * The media file a contribution points at, resolved to bytes inside the same
- * archive. A MediaTable row may name the file either as a relative
- * Download_URL (a file sitting beside the dataset, which is what our own
- * exporter writes) or as Path_In_Zip. An absolute URL cannot be resolved
- * without going to the network, so it is reported rather than fetched.
+ * The media file a document points at, resolved to bytes inside the same
+ * archive: either the one its contribution names, or, when a document IS one
+ * example, the one that example's own mediaReference names. A MediaTable row
+ * may give the file as a relative Download_URL (a file beside the dataset,
+ * which is what our own exporter writes) or as Path_In_Zip. An absolute URL
+ * cannot be resolved without going to the network, so it is reported rather
+ * than fetched.
  */
-function resolveMedia(dataset, contributionId, warnings) {
+function makeMediaIndex(dataset) {
   const table = dataset.components?.MediaTable;
+  const byId = new Map();
+  const byContribution = new Map();
+  for (const row of table?.rows || []) {
+    byId.set(cell(table, row, 'id'), row);
+    const c = cell(table, row, 'contributionReference');
+    if (c && !byContribution.has(c)) byContribution.set(c, row);
+  }
+  return { table, byId, byContribution };
+}
+
+function resolveMedia(dataset, index, { contributionId, mediaId }, warnings) {
+  const table = index.table;
   if (!table) return null;
-  const row = (table.rows || []).find(
-    (r) => cell(table, r, 'contributionReference') === contributionId,
-  );
+  const row = mediaId ? index.byId.get(mediaId) : index.byContribution.get(contributionId);
   if (!row) return null;
   const url = cell(table, row, 'downloadUrl');
   const inZip = cell(table, row, 'pathInZip');
@@ -408,9 +461,13 @@ export function buildCldfDocuments(dataset, options = {}) {
   }
 
   // --- group example rows into documents ---
+  const mediaIndex = makeMediaIndex(dataset);
   const groups = new Map();
-  const keyOf = (row) =>
-    o.groupBy ? (row[o.groupBy] ?? '') : cell(examples, row, 'contributionReference') || '';
+  const keyOf = (row) => {
+    if (o.groupBy === PER_EXAMPLE) return cell(examples, row, 'id');
+    if (o.groupBy) return row[o.groupBy] ?? '';
+    return cell(examples, row, 'contributionReference') || '';
+  };
   for (const row of examples?.rows || []) {
     if (isAlternative(row)) continue;
     const key = keyOf(row);
@@ -576,12 +633,21 @@ export function buildCldfDocuments(dataset, options = {}) {
       });
     });
 
-    const media = resolveMedia(dataset, key, docWarnings);
+    const media = resolveMedia(
+      dataset,
+      mediaIndex,
+      o.groupBy === PER_EXAMPLE
+        ? { mediaId: cell(examples, ordered[0], 'mediaReference') }
+        : { contributionId: key },
+      docWarnings,
+    );
     documents.push({
       id: key || 'cldf',
       // A ContributionTable names the text; a grouping column's value is the
       // next best name, since it is what the dataset itself calls the text.
       name: contribution?.name || (o.groupBy && key) || dataset.title || 'Imported text',
+      // Only meaningful in PER_EXAMPLE mode, where a document IS one example.
+      exampleId: o.groupBy === PER_EXAMPLE ? key : null,
       metadata: contribution?.metadata || {},
       body,
       sentences,
@@ -611,11 +677,11 @@ export function buildCldfDocuments(dataset, options = {}) {
   const perExampleMedia = (examples?.rows || []).filter(
     (r) => cell(examples, r, 'mediaReference') !== '',
   ).length;
-  if (perExampleMedia) {
+  if (perExampleMedia && o.groupBy !== PER_EXAMPLE) {
     warnings.push(
       `${perExampleMedia} example${perExampleMedia === 1 ? ' has' : 's have'} their own media ` +
-        'file. A Plaid document holds one media file for the whole text, so per-example media ' +
-        'is not imported.',
+        'file, which only "one document per example" can keep: a Plaid document holds one media ' +
+        'file for the whole text.',
     );
   }
 

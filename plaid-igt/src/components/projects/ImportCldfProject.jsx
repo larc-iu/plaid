@@ -274,13 +274,14 @@ export const ImportCldfProject = () => {
               </Select>
             </div>
 
-            {groupChoices.length > 0 && (
+            {groupChoices.length > 1 && (
               <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
                 <div>
                   <p className="text-sm font-medium">How the examples split into texts</p>
                   <p className="text-xs text-muted-foreground">
-                    This dataset has no ContributionTable, so the texts are told apart by one of its
-                    own columns. Without a split, every example lands in a single document.
+                    Not every corpus is running text. A survey whose examples are standalone
+                    illustrations is best imported one document per example, which is also the only
+                    way an example’s own audio can come with it.
                   </p>
                 </div>
                 <Select
@@ -290,13 +291,13 @@ export const ImportCldfProject = () => {
                   }
                   disabled={!editable}
                 >
-                  <SelectTrigger className="h-8 w-56">
+                  <SelectTrigger className="h-8 w-64">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {groupChoices.map((n) => (
-                      <SelectItem key={n} value={n}>
-                        {n}
+                    {groupChoices.map((c) => (
+                      <SelectItem key={c.value || OFF} value={c.value || OFF}>
+                        {c.label}
                       </SelectItem>
                     ))}
                     <SelectItem value={OFF}>One text for everything</SelectItem>

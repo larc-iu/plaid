@@ -6,6 +6,7 @@ import {
   deriveImportOptions,
   customColumnChoices,
   groupingChoices,
+  PER_EXAMPLE,
   splitAnalyzed,
   surfaceOf,
   alignWords,
@@ -303,7 +304,7 @@ describe('buildCldfDocuments — grouping without a ContributionTable', () => {
   it('does not offer the grouping column as an annotation field', () => {
     const ds = dataset(csv, columns);
     expect(deriveImportOptions(ds).customColumns.Text_ID).toBeUndefined();
-    expect(groupingChoices(ds)).toEqual(['Text_ID']);
+    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['Text_ID', PER_EXAMPLE]);
   });
 
   it('makes one document when grouping is turned off', () => {
@@ -326,7 +327,9 @@ describe('buildCldfDocuments — grouping without a ContributionTable', () => {
       { 'contributions.csv': 'ID,Name\r\nA,Alpha\r\n' },
     );
     expect(deriveImportOptions(ds).groupBy).toBeNull();
-    expect(groupingChoices(ds)).toEqual([]);
+    // The ContributionTable is the default; Text_ID has one distinct value
+    // across this fixture's single row, so it could not group anything.
+    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['', PER_EXAMPLE]);
     expect(buildCldfDocuments(ds).documents[0].name).toBe('Alpha');
   });
 });
@@ -560,20 +563,88 @@ describe('round trip through the exporter', () => {
   });
 });
 
-describe('buildCldfDocuments — media', () => {
-  it('warns that per-example media has no home in a Plaid document', () => {
-    // What APiCS does: an Audio column bound to mediaReference, one file per
-    // example. Plaid attaches one media file per document, so it cannot map.
-    const ds = dataset(
-      'ID,Primary_Text,Analyzed_Word,Gloss,Audio\r\n1,hola,hola,hi,x.mp3\r\n2,adios,adios,bye,\r\n',
+describe('buildCldfDocuments — per-example media', () => {
+  // What APiCS does: an Audio column bound to mediaReference holding a media
+  // id, and the file itself beside the dataset. Its examples are standalone
+  // illustrations rather than running text, so one document each is faithful.
+  const mediaTable = {
+    url: 'media.csv',
+    'dc:conformsTo': `${TERMS}MediaTable`,
+    tableSchema: {
+      columns: [
+        col('ID', 'id'),
+        col('Media_Type', 'mediaType'),
+        col('Download_URL', 'downloadUrl'),
+      ],
+    },
+  };
+  const ds = () =>
+    dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,Audio\r\n' +
+        'ex1,hola,hola,hi,m1\r\nex2,adios,adios,bye,\r\n',
       [...BASIC_COLUMNS, col('Audio', 'mediaReference')],
+      [mediaTable],
+      {
+        'media.csv': 'ID,Media_Type,Download_URL\r\nm1,audio/mpeg,Examples/a.mp3\r\n',
+        'Examples/a.mp3': 'ID3fake',
+      },
     );
-    const { warnings } = buildCldfDocuments(ds);
+
+  it('gives each example its own document when the examples carry media', () => {
+    const built = buildCldfDocuments(ds());
+    expect(deriveImportOptions(ds()).groupBy).toBe(PER_EXAMPLE);
+    expect(built.documents.map((d) => d.name)).toEqual(['ex1', 'ex2']);
+    expect(built.documents.map((d) => d.sentences.length)).toEqual([1, 1]);
+  });
+
+  it('attaches the file the example itself points at', () => {
+    const [withMedia, without] = buildCldfDocuments(ds()).documents;
+    expect(withMedia.mediaName).toBe('a.mp3');
+    expect(new TextDecoder().decode(withMedia.mediaBytes)).toBe('ID3fake');
+    expect(without.mediaBytes).toBeNull();
+  });
+
+  it('says nothing about media once each example is its own document', () => {
+    expect(buildCldfDocuments(ds()).warnings.join(' ')).not.toMatch(/media file/);
+  });
+
+  it('warns that another grouping cannot keep the media', () => {
+    const { warnings } = buildCldfDocuments(ds(), { groupBy: null });
     expect(warnings.join(' ')).toMatch(/1 example has their own media file/);
+    expect(warnings.join(' ')).toMatch(/one document per example/);
   });
 
   it('says nothing when no example carries media', () => {
-    const ds = dataset('ID,Primary_Text,Analyzed_Word,Gloss\r\n1,hola,hola,hi\r\n', BASIC_COLUMNS);
-    expect(buildCldfDocuments(ds).warnings.join(' ')).not.toMatch(/media/);
+    const plain = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss\r\n1,hola,hola,hi\r\n',
+      BASIC_COLUMNS,
+    );
+    expect(buildCldfDocuments(plain).warnings.join(' ')).not.toMatch(/media/);
+  });
+});
+
+describe('groupingChoices', () => {
+  it('drops a column with a near-unique value per row', () => {
+    // What APiCS offers as markup_text and sort: grouping by them would just
+    // be per-example grouping wearing a confusing name.
+    const rows = Array.from(
+      { length: 12 },
+      (_, i) => `${i},t${i},t${i},g${i},${i % 3},uniq${i}\r\n`,
+    ).join('');
+    const ds = dataset(`ID,Primary_Text,Analyzed_Word,Gloss,chapter,note\r\n${rows}`, [
+      ...BASIC_COLUMNS,
+      col('chapter', null),
+      col('note', null),
+    ]);
+    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['chapter', PER_EXAMPLE]);
+  });
+
+  it('keeps every repeating column on offer, since no rule sorts them', () => {
+    const ds = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,chapter,source\r\n' +
+        '1,uno,uno,one,a,s1\r\n2,dos,dos,two,a,s2\r\n3,tres,tres,three,b,s1\r\n',
+      [...BASIC_COLUMNS, col('chapter', null), col('source', null)],
+    );
+    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['chapter', 'source', PER_EXAMPLE]);
   });
 });
