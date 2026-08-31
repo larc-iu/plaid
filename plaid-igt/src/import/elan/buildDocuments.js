@@ -101,11 +101,20 @@ function resolveMapping(nodes, roles) {
     if (!byRole.has(role)) byRole.set(role, []);
     byRole.get(role).push(node);
   }
-  return { byRole, first: (role) => byRole.get(role)?.[0] ?? null };
+  return { byRole };
 }
 
-/** Tiers of one parsed file that occupy a given schema node. */
-const tiersOfNode = (eaf, node) => eaf.tiers.filter((t) => node.tierIds.includes(t.id));
+/**
+ * Tiers of one parsed file occupying any of the given schema nodes. A role can
+ * hold SEVERAL nodes: a corpus may give each speaker a whole tier tree of their
+ * own, named by prefix (`W-Spch`, `K-Spch`) rather than by `@participant`.
+ * Children are found by ANNOTATION_REF from a specific parent, so pooling the
+ * tiers of one role cannot mix two speakers up.
+ */
+const tiersOfNodes = (eaf, nodeList) => {
+  const ids = new Set(nodeList.flatMap((n) => n.tierIds));
+  return eaf.tiers.filter((t) => ids.has(t.id));
+};
 
 /**
  * Build importable documents.
@@ -119,14 +128,14 @@ const tiersOfNode = (eaf, node) => eaf.tiers.filter((t) => node.tierIds.includes
 export function buildElanDocuments(files, nodes, roles, options = {}) {
   const fieldNames = options.fieldNames || {};
   const nameOf = (node) => (fieldNames[node.key] || defaultFieldName(node)).trim();
-  const { byRole, first } = resolveMapping(nodes, roles);
+  const { byRole } = resolveMapping(nodes, roles);
   const warnings = [];
 
-  const utteranceNode = first(ROLES.UTTERANCE);
-  if (!utteranceNode) throw new Error('No tier is mapped to the utterances.');
-  const alignmentNode = first(ROLES.ALIGNMENT);
-  const wordNode = first(ROLES.WORD);
-  const morphNode = first(ROLES.MORPHEME);
+  const utteranceNodes = byRole.get(ROLES.UTTERANCE) || [];
+  if (!utteranceNodes.length) throw new Error('No tier is mapped to the utterances.');
+  const alignmentNodes = byRole.get(ROLES.ALIGNMENT) || [];
+  const wordNodes = byRole.get(ROLES.WORD) || [];
+  const morphNodes = byRole.get(ROLES.MORPHEME) || [];
   const sentFieldNodes = byRole.get(ROLES.SENTENCE_FIELD) || [];
   const wordFieldNodes = byRole.get(ROLES.WORD_FIELD) || [];
   const morphFieldNodes = byRole.get(ROLES.MORPH_FIELD) || [];
@@ -147,7 +156,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
 
     // --- collect the utterances, ordered by time, then by document order ----
     const utterances = [];
-    for (const tier of tiersOfNode(eaf, utteranceNode)) {
+    for (const tier of tiersOfNodes(eaf, utteranceNodes)) {
       for (const ann of tier.annotations) {
         utterances.push({ ann, tier, speaker: tier.participant || null });
       }
@@ -163,17 +172,48 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         childrenByParent.get(ann.ref).push({ ann, tier });
       }
     }
-    const childrenOn = (parentId, node) => {
-      if (!node) return [];
-      const all = childrenByParent.get(parentId) || [];
-      const mine = all.filter((c) => node.tierIds.includes(c.tier.id)).map((c) => c.ann);
-      return chainOrder(mine);
+    // Children of one annotation, on the tiers of the given nodes.
+    //
+    // EAF records parentage TWO different ways and the stereotype decides which.
+    // Symbolic_Subdivision and Symbolic_Association children are REF_ANNOTATIONs
+    // that name their parent. Time_Subdivision and Included_In children are
+    // ALIGNABLE_ANNOTATIONs with no ANNOTATION_REF at all: they belong to the
+    // annotation whose time interval contains them, on the tier that declares it
+    // as parent. Real corpora use the time-aligned form for words as often as
+    // the symbolic one, so getting this wrong loses every word in the file.
+    const containedIn = (parentAnn, parentTier, node) => {
+      if (parentAnn.beginMs === null || parentAnn.endMs === null) return [];
+      const out = [];
+      for (const tier of tiersOfNodes(eaf, [node])) {
+        if (tier.parentRef && tier.parentRef !== parentTier.id) continue;
+        for (const ann of tier.annotations) {
+          if (ann.beginMs === null || ann.endMs === null) continue;
+          if (ann.beginMs >= parentAnn.beginMs && ann.endMs <= parentAnn.endMs) out.push(ann);
+        }
+      }
+      return out.sort((a, b) => a.beginMs - b.beginMs);
+    };
+    const childrenOn = (parentAnn, parentTier, nodeList) => {
+      if (!nodeList || !nodeList.length) return [];
+      const out = [];
+      for (const node of nodeList) {
+        if (node.alignable && node.stereotype) {
+          out.push(...containedIn(parentAnn, parentTier, node));
+        } else {
+          const ids = new Set(node.tierIds);
+          const kids = (childrenByParent.get(parentAnn.id) || [])
+            .filter((c) => ids.has(c.tier.id))
+            .map((c) => c.ann);
+          out.push(...chainOrder(kids));
+        }
+      }
+      return out;
     };
     // A Symbolic_Association holds at most one child per parent; anything more
     // is a subdivision being used as a field, so the first value wins and the
     // rest are reported rather than silently concatenated.
-    const fieldValueOn = (parentId, node) => {
-      const found = childrenOn(parentId, node);
+    const fieldValueOn = (parentAnn, parentTier, node) => {
+      const found = childrenOn(parentAnn, parentTier, [node]);
       if (found.length > 1) {
         docWarnings.push(
           `${nodeLabel(node)} has ${found.length} annotations under one parent; kept the first.`,
@@ -205,7 +245,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     pieces.forEach((piece, si) => {
       const fields = {};
       for (const node of sentFieldNodes) {
-        const v = fieldValueOn(piece.ann.id, node);
+        const v = fieldValueOn(piece.ann, piece.tier, node);
         if (v) fields[nameOf(node)] = v;
       }
       sentences.push({ begin: toCp(piece.beginU16), end: toCp(piece.endU16), fields });
@@ -214,7 +254,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       // Time alignment: a dedicated tier when one is mapped, else the utterance
       // itself. Segments carry their own times but no text position, so they
       // are placed inside the utterance the same way words are.
-      if (!alignmentNode) {
+      if (!alignmentNodes.length) {
         if (piece.ann.beginMs !== null && piece.ann.endMs !== null && piece.text) {
           alignments.push({
             begin: toCp(piece.beginU16),
@@ -228,18 +268,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         // Included_In / Time_Subdivision children are alignable annotations, so
         // they hold no ANNOTATION_REF: they belong to the utterance whose time
         // interval contains them, on the tier that declares it as parent.
-        const segments = [];
-        for (const tier of tiersOfNode(eaf, alignmentNode)) {
-          if (tier.parentRef && tier.parentRef !== piece.tier.id) continue;
-          for (const ann of tier.annotations) {
-            if (ann.beginMs === null || ann.endMs === null) continue;
-            if (piece.ann.beginMs === null || piece.ann.endMs === null) continue;
-            if (ann.beginMs >= piece.ann.beginMs && ann.endMs <= piece.ann.endMs) {
-              segments.push(ann);
-            }
-          }
-        }
-        segments.sort((a, b) => a.beginMs - b.beginMs);
+        const segments = childrenOn(piece.ann, piece.tier, alignmentNodes);
         const spans = alignSegments(
           body,
           piece.beginU16,
@@ -286,8 +315,8 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       // and a translation, nothing else).
       let wordSpans;
       let wordAnns = [];
-      if (wordNode) {
-        wordAnns = childrenOn(piece.ann.id, wordNode);
+      if (wordNodes.length) {
+        wordAnns = childrenOn(piece.ann, piece.tier, wordNodes);
         const forms = wordAnns.map((a) => String(a.value ?? '').trim());
         const aligned = alignWords(body, piece.beginU16, piece.endU16, forms);
         wordSpans = aligned.spans;
@@ -306,28 +335,31 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         }
       }
 
+      const wordTierById = new Map(eaf.tiers.flatMap((t) => t.annotations.map((a) => [a.id, t])));
       wordSpans.forEach((span, wi) => {
         if (!span || span.beginU16 >= span.endU16) return;
         const ann = wordAnns[wi] ?? null;
+        const annTier = ann ? (wordTierById.get(ann.id) ?? piece.tier) : piece.tier;
         const wordFields = {};
         if (ann) {
           for (const node of wordFieldNodes) {
-            const v = fieldValueOn(ann.id, node);
+            const v = fieldValueOn(ann, annTier, node);
             if (v) wordFields[nameOf(node)] = v;
           }
           // Orthography values ride in token metadata under the orthog: prefix,
           // the convention the editor and the other importers share.
           for (const node of orthographyNodes) {
-            const v = fieldValueOn(ann.id, node);
+            const v = fieldValueOn(ann, annTier, node);
             if (v) wordFields[`orthog:${nameOf(node)}`] = v;
           }
         }
-        const morphAnns = ann && morphNode ? childrenOn(ann.id, morphNode) : [];
+        const morphAnns = ann ? childrenOn(ann, annTier, morphNodes) : [];
         const morphemes = morphAnns.map((mAnn) => {
           const { form, morphType } = readMorphForm(mAnn.value);
           const mFields = {};
+          const mTier = wordTierById.get(mAnn.id) ?? annTier;
           for (const node of morphFieldNodes) {
-            const v = fieldValueOn(mAnn.id, node);
+            const v = fieldValueOn(mAnn, mTier, node);
             if (v) mFields[nameOf(node)] = v;
           }
           return { form, morphType, fields: mFields };
@@ -391,15 +423,26 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
   }
 
   const fieldsOf = (list, scope) => list.map((node) => ({ name: nameOf(node), scope }));
+  // Two nodes may deliberately carry the same field name (one tier per speaker),
+  // and the project needs that span layer once, not twice.
+  const dedupeFields = (list) => {
+    const seen = new Set();
+    return list.filter((f) => {
+      const key = `${f.scope}:${f.name}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
   return {
     documents,
     schema: {
-      fields: [
+      fields: dedupeFields([
         ...fieldsOf(sentFieldNodes, 'Sentence'),
         ...fieldsOf(wordFieldNodes, 'Word'),
         ...fieldsOf(morphFieldNodes, 'Morpheme'),
-      ],
-      orthographies: orthographyNodes.map(nameOf),
+      ]),
+      orthographies: [...new Set(orthographyNodes.map(nameOf))],
       documentMetadata: [...new Set(documents.flatMap((d) => Object.keys(d.metadata)))].map(
         (name) => ({ name }),
       ),

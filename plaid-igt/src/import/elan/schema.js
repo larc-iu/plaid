@@ -177,47 +177,97 @@ const NAME_HINTS = [
 
 const hintFor = (node) => NAME_HINTS.find(([re]) => re.test(node.baseName))?.[1] ?? null;
 
+// Names that a transcription tier goes by, and names that say a tier is
+// certainly NOT the transcription. Only used to break ties between equally
+// plausible root tiers: a file whose tiers all hold one annotation gives the
+// annotation count nothing to say, and picking alphabetically got the Abui
+// sample's `gloss` tier instead of its `transcription` tier.
+const TRANSCRIPTION_NAME =
+  /^(transcription|utterance|phrase|sentence|speech|spch|text|tx|t|ref|default|words?|wd)$/i;
+const NOT_TRANSCRIPTION_NAME =
+  /^(gloss(es)?|ge|gl|translations?|ft|tr|note|notes|comment|ipa|phon(etic)?|gesture\w*)$/i;
+
+// Ranked best-first: a transcription-ish name wins, a gloss-ish name loses, and
+// the annotation count decides among equals.
+const rankRoots = (roots) =>
+  roots
+    .map((n) => ({
+      n,
+      score:
+        (TRANSCRIPTION_NAME.test(n.baseName) ? 2 : 0) -
+        (NOT_TRANSCRIPTION_NAME.test(n.baseName) ? 2 : 0),
+    }))
+    .sort((a, b) => b.score - a.score || b.n.annotationCount - a.n.annotationCount)
+    .map((x) => x.n);
+
 /**
- * Pre-fill the mapping from the tier tree. Structure decides first: the busiest
- * top-level alignable node is the utterance, an Included_In tier beneath it is
- * finer time alignment, the first symbolic subdivision under the utterance is
- * the word and the one under that is the morpheme. Names only break ties and
- * choose between the three field scopes.
+ * Pre-fill the mapping from the tier tree. Structure decides first: the best
+ * top-level alignable node is the utterance, the subdivision beneath it is the
+ * word and the one under that is the morpheme, and an alignable subdivision the
+ * word did not claim is finer time alignment. Names break ties and choose
+ * between the three field scopes.
+ *
+ * A word tier may be EITHER stereotype. Symbolic_Subdivision is what our own
+ * exporter writes, but real corpora routinely give each word its own time with
+ * Time_Subdivision (the Poio sample does), and treating those as alignment
+ * collapsed the whole interlinear hierarchy beneath them.
+ *
+ * Every root that looks like an utterance is taken, not just the first: a
+ * corpus may give each speaker a whole tier tree of their own, named by prefix
+ * (`W-Spch`, `K-Spch`) rather than by `@participant`, and dropping the others
+ * would silently discard a speaker.
  */
 export function suggestRoles(nodes) {
   const roles = {};
   for (const n of nodes) roles[n.key] = ROLES.OFF;
   const byKey = new Map(nodes.map((n) => [n.key, n]));
   const childrenOf = (key) => nodes.filter((n) => n.parentKey === key);
+  const isSubdivision = (n) =>
+    n.stereotype === 'Symbolic_Subdivision' || n.stereotype === 'Time_Subdivision';
 
-  const roots = nodes.filter((n) => !n.parentKey && n.alignable);
-  const utterance = roots.slice().sort((a, b) => b.annotationCount - a.annotationCount)[0] ?? null;
-  if (!utterance) return roles;
-  roles[utterance.key] = ROLES.UTTERANCE;
+  const roots = rankRoots(nodes.filter((n) => !n.parentKey && n.alignable));
+  if (!roots.length) return roles;
 
-  for (const child of childrenOf(utterance.key)) {
-    if (child.stereotype === 'Included_In' || child.stereotype === 'Time_Subdivision') {
-      roles[child.key] = ROLES.ALIGNMENT;
-    }
-  }
-
-  // The word tier: a symbolic subdivision of the utterance. When several
-  // qualify, a name hint decides; otherwise the busiest wins.
-  const subdivisions = childrenOf(utterance.key).filter(
-    (n) => n.stereotype === 'Symbolic_Subdivision',
+  // The best root, plus any sibling root that shares its shape (same type and
+  // the same child tier names) — that is what a per-speaker tier tree looks
+  // like. A root with no children of its own is only taken when it is the best.
+  const best = roots[0];
+  const shapeOf = (node) =>
+    `${node.typeRef}|${childrenOf(node.key)
+      .map((c) => c.typeRef)
+      .sort()
+      .join(',')}`;
+  const bestShape = shapeOf(best);
+  // Sibling roots of the same shape come along, because that is what a
+  // per-speaker tier tree looks like — but never one whose name says it is not
+  // a transcription. Two CHILDLESS roots of the same type have identical shapes,
+  // so without that guard a `gloss` tier sitting beside a `transcription` tier
+  // is swept in as a second utterance tier.
+  const utterances = roots.filter(
+    (n) => n === best || (shapeOf(n) === bestShape && !NOT_TRANSCRIPTION_NAME.test(n.baseName)),
   );
-  const word =
-    subdivisions.find((n) => hintFor(n) === ROLES.WORD) ??
-    subdivisions.slice().sort((a, b) => b.annotationCount - a.annotationCount)[0] ??
-    null;
-  if (word) {
-    roles[word.key] = ROLES.WORD;
-    const morphCandidates = childrenOf(word.key).filter(
-      (n) => n.stereotype === 'Symbolic_Subdivision',
-    );
-    const morph =
-      morphCandidates.find((n) => hintFor(n) === ROLES.MORPHEME) ?? morphCandidates[0] ?? null;
-    if (morph) roles[morph.key] = ROLES.MORPHEME;
+
+  for (const utterance of utterances) {
+    roles[utterance.key] = ROLES.UTTERANCE;
+    const subdivisions = childrenOf(utterance.key).filter(isSubdivision);
+    const word =
+      subdivisions.find((n) => hintFor(n) === ROLES.WORD) ??
+      subdivisions.slice().sort((a, b) => b.annotationCount - a.annotationCount)[0] ??
+      null;
+    if (word) {
+      roles[word.key] = ROLES.WORD;
+      const morphCandidates = childrenOf(word.key).filter(isSubdivision);
+      const morph =
+        morphCandidates.find((n) => hintFor(n) === ROLES.MORPHEME) ?? morphCandidates[0] ?? null;
+      if (morph) roles[morph.key] = ROLES.MORPHEME;
+    }
+    // Any alignable child the word did not claim carries finer time. That is
+    // Included_In as well as Time_Subdivision: both hold real times, and
+    // Included_In is what our own exporter writes for its segment tier.
+    for (const child of childrenOf(utterance.key)) {
+      if (roles[child.key] !== ROLES.OFF) continue;
+      if (child.alignable && child.stereotype) roles[child.key] = ROLES.ALIGNMENT;
+    }
   }
 
   // Everything still unassigned becomes a field at the scope of its parent,
@@ -243,29 +293,29 @@ export function suggestRoles(nodes) {
   return roles;
 }
 
-/**
- * What is wrong with a mapping, as messages, or [] when it is usable.
- * Exactly one utterance tier is required; the rest of the tree has to hang
- * together (no morphemes without words).
- */
 export function validateRoles(nodes, roles) {
   const problems = [];
   const of = (role) => nodes.filter((n) => roles[n.key] === role);
-  const utterances = of(ROLES.UTTERANCE);
-  if (utterances.length === 0) {
-    problems.push('Choose which tier holds the utterances. Every import needs exactly one.');
-  } else if (utterances.length > 1) {
-    problems.push(
-      `Only one tier can hold the utterances (chose ${utterances.map(nodeLabel).join(', ')}).`,
-    );
+  if (of(ROLES.UTTERANCE).length === 0) {
+    problems.push('Choose which tier holds the utterances. Every import needs at least one.');
   }
-  if (of(ROLES.WORD).length > 1) problems.push('Only one tier can be the words.');
-  if (of(ROLES.MORPHEME).length > 1) problems.push('Only one tier can be the morphemes.');
   if (of(ROLES.MORPHEME).length && !of(ROLES.WORD).length) {
     problems.push('A morpheme tier needs a word tier above it.');
   }
-  if (of(ROLES.ALIGNMENT).length > 1) {
-    problems.push('Only one tier can carry the time alignment.');
+  // Each word/morpheme tier has to sit under something that was mapped, or its
+  // annotations have no parent to attach to.
+  const byKey = new Map(nodes.map((n) => [n.key, n]));
+  const roleOfParent = (node) =>
+    node.parentKey ? roles[byKey.get(node.parentKey)?.key] : undefined;
+  for (const node of of(ROLES.WORD)) {
+    if (roleOfParent(node) !== ROLES.UTTERANCE) {
+      problems.push(`"${nodeLabel(node)}" is words, so its parent tier must be utterances.`);
+    }
+  }
+  for (const node of of(ROLES.MORPHEME)) {
+    if (roleOfParent(node) !== ROLES.WORD) {
+      problems.push(`"${nodeLabel(node)}" is morphemes, so its parent tier must be words.`);
+    }
   }
   return problems;
 }
