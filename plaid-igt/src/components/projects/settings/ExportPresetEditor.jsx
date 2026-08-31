@@ -23,7 +23,7 @@ const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id
 // project's tab structure stays put. Name and options are edited here; the
 // format is fixed at creation. Saving rewrites the project's whole preset list
 // (config.igt.export.presets).
-export const ExportPresetEditor = ({ projectId, client, presetId }) => {
+export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdate }) => {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const [project, setProject] = useState(null);
@@ -71,6 +71,9 @@ export const ExportPresetEditor = ({ projectId, client, presetId }) => {
       await writeExportPresets(client, projectId, next);
       setPresets(next);
       setDraft(next.find((p) => p.id === presetId));
+      // See ExportPresetsSettings: the page's project object holds the presets
+      // and goes stale on every write.
+      onProjectUpdate?.();
       notifySuccess(`Saved preset “${draft.name.trim()}”.`, 'Export presets');
     } catch (err) {
       console.error('Failed to save export preset:', err);

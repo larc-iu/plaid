@@ -41,7 +41,7 @@ const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id
 // link per preset to its own editor page (ExportPresetEditor,
 // /projects/:id/export/:presetId). Exporting itself happens from a document's
 // Export tab or the project page's Export button, which only pick one.
-export const ExportPresetsSettings = ({ projectId, client }) => {
+export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) => {
   const navigate = useNavigate();
   const [project, setProject] = useState(null);
   const [hasError, setHasError] = useState(false);
@@ -71,6 +71,11 @@ export const ExportPresetsSettings = ({ projectId, client }) => {
   const persist = async (next, successMessage) => {
     await writeExportPresets(client, projectId, next);
     setPresets(next);
+    // The project object the rest of the page holds carries these presets, so
+    // it has to be refetched. Without this the Export dialog on the Documents
+    // tab still reads the config as it was when the page loaded and reports
+    // that the project has no presets at all.
+    onProjectUpdate?.();
     if (successMessage) notifySuccess(successMessage, 'Export presets');
   };
 

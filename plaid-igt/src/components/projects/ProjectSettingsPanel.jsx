@@ -70,9 +70,18 @@ export const ProjectSettingsPanel = ({
         </TabsContent>
         <TabsContent value="export" className="mt-0">
           {presetId ? (
-            <ExportPresetEditor projectId={projectId} client={client} presetId={presetId} />
+            <ExportPresetEditor
+              projectId={projectId}
+              client={client}
+              presetId={presetId}
+              onProjectUpdate={onProjectUpdate}
+            />
           ) : (
-            <ExportPresetsSettings projectId={projectId} client={client} />
+            <ExportPresetsSettings
+              projectId={projectId}
+              client={client}
+              onProjectUpdate={onProjectUpdate}
+            />
           )}
         </TabsContent>
         <TabsContent value="settings" className="mt-0">
