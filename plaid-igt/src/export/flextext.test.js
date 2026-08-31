@@ -65,15 +65,51 @@ describe('buildFlextextDocument', () => {
     expect(word2.querySelectorAll(':scope > item[type="txt"]').length).toBe(1);
   });
 
-  it('emits morph type attribute, txt without affix markers, cf, and gloss', () => {
+  it('emits morph type attribute, affix-marked txt, cf, and gloss', () => {
     const dom = parse(buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS));
     const morphs = [...dom.querySelectorAll('morph')];
     expect(morphs[0].getAttribute('type')).toBe('stem');
     expect(morphs[1].getAttribute('type')).toBe('enclitic');
-    expect(morphs[0].querySelector('item[type="txt"]').textContent).toBe('perro'); // no "-"/"="
+    expect(morphs[0].querySelector('item[type="txt"]').textContent).toBe('perro'); // stem: bare
+    expect(morphs[1].querySelector('item[type="txt"]').textContent).toBe('=s'); // enclitic
     expect(morphs[0].querySelector('item[type="cf"]').textContent).toBe('perro');
     expect(morphs[1].querySelector('item[type="cf"]')).toBeNull(); // unlinked
     expect(morphs[1].querySelector('item[type="gls"]').textContent).toBe('PL');
+  });
+
+  // FLEx looks up <item type="cf"> as the entry's DECORATED LEXEME form, not
+  // the citation form the name suggests (BIRDInterlinearImporter.cs says so in
+  // as many words). Getting this wrong silently unlinks every morpheme whose
+  // entry cites differently from its lexeme, which is 59% of Sena.
+  const linkMorpheme = (doc, metadata, form = 'citation-form') => {
+    for (const list of [doc.sortedSentences[0].tokens[0], doc.sortedSentences[0].pieces[0]]) {
+      list.morphemes[0].vocabItem = { id: 'v1', form, metadata };
+    }
+    return doc;
+  };
+
+  it('sends the decorated lexeme form as cf, plus the homograph number', () => {
+    const doc = linkMorpheme(makeFixtureDoc(), {
+      lexemeForm: 'perr',
+      morphType: 'suffix',
+      homograph: 2,
+    });
+    const morph = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS)).querySelector('morph');
+    expect(morph.querySelector('item[type="cf"]').textContent).toBe('-perr');
+    expect(morph.querySelector('item[type="hn"]').textContent).toBe('2');
+  });
+
+  it('falls back to the item form when the entry cites what it lexemes', () => {
+    const doc = linkMorpheme(makeFixtureDoc(), { morphType: 'enclitic' }, 'perro');
+    const morph = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS)).querySelector('morph');
+    expect(morph.querySelector('item[type="cf"]').textContent).toBe('=perro');
+    expect(morph.querySelector('item[type="hn"]')).toBeNull();
+  });
+
+  it('omits cf entirely when citation forms are switched off', () => {
+    const doc = linkMorpheme(makeFixtureDoc(), { lexemeForm: 'perr' });
+    const xml = buildFlextextDocument([doc], { ...FLEXTEXT_OPTIONS, citationForms: false });
+    expect(parse(xml).querySelector('item[type="cf"]')).toBeNull();
   });
 
   it('omits the morph type attribute for unknown morph types', () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  decorateWithAffixMarkers,
   FLEX_MORPH_TYPES,
   isValidMorphType,
   isClitic,
@@ -145,5 +146,26 @@ describe('Copy-as-IGT uses morphType joints', () => {
     };
     const out = formatPlain(sent, { morphFields: ['Gloss'], wordFields: [], sentFields: [] });
     expect(out).toBe('руша-кай=ни\ngirl-SBEL=ADD');
+  });
+});
+
+describe('decorateWithAffixMarkers', () => {
+  it('writes each bound type the way FLEx writes it standing alone', () => {
+    expect(decorateWithAffixMarkers('suffix', 'ar')).toBe('-ar');
+    expect(decorateWithAffixMarkers('prefix', 'ka')).toBe('ka-');
+    expect(decorateWithAffixMarkers('infix', 'um')).toBe('-um-');
+    expect(decorateWithAffixMarkers('enclitic', 'ni')).toBe('=ni');
+    expect(decorateWithAffixMarkers('proclitic', 'ni')).toBe('ni=');
+    expect(decorateWithAffixMarkers('bound stem', 'kwa')).toBe('*kwa');
+    expect(decorateWithAffixMarkers('suprafix', 'H')).toBe('~H~');
+  });
+
+  it('leaves free forms, unknown types and empty forms alone', () => {
+    expect(decorateWithAffixMarkers('stem', 'perro')).toBe('perro');
+    expect(decorateWithAffixMarkers('phrase', 'a b')).toBe('a b');
+    expect(decorateWithAffixMarkers('martian', 'x')).toBe('x');
+    expect(decorateWithAffixMarkers(null, 'x')).toBe('x');
+    expect(decorateWithAffixMarkers('suffix', '')).toBe('');
+    expect(decorateWithAffixMarkers('suffix', null)).toBe(null);
   });
 });
