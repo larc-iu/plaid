@@ -25,7 +25,11 @@ import {
   readScope,
 } from '../../domain/igtConfig.js';
 
-const CHUNK = 500; // vocab items have no bulk endpoint — chunked batches
+// Rows per bulk request. Each chunk is ONE server transaction holding the
+// single SQLite write lock for its whole duration, so this bounds how long
+// another writer can be made to wait (and be refused with a 503 once the
+// server's busy_timeout runs out), not just how many round trips we make.
+const CHUNK = 500;
 const DONE_KEY = 'nativeImported';
 const ITEM_SOURCE_KEY = 'nativeImportId';
 
@@ -168,17 +172,19 @@ export async function importVocabulary({ client, vocabId, vocabData, onProgress,
   for (let i = 0; i < pending.length; i += CHUNK) {
     check();
     const chunk = pending.slice(i, i + CHUNK);
-    const results = await client.batched(async () => {
-      for (const it of chunk) {
-        client.vocabItems.create(vocabId, it.form, {
-          ...(it.metadata || {}),
-          [ITEM_SOURCE_KEY]: it.id,
-        });
-      }
-    });
+    // bulkCreate rather than a batch of per-item creates: one request, one
+    // operation row, one pass over the table, where a batch re-dispatches the
+    // whole REST stack per item inside the same held write lock. `ids` come
+    // back in input order.
+    const { ids } = await client.vocabItems.bulkCreate(
+      chunk.map((it) => ({
+        vocabLayerId: vocabId,
+        form: it.form,
+        metadata: { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id },
+      })),
+    );
     chunk.forEach((it, j) => {
-      const id = results[j]?.body?.id ?? results[j]?.id;
-      if (id) itemIdMap.set(it.id, id);
+      if (ids[j]) itemIdMap.set(it.id, ids[j]);
     });
     done += chunk.length;
     onProgress?.({ phase: 'vocabulary', name: vocabData.name, done, total: pending.length });

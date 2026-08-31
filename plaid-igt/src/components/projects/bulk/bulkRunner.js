@@ -25,7 +25,12 @@ import {
 } from './bulkPlan.js';
 
 // Ops per atomic batch: comfortably under plaid-core's 1000-op cap.
-const BATCH_CHUNK = 800;
+// Ops per batch. A batch is ONE server transaction holding the single SQLite
+// write lock until it commits, and every sub-op re-dispatches the whole REST
+// stack inside that hold — so this bounds how long a concurrent writer waits
+// before the server's busy_timeout refuses it with a 503, not just the number
+// of round trips.
+const BATCH_CHUNK = 200;
 
 // Documents with at least one server-side match for `domain`/`spec`, busiest
 // first: [[docId, count], ...].

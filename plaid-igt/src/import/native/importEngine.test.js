@@ -114,12 +114,8 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
       setConfig: async (...a) => record('vocabLayers.setConfig', a),
     },
     vocabItems: {
-      create: (vocabId, form, metadata) => {
-        const result = { id: fresh('item') };
-        record('vocabItems.create', [vocabId, form, metadata], result);
-        if (batch) batch.push(result);
-        return result;
-      },
+      bulkCreate: async (body) =>
+        record('vocabItems.bulkCreate', [body], { ids: body.map(() => fresh('item')) }),
     },
     vocabLinks: {
       create: (itemId, tokens, metadata) => {
@@ -176,6 +172,11 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
 
 const callsOf = (client, name) => client.calls.filter(([n]) => n === name);
 
+// A vocab bulkCreate carries many entries in one call; flatten them back to
+// per-item records so the assertions below stay item-shaped.
+const createdItems = (client) =>
+  callsOf(client, 'vocabItems.bulkCreate').flatMap(([, body]) => body);
+
 describe('deriveSetupData', () => {
   it('maps the archive schema onto the setup wizard input', () => {
     const { manifest } = buildArchive();
@@ -231,9 +232,10 @@ describe('importVocabulary', () => {
       vocabId: 'newvocab',
       vocabData: serializeVocabularyNative(VOCAB),
     });
-    const creates = callsOf(client, 'vocabItems.create');
-    expect(creates.map((c) => c[2])).toEqual(['perro', 'perro', 'np']); // archive order
-    expect(creates[0][3]).toEqual({ gloss: 'dog', nativeImportId: 'item1' });
+    const creates = createdItems(client);
+    expect(creates.map((c) => c.form)).toEqual(['perro', 'perro', 'np']); // archive order
+    expect(creates[0].metadata).toEqual({ gloss: 'dog', nativeImportId: 'item1' });
+    expect(creates[0].vocabLayerId).toBe('newvocab');
     expect(map.get('item1')).toMatch(/^item-/);
     expect(map.size).toBe(3);
     // field schema written
@@ -255,7 +257,7 @@ describe('importVocabulary', () => {
       vocabData: serializeVocabularyNative(VOCAB),
     });
     expect(map.get('item1')).toBe('kept');
-    expect(callsOf(client, 'vocabItems.create')).toHaveLength(2);
+    expect(createdItems(client)).toHaveLength(2);
   });
 });
 

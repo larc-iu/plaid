@@ -42,9 +42,9 @@ import {
 // One bulkCreate carries this many entries: the server caps a JSON body at
 // 10MB, and a few hundred KB per request also gives the progress line
 // something to say during a long import.
-const CREATE_CHUNK = 1000;
+const CREATE_CHUNK = 500;
 // One metadata patch is one batch op, and plaid-core caps a batch at 1000.
-const UPDATE_CHUNK = 500;
+const UPDATE_CHUNK = 200;
 
 // The three steps a person walks. `running` is an outcome, not a step, so it
 // carries its own title and no counter.

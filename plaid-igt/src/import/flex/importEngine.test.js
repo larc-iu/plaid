@@ -233,8 +233,8 @@ function makeFakeClient({ existingDocs = [], existingItems = [], existingFields 
         record('vocabLayers.setConfig', { vocabId, ns, key, value }, {}),
     },
     vocabItems: {
-      create: (vocabId, form, metadata) =>
-        record('vocabItems.create', { vocabId, form, metadata }, { id: id('item') }),
+      bulkCreate: (body) =>
+        record('vocabItems.bulkCreate', { body }, { ids: body.map(() => id('item')) }),
     },
     vocabLinks: {
       create: (itemId, tokens, metadata) =>
@@ -244,6 +244,11 @@ function makeFakeClient({ existingDocs = [], existingItems = [], existingFields 
     },
   };
 }
+
+// A vocab bulkCreate carries many entries in one call; flatten them back to
+// per-item records so the assertions below stay item-shaped.
+const createdItems = (client) =>
+  client.calls.filter((c) => c.kind === 'vocabItems.bulkCreate').flatMap((c) => c.args.body);
 
 // --- tests ---------------------------------------------------------------------
 
@@ -300,9 +305,9 @@ describe('importLexicon', () => {
       existingItems: [{ id: 'old1', form: 'за', metadata: { flexSense: 's1' } }],
     });
     const map = await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
-    const creates = client.calls.filter((c) => c.kind === 'vocabItems.create');
+    const creates = createdItems(client);
     expect(creates).toHaveLength(2); // s2 + s3; s1 already present
-    expect(creates[0].args.metadata).toMatchObject({
+    expect(creates[0].metadata).toMatchObject({
       flexEntry: 'e2',
       flexSense: 's2',
       gloss: 'tale',
@@ -312,7 +317,7 @@ describe('importLexicon', () => {
       'Parsing Note': 'check',
     });
     // gloss first: the popover's no-config fallback shows the first value
-    expect(Object.keys(creates[0].args.metadata)[0]).toBe('gloss');
+    expect(Object.keys(creates[0].metadata)[0]).toBe('gloss');
     expect(map.get('s1')).toBe('old1');
     expect(map.get('s2')).toBeTruthy();
   });
@@ -320,25 +325,21 @@ describe('importLexicon', () => {
   it('uses the citation form as the item form, keeping the lexeme form as metadata', async () => {
     const client = makeFakeClient();
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
-    const creates = client.calls.filter((c) => c.kind === 'vocabItems.create');
-    const za = creates.find((c) => c.args.metadata.flexSense === 's1');
-    const max = creates.find((c) => c.args.metadata.flexSense === 's2');
-    expect(za.args.form).toBe('за'); // no citation form → lexeme form
-    expect(za.args.metadata.lexemeForm).toBeUndefined();
-    expect(max.args.form).toBe('махъ'); // citation form wins
-    expect(max.args.metadata.lexemeForm).toBe('мах');
+    const creates = createdItems(client);
+    const za = creates.find((c) => c.metadata.flexSense === 's1');
+    const max = creates.find((c) => c.metadata.flexSense === 's2');
+    expect(za.form).toBe('за'); // no citation form → lexeme form
+    expect(za.metadata.lexemeForm).toBeUndefined();
+    expect(max.form).toBe('махъ'); // citation form wins
+    expect(max.metadata.lexemeForm).toBe('мах');
   });
 
   it('imports definitions and example sentences as item metadata', async () => {
     const client = makeFakeClient();
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
-    const max = client.calls
-      .filter((c) => c.kind === 'vocabItems.create')
-      .find((c) => c.args.metadata.flexSense === 's2');
-    expect(max.args.metadata.definition).toBe('a traditional tale');
-    expect(max.args.metadata.examples).toEqual([
-      { text: 'мах ава', translation: 'there is a tale' },
-    ]);
+    const max = createdItems(client).find((c) => c.metadata.flexSense === 's2');
+    expect(max.metadata.definition).toBe('a traditional tale');
+    expect(max.metadata.examples).toEqual([{ text: 'мах ава', translation: 'there is a tale' }]);
   });
 
   it('declares the vocab field schema (gloss/pos inline + custom fields)', async () => {
@@ -375,19 +376,18 @@ describe('importLexicon', () => {
     expect(cfg).toHaveProperty('gloss (ru)');
   });
 
-  const created = (client) => client.calls.filter((c) => c.kind === 'vocabItems.create');
-  const bySense = (client, guid) => created(client).find((c) => c.args.metadata.flexSense === guid);
+  const bySense = (client, guid) => createdItems(client).find((c) => c.metadata.flexSense === guid);
   const schema = (client) =>
     client.calls.find((c) => c.kind === 'vocabLayers.setConfig').args.value;
 
   it('writes a gloss per analysis writing system, the primary one under the bare key', async () => {
     let client = makeFakeClient();
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
-    expect(bySense(client, 's2').args.metadata).toMatchObject({
+    expect(bySense(client, 's2').metadata).toMatchObject({
       gloss: 'tale',
       'gloss (ru)': 'сказка',
     });
-    expect(Object.keys(bySense(client, 's2').args.metadata)[0]).toBe('gloss');
+    expect(Object.keys(bySense(client, 's2').metadata)[0]).toBe('gloss');
 
     // Restricting the analysis languages drops the others, from items and schema alike.
     client = makeFakeClient();
@@ -398,7 +398,7 @@ describe('importLexicon', () => {
       baselineWs: BASE_WS,
       analysisWss: ['en'],
     });
-    expect(bySense(client, 's2').args.metadata).not.toHaveProperty('gloss (ru)');
+    expect(bySense(client, 's2').metadata).not.toHaveProperty('gloss (ru)');
     expect(schema(client)).not.toHaveProperty('gloss (ru)');
 
     // Another primary ws swaps which one is bare.
@@ -410,20 +410,20 @@ describe('importLexicon', () => {
       baselineWs: BASE_WS,
       primaryAnalysisWs: 'ru',
     });
-    expect(bySense(client, 's2').args.metadata).toMatchObject({
+    expect(bySense(client, 's2').metadata).toMatchObject({
       gloss: 'сказка',
       'gloss (en)': 'tale',
     });
-    expect(bySense(client, 's3').args.metadata).toMatchObject({ 'gloss (en)': 'story' });
-    expect(bySense(client, 's3').args.metadata).not.toHaveProperty('gloss');
+    expect(bySense(client, 's3').metadata).toMatchObject({ 'gloss (en)': 'story' });
+    expect(bySense(client, 's3').metadata).not.toHaveProperty('gloss');
   });
 
   it('imports the other FLEx fields only when asked, per writing system, entry-level ones on every sense', async () => {
     let client = makeFakeClient();
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
     for (const guid of ['s2', 's3']) {
-      expect(bySense(client, guid).args.metadata).not.toHaveProperty('Comment');
-      expect(bySense(client, guid).args.metadata).not.toHaveProperty('GeneralNote');
+      expect(bySense(client, guid).metadata).not.toHaveProperty('Comment');
+      expect(bySense(client, guid).metadata).not.toHaveProperty('GeneralNote');
     }
     expect(schema(client)).not.toHaveProperty('Comment');
 
@@ -435,14 +435,14 @@ describe('importLexicon', () => {
       baselineWs: BASE_WS,
       lexiconFields: ['Comment', 'GeneralNote'],
     });
-    expect(bySense(client, 's2').args.metadata).toMatchObject({
+    expect(bySense(client, 's2').metadata).toMatchObject({
       Comment: 'borrowed',
       GeneralNote: 'rare',
       'GeneralNote (ru)': 'редко',
     });
-    expect(bySense(client, 's3').args.metadata).toMatchObject({ Comment: 'borrowed' });
-    expect(bySense(client, 's3').args.metadata).not.toHaveProperty('GeneralNote');
-    expect(bySense(client, 's1').args.metadata).not.toHaveProperty('Comment');
+    expect(bySense(client, 's3').metadata).toMatchObject({ Comment: 'borrowed' });
+    expect(bySense(client, 's3').metadata).not.toHaveProperty('GeneralNote');
+    expect(bySense(client, 's1').metadata).not.toHaveProperty('Comment');
     expect(schema(client)).toMatchObject({
       Comment: { inline: false },
       GeneralNote: { inline: false },

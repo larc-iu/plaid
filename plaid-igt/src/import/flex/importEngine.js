@@ -23,8 +23,36 @@ import {
 } from '../../domain/igtConfig.js';
 import { pickEn } from './fwdataParser.js';
 
-const LINK_CHUNK = 1000; // chunk size for the vocab-link bulk endpoint (bounds tx size)
+// Chunk sizes for the bulk endpoints. Each chunk is ONE server transaction
+// holding the single SQLite write lock for its whole duration, so the number
+// that matters is how long that is, not how few round trips we make: any other
+// writer that arrives mid-chunk waits, and is refused with a 503 once the
+// server's busy_timeout (5s by default) runs out. Keeping a chunk to a few
+// hundred rows keeps a hold well under a second even on a large database.
+// Rows per bulk request. Each chunk is ONE server transaction holding the
+// single SQLite write lock for its whole duration, so what this bounds is how
+// long another writer can be made to wait — not just how many round trips we
+// make. A writer that arrives mid-chunk waits, and is refused with a 503 once
+// the server's busy_timeout (5s by default) runs out, so keep a hold well
+// under a second even on a large database. Nothing here may be unbounded: a
+// document's token count is set by the data, not by us.
+const BULK_CHUNK = 500;
 const DONE_KEY = 'flexImported';
+
+/**
+ * Send `items` to a bulk endpoint in BULK_CHUNK-sized slices, concatenating
+ * the ids each call returns so the caller still gets one id per input, in
+ * input order. `check` runs before each slice so a cancel lands promptly.
+ */
+async function bulkInChunks(items, check, send) {
+  const ids = [];
+  for (let i = 0; i < items.length; i += BULK_CHUNK) {
+    check?.();
+    const res = await send(items.slice(i, i + BULK_CHUNK));
+    if (res?.ids) ids.push(...res.ids);
+  }
+  return ids;
+}
 
 /** Display name for an analysis writing system: primary ws gets the bare field name. */
 const fieldName = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} (${ws})`);
@@ -246,16 +274,20 @@ export async function importLexicon({
   }
   await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
 
+  // bulkCreate, not a batch of per-item creates: the bulk endpoint is one
+  // request, one operation row and one pass over the table, where a batch of
+  // N creates re-dispatches the whole REST stack N times and writes N
+  // operation rows — all inside the same held write lock. `ids` come back in
+  // input order.
   let done = 0;
-  for (let i = 0; i < pending.length; i += LINK_CHUNK) {
+  for (let i = 0; i < pending.length; i += BULK_CHUNK) {
     if (shouldStop?.()) throw new Error('Import cancelled');
-    const chunk = pending.slice(i, i + LINK_CHUNK);
-    const results = await client.batched(async () => {
-      for (const p of chunk) client.vocabItems.create(vocabId, p.form, p.metadata);
-    });
+    const chunk = pending.slice(i, i + BULK_CHUNK);
+    const { ids } = await client.vocabItems.bulkCreate(
+      chunk.map((p) => ({ vocabLayerId: vocabId, form: p.form, metadata: p.metadata })),
+    );
     chunk.forEach((p, j) => {
-      const id = results[j]?.body?.id ?? results[j]?.id;
-      if (id) senseToItem.set(p.senseGuid, id);
+      if (ids[j]) senseToItem.set(p.senseGuid, ids[j]);
     });
     done += chunk.length;
     onProgress?.({ phase: 'lexicon', done, total: pending.length });
@@ -315,16 +347,16 @@ export async function importDocument({
             notes: [],
           },
         ];
-    const sentenceIds = (
-      await client.tokens.bulkCreate(
-        sentenceSpansSpec.map((s) => ({
-          tokenLayerId: targets.sentenceLayerId,
-          text: textId,
-          begin: s.begin,
-          end: s.end,
-        })),
-      )
-    ).ids;
+    const sentenceIds = await bulkInChunks(
+      sentenceSpansSpec.map((s) => ({
+        tokenLayerId: targets.sentenceLayerId,
+        text: textId,
+        begin: s.begin,
+        end: s.end,
+      })),
+      check,
+      (specs) => client.tokens.bulkCreate(specs),
+    );
 
     // Word tokens, with orthography metadata
     check();
@@ -377,10 +409,11 @@ export async function importDocument({
         });
       });
     });
-    const morphIds =
-      morphSpecs.length === 0
-        ? []
-        : (await client.tokens.bulkCreate(morphSpecs.map((s) => s.req))).ids;
+    const morphIds = await bulkInChunks(
+      morphSpecs.map((s) => s.req),
+      check,
+      (specs) => client.tokens.bulkCreate(specs),
+    );
 
     // Annotation spans, all scopes in chunked bulk calls
     check();
@@ -418,10 +451,7 @@ export async function importDocument({
       byLayer.get(s.spanLayerId).push(s);
     }
     for (const specs of byLayer.values()) {
-      for (let i = 0; i < specs.length; i += 1000) {
-        check();
-        await client.spans.bulkCreate(specs.slice(i, i + 1000));
-      }
+      await bulkInChunks(specs, check, (part) => client.spans.bulkCreate(part));
     }
 
     // Vocab links morpheme → lexicon item. FLEx's human-approved analyses
@@ -440,16 +470,15 @@ export async function importDocument({
         });
       }
     });
-    for (let i = 0; i < linkSpecs.length; i += LINK_CHUNK) {
-      check();
-      await client.vocabLinks.bulkCreate(
-        linkSpecs.slice(i, i + LINK_CHUNK).map((l) => ({
+    await bulkInChunks(linkSpecs, check, (part) =>
+      client.vocabLinks.bulkCreate(
+        part.map((l) => ({
           vocabItem: l.itemId,
           tokens: [l.tokenId],
           metadata: l.approved ? confirmedInferred('flex-import') : stampInferred('flex-import'),
         })),
-      );
-    }
+      ),
+    );
   }
 
   // Mark complete LAST — resume treats unmarked documents as partial.
