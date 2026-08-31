@@ -13,13 +13,14 @@
   common direct case, but a busy MASKED by a 'cannot rollback - no
   transaction is active' exception on top fell through to 500.
   `submit-operation*` now walks the cause/suppressed chain
-  (`sqlite-busy-in-chain?`) so a masked busy still maps to a retryable 503."
+  (`plaid.sql.common/sqlite-busy?`, shared with the batch endpoint) so a
+  masked busy still maps to a retryable 503."
   (:require [clojure.java.io :as io]
             [clojure.test :refer :all]
             [plaid.fixtures :as fix :refer [with-db with-mount-states
                                             with-rest-handler with-admin]]
             [plaid.rest-api.v1.middleware :as mw]
-            [plaid.sql.operation :as op]
+            [plaid.sql.common :as psc]
             [ring.mock.request :as mock])
   (:import (java.sql SQLException)))
 
@@ -51,11 +52,11 @@
     (is (= 200 (:status (h {}))) "happy path is untouched")))
 
 ;; ============================================================
-;; BUG-C: sqlite-busy-in-chain? unit
+;; BUG-C: psc/sqlite-busy? unit
 ;; ============================================================
 
-(deftest sqlite-busy-in-chain?-walks-cause-and-suppressed
-  (let [busy? @#'op/sqlite-busy-in-chain?]
+(deftest sqlite-busy?-walks-cause-and-suppressed
+  (let [busy? psc/sqlite-busy?]
     (testing "direct busy / locked"
       (is (true? (busy? (SQLException. "[SQLITE_BUSY] The database file is locked (database is locked)"))))
       (is (true? (busy? (SQLException. "[SQLITE_LOCKED] database table is locked")))))

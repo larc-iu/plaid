@@ -293,33 +293,6 @@
   [tx vocab-id]
   (touch-vocab-layers! tx [vocab-id]))
 
-(defn- sqlite-busy-in-chain?
-  "True when `e` or anything in its cause/suppressed chain is a SQLite
-   busy/locked error. The common case is a top-level SQLITE_BUSY, but
-   under BEGIN-time contention next.jdbc can surface a 'cannot rollback -
-   no transaction is active' failure on top with the real busy attached
-   as a cause or suppressed exception — so we walk the whole chain,
-   checking the SQLite result code (BUSY=5, LOCKED=6) and message text on
-   each link."
-  [^Throwable e]
-  (loop [stack [e]]
-    (if (empty? stack)
-      false
-      (let [^Throwable t (peek stack)
-            stack' (pop stack)]
-        (cond
-          (nil? t) (recur stack')
-          (let [rc (when (instance? org.sqlite.SQLiteException t)
-                     (try (.code (.getResultCode ^org.sqlite.SQLiteException t))
-                          (catch Throwable _ nil)))
-                msg (or (.getMessage t) "")]
-            (or (= 5 rc) (= 6 rc)
-                (clojure.string/includes? msg "SQLITE_BUSY")
-                (clojure.string/includes? msg "SQLITE_LOCKED")
-                (clojure.string/includes? msg "database is locked")))
-          true
-          :else (recur (into stack' (remove nil? (cons (.getCause t) (seq (.getSuppressed t)))))))))))
-
 (defn submit-operation*
   "Functional core. body-fn is (fn [tx] ...). Returns a result map.
 
@@ -482,8 +455,8 @@
       ;; Walk the cause/suppressed chain (not just the top exception) so a
       ;; busy masked by a "cannot rollback - no transaction is active"
       ;; rollback failure is still surfaced as a retryable 503 instead of
-      ;; an opaque 500. See `sqlite-busy-in-chain?`.
-      (if (sqlite-busy-in-chain? e)
+      ;; an opaque 500. See `psc/sqlite-busy?`.
+      (if (psc/sqlite-busy? e)
         (do
           (log/warn e "Database busy/locked after busy_timeout:" (ex-message e))
           {:success false :error "Database busy, please retry" :code 503})
@@ -498,7 +471,7 @@
     (catch Exception e
       ;; A non-SQLException can still WRAP a busy (e.g. a rollback-failure
       ;; wrapper) — check the chain before falling back to 500.
-      (if (sqlite-busy-in-chain? e)
+      (if (psc/sqlite-busy? e)
         (do
           (log/warn e "Database busy/locked after busy_timeout:" (ex-message e))
           {:success false :error "Database busy, please retry" :code 503})

@@ -607,16 +607,95 @@
       (fn [] (mapv #(coerce-id-cols query nil %)
                    (jdbc/execute! db sql-vec jdbc-opts))))))
 
+(defn sqlite-busy?
+  "True when `e` or anything in its cause/suppressed chain is a SQLite
+  busy/locked error. The common case is a top-level SQLITE_BUSY, but a busy
+  raised while OPENING the transaction arrives wrapped: next.jdbc's
+  `transact*` catches the failure, attempts a rollback that itself fails
+  (\"cannot rollback - no transaction is active\"), and rethrows that wrapper
+  instead. So walk the whole chain, checking the SQLite result code
+  (BUSY=5, LOCKED=6) and the message text on each link."
+  [^Throwable e]
+  (loop [stack [e]]
+    (if (empty? stack)
+      false
+      (let [^Throwable t (peek stack)
+            stack' (pop stack)]
+        (cond
+          (nil? t) (recur stack')
+          (let [rc (when (instance? org.sqlite.SQLiteException t)
+                     (try (.code (.getResultCode ^org.sqlite.SQLiteException t))
+                          (catch Throwable _ nil)))
+                msg (or (.getMessage t) "")]
+            (or (= 5 rc) (= 6 rc)
+                (str/includes? msg "SQLITE_BUSY")
+                (str/includes? msg "SQLITE_LOCKED")
+                (str/includes? msg "database is locked")))
+          true
+          :else (recur (into stack' (remove nil? (cons (.getCause t) (seq (.getSuppressed t)))))))))))
+
+(defn heal-autocommit!
+  "Undo a half-applied `setAutoCommit(false)` before `con` returns to the pool.
+
+  sqlite-jdbc's `SQLiteConnection.setAutoCommit(false)` flips its own
+  `connectionConfig` autocommit flag BEFORE issuing `BEGIN IMMEDIATE`, and
+  has no exception handler around that exec. Under write contention the
+  BEGIN fails with SQLITE_BUSY once `busy_timeout` elapses — and the flag is
+  left `false` with NO transaction open. next.jdbc's `transact*` calls
+  `.setAutoCommit con false` OUTSIDE its own try, so it neither rolls back
+  nor restores autocommit on that path either, and Hikari's proxy saw its
+  own `setAutoCommit` throw so it records no dirty bit and resets nothing.
+  The connection goes back to the pool permanently mismatched: the driver
+  believes a transaction is open, SQLite is actually in autocommit mode.
+
+  Every later borrow of that connection is then silently NON-transactional —
+  `setAutoCommit(false)` early-returns (the flag already reads false) so no
+  BEGIN is ever issued, each statement autocommits on its own, and the final
+  `.commit` throws `cannot commit - no transaction is active`, which
+  next.jdbc turns into `Rollback failed handling ...`. The caller sees a
+  fast, load-independent 500 while the writes it was told failed are
+  already durable. One busy timeout thus takes a pooled connection out of
+  service for good (until Hikari's 30-minute maxLifetime retires it) AND
+  costs the atomicity guarantee on it.
+
+  Called on every exit from `with-tx*`. When autocommit is already true
+  (the overwhelmingly common case, including a normal rollback) this is a
+  no-op. Otherwise roll back first — that can only DISCARD work, never
+  commit it — and then force the flag back with `setAutoCommit(true)`,
+  which sets the flag before its own exec and so lands correctly even when
+  that exec throws for want of a transaction."
+  [^java.sql.Connection con]
+  (try
+    (when-not (.getAutoCommit con)
+      (try (.rollback con) (catch java.sql.SQLException _ nil))
+      (try (.setAutoCommit con true) (catch java.sql.SQLException _ nil))
+      (log/warn "Reset a pooled connection left with autocommit disabled and no"
+                "open transaction (a BEGIN that lost the write lock). See"
+                "plaid.sql.common/heal-autocommit!"))
+    (catch java.sql.SQLException _
+      ;; A closed/broken connection can throw from getAutoCommit itself.
+      ;; Nothing to heal in that case — Hikari will discard it.
+      nil)))
+
 (defn with-tx*
   "Run `f` inside a JDBC transaction. `f` is called with a Connection.
   If `db` is already a Connection in an outer transaction (the REST batch
   handler's case), we DO NOT wrap with another with-transaction — next.jdbc's
   default behavior there would commit the underlying tx prematurely. Instead
-  we run the body inline; the outer batch handler owns commit/rollback."
+  we run the body inline; the outer batch handler owns commit/rollback.
+
+  We check the connection out ourselves rather than handing the DataSource to
+  `jdbc/with-transaction` so that `heal-autocommit!` gets a chance to run
+  before the connection is recycled — see its docstring for what happens
+  when it doesn't."
   [db f]
   (if (instance? java.sql.Connection db)
     (f db)
-    (jdbc/with-transaction [tx db] (f tx))))
+    (with-open [con (jdbc/get-connection db)]
+      (try
+        (jdbc/with-transaction [tx con] (f tx))
+        (finally
+          (heal-autocommit! con))))))
 
 (defmacro with-tx
   "Execute body inside a JDBC transaction. Binds `tx-sym` to the Connection."

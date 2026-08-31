@@ -16,24 +16,6 @@
   for an unbounded amount of time."
   1000)
 
-(defn- sqlite-busy?
-  "Inspect a SQLException to decide whether it's a SQLITE_BUSY /
-  SQLITE_LOCKED contention failure. Mirrors the detection idiom in
-  `plaid.sql.operation/submit-operation*` — we check the extended
-  result code (5/6) when available, then fall back to substring
-  matches on the message (the driver subclass sometimes shadows
-  getResultCode)."
-  [^SQLException e]
-  (let [msg (or (.getMessage e) "")
-        result-code (when (instance? org.sqlite.SQLiteException e)
-                      (try (.code (.getResultCode ^org.sqlite.SQLiteException e))
-                           (catch Throwable _ nil)))]
-    (or (= 5 result-code)
-        (= 6 result-code)
-        (str/includes? msg "SQLITE_BUSY")
-        (str/includes? msg "SQLITE_LOCKED")
-        (str/includes? msg "database is locked"))))
-
 (defn parse-path-and-query
   "Parse a path like '/api/v1/projects?foo=bar' into uri and query-string"
   [path]
@@ -135,7 +117,11 @@
             deferred-events (atom [])]
         (try
           (let [result
-                (jdbc/with-transaction [tx db]
+                ;; psc/with-tx* rather than jdbc/with-transaction directly: it
+                ;; checks the connection out itself so a BEGIN that loses the
+                ;; write lock can't return a half-configured connection to the
+                ;; pool. See plaid.sql.common/heal-autocommit!.
+                (psc/with-tx [tx db]
                   (binding [op/*current-batch-id* batch-id
                             op/*deferred-events* deferred-events
                             psc/*batch-validated-document-versions* (atom {})]
@@ -183,14 +169,21 @@
           ;; can retry, instead of a generic 500 that looks like a bug.
           ;; MUST precede the generic Exception catch.
           (catch SQLException e
-            (if (sqlite-busy? e)
+            (if (psc/sqlite-busy? e)
               (do (log/warn e "Batch" batch-id "could not acquire write lock (busy/locked)")
                   {:status 503 :body {:error "Database busy, please retry"}})
               (do (log/error e "Unexpected batch SQL error" batch-id)
                   {:status 500 :body {:error "Internal error"}})))
           (catch Exception e
-            (log/error e "Unexpected batch error" batch-id)
-            {:status 500 :body {:error "Internal error"}}))))))
+            ;; Not every busy arrives as a SQLException: next.jdbc wraps a
+            ;; failed BEGIN's rollback attempt in a plain ex-info carrying the
+            ;; real busy underneath, so check the chain here too rather than
+            ;; reporting a retryable contention failure as a 500.
+            (if (psc/sqlite-busy? e)
+              (do (log/warn e "Batch" batch-id "could not acquire write lock (busy/locked)")
+                  {:status 503 :body {:error "Database busy, please retry"}})
+              (do (log/error e "Unexpected batch error" batch-id)
+                  {:status 500 :body {:error "Internal error"}}))))))))
 
 (def batch-routes
   ["/batch"
