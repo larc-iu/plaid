@@ -108,6 +108,26 @@ export function tierSchema(eaf) {
   return list.sort((a, b) => a.key.localeCompare(b.key));
 }
 
+/**
+ * Groups of nodes whose base names differ ONLY in case ("Phrase" / "phrase").
+ *
+ * TIER_ID is case-sensitive in EAF, so this is a legal file and the two tiers
+ * stay distinct everywhere here. But it is nearly always a mistake in the
+ * corpus, and two rows a reader cannot tell apart is a bad way to ask someone
+ * to map tiers, so it is reported rather than quietly tolerated.
+ */
+export function caseCollisions(nodes) {
+  const byFolded = new Map();
+  for (const node of nodes) {
+    const folded = node.baseName.toLowerCase();
+    if (!byFolded.has(folded)) byFolded.set(folded, []);
+    byFolded.get(folded).push(node);
+  }
+  return [...byFolded.values()]
+    .filter((group) => new Set(group.map((n) => n.baseName)).size > 1)
+    .map((group) => group.map(nodeLabel).sort());
+}
+
 /** A stable string identifying a schema, for grouping files. */
 export const signatureOf = (nodes) =>
   nodes
@@ -137,11 +157,13 @@ export function compareSchemas(files) {
   }
   const list = [...groups.values()].sort((a, b) => b.files.length - a.files.length);
   if (list.length <= 1) {
+    const nodes = list[0]?.nodes ?? [];
     return {
       consistent: true,
-      nodes: list[0]?.nodes ?? [],
+      nodes,
       groups: list,
       differences: [],
+      caseCollisions: caseCollisions(nodes),
     };
   }
 
@@ -150,13 +172,22 @@ export function compareSchemas(files) {
   const mainKeys = new Set(main.nodes.map((n) => n.key));
   const differences = rest.map((group) => {
     const keys = new Set(group.nodes.map((n) => n.key));
-    return {
-      files: group.files.map((f) => f.fileName),
-      missing: main.nodes.filter((n) => !keys.has(n.key)).map(nodeLabel),
-      extra: group.nodes.filter((n) => !mainKeys.has(n.key)).map(nodeLabel),
-    };
+    const missing = main.nodes.filter((n) => !keys.has(n.key)).map(nodeLabel);
+    const extra = group.nodes.filter((n) => !mainKeys.has(n.key)).map(nodeLabel);
+    // "missing Phrase, extra phrase" is a baffling thing to read. Name it for
+    // what it is, since a case-only difference between files is the likeliest
+    // way a batch fails this gate by accident.
+    const folded = new Set(extra.map((n) => n.toLowerCase()));
+    const caseOnly = missing.filter((n) => folded.has(n.toLowerCase()));
+    return { files: group.files.map((f) => f.fileName), missing, extra, caseOnly };
   });
-  return { consistent: false, nodes: main.nodes, groups: list, differences };
+  return {
+    consistent: false,
+    nodes: main.nodes,
+    groups: list,
+    differences,
+    caseCollisions: caseCollisions(main.nodes),
+  };
 }
 
 // ---- role suggestion -------------------------------------------------------
@@ -189,14 +220,18 @@ const NOT_TRANSCRIPTION_NAME =
 
 // Ranked best-first: a transcription-ish name wins, a gloss-ish name loses, and
 // the annotation count decides among equals.
+const nameScore = (name, weight) =>
+  (TRANSCRIPTION_NAME.test(name) ? weight : 0) - (NOT_TRANSCRIPTION_NAME.test(name) ? weight : 0);
+
+// The tier's own name counts double, but its LINGUISTIC_TYPE counts too: the
+// type is the file's schema-level declaration of what kind of tier this is, and
+// it breaks ties the name cannot. In the Abui fixture three roots are all
+// named plausibly (`Phrase`, `phrase`, `transcription`) and all hold one
+// annotation, so without the type the winner came down to sort order and the
+// filler tier won.
 const rankRoots = (roots) =>
   roots
-    .map((n) => ({
-      n,
-      score:
-        (TRANSCRIPTION_NAME.test(n.baseName) ? 2 : 0) -
-        (NOT_TRANSCRIPTION_NAME.test(n.baseName) ? 2 : 0),
-    }))
+    .map((n) => ({ n, score: nameScore(n.baseName, 2) + nameScore(n.typeRef, 1) }))
     .sort((a, b) => b.score - a.score || b.n.annotationCount - a.n.annotationCount)
     .map((x) => x.n);
 
@@ -228,24 +263,15 @@ export function suggestRoles(nodes) {
   const roots = rankRoots(nodes.filter((n) => !n.parentKey && n.alignable));
   if (!roots.length) return roles;
 
-  // The best root, plus any sibling root that shares its shape (same type and
-  // the same child tier names) — that is what a per-speaker tier tree looks
-  // like. A root with no children of its own is only taken when it is the best.
-  const best = roots[0];
-  const shapeOf = (node) =>
-    `${node.typeRef}|${childrenOf(node.key)
-      .map((c) => c.typeRef)
-      .sort()
-      .join(',')}`;
-  const bestShape = shapeOf(best);
-  // Sibling roots of the same shape come along, because that is what a
-  // per-speaker tier tree looks like — but never one whose name says it is not
-  // a transcription. Two CHILDLESS roots of the same type have identical shapes,
-  // so without that guard a `gloss` tier sitting beside a `transcription` tier
-  // is swept in as a second utterance tier.
-  const utterances = roots.filter(
-    (n) => n === best || (shapeOf(n) === bestShape && !NOT_TRANSCRIPTION_NAME.test(n.baseName)),
-  );
+  // EXACTLY ONE utterance tier is ever suggested. Mapping several is supported
+  // (a corpus may give each speaker a whole tier tree named by prefix rather
+  // than by @participant), but that is a decision the user makes in the mapping
+  // table, never a guess made here. An earlier version took every sibling root
+  // of the same shape. Across twelve real files that rule never once found a
+  // second speaker, and it did merge two unrelated tiers into one utterance
+  // stream: an Abui fixture's `Phrase` and `phrase`, which differ only in case.
+  // Guessing that two tiers are the same voice is not ours to do.
+  const utterances = [roots[0]];
 
   for (const utterance of utterances) {
     roles[utterance.key] = ROLES.UTTERANCE;

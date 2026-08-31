@@ -285,6 +285,15 @@ export const ImportElanProject = () => {
                       {d.files.length > 3 ? `, +${d.files.length - 3} more` : ''}):
                       {d.missing.length > 0 && <> missing {d.missing.join(', ')}.</>}
                       {d.extra.length > 0 && <> extra {d.extra.join(', ')}.</>}
+                      {d.caseOnly?.length > 0 && (
+                        <>
+                          {' '}
+                          <span className="font-medium">
+                            {d.caseOnly.join(', ')} differs only in capitalization
+                          </span>
+                          , which is likely a typo in the tier name rather than a real difference.
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -316,6 +325,20 @@ export const ImportElanProject = () => {
                   />
                 </div>
 
+                {comparison.caseCollisions?.length > 0 && (
+                  <Panel
+                    tone="warn"
+                    icon={AlertTriangle}
+                    title="Some tier names differ only in capitalization"
+                  >
+                    <p className="mt-1 text-xs">
+                      {comparison.caseCollisions.map((g) => g.join(' / ')).join('; ')}. ELAN treats
+                      these as different tiers and so do we, but they are easy to confuse in the
+                      table below. Check you are mapping the one you mean.
+                    </p>
+                  </Panel>
+                )}
+
                 <div className="flex flex-col gap-3">
                   <div>
                     <h2 className="text-lg font-semibold">Tiers</h2>
@@ -339,6 +362,9 @@ export const ImportElanProject = () => {
                             {node.participants.length > 1
                               ? ` · ${node.participants.length} speakers`
                               : ''}
+                            {' · '}
+                            <span className="font-mono">{node.tierIds.slice(0, 3).join(' ')}</span>
+                            {node.tierIds.length > 3 ? ` +${node.tierIds.length - 3}` : ''}
                           </span>
                         </div>
                         {NAMED_ROLES.has(roles[node.key]) && (

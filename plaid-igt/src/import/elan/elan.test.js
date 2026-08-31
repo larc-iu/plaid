@@ -544,9 +544,24 @@ describe('several tier trees in one file', () => {
       ],
     });
 
-  it('takes every root of the same shape and interleaves them by time', () => {
-    const { build } = buildFrom([[twoTrees(), 'x.eaf']]);
-    const doc = build.documents[0];
+  it('suggests only ONE utterance tier, never guessing that two are one voice', () => {
+    const parsed = [readEaf(twoTrees(), 'x.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const roles = suggestRoles(nodes);
+    expect(nodes.filter((n) => roles[n.key] === ROLES.UTTERANCE)).toHaveLength(1);
+  });
+
+  it('interleaves by time once the user maps the second tree as well', () => {
+    const parsed = [readEaf(twoTrees(), 'x.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const key = (name) => nodes.find((n) => n.baseName === name).key;
+    const roles = {
+      ...suggestRoles(nodes),
+      [key('K-Spch')]: ROLES.UTTERANCE,
+      [key('K-ft')]: ROLES.SENTENCE_FIELD,
+    };
+    expect(validateRoles(nodes, roles)).toEqual([]);
+    const doc = buildElanDocuments(parsed, nodes, roles).documents[0];
     expect(doc.body).toBe('primero\nsegundo\ntercero');
     expect(doc.sentences.map((s) => s.fields['W-ft'] ?? s.fields['K-ft'])).toEqual([
       'first',
@@ -558,7 +573,12 @@ describe('several tier trees in one file', () => {
   it('lets two tiers be renamed onto one field, and asks for that layer once', () => {
     const parsed = [readEaf(twoTrees(), 'x.eaf')];
     const { nodes } = compareSchemas(parsed);
-    const roles = suggestRoles(nodes);
+    const key = (name) => nodes.find((n) => n.baseName === name).key;
+    const roles = {
+      ...suggestRoles(nodes),
+      [key('K-Spch')]: ROLES.UTTERANCE,
+      [key('K-ft')]: ROLES.SENTENCE_FIELD,
+    };
     const names = Object.fromEntries(
       nodes.filter((n) => n.baseName.endsWith('-ft')).map((n) => [n.key, 'Translation']),
     );
@@ -569,6 +589,63 @@ describe('several tier trees in one file', () => {
       'second',
       undefined,
     ]);
+  });
+});
+
+describe('tier names differing only in case', () => {
+  // Real file: CoEDL/elan-helpers' Abui fixture has `Phrase` (participant SL)
+  // and `phrase`, unrelated tiers holding unrelated text. EAF's TIER_ID is
+  // case-sensitive, so this is legal, and they must stay two distinct tiers.
+  const abuiShaped = () =>
+    eafXml({
+      types: { 'default-lt': null, transcription: null, gloss: null },
+      tiers: [
+        {
+          id: 'Phrase',
+          type: 'default-lt',
+          participant: 'SL',
+          anns: [['a1', 'a m a k', 100, 900]],
+        },
+        { id: 'transcription@speaker1', type: 'transcription', anns: [['a2', 'amak', 200, 700]] },
+        { id: 'gloss@speaker1', type: 'gloss', anns: [['a3', 'add gloss here', 300, 800]] },
+        { id: 'phrase', type: 'default-lt', anns: [['a4', 'mememe', 0, 1000]] },
+      ],
+    });
+
+  it('keeps them as separate nodes and never merges them into one role', () => {
+    const parsed = [readEaf(abuiShaped(), 'abui.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    expect(nodes.filter((n) => n.baseName.toLowerCase() === 'phrase')).toHaveLength(2);
+    const roles = suggestRoles(nodes);
+    const chosen = nodes.filter((n) => roles[n.key] === ROLES.UTTERANCE);
+    expect(chosen).toHaveLength(1);
+    // Three roots are named plausibly and all hold one annotation, so the tier
+    // TYPE is what settles it: `transcription` declares itself, `default-lt`
+    // does not.
+    expect(chosen[0].baseName).toBe('transcription');
+  });
+
+  it('reports the collision so the mapping table is not two rows that read alike', () => {
+    const result = compareSchemas([readEaf(abuiShaped(), 'abui.eaf')]);
+    expect(result.caseCollisions).toEqual([['Phrase', 'phrase']]);
+  });
+
+  it('names a case-only difference across the batch for what it is', () => {
+    const upper = eafXml({
+      types: { u: null },
+      tiers: [{ id: 'Phrase', type: 'u', anns: [['a1', 'hola', 0, 100]] }],
+    });
+    const lower = eafXml({
+      types: { u: null },
+      tiers: [{ id: 'phrase', type: 'u', anns: [['a1', 'hola', 0, 100]] }],
+    });
+    const result = compareSchemas([readEaf(upper, 'a.eaf'), readEaf(lower, 'b.eaf')]);
+    expect(result.consistent).toBe(false);
+    expect(result.differences[0].caseOnly).toEqual(['Phrase']);
+  });
+
+  it('has no collisions to report in an ordinary file', () => {
+    expect(compareSchemas([readEaf(ANA, 'a.eaf')]).caseCollisions).toEqual([]);
   });
 });
 
