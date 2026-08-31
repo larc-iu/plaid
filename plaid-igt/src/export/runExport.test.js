@@ -479,3 +479,94 @@ describe('runExport — CLDF', () => {
     expect(text(entries, 'media.csv')).toContain('audio/vnd.wave,media/A.wav,1');
   });
 });
+
+describe('runExport — elan .eaf', () => {
+  const elanPreset = (options = {}) => {
+    const preset = newPreset('elan', discoverExportLayers(PROJECT), 'e');
+    return { ...preset, options: { ...preset.options, ...options } };
+  };
+  const parseXml = (xml) => {
+    const dom = new DOMParser().parseFromString(xml, 'text/xml');
+    expect(dom.querySelector('parsererror')).toBeNull();
+    return dom;
+  };
+  const tagged = (dom, tag) => [...dom.getElementsByTagName(tag)];
+
+  it('exports a single medialess document as a bare .eaf', async () => {
+    const docs = [rawDoc('d1', 'Solo Doc', 'hi yo')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: elanPreset(),
+      scope: { type: 'document', id: 'd1' },
+    });
+    expect(result.filename).toBe('Solo Doc.eaf');
+    expect(result.blob.type).toBe('text/xml;charset=utf-8');
+    const dom = parseXml(await result.blob.text());
+    expect(dom.documentElement.getAttribute('VERSION')).toBe('2.8');
+    expect(tagged(dom, 'ANNOTATION_VALUE').map((n) => n.textContent)).toEqual([
+      'hi yo',
+      'hi',
+      'yo',
+    ]);
+    expect(tagged(dom, 'MEDIA_DESCRIPTOR')).toHaveLength(0);
+  });
+
+  it('bundles a lone .eaf with its media so the relative link resolves', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi yo', '/media/d1')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: elanPreset(),
+      scope: { type: 'document', id: 'd1' },
+      fetchMedia: async () => ({
+        bytes: new Uint8Array([1, 2, 3]),
+        ext: '.wav',
+        mime: 'audio/vnd.wave',
+      }),
+    });
+    expect(result.filename).toBe('A-export.zip');
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries).sort()).toEqual(['documents/A.eaf', 'media/A.wav']);
+    const media = tagged(
+      parseXml(new TextDecoder().decode(entries['documents/A.eaf'])),
+      'MEDIA_DESCRIPTOR',
+    )[0];
+    expect(media.getAttribute('RELATIVE_MEDIA_URL')).toBe('../media/A.wav');
+    expect(media.getAttribute('MIME_TYPE')).toBe('audio/vnd.wave');
+  });
+
+  it('stays a bare file when media is switched off', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: elanPreset({ includeMedia: false }),
+      scope: { type: 'document', id: 'd1' },
+      fetchMedia: async () => {
+        throw new Error('should not fetch');
+      },
+    });
+    expect(result.filename).toBe('A.eaf');
+    // The document still declares its media, by the name it will be saved under.
+    const media = tagged(parseXml(await result.blob.text()), 'MEDIA_DESCRIPTOR')[0];
+    expect(media.getAttribute('RELATIVE_MEDIA_URL')).toBe('./song.wav');
+  });
+
+  it('exports a project as a zip of one .eaf per document', async () => {
+    const docs = [rawDoc('d1', 'Alpha', 'hi yo'), rawDoc('d2', 'Beta', 'ba')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: elanPreset(),
+      scope: { type: 'project' },
+    });
+    expect(result.filename).toBe('My Project Test-export.zip');
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries).sort()).toEqual(['documents/Alpha.eaf', 'documents/Beta.eaf']);
+  });
+});

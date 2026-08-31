@@ -86,12 +86,13 @@ export function makeFixtureDoc({ alignmentTokens = [], mediaUrl = null } = {}) {
   };
 }
 
-/** A time-alignment token: char extent + {timeBegin, timeEnd} (seconds). */
-export const makeAlignmentToken = (id, begin, end, timeBegin, timeEnd) => ({
+/** A time-alignment token: char extent + {timeBegin, timeEnd} (seconds),
+ * plus the optional diarization speaker the .eaf export splits tiers on. */
+export const makeAlignmentToken = (id, begin, end, timeBegin, timeEnd, speaker = null) => ({
   id,
   begin,
   end,
-  metadata: { timeBegin, timeEnd },
+  metadata: speaker ? { timeBegin, timeEnd, speaker } : { timeBegin, timeEnd },
 });
 
 export const FULL_SELECTION = {

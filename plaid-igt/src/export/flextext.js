@@ -36,7 +36,9 @@
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
 
-const xmlEscape = (s) =>
+// Shared with the .eaf exporter (src/export/elan.js). The two XML formats
+// escape identically, and one copy keeps them from drifting.
+export const xmlEscape = (s) =>
   String(s ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

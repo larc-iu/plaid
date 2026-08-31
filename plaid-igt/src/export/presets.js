@@ -5,11 +5,13 @@
 
 import { IGT_NAMESPACE } from '../domain/igtConfig.js';
 import { defaultCldfOptions } from './cldf.js';
+import { defaultElanOptions } from './elan.js';
 
 export const EXPORT_FORMATS = [
   { id: 'plaintext', label: 'Plain text', ext: 'txt' },
   { id: 'flextext', label: 'FLEx interlinear (.flextext)', ext: 'flextext' },
   { id: 'cldf', label: 'CLDF TextCorpus (.zip dataset)', ext: 'csv' },
+  { id: 'elan', label: 'ELAN annotation file (.eaf)', ext: 'eaf' },
   { id: 'plaid-igt-json', label: 'Plaid IGT JSON (lossless .zip archive)', ext: 'json' },
 ];
 
@@ -71,6 +73,10 @@ export function newPreset(format, layers, name = 'New preset', languages = null)
     // the TSV flag does not apply. Languages come from project config at run
     // time rather than being frozen into the preset.
     return { ...base, options: { ...defaultCldfOptions(layers), includeMedia: true } };
+  }
+  if (format === 'elan') {
+    // Media rides along in the zip so the .eaf's MEDIA_URL resolves next to it.
+    return { ...base, options: { ...defaultElanOptions(layers), includeMedia: true } };
   }
   if (format === 'flextext') {
     return {
