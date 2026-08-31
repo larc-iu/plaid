@@ -160,10 +160,24 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
 
     // --- collect the utterances, ordered by time, then by document order ----
     const utterances = [];
+    let blankUtterances = 0;
     for (const tier of tiersOfNodes(eaf, utteranceNodes)) {
       for (const ann of tier.annotations) {
+        // A blank annotation is a placeholder ELAN users leave behind. It has
+        // no transcription to anchor a sentence to, and keeping one would put a
+        // zero-width token in the sentence partition (which the server refuses)
+        // or a sentence holding nothing but the newline joining its neighbours.
+        if (!String(ann.value ?? '').trim()) {
+          blankUtterances += 1;
+          continue;
+        }
         utterances.push({ ann, tier, speaker: tier.participant || null });
       }
+    }
+    if (blankUtterances) {
+      docWarnings.push(
+        `Skipped ${blankUtterances} empty annotation${blankUtterances === 1 ? '' : 's'} on the utterance tier.`,
+      );
     }
     utterances.sort((a, b) => (a.ann.beginMs ?? Infinity) - (b.ann.beginMs ?? Infinity));
 

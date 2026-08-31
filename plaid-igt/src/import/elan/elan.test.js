@@ -538,6 +538,35 @@ describe('buildElanDocuments', () => {
     expect(build.warnings[0]).toMatch(/not imported/);
   });
 
+  it('drops blank utterances rather than emitting a zero-width sentence', () => {
+    // A trailing blank annotation is a placeholder real ELAN files carry. Kept,
+    // it becomes a zero-width token, which the partitioning sentence layer
+    // rejects outright, so the whole document fails to import.
+    const xml = eafXml({
+      types: { u: null },
+      tiers: [
+        {
+          id: 'T',
+          type: 'u',
+          anns: [
+            ['a1', 'uno', 0, 500],
+            ['a2', '', 500, 900],
+            ['a3', 'dos', 900, 1500],
+            ['a4', '   ', 1500, 1900],
+          ],
+        },
+      ],
+    });
+    const { build } = buildFrom([[xml, 'x.eaf']]);
+    const doc = build.documents[0];
+    expect(doc.body).toBe('uno\ndos');
+    expect(doc.sentences.map((s) => [s.begin, s.end])).toEqual([
+      [0, 4],
+      [4, 7],
+    ]);
+    expect(doc.warnings.some((w) => /2 empty annotations/.test(w))).toBe(true);
+  });
+
   it('keeps HEADER properties as metadata but drops ELAN bookkeeping', () => {
     const xml = eafXml({
       types: { u: null },
