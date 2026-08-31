@@ -27,14 +27,14 @@ const ZIP_NOTES = {
 };
 
 // Run an export with one of the project's saved presets. Presets themselves
-// (format, layers, options) are configured under project Settings → Export
-// (ExportPresetsSettings); this surface only picks one and runs it.
+// (format, layers, options) are configured by ExportPresetsSettings, which sits
+// directly below this on the project's Export tab. This surface only picks one
+// and runs it.
 //
 // Two homes: a document's Export tab (defaultScope given: the scope is that
-// document, no scope step) and the project page's Export modal (scope step:
-// whole project / selected documents). `onDone` runs after a successful
-// export (the modal closes on it). asOf exports a historical state of the
-// document.
+// document, no scope step) and the project's Export tab (scope step: whole
+// project / selected documents). `onDone` runs after a successful export.
+// asOf exports a historical state of the document.
 export const ExportRunner = ({
   client,
   project,
@@ -42,6 +42,7 @@ export const ExportRunner = ({
   defaultScope = null,
   asOf = null,
   canManage = false,
+  showPresetsLink = true,
   onDone = null,
   onClose = null,
 }) => {
@@ -127,7 +128,9 @@ export const ExportRunner = ({
   };
 
   const canRun = !!preset && (scope !== 'documents' || selectedDocIds.size > 0);
-  const settingsLink = canManage ? (
+  // On the project's own Export tab the presets are managed right below this,
+  // so neither the link nor the explanation belongs there.
+  const settingsLink = !showPresetsLink ? null : canManage ? (
     <Link
       to={`/projects/${project?.id}/export`}
       className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
@@ -136,7 +139,7 @@ export const ExportRunner = ({
     </Link>
   ) : (
     <span className="text-xs text-muted-foreground">
-      Presets are managed by project maintainers under Settings → Export.
+      Presets are managed by project maintainers on the project's Export tab.
     </span>
   );
 

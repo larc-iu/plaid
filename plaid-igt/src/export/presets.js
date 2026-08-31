@@ -8,14 +8,32 @@ import { defaultCldfOptions } from './cldf.js';
 import { defaultElanOptions } from './elan.js';
 
 export const EXPORT_FORMATS = [
-  { id: 'plaintext', label: 'Plain text', ext: 'txt' },
-  { id: 'flextext', label: 'FLEx (.flextext + .lift)', ext: 'flextext' },
-  { id: 'cldf', label: 'CLDF TextCorpus (.zip dataset)', ext: 'csv' },
-  { id: 'elan', label: 'ELAN annotation file (.eaf)', ext: 'eaf' },
-  { id: 'plaid-igt-json', label: 'Plaid IGT JSON (lossless .zip archive)', ext: 'json' },
+  { id: 'plaintext', label: 'Plain text', ext: 'txt', defaultName: 'Plain text' },
+  { id: 'flextext', label: 'FLEx (.flextext + .lift)', ext: 'flextext', defaultName: 'FLEx' },
+  { id: 'cldf', label: 'CLDF TextCorpus (.zip dataset)', ext: 'csv', defaultName: 'CLDF' },
+  { id: 'elan', label: 'ELAN annotation file (.eaf)', ext: 'eaf', defaultName: 'ELAN' },
+  {
+    id: 'plaid-igt-json',
+    label: 'Plaid IGT JSON (lossless .zip archive)',
+    ext: 'json',
+    defaultName: 'Plaid IGT JSON',
+  },
 ];
 
 export const formatExt = (format) => EXPORT_FORMATS.find((f) => f.id === format)?.ext ?? 'txt';
+
+/**
+ * The name to pre-fill when creating a preset in this format.
+ *
+ * The first preset of a format can just be called after the format, which is
+ * what people name them anyway. Once one exists the generic name is taken and
+ * would only invite duplicates called "ELAN" and "ELAN", so the field is left
+ * empty and the user has to say what makes this one different.
+ */
+export const suggestPresetName = (format, presets = []) =>
+  presets.some((p) => p.format === format)
+    ? ''
+    : (EXPORT_FORMATS.find((f) => f.id === format)?.defaultName ?? '');
 
 export const readExportPresets = (project) => {
   const presets = project?.config?.[IGT_NAMESPACE]?.export?.presets;

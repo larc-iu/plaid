@@ -1,23 +1,20 @@
-import { Users, KeyRound, Plug, Download, Settings } from 'lucide-react';
+import { Users, KeyRound, Plug, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AccessManagement } from './AccessManagement';
 import { ProjectAccessTokens } from './ProjectAccessTokens';
 import { ServicesSettings } from './settings/ServicesSettings';
-import { ExportPresetsSettings } from './settings/ExportPresetsSettings';
-import { ExportPresetEditor } from './settings/ExportPresetEditor';
 import { ProjectSettings } from './ProjectSettings';
 
 const SECTIONS = [
   { value: 'access', label: 'Access Management', icon: Users },
   { value: 'tokens', label: 'Access Tokens', icon: KeyRound },
   { value: 'services', label: 'Services', icon: Plug },
-  { value: 'export', label: 'Export', icon: Download },
   { value: 'settings', label: 'Settings', icon: Settings },
 ];
 
 // The Settings tab's body: project administration as a vertical, left-side tab
 // group (Radix Tabs in vertical orientation). Route-backed by the caller — the
-// active section follows /access, /tokens, /services, /export, /settings — so deep links
+// active section follows /access, /tokens, /services, /settings — so deep links
 // and the browser back button keep working.
 export const ProjectSettingsPanel = ({
   project,
@@ -25,7 +22,6 @@ export const ProjectSettingsPanel = ({
   client,
   user,
   section,
-  presetId = null,
   onSectionChange,
   onProjectUpdate,
 }) => {
@@ -67,22 +63,6 @@ export const ProjectSettingsPanel = ({
         </TabsContent>
         <TabsContent value="services" className="mt-0">
           <ServicesSettings projectId={projectId} client={client} />
-        </TabsContent>
-        <TabsContent value="export" className="mt-0">
-          {presetId ? (
-            <ExportPresetEditor
-              projectId={projectId}
-              client={client}
-              presetId={presetId}
-              onProjectUpdate={onProjectUpdate}
-            />
-          ) : (
-            <ExportPresetsSettings
-              projectId={projectId}
-              client={client}
-              onProjectUpdate={onProjectUpdate}
-            />
-          )}
         </TabsContent>
         <TabsContent value="settings" className="mt-0">
           <ProjectSettings
