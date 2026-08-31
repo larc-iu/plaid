@@ -260,6 +260,95 @@ describe('time alignment', () => {
   });
 });
 
+// The EAF 2.8 spec states two constraints in prose that its schema cannot
+// express, so neither xmllint nor a third-party parser catches a violation:
+//   - Annotations on the same tier cannot (time-wise) overlap
+//   - A mix of alignable and reference annotations on the same tier is not allowed
+const expectBaseConstraints = (dom) => {
+  for (const tier of all(dom, 'TIER')) {
+    const kinds = new Set(
+      all(tier, 'ANNOTATION').map((a) =>
+        a.getElementsByTagName('ALIGNABLE_ANNOTATION').length ? 'alignable' : 'ref',
+      ),
+    );
+    expect(kinds.size, `tier ${tier.getAttribute('TIER_ID')} mixes annotation kinds`).toBeLessThan(
+      2,
+    );
+    const slot = (id) =>
+      Number(withAttr(dom, 'TIME_SLOT', 'TIME_SLOT_ID', id)?.getAttribute('TIME_VALUE'));
+    const timed = all(tier, 'ALIGNABLE_ANNOTATION')
+      .map((a) => ({
+        begin: slot(a.getAttribute('TIME_SLOT_REF1')),
+        end: slot(a.getAttribute('TIME_SLOT_REF2')),
+      }))
+      .filter((x) => Number.isFinite(x.begin) && Number.isFinite(x.end))
+      .sort((a, b) => a.begin - b.begin);
+    for (let i = 1; i < timed.length; i++) {
+      expect(
+        timed[i].begin,
+        `tier ${tier.getAttribute('TIER_ID')} has time-overlapping annotations`,
+      ).toBeGreaterThanOrEqual(timed[i - 1].end);
+    }
+  }
+};
+
+describe("EAF's base constraints", () => {
+  // Two people talking over each other. With the tiers not split by speaker
+  // their sentences land on the SAME tier, which is where the overlap bites.
+  const overlappingSpeech = () =>
+    twoSentenceDoc([
+      makeAlignmentToken('a1', 0, 7, 1.0, 5.0, 'Ana'),
+      makeAlignmentToken('a2', 8, 12, 3.0, 7.0, 'Bo'),
+    ]);
+
+  it('holds for an ordinary document', () => {
+    expectBaseConstraints(
+      build(makeFixtureDoc({ alignmentTokens: [makeAlignmentToken('a1', 0, 14, 1, 3)] })),
+    );
+    expectBaseConstraints(build(overlappingSpeech()));
+  });
+
+  it('writes an overlapping sentence without times rather than an illegal file', () => {
+    const warnings = [];
+    const dom = parse(
+      buildEafDocument(
+        overlappingSpeech(),
+        { ...OPTIONS, perSpeaker: false },
+        {
+          ...CONTEXT,
+          onWarning: (m) => warnings.push(m),
+        },
+      ),
+    );
+    expectBaseConstraints(dom);
+    // Both sentences are still there; only the later one's time is given up.
+    expect(valuesOf(tierNamed(dom, 'Sentence'))).toEqual(['uno dos', 'tres']);
+    const values = all(dom, 'TIME_SLOT').map((t) => t.getAttribute('TIME_VALUE'));
+    expect(values.filter((v) => v !== null)).toEqual(['1000', '5000']);
+    expect(warnings[0]).toMatch(/overlap in time/);
+  });
+
+  it('keeps both alignments when the tiers are split by speaker', () => {
+    const warnings = [];
+    const dom = parse(
+      buildEafDocument(
+        overlappingSpeech(),
+        { ...OPTIONS, perSpeaker: true },
+        {
+          ...CONTEXT,
+          onWarning: (m) => warnings.push(m),
+        },
+      ),
+    );
+    expectBaseConstraints(dom);
+    expect(warnings).toEqual([]);
+    const slot = (id) => withAttr(dom, 'TIME_SLOT', 'TIME_SLOT_ID', id).getAttribute('TIME_VALUE');
+    const ann = (tier) => all(tierNamed(dom, tier), 'ALIGNABLE_ANNOTATION')[0];
+    expect(slot(ann('Sentence@Ana').getAttribute('TIME_SLOT_REF1'))).toBe('1000');
+    expect(slot(ann('Sentence@Bo').getAttribute('TIME_SLOT_REF1'))).toBe('3000');
+  });
+});
+
 describe('referential integrity', () => {
   const doc = twoSentenceDoc([
     makeAlignmentToken('a1', 0, 3, 0.5, 1.0),

@@ -163,7 +163,14 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     }
     utterances.sort((a, b) => (a.ann.beginMs ?? Infinity) - (b.ann.beginMs ?? Infinity));
 
-    // Index every annotation's children by parent id, once per file.
+    // Both indexes are built ONCE per file. tierOfAnnotation used to be rebuilt
+    // inside the per-utterance loop, which re-scanned every annotation in the
+    // document for every utterance in it.
+    const tierOfAnnotation = new Map();
+    for (const tier of eaf.tiers) {
+      for (const ann of tier.annotations) tierOfAnnotation.set(ann.id, tier);
+    }
+    // Index every annotation's children by parent id.
     const childrenByParent = new Map();
     for (const tier of eaf.tiers) {
       for (const ann of tier.annotations) {
@@ -335,11 +342,10 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         }
       }
 
-      const wordTierById = new Map(eaf.tiers.flatMap((t) => t.annotations.map((a) => [a.id, t])));
       wordSpans.forEach((span, wi) => {
         if (!span || span.beginU16 >= span.endU16) return;
         const ann = wordAnns[wi] ?? null;
-        const annTier = ann ? (wordTierById.get(ann.id) ?? piece.tier) : piece.tier;
+        const annTier = ann ? (tierOfAnnotation.get(ann.id) ?? piece.tier) : piece.tier;
         const wordFields = {};
         if (ann) {
           for (const node of wordFieldNodes) {
@@ -357,7 +363,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         const morphemes = morphAnns.map((mAnn) => {
           const { form, morphType } = readMorphForm(mAnn.value);
           const mFields = {};
-          const mTier = wordTierById.get(mAnn.id) ?? annTier;
+          const mTier = tierOfAnnotation.get(mAnn.id) ?? annTier;
           for (const node of morphFieldNodes) {
             const v = fieldValueOn(mAnn, mTier, node);
             if (v) mFields[nameOf(node)] = v;
