@@ -79,10 +79,16 @@ the upload's media type is validated from its filename.
 - `fields` is the normalized, ordered field inventory (`form` is never a field — it
   is the item's own headword).
 - Item `metadata` is exported wholesale (custom fields, FLEx guids, examples, …).
-- **Items are sorted by id ascending, and the order is contractual.** Item ids are
-  UUIDv7, so id order is creation order — which is what homonym subscripts
-  (form₁, form₂, …) are numbered by. A re-importer must recreate items **in array
-  order** to preserve homonym numbering.
+- **Items keep the order the server returned them in, and that order is
+  contractual.** It is creation order, which is what homonym subscripts
+  (form₁, form₂, …) are numbered by, so a re-importer must recreate items **in
+  array order** to preserve them.
+- **Never re-sort items by id.** An earlier version of this spec claimed UUIDv7
+  ids encode creation order. They do so only across MILLISECONDS, and a bulk
+  write puts thousands of items inside a single millisecond where the remainder
+  of the id is random. Sorting by id was measured shuffling a 4,591-item lexicon
+  down to 9 items still in place, so every export/import cycle permuted the
+  whole vocabulary (fixed 2026-08-31).
 
 ## documents/*.json
 

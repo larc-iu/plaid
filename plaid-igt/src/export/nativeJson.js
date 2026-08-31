@@ -99,18 +99,24 @@ export function buildProjectFile({ project, documents, vocabularies, asOf = null
 // ---- vocabularies/*.json ----------------------------------------------------
 
 /**
- * One vocabulary. Items are sorted by id: UUIDv7 ids encode creation order,
- * which is what homonym subscripts are numbered by — a re-importer must
- * recreate items in array order to preserve them.
+ * One vocabulary. Items keep the order the server returned them in, which IS
+ * creation order, and a re-importer recreates them in array order to preserve
+ * it (homonym subscripts are numbered by creation order).
+ *
+ * Do NOT re-sort by id. UUIDv7 ids only order across MILLISECONDS, and a bulk
+ * import writes thousands of items inside one millisecond, where the rest of
+ * the id is random. Sorting by id therefore shuffles every batch: it was
+ * measured scrambling a 4,591-item lexicon down to 9 items still in place, so
+ * each export/import cycle permuted the whole vocabulary.
  */
 export function serializeVocabularyNative(vocab) {
   const fields = normalizeVocabFields(readVocabFields(vocab?.config)).map(({ name, inline }) => ({
     name,
     inline,
   }));
-  const items = [...(vocab?.items || [])]
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    .map((it) => withMetadata({ id: it.id, form: it.form }, it.metadata));
+  const items = (vocab?.items || []).map((it) =>
+    withMetadata({ id: it.id, form: it.form }, it.metadata),
+  );
   return { id: vocab?.id ?? null, name: vocab?.name ?? null, fields, items };
 }
 
