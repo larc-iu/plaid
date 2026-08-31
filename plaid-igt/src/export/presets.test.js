@@ -5,6 +5,7 @@ import {
   newPreset,
   defaultFieldMap,
   formatExt,
+  suggestPresetName,
 } from './presets.js';
 
 const LAYERS = {
@@ -112,5 +113,26 @@ describe('formatExt', () => {
     expect(formatExt('plaintext')).toBe('txt');
     expect(formatExt('plaid-igt-json')).toBe('json');
     expect(formatExt('mystery')).toBe('txt');
+  });
+});
+
+describe('suggestPresetName', () => {
+  it('names the first preset of a format after the format', () => {
+    expect(suggestPresetName('elan', [])).toBe('ELAN');
+    expect(suggestPresetName('flextext', [])).toBe('FLEx');
+    expect(suggestPresetName('cldf', [])).toBe('CLDF');
+    expect(suggestPresetName('plaintext', [])).toBe('Plain text');
+    expect(suggestPresetName('plaid-igt-json', [])).toBe('Plaid IGT JSON');
+  });
+
+  it('suggests nothing once that format is taken, so the names stay distinct', () => {
+    const presets = [{ id: 'a', format: 'elan', name: 'ELAN' }];
+    expect(suggestPresetName('elan', presets)).toBe('');
+    // A different format is still unused, so it keeps its generic name.
+    expect(suggestPresetName('cldf', presets)).toBe('CLDF');
+  });
+
+  it('has no suggestion for a format it does not know', () => {
+    expect(suggestPresetName('mystery', [])).toBe('');
   });
 });

@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { FileText, Search, Replace, Bot, Settings } from 'lucide-react';
+import { FileText, Search, Replace, Bot, Download, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectBulkEdit } from './bulk/ProjectBulkEdit.jsx';
 import { ProjectAssistant } from './assistant/ProjectAssistant.jsx';
+import { ProjectExport } from './ProjectExport.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { readInitialized } from '@/domain/igtConfig';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -15,7 +16,7 @@ import { cn } from '@/lib/utils';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
-const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'export', 'settings'];
+const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'settings'];
 
 // The content tabs, which ride in `?tab=` on the project page (Bulk Edit is
 // maintainers-only; Assistant is open to everyone, since the assistant acts
@@ -28,7 +29,6 @@ const SECTION_TITLES = {
   access: 'Access Management',
   tokens: 'Access Tokens',
   services: 'Services',
-  export: 'Export',
   settings: 'Settings',
 };
 
@@ -89,15 +89,23 @@ export const ProjectDetail = () => {
     SETTINGS_SECTIONS.find((s) => location.pathname.startsWith(`/projects/${projectId}/${s}`)) ||
     null;
   const onSettings = pathSection !== null;
+  // Export is path-backed like Settings, because a preset's editor is a page of
+  // its own at /projects/:id/export/:presetId. Unlike Settings it is open to
+  // readers, who can run an export without being able to change the presets.
+  const onExport = location.pathname.startsWith(`/projects/${projectId}/export`);
 
   // Tab title: "<Section> · <Project> · Plaid IGT" on a settings section, else
   // "<Project> · Plaid IGT". Both segments are dropped while still loading.
-  useDocumentTitle(onSettings ? SECTION_TITLES[pathSection] : null, project?.name);
+  useDocumentTitle(
+    onExport ? 'Export' : onSettings ? SECTION_TITLES[pathSection] : null,
+    project?.name,
+  );
   // Documents/Search live in `?tab=`, so a reload or a shared link reopens the
   // tab the user was on.
   const [contentTab, setContentTab] = useTabParam(CONTENT_TABS, 'documents');
-  const activeTab =
-    onSettings && canManage
+  const activeTab = onExport
+    ? 'export'
+    : onSettings && canManage
       ? 'settings'
       : contentTab === 'bulk' && !canManage
         ? 'documents'
@@ -187,7 +195,9 @@ export const ProjectDetail = () => {
           if (v === 'settings') {
             // Enter Settings via its default section; the path drives the panel.
             navigate(`/projects/${projectId}/access`);
-          } else if (onSettings) {
+          } else if (v === 'export') {
+            navigate(`/projects/${projectId}/export`);
+          } else if (onSettings || onExport) {
             // Leaving Settings means dropping the section suffix from the URL.
             // Path and query move together in one navigation, since a separate
             // query update would race with this one.
@@ -219,6 +229,9 @@ export const ProjectDetail = () => {
             to={tabTo(`/projects/${projectId}`, 'assistant', 'documents')}
           >
             <Bot className="h-4 w-4" /> Assistant
+          </TabsTrigger>
+          <TabsTrigger value="export" to={`/projects/${projectId}/export`}>
+            <Download className="h-4 w-4" /> Export
           </TabsTrigger>
           {canManage && (
             <TabsTrigger value="settings" to={`/projects/${projectId}/access`}>
@@ -254,6 +267,17 @@ export const ProjectDetail = () => {
             canWrite={canWrite}
           />
         </TabsContent>
+        <TabsContent value="export">
+          <ProjectExport
+            project={project}
+            projectId={projectId}
+            client={client}
+            documents={documents}
+            canManage={canManage}
+            presetId={presetId}
+            onProjectUpdate={() => fetchData()}
+          />
+        </TabsContent>
         {canManage && (
           <TabsContent value="settings">
             <ProjectSettingsPanel
@@ -262,7 +286,6 @@ export const ProjectDetail = () => {
               client={client}
               user={user}
               section={pathSection || 'access'}
-              presetId={presetId}
               onSectionChange={(s) => navigate(`/projects/${projectId}/${s}`)}
               onProjectUpdate={() => fetchData()}
             />

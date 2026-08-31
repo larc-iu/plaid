@@ -1,14 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import {
-  Plus,
-  ArrowUp,
-  ArrowDown,
-  Download,
-  Search,
-  X,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
+import { Plus, ArrowUp, ArrowDown, Search, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +17,6 @@ import { cn } from '@/lib/utils';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
-import { ExportDialog } from '@/components/export/ExportDialog.jsx';
 
 const PAGE_SIZE = 100; // documents shown per page (the full list is paged client-side)
 
@@ -60,7 +50,6 @@ export const DocumentList = ({
   onDocumentCreated,
 }) => {
   const [open, setOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
   const [documentName, setDocumentName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   // documentId -> word count. Docs with a word layer but no tokens are absent
@@ -225,13 +214,6 @@ export const DocumentList = ({
               <Plus className="h-4 w-4" /> Create Document
             </Button>
           )}
-          <Button
-            variant="outline"
-            onClick={() => setExportOpen(true)}
-            disabled={!documents.length}
-          >
-            <Download className="h-4 w-4" /> Export
-          </Button>
         </div>
       </div>
 
@@ -365,15 +347,6 @@ export const DocumentList = ({
           </div>
         </TooltipProvider>
       )}
-
-      <ExportDialog
-        open={exportOpen}
-        onOpenChange={setExportOpen}
-        client={client}
-        project={project}
-        documents={documents}
-        canManage={canManage}
-      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">

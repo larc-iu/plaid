@@ -18,7 +18,7 @@ import { NativeOptions } from '@/components/export/NativeOptions.jsx';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
-// Settings → Export → one preset (/projects/:projectId/export/:presetId).
+// The project's Export tab → one preset (/projects/:projectId/export/:presetId).
 // Rendered in place of the preset list inside the Settings section, so the
 // project's tab structure stays put. Name and options are edited here; the
 // format is fixed at creation. Saving rewrites the project's whole preset list

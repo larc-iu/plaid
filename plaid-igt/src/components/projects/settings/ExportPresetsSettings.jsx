@@ -32,15 +32,21 @@ import {
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { discoverExportLayers } from '@/export/exportLayers';
 import { readLanguages } from '@/domain/igtConfig';
-import { readExportPresets, writeExportPresets, newPreset, EXPORT_FORMATS } from '@/export/presets';
+import {
+  readExportPresets,
+  writeExportPresets,
+  newPreset,
+  suggestPresetName,
+  EXPORT_FORMATS,
+} from '@/export/presets';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
-// Settings → Export: the project's named export presets, persisted at
-// config.igt.export.presets. This is the list: create (modal), delete, and a
-// link per preset to its own editor page (ExportPresetEditor,
-// /projects/:id/export/:presetId). Exporting itself happens from a document's
-// Export tab or the project page's Export button, which only pick one.
+// The lower half of the project's Export tab: the project's named export
+// presets, persisted at config.igt.export.presets. This is the list: create
+// (modal), delete, and a link per preset to its own editor page
+// (ExportPresetEditor, /projects/:id/export/:presetId). Running an export
+// happens just above this (ExportRunner) or on a document's own Export tab.
 export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) => {
   const navigate = useNavigate();
   const [project, setProject] = useState(null);
@@ -49,6 +55,9 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newFormat, setNewFormat] = useState('plaintext');
+  // Whether the name field is still ours to fill in. The moment the user types
+  // in it, changing the format stops rewriting what they wrote.
+  const [nameTouched, setNameTouched] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
@@ -79,6 +88,15 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     if (successMessage) notifySuccess(successMessage, 'Export presets');
   };
 
+  // Opening the dialog seeds the name from the format it opens on, so the
+  // common case (first preset of a format) needs no typing at all.
+  const openCreate = () => {
+    setNewFormat('plaintext');
+    setNewName(suggestPresetName('plaintext', presets));
+    setNameTouched(false);
+    setCreateOpen(true);
+  };
+
   const create = async () => {
     const name = newName.trim();
     if (!name || !project) return;
@@ -93,6 +111,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
       await persist([...presets, preset]);
       setCreateOpen(false);
       setNewName('');
+      setNameTouched(false);
       navigate(`/projects/${projectId}/export/${preset.id}`);
     } catch (err) {
       console.error('Failed to create export preset:', err);
@@ -140,10 +159,10 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
           <h2 className="text-lg font-semibold">Export Presets</h2>
           <p className="text-sm text-muted-foreground">
             A preset fixes an export format and which orthographies, fields and options it includes.
-            Documents and the project page export with one of these.
+            Export with one above, or from a document's own Export tab.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
+        <Button onClick={openCreate}>
           <Plus className="h-4 w-4" /> New preset
         </Button>
       </div>
@@ -190,7 +209,10 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
                 id="new-preset-name"
                 placeholder="e.g. Plain text for the course"
                 value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                onChange={(e) => {
+                  setNewName(e.target.value);
+                  setNameTouched(true);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') create();
                 }}
@@ -199,7 +221,13 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="new-preset-format">Format</Label>
-              <Select value={newFormat} onValueChange={setNewFormat}>
+              <Select
+                value={newFormat}
+                onValueChange={(f) => {
+                  setNewFormat(f);
+                  if (!nameTouched) setNewName(suggestPresetName(f, presets));
+                }}
+              >
                 <SelectTrigger id="new-preset-format">
                   <SelectValue />
                 </SelectTrigger>
