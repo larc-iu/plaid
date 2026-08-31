@@ -11,6 +11,7 @@
 // Lexicon items are deduped by the CLDF entry id stamped at creation, which
 // doubles as provenance back to the source dataset.
 
+import { documentProgress } from '../progress.js';
 import {
   IGT_NAMESPACE,
   findBaselineTextLayer,
@@ -154,6 +155,17 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
   );
   return byEntry;
 }
+// The steps one document goes through, in order, so progress can report how
+// far into a document it is and not just which document.
+const DOCUMENT_STEPS = [
+  'Creating document',
+  'Creating text',
+  'Creating sentences',
+  'Creating words',
+  'Creating morphemes',
+  'Creating annotations',
+  'Uploading media',
+];
 
 /** Import one document: text, sentence partition, words, morphemes, spans. */
 export async function importDocument({
@@ -161,11 +173,19 @@ export async function importDocument({
   projectId,
   targets,
   doc,
+  index = 0,
+  total = 1,
   onProgress,
   shouldStop,
   warnings,
 }) {
-  const progress = (step) => onProgress?.({ phase: 'document', doc: doc.name, step });
+  const progress = documentProgress({
+    onProgress,
+    doc: doc.name,
+    index,
+    total,
+    steps: DOCUMENT_STEPS,
+  });
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
   };
@@ -379,6 +399,8 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
       projectId,
       targets,
       doc,
+      index: i,
+      total: build.documents.length,
       onProgress,
       shouldStop,
       warnings,

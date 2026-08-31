@@ -15,6 +15,7 @@
 // items are deduped by metadata.nativeImportId (the archive item id, stamped
 // at creation — it doubles as provenance back to the source archive).
 
+import { documentProgress } from '../progress.js';
 import {
   IGT_NAMESPACE,
   findBaselineTextLayer,
@@ -211,6 +212,19 @@ const morphemeMetadata = (node) => ({
 });
 
 const maybeMetadata = (metadata) => (Object.keys(metadata).length ? { metadata } : {});
+// The steps one document goes through, in order, so progress can report how
+// far into a document it is and not just which document.
+const DOCUMENT_STEPS = [
+  'Creating document',
+  'Creating text',
+  'Creating sentences',
+  'Creating words',
+  'Creating morphemes',
+  'Creating time alignments',
+  'Creating annotations',
+  'Linking lexicon',
+  'Uploading media',
+];
 
 /** Import one document end to end. Assumes it does not exist yet. */
 export async function importNativeDocument({
@@ -221,11 +235,19 @@ export async function importNativeDocument({
   itemIdMap,
   mediaBytes,
   mediaName,
+  index = 0,
+  total = 1,
   onProgress,
   shouldStop,
   warnings = [],
 }) {
-  const progress = (step) => onProgress?.({ phase: 'document', doc: docData.name, step });
+  const progress = documentProgress({
+    onProgress,
+    doc: docData.name,
+    index,
+    total,
+    steps: DOCUMENT_STEPS,
+  });
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
   };
@@ -551,6 +573,8 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       itemIdMap,
       mediaBytes: doc.mediaBytes,
       mediaName: doc.mediaFile ? doc.mediaFile.split('/').at(-1) : null,
+      index: i,
+      total: archive.documents.length,
       onProgress,
       shouldStop,
       warnings,

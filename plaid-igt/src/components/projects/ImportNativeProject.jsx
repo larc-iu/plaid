@@ -18,6 +18,7 @@ import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
+import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 export const ImportNativeProject = () => {
@@ -90,8 +91,8 @@ export const ImportNativeProject = () => {
             });
           } else if (p.phase === 'document') {
             setProgress({
-              label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${(p.index ?? 0) + 1}/${p.total ?? totalDocs})`,
-              pct: 30 + (((p.index ?? 0) + 1) / (p.total ?? totalDocs)) * 70,
+              label: documentLabel(p, totalDocs),
+              pct: 30 + documentFraction(p, totalDocs) * 70,
             });
           }
         },

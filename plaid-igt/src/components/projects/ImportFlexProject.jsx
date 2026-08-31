@@ -22,6 +22,7 @@ import { parseFwdata } from '../../import/flex/fwdataParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
+import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { humanizeFieldName } from '@/domain/vocabFields';
 
@@ -236,8 +237,8 @@ export const ImportFlexProject = () => {
             });
           } else if (p.phase === 'document') {
             setProgress({
-              label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${(p.index ?? 0) + 1}/${p.total ?? totalDocs})`,
-              pct: 30 + (((p.index ?? 0) + 1) / (p.total ?? totalDocs)) * 70,
+              label: documentLabel(p, totalDocs),
+              pct: 30 + documentFraction(p, totalDocs) * 70,
             });
           }
         },
