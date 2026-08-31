@@ -344,8 +344,9 @@ export const ImportElanProject = () => {
                     <h2 className="text-lg font-semibold">Tiers</h2>
                     <p className="text-sm text-muted-foreground">
                       {files.length} file{files.length === 1 ? '' : 's'}, all with the same{' '}
-                      {nodes.length} tiers. Speaker suffixes are ignored when matching, so files by
-                      different speakers count as the same structure.
+                      {nodes.length} tier{nodes.length === 1 ? '' : 's'}. Speaker suffixes are
+                      ignored when matching, so files by different speakers count as the same
+                      structure.
                     </p>
                   </div>
                   <div className="flex flex-col gap-2">
@@ -480,7 +481,11 @@ export const ImportElanProject = () => {
               </p>
             </Panel>
             {results.warnings.length > 0 && (
-              <Panel tone="warn" icon={AlertTriangle} title={`${results.warnings.length} warnings`}>
+              <Panel
+                tone="warn"
+                icon={AlertTriangle}
+                title={`${results.warnings.length} warning${results.warnings.length === 1 ? '' : 's'}`}
+              >
                 <ul className="mt-1 list-inside list-disc text-xs">
                   {results.warnings.map((w, i) => (
                     <li key={i}>{w}</li>

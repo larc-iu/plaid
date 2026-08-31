@@ -36,6 +36,10 @@ import { chainOrder } from './readEaf.js';
 /** EAF milliseconds → Plaid seconds. */
 const toSeconds = (ms) => Math.round(ms) / 1000;
 
+// HEADER properties ELAN maintains for itself. They are not annotation and a
+// user would only ever see them as noise in the document metadata panel.
+const INTERNAL_PROPERTIES = new Set(['lastUsedAnnotationId', 'URN']);
+
 /**
  * Strip a leading Leipzig joint from a morph form and read a morph type off it.
  *
@@ -243,6 +247,14 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     }
     const body = bodyU16.replace(/\n$/, '');
     const toCp = makeCpIndexer(body);
+    // The sentence layer PARTITIONS the text, so the sentence tokens have to
+    // tile [0, len) exactly. Each sentence therefore absorbs the newline that
+    // joins it to the next one, and the last runs to the end of the body. The
+    // piece's own endU16 stays the text-only extent, which is what words and
+    // alignments are placed against.
+    pieces.forEach((piece, i) => {
+      piece.sentEndU16 = i + 1 < pieces.length ? pieces[i + 1].beginU16 : body.length;
+    });
 
     // --- sentences, words, morphemes ---------------------------------------
     const sentences = [];
@@ -255,7 +267,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         const v = fieldValueOn(piece.ann, piece.tier, node);
         if (v) fields[nameOf(node)] = v;
       }
-      sentences.push({ begin: toCp(piece.beginU16), end: toCp(piece.endU16), fields });
+      sentences.push({ begin: toCp(piece.beginU16), end: toCp(piece.sentEndU16), fields });
       if (piece.speaker) stats.speakers.add(piece.speaker);
 
       // Time alignment: a dedicated tier when one is mapped, else the utterance
@@ -385,10 +397,11 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     stats.words += words.length;
     stats.alignments += alignments.length;
 
-    // Document metadata: the HEADER properties, minus the one that is the name.
+    // Document metadata: the HEADER properties, minus the one that is the name
+    // and minus ELAN's own bookkeeping, which means nothing outside ELAN.
     const metadata = {};
     for (const [key, value] of Object.entries(eaf.properties || {})) {
-      if (key === 'documentName' || !value) continue;
+      if (key === 'documentName' || INTERNAL_PROPERTIES.has(key) || !value) continue;
       metadata[key] = value;
     }
     if (eaf.media.length) {
