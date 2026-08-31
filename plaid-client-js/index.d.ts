@@ -684,6 +684,13 @@ interface PlaidClientOptions {
   /** Per-request timeout in ms (default 30000; 0 or null disables it). */
   timeout?: number | null;
   /**
+   * Timeout for batch submissions in ms (default 180000; 0 or null disables it).
+   * Batches get their own, longer budget: aborting one does NOT stop the
+   * server, which keeps running the transaction and holding the single SQLite
+   * write lock. Defaults to `timeout` when that is given and this is not.
+   */
+  batchTimeout?: number | null;
+  /**
    * Fired once when a request returns HTTP 401 (missing/expired/invalid token).
    * Use it to discard the stored token and route back to login. 403 (forbidden)
    * does NOT trigger it.
@@ -720,6 +727,7 @@ export declare class PlaidClient {
     options?: PlaidClientOptions,
   ): Promise<{ client: PlaidClient; userId: string; kind: string }>;
   timeout: number | null;
+  batchTimeout: number | null;
   /** Fired once on HTTP 401 (see PlaidClientOptions.onAuthError). */
   onAuthError: ((error: Error) => void) | null;
 

@@ -12,7 +12,8 @@ import requests as req_lib
 
 from plaid_client.http import (
     PlaidAPIError, make_request, extract_document_versions,
-    list_all, list_page, iter_pages, build_api_error, DEFAULT_TIMEOUT_S,
+    list_all, list_page, iter_pages, build_api_error, retry_while_busy,
+    DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
 )
 from plaid_client.transforms import transform_response
 from plaid_client.sse import SSEConnection
@@ -2260,7 +2261,8 @@ class OperationGroupsResource(_Resource):
 
 
 class PlaidClient:
-    def __init__(self, base_url: str, token: str, timeout: float | None = DEFAULT_TIMEOUT_S):
+    def __init__(self, base_url: str, token: str, timeout: float | None = DEFAULT_TIMEOUT_S,
+                 batch_timeout: float | None = None):
         """Create a new PlaidClient instance.
 
         Args:
@@ -2268,10 +2270,21 @@ class PlaidClient:
             token: The authentication token
             timeout: Per-request timeout in seconds (default 30; ``None`` disables
                 it). Also bounds media up/downloads — raise it for large files.
+            batch_timeout: Timeout for batch submissions in seconds (default 180).
+                Batches get their own, longer budget: aborting one does NOT stop
+                the server, which keeps running the transaction and holding the
+                single SQLite write lock. Defaults to ``timeout`` when that was
+                given explicitly and this was not.
         """
         self.base_url = base_url.rstrip('/')
         self.token = token
         self.timeout = timeout
+        if batch_timeout is not None:
+            self.batch_timeout = batch_timeout
+        elif timeout is not DEFAULT_TIMEOUT_S:
+            self.batch_timeout = timeout
+        else:
+            self.batch_timeout = DEFAULT_BATCH_TIMEOUT_S
         self.is_batching = False
         self.batch_operations: list[dict] = []
         self.document_versions: dict[str, str] = {}
@@ -2497,11 +2510,17 @@ class PlaidClient:
                 'Content-Type': 'application/json',
             }
 
-            response = self.session.post(url, headers=headers, data=json.dumps(body),
-                                         timeout=self.timeout)
+            # Retry a 503: the batch is atomic, so a refused one wrote nothing
+            # and repeating it is safe. The batch timeout is its own, longer
+            # budget — giving up here does not stop the server's transaction.
+            def attempt():
+                resp = self.session.post(url, headers=headers, data=json.dumps(body),
+                                         timeout=self.batch_timeout)
+                if not resp.ok:
+                    raise build_api_error(resp, url, 'POST')
+                return resp
 
-            if not response.ok:
-                raise build_api_error(response, url, 'POST')
+            response = retry_while_busy(attempt)
 
             results = response.json()
 

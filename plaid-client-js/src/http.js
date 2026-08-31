@@ -5,6 +5,12 @@ import { transformRequest, transformResponse } from './transforms.js';
 // also bounds media up/downloads — bump it (or disable) for very large files.
 export const DEFAULT_TIMEOUT_MS = 30000;
 
+// Batch submissions get their own, longer budget. A batch runs as ONE server
+// transaction holding the single SQLite write lock for its whole duration, and
+// aborting the HTTP request does not cancel it — so a short timeout buys
+// nothing and costs a retry stacked on a write that is still running.
+export const DEFAULT_BATCH_TIMEOUT_MS = 180000;
+
 /**
  * Extract and update document versions from response headers and body.
  */
@@ -69,6 +75,41 @@ export function makeNetworkError(originalError, url, method) {
   error.method = method;
   error.originalError = originalError;
   return error;
+}
+
+// Retry budget for 503 "Database busy" responses. Plaid serializes writers on
+// a single SQLite write lock; a writer that can't get it within the server's
+// busy_timeout is refused with 503. That refusal is definitive — the
+// transaction never opened, or was rolled back whole — so repeating the
+// request is safe, including for a batch (which is all-or-nothing by
+// construction). Retrying here is what lets a long import ride out someone
+// else's slow write instead of dying partway through.
+export const BUSY_RETRIES = 4;
+export const BUSY_BACKOFF_MS = 250;
+
+/**
+ * Run `attempt`, retrying while it rejects with a 503. Exponential backoff
+ * with full jitter, so two clients that collide don't march in lockstep and
+ * collide again on every retry.
+ *
+ * `attempt` must perform the whole request, not just await a prepared one:
+ * a fetch body and an AbortSignal.timeout are both single-use.
+ */
+export async function retryWhileBusy(attempt, {
+  retries = BUSY_RETRIES,
+  baseDelayMs = BUSY_BACKOFF_MS,
+  onRetry,
+} = {}) {
+  for (let i = 0; ; i += 1) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (error?.status !== 503 || i >= retries) throw error;
+      const delay = Math.round(baseDelayMs * 2 ** i * (0.5 + Math.random()));
+      onRetry?.({ attempt: i + 1, retries, delay, error });
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
 }
 
 /**
@@ -207,11 +248,24 @@ export async function makeRequest(client, method, path, options = {}) {
   if (requestBody !== undefined) {
     fetchOptions.body = formData ? requestBody : JSON.stringify(requestBody);
   }
-  const signal = timeoutSignal(timeout !== undefined ? timeout : client.timeout);
-  if (signal) fetchOptions.signal = signal;
+
+  // A fresh AbortSignal.timeout per attempt: the signal fires once and stays
+  // aborted, so reusing it would make every retry fail instantly.
+  const attemptOptions = () => {
+    const signal = timeoutSignal(timeout !== undefined ? timeout : client.timeout);
+    return signal ? { ...fetchOptions, signal } : fetchOptions;
+  };
 
   try {
-    const response = await fetch(url, fetchOptions);
+    const response = await retryWhileBusy(async () => {
+      const res = await fetch(url, attemptOptions());
+      // Surface a 503 as a throw so retryWhileBusy can see it; other failures
+      // are re-thrown from here and handled by the caller below.
+      if (res.status === 503) {
+        throw makeHttpError(res, await parseErrorBody(res), url, method);
+      }
+      return res;
+    });
 
     if (!response.ok) {
       const error = makeHttpError(response, await parseErrorBody(response), url, method);

@@ -10,7 +10,9 @@ import {
   makeHttpError,
   makeNetworkError,
   timeoutSignal,
+  retryWhileBusy,
   DEFAULT_TIMEOUT_MS,
+  DEFAULT_BATCH_TIMEOUT_MS,
 } from "./http.js";
 import { listAll, listPage, iterPages } from "./pagination.js";
 import { createSSEConnection } from "./sse.js";
@@ -88,12 +90,24 @@ class PlaidClient {
    * @param {string} token - The authentication token
    * @param {object} [options] - Client options
    * @param {number} [options.timeout=30000] - Per-request timeout in ms (0 or null disables it)
+   * @param {number} [options.batchTimeout=180000] - Timeout for batch submissions in ms (0 or null disables it)
    */
   constructor(baseUrl, token, options = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
     this.timeout =
       options.timeout !== undefined ? options.timeout : DEFAULT_TIMEOUT_MS;
+    // Batch submissions get a longer budget than a single request. Aborting a
+    // batch does NOT stop the server: it keeps running the transaction and
+    // holding the single SQLite write lock, so a client that gives up early
+    // just adds a retry on top of a write that is still in progress. Falls
+    // back to an explicit `timeout` when one was given.
+    this.batchTimeout =
+      options.batchTimeout !== undefined
+        ? options.batchTimeout
+        : options.timeout !== undefined
+          ? options.timeout
+          : DEFAULT_BATCH_TIMEOUT_MS;
     this.isBatching = false;
     this.batchOperations = [];
     this.documentVersions = {};
@@ -2313,19 +2327,22 @@ class PlaidClient {
         },
         body: JSON.stringify(body),
       };
-      const signal = timeoutSignal(this.timeout);
-      if (signal) fetchOptions.signal = signal;
 
       try {
-        const response = await fetch(url, fetchOptions);
-        if (!response.ok) {
-          throw makeHttpError(
-            response,
-            await parseErrorBody(response),
+        // Retry a 503: the batch is atomic, so a refused one wrote nothing and
+        // repeating it is safe. A fresh timeout signal per attempt — an
+        // AbortSignal.timeout stays aborted once it fires.
+        const response = await retryWhileBusy(async () => {
+          const signal = timeoutSignal(this.batchTimeout);
+          const res = await fetch(
             url,
-            "POST",
+            signal ? { ...fetchOptions, signal } : fetchOptions,
           );
-        }
+          if (!res.ok) {
+            throw makeHttpError(res, await parseErrorBody(res), url, "POST");
+          }
+          return res;
+        });
 
         const results = await response.json();
 

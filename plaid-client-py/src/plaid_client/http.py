@@ -1,5 +1,8 @@
+import itertools
 import json
 import logging
+import random
+import time
 from urllib.parse import urlencode, quote
 
 from plaid_client.transforms import transform_request, transform_response
@@ -11,6 +14,20 @@ logger = logging.getLogger(__name__)
 # client is constructed with a different ``timeout`` (None disables it). Note:
 # this also bounds media up/downloads — raise it (or disable) for large files.
 DEFAULT_TIMEOUT_S = 30.0
+
+# Batch submissions get their own, longer budget. A batch runs as ONE server
+# transaction holding the single SQLite write lock for its whole duration, and
+# giving up on the HTTP request does not cancel it — so a short timeout buys
+# nothing and costs a retry stacked on a write that is still running.
+DEFAULT_BATCH_TIMEOUT_S = 180.0
+
+# Retry budget for 503 "Database busy" responses. Plaid serializes writers on a
+# single SQLite write lock; a writer that cannot get it within the server's
+# busy_timeout is refused with 503. That refusal is definitive — the
+# transaction never opened, or was rolled back whole — so repeating the request
+# is safe, including for a batch (which is all-or-nothing by construction).
+BUSY_RETRIES = 4
+BUSY_BACKOFF_S = 0.25
 
 # Sentinel distinguishing "no per-call timeout override" from an explicit
 # ``timeout=None`` (which disables the timeout for that call).
@@ -38,6 +55,22 @@ class PlaidAPIError(Exception):
         self.method = method
         self.response_data = response_data
         self.original_error = original_error
+
+
+def retry_while_busy(attempt, retries=BUSY_RETRIES, base_delay=BUSY_BACKOFF_S):
+    """Run ``attempt``, retrying while it raises a 503.
+
+    Exponential backoff with full jitter, so two clients that collide do not
+    march in lockstep and collide again on every retry. ``attempt`` must
+    perform the whole request: a response body is consumed once.
+    """
+    for i in itertools.count():
+        try:
+            return attempt()
+        except PlaidAPIError as e:
+            if getattr(e, 'status', None) != 503 or i >= retries:
+                raise
+            time.sleep(base_delay * 2 ** i * (0.5 + random.random()))
 
 
 def short_error(error):
@@ -364,17 +397,22 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         else:
             kwargs['data'] = json.dumps(request_body)
 
-    try:
-        response = client.session.request(**kwargs)
-    except Exception as e:
-        if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
-            raise PlaidAPIError(f'Request timed out at {url}', url=url, method=method,
+    def attempt():
+        try:
+            resp = client.session.request(**kwargs)
+        except Exception as e:
+            if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
+                raise PlaidAPIError(f'Request timed out at {url}', url=url, method=method,
+                                    original_error=e)
+            raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method,
                                 original_error=e)
-        raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method,
-                            original_error=e)
+        # Raise a 503 from inside so retry_while_busy can see it; every other
+        # failure is raised here too and simply propagates.
+        if not resp.ok:
+            raise build_api_error(resp, url, method)
+        return resp
 
-    if not response.ok:
-        raise build_api_error(response, url, method)
+    response = retry_while_busy(attempt)
 
     # Binary response
     if binary_response:
