@@ -1,9 +1,9 @@
 // Live e2e for the export feature (scratchpad-convention: disposable).
 // Imports a small slice of the Lezgi .fwbackup into a fresh project (same
-// flow as import-flex-live.mjs), then drives runExport — plain text + flextext
-// at project scope, plus a single-document export — and verifies the archives:
-// zip entries, flextext XML well-formedness (saxes), spot-checked content,
-// vocab TSV row count vs the lexicon.
+// flow as import-flex-live.mjs), then drives runExport — plain text + FLEx
+// (.flextext + .lift) at project scope, plus a single-document export — and
+// verifies the archives: zip entries, XML well-formedness (saxes), spot-checked
+// content, vocab TSV row count vs the lexicon.
 //
 //   node e2e/export-live.mjs [--keep]
 //
@@ -22,7 +22,7 @@ import { discoverExportLayers } from '../src/export/exportLayers.js';
 import { newPreset } from '../src/export/presets.js';
 import { runExport } from '../src/export/runExport.js';
 
-const BACKUP = '/home/luke/Downloads/Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
+const BACKUP = '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
 const KEEP = process.argv.includes('--keep');
 
 const failures = [];
@@ -181,39 +181,88 @@ try {
   });
   check(flex.warnings.length === 0, 'flextext export has no warnings', flex.warnings.join('; '));
   const flexEntries = unzipSync(new Uint8Array(await flex.blob.arrayBuffer()));
-  const flexDocs = Object.keys(flexEntries).filter((p) => p.endsWith('.flextext'));
+  const flexPaths = Object.keys(flexEntries);
+  const flexDocs = flexPaths.filter((p) => p.endsWith('.flextext'));
+  check(flexDocs.length === 1, 'the whole corpus is ONE .flextext', JSON.stringify(flexPaths));
+  const liftPath = flexPaths.find((p) => p.endsWith('.lift'));
+  const rangesPath = flexPaths.find((p) => p.endsWith('.lift-ranges'));
+  check(!!liftPath, 'zip carries the lexicon as .lift', JSON.stringify(flexPaths));
+  check(!!rangesPath, 'zip carries the .lift-ranges sidecar', JSON.stringify(flexPaths));
+  check(flexPaths.includes('README.txt'), 'zip carries the import-order README');
+  // The .lift and its ranges have to be siblings under one stem for FLEx.
   check(
-    flexDocs.length === 3,
-    'zip has 3 .flextext files',
-    JSON.stringify(Object.keys(flexEntries)),
+    !!liftPath && rangesPath === `${liftPath.slice(0, -'.lift'.length)}.lift-ranges`,
+    'ranges sit beside the .lift under the same stem',
+    `${liftPath} / ${rangesPath}`,
   );
 
-  for (const path of flexDocs) {
-    const content = decode(flexEntries[path]);
-    parseXml(content, path);
-  }
-  const allFlex = flexDocs.map((p) => decode(flexEntries[p])).join('\n');
+  const allFlex = decode(flexEntries[flexDocs[0]]);
+  parseXml(allFlex, flexDocs[0]);
   check(allFlex.includes('lang="lez"'), 'flextext uses the baseline lang tag');
   check(allFlex.includes('<morph type="stem">'), 'flextext has stem morph types');
   check(allFlex.includes('type="segnum"'), 'flextext has segment numbers');
   check(allFlex.includes('type="gls"'), 'flextext has glosses');
   check(allFlex.includes('type="cf"'), 'flextext has citation forms from vocab links');
   check(allFlex.includes('vernacular="true"'), 'flextext declares vernacular languages');
+  check(
+    (allFlex.match(/<interlinear-text>/g) || []).length === 3,
+    'the one .flextext holds all 3 texts',
+  );
 
-  // ---- single document scope → bare file ----
+  // ---- the LIFT lexicon, straight back out of a FLEx import ----
+  const lift = decode(flexEntries[liftPath]);
+  parseXml(lift, liftPath);
+  parseXml(decode(flexEntries[rangesPath]), rangesPath);
+  const liftEntries = (lift.match(/<entry /g) || []).length;
+  const liftSenses = (lift.match(/<sense /g) || []).length;
+  check(liftEntries > 0, `lift has entries (${liftEntries}) and senses (${liftSenses})`);
+  check(
+    liftSenses <= (vocab.items?.length ?? 0),
+    'a lift sense per vocab item that has anything to say',
+    `${liftSenses} senses vs ${vocab.items?.length} items`,
+  );
+  check(
+    liftEntries < liftSenses,
+    'multi-sense FLEx entries rejoined (fewer entries than senses)',
+    `${liftEntries} entries / ${liftSenses} senses`,
+  );
+  check(/<entry [^>]*guid="/.test(lift), 'lift entries keep their FLEx guid, so a re-import merges');
+  check(lift.includes('<trait name="morph-type"'), 'lift carries morph types');
+  check(lift.includes('<lexical-unit>'), 'lift has headwords');
+  check(lift.includes('<gloss lang='), 'lift has glosses');
+  check(
+    decode(flexEntries[rangesPath]).includes('<range id="grammatical-info">'),
+    'ranges declare the grammatical categories',
+  );
+
+  // ---- single document scope, lexicon off → bare file ----
   const docs = await client.projects.listDocuments(projectId);
+  const barePreset = { ...flexPreset, options: { ...flexPreset.options, lexicon: false } };
   const single = await runExport({
+    client,
+    project,
+    preset: barePreset,
+    scope: { type: 'document', id: docs[0].id },
+  });
+  check(
+    single.filename.endsWith('.flextext'),
+    'single-doc export without the lexicon is a bare .flextext',
+    single.filename,
+  );
+  parseXml(await single.blob.text(), single.filename);
+
+  // ---- single document scope, lexicon on → zip ----
+  const singleZip = await runExport({
     client,
     project,
     preset: flexPreset,
     scope: { type: 'document', id: docs[0].id },
   });
   check(
-    single.filename.endsWith('.flextext'),
-    'single-doc export is a bare .flextext',
-    single.filename,
+    singleZip.filename.endsWith('-flex.zip'),
+    'single-doc export with the lexicon is a zip',
+    singleZip.filename,
   );
-  parseXml(await single.blob.text(), single.filename);
 
   // ---- native Plaid IGT JSON, project scope ----
   const nativePreset = newPreset('plaid-igt-json', layers, 'e2e native');

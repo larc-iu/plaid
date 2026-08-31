@@ -285,9 +285,13 @@ export function interlinearTextXml(igtDoc, options, indent = '  ') {
   return lines.join('\n');
 }
 
-/** One or more documents as a complete .flextext file. */
-export function buildFlextextDocument(igtDocs, options) {
-  const texts = igtDocs.map((d) => interlinearTextXml(d, options));
+/**
+ * Already-serialized <interlinear-text> blocks as a complete .flextext file.
+ * A whole corpus goes in one file, which FLEx imports in a single pass.
+ * runExport builds the blocks one document at a time, so a document that fails
+ * to serialize becomes a warning instead of taking the corpus with it.
+ */
+export function flextextEnvelope(texts) {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<document version="2" exportSource="plaid-igt">',
@@ -295,4 +299,9 @@ export function buildFlextextDocument(igtDocs, options) {
     '</document>',
     '',
   ].join('\n');
+}
+
+/** One or more documents as a complete .flextext file. */
+export function buildFlextextDocument(igtDocs, options) {
+  return flextextEnvelope(igtDocs.map((d) => interlinearTextXml(d, options)));
 }
