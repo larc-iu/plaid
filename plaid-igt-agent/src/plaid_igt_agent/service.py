@@ -85,12 +85,18 @@ class AssistantService(BaseService):
                                  'offers a picker.')
         parser.add_argument('--service-name', default=None,
                             help='Display name (default "IGT Assistant (<model>)")')
-        parser.add_argument('--web-search', default=None, choices=BACKENDS,
+        parser.add_argument('--web-search', default=None, choices=sorted(BACKENDS),
                             help='Let the assistant look things up on the web with this provider. '
                                  'Off unless given: without it the web tools are not offered to the '
-                                 'model and the prompt does not mention them.')
+                                 'model and the prompt does not mention them. '
+                                 + ' · '.join(f'{b.name}: ' + (b.note or f'key in {b.env_key}')
+                                              for b in BACKENDS.values()))
         parser.add_argument('--web-search-key', default=None,
-                            help='Key for --web-search (else BRAVE_SEARCH_API_KEY / TAVILY_API_KEY)')
+                            help='Key for --web-search, for a provider that takes one (else its own '
+                                 'environment variable)')
+        parser.add_argument('--web-search-url', default=None,
+                            help='Base URL of a self-hosted --web-search provider, e.g. '
+                                 'http://localhost:8888 for SearXNG')
 
     def setup(self, args) -> None:
         self.cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key,
@@ -122,12 +128,13 @@ class AssistantService(BaseService):
         else:
             # Same reasoning as the model ping: a bad key should be the
             # operator's problem now, not a user's mid-conversation.
-            print(f'Web lookup: {self.web_cfg.backend}')
+            where = f' at {self.web_cfg.api_base}' if self.web_cfg.api_base else ''
+            print(f'Web lookup: {self.web_cfg.backend}{where}')
             try:
                 print(f'  {ping_search(self.web_cfg)} results for a test search.')
             except Exception as e:  # noqa: BLE001 - the provider's own complaint is what helps
                 print(f'  The search provider did not answer: {e}')
-                print(f'  Check --web-search-key (or {ENV_KEYS[self.web_cfg.backend]}).')
+                print(f'  {check_hint(BACKENDS[self.web_cfg.backend])}')
                 raise SystemExit(1)
 
     def process_request(self, request_data: dict, response_helper) -> None:
@@ -209,22 +216,35 @@ class AssistantService(BaseService):
         del self._applied_plans[:-500]
 
 
-ENV_KEYS = {'brave': 'BRAVE_SEARCH_API_KEY', 'tavily': 'TAVILY_API_KEY'}
+def check_hint(backend) -> str:
+    """What to look at when a provider will not answer."""
+    if backend.needs_base:
+        return f'Check --web-search-url ({backend.note}).'
+    return f'Check --web-search-key (or {backend.env_key}).'
 
 
 def build_web_config(args) -> 'WebConfig | None':
     """The web configuration, or None when the operator did not ask for one.
-    The Plaid server's own host is denied outright: a fetch aimed at it would
-    be this service reaching back into the network it is trusted inside."""
+    What a provider needs is the provider's own business (see web.BACKENDS):
+    a hosted one wants a key, a self-hosted one wants a URL and no key.
+
+    The Plaid server's own host is denied to any fetch: aimed there, this
+    service would be reaching back into the network it is trusted inside."""
     if not args.web_search:
         return None
-    key = args.web_search_key or os.environ.get(ENV_KEYS[args.web_search]) or ''
-    if not key:
-        print(f'--web-search {args.web_search} needs a key: --web-search-key or '
-              f'{ENV_KEYS[args.web_search]} in the environment.')
+    backend = BACKENDS[args.web_search]
+    key = args.web_search_key or (os.environ.get(backend.env_key) if backend.env_key else '') or ''
+    if backend.env_key and not key:
+        print(f'--web-search {backend.name} needs a key: --web-search-key or '
+              f'{backend.env_key} in the environment.')
+        raise SystemExit(1)
+    base = (args.web_search_url or '').strip()
+    if backend.needs_base and not base:
+        print(f'--web-search {backend.name} needs --web-search-url ({backend.note}).')
         raise SystemExit(1)
     host = urlsplit(args.url).hostname
-    return WebConfig(backend=args.web_search, api_key=key, deny_hosts=tuple(h for h in (host,) if h))
+    return WebConfig(backend=backend.name, api_key=key, api_base=base,
+                     deny_hosts=tuple(h for h in (host,) if h))
 
 
 def stale_documents(client, documents: list) -> list:

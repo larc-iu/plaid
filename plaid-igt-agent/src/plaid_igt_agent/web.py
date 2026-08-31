@@ -26,12 +26,11 @@ import re
 import socket
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
-from typing import List, Set
+from typing import Callable, List, Set
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
-BACKENDS = ('brave', 'tavily')
 SEARCH_TIMEOUT_S = 20
 FETCH_TIMEOUT_S = 20
 MAX_REDIRECTS = 5
@@ -48,7 +47,10 @@ class WebError(Exception):
 @dataclass
 class WebConfig:
     backend: str
-    api_key: str
+    api_key: str = ''
+    #: Where a self-hosted provider lives. Deliberately exempt from the fetch
+    #: guard: the operator named it, and it is normally on their own network.
+    api_base: str = ''
     #: Hosts a fetch must never reach, on top of every private address. The
     #: service is given its own Plaid URL, which may well be a public one.
     deny_hosts: tuple = ()
@@ -237,7 +239,41 @@ def _tavily(query: str, limit: int, cfg: WebConfig, client) -> List[Result]:
     return [Result(h.get('title') or '', h.get('url') or '', h.get('content') or '') for h in hits]
 
 
-_SEARCHERS = {'brave': _brave, 'tavily': _tavily}
+def _searxng(query: str, limit: int, cfg: WebConfig, client) -> List[Result]:
+    r = client.get(cfg.api_base.rstrip('/') + '/search',
+                   params={'q': query, 'format': 'json'},
+                   headers={'Accept': 'application/json'})
+    r.raise_for_status()
+    try:
+        payload = r.json()
+    except ValueError:
+        # The commonest way to get this wrong: SearXNG serves JSON only when
+        # the instance is configured to, and otherwise hands back a web page.
+        raise WebError(f'{cfg.api_base} did not answer with JSON. A SearXNG instance serves it only '
+                       'when "json" is in search.formats in its settings.yml.')
+    return [Result(h.get('title') or '', h.get('url') or '', h.get('content') or '')
+            for h in (payload.get('results') or [])[:limit]]
+
+
+@dataclass(frozen=True)
+class Backend:
+    """One search provider. What it needs to be usable lives here rather than
+    in the service, so adding a provider is one entry and nothing else."""
+    name: str
+    search: Callable[..., List[Result]]
+    #: Environment variable holding its key. Empty when it takes no key.
+    env_key: str = ''
+    #: Whether the operator must say where it lives (a self-hosted provider).
+    needs_base: bool = False
+    note: str = ''
+
+
+BACKENDS = {b.name: b for b in [
+    Backend('brave', _brave, env_key='BRAVE_SEARCH_API_KEY'),
+    Backend('tavily', _tavily, env_key='TAVILY_API_KEY'),
+    Backend('searxng', _searxng, needs_base=True,
+            note='a SearXNG instance you run, with "json" in search.formats'),
+]}
 
 
 def search(query: str, limit: int, cfg: WebConfig, client=None) -> List[Result]:
@@ -247,7 +283,7 @@ def search(query: str, limit: int, cfg: WebConfig, client=None) -> List[Result]:
     owned = client is None
     client = client or httpx.Client(timeout=SEARCH_TIMEOUT_S, follow_redirects=True)
     try:
-        return _SEARCHERS[cfg.backend](query, max(1, min(limit, MAX_RESULTS)), cfg, client)
+        return BACKENDS[cfg.backend].search(query, max(1, min(limit, MAX_RESULTS)), cfg, client)
     except httpx.HTTPStatusError as e:
         raise WebError(f'The search provider answered {e.response.status_code}.')
     except httpx.HTTPError as e:

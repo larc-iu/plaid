@@ -44,7 +44,7 @@ def test_ping_fails_on_a_provider_error_or_an_empty_answer(monkeypatch):
 def service_args(**kw):
     base = dict(model='openai/x', api_base=None, api_key=None, max_steps=50, temperature=None,
                 max_tokens=None, service_id=None, service_name=None, url='http://localhost:8085',
-                web_search=None, web_search_key=None)
+                web_search=None, web_search_key=None, web_search_url=None)
     return argparse.Namespace(**{**base, **kw})
 
 
@@ -87,3 +87,21 @@ def test_setup_stops_the_service_when_the_search_provider_does_not_answer(monkey
     svc = AssistantService()
     svc.setup(service_args(web_search='brave', web_search_key='k', url='https://plaid.example.org'))
     assert svc.web_cfg.backend == 'brave' and svc.web_cfg.deny_hosts == ('plaid.example.org',)
+
+
+def test_a_self_hosted_provider_wants_a_url_and_no_key(monkeypatch, capsys):
+    from plaid_igt_agent import service as service_mod
+    from plaid_igt_agent.service import AssistantService
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: SimpleNamespace(choices=[SimpleNamespace()]))
+    monkeypatch.setattr(service_mod, 'ping_search', lambda cfg: 2)
+
+    # No key is needed, but it does need to be told where the instance is.
+    with pytest.raises(SystemExit) as exc:
+        AssistantService().setup(service_args(web_search='searxng'))
+    assert exc.value.code == 1 and 'needs --web-search-url' in capsys.readouterr().out
+
+    svc = AssistantService()
+    svc.setup(service_args(web_search='searxng', web_search_url='http://localhost:8888'))
+    assert (svc.web_cfg.backend, svc.web_cfg.api_key) == ('searxng', '')
+    assert svc.web_cfg.api_base == 'http://localhost:8888'
+    assert 'Web lookup: searxng at http://localhost:8888' in capsys.readouterr().out

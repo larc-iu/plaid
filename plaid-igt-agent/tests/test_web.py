@@ -234,3 +234,42 @@ def test_the_trace_counts_web_lookups_apart_from_corpus_searches():
     assert summarize_steps(steps) == '1 search · 2 web lookups · 3 steps'
     assert steps[1]['label'] == 'Searched the web for “leipzig glossing rules”'
     assert steps[2]['label'] == 'Read the web page https://example.org/leipzig'
+
+
+# --- the backend registry -----------------------------------------------------------
+
+def test_searxng_speaks_its_own_shape_and_is_told_where_it_lives():
+    from plaid_igt_agent.web import BACKENDS
+
+    def handler(request):
+        assert request.url.host == 'localhost' and request.url.port == 8888
+        assert request.url.path == '/search'
+        assert request.url.params['format'] == 'json'
+        return httpx.Response(200, json={'results': [
+            {'title': 'Ergativity', 'url': 'https://example.org/e', 'content': 'A page.'},
+            {'title': 'Second', 'url': 'https://example.org/f', 'content': 'Another.'}]})
+
+    cfg = WebConfig(backend='searxng', api_base='http://localhost:8888/')
+    hits = search('ergativity', 1, cfg, client=transport(handler))
+    assert [h.title for h in hits] == ['Ergativity']          # limit applied client-side
+    assert BACKENDS['searxng'].needs_base and not BACKENDS['searxng'].env_key
+
+
+def test_searxng_says_so_when_json_is_not_switched_on():
+    handler = lambda r: httpx.Response(200, headers={'content-type': 'text/html'},  # noqa: E731
+                                       content=b'<html>a search page</html>')
+    cfg = WebConfig(backend='searxng', api_base='http://localhost:8888')
+    with pytest.raises(WebError, match='search.formats'):
+        search('x', 3, cfg, client=transport(handler))
+
+
+def test_every_backend_is_reachable_and_declares_what_it_needs():
+    from plaid_igt_agent.web import BACKENDS
+    handler = lambda r: httpx.Response(200, json={})  # noqa: E731
+    for name, b in BACKENDS.items():
+        assert b.name == name
+        # Either it takes a key from a named variable, or it is somewhere the
+        # operator has to point at. Nothing needs both, and nothing needs neither.
+        assert bool(b.env_key) != bool(b.needs_base), name
+        cfg = WebConfig(backend=name, api_key='k', api_base='http://localhost:8888')
+        assert search('x', 3, cfg, client=transport(handler)) == []

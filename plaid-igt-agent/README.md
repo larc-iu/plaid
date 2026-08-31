@@ -54,15 +54,36 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
 
 ### Web lookup (off by default)
 
-`--web-search brave` or `--web-search tavily` lets the assistant look things
-up outside the project: what a gloss abbreviation conventionally means, how a
-construction is described in the literature, a reference for a claim. The key
-comes from `--web-search-key` or `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY`,
-and the service runs one real search at startup so a bad key stops it there.
+`--web-search` lets the assistant look things up outside the project: what a
+gloss abbreviation conventionally means, how a construction is described in
+the literature, a reference for a claim. The service runs one real search at
+startup, so a bad key or an unreachable instance stops it there rather than
+failing every question later.
+
+| provider | needs | notes |
+|---|---|---|
+| `brave` | `--web-search-key` or `BRAVE_SEARCH_API_KEY` | independent index, not a reseller |
+| `tavily` | `--web-search-key` or `TAVILY_API_KEY` | built for agents, clean prose snippets |
+| `searxng` | `--web-search-url` | an instance you run, no key, no quota |
 
 ```sh
 plaid-igt-agent --url http://localhost:8080 --model openai/gpt-4o --web-search brave
+plaid-igt-agent --url http://localhost:8080 --model ollama/llama3.1 \
+                --web-search searxng --web-search-url http://localhost:8888
 ```
+
+SearXNG is the option with no third party in it: nothing to sign up for, no
+quota, and no commercial account holding your query log, which matters for a
+corpus under a community protocol. It serves JSON only when `json` is in
+`search.formats` in its `settings.yml`, and the tool says so if it is not.
+Its own URL is exempt from the fetch guard below, since the operator named
+it, but `read_url` still refuses to open that host: the search endpoint being
+on your network does not make the network readable.
+
+Adding a provider is one entry in `BACKENDS` in `web.py`: a function taking
+`(query, limit, cfg, client)` and returning `Result(title, url, snippet)`,
+plus whether it wants a key (and from which environment variable) or a URL.
+Nothing in the service knows the difference.
 
 Without the flag the two tools are not offered to the model and the prompt
 does not mention them, so an assistant that cannot look anything up is never
