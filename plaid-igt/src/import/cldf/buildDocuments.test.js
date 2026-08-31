@@ -648,6 +648,40 @@ describe('round trip through the exporter', () => {
     expect(perros.morphemes.map((m) => m.morphType)).toEqual([null, 'enclitic']);
   });
 
+  it('recovers document metadata under its own name', () => {
+    // Description/Contributor/Citation are CLDF terms the importer reads back,
+    // so the export has to write them to those columns. Reserving the names
+    // and renaming out of the way instead turned a tsezacp "Description" into
+    // "Description (2)" on every round trip.
+    const doc = makeFixtureDoc();
+    doc.document.metadata = {
+      Description: 'The rainbow',
+      Source: 'Abdulaev2010',
+      Genre: 'narrative',
+    };
+    const { files } = buildCldfDataset({
+      project: { name: 'P' },
+      languages: { object: null, meta: null },
+      documents: [{ igtDoc: doc }],
+      vocabularies: [],
+      options: {
+        glossField: 'Gloss',
+        glossScope: 'morpheme',
+        translationField: 'Translation',
+        commentField: 'Note',
+        extras: { sentence: [], word: [], morpheme: [], orthographies: [] },
+        speakers: false,
+        dictionary: false,
+      },
+    });
+    const contributions = files.find((f) => f.path.endsWith('contributions.csv')).data;
+    expect(contributions).not.toContain('Description (2)');
+    const zipped = zipSync(Object.fromEntries(files.map((f) => [f.path, strToU8(f.data)])));
+    expect(buildCldfDocuments(readCldfDataset(zipped)).documents[0].metadata).toEqual(
+      doc.document.metadata,
+    );
+  });
+
   it('recovers the sentence translation, the word field and the orthography', () => {
     const { documents } = reimport();
     expect(documents[0].sentences[0].fields.Translation).toBe('The dogs run.');

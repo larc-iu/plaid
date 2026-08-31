@@ -357,7 +357,19 @@ export function buildCldfDataset({
   const exampleRows = [];
   const mediaRows = [];
   const metadataNames = new Map();
-  const usedMetadataColumns = new Set(['ID', 'Name', 'Description', 'Contributor', 'Citation']);
+  // Reserved because the ContributionTable always writes them.
+  const usedMetadataColumns = new Set(['ID', 'Name', 'Plaid_ID']);
+  // Document metadata the importer reads back off a CLDF term, so writing it
+  // to that term's own column is what makes the round trip lossless. Renaming
+  // "Description" out of the way instead turned it into "Description (2)".
+  // Source stays untermed on purpose: CLDF's source is a list of BibTeX keys
+  // resolved against sources.bib, and a Plaid metadata string is not that.
+  const CONTRIBUTION_TERMS = {
+    Description: 'description',
+    Contributor: 'contributor',
+    Citation: 'citation',
+  };
+  const termedMetadata = new Set();
 
   documents.forEach(({ igtDoc, mediaFile = null, mediaType = '' }, docIndex) => {
     const doc = igtDoc.document || {};
@@ -369,6 +381,11 @@ export function buildCldfDataset({
     };
     for (const [key, value] of Object.entries(doc.metadata || {})) {
       if (value === null || value === undefined || value === '') continue;
+      if (CONTRIBUTION_TERMS[key]) {
+        termedMetadata.add(key);
+        contribution[key] = String(value);
+        continue;
+      }
       if (!metadataNames.has(key)) {
         metadataNames.set(key, metadataColumnName(key, usedMetadataColumns));
       }
@@ -530,6 +547,7 @@ export function buildCldfDataset({
       col('ID', { required: true, propertyUrl: 'id' }),
       col('Name', { propertyUrl: 'name' }),
       col('Plaid_ID', { description: 'The document id in the originating Plaid project.' }),
+      ...[...termedMetadata].map((key) => col(key, { propertyUrl: CONTRIBUTION_TERMS[key] })),
       ...[...metadataNames.values()].map((name) =>
         col(name, { description: 'Document metadata from the originating Plaid project.' }),
       ),
