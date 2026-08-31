@@ -164,7 +164,19 @@ export function nearMisses(nodes) {
     .filter((group) => new Set(group.map((n) => n.baseName)).size > 1)
     .map((group) => {
       const names = [...new Set(group.map(nodeLabel))].sort();
-      return { fold: foldName(names[0]), names, differsBy: differenceKind(names[0], names[1]) };
+      // Renaming only merges tiers that agree on everything else identity is
+      // made of. Two tiers of different LINGUISTIC_TYPEs, or at different
+      // places in the tree, stay separate however they are spelled, and
+      // offering to merge them would silently do nothing and leave two rows
+      // reading alike, which is the thing this whole check exists to prevent.
+      const mergeable =
+        new Set(group.map((n) => `${n.typeRef}\u0000${n.parentKey ?? ''}`)).size === 1;
+      return {
+        fold: foldName(names[0]),
+        names,
+        differsBy: differenceKind(names[0], names[1]),
+        mergeable,
+      };
     });
 }
 

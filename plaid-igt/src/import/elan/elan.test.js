@@ -740,7 +740,7 @@ describe('tier names differing only in case', () => {
   it('reports the collision so the mapping table is not two rows that read alike', () => {
     const result = compareSchemas([readEaf(abuiShaped(), 'abui.eaf')]);
     expect(result.nearMisses).toEqual([
-      { fold: 'phrase', names: ['Phrase', 'phrase'], differsBy: 'capitalization' },
+      { fold: 'phrase', names: ['Phrase', 'phrase'], differsBy: 'capitalization', mergeable: true },
     ]);
   });
 
@@ -797,12 +797,34 @@ describe('tier names differing only in case', () => {
     const split = compareSchemas(parsed);
     expect(split.consistent).toBe(false);
     expect(split.nearMisses).toEqual([
-      { fold: 'phrase', names: ['Phrase', 'phrase'], differsBy: 'capitalization' },
+      { fold: 'phrase', names: ['Phrase', 'phrase'], differsBy: 'capitalization', mergeable: true },
     ]);
     // Merging is the way forward that does not mean editing the files in ELAN.
     const merged = compareSchemas(parsed, new Map([['phrase', 'Phrase']]));
     expect(merged.consistent).toBe(true);
     expect(merged.nodes).toHaveLength(1);
+  });
+
+  it('refuses to offer a merge that renaming could not actually perform', () => {
+    // Same folded name, different LINGUISTIC_TYPE. Renaming would make the two
+    // rows read identically while leaving them two nodes, which is the exact
+    // confusion this check exists to prevent, so merging is not on offer.
+    const xml = eafXml({
+      types: { ta: null, tb: null },
+      tiers: [
+        { id: 'Note', type: 'ta', anns: [['a1', 'hola', 0, 100]] },
+        { id: 'note', type: 'tb', anns: [['a2', 'adios', 100, 200]] },
+      ],
+    });
+    const result = compareSchemas([readEaf(xml, 'x.eaf')]);
+    expect(result.nearMisses).toEqual([
+      {
+        fold: 'note',
+        names: ['Note', 'note'],
+        differsBy: 'capitalization',
+        mergeable: false,
+      },
+    ]);
   });
 
   it('catches near misses that are not about case at all', () => {
@@ -816,17 +838,27 @@ describe('tier names differing only in case', () => {
       });
     // A trailing space, which nothing in the table would show.
     expect(compareSchemas([readEaf(twoTiers('ft', 'ft '), 'x.eaf')]).nearMisses).toEqual([
-      { fold: 'ft', names: ['ft', 'ft '], differsBy: 'spacing' },
+      { fold: 'ft', names: ['ft', 'ft '], differsBy: 'spacing', mergeable: true },
     ]);
     // Composed vs decomposed accents: the same word to a reader, two TIER_IDs.
     const nfc = 'caf\u00e9';
     const nfd = 'cafe\u0301';
     expect(compareSchemas([readEaf(twoTiers(nfc, nfd), 'y.eaf')]).nearMisses).toEqual([
-      { fold: 'caf\u00e9', names: [nfc, nfd].sort(), differsBy: 'Unicode spelling' },
+      {
+        fold: 'caf\u00e9',
+        names: [nfc, nfd].sort(),
+        differsBy: 'Unicode spelling',
+        mergeable: true,
+      },
     ]);
     // A zero-width space, which is invisible everywhere.
     expect(compareSchemas([readEaf(twoTiers('ref', 'ref\u200b'), 'z.eaf')]).nearMisses).toEqual([
-      { fold: 'ref', names: ['ref', 'ref\u200b'].sort(), differsBy: 'invisible characters' },
+      {
+        fold: 'ref',
+        names: ['ref', 'ref\u200b'].sort(),
+        differsBy: 'invisible characters',
+        mergeable: true,
+      },
     ]);
     // And an ordinary pair of distinct names is not a near miss.
     expect(compareSchemas([readEaf(twoTiers('ref', 'gloss'), 'w.eaf')]).nearMisses).toEqual([]);

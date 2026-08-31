@@ -376,6 +376,8 @@ export const ImportElanProject = () => {
                           <span className="font-medium">{g.names.join(' / ')}</span>
                           <span className="text-muted-foreground">
                             differ only in {g.differsBy}
+                            {!g.mergeable &&
+                              ', but ELAN gives them different types, so they cannot be merged'}
                           </span>
                           <Select
                             value={nearMissChoices[g.fold] ?? ''}
@@ -387,11 +389,12 @@ export const ImportElanProject = () => {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="separate">Different tiers, keep both</SelectItem>
-                              {g.names.map((n) => (
-                                <SelectItem key={n} value={n}>
-                                  Same tier, merge as “{n}”
-                                </SelectItem>
-                              ))}
+                              {g.mergeable &&
+                                g.names.map((n) => (
+                                  <SelectItem key={n} value={n}>
+                                    Same tier, merge as “{n}”
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </div>
