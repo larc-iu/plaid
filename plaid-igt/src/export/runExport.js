@@ -1,20 +1,23 @@
 // Drive a whole export: resolve the document list for the chosen scope,
 // fetch documents SEQUENTIALLY (server load, memory), serialize each with the
 // preset's format, and assemble the result — a bare file for a single
-// document, a zip (documents/ + optional vocabularies/) otherwise. The native
-// 'plaid-igt-json' format is special: it ALWAYS produces a zip (project.json
-// + vocabularies/*.json + documents/*.json + optional media/*) so the archive
-// is self-contained and re-importable regardless of scope.
+// document, a zip (documents/ + optional vocabularies/) otherwise. Two formats
+// are dataset-level rather than per-document and so ALWAYS produce a zip:
+// 'plaid-igt-json' (project.json + vocabularies/*.json + documents/*.json +
+// optional media/*, self-contained and re-importable regardless of scope) and
+// 'cldf' (cldf-metadata.json + one CSV per component table, with every
+// document's sentences folded into a single examples.csv).
 //
 // UI-free and stub-client-testable. Per-document failures become entries in
 // `warnings`, not an aborted run; cancellation throws ExportCancelled.
 
 import { IgtDocument, loadProjectVocabularies } from '../domain/IgtDocument.js';
-import { readVocabFields } from '../domain/igtConfig.js';
+import { readVocabFields, readLanguages } from '../domain/igtConfig.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
 import { buildFlextextDocument } from './flextext.js';
 import { serializeVocabTsv } from './vocabTsv.js';
+import { buildCldfDataset } from './cldf.js';
 import {
   buildProjectFile,
   serializeVocabularyNative,
@@ -87,9 +90,16 @@ export async function fetchDocumentMedia(client, documentId, asOf) {
     headers: { Authorization: `Bearer ${client.token}` },
   });
   if (!res.ok) throw new Error(`media fetch failed (${res.status})`);
+  const contentType = res.headers.get('content-type');
   return {
     bytes: new Uint8Array(await res.arrayBuffer()),
-    ext: extOfContentType(res.headers.get('content-type')),
+    ext: extOfContentType(contentType),
+    // CLDF's MediaTable.Media_Type wants the media type itself, not the
+    // extension the archive filename gets.
+    mime: String(contentType ?? '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase(),
   };
 }
 
@@ -118,7 +128,8 @@ export async function runExport({
   const layers = discoverExportLayers(project);
   const warnings = [];
   const isNative = preset.format === 'plaid-igt-json';
-  const includeMedia = isNative && preset.options?.includeMedia !== false;
+  const isCldf = preset.format === 'cldf';
+  const includeMedia = (isNative || isCldf) && preset.options?.includeMedia !== false;
 
   // Document id list for the scope.
   let docIds;
@@ -128,17 +139,21 @@ export async function runExport({
   checkStop();
 
   // Document scope downloads the bare file; project/multi-doc scopes always
-  // produce a zip — and the native archive is a zip at every scope.
-  const wantZip = isNative || scope.type !== 'document';
+  // produce a zip — and the native archive is a zip at every scope. A CLDF
+  // dataset is a set of files by definition, so it is always a zip too.
+  const wantZip = isNative || isCldf || scope.type !== 'document';
 
   // Vocabularies are fetched for the TSVs (opt-in) or the native archive
   // (always — links reference items by id), and snapshotted BEFORE the
   // document loop: the IgtDocument constructor mutates the vocabularies map
   // it's given (folding in raw-embedded links), so sharing this one with the
   // documents would grow it synthetic empty entries for failed vocabs.
-  const wantVocabTsvs = !isNative && !!preset.includeVocabularies && wantZip;
+  const wantVocabTsvs = !isNative && !isCldf && !!preset.includeVocabularies && wantZip;
+  // CLDF turns the vocabularies into EntryTable/SenseTable, so it needs them
+  // loaded whenever its dictionary option is on.
+  const wantCldfDictionary = isCldf && preset.options?.dictionary !== false;
   let vocabs = [];
-  if (wantVocabTsvs || isNative) {
+  if (wantVocabTsvs || isNative || wantCldfDictionary) {
     const loaded = await loadProjectVocabularies(client, project, asOf);
     vocabs = Object.values(loaded.vocabularies);
     if (loaded.failedCount) {
@@ -175,13 +190,15 @@ export async function runExport({
 
     let mediaFile = null;
     let mediaEntry = null;
+    let mediaType = '';
     if (includeMedia && igtDoc.raw?.mediaUrl) {
       try {
-        const { bytes, ext: mediaExt } = await fetchMedia(client, docIds[i], asOf);
+        const { bytes, ext: mediaExt, mime } = await fetchMedia(client, docIds[i], asOf);
         let candidate = `${sanitizeFilename(name)}${mediaExt}`;
         [candidate] = dedupeFilenames([...usedMediaNames, candidate]).slice(-1);
         usedMediaNames.add(candidate);
         mediaFile = `media/${candidate}`;
+        mediaType = mime || '';
         // Already-compressed audio/video — store, don't deflate.
         mediaEntry = { path: mediaFile, data: bytes, opts: { level: 0 } };
       } catch (err) {
@@ -192,12 +209,18 @@ export async function runExport({
     try {
       docFiles.push({
         name: `${sanitizeFilename(name)}.${ext}`,
-        data: isNative
-          ? toJson(serializeDocumentNative(igtDoc, { mediaFile }))
-          : serializeDoc(igtDoc, preset, layers),
+        // A CLDF dataset is assembled from every document at once, so the
+        // per-document loop only collects them here.
+        data: isCldf
+          ? null
+          : isNative
+            ? toJson(serializeDocumentNative(igtDoc, { mediaFile }))
+            : serializeDoc(igtDoc, preset, layers),
+        igtDoc,
         id: igtDoc.document?.id ?? docIds[i],
         docName: name,
         mediaFile,
+        mediaType,
       });
       // Staged only on a successful doc serialize — a skipped document must
       // not leave an orphan media file in the archive.
@@ -220,6 +243,30 @@ export async function runExport({
     return {
       filename: docFiles[0].name,
       blob: new Blob([docFiles[0].data], { type: mime }),
+      warnings,
+    };
+  }
+
+  // CLDF: one dataset built from every document, not a file per document.
+  if (isCldf) {
+    const { files, warnings: cldfWarnings } = buildCldfDataset({
+      project,
+      languages: readLanguages(project?.config),
+      documents: docFiles.map((f) => ({
+        igtDoc: f.igtDoc,
+        mediaFile: f.mediaFile,
+        mediaType: f.mediaType,
+      })),
+      vocabularies: vocabs,
+      options: preset.options || {},
+      exportedAt: new Date().toISOString(),
+    });
+    warnings.push(...cldfWarnings);
+    checkStop();
+    const stem = scope.type === 'document' ? docFiles[0].docName : project.name || 'project';
+    return {
+      filename: `${sanitizeFilename(stem)}-cldf.zip`,
+      blob: await assembleZip([...files, ...mediaEntries]),
       warnings,
     };
   }
