@@ -2,18 +2,20 @@ import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { ExportPresetsSettings } from './settings/ExportPresetsSettings';
 import { ExportPresetEditor } from './settings/ExportPresetEditor';
 
-// The project's Export tab: run an export at the top, manage the presets it
-// runs with underneath. Both used to live apart (a modal on the Documents tab
-// for running, a Settings section for configuring), which meant configuring a
-// preset and using it were two different places.
+// The project's Export tab.
 //
-// Path-backed like Settings: /projects/:id/export is this page and
-// /projects/:id/export/:presetId is one preset's editor, so a preset is
-// linkable and the back button works through it.
+// For a maintainer it is two pages, one path each:
 //
-// A reader can run an export but not change what the presets are, so the
-// management half is maintainer-only. The per-document Export tab is separate
-// and unaffected (see DocumentDetail).
+//   /projects/:id/export             the list of presets, plus New preset
+//   /projects/:id/export/:presetId   one preset: edit it, save it, run it
+//
+// Running lives inside the preset's own page, at the bottom, because picking
+// what to export and picking how are one decision. The list stays a list, so
+// the presets are never enumerated twice on one screen.
+//
+// A reader cannot edit presets, so there is nothing to list them for: they get
+// the run controls directly, choosing a preset from the ones that exist. That
+// is the capability they had before this tab existed.
 export const ProjectExport = ({
   project,
   projectId,
@@ -23,35 +25,30 @@ export const ProjectExport = ({
   presetId = null,
   onProjectUpdate,
 }) => {
-  if (presetId) {
+  if (!canManage) {
     return (
-      <ExportPresetEditor
-        projectId={projectId}
-        client={client}
-        presetId={presetId}
-        onProjectUpdate={onProjectUpdate}
-      />
+      <div className="tw pt-4">
+        <ExportRunner
+          client={client}
+          project={project}
+          documents={documents}
+          showPresetsLink={false}
+        />
+      </div>
     );
   }
-
-  return (
-    <div className="tw flex flex-col gap-10 pt-4">
-      <ExportRunner
-        client={client}
-        project={project}
-        documents={documents}
-        canManage={canManage}
-        showPresetsLink={false}
-      />
-      {canManage && (
-        <div className="border-t pt-2">
-          <ExportPresetsSettings
-            projectId={projectId}
-            client={client}
-            onProjectUpdate={onProjectUpdate}
-          />
-        </div>
-      )}
-    </div>
+  return presetId ? (
+    <ExportPresetEditor
+      projectId={projectId}
+      client={client}
+      presetId={presetId}
+      onProjectUpdate={onProjectUpdate}
+    />
+  ) : (
+    <ExportPresetsSettings
+      projectId={projectId}
+      client={client}
+      onProjectUpdate={onProjectUpdate}
+    />
   );
 };

@@ -43,11 +43,15 @@ export const ExportRunner = ({
   asOf = null,
   canManage = false,
   showPresetsLink = true,
+  presetId = null,
   onDone = null,
   onClose = null,
 }) => {
   const presets = readExportPresets(project);
-  const [selectedId, setSelectedId] = useState(presets[0]?.id ?? null);
+  // `presetId` pins the run to one preset and hides the picker: that is how the
+  // preset editor runs the preset being edited, so the page never lists the
+  // presets twice.
+  const [selectedId, setSelectedId] = useState(presetId ?? presets[0]?.id ?? null);
   const [scope, setScope] = useState(defaultScope ? 'document' : 'project');
   const [selectedDocIds, setSelectedDocIds] = useState(() => new Set());
   const [includeVocabularies, setIncludeVocabularies] = useState(null); // null = preset's own
@@ -57,10 +61,15 @@ export const ExportRunner = ({
   const stopRef = useRef(false);
 
   const preset = presets.find((p) => p.id === selectedId) ?? null;
-  // A preset deleted/added elsewhere: keep the selection valid.
+  // A preset deleted/added elsewhere: keep the selection valid. A pinned preset
+  // follows the pin, including after a save changes the stored object.
   useEffect(() => {
+    if (presetId) {
+      if (selectedId !== presetId) setSelectedId(presetId);
+      return;
+    }
     if (!preset && presets.length) setSelectedId(presets[0].id);
-  }, [preset, presets]);
+  }, [preset, presets, presetId, selectedId]);
 
   // The scope step needs the document list; fetch it if the caller didn't
   // have one handy.
@@ -148,7 +157,7 @@ export const ExportRunner = ({
       <div className="flex items-center justify-between gap-4">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           <Download className="h-4 w-4" />
-          <span>Export{defaultScope ? ':' : ''}</span>
+          <span>{presetId ? 'Run this export' : `Export${defaultScope ? ':' : ''}`}</span>
           {defaultScope && (
             <span className="text-sm font-normal text-muted-foreground">{defaultScope.name}</span>
           )}
@@ -179,31 +188,33 @@ export const ExportRunner = ({
         </p>
       ) : (
         <>
-          <div className="flex flex-col gap-2">
-            <Label>Preset</Label>
-            <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-              {presets.map((p) => (
-                <label
-                  key={p.id}
-                  className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-                    p.id === selectedId ? 'border-primary bg-accent/40' : 'hover:bg-muted/50'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="export-preset"
-                    checked={p.id === selectedId}
-                    onChange={() => setSelectedId(p.id)}
-                  />
-                  <span className="font-medium">{p.name}</span>
-                  <span className="text-xs text-muted-foreground">{formatLabel(p.format)}</span>
-                </label>
-              ))}
+          {!presetId && (
+            <div className="flex flex-col gap-2">
+              <Label>Preset</Label>
+              <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+                {presets.map((p) => (
+                  <label
+                    key={p.id}
+                    className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                      p.id === selectedId ? 'border-primary bg-accent/40' : 'hover:bg-muted/50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="export-preset"
+                      checked={p.id === selectedId}
+                      onChange={() => setSelectedId(p.id)}
+                    />
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-xs text-muted-foreground">{formatLabel(p.format)}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {scopeStep && preset && (
-            <div className="border-t pt-4">
+            <div className={presetId ? '' : 'border-t pt-4'}>
               <ScopeStep
                 scope={scope}
                 onScopeChange={setScope}
