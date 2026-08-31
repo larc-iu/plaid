@@ -567,6 +567,37 @@ describe('buildElanDocuments', () => {
     expect(doc.warnings.some((w) => /2 empty annotations/.test(w))).toBe(true);
   });
 
+  it('counts what the mapping leaves behind, so the loss is not silent', () => {
+    // An unmapped tier is dropped in silence otherwise: the import stats only
+    // describe what IS imported, so a whole annotation stream can vanish while
+    // the summary still reads like a clean run.
+    const xml = eafXml({
+      types: { u: null, note: 'Symbolic_Association', gest: 'Symbolic_Association' },
+      tiers: [
+        { id: 'T', type: 'u', anns: [['a1', 'hola mundo', 0, 500]] },
+        { id: 'ft', type: 'note', parent: 'T', anns: [['f1', 'hello world', 'a1', null]] },
+        {
+          id: 'gesture',
+          type: 'gest',
+          parent: 'T',
+          anns: [['g1', 'points left', 'a1', null]],
+        },
+      ],
+    });
+    const parsed = [readEaf(xml, 'x.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const roles = suggestRoles(nodes);
+    const gestureNode = nodes.find((n) => n.baseName === 'gesture');
+    // Whatever the suggestion did with it, pin it off: that is the case at issue.
+    const build = buildElanDocuments(parsed, nodes, { ...roles, [gestureNode.key]: ROLES.OFF });
+    expect(build.stats.skipped).toEqual([{ label: 'gesture', values: 1, tiers: ['gesture'] }]);
+  });
+
+  it('reports nothing skipped when every tier carrying values is mapped', () => {
+    const { build } = buildFrom([[ANA, 'ana.eaf']]);
+    expect(build.stats.skipped).toEqual([]);
+  });
+
   it('keeps HEADER properties as metadata but drops ELAN bookkeeping', () => {
     const xml = eafXml({
       types: { u: null },

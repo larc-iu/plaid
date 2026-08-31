@@ -155,6 +155,26 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     speakers: new Set(),
   };
 
+  // What the mapping leaves behind. A tier with no role is silently dropped
+  // otherwise: the counts above only describe what IS imported, so a corpus can
+  // lose a whole second speaker or an entire gesture stream and still look like
+  // a clean import. Counted here so the review screen can say so out loud.
+  const skipped = new Map();
+  for (const eaf of files) {
+    for (const tier of eaf.tiers) {
+      const node = nodes.find((n) => n.tierIds?.includes(tier.id));
+      const key = node ? node.key : null;
+      if (key && (roles[key] ?? ROLES.OFF) !== ROLES.OFF) continue;
+      const filled = tier.annotations.filter((a) => String(a.value ?? '').trim()).length;
+      if (!filled) continue;
+      const label = node ? nodeLabel(node) : tier.baseName || tier.id;
+      const prev = skipped.get(label) || { label, values: 0, tiers: new Set() };
+      prev.values += filled;
+      prev.tiers.add(tier.id);
+      skipped.set(label, prev);
+    }
+  }
+
   for (const eaf of files) {
     const docWarnings = [];
 
@@ -449,6 +469,17 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     d.name = `${d.name} (${n})`;
   }
 
+  // ANNOTATOR is per-tier in EAF and Plaid has nowhere per-tier to put it, so it
+  // is not imported. Saying so beats dropping a curation record in silence.
+  const annotators = [
+    ...new Set(files.flatMap((f) => f.tiers.map((t) => t.annotator).filter(Boolean))),
+  ].sort();
+  if (annotators.length) {
+    warnings.push(
+      `The .eaf files name an annotator on some tiers (${annotators.join(', ')}). ELAN records that per tier, which has no equivalent here, so it is not imported.`,
+    );
+  }
+
   if (files.some((f) => f.media.length)) {
     warnings.push(
       'Media files are referenced by the .eaf files but are not imported. Attach them to each document afterwards.',
@@ -480,7 +511,13 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         (name) => ({ name }),
       ),
     },
-    stats: { ...stats, speakers: [...stats.speakers].sort() },
+    stats: {
+      ...stats,
+      speakers: [...stats.speakers].sort(),
+      skipped: [...skipped.values()]
+        .map((x) => ({ label: x.label, values: x.values, tiers: [...x.tiers].sort() }))
+        .sort((a, b) => b.values - a.values),
+    },
     warnings,
   };
 }

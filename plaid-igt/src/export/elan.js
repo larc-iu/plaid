@@ -409,16 +409,23 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
   // speaker's copy of a tier is named consistently.
   const alloc = nameAllocator();
   const names = { ...DEFAULT_TIER_NAMES, ...(options.tierNames || {}) };
-  const sentenceName = alloc(names.sentence, 'Sentence');
-  const segmentName = model.wantSegmentTier ? alloc(names.segment, 'Segment') : null;
-  const wordName = alloc(names.word, 'Word');
-  const morphName = options.segmentMorphemes !== false ? alloc(names.morph, 'Morph') : null;
+  const wantMorphTier = options.segmentMorphemes !== false;
+  // The user's names are allocated FIRST, so a collision renames our structural
+  // tier and never their field. A field named "Word" written as "Word-2" comes
+  // back from an import as a field called "Word-2": the value survives but the
+  // key is corrupted, and the key is what the project's schema is made of. A
+  // structural tier renamed to "Word-2" loses nothing, because it is identified
+  // by its LINGUISTIC_TYPE and its name is only a label.
   const orthNames = new Map((options.orthographies || []).map((n) => [n, alloc(n, 'Orthography')]));
   const wordFieldNames = new Map((options.wordFields || []).map((n) => [n, alloc(n, 'WordField')]));
   const morphFieldNames = new Map(
-    morphName ? (options.morphFields || []).map((n) => [n, alloc(n, 'MorphField')]) : [],
+    wantMorphTier ? (options.morphFields || []).map((n) => [n, alloc(n, 'MorphField')]) : [],
   );
   const sentFieldNames = new Map((options.sentFields || []).map((n) => [n, alloc(n, 'SentField')]));
+  const sentenceName = alloc(names.sentence, 'Sentence');
+  const segmentName = model.wantSegmentTier ? alloc(names.segment, 'Segment') : null;
+  const wordName = alloc(names.word, 'Word');
+  const morphName = wantMorphTier ? alloc(names.morph, 'Morph') : null;
 
   const lines = [];
   for (const speaker of model.speakers) {

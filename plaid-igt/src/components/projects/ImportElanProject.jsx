@@ -429,6 +429,26 @@ export const ImportElanProject = () => {
                   </Panel>
                 )}
 
+                {build && build.stats.skipped.length > 0 && (
+                  <Panel
+                    tone="warn"
+                    icon={AlertTriangle}
+                    title={`Not imported: ${build.stats.skipped.reduce((n, s) => n + s.values, 0)} annotations on ${build.stats.skipped.length} tier${build.stats.skipped.length === 1 ? '' : 's'}`}
+                  >
+                    <p className="mt-1 text-xs">
+                      These tiers are set to “Don’t import” above. Give one a role to keep it.
+                    </p>
+                    <ul className="mt-2 list-inside list-disc text-xs text-muted-foreground">
+                      {build.stats.skipped.map((sk) => (
+                        <li key={sk.label}>
+                          {sk.tiers.join(', ')} — {sk.values} annotation
+                          {sk.values === 1 ? '' : 's'}
+                        </li>
+                      ))}
+                    </ul>
+                  </Panel>
+                )}
+
                 {runError && (
                   <Panel tone="error" icon={AlertTriangle} title="Import failed">
                     <p className="mt-1 text-xs">{runError}</p>

@@ -376,7 +376,9 @@ describe('referential integrity', () => {
   });
 
   it('keeps TIER_IDs unique when a field collides with a structural tier', () => {
-    // A sentence field literally named "Word" must not claim the Word tier's id.
+    // A sentence field literally named "Word" keeps that name, because the name
+    // is the project's own field key and comes back as one. The structural Word
+    // tier takes the suffix instead.
     const collide = twoSentenceDoc();
     collide.sortedSentences[0].annotations = { Word: { value: 'clash' } };
     const dom = build(collide, { ...OPTIONS, wordFields: [], sentFields: ['Word'] });
@@ -384,8 +386,8 @@ describe('referential integrity', () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain('Word');
     expect(ids).toContain('Word-2');
-    expect(valuesOf(tierNamed(dom, 'Word-2'))).toEqual(['clash']);
-    expect(tierNamed(dom, 'Word-2').getAttribute('PARENT_REF')).toBe('Sentence');
+    expect(valuesOf(tierNamed(dom, 'Word'))).toEqual(['clash']);
+    expect(tierNamed(dom, 'Word').getAttribute('PARENT_REF')).toBe('Sentence');
     // Every PARENT_REF names a tier that exists.
     const known = new Set(ids);
     for (const t of all(dom, 'TIER').filter((x) => x.getAttribute('PARENT_REF'))) {
@@ -401,6 +403,44 @@ describe('referential integrity', () => {
     for (const t of all(dom, 'TIER')) {
       expect(declared.has(t.getAttribute('LINGUISTIC_TYPE_REF'))).toBe(true);
     }
+  });
+});
+
+describe('tier name collisions', () => {
+  // TIER_ID carries an xsd:key, so a field named after a structural tier has to
+  // be resolved somehow. The user's field name is the project's own schema and
+  // survives a round trip as a key; ours is a label. So ours yields.
+  const collidingDoc = () => {
+    const doc = makeFixtureDoc({});
+    for (const s of doc.sortedSentences) {
+      for (const w of s.tokens) {
+        if (w.annotations?.POS) w.annotations = { Word: w.annotations.POS };
+        for (const m of w.morphemes || []) {
+          if (m.annotations?.Gloss) m.annotations = { Morph: m.annotations.Gloss };
+        }
+      }
+    }
+    return doc;
+  };
+
+  it('keeps the field name and renames the structural tier', () => {
+    const dom = build(collidingDoc(), {
+      ...OPTIONS,
+      orthographies: [],
+      wordFields: ['Word'],
+      morphFields: ['Morph'],
+      sentFields: [],
+      perSpeaker: false,
+    });
+    // The user's fields keep the names the project knows them by.
+    expect(valuesOf(tierNamed(dom, 'Word'))).toEqual(['NOUN', 'VERB']);
+    expect(valuesOf(tierNamed(dom, 'Morph'))).toEqual(['dog', 'PL']);
+    // The structural tiers took the suffix instead, and still carry the forms.
+    expect(valuesOf(tierNamed(dom, 'Word-2'))).toEqual(['perros', 'corren']);
+    expect(valuesOf(tierNamed(dom, 'Morph-2'))).toEqual(['perro', '=s']);
+    // Every TIER_ID is still unique, which is what the xsd:key requires.
+    const ids = all(dom, 'TIER').map((t) => t.getAttribute('TIER_ID'));
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
 
