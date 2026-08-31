@@ -546,6 +546,53 @@ describe('deriveImportOptions', () => {
   });
 });
 
+describe('deriveImportOptions — a per-word tier is not thrown away', () => {
+  const tsv = (name, sep) => col(name, null, { separator: sep });
+
+  it('imports a tab column that counts out against the analysis, at word scope', () => {
+    // tsezacp ships Part_of_Speech this way: one tag per analyzed word, no
+    // CLDF term to bind it. Off by default lost all 53024 of them.
+    const ds = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,Part_of_Speech\r\n' +
+        '1,perros corren,perro=s\tcorren,dog=PL\trun,n\tv\r\n' +
+        '2,gatos duermen,gato=s\tduermen,cat=PL\tsleep,n\tv\r\n',
+      [...BASIC_COLUMNS, tsv('Part_of_Speech', '\t')],
+    );
+    expect(deriveImportOptions(ds).customColumns.Part_of_Speech).toEqual({
+      scope: 'Word',
+      name: 'Part_of_Speech',
+      enabled: true,
+    });
+    const { documents } = buildCldfDocuments(ds);
+    expect(documents[0].words.map((w) => w.fields.Part_of_Speech)).toEqual(['n', 'v', 'n', 'v']);
+  });
+
+  it('needs a multi-word sentence as evidence, since one word matches anything', () => {
+    const ds = dataset('ID,Primary_Text,Analyzed_Word,Gloss,Word_POS\r\n1,ab,ab,x,N\r\n', [
+      ...BASIC_COLUMNS,
+      col('Word_POS', null, { separator: '\t' }),
+    ]);
+    expect(deriveImportOptions(ds).customColumns.Word_POS).toMatchObject({
+      scope: 'Sentence',
+      enabled: false,
+    });
+  });
+
+  it('leaves a list column that does not count out per word alone', () => {
+    // A Source listing two references is a list, not a tier. The rule has to
+    // be self-limiting or it starts inventing word annotations.
+    const ds = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,Refs\r\n' +
+        '1,perros corren,perro=s\tcorren,dog=PL\trun,"a;b;c"\r\n',
+      [...BASIC_COLUMNS, tsv('Refs', ';')],
+    );
+    expect(deriveImportOptions(ds).customColumns.Refs).toMatchObject({
+      scope: 'Sentence',
+      enabled: false,
+    });
+  });
+});
+
 describe('round trip through the exporter', () => {
   // The strongest check available: export a real IgtDocument, read the bytes
   // back through the importer, and compare what came out with what went in.
