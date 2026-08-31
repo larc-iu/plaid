@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -6,7 +6,7 @@ import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
 import { notifyError, notifyWarning, toast, humanizeError } from '@/utils/feedback';
-import { History, FileText, Type, Mic, Play, Table, Download } from 'lucide-react';
+import { History, FileText, Type, Mic, Play, Table, Download, MessageSquare } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
@@ -16,6 +16,9 @@ import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { DocumentMedia } from './media/DocumentMedia.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
+import { CommentsTab } from './comments/CommentsTab.jsx';
+import { CommentStore } from '@/domain/CommentStore';
+import { useCommentStore } from '@/domain/useCommentStore';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -33,7 +36,7 @@ const Panel = ({ active, children }) => (active ? children : null);
 const WIDE_TABS = new Set(['analyze', 'media']);
 
 // The tab bar's inventory, in display order, and the tab a document opens on.
-const TABS = ['metadata', 'baseline', 'media', 'tokenize', 'analyze', 'export'];
+const TABS = ['metadata', 'baseline', 'media', 'tokenize', 'analyze', 'comments', 'export'];
 const DEFAULT_TAB = 'metadata';
 
 // Surface validateIgtDocument findings: full detail to the console (grouped),
@@ -72,7 +75,7 @@ const DocumentEditor = () => {
   const { projectId, documentId } = useParams();
   const navigate = useNavigate();
   const client = useStrictClient();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [searchParams] = useSearchParams();
   // Deep-link params: ?tab=analyze&focusSentence=<id>. `tab` is read (and
   // written) through useTabParam below, so the raw value is needed here only to
@@ -126,6 +129,30 @@ const DocumentEditor = () => {
 
   const permissions = useDocumentPermissions(doc?.project);
   const history = useDocumentHistory(documentId, client);
+
+  // Comments live in their own store, not on IgtDocument: they are social data,
+  // they are unaudited, and they must never bump the document version. One per
+  // (document, user) — the store stamps authorship and decides what is yours
+  // to edit.
+  const comments = useMemo(
+    () =>
+      client && user?.id
+        ? new CommentStore({ client, projectId, documentId, currentUserId: user.id })
+        : null,
+    [client, projectId, documentId, user?.id],
+  );
+  // Subscribe the shell so the tab's badge count re-renders when a comment
+  // lands. The island subscribes itself.
+  useCommentStore(comments);
+
+  const commentCount = comments?.count ?? 0;
+
+  useEffect(() => {
+    if (!comments) return;
+    comments.onError = (msg, err, label) =>
+      notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
+    comments.load();
+  }, [comments]);
 
   useDocumentTitle(doc?.document?.name, doc?.project?.name);
 
@@ -434,7 +461,17 @@ const DocumentEditor = () => {
             )}
           </div>
 
-          <DocumentProvider value={{ doc, client, readOnly, asOf }}>
+          <DocumentProvider
+            value={{
+              doc,
+              client,
+              readOnly,
+              asOf,
+              comments,
+              canWrite: permissions.canWrite && !isViewingHistorical,
+              canManage: permissions.canManage,
+            }}
+          >
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="tw">
                 <TabsTrigger value="metadata" to={tabTo(docPath, 'metadata', DEFAULT_TAB)}>
@@ -451,6 +488,14 @@ const DocumentEditor = () => {
                 </TabsTrigger>
                 <TabsTrigger value="analyze" to={tabTo(docPath, 'analyze', DEFAULT_TAB)}>
                   <Table className="h-4 w-4" /> Analyze
+                </TabsTrigger>
+                <TabsTrigger value="comments" to={tabTo(docPath, 'comments', DEFAULT_TAB)}>
+                  <MessageSquare className="h-4 w-4" /> Comments
+                  {commentCount > 0 && (
+                    <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                      {commentCount}
+                    </span>
+                  )}
                 </TabsTrigger>
                 <TabsTrigger value="export" to={tabTo(docPath, 'export', DEFAULT_TAB)}>
                   <Download className="h-4 w-4" /> Export
@@ -480,6 +525,18 @@ const DocumentEditor = () => {
               <TabsContent value="analyze">
                 <Panel active={activeTab === 'analyze'}>
                   <AnalyzeIsland />
+                </Panel>
+              </TabsContent>
+              <TabsContent value="comments">
+                <Panel active={activeTab === 'comments'}>
+                  {isViewingHistorical ? (
+                    <p className="tw pt-6 text-sm text-muted-foreground">
+                      Comments are not part of the annotation history, so they are not shown at a
+                      past state. Return to the current version to read or add them.
+                    </p>
+                  ) : (
+                    <CommentsTab />
+                  )}
                 </Panel>
               </TabsContent>
               <TabsContent value="export">

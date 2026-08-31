@@ -111,6 +111,12 @@ export class CommentStore {
     return this._currentUserId;
   }
 
+  /** How many comments the document has in total. O(1) — the tab badge reads
+   * this on every render, where `all.length` would sort the whole document. */
+  get count() {
+    return this._byId.size;
+  }
+
   /** Every comment in the document, oldest first. */
   get all() {
     return [...this._byId.values()].sort(byCreated);
