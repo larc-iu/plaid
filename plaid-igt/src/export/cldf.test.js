@@ -166,6 +166,18 @@ describe('buildCldfDataset — examples', () => {
     expect(table(files, 'examples.csv')[0].Analyzed_Word.split('\t')[1]).toBe('corren');
   });
 
+  it('leaves the partition separator out of Primary_Text', () => {
+    // The sentence layer partitions the text, so a sentence span runs to the
+    // start of the next one and carries the newline between them.
+    const doc = makeFixtureDoc();
+    doc.sortedSentences[0].pieces = [
+      ...doc.sortedSentences[0].pieces,
+      { type: 'gap', content: '\n', isToken: false },
+    ];
+    const { files } = build({ documents: [{ igtDoc: doc }] });
+    expect(table(files, 'examples.csv')[0].Primary_Text).toBe('perros corren.');
+  });
+
   it('can take Primary_Text from an orthography instead of the baseline', () => {
     const { files } = build({ options: { ...OPTIONS, primaryText: 'Translit' } });
     expect(table(files, 'examples.csv')[0].Primary_Text).toBe('perros-translit');

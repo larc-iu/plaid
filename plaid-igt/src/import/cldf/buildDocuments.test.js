@@ -456,6 +456,24 @@ describe('deriveImportOptions', () => {
     expect(customColumnChoices(ds).find((c) => c.name === 'Word_POS').canBePerWord).toBe(true);
     expect(customColumnChoices(ds).find((c) => c.name === 'Whatever').canBePerWord).toBe(false);
   });
+
+  it('does not read our prefixes into a dataset that is not ours', () => {
+    // Same column names, but no Plaid_ID, so this is somebody else's dataset
+    // and "Sentence_Number" is their name for something, not our convention.
+    const ds = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,Sentence_Number,Word_POS\r\n1,ab,ab,x,7,N\r\n',
+      [...BASIC_COLUMNS, col('Sentence_Number', null), listCol('Word_POS', null)],
+    );
+    const { customColumns } = deriveImportOptions(ds);
+    // Kept whole, at sentence scope, and off until the user says otherwise.
+    expect(customColumns.Sentence_Number).toEqual({
+      scope: 'Sentence',
+      name: 'Sentence_Number',
+      enabled: false,
+    });
+    expect(customColumns.Word_POS).toMatchObject({ name: 'Word_POS', enabled: false });
+    expect(customColumnChoices(ds).every((c) => c.suggested === null)).toBe(true);
+  });
 });
 
 describe('round trip through the exporter', () => {
@@ -539,5 +557,23 @@ describe('round trip through the exporter', () => {
     );
     expect(schema.orthographies).toEqual(['Translit']);
     expect(schema.documentMetadata.map((m) => m.name).sort()).toEqual(['Genre', 'Source']);
+  });
+});
+
+describe('buildCldfDocuments — media', () => {
+  it('warns that per-example media has no home in a Plaid document', () => {
+    // What APiCS does: an Audio column bound to mediaReference, one file per
+    // example. Plaid attaches one media file per document, so it cannot map.
+    const ds = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,Audio\r\n1,hola,hola,hi,x.mp3\r\n2,adios,adios,bye,\r\n',
+      [...BASIC_COLUMNS, col('Audio', 'mediaReference')],
+    );
+    const { warnings } = buildCldfDocuments(ds);
+    expect(warnings.join(' ')).toMatch(/1 example has their own media file/);
+  });
+
+  it('says nothing when no example carries media', () => {
+    const ds = dataset('ID,Primary_Text,Analyzed_Word,Gloss\r\n1,hola,hola,hi\r\n', BASIC_COLUMNS);
+    expect(buildCldfDocuments(ds).warnings.join(' ')).not.toMatch(/media/);
   });
 });
