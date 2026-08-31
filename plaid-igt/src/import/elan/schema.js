@@ -48,18 +48,22 @@ const nodeKey = (parentKey, baseName, typeRef) =>
  *                  alignable, participants: string[], tierIds: string[],
  *                  annotationCount: number}>}
  */
-export function tierSchema(eaf) {
+export function tierSchema(eaf, canonical = null) {
   const byId = new Map(eaf.tiers.map((t) => [t.id, t]));
   const keyCache = new Map();
+  // `canonical` folds a near-miss group onto one agreed name, which is how the
+  // user says "these two spellings are the same tier". It is applied before
+  // anything else looks at a name, so identity, keys and the tree all follow.
+  const nameOf = (tier) => (canonical && canonical.get(foldName(tier.baseName))) || tier.baseName;
 
   // A tier's key is its path from the root, so position in the tree is part of
   // identity. Cycles cannot occur in a valid file but must not hang us.
   const keyOf = (tier, seen = new Set()) => {
     if (keyCache.has(tier.id)) return keyCache.get(tier.id);
-    if (seen.has(tier.id)) return nodeKey(null, tier.baseName, tier.typeRef);
+    if (seen.has(tier.id)) return nodeKey(null, nameOf(tier), tier.typeRef);
     seen.add(tier.id);
     const parent = tier.parentRef ? byId.get(tier.parentRef) : null;
-    const key = nodeKey(parent ? keyOf(parent, seen) : null, tier.baseName, tier.typeRef);
+    const key = nodeKey(parent ? keyOf(parent, seen) : null, nameOf(tier), tier.typeRef);
     keyCache.set(tier.id, key);
     return key;
   };
@@ -73,7 +77,7 @@ export function tierSchema(eaf) {
       const stereotype = stereotypeOf(eaf, tier);
       node = {
         key,
-        baseName: tier.baseName,
+        baseName: nameOf(tier),
         typeRef: tier.typeRef,
         stereotype,
         alignable: isAlignableStereotype(stereotype),
@@ -124,7 +128,7 @@ export function tierSchema(eaf) {
 
 // The form a person reads a tier name as: canonical Unicode, no invisibles,
 // runs of whitespace flattened, case ignored.
-const foldName = (name) =>
+export const foldName = (name) =>
   String(name ?? '')
     .normalize('NFC')
     .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
@@ -160,7 +164,7 @@ export function nearMisses(nodes) {
     .filter((group) => new Set(group.map((n) => n.baseName)).size > 1)
     .map((group) => {
       const names = [...new Set(group.map(nodeLabel))].sort();
-      return { names, differsBy: differenceKind(names[0], names[1]) };
+      return { fold: foldName(names[0]), names, differsBy: differenceKind(names[0], names[1]) };
     });
 }
 
@@ -189,23 +193,25 @@ export const nodeLabel = (node) => node.baseName || '(speaker tier)';
  *
  * @returns {{consistent, nodes, groups, differences}}
  */
-export function compareSchemas(files) {
+export function compareSchemas(files, canonical = null) {
   const groups = new Map();
   for (const eaf of files) {
-    const nodes = tierSchema(eaf);
+    const nodes = tierSchema(eaf, canonical);
     const signature = signatureOf(nodes);
     if (!groups.has(signature)) groups.set(signature, { signature, nodes, files: [] });
     groups.get(signature).files.push(eaf);
   }
   const list = [...groups.values()].sort((a, b) => b.files.length - a.files.length);
+  // Across every group, not just the largest: a name misspelled in one file is
+  // exactly what splits a batch in two, and that pair is the one worth showing.
+  const misses = nearMisses(list.flatMap((g) => g.nodes));
   if (list.length <= 1) {
-    const nodes = list[0]?.nodes ?? [];
     return {
       consistent: true,
-      nodes,
+      nodes: list[0]?.nodes ?? [],
       groups: list,
       differences: [],
-      nearMisses: nearMisses(nodes),
+      nearMisses: misses,
     };
   }
 
@@ -227,7 +233,7 @@ export function compareSchemas(files) {
     nodes: main.nodes,
     groups: list,
     differences,
-    nearMisses: nearMisses(main.nodes),
+    nearMisses: misses,
   };
 }
 

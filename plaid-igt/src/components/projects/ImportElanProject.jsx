@@ -82,10 +82,14 @@ export const ImportElanProject = () => {
   const fileInputRef = useRef(null);
 
   const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
-  // Near misses block the import until the user says the tiers really are
-  // distinct. Reset on every new pick, so an override never carries over to a
-  // different batch.
-  const [nearMissOverride, setNearMissOverride] = useState(false);
+  // One decision per near-miss pair, keyed by the pair's folded name: either
+  // 'separate' (they really are two tiers) or the name to merge them onto. The
+  // import is blocked until every pair has one. Reset on every new pick, so a
+  // decision never carries over to a different batch.
+  const [nearMissChoices, setNearMissChoices] = useState({});
+  // The pairs themselves come from the UNMERGED schema, so a pair stays on
+  // screen (and stays changeable) after it has been merged away.
+  const [nearMissGroups, setNearMissGroups] = useState([]);
   const [files, setFiles] = useState(null); // parsed .eaf objects
   const [comparison, setComparison] = useState(null);
   const [roles, setRoles] = useState({});
@@ -117,6 +121,32 @@ export const ImportElanProject = () => {
     }
   }, [files, comparison, nodes, roles, fieldNames, problems]);
 
+  // Adopt a schema: suggest the roles and field names for it, keeping whatever
+  // the user has already chosen for nodes that survive. A merge changes node
+  // keys, so the mapping has to be rebuilt rather than carried over wholesale.
+  const applySchema = (parsed, result) => {
+    setComparison(result);
+    const suggested = result.consistent ? suggestRoles(result.nodes) : {};
+    setRoles((prev) => {
+      const next = { ...suggested };
+      for (const n of result.nodes) if (prev[n.key] !== undefined) next[n.key] = prev[n.key];
+      return next;
+    });
+    setFieldNames((prev) =>
+      Object.fromEntries(result.nodes.map((n) => [n.key, prev[n.key] ?? defaultFieldName(n)])),
+    );
+  };
+
+  // Re-read the batch under a new set of merge decisions.
+  const chooseNearMiss = (fold, choice) => {
+    const choices = { ...nearMissChoices, [fold]: choice };
+    setNearMissChoices(choices);
+    const canonical = new Map(
+      Object.entries(choices).filter(([, v]) => v !== 'separate' && v !== undefined),
+    );
+    applySchema(files, compareSchemas(files, canonical.size ? canonical : null));
+  };
+
   const handleFiles = async (fileList) => {
     const picked = [...(fileList || [])].filter((f) => /\.eaf$/i.test(f.name));
     if (!picked.length) {
@@ -130,12 +160,10 @@ export const ImportElanProject = () => {
         parsed.push(readEaf(await file.text(), file.name));
       }
       const result = compareSchemas(parsed);
-      const suggested = result.consistent ? suggestRoles(result.nodes) : {};
       setFiles(parsed);
-      setComparison(result);
-      setNearMissOverride(false);
-      setRoles(suggested);
-      setFieldNames(Object.fromEntries(result.nodes.map((n) => [n.key, defaultFieldName(n)])));
+      setNearMissGroups(result.nearMisses);
+      setNearMissChoices({});
+      applySchema(parsed, result);
       setProjectName((name) => name || 'ELAN corpus');
       setStage('review');
     } catch (e) {
@@ -205,10 +233,9 @@ export const ImportElanProject = () => {
     }
   };
 
-  const nearMisses = comparison?.nearMisses ?? [];
+  const undecidedNearMisses = nearMissGroups.filter((g) => !nearMissChoices[g.fold]);
   const editable = stage === 'review';
-  const canRun =
-    editable && !!build && !!projectName.trim() && (nearMisses.length === 0 || nearMissOverride);
+  const canRun = editable && !!build && !!projectName.trim() && undecidedNearMisses.length === 0;
 
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">
@@ -332,34 +359,49 @@ export const ImportElanProject = () => {
                   />
                 </div>
 
-                {nearMisses.length > 0 && (
+                {nearMissGroups.length > 0 && (
                   <Panel
-                    tone="error"
+                    tone={undecidedNearMisses.length ? 'error' : 'warn'}
                     icon={AlertTriangle}
-                    title={`${nearMisses.length} pair${nearMisses.length === 1 ? '' : 's'} of tier names read alike`}
+                    title={`${nearMissGroups.length} pair${nearMissGroups.length === 1 ? '' : 's'} of tier names read alike`}
                   >
-                    <ul className="mt-1 list-inside list-disc text-xs">
-                      {nearMisses.map((g) => (
-                        <li key={g.names.join('/')}>
-                          <span className="font-medium">{g.names.join(' / ')}</span> — differ only
-                          in {g.differsBy}
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-2 text-xs">
-                      Tiers are matched by their exact names, so these are separate tiers and each
-                      needs its own decision below. Two rows that read alike is how a tier gets
-                      mapped by mistake and its twin silently dropped, so this usually means a typo
-                      in the corpus. Fixing the names in ELAN is the reliable way out.
+                    <p className="mt-1 text-xs">
+                      Tiers are matched by their exact names, so these are separate tiers unless you
+                      say otherwise. Two rows that read alike is how a tier gets mapped by mistake
+                      and its twin silently dropped, so this usually means a typo in the corpus.
                     </p>
-                    <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs font-medium">
-                      <input
-                        type="checkbox"
-                        checked={nearMissOverride}
-                        onChange={(e) => setNearMissOverride(e.target.checked)}
-                      />
-                      These really are different tiers. Import anyway.
-                    </label>
+                    <div className="mt-2 flex flex-col gap-2">
+                      {nearMissGroups.map((g) => (
+                        <div key={g.fold} className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-medium">{g.names.join(' / ')}</span>
+                          <span className="text-muted-foreground">
+                            differ only in {g.differsBy}
+                          </span>
+                          <Select
+                            value={nearMissChoices[g.fold] ?? ''}
+                            onValueChange={(v) => chooseNearMiss(g.fold, v)}
+                            disabled={!editable}
+                          >
+                            <SelectTrigger className="h-7 w-56 text-xs">
+                              <SelectValue placeholder="Decide…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="separate">Different tiers, keep both</SelectItem>
+                              {g.names.map((n) => (
+                                <SelectItem key={n} value={n}>
+                                  Same tier, merge as “{n}”
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
+                    {undecidedNearMisses.length > 0 && (
+                      <p className="mt-2 text-xs font-medium">
+                        Decide each pair to continue. Renaming the tiers in ELAN is the durable fix.
+                      </p>
+                    )}
                   </Panel>
                 )}
 

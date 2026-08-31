@@ -740,7 +740,7 @@ describe('tier names differing only in case', () => {
   it('reports the collision so the mapping table is not two rows that read alike', () => {
     const result = compareSchemas([readEaf(abuiShaped(), 'abui.eaf')]);
     expect(result.nearMisses).toEqual([
-      { names: ['Phrase', 'phrase'], differsBy: 'capitalization' },
+      { fold: 'phrase', names: ['Phrase', 'phrase'], differsBy: 'capitalization' },
     ]);
   });
 
@@ -762,6 +762,49 @@ describe('tier names differing only in case', () => {
     expect(compareSchemas([readEaf(ANA, 'a.eaf')]).nearMisses).toEqual([]);
   });
 
+  it('merges a near-miss pair onto one agreed name when the user says so', () => {
+    const twoTiers = eafXml({
+      types: { u: null },
+      tiers: [
+        { id: 'Phrase', type: 'u', anns: [['a1', 'hola', 0, 100]] },
+        { id: 'phrase', type: 'u', anns: [['a2', 'adios', 200, 300]] },
+      ],
+    });
+    const parsed = [readEaf(twoTiers, 'x.eaf')];
+    // Untouched they are two tiers, reported as a near miss.
+    expect(compareSchemas(parsed).nearMisses).toHaveLength(2 - 1);
+    expect(compareSchemas(parsed).nodes).toHaveLength(2);
+
+    // Merged onto "Phrase" they are one node carrying both tiers.
+    const canonical = new Map([['phrase', 'Phrase']]);
+    const merged = compareSchemas(parsed, canonical);
+    expect(merged.nearMisses).toEqual([]);
+    expect(merged.nodes).toHaveLength(1);
+    expect(merged.nodes[0].baseName).toBe('Phrase');
+    expect(merged.nodes[0].tierIds.sort()).toEqual(['Phrase', 'phrase']);
+
+    // And the annotations of both land in the built document.
+    const roles = { [merged.nodes[0].key]: ROLES.UTTERANCE };
+    const doc = buildElanDocuments(parsed, merged.nodes, roles).documents[0];
+    expect(doc.body).toBe('hola\nadios');
+  });
+
+  it('a merge makes a batch split by one misspelling consistent again', () => {
+    const withName = (id) =>
+      eafXml({ types: { u: null }, tiers: [{ id, type: 'u', anns: [['a1', 'hola', 0, 100]] }] });
+    const parsed = [readEaf(withName('Phrase'), 'a.eaf'), readEaf(withName('phrase'), 'b.eaf')];
+    // The typo splits the batch, and the near miss is found across the groups.
+    const split = compareSchemas(parsed);
+    expect(split.consistent).toBe(false);
+    expect(split.nearMisses).toEqual([
+      { fold: 'phrase', names: ['Phrase', 'phrase'], differsBy: 'capitalization' },
+    ]);
+    // Merging is the way forward that does not mean editing the files in ELAN.
+    const merged = compareSchemas(parsed, new Map([['phrase', 'Phrase']]));
+    expect(merged.consistent).toBe(true);
+    expect(merged.nodes).toHaveLength(1);
+  });
+
   it('catches near misses that are not about case at all', () => {
     const twoTiers = (a, b) =>
       eafXml({
@@ -773,17 +816,17 @@ describe('tier names differing only in case', () => {
       });
     // A trailing space, which nothing in the table would show.
     expect(compareSchemas([readEaf(twoTiers('ft', 'ft '), 'x.eaf')]).nearMisses).toEqual([
-      { names: ['ft', 'ft '], differsBy: 'spacing' },
+      { fold: 'ft', names: ['ft', 'ft '], differsBy: 'spacing' },
     ]);
     // Composed vs decomposed accents: the same word to a reader, two TIER_IDs.
     const nfc = 'caf\u00e9';
     const nfd = 'cafe\u0301';
     expect(compareSchemas([readEaf(twoTiers(nfc, nfd), 'y.eaf')]).nearMisses).toEqual([
-      { names: [nfc, nfd].sort(), differsBy: 'Unicode spelling' },
+      { fold: 'caf\u00e9', names: [nfc, nfd].sort(), differsBy: 'Unicode spelling' },
     ]);
     // A zero-width space, which is invisible everywhere.
     expect(compareSchemas([readEaf(twoTiers('ref', 'ref\u200b'), 'z.eaf')]).nearMisses).toEqual([
-      { names: ['ref', 'ref\u200b'].sort(), differsBy: 'invisible characters' },
+      { fold: 'ref', names: ['ref', 'ref\u200b'].sort(), differsBy: 'invisible characters' },
     ]);
     // And an ordinary pair of distinct names is not a near miss.
     expect(compareSchemas([readEaf(twoTiers('ref', 'gloss'), 'w.eaf')]).nearMisses).toEqual([]);
