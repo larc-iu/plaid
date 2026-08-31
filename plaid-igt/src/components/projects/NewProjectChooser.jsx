@@ -3,7 +3,7 @@
 // here rather than new buttons there.
 
 import { Link } from 'react-router-dom';
-import { PenLine, FileUp, Archive, Table2, ChevronRight } from 'lucide-react';
+import { PenLine, FileUp, Archive, Table2, AudioLines, ChevronRight } from 'lucide-react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const OPTIONS = [
@@ -26,6 +26,13 @@ const OPTIONS = [
     title: 'Import from CLDF',
     description:
       'Create a project from a Cross-Linguistic Data Formats dataset (.zip): its examples become interlinear texts, its lexicon a vocabulary, and its language the project identity.',
+  },
+  {
+    to: '/projects/import-elan',
+    icon: AudioLines,
+    title: 'Import from ELAN',
+    description:
+      'Create a project from a set of ELAN annotation files (.eaf): each file becomes a document, with its tiers, speakers, and time alignment. Every file must share one tier structure.',
   },
   {
     to: '/projects/import-archive',

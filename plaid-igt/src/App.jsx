@@ -9,6 +9,7 @@ import { ProjectSetup } from './components/projects/ProjectSetup';
 import { ImportFlexProject } from './components/projects/ImportFlexProject';
 import { ImportNativeProject } from './components/projects/ImportNativeProject';
 import { ImportCldfProject } from './components/projects/ImportCldfProject';
+import { ImportElanProject } from './components/projects/ImportElanProject';
 import { NewProjectChooser } from './components/projects/NewProjectChooser';
 import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { DocumentDetail } from './components/documents/DocumentDetail';
@@ -105,6 +106,17 @@ function App() {
                 <ProtectedRoute>
                   <AppLayout>
                     <ImportCldfProject />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/projects/import-elan"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ImportElanProject />
                   </AppLayout>
                 </ProtectedRoute>
               }
