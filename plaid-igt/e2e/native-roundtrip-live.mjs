@@ -30,7 +30,7 @@ import { runExport } from '../src/export/runExport.js';
 import { readNativeArchive } from '../src/import/native/readArchive.js';
 import { deriveSetupData, runNativeImport } from '../src/import/native/importEngine.js';
 
-const BACKUP = '/home/luke/Downloads/Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
+const BACKUP = '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
 const KEEP = process.argv.includes('--keep');
 
 const failures = [];

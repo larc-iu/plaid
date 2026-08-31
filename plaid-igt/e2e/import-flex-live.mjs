@@ -20,7 +20,7 @@ import { IgtDocument } from '../src/domain/IgtDocument.js';
 
 const BACKUP =
   process.env.PLAID_FWBACKUP ||
-  '/home/luke/Downloads/Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
+  '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
 const KEEP = process.argv.includes('--keep');
 const SMALL = process.argv.includes('--small');
 
