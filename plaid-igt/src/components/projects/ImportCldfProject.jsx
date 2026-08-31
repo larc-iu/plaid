@@ -32,6 +32,7 @@ import {
 } from '../../import/cldf/buildDocuments';
 import { deriveSetupData, runCldfImport } from '../../import/cldf/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
+import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const SCOPES = ['Sentence', 'Word', 'Morpheme', 'Orthography'];
@@ -116,11 +117,9 @@ export const ImportCldfProject = () => {
               pct: 15 + (p.total ? (p.done / p.total) * 15 : 15),
             });
           } else if (p.phase === 'document') {
-            const n = (p.index ?? 0) + 1;
-            const total = p.total ?? build.documents.length;
             setProgress({
-              label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${n}/${total})`,
-              pct: 30 + (n / total) * 70,
+              label: documentLabel(p, build.documents.length),
+              pct: 30 + documentFraction(p, build.documents.length) * 70,
             });
           }
         },

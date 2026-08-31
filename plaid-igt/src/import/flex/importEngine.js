@@ -12,6 +12,7 @@
 // their FLEx sense guid (metadata.flexSense).
 
 import { stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
+import { documentProgress } from '../progress.js';
 import {
   IGT_NAMESPACE,
   findBaselineTextLayer,
@@ -306,6 +307,17 @@ function documentMetadataOf(doc) {
   if (doc.genres?.length) md.Genre = doc.genres.join(', ');
   return md;
 }
+// The steps one document goes through, in order, so progress can report how
+// far into a document it is and not just which document.
+const DOCUMENT_STEPS = [
+  'Creating document',
+  'Creating text',
+  'Creating sentences',
+  'Creating words',
+  'Creating morphemes',
+  'Creating annotations',
+  'Linking lexicon',
+];
 
 /** Import one document end to end. Assumes it does not exist yet. */
 export async function importDocument({
@@ -316,10 +328,18 @@ export async function importDocument({
   doc,
   senseToItem,
   orthographyNames,
+  index = 0,
+  total = 1,
   onProgress,
   shouldStop,
 }) {
-  const progress = (step) => onProgress?.({ phase: 'document', doc: doc.name, step });
+  const progress = documentProgress({
+    onProgress,
+    doc: doc.name,
+    index,
+    total,
+    steps: DOCUMENT_STEPS,
+  });
   const check = () => {
     if (shouldStop?.()) throw new Error('Import cancelled');
   };
@@ -562,6 +582,8 @@ async function runImportImpl({
       doc,
       senseToItem,
       orthographyNames,
+      index: i,
+      total: build.documents.length,
       onProgress,
       shouldStop,
     });

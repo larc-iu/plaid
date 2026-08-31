@@ -3,6 +3,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { readCldfDataset } from './readDataset.js';
 import { buildCldfDocuments } from './buildDocuments.js';
 import { deriveSetupData, resolveTargets, runCldfImport } from './importEngine.js';
+import { documentFraction } from '../progress.js';
 import { buildCldfDataset } from '../../export/cldf.js';
 import { makeFixtureDoc } from '../../export/testFixtures.js';
 
@@ -293,6 +294,27 @@ describe('runCldfImport', () => {
       }),
     ).rejects.toThrow(/cancelled/i);
     expect(callsOf(client, 'documents.setMetadata')).toHaveLength(0);
+  });
+
+  it('reports the document index on every step, so the counter can advance', async () => {
+    const client = stubClient();
+    const build = fixtureBuild();
+    // Two documents, so a stuck counter would show as every event saying 0.
+    build.documents.push({ ...build.documents[0], name: 'Second' });
+    const events = [];
+    await runCldfImport({
+      client,
+      projectId: 'p1',
+      build,
+      onProgress: (p) => p.phase === 'document' && events.push(p),
+    });
+    expect(events.length).toBeGreaterThan(4);
+    expect(events.every((e) => Number.isInteger(e.index) && e.total === 2)).toBe(true);
+    expect([...new Set(events.map((e) => e.index))]).toEqual([0, 1]);
+    // And the fraction only ever moves forward.
+    const f = events.map((e) => documentFraction(e));
+    expect(f.every((v, i) => i === 0 || v >= f[i - 1])).toBe(true);
+    expect(new Set(f).size).toBeGreaterThan(2);
   });
 
   it('carries the build warnings through to the result', async () => {
