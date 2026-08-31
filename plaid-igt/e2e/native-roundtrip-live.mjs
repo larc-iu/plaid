@@ -10,27 +10,27 @@
 //      both sides are normalized to id-free shapes; the importer's bookkeeping
 //      stamps — nativeImportId, nativeImported — are stripped)
 //
-//   PLAID_E2E_HEAVY=1 node e2e/native-roundtrip-live.mjs [--keep]
+//   node e2e/native-roundtrip-live.mjs [--keep]
 //
 // Projects are deleted at the end unless --keep is given.
 //
-// !! MEMORY HAZARD, 2026-08-31. Three runs against the full Lezgi backup grew
-// !! past 20 GB and were OOM-killed, and the kernel took unrelated processes on
-// !! the machine (another agent's test JVM) with them each time. The bulk is
-// !! OFF-HEAP: the whole .fwbackup is materialized with
-// !! new Uint8Array(readFileSync(BACKUP)) and each archive with
-// !! new Uint8Array(await blob.arrayBuffer()), and external ArrayBuffer memory
-// !! is NOT bounded by --max-old-space-size, so raising that flag does nothing.
-// !! The growth was sustained (~1 GB every 5s), so it is a runaway and not just
-// !! a large working set. Nobody has found the cause yet.
-// !!
-// !! Hence the PLAID_E2E_HEAVY gate: this must be a deliberate act, never a
-// !! casual re-run. Cap it so the kernel kills THIS process and nothing else:
-// !!
-// !!   ( ulimit -v 8000000; PLAID_E2E_HEAVY=1 node e2e/native-roundtrip-live.mjs )
+// History worth keeping: on 2026-08-31 this script was OOM-killed three times
+// at ~20 GB and took unrelated processes on the machine down with it. It was
+// NOT a leak in the pipeline (that peaks around 650 MB). It was
+// assert.deepEqual: the vocabularies genuinely differed, and node builds its
+// failure message by diffing the two structures at a cost quadratic in the
+// EDIT DISTANCE. One changed element formats in 141ms; the same 4,591 elements
+// in a DIFFERENT ORDER never finished. The mismatch itself was real, an
+// export-side id sort that shuffled every batch (see serializeVocabularyNative).
+// Both are fixed. `compare` below is now bounded, so keep it that way.
+//
+// To cap a heavy run, use a cgroup, NOT `ulimit -v`: node reserves far more
+// virtual address space than it resides in (38 GB vs 19.5 GB in the OOM
+// record), so a -v limit strangles it at startup instead of bounding it.
+//   systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 \
+//     node e2e/native-roundtrip-live.mjs
 
 import { readFileSync } from 'node:fs';
-import assert from 'node:assert/strict';
 import { File } from 'node:buffer';
 import { makeClient } from './bugbash/harness.mjs';
 import { readFwbackup } from '../src/import/flex/fwbackup.js';
@@ -48,15 +48,43 @@ import { deriveSetupData, runNativeImport } from '../src/import/native/importEng
 const BACKUP = '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
 const KEEP = process.argv.includes('--keep');
 
-// See the memory hazard above. Refuse to start rather than risk the machine.
-if (!process.env.PLAID_E2E_HEAVY) {
-  console.error(
-    'Refusing to run: this script has been OOM-killed at 20+ GB and took other\n' +
-      'processes on the machine down with it. Read the hazard note at the top of\n' +
-      'the file, then run it deliberately and under a cap:\n\n' +
-      '  ( ulimit -v 8000000; PLAID_E2E_HEAVY=1 node e2e/native-roundtrip-live.mjs )\n',
-  );
-  process.exit(2);
+
+// Key order is not a difference (deepEqual never treated it as one), so the
+// cheap equality check canonicalizes it away.
+function stableStringify(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
+  return `{${Object.keys(v)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(v[k])}`)
+    .join(',')}}`;
+}
+
+// A bounded description of how two structures differ: walks both, stops after
+// a handful of findings, and never formats a whole structure.
+function describeMismatch(a, b, limit = 6) {
+  const out = [];
+  (function walk(x, y, path) {
+    if (out.length >= limit || x === y) return;
+    const t = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
+    if (t(x) !== t(y)) return void out.push(`${path}: ${t(x)} vs ${t(y)}`);
+    if (t(x) === 'array') {
+      if (x.length !== y.length) out.push(`${path}.length: ${x.length} vs ${y.length}`);
+      for (let i = 0; i < Math.min(x.length, y.length); i++) walk(x[i], y[i], `${path}[${i}]`);
+      return;
+    }
+    if (t(x) === 'object') {
+      for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {
+        if (!(k in x)) out.push(`${path}.${k}: missing on the left`);
+        else if (!(k in y)) out.push(`${path}.${k}: missing on the right`);
+        else walk(x[k], y[k], `${path}.${k}`);
+      }
+      return;
+    }
+    const s = (v) => String(JSON.stringify(v)).slice(0, 60);
+    out.push(`${path}: ${s(x)} vs ${s(y)}`);
+  })(a, b, '');
+  return out.length >= limit ? `${out.join('; ')} (and more)` : out.join('; ');
 }
 
 const failures = [];
@@ -331,13 +359,15 @@ try {
   const normA = normalize(archiveA);
   const normB = normalize(archiveB);
 
+  // NEVER assert.deepEqual two big structures. Node builds the failure message
+  // by diffing them, and the cost is quadratic in the EDIT DISTANCE, not the
+  // size: one changed element formats in 141ms, whereas the same 4,591 elements
+  // in a different order ran past 20 GB and got the whole machine OOM-killed
+  // (three times, taking unrelated processes with it). Compare cheaply first
+  // and only ever describe a mismatch in bounded terms.
   const compare = (label, a, b) => {
-    try {
-      assert.deepEqual(b, a);
-      check(true, label);
-    } catch (e) {
-      check(false, label, e.message.split('\n').slice(0, 12).join('\n'));
-    }
+    if (stableStringify(a) === stableStringify(b)) return check(true, label);
+    check(false, label, describeMismatch(a, b));
   };
   compare('schema round-trips', normA.schema, normB.schema);
   compare(

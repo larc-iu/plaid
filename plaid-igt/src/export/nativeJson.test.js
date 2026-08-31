@@ -185,7 +185,10 @@ describe('serializeDocumentNative', () => {
 });
 
 describe('serializeVocabularyNative', () => {
-  it('sorts items by id (creation order) and normalizes fields', () => {
+  // Item order is the server's, which IS creation order. It must NOT be
+  // re-sorted by id: within one bulk write every id shares a UUIDv7
+  // millisecond and the rest is random, so an id sort shuffles the batch.
+  it('keeps the given item order and normalizes fields', () => {
     const out = serializeVocabularyNative({
       id: 'v1',
       name: 'Lex',
@@ -201,8 +204,8 @@ describe('serializeVocabularyNative', () => {
       { name: 'custom', inline: false },
     ]);
     expect(out.items).toEqual([
-      { id: 'a', form: 'alpha' }, // empty metadata omitted
       { id: 'b', form: 'zeta', metadata: { gloss: 'z' } },
+      { id: 'a', form: 'alpha' }, // empty metadata omitted
     ]);
   });
 });
