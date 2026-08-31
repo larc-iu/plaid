@@ -113,6 +113,9 @@
    ;; standing test users survive the wipe).
    "user_data"
    "entity_metadata"
+   ;; comments: FK-cascades off projects/documents, but listed explicitly and
+   ;; EARLY so a deftest's comments are gone even when its project isn't.
+   "comments"
    "vocab_link_tokens"
    "vocab_links"
    "vocab_items"
