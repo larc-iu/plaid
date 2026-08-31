@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { LanguagesSettings } from './settings/LanguagesSettings.jsx';
 import { DocumentMetadataSettings } from './settings/DocumentMetadataSettings.jsx';
 import { OrthographiesSettings } from './settings/OrthographiesSettings.jsx';
 import { FieldsSettings } from './settings/FieldsSettings.jsx';
@@ -122,6 +123,14 @@ export const ProjectSettings = ({ project, projectId, client, onProjectUpdate })
           </div>
         </form>
       </div>
+
+      {/* Language identity */}
+      <LanguagesSettings
+        project={project}
+        projectId={projectId}
+        client={client}
+        onProjectUpdate={onProjectUpdate}
+      />
 
       {/* Document Metadata Configuration */}
       <DocumentMetadataSettings projectId={projectId} client={client} />

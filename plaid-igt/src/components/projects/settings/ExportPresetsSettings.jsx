@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { discoverExportLayers } from '@/export/exportLayers';
+import { readLanguages } from '@/domain/igtConfig';
 import { readExportPresets, writeExportPresets, newPreset, EXPORT_FORMATS } from '@/export/presets';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
@@ -78,7 +79,12 @@ export const ExportPresetsSettings = ({ projectId, client }) => {
     if (!name || !project) return;
     setCreating(true);
     try {
-      const preset = newPreset(newFormat, discoverExportLayers(project), name);
+      const preset = newPreset(
+        newFormat,
+        discoverExportLayers(project),
+        name,
+        readLanguages(project.config),
+      );
       await persist([...presets, preset]);
       setCreateOpen(false);
       setNewName('');

@@ -8,8 +8,10 @@ import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { discoverExportLayers } from '@/export/exportLayers';
+import { readLanguages } from '@/domain/igtConfig';
 import { readExportPresets, writeExportPresets, EXPORT_FORMATS } from '@/export/presets';
 import { PlainTextOptions } from '@/components/export/PlainTextOptions.jsx';
+import { CldfOptions } from '@/components/export/CldfOptions.jsx';
 import { FlextextOptions } from '@/components/export/FlextextOptions.jsx';
 import { NativeOptions } from '@/components/export/NativeOptions.jsx';
 
@@ -156,6 +158,14 @@ export const ExportPresetEditor = ({ projectId, client, presetId }) => {
             layers={layers}
             onChange={(options) => update({ options })}
           />
+        ) : draft.format === 'cldf' ? (
+          <CldfOptions
+            options={draft.options || {}}
+            layers={layers}
+            languages={readLanguages(project.config)}
+            projectId={projectId}
+            onChange={(options) => update({ options })}
+          />
         ) : draft.format === 'plaid-igt-json' ? (
           <NativeOptions
             options={draft.options || {}}
@@ -172,6 +182,11 @@ export const ExportPresetEditor = ({ projectId, client, presetId }) => {
           <p className="border-t pt-3 text-xs text-muted-foreground">
             This format always produces a .zip archive including all vocabularies and the project
             configuration.
+          </p>
+        ) : draft.format === 'cldf' ? (
+          <p className="border-t pt-3 text-xs text-muted-foreground">
+            This format always produces a .zip dataset: one CSV per CLDF component table, described
+            by a cldf-metadata.json.
           </p>
         ) : (
           hasVocabularies && (

@@ -5,8 +5,9 @@ import { Switch } from '@/components/ui/switch';
 // preset; includeVocabularies IS preset state (it shapes the archive).
 // historicalOnly locks the scope to the current document: time-travel export
 // fetches the document as-of, but the documents-list endpoint has no as-of.
-// vocabulariesForced (native format) replaces the toggle with a note — the
-// archive always includes vocabularies and zips at every scope.
+// zipNote (the dataset-level formats) replaces the vocabularies toggle with
+// that note: those archives zip at every scope and decide for themselves what
+// to do with the project's vocabularies.
 export const ScopeStep = ({
   scope,
   onScopeChange,
@@ -18,7 +19,7 @@ export const ScopeStep = ({
   includeVocabularies,
   onIncludeVocabulariesChange,
   hasVocabularies,
-  vocabulariesForced = false,
+  zipNote = null,
 }) => {
   const radio = (value, label, extra = null) => (
     <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -53,12 +54,7 @@ export const ScopeStep = ({
           You are viewing a historical state, so the export covers this document as of that moment.
           Project-wide export is available outside of history view.
         </p>
-        {vocabulariesForced && (
-          <p className="text-xs text-muted-foreground">
-            This format always produces a .zip archive including all vocabularies and the project
-            configuration.
-          </p>
-        )}
+        {zipNote && <p className="text-xs text-muted-foreground">{zipNote}</p>}
       </div>
     );
   }
@@ -93,11 +89,8 @@ export const ScopeStep = ({
         </div>
       )}
 
-      {vocabulariesForced ? (
-        <p className="border-t pt-3 text-xs text-muted-foreground">
-          This format always produces a .zip archive including all vocabularies and the project
-          configuration, whatever the scope.
-        </p>
+      {zipNote ? (
+        <p className="border-t pt-3 text-xs text-muted-foreground">{zipNote}</p>
       ) : (
         zipExpected &&
         hasVocabularies && (
