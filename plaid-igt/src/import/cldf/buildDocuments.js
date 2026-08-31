@@ -369,6 +369,9 @@ export function groupingChoices(dataset) {
   const rows = examples.rows || [];
   for (const name of customColumnsOf(examples)) {
     if (SKIP_COLUMNS.has(name)) continue;
+    // A column that counts out per word is a word tier, and a list of tags is
+    // not a document id however many times it repeats.
+    if (isPerWordColumn(examples, name)) continue;
     const distinct = new Set(rows.map((r) => r[name] ?? '')).size;
     if (distinct <= 1) continue;
     if (rows.length >= 10 && distinct > rows.length / 2) continue;

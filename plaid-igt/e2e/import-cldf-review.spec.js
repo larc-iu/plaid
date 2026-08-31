@@ -226,13 +226,42 @@ test('review: our own export’s prefixes are read back, a stranger’s are not'
   await expect(ours.getByRole('combobox')).toHaveText('Word');
   await expect(ours.locator('input')).toHaveValue('POS');
 
-  // Without it the column is a stranger's: kept whole and left off.
+  // Without it the column is a stranger's, so the name is kept whole. The
+  // scope still comes from the data: the column counts out one tag per
+  // analyzed word, which makes it a word tier whoever wrote it.
   await upload(page, corpus({ ours: false }), 'foreign.zip');
   const foreign = card(page, 'Columns CLDF has no term for');
-  await expect(foreign.getByRole('combobox')).toHaveText('Don’t import');
+  await expect(foreign.getByRole('combobox')).toHaveText('Word');
   await expect(foreign.locator('input')).toHaveValue('Word_POS');
-  // 2 fields now, not 3: the POS tier is not being imported.
-  await expect(page.getByText('2 annotation fields', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Word_POS \(Word\)/)).toBeVisible();
+  await expect(page.getByText('3 annotation fields', { exact: true })).toBeVisible();
+});
+
+test('review: each grouping mode is its own option, and does what it says', async ({ page }) => {
+  // The regression this exists for: the modes used to share a falsy value, so
+  // Radix drew two items with one value, concatenated both labels into the
+  // trigger, and picking "one text for everything" silently grouped by
+  // contribution instead. Only a fixture WITH a ContributionTable shows it,
+  // which is why the rest of this file missed it.
+  await upload(page, corpus());
+  const grouping = card(page, 'How the examples split into texts');
+  await expect(grouping.getByRole('combobox')).toHaveText('By the dataset’s own text ids');
+  await expect(page.getByText('2 texts', { exact: true })).toBeVisible();
+
+  await grouping.getByRole('combobox').click();
+  const labels = await page.getByRole('option').allInnerTexts();
+  expect(labels).toEqual([
+    'By the dataset’s own text ids',
+    'One document per example',
+    'One text for everything',
+  ]);
+
+  await page.getByRole('option', { name: 'One text for everything', exact: true }).click();
+  await expect(page.getByText('1 texts', { exact: true })).toBeVisible();
+  await expect(page.getByText('3 sentences', { exact: true })).toBeVisible();
+
+  await choose(page, 'How the examples split into texts', 'By the dataset’s own text ids');
+  await expect(page.getByText('2 texts', { exact: true })).toBeVisible();
 });
 
 test('review: per-example grouping is the default when examples carry media', async ({ page }) => {
