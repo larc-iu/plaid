@@ -126,6 +126,30 @@ describe('alignWords', () => {
     expect(spans.map(at)).toEqual(['hola', 'amigo']);
   });
 
+  it('never cuts a word in half, whatever the analysis says', () => {
+    // The structural guarantee behind the "yegirxo" fix: a span is always a
+    // whole run minus edge punctuation, so no span can end (or start) with a
+    // letter still attached to it. Morphemes carry no extent of their own, so
+    // a decomposition must never be able to narrow the word it describes.
+    const cases = [
+      ['Axʷa ciqaɣort’a yegirxo zown.', ['ax-a', 'ciq-aɣor-t’a', 'y-egir-x', 'zow-n']],
+      ['perros corren.', ['perro=s', 'corren']],
+      ['¡Hola, amigo!', ['Hola', 'amigo']],
+      ['a well-known fact', ['a', 'well-known', 'fact']],
+      ['Allahes ašuni bukayn.', ['Allah-s', 'ašuni', 'b-ukad-n']],
+      ['uno dos tres', ['un', 'do', 'tre']],
+    ];
+    const letter = (c) => c !== undefined && /\p{L}|\p{N}/u.test(c);
+    for (const [body, forms] of cases) {
+      const { spans } = alignWords(body, 0, body.length, forms);
+      for (const s of spans) {
+        if (!s) continue;
+        expect(letter(body[s.endU16])).toBe(false);
+        expect(letter(body[s.beginU16 - 1])).toBe(false);
+      }
+    }
+  });
+
   it('falls back to the word in that position when the form is not in the text', () => {
     // The morphophonemic analysis of a surface form, which is the normal case
     // in a real corpus: "Allah-s" is written *Allahes*, "b-ukad-n" is *bukayn*.

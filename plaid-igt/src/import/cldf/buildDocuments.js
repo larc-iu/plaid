@@ -8,8 +8,8 @@
 //  - An analyzed word carries morpheme joints that the primary text does not
 //    ("perro=s" vs "perros"), and often is not in the text at ALL: real corpora
 //    give the morphophonemic form, so Tsez writes "Allah-s" for surface
-//    *Allahes*. Alignment is therefore POSITIONAL, refined by a character match
-//    where one exists. See alignWords.
+//    *Allahes*. Alignment is therefore POSITIONAL, with a character match used
+//    only to choose which word a form belongs to. See alignWords.
 //  - A dataset may have no usable Primary_Text at all, in which case the
 //    baseline is synthesized by joining the analyzed words. That is a real
 //    loss of the original spacing and punctuation, and it is reported.
@@ -112,16 +112,26 @@ function trimEdges(body, run) {
   return b < e ? { beginU16: b, endU16: e } : run;
 }
 
-/** Where `form` sits inside a run, verbatim or joint-stripped, else null. */
-function matchInside(body, run, form) {
+/**
+ * Does `form` occur in this run, verbatim or joint-stripped?
+ *
+ * Deliberately a yes/no, not a span. The joint-stripped candidate is the
+ * morpheme pieces concatenated, which says what the analysis claims the word
+ * IS, never where it sits: Plaid morphemes carry no extent of their own (they
+ * span their word, ordered by precedence, with the form in metadata), so a
+ * decomposition has no boundary to contribute. It is the text, via whitespace,
+ * that says where a word ends. Letting this measure rather than select is what
+ * once clipped Tsez *yegirxo* to the "yegirx" its analysis spells out.
+ */
+function occursIn(body, run, form) {
   const candidates = [...new Set([form, surfaceOf(form)])].filter((c) => c !== '');
   for (const c of candidates) {
     for (let at = run.beginU16; at <= run.endU16; at += 1) {
       const hit = matchesAt(body, at, c);
-      if (hit !== false && hit <= run.endU16) return { beginU16: at, endU16: hit };
+      if (hit !== false && hit <= run.endU16) return true;
     }
   }
-  return null;
+  return false;
 }
 
 /**
@@ -138,11 +148,13 @@ function matchInside(body, run, form) {
  * surface).
  *
  * So: walk the text's whitespace-delimited runs and the analyzed words in
- * lockstep. Where the form really does occur inside its run, take that exact
- * sub-span; otherwise take the run itself, minus edge punctuation. Looking
- * ahead is allowed only by the number of runs the analysis can afford to skip
- * (extra runs are punctuation the analysis left out), which keeps the two
- * sequences in step and cannot drift.
+ * lockstep. A word is always one run, minus edge punctuation, because the text
+ * is what says where words end. A character match only picks WHICH run a form
+ * belongs to, and only when there are spare runs to skip: looking ahead is
+ * allowed by the number of runs the analysis can afford to give up (extra runs
+ * are punctuation the analysis left out), which keeps the two sequences in step
+ * and cannot drift. When the counts agree, the slack is zero and the alignment
+ * is purely positional.
  *
  * Returns {spans: [{beginU16, endU16} | null], warnings}.
  */
@@ -155,15 +167,14 @@ export function alignWords(body, begin, end, forms) {
   forms.forEach((form, fi) => {
     // How many runs we may skip without starving the forms still to come.
     const slack = Math.max(0, runs.length - ri - (forms.length - fi));
-    let hit = null;
+    let hit = -1;
     for (let j = ri; j <= Math.min(ri + slack, runs.length - 1); j += 1) {
-      const span = matchInside(body, runs[j], form);
-      if (span) {
-        hit = { index: j, span };
+      if (occursIn(body, runs[j], form)) {
+        hit = j;
         break;
       }
     }
-    if (hit) {
+    if (hit >= 0) {
       // Cover the whole run, not just the matched part. A run is consumed by
       // at most one form, so whatever the analysis does not account for
       // belongs to no other token: Tsez writes "yegirxo" but analyzes it as
@@ -172,8 +183,8 @@ export function alignWords(body, begin, end, forms) {
       // Edge punctuation still stays out, so "zown." keeps its full stop
       // separate. The morpheme forms are unaffected, since they live in token
       // metadata rather than in the text extent.
-      spans.push(trimEdges(body, runs[hit.index]));
-      ri = hit.index + 1;
+      spans.push(trimEdges(body, runs[hit]));
+      ri = hit + 1;
       return;
     }
     if (ri < runs.length) {
