@@ -228,6 +228,11 @@ export const ImportCldfProject = () => {
                 <p>{build.stats.lexiconEntries.toLocaleString()} lexicon entries</p>
                 <p>{build.schema.fields.length} annotation fields</p>
               </div>
+              {build.schema.fields.length > 0 && (
+                <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
+                  Fields: {build.schema.fields.map((f) => `${f.name} (${f.scope})`).join(', ')}
+                </p>
+              )}
               {build.languages.object && (
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
                   Object language: <strong>{build.languages.object.name || 'unnamed'}</strong>
@@ -273,7 +278,7 @@ export const ImportCldfProject = () => {
               </Select>
             </div>
 
-            {groupChoices.length > 1 && (
+            {groupChoices.length > 0 && (
               <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
                 <div>
                   <p className="text-sm font-medium">How the examples split into texts</p>
