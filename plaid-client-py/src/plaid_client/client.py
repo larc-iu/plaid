@@ -1012,6 +1012,119 @@ class UserDataResource(_Resource):
                              no_batch=True)
 
 
+class CommentsResource(_Resource):
+    """Free-text discussion anchored to a document, text, token, span or
+    relation.
+
+    Comments are social data, not annotation data: they are never audited,
+    they do not bump the document version, and no export target carries them.
+    Posting takes project WRITE access (readers may read a thread but not add
+    to it). Only the AUTHOR may edit a comment; the author or a project
+    maintainer may delete one."""
+
+    def create(self, entity_type: str, entity_id: str, body: str) -> Any:
+        """Post a comment on an entity.
+
+        Args:
+            entity_type: One of ``document``, ``text``, ``token``, ``span``, ``relation``
+            entity_id: The commented entity's id
+            body: The comment text (1..10000 characters)
+        """
+        return self._request('POST', '/api/v1/comments',
+                             body=_body_of(entity_type=entity_type, entity_id=entity_id,
+                                           body=body))
+
+    def get(self, comment_id: str) -> Any:
+        """Read one comment."""
+        return self._request('GET', f'/api/v1/comments/{comment_id}')
+
+    def update(self, comment_id: str, body: str) -> Any:
+        """Edit a comment's body.
+
+        Only the comment's author may do this — not maintainers, not admins.
+        Sets ``edited`` on the returned comment.
+        """
+        return self._request('PATCH', f'/api/v1/comments/{comment_id}',
+                             body=_body_of(body=body))
+
+    def delete(self, comment_id: str) -> Any:
+        """Delete a comment (author, or a maintainer of its project)."""
+        return self._request('DELETE', f'/api/v1/comments/{comment_id}')
+
+    def list(self, project_id: str, *, document_id: str | None = None,
+             entity_type: str | None = None, entity_id: str | None = None) -> Any:
+        """List comments in a project, oldest first.
+
+        Transparently follows server-side pagination cursors and returns the
+        full flat list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            project_id: The project to read
+            document_id: Only comments anywhere in this document
+            entity_type: With entity_id, only this entity's thread
+            entity_id: With entity_type, only this entity's thread
+        """
+        return list_all(self._client, f'/api/v1/projects/{project_id}/comments',
+                        query={'document-id': document_id, 'entity-type': entity_type,
+                               'entity-id': entity_id})
+
+    def list_page(self, project_id: str, *, limit: int | None = None,
+                  cursor: str | None = None, document_id: str | None = None,
+                  entity_type: str | None = None, entity_id: str | None = None) -> Any:
+        """List one page of a project's comments.
+
+        Args:
+            project_id: The project to read
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+            document_id: Only comments anywhere in this document
+            entity_type: With entity_id, only this entity's thread
+            entity_id: With entity_type, only this entity's thread
+        """
+        return list_page(self._client, f'/api/v1/projects/{project_id}/comments',
+                         limit=limit, cursor=cursor,
+                         query={'document-id': document_id, 'entity-type': entity_type,
+                                'entity-id': entity_id})
+
+    def iter_pages(self, project_id: str, *, page_size: int = 1000,
+                   document_id: str | None = None, entity_type: str | None = None,
+                   entity_id: str | None = None):
+        """Iterate over pages of a project's comments, yielding each page's entries.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            project_id: The project to read
+            page_size: Page size (1..1000)
+            document_id: Only comments anywhere in this document
+            entity_type: With entity_id, only this entity's thread
+            entity_id: With entity_type, only this entity's thread
+        """
+        return iter_pages(self._client, f'/api/v1/projects/{project_id}/comments',
+                          page_size=page_size,
+                          query={'document-id': document_id, 'entity-type': entity_type,
+                                 'entity-id': entity_id})
+
+    def counts(self, project_id: str, *, document_id: str | None = None,
+               entity_type: str | None = None, entity_id: str | None = None) -> Any:
+        """Comment counts per entity, as an ``{entity_id: n}`` dict.
+
+        Same scope and filters as :meth:`list`. One cheap request paints a
+        comment indicator on every annotated item in a document without paging
+        through the bodies.
+
+        The response is NOT key-transformed: its keys are entity ids, and
+        recasing would mangle the hyphens in a UUID.
+        """
+        return self._request('GET', f'/api/v1/projects/{project_id}/comments/counts',
+                             query_params={'document-id': document_id,
+                                           'entity-type': entity_type,
+                                           'entity-id': entity_id},
+                             skip_response_transform=True)
+
+
 class InvitesResource(_Resource):
     """Invite links (signup) and admin-issued password reset links.
 
@@ -2306,6 +2419,7 @@ class PlaidClient:
         self.api_tokens = ApiTokensResource(self)
         self.user_data = UserDataResource(self)
         self.invites = InvitesResource(self)
+        self.comments = CommentsResource(self)
         self.token_layers = TokenLayersResource(self)
         self.documents = DocumentsResource(self)
         self.messages = MessagesResource(self)
