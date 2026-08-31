@@ -4,10 +4,12 @@
 // NOT part of a preset.
 
 import { IGT_NAMESPACE } from '../domain/igtConfig.js';
+import { defaultCldfOptions } from './cldf.js';
 
 export const EXPORT_FORMATS = [
   { id: 'plaintext', label: 'Plain text', ext: 'txt' },
   { id: 'flextext', label: 'FLEx interlinear (.flextext)', ext: 'flextext' },
+  { id: 'cldf', label: 'CLDF TextCorpus (.zip dataset)', ext: 'csv' },
   { id: 'plaid-igt-json', label: 'Plaid IGT JSON (lossless .zip archive)', ext: 'json' },
 ];
 
@@ -52,21 +54,31 @@ export function defaultFieldMap(layers) {
   return { sentence, word, morpheme };
 }
 
-/** A fresh preset with everything selected and heuristic defaults. */
-export function newPreset(format, layers, name = 'New preset') {
+/**
+ * A fresh preset with everything selected and heuristic defaults. `languages`
+ * is the project's configured {object, meta} identity (see readLanguages); it
+ * seeds the .flextext writing-system tags so the same fact is not typed twice.
+ */
+export function newPreset(format, layers, name = 'New preset', languages = null) {
   const base = { id: crypto.randomUUID(), name, format, includeVocabularies: false };
   if (format === 'plaid-igt-json') {
     // Lossless archive: vocabularies are always included (runExport forces
     // this regardless of the flag); the only option is media embedding.
     return { ...base, includeVocabularies: true, options: { includeMedia: true } };
   }
+  if (format === 'cldf') {
+    // The dataset always carries the vocabularies it needs for EntryTable, so
+    // the TSV flag does not apply. Languages come from project config at run
+    // time rather than being frozen into the preset.
+    return { ...base, options: { ...defaultCldfOptions(layers), includeMedia: true } };
+  }
   if (format === 'flextext') {
     return {
       ...base,
       options: {
         langs: {
-          baseline: 'und',
-          analysis: 'en',
+          baseline: languages?.object?.iso639P3 || tagify(languages?.object?.name) || 'und',
+          analysis: languages?.meta?.iso639P3 || tagify(languages?.meta?.name) || 'en',
           orthographies: Object.fromEntries(
             layers.orthographies.map((n) => [n, tagify(n) || 'und']),
           ),

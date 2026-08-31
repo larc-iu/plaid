@@ -91,6 +91,58 @@ export const trimIgnoredEdges = (content, cfg) => {
 /** A project's enabled document-metadata fields: [{name}], or null. */
 export const readDocumentMetadata = (config) => readIgt(config, 'documentMetadata') ?? null;
 
+// --- Language identity -----------------------------------------------------
+
+/**
+ * A project's two languages, stored at `config.igt.languages`:
+ *   object — the language being documented (the baseline text)
+ *   meta   — the language glosses and translations are written in
+ *
+ * Plaid's substrate has no notion of what language a text is in, because a
+ * layer is just an offset space. That is fine internally and fatal on the way
+ * out: CLDF's LanguageTable, keyed by Glottocode, is what lets an exported
+ * dataset be aligned with anything else in the world. The .flextext exporter
+ * asks for the same fact per preset and defaults it to `und`, which is the
+ * weaker version of this. Seeded from here for new presets (see presets.js).
+ *
+ * Every field is optional. An unset language still exports, under a derived
+ * identifier, with a warning.
+ */
+export const EMPTY_LANGUAGE = Object.freeze({
+  name: '',
+  glottocode: '',
+  iso639P3: '',
+  latitude: null,
+  longitude: null,
+});
+
+const str = (v) => (typeof v === 'string' ? v.trim() : '');
+// Coordinates round-trip through JSON as numbers but reach us as strings from
+// the settings inputs. Anything non-finite (including '') becomes null so the
+// CSV cell is empty rather than "NaN".
+const num = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const normalizeLanguage = (lang) => ({
+  name: str(lang?.name),
+  glottocode: str(lang?.glottocode),
+  iso639P3: str(lang?.iso639P3),
+  latitude: num(lang?.latitude),
+  longitude: num(lang?.longitude),
+});
+
+/** A project's {object, meta} languages, always fully shaped. */
+export const readLanguages = (config) => {
+  const raw = readIgt(config, 'languages') || {};
+  return { object: normalizeLanguage(raw.object), meta: normalizeLanguage(raw.meta) };
+};
+
+/** Has this language been filled in at all? */
+export const hasLanguageIdentity = (lang) => !!(lang?.name || lang?.glottocode || lang?.iso639P3);
+
 /**
  * A project's known speaker labels (diarization) — a de-duped suggestion cache
  * appended to whenever a new speaker is set on an alignment token, so the

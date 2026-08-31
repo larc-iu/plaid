@@ -58,6 +58,27 @@ describe('newPreset', () => {
     expect(p.options.citationForms).toBe(true);
     expect(p.options.fieldMap.morpheme.Gloss).toBe('gls');
   });
+
+  it('seeds flextext language tags from the project language identity', () => {
+    const p = newPreset('flextext', LAYERS, 'FLEx', {
+      object: { iso639P3: 'lez', name: 'Lezgian' },
+      meta: { name: 'Russian' },
+    });
+    expect(p.options.langs.baseline).toBe('lez');
+    // No ISO code for the meta language, so its name is tagified instead.
+    expect(p.options.langs.analysis).toBe('russian');
+  });
+
+  it('builds a CLDF preset from the heuristic field mapping', () => {
+    const p = newPreset('cldf', LAYERS, 'Dataset');
+    expect(p.format).toBe('cldf');
+    expect(p.options).toMatchObject({
+      glossField: 'Gloss',
+      glossScope: 'morpheme',
+      dictionary: true,
+      includeMedia: true,
+    });
+  });
 });
 
 describe('newPreset — plaid-igt-json', () => {

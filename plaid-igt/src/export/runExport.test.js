@@ -349,3 +349,133 @@ describe('runExport — native plaid-igt-json', () => {
     expect(doc.mediaFile).toBeNull();
   });
 });
+
+describe('runExport — CLDF', () => {
+  const LANGUAGED_PROJECT = {
+    ...PROJECT,
+    config: {
+      igt: {
+        languages: {
+          object: { name: 'Spanish', glottocode: 'stan1288', iso639P3: 'spa' },
+          meta: { name: 'English', iso639P3: 'eng' },
+        },
+      },
+    },
+  };
+  const cldfPreset = (options = {}) => {
+    const p = newPreset('cldf', discoverExportLayers(LANGUAGED_PROJECT), 'c');
+    return { ...p, options: { ...p.options, ...options } };
+  };
+  const text = (entries, path) => new TextDecoder().decode(entries[path]);
+
+  it('always zips one dataset, folding every document into examples.csv', async () => {
+    const docs = [rawDoc('d1', 'Alpha', 'hi yo'), rawDoc('d2', 'Beta', 'ba')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client,
+      project: LANGUAGED_PROJECT,
+      preset: cldfPreset(),
+      scope: { type: 'project' },
+    });
+    expect(result.filename).toBe('My Project Test-cldf.zip');
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries).sort()).toEqual([
+      'cldf-metadata.json',
+      'contributions.csv',
+      'entries.csv',
+      'examples.csv',
+      'languages.csv',
+      'senses.csv',
+    ]);
+    const examples = text(entries, 'examples.csv').trim().split('\r\n');
+    expect(examples).toHaveLength(3);
+    expect(examples[1]).toContain('hi\tyo');
+    expect(examples[2]).toContain('ba');
+    expect(text(entries, 'contributions.csv')).toContain('Alpha');
+    expect(text(entries, 'contributions.csv')).toContain('Beta');
+  });
+
+  it('zips even at document scope, since a dataset is many files', async () => {
+    const docs = [rawDoc('d1', 'Solo', 'hi')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client,
+      project: LANGUAGED_PROJECT,
+      preset: cldfPreset(),
+      scope: { type: 'document', id: 'd1' },
+    });
+    expect(result.filename).toBe('Solo-cldf.zip');
+    expect(Object.keys(await unzipBlob(result.blob))).toContain('cldf-metadata.json');
+  });
+
+  it('reads the language identity from project config', async () => {
+    const client = stubClient({ docs: [rawDoc('d1', 'A', 'hi')] });
+    const result = await runExport({
+      client,
+      project: LANGUAGED_PROJECT,
+      preset: cldfPreset(),
+      scope: { type: 'project' },
+    });
+    const entries = await unzipBlob(result.blob);
+    expect(text(entries, 'languages.csv')).toContain('stan1288,Spanish,stan1288,spa');
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('warns when the project has no language identity configured', async () => {
+    const client = stubClient({ docs: [rawDoc('d1', 'A', 'hi')] });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: cldfPreset(),
+      scope: { type: 'project' },
+    });
+    expect(result.warnings.join(' ')).toMatch(/no Glottocode or ISO 639-3/);
+  });
+
+  it('loads vocabularies for the dictionary even without includeVocabularies', async () => {
+    const client = stubClient({ docs: [rawDoc('d1', 'A', 'hi')] });
+    const result = await runExport({
+      client,
+      project: LANGUAGED_PROJECT,
+      preset: { ...cldfPreset(), includeVocabularies: false },
+      scope: { type: 'project' },
+    });
+    expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toHaveLength(1);
+    const entries = await unzipBlob(result.blob);
+    expect(text(entries, 'entries.csv')).toContain('perro');
+    expect(text(entries, 'senses.csv')).toContain('dog');
+    // No TSV fallback: the vocabularies became CLDF tables instead.
+    expect(Object.keys(entries).some((p) => p.endsWith('.tsv'))).toBe(false);
+  });
+
+  it('skips the vocabulary fetch when the dictionary option is off', async () => {
+    const client = stubClient({ docs: [rawDoc('d1', 'A', 'hi')] });
+    const result = await runExport({
+      client,
+      project: LANGUAGED_PROJECT,
+      preset: cldfPreset({ dictionary: false }),
+      scope: { type: 'project' },
+    });
+    expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toHaveLength(0);
+    expect(Object.keys(await unzipBlob(result.blob))).not.toContain('entries.csv');
+  });
+
+  it('embeds media and records its type in the MediaTable', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi', '/media/d1')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client,
+      project: LANGUAGED_PROJECT,
+      preset: cldfPreset(),
+      scope: { type: 'project' },
+      fetchMedia: async () => ({
+        bytes: new Uint8Array([1, 2, 3]),
+        ext: '.wav',
+        mime: 'audio/vnd.wave',
+      }),
+    });
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries)).toContain('media/A.wav');
+    expect(text(entries, 'media.csv')).toContain('audio/vnd.wave,media/A.wav,1');
+  });
+});

@@ -14,6 +14,8 @@ import {
   readVocabFields,
   isTokenIgnored,
   trimIgnoredEdges,
+  readLanguages,
+  hasLanguageIdentity,
 } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { buildRawDoc } from './test-helpers.js';
@@ -123,5 +125,58 @@ describe('trimIgnoredEdges', () => {
   it('is a no-op without a unicodePunctuation config', () => {
     expect(trimIgnoredEdges('derechos.', null)).toBe('derechos.');
     expect(trimIgnoredEdges('derechos.', { type: 'blacklist', blacklist: [] })).toBe('derechos.');
+  });
+});
+
+describe('readLanguages', () => {
+  it('reads both languages and coerces coordinates to numbers', () => {
+    const config = {
+      igt: {
+        languages: {
+          object: {
+            name: ' Lezgian ',
+            glottocode: 'lezg1247',
+            iso639P3: 'lez',
+            latitude: '41.5',
+            longitude: 48,
+          },
+          meta: { name: 'English', iso639P3: 'eng' },
+        },
+      },
+    };
+    expect(readLanguages(config)).toEqual({
+      object: {
+        name: 'Lezgian',
+        glottocode: 'lezg1247',
+        iso639P3: 'lez',
+        latitude: 41.5,
+        longitude: 48,
+      },
+      meta: { name: 'English', glottocode: '', iso639P3: 'eng', latitude: null, longitude: null },
+    });
+  });
+
+  it('returns a fully shaped pair when nothing is configured', () => {
+    const empty = { name: '', glottocode: '', iso639P3: '', latitude: null, longitude: null };
+    expect(readLanguages({})).toEqual({ object: empty, meta: empty });
+    expect(readLanguages(undefined)).toEqual({ object: empty, meta: empty });
+  });
+
+  it('nulls a coordinate that is not a finite number', () => {
+    const config = { igt: { languages: { object: { latitude: 'north', longitude: '' } } } };
+    expect(readLanguages(config).object).toMatchObject({ latitude: null, longitude: null });
+  });
+});
+
+describe('hasLanguageIdentity', () => {
+  it('is true when any identifying field is filled in', () => {
+    expect(hasLanguageIdentity({ name: 'Lezgian' })).toBe(true);
+    expect(hasLanguageIdentity({ glottocode: 'lezg1247' })).toBe(true);
+    expect(hasLanguageIdentity({ iso639P3: 'lez' })).toBe(true);
+  });
+  it('is false for an empty language, coordinates alone included', () => {
+    expect(hasLanguageIdentity({})).toBe(false);
+    expect(hasLanguageIdentity(null)).toBe(false);
+    expect(hasLanguageIdentity({ latitude: 41.5 })).toBe(false);
   });
 });
