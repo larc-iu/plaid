@@ -64,7 +64,10 @@ export const ScopeStep = ({
       <div className="flex flex-col gap-2">
         <Label>Scope</Label>
         {defaultDocument && radio('document', `This document: ${defaultDocument.name}`)}
-        {radio('project', `Whole project (${documents?.length ?? 0} documents)`)}
+        {radio(
+          'project',
+          `Whole project (${documents?.length ?? 0} document${documents?.length === 1 ? '' : 's'})`,
+        )}
         {radio('documents', 'Selected documents')}
       </div>
 
