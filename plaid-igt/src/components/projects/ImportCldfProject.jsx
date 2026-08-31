@@ -29,6 +29,7 @@ import {
   deriveImportOptions,
   customColumnChoices,
   groupingChoices,
+  SINGLE_TEXT,
 } from '../../import/cldf/buildDocuments';
 import { deriveSetupData, runCldfImport } from '../../import/cldf/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
@@ -289,10 +290,8 @@ export const ImportCldfProject = () => {
                   </p>
                 </div>
                 <Select
-                  value={options.groupBy ?? OFF}
-                  onValueChange={(v) =>
-                    setOptions((o) => ({ ...o, groupBy: v === OFF ? null : v }))
-                  }
+                  value={options.groupBy ?? SINGLE_TEXT}
+                  onValueChange={(v) => setOptions((o) => ({ ...o, groupBy: v }))}
                   disabled={!editable}
                 >
                   <SelectTrigger className="h-8 w-64">
@@ -300,11 +299,10 @@ export const ImportCldfProject = () => {
                   </SelectTrigger>
                   <SelectContent>
                     {groupChoices.map((c) => (
-                      <SelectItem key={c.value || OFF} value={c.value || OFF}>
+                      <SelectItem key={c.value} value={c.value}>
                         {c.label}
                       </SelectItem>
                     ))}
-                    <SelectItem value={OFF}>One text for everything</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

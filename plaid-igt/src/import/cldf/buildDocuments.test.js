@@ -7,6 +7,8 @@ import {
   customColumnChoices,
   groupingChoices,
   PER_EXAMPLE,
+  BY_CONTRIBUTION,
+  SINGLE_TEXT,
   splitAnalyzed,
   surfaceOf,
   alignWords,
@@ -105,6 +107,23 @@ describe('alignWords', () => {
     expect(spans[0]).toEqual({ beginU16: 1, endU16: 5 });
     expect(spans[1]).toEqual({ beginU16: 6, endU16: 11 });
     expect(warnings).toEqual([]);
+  });
+
+  it('covers the whole word when the analysis accounts for only part of it', () => {
+    // Real Tsez: the text writes "yegirxo" but the analysis is "y-egir-x",
+    // dropping the final vowel. Matching alone left that "o" outside every
+    // token, where it could not be annotated and would not tile on export.
+    const body = 'ciqaɣort’a yegirxo zown.';
+    const { spans } = align(body, ['ciq-aɣor-t’a', 'y-egir-x', 'zow-n']);
+    const at = (s) => body.slice(s.beginU16, s.endU16);
+    expect(spans.map(at)).toEqual(['ciqaɣort’a', 'yegirxo', 'zown']);
+  });
+
+  it('still leaves edge punctuation out of the word it follows', () => {
+    const body = 'hola, amigo!';
+    const { spans } = align(body, ['hola', 'amigo']);
+    const at = (s) => body.slice(s.beginU16, s.endU16);
+    expect(spans.map(at)).toEqual(['hola', 'amigo']);
   });
 
   it('falls back to the word in that position when the form is not in the text', () => {
@@ -304,11 +323,11 @@ describe('buildCldfDocuments — grouping without a ContributionTable', () => {
   it('does not offer the grouping column as an annotation field', () => {
     const ds = dataset(csv, columns);
     expect(deriveImportOptions(ds).customColumns.Text_ID).toBeUndefined();
-    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['Text_ID', PER_EXAMPLE]);
+    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['Text_ID', PER_EXAMPLE, SINGLE_TEXT]);
   });
 
   it('makes one document when grouping is turned off', () => {
-    const { documents } = buildCldfDocuments(dataset(csv, columns), { groupBy: null });
+    const { documents } = buildCldfDocuments(dataset(csv, columns), { groupBy: SINGLE_TEXT });
     expect(documents).toHaveLength(1);
     expect(documents[0].sentences).toHaveLength(3);
   });
@@ -326,11 +345,35 @@ describe('buildCldfDocuments — grouping without a ContributionTable', () => {
       ],
       { 'contributions.csv': 'ID,Name\r\nA,Alpha\r\n' },
     );
-    expect(deriveImportOptions(ds).groupBy).toBeNull();
+    expect(deriveImportOptions(ds).groupBy).toBe(BY_CONTRIBUTION);
     // The ContributionTable is the default; Text_ID has one distinct value
     // across this fixture's single row, so it could not group anything.
-    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['', PER_EXAMPLE]);
+    expect(groupingChoices(ds).map((c) => c.value)).toEqual([
+      BY_CONTRIBUTION,
+      PER_EXAMPLE,
+      SINGLE_TEXT,
+    ]);
     expect(buildCldfDocuments(ds).documents[0].name).toBe('Alpha');
+  });
+
+  it('keeps every grouping mode a distinct value, and one text really is one', () => {
+    // These modes used to share a falsy value: "one text for everything" and
+    // "by the dataset's own text ids" were both null, so the review UI drew
+    // two options with the same value (Radix rendered both labels into one
+    // trigger) and picking the first silently did the second's job.
+    const ds = dataset(
+      'ID,Primary_Text,Analyzed_Word,Gloss,Contribution_ID\r\n' +
+        '1,uno,uno,one,A\r\n2,dos,dos,two,B\r\n',
+      [...BASIC_COLUMNS, col('Contribution_ID', 'contributionReference')],
+    );
+    const values = groupingChoices(ds).map((c) => c.value);
+    expect(new Set(values).size).toBe(values.length);
+    expect(values.every((v) => v !== '')).toBe(true);
+
+    expect(buildCldfDocuments(ds, { ...deriveImportOptions(ds) }).documents).toHaveLength(2);
+    const one = buildCldfDocuments(ds, { ...deriveImportOptions(ds), groupBy: SINGLE_TEXT });
+    expect(one.documents).toHaveLength(1);
+    expect(one.documents[0].sentences).toHaveLength(2);
   });
 });
 
@@ -636,7 +679,7 @@ describe('groupingChoices', () => {
       col('chapter', null),
       col('note', null),
     ]);
-    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['chapter', PER_EXAMPLE]);
+    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['chapter', PER_EXAMPLE, SINGLE_TEXT]);
   });
 
   it('keeps every repeating column on offer, since no rule sorts them', () => {
@@ -645,6 +688,11 @@ describe('groupingChoices', () => {
         '1,uno,uno,one,a,s1\r\n2,dos,dos,two,a,s2\r\n3,tres,tres,three,b,s1\r\n',
       [...BASIC_COLUMNS, col('chapter', null), col('source', null)],
     );
-    expect(groupingChoices(ds).map((c) => c.value)).toEqual(['chapter', 'source', PER_EXAMPLE]);
+    expect(groupingChoices(ds).map((c) => c.value)).toEqual([
+      'chapter',
+      'source',
+      PER_EXAMPLE,
+      SINGLE_TEXT,
+    ]);
   });
 });

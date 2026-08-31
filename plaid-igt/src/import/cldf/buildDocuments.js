@@ -34,6 +34,15 @@ import { cell, list, customColumnsOf } from './readDataset.js';
  */
 export const PER_EXAMPLE = '__example__';
 
+/**
+ * Grouping sentinel: follow the dataset's own ContributionTable, one document
+ * per contribution.
+ */
+export const BY_CONTRIBUTION = '__contribution__';
+
+/** Grouping sentinel: the whole corpus as a single document. */
+export const SINGLE_TEXT = '__single__';
+
 /** Leipzig morpheme joints. */
 const JOINT_RE = /([-=])/;
 
@@ -155,7 +164,15 @@ export function alignWords(body, begin, end, forms) {
       }
     }
     if (hit) {
-      spans.push(hit.span);
+      // Cover the whole run, not just the matched part. A run is consumed by
+      // at most one form, so whatever the analysis does not account for
+      // belongs to no other token: Tsez writes "yegirxo" but analyzes it as
+      // "y-egir-x", and matching alone left that final "o" outside every
+      // word, where it could not be annotated and would not tile on export.
+      // Edge punctuation still stays out, so "zown." keeps its full stop
+      // separate. The morpheme forms are unaffected, since they live in token
+      // metadata rather than in the text extent.
+      spans.push(trimEdges(body, runs[hit.index]));
       ri = hit.index + 1;
       return;
     }
@@ -250,14 +267,14 @@ export function deriveImportOptions(dataset) {
     (r) => cell(examples, r, 'mediaReference') !== '',
   );
   const groupBy = !examples
-    ? null
+    ? SINGLE_TEXT
     : hasPerExampleMedia
       ? PER_EXAMPLE
       : examples.byTerm?.contributionReference
-        ? null
+        ? BY_CONTRIBUTION
         : (customColumnsOf(examples).find((n) => /^text[_ ]?id$/i.test(n)) ??
           customColumnsOf(examples).find((n) => /text[_ ]?id$/i.test(n)) ??
-          null);
+          SINGLE_TEXT);
 
   const own = isOwnExport(examples);
   const customColumns = {};
@@ -295,7 +312,7 @@ export function groupingChoices(dataset) {
   if (!examples) return [];
   const choices = [];
   if (examples.byTerm?.contributionReference) {
-    choices.push({ value: '', label: 'By the dataset\u2019s own text ids' });
+    choices.push({ value: BY_CONTRIBUTION, label: 'By the dataset\u2019s own text ids' });
   }
   // Drop only the columns that provably cannot group: APiCS offers markup_text
   // and sort, which hold a near-unique value per row, so grouping by them is
@@ -312,6 +329,7 @@ export function groupingChoices(dataset) {
     choices.push({ value: name, label: `By ${name}` });
   }
   choices.push({ value: PER_EXAMPLE, label: 'One document per example' });
+  choices.push({ value: SINGLE_TEXT, label: 'One text for everything' });
   return choices;
 }
 
@@ -463,10 +481,15 @@ export function buildCldfDocuments(dataset, options = {}) {
   // --- group example rows into documents ---
   const mediaIndex = makeMediaIndex(dataset);
   const groups = new Map();
+  // Every mode is spelled out. Letting one of them ride on a falsy groupBy
+  // made "one text for everything" and "by the dataset's own text ids" the
+  // same value, so the two collided in the review UI and the first silently
+  // did the second's job.
   const keyOf = (row) => {
     if (o.groupBy === PER_EXAMPLE) return cell(examples, row, 'id');
-    if (o.groupBy) return row[o.groupBy] ?? '';
-    return cell(examples, row, 'contributionReference') || '';
+    if (o.groupBy === BY_CONTRIBUTION) return cell(examples, row, 'contributionReference') || '';
+    if (o.groupBy === SINGLE_TEXT || !o.groupBy) return '';
+    return row[o.groupBy] ?? '';
   };
   for (const row of examples?.rows || []) {
     if (isAlternative(row)) continue;
