@@ -2171,6 +2171,120 @@ class PlaidClient {
           body: { message },
         }),
     };
+
+    this.comments = {
+      /**
+       * Post a comment on an entity. Requires write access to the entity's
+       * project; the author is the authenticated caller. Comments are not
+       * audited and do not bump the document version.
+       * @param {'document'|'text'|'token'|'span'|'relation'} entityType - What kind of thing is being commented on
+       * @param {string} entityId - The commented entity's id
+       * @param {string} body - The comment text (1..10000 characters)
+       */
+      create: (entityType, entityId, body) =>
+        this._request("POST", "/api/v1/comments", {
+          body: bodyOf({ "entity-type": entityType, "entity-id": entityId, body }),
+        }),
+      /**
+       * Read one comment.
+       * @param {string} id - The comment id
+       */
+      get: (id) => this._request("GET", `/api/v1/comments/${id}`),
+      /**
+       * Edit a comment's body. Only the comment's AUTHOR may do this - not
+       * maintainers, not admins. Sets `edited` on the comment.
+       * @param {string} id - The comment id
+       * @param {string} body - The replacement text
+       */
+      update: (id, body) =>
+        this._request("PATCH", `/api/v1/comments/${id}`, { body: { body } }),
+      /**
+       * Delete a comment. The author may delete their own; a project
+       * maintainer (or admin) may delete any.
+       * @param {string} id - The comment id
+       */
+      delete: (id) => this._request("DELETE", `/api/v1/comments/${id}`),
+      /**
+       * List comments in a project, oldest first. Transparently follows
+       * pagination cursors and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching - use listPage() for a single page in a batch.
+       * @param {string} projectId - The project to read
+       * @param {object} [filters] - Narrow the scope
+       * @param {string} [filters.documentId] - Every comment anywhere in one document
+       * @param {string} [filters.entityType] - With entityId, one entity's thread
+       * @param {string} [filters.entityId] - With entityType, one entity's thread
+       */
+      list: (projectId, { documentId, entityType, entityId } = {}) =>
+        listAll(this, `/api/v1/projects/${projectId}/comments`, {
+          query: {
+            "document-id": documentId,
+            "entity-type": entityType,
+            "entity-id": entityId,
+          },
+        }),
+      /**
+       * Fetch a single page of a project's comments.
+       * @param {string} projectId - The project to read
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {string} [opts.documentId] - Every comment anywhere in one document
+       * @param {string} [opts.entityType] - With entityId, one entity's thread
+       * @param {string} [opts.entityId] - With entityType, one entity's thread
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listPage: (projectId, { limit, cursor, documentId, entityType, entityId } = {}) =>
+        listPage(this, `/api/v1/projects/${projectId}/comments`, {
+          limit,
+          cursor,
+          query: {
+            "document-id": documentId,
+            "entity-type": entityType,
+            "entity-id": entityId,
+          },
+        }),
+      /**
+       * Async-iterate a project's comments page by page; yields each page's entries array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching - use listPage() for a single page in a batch.
+       * @param {string} projectId - The project to read
+       * @param {object} [opts]
+       * @param {number} [opts.pageSize] - Per-request page size
+       * @param {string} [opts.documentId] - Every comment anywhere in one document
+       * @param {string} [opts.entityType] - With entityId, one entity's thread
+       * @param {string} [opts.entityId] - With entityType, one entity's thread
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterPages: (projectId, { pageSize, documentId, entityType, entityId } = {}) =>
+        iterPages(this, `/api/v1/projects/${projectId}/comments`, {
+          pageSize,
+          query: {
+            "document-id": documentId,
+            "entity-type": entityType,
+            "entity-id": entityId,
+          },
+        }),
+      /**
+       * Comment counts per entity, as an `{entityId: n}` map, over the same
+       * scope and filters as `list`. One cheap request paints a comment
+       * indicator on every annotated item in a document without paging
+       * through the bodies.
+       *
+       * The response is NOT key-transformed: its keys are entity ids, and
+       * camelCasing would mangle the hyphens in a UUID.
+       * @param {string} projectId - The project to read
+       * @param {object} [filters] - Same filters as list()
+       * @returns {Promise<Object<string, number>>}
+       */
+      counts: (projectId, { documentId, entityType, entityId } = {}) =>
+        this._request("GET", `/api/v1/projects/${projectId}/comments/counts`, {
+          queryParams: {
+            "document-id": documentId,
+            "entity-type": entityType,
+            "entity-id": entityId,
+          },
+          skipResponseTransform: true,
+        }),
+    };
   }
 
   // --- Core methods ---

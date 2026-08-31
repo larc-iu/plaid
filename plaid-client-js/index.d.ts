@@ -305,6 +305,54 @@ interface UserDataBundle {
   delete(userId: string, key: string): Promise<any>;
 }
 
+interface CommentFilters {
+  documentId?: string;
+  entityType?: CommentableType;
+  entityId?: string;
+}
+
+/** Entities that can carry a comment. */
+type CommentableType = "document" | "text" | "token" | "span" | "relation";
+
+interface Comment {
+  id: string;
+  projectId: string;
+  documentId: string;
+  entityType: CommentableType;
+  entityId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  /** True once the body has been rewritten since it was posted. */
+  edited: boolean;
+}
+
+interface CommentsBundle {
+  create(
+    entityType: CommentableType,
+    entityId: string,
+    body: string,
+  ): Promise<Comment>;
+  get(id: string): Promise<Comment>;
+  update(id: string, body: string): Promise<Comment>;
+  delete(id: string): Promise<any>;
+  list(projectId: string, filters?: CommentFilters): Promise<Comment[]>;
+  listPage(
+    projectId: string,
+    opts?: CommentFilters & { limit?: number; cursor?: string },
+  ): Promise<Page<Comment>>;
+  iterPages(
+    projectId: string,
+    opts?: CommentFilters & { pageSize?: number },
+  ): AsyncGenerator<Comment[]>;
+  /** `{entityId: count}`; keys are raw entity ids, never key-transformed. */
+  counts(
+    projectId: string,
+    filters?: CommentFilters,
+  ): Promise<Record<string, number>>;
+}
+
 interface ApiTokensBundle {
   list(userId: string): Promise<any[]>;
   listPage(
@@ -769,6 +817,7 @@ export declare class PlaidClient {
   apiTokens: ApiTokensBundle;
   userData: UserDataBundle;
   invites: InvitesBundle;
+  comments: CommentsBundle;
   tokenLayers: TokenLayersBundle;
   documents: DocumentsBundle;
   messages: MessagesBundle;
