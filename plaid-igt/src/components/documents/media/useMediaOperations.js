@@ -85,13 +85,61 @@ export const useMediaOperations = () => {
     transcribeDefault?.service?.serviceId === selectedServiceId ? transcribeDefault?.params : null,
   );
 
-  // Get authenticated media URL with proper base path handling
-  const getAuthenticatedMediaUrl = (serverUrl) => {
-    if (!serverUrl) return serverUrl;
-    return `${serverUrl}?token=${localStorage.getItem('token')}`;
-  };
+  // The media endpoint needs auth, and a <video src> can't carry an
+  // Authorization header. We used to work around that with `?token=<jwt>` on
+  // the URL, which put a 30-day login token everywhere a URL travels: proxy
+  // access logs, and whatever the user gets from "Copy video address". Instead
+  // fetch the bytes once with a real header and hand the element a blob: URL,
+  // which is meaningless outside this page and dies with the tab. The blob is
+  // also what the timeline decodes for its waveform, so this is one download
+  // where it used to be two.
+  const mediaSrcUrl = doc.document.mediaUrl;
+  const [media, setMedia] = useState({ url: null, blob: null });
+  const [isLoadingMedia, setIsLoadingMedia] = useState(false);
+  const [mediaLoadError, setMediaLoadError] = useState(null);
 
-  const authenticatedMediaUrl = getAuthenticatedMediaUrl(doc.document.mediaUrl);
+  useEffect(() => {
+    // Clear eagerly so a stale blob never shows under a new (or deleted)
+    // media file while the fetch below is still in flight.
+    setMedia({ url: null, blob: null });
+    setMediaLoadError(null);
+    if (!mediaSrcUrl) {
+      setIsLoadingMedia(false);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl = null;
+    setIsLoadingMedia(true);
+
+    (async () => {
+      try {
+        const response = await fetch(mediaSrcUrl, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        });
+        if (!response.ok) throw new Error(`server responded ${response.status}`);
+        const blob = await response.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setMedia({ url: objectUrl, blob });
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Failed to load media:', error);
+        setMediaLoadError(error?.message ?? String(error));
+      } finally {
+        if (!cancelled) setIsLoadingMedia(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      // Without this the downloaded file stays pinned for the life of the tab.
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [mediaSrcUrl]);
+
+  const authenticatedMediaUrl = media.url;
+  const mediaBlob = media.blob;
 
   // Get alignment token layer and tokens
   const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
@@ -495,6 +543,9 @@ export const useMediaOperations = () => {
     document: doc.document,
     project,
     authenticatedMediaUrl,
+    mediaBlob,
+    isLoadingMedia,
+    mediaLoadError,
     alignmentTokenLayer,
     alignmentTokens,
 

@@ -95,12 +95,6 @@ export const useTimelineOperations = (mediaOps) => {
   const doc = mediaOps.doc;
   const mediaElement = mediaOps.mediaElementRef.current;
 
-  // Get authenticated media URL with proper token
-  const getAuthenticatedMediaUrl = useCallback((serverUrl) => {
-    if (!serverUrl) return serverUrl;
-    return `${serverUrl}?token=${localStorage.getItem('token')}`;
-  }, []);
-
   // Local timeline state
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
@@ -528,8 +522,7 @@ export const useTimelineOperations = (mediaOps) => {
   // Generate canvas-based waveform image
   useEffect(() => {
     const generateWaveformImage = async () => {
-      if (!doc.document.mediaUrl || !mediaOps.duration || waveformImage || timelineWidth < 100)
-        return;
+      if (!mediaOps.mediaBlob || !mediaOps.duration || waveformImage || timelineWidth < 100) return;
 
       setIsLoadingWaveform(true);
 
@@ -537,9 +530,11 @@ export const useTimelineOperations = (mediaOps) => {
       let cacheKey = null;
 
       try {
-        const authenticatedMediaUrl = getAuthenticatedMediaUrl(doc.document.mediaUrl);
-        const response = await fetch(authenticatedMediaUrl);
-        const arrayBuffer = await response.arrayBuffer();
+        // The bytes are already in memory as the blob behind the player's
+        // <video> src, so there is nothing to fetch. `blob.arrayBuffer()` hands
+        // back a fresh copy per call, which matters because `decodeAudioData`
+        // below detaches the buffer it is given.
+        const arrayBuffer = await mediaOps.mediaBlob.arrayBuffer();
 
         // Generate hash from audio data for caching
         audioHash = await generateAudioHash(arrayBuffer);
@@ -678,13 +673,7 @@ export const useTimelineOperations = (mediaOps) => {
     if (mediaOps.duration > 0 && timelineWidth > 0) {
       generateWaveformImage();
     }
-  }, [
-    doc.document.mediaUrl,
-    mediaOps.duration,
-    timelineWidth,
-    waveformImage,
-    getAuthenticatedMediaUrl,
-  ]);
+  }, [mediaOps.mediaBlob, mediaOps.duration, timelineWidth, waveformImage]);
 
   return {
     // State

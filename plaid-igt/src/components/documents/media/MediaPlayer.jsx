@@ -25,6 +25,8 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
   // Destructure what we need from mediaOps
   const {
     authenticatedMediaUrl: mediaUrl,
+    isLoadingMedia,
+    mediaLoadError,
     currentTime,
     duration,
     isPlaying,
@@ -148,13 +150,22 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
         </div>
 
         <div className="flex flex-col gap-4">
-          {/* Media error */}
-          {mediaError && (
+          {/* Media error. `mediaLoadError` is the fetch that builds the blob
+              failing; `mediaError` is the element rejecting what it got. The
+              fetch is what surfaces an auth/network failure now that <video>
+              never talks to the server itself. */}
+          {(mediaLoadError || mediaError) && (
             <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
               <p className="text-sm font-medium text-destructive">Playback Error</p>
-              <p className="text-sm text-muted-foreground">{mediaError}</p>
+              <p className="text-sm text-muted-foreground">
+                {mediaLoadError ? `Failed to load media: ${mediaLoadError}` : mediaError}
+              </p>
             </div>
           )}
+
+          {/* The whole file has to arrive before anything is playable, so say
+              so rather than showing an inert player. */}
+          {isLoadingMedia && <p className="text-sm text-muted-foreground">Loading media…</p>}
 
           {/* Media Element - Use video element for everything since it can play both video and audio */}
           <video
