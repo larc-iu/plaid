@@ -13,24 +13,7 @@
 
 import { utf16ToCp } from '@larc-iu/plaid-client';
 import { pickEn } from './fwdataParser.js';
-
-/** Case-fold one code point; tolerates Turkish/Azeri dotted İ → i. */
-const foldChar = (c) => {
-  const l = c.toLowerCase();
-  return l === 'i̇' ? 'i' : l;
-};
-
-/** Does body (UTF-16 index `at`) case-foldedly start with `form`? */
-function matchesAt(body, at, form) {
-  let i = at;
-  for (const fc of form) {
-    if (i >= body.length) return false;
-    const bc = String.fromCodePoint(body.codePointAt(i));
-    if (foldChar(bc) !== foldChar(fc)) return false;
-    i += bc.length;
-  }
-  return i;
-}
+import { matchesAt } from '../align.js';
 
 /**
  * Align one segment's ordered analyses against body[begin, end).
