@@ -1,12 +1,14 @@
 // Drive a whole export: resolve the document list for the chosen scope,
 // fetch documents SEQUENTIALLY (server load, memory), serialize each with the
 // preset's format, and assemble the result — a bare file for a single
-// document, a zip (documents/ + optional vocabularies/) otherwise. Two formats
-// are dataset-level rather than per-document and so ALWAYS produce a zip:
+// document, a zip (documents/ + optional vocabularies/) otherwise. Three
+// formats are dataset-level rather than per-document:
 // 'plaid-igt-json' (project.json + vocabularies/*.json + documents/*.json +
 // optional media/*, self-contained and re-importable regardless of scope) and
 // 'cldf' (cldf-metadata.json + one CSV per component table, with every
-// document's sentences folded into a single examples.csv).
+// document's sentences folded into a single examples.csv) always produce a
+// zip. 'flextext' folds the whole scope into ONE .flextext and pairs it with
+// the lexicon as LIFT, so it is a zip whenever there is a lexicon to pair.
 //
 // UI-free and stub-client-testable. Per-document failures become entries in
 // `warnings`, not an aborted run; cancellation throws ExportCancelled.
@@ -15,7 +17,8 @@ import { IgtDocument, loadProjectVocabularies } from '../domain/IgtDocument.js';
 import { readVocabFields, readLanguages } from '../domain/igtConfig.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
-import { buildFlextextDocument } from './flextext.js';
+import { interlinearTextXml, flextextEnvelope } from './flextext.js';
+import { buildLiftLexicon } from './lift.js';
 import { buildEafDocument } from './elan.js';
 import { serializeVocabTsv } from './vocabTsv.js';
 import { buildCldfDataset } from './cldf.js';
@@ -37,8 +40,10 @@ export class ExportCancelled extends Error {
 const toJson = (obj) => JSON.stringify(obj, null, 2);
 
 function serializeDoc(igtDoc, preset, layers, context = {}) {
+  // One <interlinear-text> block, not a whole file: the FLEx branch joins the
+  // scope's blocks into a single .flextext at assembly time.
   if (preset.format === 'flextext') {
-    return buildFlextextDocument([igtDoc], preset.options || {});
+    return interlinearTextXml(igtDoc, preset.options || {});
   }
   if (preset.format === 'elan') {
     return buildEafDocument(igtDoc, intersectSelection(preset.options || {}, layers), context);
@@ -46,6 +51,37 @@ function serializeDoc(igtDoc, preset, layers, context = {}) {
   // Drop tier names that no longer exist in the project configuration.
   return serializeDocumentPlain(igtDoc, intersectSelection(preset.options || {}, layers));
 }
+
+/**
+ * The FLEx archive's own instructions. Its two files have to be imported in
+ * order, because the texts name their lexical entries by citation form and the
+ * entries must exist first for FLEx to link the two together. Nothing in
+ * either file says so.
+ */
+const flexReadme = ({ stem, lexicon, docCount }) =>
+  [
+    'Exported from Plaid for FieldWorks Language Explorer (FLEx).',
+    '',
+    'Contents:',
+    `  ${stem}.lift: the lexicon (${lexicon.entryCount} entries, ${lexicon.senseCount} senses)`,
+    ...(lexicon.ranges
+      ? [`  ${stem}.lift-ranges: the grammatical categories the lexicon uses`]
+      : []),
+    `  ${stem}.flextext: ${docCount} interlinear text${docCount === 1 ? '' : 's'}`,
+    '',
+    "Import them in this order, from FLEx's File > Import menu:",
+    '',
+    `  1. the LIFT lexicon (${stem}.lift)`,
+    ...(lexicon.ranges
+      ? [`     Keep ${stem}.lift-ranges in the same folder, where FLEx reads it from.`]
+      : []),
+    `  2. the interlinear texts (${stem}.flextext)`,
+    '',
+    'The order matters. The texts name their lexical entries by citation form,',
+    'so the entries have to be in place before the texts are imported for FLEx',
+    'to link them up.',
+    '',
+  ].join('\n');
 
 // The mediaUrl the server hands out is the bare endpoint path
 // (/api/v1/documents/<id>/media — no filename), so the archive filename's
@@ -134,6 +170,10 @@ export async function runExport({
   const isNative = preset.format === 'plaid-igt-json';
   const isCldf = preset.format === 'cldf';
   const isElan = preset.format === 'elan';
+  const isFlex = preset.format === 'flextext';
+  // The FLEx target is both files: the texts as .flextext and the lexicon as
+  // LIFT, which is the only one of the two that can carry a lexicon at all.
+  const wantLexicon = isFlex && preset.options?.lexicon !== false;
   const includeMedia = (isNative || isCldf || isElan) && preset.options?.includeMedia !== false;
   const exportedAt = new Date().toISOString();
 
@@ -154,12 +194,13 @@ export async function runExport({
   // document loop: the IgtDocument constructor mutates the vocabularies map
   // it's given (folding in raw-embedded links), so sharing this one with the
   // documents would grow it synthetic empty entries for failed vocabs.
-  const wantVocabTsvs = !isNative && !isCldf && !!preset.includeVocabularies && wantZip;
+  // The FLEx target says the lexicon in LIFT, so the TSV dump does not apply.
+  const wantVocabTsvs = !isNative && !isCldf && !isFlex && !!preset.includeVocabularies && wantZip;
   // CLDF turns the vocabularies into EntryTable/SenseTable, so it needs them
   // loaded whenever its dictionary option is on.
   const wantCldfDictionary = isCldf && preset.options?.dictionary !== false;
   let vocabs = [];
-  if (wantVocabTsvs || isNative || wantCldfDictionary) {
+  if (wantVocabTsvs || isNative || wantCldfDictionary || wantLexicon) {
     const loaded = await loadProjectVocabularies(client, project, asOf);
     vocabs = Object.values(loaded.vocabularies);
     if (loaded.failedCount) {
@@ -251,12 +292,55 @@ export async function runExport({
     );
   }
 
+  // FLEx: the whole scope becomes ONE .flextext (one import action in FLEx,
+  // not one per document), and the lexicon rides along as LIFT beside it.
+  if (isFlex) {
+    const stem = sanitizeFilename(
+      scope.type === 'document' ? docFiles[0].docName : project.name || 'project',
+    );
+    const flextext = flextextEnvelope(docFiles.map((f) => f.data));
+    const lexicon = wantLexicon
+      ? buildLiftLexicon({
+          vocabularies: vocabs,
+          options: preset.options || {},
+          rangesHref: `${stem}.lift-ranges`,
+        })
+      : null;
+    // A project with no lexicon to speak of exports the texts alone rather
+    // than an archive built around an empty .lift.
+    if (!lexicon?.entryCount) {
+      if (scope.type === 'document') {
+        return {
+          filename: `${stem}.flextext`,
+          blob: new Blob([flextext], { type: 'text/xml;charset=utf-8' }),
+          warnings,
+        };
+      }
+      checkStop();
+      return {
+        filename: `${stem}-flex.zip`,
+        blob: await assembleZip([{ path: `${stem}.flextext`, data: flextext }]),
+        warnings,
+      };
+    }
+    warnings.push(...lexicon.warnings);
+    checkStop();
+    return {
+      filename: `${stem}-flex.zip`,
+      blob: await assembleZip([
+        { path: `${stem}.flextext`, data: flextext },
+        { path: `${stem}.lift`, data: lexicon.lift },
+        // FLEx looks for the ranges beside the .lift under the same stem.
+        ...(lexicon.ranges ? [{ path: `${stem}.lift-ranges`, data: lexicon.ranges }] : []),
+        { path: 'README.txt', data: flexReadme({ stem, lexicon, docCount: docFiles.length }) },
+      ]),
+      warnings,
+    };
+  }
+
   // Single document → the bare file.
   if (!wantZip) {
-    const mime =
-      preset.format === 'flextext' || isElan
-        ? 'text/xml;charset=utf-8'
-        : 'text/plain;charset=utf-8';
+    const mime = isElan ? 'text/xml;charset=utf-8' : 'text/plain;charset=utf-8';
     return {
       filename: docFiles[0].name,
       blob: new Blob([docFiles[0].data], { type: mime }),

@@ -143,13 +143,28 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         onChange={(m) => setMap('morpheme', m)}
       />
 
-      <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
-        <span>Citation forms from linked lexicon items</span>
-        <Switch
-          checked={options.citationForms !== false}
-          onCheckedChange={(v) => onChange({ ...options, citationForms: v })}
-        />
-      </label>
+      <div className="flex flex-col gap-3 border-t pt-3">
+        <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
+          <span>
+            <span className="font-medium">Include the lexicon (.lift)</span>
+            <span className="block text-xs text-muted-foreground">
+              The project’s vocabularies as a LIFT file, which is how FLEx takes a lexicon. A
+              .flextext on its own cannot carry one.
+            </span>
+          </span>
+          <Switch
+            checked={options.lexicon !== false}
+            onCheckedChange={(v) => onChange({ ...options, lexicon: v })}
+          />
+        </label>
+        <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
+          <span>Citation forms from linked lexicon items</span>
+          <Switch
+            checked={options.citationForms !== false}
+            onCheckedChange={(v) => onChange({ ...options, citationForms: v })}
+          />
+        </label>
+      </div>
     </div>
   );
 };

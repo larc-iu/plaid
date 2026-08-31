@@ -200,6 +200,12 @@ export const ExportPresetEditor = ({ projectId, client, presetId }) => {
             One .eaf per document. A document with media is bundled into a .zip alongside it, so the
             file ELAN opens finds its recording.
           </p>
+        ) : draft.format === 'flextext' ? (
+          <p className="border-t pt-3 text-xs text-muted-foreground">
+            One .flextext holding every document in the run. With the lexicon included it becomes a
+            .zip: the .flextext, the .lift and its .lift-ranges, and a README giving the order FLEx
+            needs them imported in.
+          </p>
         ) : (
           hasVocabularies && (
             <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">

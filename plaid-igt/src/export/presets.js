@@ -9,7 +9,7 @@ import { defaultElanOptions } from './elan.js';
 
 export const EXPORT_FORMATS = [
   { id: 'plaintext', label: 'Plain text', ext: 'txt' },
-  { id: 'flextext', label: 'FLEx interlinear (.flextext)', ext: 'flextext' },
+  { id: 'flextext', label: 'FLEx (.flextext + .lift)', ext: 'flextext' },
   { id: 'cldf', label: 'CLDF TextCorpus (.zip dataset)', ext: 'csv' },
   { id: 'elan', label: 'ELAN annotation file (.eaf)', ext: 'eaf' },
   { id: 'plaid-igt-json', label: 'Plaid IGT JSON (lossless .zip archive)', ext: 'json' },
@@ -92,6 +92,7 @@ export function newPreset(format, layers, name = 'New preset', languages = null)
         },
         fieldMap: defaultFieldMap(layers),
         citationForms: true,
+        lexicon: true,
       },
     };
   }

@@ -130,7 +130,7 @@ describe('runExport', () => {
     expect(client.calls).toEqual([['documents.get', 'd1']]);
   });
 
-  it('produces well-formed flextext without fetching vocabularies', async () => {
+  it('pairs the flextext with the lexicon as LIFT', async () => {
     const docs = [rawDoc('d1', 'Flex', 'hi yo')];
     const client = stubClient({ docs });
     const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
@@ -140,12 +140,74 @@ describe('runExport', () => {
       preset,
       scope: { type: 'document', id: 'd1' },
     });
+    expect(result.filename).toBe('Flex-flex.zip');
+    const files = await unzipBlob(result.blob);
+    // No category anywhere in the fixture vocabulary, so no ranges sidecar.
+    expect(Object.keys(files).sort()).toEqual(['Flex.flextext', 'Flex.lift', 'README.txt']);
+    const lift = new TextDecoder().decode(files['Flex.lift']);
+    const dom = new DOMParser().parseFromString(lift, 'text/xml');
+    expect(dom.querySelector('parsererror')).toBeNull();
+    expect(dom.querySelector('lexical-unit text').textContent).toBe('perro');
+    const readme = new TextDecoder().decode(files['README.txt']);
+    expect(readme).toContain('Flex.lift: the lexicon (1 entries, 1 senses)');
+    expect(readme).toContain('Flex.flextext: 1 interlinear text');
+  });
+
+  it('exports the bare flextext when the lexicon is switched off', async () => {
+    const docs = [rawDoc('d1', 'Flex', 'hi yo')];
+    const client = stubClient({ docs });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    preset.options.lexicon = false;
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'document', id: 'd1' },
+    });
     expect(result.filename).toBe('Flex.flextext');
-    const xml = await result.blob.text();
-    const dom = new DOMParser().parseFromString(xml, 'text/xml');
+    const dom = new DOMParser().parseFromString(await result.blob.text(), 'text/xml');
     expect(dom.querySelector('parsererror')).toBeNull();
     expect(dom.querySelectorAll('word').length).toBe(2);
     expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toEqual([]);
+  });
+
+  it('folds every document of a project into ONE flextext', async () => {
+    const docs = [rawDoc('d1', 'Alpha', 'hi yo'), rawDoc('d2', 'Beta', 'ba')];
+    const client = stubClient({ docs });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'project' },
+    });
+    expect(result.filename).toBe('My Project Test-flex.zip');
+    const files = await unzipBlob(result.blob);
+    const xml = new TextDecoder().decode(files['My Project Test.flextext']);
+    const dom = new DOMParser().parseFromString(xml, 'text/xml');
+    expect(dom.querySelector('parsererror')).toBeNull();
+    expect(
+      [...dom.querySelectorAll('interlinear-text > item[type="title"]')].map((t) => t.textContent),
+    ).toEqual(['Alpha', 'Beta']);
+  });
+
+  it('keeps a failed document out of the flextext without losing the rest', async () => {
+    const docs = [rawDoc('d1', 'Alpha', 'hi yo'), rawDoc('d2', 'Beta', 'ba')];
+    const client = stubClient({ docs, failIds: ['d2'] });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    preset.options.lexicon = false;
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'project' },
+    });
+    const files = await unzipBlob(result.blob);
+    const xml = new TextDecoder().decode(files['My Project Test.flextext']);
+    expect(
+      new DOMParser().parseFromString(xml, 'text/xml').querySelectorAll('interlinear-text').length,
+    ).toBe(1);
+    expect(result.warnings).toEqual(['Document d2 failed to load: boom']);
   });
 
   it('turns per-document failures into warnings, not aborts', async () => {
