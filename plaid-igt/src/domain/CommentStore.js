@@ -300,6 +300,9 @@ export class CommentStore {
       this._insert(created);
       this._byEntity.get(created.entityId)?.sort(byCreated);
       this._emit();
+      // The author's own name may not be cached yet: `_resolveAuthors` runs on
+      // load, and on load there were no comments of theirs to resolve.
+      this._authorsPromise = this._resolveAuthors();
       return created;
     } catch (err) {
       this._forget(optimistic.id);

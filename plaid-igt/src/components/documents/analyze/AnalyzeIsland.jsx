@@ -13,7 +13,7 @@ import { useAuth } from '../../../contexts/AuthContext.jsx';
 // doc identity changes and the mount effect below re-mounts the island onto the
 // new historical snapshot automatically. readOnly is synced without remounting.
 export const AnalyzeIsland = () => {
-  const { doc, readOnly } = useDocumentCtx();
+  const { doc, readOnly, comments, canWrite, canManage } = useDocumentCtx();
   const hostRef = useRef(null);
   const editorRef = useRef(null);
   // The island's Auto-analyze toolbar button requests this React-side modal
@@ -34,7 +34,15 @@ export const AnalyzeIsland = () => {
 
   useEffect(() => {
     if (!doc || !hostRef.current) return undefined;
-    editorRef.current = new IgtEditor(hostRef.current, doc, { readOnly, canWriteVocab });
+    editorRef.current = new IgtEditor(hostRef.current, doc, {
+      readOnly,
+      canWriteVocab,
+      // The SAME store the Comments tab renders from, so a comment posted on a
+      // word is already there when you switch tabs.
+      comments,
+      canComment: canWrite,
+      canDeleteAnyComment: canManage,
+    });
     return () => {
       if (editorRef.current) {
         editorRef.current.destroy();
@@ -44,11 +52,18 @@ export const AnalyzeIsland = () => {
     // readOnly intentionally excluded — synced via the effect below without
     // tearing down the island. doc identity changes on (re)load / time-travel.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc]);
+  }, [doc, comments]);
 
   useEffect(() => {
     if (editorRef.current) editorRef.current.setReadOnly(readOnly);
   }, [readOnly]);
+
+  useEffect(() => {
+    editorRef.current?.setCommentPermissions({
+      canComment: canWrite,
+      canDeleteAnyComment: canManage,
+    });
+  }, [canWrite, canManage]);
 
   return (
     <div className="igt-analyze-mount" style={{ paddingTop: 16 }}>

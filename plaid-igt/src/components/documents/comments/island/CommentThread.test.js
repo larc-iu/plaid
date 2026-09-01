@@ -169,6 +169,45 @@ describe('commentThread interaction', () => {
     expect(host.querySelector('.igt-cmt__btn--primary').disabled).toBe(false);
   });
 
+  it('enables the submit button as you type, with no re-render', () => {
+    // Regression: neither host re-renders on keystroke (the island would fight
+    // focus and IME), so a `?disabled` binding evaluated at render time stayed
+    // stale and the Comment button was dead no matter what you typed.
+    const on = noopHandlers();
+    draw({ comments: [], canWrite: true, composerDraft: '', on });
+
+    const ta = host.querySelector('.igt-cmt__composer textarea');
+    const btn = host.querySelector('.igt-cmt__btn--primary');
+    expect(btn.disabled).toBe(true);
+
+    ta.value = 'something';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(on.changeComposer).toHaveBeenCalledWith('something');
+    expect(btn.disabled).toBe(false);
+
+    ta.value = '   ';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('enables Save only once the edited body actually differs', () => {
+    const on = noopHandlers();
+    const c = comment({ body: 'original' });
+    draw({ comments: [c], canWrite: true, editingId: c.id, editDraft: 'original', on });
+
+    const ta = host.querySelector('.igt-cmt__row--editing textarea');
+    const save = [...host.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save');
+    expect(save.disabled).toBe(true);
+
+    ta.value = 'original';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(save.disabled).toBe(true);
+
+    ta.value = 'changed';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(save.disabled).toBe(false);
+  });
+
   it('reports an edit request with the comment', () => {
     const on = noopHandlers();
     const c = comment();

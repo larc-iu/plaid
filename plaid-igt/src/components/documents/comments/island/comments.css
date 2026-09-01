@@ -13,6 +13,23 @@
   font-size: 13px;
   line-height: 1.5;
   color: #111827;
+  /* The in-grid popover renders inside a word's form band, which is italic and
+     coloured for provenance. A comment is prose about the data, not part of
+     it, so reset rather than inherit. */
+  font-style: normal;
+  font-weight: 400;
+  text-align: left;
+}
+
+.igt-cmt button,
+.igt-cmt textarea {
+  font-style: normal;
+  font-weight: 400;
+}
+
+.igt-cmt__btn--primary,
+.igt-cmt__author {
+  font-weight: 600;
 }
 
 .igt-cmt__list {
@@ -82,9 +99,11 @@
 }
 
 .igt-cmt__body {
-  /* Preserve the author's line breaks without letting a pasted URL widen the
-     popover. `pre-wrap` + `break-word` is the pair that does both. */
-  white-space: pre-wrap;
+  /* NOT `pre-wrap`: the body is rendered Markdown, so `breaks: true` has
+     already turned the author's newlines into <br>. Preserving whitespace on
+     top of that doubles every line break and blows a list apart with the
+     newlines between its <li> tags. `break-word` still keeps a pasted URL from
+     widening the popover. */
   overflow-wrap: break-word;
   padding-left: 26px;
 }
@@ -113,10 +132,22 @@
   background: none;
   padding: 0;
 }
+/* Markers, explicitly: the app's reset strips list styling globally, and a
+   bulletless list in a comment reads as stray lines. */
 .igt-cmt__body ul,
 .igt-cmt__body ol {
   margin: 0 0 6px;
   padding-left: 20px;
+}
+.igt-cmt__body ul {
+  list-style: disc outside;
+}
+.igt-cmt__body ol {
+  list-style: decimal outside;
+}
+.igt-cmt__body li {
+  margin: 0;
+  display: list-item;
 }
 .igt-cmt__body blockquote {
   margin: 0 0 6px;

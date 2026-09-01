@@ -1381,3 +1381,136 @@
   color: #6b7280;
   font-style: italic;
 }
+
+/* ---- comment badges ------------------------------------------------------
+ *
+ * A count, or a `+` when there is nothing yet. Absolutely positioned so a
+ * commented cell costs the grid no horizontal space and the column keeps its
+ * alignment — the same reasoning behind styling provenance rather than adding
+ * an element for it.
+ *
+ * Transparent at rest so a commented cell reads as annotated rather than
+ * flagged; solid on hover AND on keyboard focus, because a keyboard user
+ * should get the feedback a mouse user gets.
+ */
+.igt-cmt-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  z-index: 2;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid #9ab4ee;
+  background: transparent;
+  color: #1d4ed8;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    opacity 0.12s,
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.igt-cmt-badge:hover,
+.igt-cmt-badge:focus-visible,
+.igt-cmt-badge.is-open {
+  background: var(--igt-blue);
+  border-color: var(--igt-blue);
+  color: #fff;
+}
+
+.igt-cmt-badge:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 1px;
+}
+
+/* The empty state hides until you go looking for it. Scoped to the CELL, not
+   the column: a word and its gloss are different threads, so a column-scoped
+   reveal would light up three or four `+` badges at once. `opacity` rather
+   than `display`, so revealing one shifts nothing. */
+.igt-cmt-badge--add {
+  opacity: 0;
+}
+
+.igt-token-form:hover .igt-cmt-badge--add,
+.igt-morph-form:hover .igt-cmt-badge--add,
+.igt-cell:hover .igt-cmt-badge--add,
+.igt-morph-cell:hover .igt-cmt-badge--add,
+.igt-sentence-anno:hover .igt-cmt-badge--add,
+.igt-sentence__cmt:hover .igt-cmt-badge--add,
+.igt-token-form:focus-within .igt-cmt-badge--add,
+.igt-morph-form:focus-within .igt-cmt-badge--add,
+.igt-cell:focus-within .igt-cmt-badge--add,
+.igt-morph-cell:focus-within .igt-cmt-badge--add,
+.igt-sentence-anno:focus-within .igt-cmt-badge--add,
+.igt-cmt-badge--add:focus-visible,
+.igt-cmt-badge--add.is-open {
+  opacity: 1;
+}
+
+/* The sentence badge sits in the card header rather than over a cell, so it
+   needs its own positioning context and a little room. */
+.igt-sentence__cmt {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  margin-left: 22px;
+  vertical-align: middle;
+}
+.igt-sentence__cmt .igt-cmt-badge {
+  top: 0;
+  right: auto;
+  left: 0;
+}
+
+/* Every cell that can carry a badge is the positioning context for it. */
+.igt-cell,
+.igt-morph-cell,
+.igt-sentence-anno,
+.igt-token-form,
+.igt-morph-form {
+  position: relative;
+}
+
+/* ---- comment popover ----------------------------------------------------
+ * Deliberately NOT `.igt-vocab-pop`: the vocab e2e specs select that class,
+ * and a comment thread matching them would be a confusing false positive.
+ */
+.igt-cmt-pop {
+  position: fixed;
+  z-index: 60;
+  width: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 10px 25px -5px rgb(0 0 0 / 0.15);
+}
+
+.igt-cmt-pop__head {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  letter-spacing: 0.02em;
+  padding-bottom: 8px;
+  margin-bottom: 9px;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -25,6 +25,7 @@ import {
   trimIgnoredEdges,
 } from '@/domain/igtConfig';
 import { defaultGuessSource, listAlternatives } from '@/domain/glossGuess';
+import { commentThread } from '@/components/documents/comments/island/CommentThread.js';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import {
   morphemeJoiner,
@@ -97,7 +98,29 @@ const PROV_TITLE = {
 const provTitle = (value, state) => `${value}: ${PROV_TITLE[state]}`;
 
 export class IgtEditor {
-  constructor(container, doc, { readOnly = false, canWriteVocab = null } = {}) {
+  constructor(
+    container,
+    doc,
+    {
+      readOnly = false,
+      canWriteVocab = null,
+      comments = null,
+      canComment = false,
+      canDeleteAnyComment = false,
+    } = {},
+  ) {
+    // The comment store is the SAME instance the Comments tab renders from, so
+    // a comment posted in the grid shows up there without a refetch. Null when
+    // comments are unavailable (no signed-in user yet), and the badges simply
+    // do not render.
+    this.comments = comments;
+    this.canComment = canComment;
+    this.canDeleteAnyComment = canDeleteAnyComment;
+    // Transient comment-popover state: which comment is being edited, its
+    // draft, and the composer's draft. Cleared on every open.
+    this._cmtEditingId = null;
+    this._cmtEditDraft = '';
+    this._cmtDraft = '';
     // May the current user add entries to a vocab (needs vocab-maintainer
     // rights on the server)? Linking needs less, so the popover hides its
     // "+ Create" row when this says no. Default: assume yes (dev/tests).
@@ -138,6 +161,12 @@ export class IgtEditor {
       this._scheduleRender();
     };
     this._unsub = doc.subscribe(this._onChange);
+    // Badges and an open thread repaint when a comment lands — including one
+    // that arrived from someone else over SSE. Forced, because comments do not
+    // touch doc.dataVersion (that is the point of them being separate).
+    this._unsubComments = this.comments?.subscribe
+      ? this.comments.subscribe(() => this._render(true))
+      : null;
     // Per-sentence "Copy as IGT": which sentence's format menu is open, and
     // which sentence just copied (for the "Copied ✓" flash).
     this._copyMenu = null;
@@ -250,6 +279,15 @@ export class IgtEditor {
     });
   }
 
+  // Permissions can change without the document identity changing (a role
+  // edit, or leaving a past-state view), so they are synced rather than
+  // forcing a remount.
+  setCommentPermissions({ canComment, canDeleteAnyComment }) {
+    this.canComment = canComment;
+    this.canDeleteAnyComment = canDeleteAnyComment;
+    this._render(true);
+  }
+
   setReadOnly(ro) {
     if (ro === this.readOnly) return;
     // Flush a focused field's pending blur-commit BEFORE flipping the flag — the
@@ -268,6 +306,8 @@ export class IgtEditor {
   destroy() {
     if (this._unsub) this._unsub();
     this._unsub = null;
+    if (this._unsubComments) this._unsubComments();
+    this._unsubComments = null;
     document.removeEventListener('click', this._onDocClick);
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
@@ -290,6 +330,138 @@ export class IgtEditor {
   }
 
   // ---- vocab popover ----
+  // ---- comments ------------------------------------------------------------
+  //
+  // The island draws a badge and opens a popover; the thread itself is the
+  // shared `commentThread` view, the very same one the Comments tab renders.
+  // Comment state lives in the CommentStore, not here — this owns only which
+  // comment is being edited and what is typed, exactly as the tab does.
+
+  _commentBadge(entityType, entityId, label) {
+    const store = this.comments;
+    if (!store || !entityId) return nothing;
+    const n = store.countFor(entityId);
+    // Nothing to show and nothing to add: a reader (or a past-state view) sees
+    // counts but is never offered a control they cannot use.
+    if (!n && !this.canComment) return nothing;
+    const open = this._popover?.variant === 'comment' && this._popover.entityId === entityId;
+    const title = n ? `${n} comment${n === 1 ? '' : 's'} on ${label}` : `Comment on ${label}`;
+    return html`
+      <button
+        type="button"
+        class=${`igt-cmt-badge${n ? '' : ' igt-cmt-badge--add'}${open ? ' is-open' : ''}`}
+        data-pop-opener=${`comment:${entityId}`}
+        title=${title}
+        aria-label=${title}
+        @click=${(e) => {
+          e.stopPropagation();
+          if (open) this._closePopover();
+          else this._openCommentPopover(entityType, entityId, e.currentTarget);
+        }}
+      >
+        ${n || '+'}
+      </button>
+      ${open ? this._commentPopover(entityType, entityId, label) : nothing}
+    `;
+  }
+
+  _openCommentPopover(entityType, entityId, anchorEl) {
+    this._closePopover();
+    this._popover = {
+      tokenId: entityId,
+      kind: entityType,
+      variant: 'comment',
+      entityType,
+      entityId,
+    };
+    this._popoverReturnId = `comment:${entityId}`;
+    this._cmtEditingId = null;
+    this._cmtEditDraft = '';
+    this._cmtDraft = '';
+    this._popoverPos = this._computePopoverPos(anchorEl, 300, this._popWidth('comment'));
+    this._render(true);
+    this._focusPopover();
+    // The thread's real height is rarely the 300px estimate above.
+    this._fitPopover();
+  }
+
+  _commentPopover(entityType, entityId, label) {
+    const pos = this._popoverPos;
+    const posStyle = pos
+      ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;`
+      : '';
+    const store = this.comments;
+    return html`
+      <div
+        class="igt-cmt-pop"
+        data-igt-pop
+        style=${posStyle}
+        role="dialog"
+        aria-label=${`Comments on ${label}`}
+        @click=${(e) => e.stopPropagation()}
+        @keydown=${(e) => {
+          // Escape closes the popover, not the cell edit behind it.
+          if (e.key === 'Escape') {
+            e.stopPropagation();
+            this._closePopover(true);
+          }
+        }}
+      >
+        <header class="igt-cmt-pop__head">${label}</header>
+        ${commentThread({
+          store,
+          comments: store.threadFor(entityId),
+          canWrite: this.canComment,
+          canDeleteAny: this.canDeleteAnyComment,
+          editingId: this._cmtEditingId,
+          editDraft: this._cmtEditDraft,
+          composerDraft: this._cmtDraft || '',
+          on: {
+            startEdit: (c) => {
+              this._cmtEditingId = c.id;
+              this._cmtEditDraft = c.body;
+              this._render(true);
+            },
+            cancelEdit: () => {
+              this._cmtEditingId = null;
+              this._cmtEditDraft = '';
+              this._render(true);
+            },
+            changeEdit: (v) => {
+              this._cmtEditDraft = v;
+            },
+            saveEdit: async () => {
+              const id = this._cmtEditingId;
+              const draft = this._cmtEditDraft;
+              if (!id || !draft.trim()) return;
+              this._cmtEditingId = null;
+              this._cmtEditDraft = '';
+              this._render(true);
+              await store.edit(id, draft);
+            },
+            remove: async (c) => {
+              if (this._cmtEditingId === c.id) this._cmtEditingId = null;
+              await store.remove(c.id);
+              this._fitPopover();
+            },
+            changeComposer: (v) => {
+              this._cmtDraft = v;
+            },
+            submit: async () => {
+              const draft = (this._cmtDraft || '').trim();
+              if (!draft) return;
+              this._cmtDraft = '';
+              this._render(true);
+              await store.post(entityType, entityId, draft);
+              // A new row makes the popover taller; keep it anchored.
+              this._fitPopover();
+            },
+          },
+        })}
+      </div>
+    `;
+  }
+
   // ---- popover plumbing (variant-agnostic) --------------------------------
   //
   // The anchoring machinery below (position, re-anchor on scroll, fit after
@@ -2118,6 +2290,9 @@ export class IgtEditor {
       >
         <h3 class="igt-sr-only">Sentence ${index + 1}</h3>
         <span class="igt-sentence__num" aria-hidden="true">${index + 1}</span>
+        <span class="igt-sentence__cmt"
+          >${this._commentBadge('token', sentence.id, `sentence ${index + 1}`)}</span
+        >
         ${this._copyControl(sentence, ctx)}
         <div class="igt-grid">
           <div class="igt-tokens">
@@ -2380,6 +2555,7 @@ export class IgtEditor {
             formText: token.content,
             kind: 'word',
           })}
+          ${this._commentBadge('token', token.id, token.content)}
         </div>
         ${ctx.orthographies.map(
           (name) => html`
@@ -2396,6 +2572,13 @@ export class IgtEditor {
         ${ctx.wordFields.map(
           (name) =>
             html`<div class="igt-cell${this._rowCls(`word:${name}`)}" data-row=${`word:${name}`}>
+              ${token.annotations?.[name]?.id
+                ? this._commentBadge(
+                    'span',
+                    token.annotations[name].id,
+                    `${name} of ${token.content}`,
+                  )
+                : nothing}
               ${this._field({
                 key: `wa:${token.id}:${name}`,
                 value: token.annotations?.[name]?.value ?? '',
@@ -2510,10 +2693,18 @@ export class IgtEditor {
             />`,
             { id: morph.id, vocabItem: morph.vocabItem, formText: value, kind: 'morpheme' },
           )}
+          ${this._commentBadge('token', morph.id, value || 'morpheme')}
         </div>
         ${ctx.morphFields.map(
           (name) => html`
             <div class="igt-morph-cell${this._rowCls(`morph:${name}`)}" data-row=${`morph:${name}`}>
+              ${morph.annotations?.[name]?.id
+                ? this._commentBadge(
+                    'span',
+                    morph.annotations[name].id,
+                    `${name} of ${value || 'morpheme'}`,
+                  )
+                : nothing}
               ${this._field({
                 key: `ma:${morph.id}:${name}`,
                 value: morph.annotations?.[name]?.value ?? '',
@@ -2550,6 +2741,13 @@ export class IgtEditor {
           (name) => html`
             <div class="igt-sentence-anno">
               <span class="igt-sentence-anno__label" title=${name}>${name}</span>
+              ${sentence.annotations?.[name]?.id
+                ? this._commentBadge(
+                    'span',
+                    sentence.annotations[name].id,
+                    `${name} of sentence ${index + 1}`,
+                  )
+                : nothing}
               ${this._field({
                 key: `sa:${sentence.id}:${name}`,
                 value: sentence.annotations?.[name]?.value ?? '',

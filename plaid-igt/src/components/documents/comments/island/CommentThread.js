@@ -14,6 +14,8 @@ import { html, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { isPending } from '@/domain/CommentStore';
+import { renderCommentBody } from './renderCommentBody.js';
+import './comments.css';
 
 const MAX_BODY = 10000; // matches plaid.sql.comment/max-body-length
 
@@ -51,6 +53,22 @@ function initials(name) {
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
 }
 
+// Keep a composer's submit button in step with what is typed.
+//
+// Neither host re-renders on keystroke — the island deliberately does not (it
+// would fight focus and IME on every character), and the tab follows suit — so
+// a `?disabled=${...}` binding evaluated at render time goes stale the moment
+// someone types. Toggling the button directly from the input event keeps it
+// honest without a render, and keeps the knowledge here in the view rather
+// than in both hosts.
+const onComposerInput = (report, isReady) => (e) => {
+  report(e.target.value);
+  const btn = e.target
+    .closest('.igt-cmt__composer, .igt-cmt__row--editing')
+    ?.querySelector('.igt-cmt__btn--primary');
+  if (btn) btn.disabled = !isReady(e.target.value);
+};
+
 const submitOnMetaEnter = (fn) => (e) => {
   // Enter alone inserts a newline: a comment is prose, and losing a paragraph
   // break to an accidental submit is worse than reaching for a modifier.
@@ -76,7 +94,7 @@ function commentRow(comment, ctx) {
           maxlength=${MAX_BODY}
           aria-label="Edit your comment"
           .value=${live(editDraft)}
-          @input=${(e) => on.changeEdit(e.target.value)}
+          @input=${onComposerInput(on.changeEdit, (v) => v.trim() && v.trim() !== comment.body)}
           @keydown=${(e) => {
             if (e.key === 'Escape') {
               e.stopPropagation();
@@ -173,7 +191,7 @@ export function commentThread(opts) {
     comments = [],
     canWrite = false,
     canDeleteAny = false,
-    renderBody = (b) => b,
+    renderBody = renderCommentBody,
     editingId = null,
     editDraft = '',
     composerDraft = '',
@@ -213,12 +231,12 @@ export function commentThread(opts) {
                 placeholder="Add a comment…"
                 aria-label="Add a comment"
                 .value=${live(composerDraft)}
-                @input=${(e) => on.changeComposer(e.target.value)}
+                @input=${onComposerInput(on.changeComposer, (v) => v.trim())}
                 @keydown=${submitOnMetaEnter(on.submit)}
               ></textarea>
               <div class="igt-cmt__composer-foot">
                 <span class="igt-cmt__hint"
-                  >${navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl'}+Enter</span
+                  >Markdown · ${navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl'}+Enter</span
                 >
                 <button
                   class="igt-cmt__btn igt-cmt__btn--primary"

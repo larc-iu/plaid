@@ -12,7 +12,8 @@ import { render, html, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { commentThread } from './CommentThread.js';
 import { buildAnchorIndex, describeAnchor } from '@/domain/commentAnchors';
-import './comments.css';
+// comments.css rides along with CommentThread.js, which needs it wherever
+// it is mounted.
 import './comments-island.css';
 
 export class CommentsIsland {

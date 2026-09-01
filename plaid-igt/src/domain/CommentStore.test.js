@@ -403,6 +403,20 @@ describe('CommentStore author names', () => {
     expect(client.users.get).toHaveBeenCalledTimes(2);
   });
 
+  it('resolves the poster s own name, which a comment-free load never saw', async () => {
+    const client = fakeClient([]);
+    const store = makeStore(client);
+    await store.load();
+    await store.whenAuthorsResolved();
+    // Nothing to resolve: an empty document has no authors.
+    expect(client.users.get).not.toHaveBeenCalled();
+
+    await store.post('token', 't1', 'my first comment');
+    await store.whenAuthorsResolved();
+
+    expect(store.authorName(ME)).toBe(`Name of ${ME}`);
+  });
+
   it('does not re-request a name it already has', async () => {
     const client = fakeClient([comment({ id: 'a', authorId: ME })]);
     const store = makeStore(client);
