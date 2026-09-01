@@ -85,3 +85,48 @@ test('a machine translation is violet, a sweep stop, and Ctrl+Enter confirms it 
   expect(span.metadata?.provSource).toBe('service:llm-translator');
   expect(span.value).toBe('a machine draft');
 });
+
+test('Ctrl+Backspace discards a proposed translation, but never a human one', async ({ page }) => {
+  test.skip(!trLayer, 'fixture project has no sentence field');
+  // Put the draft back to machine-unverified (the row above confirms it), so
+  // this row stands on its own whichever way the file is run.
+  await client.spans.setMetadata(spanId, {
+    ...stampInferred('service:llm-translator'),
+    provDetail: { model: 'test', value: 'a machine draft' },
+  });
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+  const tr = page.locator(`.igt-field[data-cell-key="sa:${sid}:${trLayer.name}"]`);
+  await expect(tr).toHaveClass(/igt-field--machine/);
+  await tr.click();
+  await page.keyboard.press('Control+Backspace');
+  await expect(tr).toHaveValue('');
+  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(async () => {
+      try {
+        await client.spans.get(spanId);
+        return 'present';
+      } catch {
+        return 'gone';
+      }
+    })
+    .toBe('gone');
+
+  // A human translation is not a proposal: the chord stays the browser's
+  // delete-previous-word and the value survives untouched on the server.
+  const human = await client.spans.create(trLayer.id, [sid], 'a person wrote this');
+  await page.goto('about:blank');
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+  const tr2 = page.locator(`.igt-field[data-cell-key="sa:${sid}:${trLayer.name}"]`);
+  await expect(tr2).toHaveValue('a person wrote this');
+  await tr2.click();
+  await page.keyboard.press('Control+Backspace');
+  await page.keyboard.press('Escape'); // drop whatever the browser edit did
+  await page.waitForLoadState('networkidle');
+  expect((await client.spans.get(human.id)).value).toBe('a person wrote this');
+  await client.spans.delete(human.id).catch(() => {});
+});

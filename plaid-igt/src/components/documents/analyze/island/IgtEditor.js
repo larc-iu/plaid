@@ -1611,6 +1611,27 @@ export class IgtEditor {
     // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
     // it alone so the chip hop wins over cell navigation.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
+    // Ctrl/Cmd+Backspace: discard a proposed translation wholesale, the sentence
+    // counterpart of the word gesture, then move to the next sentence's same
+    // field so a sweep reads "accept, accept, discard, accept" down a document.
+    // Claimed ONLY over an untouched machine-made value: everywhere else this
+    // is the browser's delete-previous-word, which matters in a field that
+    // holds prose rather than a one-word gloss.
+    if ((e.key === 'Backspace' || e.key === 'Delete') && (e.ctrlKey || e.metaKey)) {
+      const el = e.target;
+      const sid = el.dataset.confirmSentence;
+      const field = el.dataset.fieldName;
+      if (this.readOnly || !sid || !field) return;
+      if (el.value !== (el.dataset.orig ?? '')) return;
+      if (!el.classList.contains('igt-field--machine')) return;
+      e.preventDefault();
+      // The DOM still holds the discarded text until the re-render: don't let
+      // the blur from the hop write it back.
+      el.dataset.suppressCommit = '1';
+      this._run(() => this.doc.discardSentenceSpan(sid, field));
+      if (!this._navMove(el, 'next')) el.blur();
+      return;
+    }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       // Ctrl+Enter: accept a machine-made value as is (the sentence
       // counterpart of the word gesture) and hop to the same field of the
@@ -2213,8 +2234,9 @@ export class IgtEditor {
             machine-made, confirmed by a person · plain = made by a person · editing a value
             confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> accepts everything proposed on a word
             (machine values and guesses alike) and jumps to the next · <kbd>Ctrl</kbd>+<kbd>⌫</kbd>
-            discards a word's unverified proposal · <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd
-            ><kbd>↓</kbd> jump between words and translations with unverified proposals</span
+            discards an unverified proposal, on a word or a translation ·
+            <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between words and
+            translations with unverified proposals</span
           >
         </div>
         <div class="igt-legend__row">

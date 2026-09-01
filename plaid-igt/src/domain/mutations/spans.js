@@ -110,6 +110,33 @@ export const spanMutations = {
   // field): the span keeps its value and gains provConfirmed, the sentence
   // counterpart of confirmWordAnalysis. No-op (true) for human, verified or
   // absent values.
+  // Discard a machine-made sentence value (Ctrl+Backspace in a Translation
+  // field): the sentence counterpart of discardWordAnalysis, for a proposal
+  // that is wrong wholesale rather than worth editing. Deletes the span, so
+  // the field goes back to empty and the sentence reads as unannotated.
+  // No-op (true) for human, verified or absent values — the same protection
+  // the word gesture gives: this only ever throws away what a machine
+  // proposed and nobody vouched for.
+  async discardSentenceSpan(sentenceId, fieldName) {
+    const layer = findSpanLayer(this, 'sentence', fieldName);
+    if (!layer) {
+      this.setError(`Annotation layer "${fieldName}" not found`);
+      return false;
+    }
+    const span = (layer.spans || []).find(
+      (s) => Array.isArray(s.tokens) && s.tokens.includes(sentenceId),
+    );
+    if (!span || !isMachine(span.metadata)) return true;
+    return this._withSaving(`Failed to discard ${fieldName}`, async () => {
+      await this._client.spans.delete(span.id);
+      this._applyRawPatch((next, infoNext) => {
+        const layerDoc = (infoNext.spanLayers?.sentence || []).find((sl) => sl.id === layer.id);
+        if (!layerDoc || !Array.isArray(layerDoc.spans)) return;
+        layerDoc.spans = layerDoc.spans.filter((s) => s.id !== span.id);
+      });
+    });
+  },
+
   async confirmSentenceSpan(sentenceId, fieldName) {
     const layer = findSpanLayer(this, 'sentence', fieldName);
     if (!layer) {

@@ -1098,6 +1098,48 @@ describe('confirmWordAnalysis', () => {
   });
 });
 
+describe('discardSentenceSpan', () => {
+  const machine = { prov: 'inferred', provSource: 'service:translate' };
+
+  const withTranslation = (metadata) => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[0].spanLayers[0].spans = [
+      { id: 'tr-1', tokens: ['s-1'], value: 'the cat', metadata },
+    ];
+    return makeDoc({ raw });
+  };
+
+  it('deletes a machine-made translation nobody has vouched for', async () => {
+    const doc = withTranslation({ ...machine });
+    const ok = await doc.discardSentenceSpan('s-1', 'Translation');
+    expect(ok).toBe(true);
+    expect(doc.client.calls.filter((c) => c.kind === 'spans.delete')).toHaveLength(1);
+    expect(doc.sentences[0].annotations.Translation).toBe(null);
+  });
+
+  it('leaves a human translation alone', async () => {
+    const doc = withTranslation({});
+    const ok = await doc.discardSentenceSpan('s-1', 'Translation');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('spans.delete');
+    expect(doc.sentences[0].annotations.Translation.value).toBe('the cat');
+  });
+
+  it('leaves a confirmed machine translation alone', async () => {
+    const doc = withTranslation({ ...machine, provConfirmed: true });
+    const ok = await doc.discardSentenceSpan('s-1', 'Translation');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('spans.delete');
+  });
+
+  it('is a no-op when the sentence has no value at all', async () => {
+    const doc = makeDoc();
+    const ok = await doc.discardSentenceSpan('s-1', 'Translation');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('spans.delete');
+  });
+});
+
 describe('discardWordAnalysis', () => {
   const machine = { prov: 'inferred', provSource: 'service:polygloss-analyzer' };
 
