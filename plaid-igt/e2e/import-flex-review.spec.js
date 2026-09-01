@@ -5,8 +5,10 @@ import { test, expect, seedAuth } from './fixtures.js';
 // card (new lexicon with an editable name, or an existing one the user
 // maintains) and the opt-in Lexicon fields card. Nothing is imported; the
 // backup is a large local file, so the suite is skipped where it is absent.
+// Point PLAID_FWBACKUP at your own copy to run it elsewhere (same override the
+// .mjs FLEx scripts take).
 
-const BACKUP = '/home/luke/Downloads/Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
+const BACKUP = process.env.PLAID_FWBACKUP || '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
 
 test.describe.configure({ timeout: 180_000 });
 
