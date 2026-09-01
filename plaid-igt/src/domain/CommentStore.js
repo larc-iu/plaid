@@ -360,6 +360,63 @@ export class CommentStore {
   // ============================================================
 
   /**
+   * Open the project's SSE stream while something is actually showing comments,
+   * and return a function that gives up this caller's claim on it.
+   *
+   * Refcounted, because the Comments tab and an open thread popover can both
+   * want it at once and there should still be ONE connection.
+   *
+   * Deliberately NOT held for the life of the editor. The stream is
+   * project-scoped and carries every audit event in the project, of which we
+   * act on the comment ones alone — holding it open for every document anyone
+   * has open is a firehose we would mostly discard. It also never goes idle,
+   * which is fatal to any test (and this repo's e2e suite has 21 files of them)
+   * that waits on `networkidle`.
+   *
+   * The cost of the trade: a badge count can be stale until the document is
+   * reloaded or someone opens a thread. A count is a hint, and it is a cheap
+   * one to be slightly behind on.
+   */
+  watchLive() {
+    this._liveRefs = (this._liveRefs || 0) + 1;
+    if (this._liveRefs === 1) this._openLive();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this._liveRefs -= 1;
+      if (this._liveRefs === 0) this._closeLive();
+    };
+  }
+
+  _openLive() {
+    try {
+      this._connection = this._client.messages.listen(this._projectId, (eventType, eventData) => {
+        if (eventType === 'message') this.applyEvent(eventData.data);
+      });
+    } catch (err) {
+      // A stream that will not open is not worth a toast: threads are correct
+      // as of the last load, and reopening the document repairs them.
+      console.error('Comment live updates unavailable:', err);
+      this._connection = null;
+    }
+  }
+
+  _closeLive() {
+    try {
+      this._connection?.close();
+    } catch {
+      /* already closed */
+    }
+    this._connection = null;
+  }
+
+  /** True while the live stream is open. */
+  get isLive() {
+    return !!this._connection;
+  }
+
+  /**
    * Apply an SSE comment notification. `data` is the raw (kebab-cased) message
    * payload; anything that is not a comment event for this document is ignored.
    *

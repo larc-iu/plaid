@@ -40,11 +40,16 @@ export class CommentsIsland {
     this._onStoreChange = () => this._render();
     this._unsubStore = store.subscribe(this._onStoreChange);
     this._unsubDoc = doc?.subscribe ? doc.subscribe(this._onStoreChange) : null;
+    // Someone is looking at every thread in the document, so this is exactly
+    // when live updates earn their connection.
+    this._releaseLive = store.watchLive();
 
     this._render();
   }
 
   destroy() {
+    this._releaseLive?.();
+    this._releaseLive = null;
     this._unsubStore?.();
     this._unsubDoc?.();
     render(nothing, this.host);

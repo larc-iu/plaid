@@ -450,6 +450,78 @@ describe('CommentStore author names', () => {
   });
 });
 
+describe('CommentStore live stream', () => {
+  const liveClient = () => {
+    const c = fakeClient();
+    c.closed = 0;
+    c.opened = 0;
+    c.messages = {
+      listen: vi.fn(() => {
+        c.opened += 1;
+        return {
+          close: () => {
+            c.closed += 1;
+          },
+        };
+      }),
+    };
+    return c;
+  };
+
+  it('opens one connection however many watchers there are, and closes on the last release', () => {
+    const client = liveClient();
+    const store = makeStore(client);
+
+    const releaseA = store.watchLive();
+    const releaseB = store.watchLive();
+    expect(client.opened).toBe(1);
+    expect(store.isLive).toBe(true);
+
+    releaseA();
+    expect(client.closed).toBe(0);
+    expect(store.isLive).toBe(true);
+
+    releaseB();
+    expect(client.closed).toBe(1);
+    expect(store.isLive).toBe(false);
+  });
+
+  it('ignores a double release rather than dropping someone else s connection', () => {
+    const client = liveClient();
+    const store = makeStore(client);
+    const releaseA = store.watchLive();
+    const releaseB = store.watchLive();
+
+    releaseA();
+    releaseA();
+    expect(store.isLive).toBe(true);
+
+    releaseB();
+    expect(client.closed).toBe(1);
+  });
+
+  it('survives a stream that will not open', () => {
+    const client = liveClient();
+    client.messages.listen.mockImplementationOnce(() => {
+      throw new Error('no SSE here');
+    });
+    const store = makeStore(client);
+
+    const release = store.watchLive();
+    expect(store.isLive).toBe(false);
+    // The rest of the store still works; a comment just will not arrive live.
+    expect(() => release()).not.toThrow();
+  });
+
+  it('is not opened by load: nothing is showing comments yet', async () => {
+    const client = liveClient();
+    const store = makeStore(client);
+    await store.load();
+    expect(client.messages.listen).not.toHaveBeenCalled();
+    expect(store.isLive).toBe(false);
+  });
+});
+
 describe('CommentStore subscription', () => {
   it('notifies listeners on every change and unsubscribes cleanly', async () => {
     const client = fakeClient();

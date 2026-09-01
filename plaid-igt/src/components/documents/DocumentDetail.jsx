@@ -152,29 +152,7 @@ const DocumentEditor = () => {
     comments.onError = (msg, err, label) =>
       notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
     comments.load();
-
-    // Live updates. A comment written elsewhere publishes a notification on the
-    // project's SSE stream carrying only the thread it touched; the store
-    // re-reads that one thread. Our own writes are already applied
-    // optimistically, and the store skips their echo.
-    let connection = null;
-    try {
-      connection = client.messages.listen(projectId, (eventType, eventData) => {
-        if (eventType === 'message') comments.applyEvent(eventData.data);
-      });
-    } catch (e) {
-      // A dropped live connection is not worth a toast: the thread is correct
-      // as of the last load, and reopening the document repairs it.
-      console.error('Comment live updates unavailable:', e);
-    }
-    return () => {
-      try {
-        connection?.close();
-      } catch {
-        /* already closed */
-      }
-    };
-  }, [comments, client, projectId]);
+  }, [comments]);
 
   useDocumentTitle(doc?.document?.name, doc?.project?.name);
 

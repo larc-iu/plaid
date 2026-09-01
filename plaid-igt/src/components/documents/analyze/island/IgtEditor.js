@@ -308,6 +308,8 @@ export class IgtEditor {
     this._unsub = null;
     if (this._unsubComments) this._unsubComments();
     this._unsubComments = null;
+    this._releaseCommentLive?.();
+    this._releaseCommentLive = null;
     document.removeEventListener('click', this._onDocClick);
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
@@ -367,6 +369,9 @@ export class IgtEditor {
 
   _openCommentPopover(entityType, entityId, anchorEl) {
     this._closePopover();
+    // Live updates for as long as a thread is on screen — see
+    // CommentStore.watchLive for why this is not held for the whole session.
+    this._releaseCommentLive = this.comments?.watchLive?.() ?? null;
     this._popover = {
       tokenId: entityId,
       kind: entityType,
@@ -501,6 +506,10 @@ export class IgtEditor {
   }
 
   _openPopover(tokenId, kind, anchorEl) {
+    // Replacing a comment popover with a vocab one bypasses _closePopover, so
+    // give up the live-stream claim here too or it leaks.
+    this._releaseCommentLive?.();
+    this._releaseCommentLive = null;
     this._popover = { tokenId, kind, variant: 'vocab' };
     this._popoverSearch = '';
     this._popoverActiveIndex = 0;
@@ -578,6 +587,8 @@ export class IgtEditor {
   // would steal focus from wherever the user clicked.
   _closePopover(returnFocus = false) {
     if (!this._popover) return;
+    this._releaseCommentLive?.();
+    this._releaseCommentLive = null;
     const returnId = this._popoverReturnId;
     this._popover = null;
     this._popoverPos = null;
