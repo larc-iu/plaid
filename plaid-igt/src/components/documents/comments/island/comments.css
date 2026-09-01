@@ -13,12 +13,16 @@
   font-size: 13px;
   line-height: 1.5;
   color: #111827;
-  /* The in-grid popover renders inside a word's form band, which is italic and
-     coloured for provenance. A comment is prose about the data, not part of
-     it, so reset rather than inherit. */
+  /* The in-grid popover renders inside a word's form band, which is italic,
+     coloured for provenance, and `white-space: nowrap` so a word form never
+     wraps. A comment is prose ABOUT the data, not part of it, so reset rather
+     than inherit — without the nowrap reset a long comment ran off the side of
+     the popover instead of wrapping, and `overflow-wrap` could not save it
+     because nowrap suppresses every break opportunity. */
   font-style: normal;
   font-weight: 400;
   text-align: left;
+  white-space: normal;
 }
 
 .igt-cmt button,
@@ -214,18 +218,46 @@
   justify-content: flex-end;
 }
 
-/* Row actions stay quiet until the row is hovered or focused, so a thread
-   reads as prose rather than as a list of buttons. Same reasoning (and the
-   same opacity-not-display mechanics) as .igt-vocab__link in the grid. */
+/* Row actions ride the byline, pushed to its right edge, and stay quiet until
+   the row is hovered or focused — a thread reads as prose rather than as a
+   list of buttons. Same opacity-not-display mechanics as .igt-vocab__link in
+   the grid, and being on an existing line they cost the row no height. */
 .igt-cmt__actions--rest {
-  padding-left: 26px;
-  justify-content: flex-start;
+  margin-left: auto;
+  gap: 2px;
   opacity: 0;
   transition: opacity 0.12s;
 }
 .igt-cmt__row:hover .igt-cmt__actions--rest,
 .igt-cmt__row:focus-within .igt-cmt__actions--rest {
   opacity: 1;
+}
+
+.igt-cmt__icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: #6b7280;
+  cursor: pointer;
+}
+.igt-cmt__icon:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+.igt-cmt__icon:focus-visible {
+  outline: 2px solid var(--igt-blue, #2563eb);
+  outline-offset: 1px;
+}
+.igt-cmt__icon--danger:hover {
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .igt-cmt__btn {

@@ -1444,8 +1444,10 @@
  */
 .igt-cmt-badge {
   position: absolute;
-  top: -6px;
-  right: -8px;
+  /* Anchored to `.igt-vocab` (the word/morpheme form itself), not the cell, so
+     it sits beside the text rather than out at the column's edge. */
+  top: -7px;
+  right: -13px;
   z-index: 2;
   min-width: 15px;
   height: 15px;
@@ -1496,7 +1498,11 @@
 .igt-cell:hover .igt-cmt-badge--add,
 .igt-morph-cell:hover .igt-cmt-badge--add,
 .igt-sentence-anno:hover .igt-cmt-badge--add,
-.igt-sentence__cmt:hover .igt-cmt-badge--add,
+/* The sentence badge reveals on hovering the whole CARD, exactly like the copy
+   control beside it — hovering a 16px target you cannot see first is not a
+   discovery path. */
+.igt-sentence:hover .igt-sentence__cmt .igt-cmt-badge--add,
+.igt-sentence__cmt:focus-within .igt-cmt-badge--add,
 .igt-token-form:focus-within .igt-cmt-badge--add,
 .igt-morph-form:focus-within .igt-cmt-badge--add,
 .igt-cell:focus-within .igt-cmt-badge--add,
@@ -1505,6 +1511,15 @@
 .igt-cmt-badge--add:focus-visible,
 .igt-cmt-badge--add.is-open {
   opacity: 1;
+}
+
+/* Which word am I about to comment on? A column is as wide as the widest
+   morpheme beneath it, so the form band is the only thing that shows a word's
+   full extent — lift it on hover so the answer is unambiguous before the
+   click. */
+.igt-token-col:hover > .igt-token-form,
+.igt-morph-col:hover > .igt-morph-form {
+  background: #e2e8f0;
 }
 
 /* The sentence badge sits in the card header rather than over a cell, so it
@@ -1552,6 +1567,9 @@
 }
 
 .igt-cmt-pop__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   font-weight: 600;
   color: #6b7280;
@@ -1559,7 +1577,38 @@
   padding-bottom: 8px;
   margin-bottom: 9px;
   border-bottom: 1px solid #e5e7eb;
+}
+
+/* The anchor's name truncates; the close button never does. */
+.igt-cmt-pop__title {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.igt-cmt-pop__close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: #6b7280;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.igt-cmt-pop__close:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+.igt-cmt-pop__close:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 1px;
 }

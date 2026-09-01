@@ -10,7 +10,7 @@
 // callbacks back. That keeps the host free to own focus and re-render timing,
 // which is the whole reason the island exists.
 
-import { html, nothing } from 'lit-html';
+import { html, svg, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { isPending } from '@/domain/CommentStore';
@@ -68,6 +68,28 @@ const onComposerInput = (report, isReady) => (e) => {
     ?.querySelector('.igt-cmt__btn--primary');
   if (btn) btn.disabled = !isReady(e.target.value);
 };
+
+// Inline SVG rather than an icon package: the island has no React, so lucide
+// is not available to it, and two 12px glyphs are not worth a dependency.
+const icon = (paths) =>
+  html`<svg
+    viewBox="0 0 24 24"
+    width="12"
+    height="12"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    ${paths}
+  </svg>`;
+
+const PENCIL = icon(
+  svg`<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />`,
+);
+const TRASH = icon(svg`<path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" />`);
 
 const submitOnMetaEnter = (fn) => (e) => {
   // Enter alone inserts a newline: a comment is prose, and losing a paragraph
@@ -140,32 +162,39 @@ function commentRow(comment, ctx) {
               >edited</span
             >`
           : nothing}
+        <!-- Actions ride the byline rather than sitting under the body: icons
+             on the line that already exists cost no extra height, and a thread
+             in a popover has little of it to spare. -->
+        ${ctx.canEdit(comment) || ctx.canDelete(comment)
+          ? html`
+              <span class="igt-cmt__actions igt-cmt__actions--rest">
+                ${ctx.canEdit(comment)
+                  ? html`<button
+                      class="igt-cmt__icon"
+                      type="button"
+                      title="Edit"
+                      aria-label="Edit this comment"
+                      @click=${() => on.startEdit(comment)}
+                    >
+                      ${PENCIL}
+                    </button>`
+                  : nothing}
+                ${ctx.canDelete(comment)
+                  ? html`<button
+                      class="igt-cmt__icon igt-cmt__icon--danger"
+                      type="button"
+                      title="Delete"
+                      aria-label="Delete this comment"
+                      @click=${() => on.remove(comment)}
+                    >
+                      ${TRASH}
+                    </button>`
+                  : nothing}
+              </span>
+            `
+          : nothing}
       </div>
       <div class="igt-cmt__body">${renderBody(comment.body)}</div>
-      ${ctx.canEdit(comment) || ctx.canDelete(comment)
-        ? html`
-            <div class="igt-cmt__actions igt-cmt__actions--rest">
-              ${ctx.canEdit(comment)
-                ? html`<button
-                    class="igt-cmt__btn"
-                    type="button"
-                    @click=${() => on.startEdit(comment)}
-                  >
-                    Edit
-                  </button>`
-                : nothing}
-              ${ctx.canDelete(comment)
-                ? html`<button
-                    class="igt-cmt__btn igt-cmt__btn--danger"
-                    type="button"
-                    @click=${() => on.remove(comment)}
-                  >
-                    Delete
-                  </button>`
-                : nothing}
-            </div>
-          `
-        : nothing}
     </li>
   `;
 }

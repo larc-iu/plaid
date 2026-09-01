@@ -55,6 +55,12 @@ const draw = (opts) => {
 
 const text = (sel) => [...host.querySelectorAll(sel)].map((el) => el.textContent.trim());
 const buttons = () => [...host.querySelectorAll('button')].map((b) => b.textContent.trim());
+// Row actions are icon buttons now, so they are identified by their label.
+const actions = () =>
+  [...host.querySelectorAll('.igt-cmt__actions--rest button')].map((b) =>
+    b.getAttribute('aria-label'),
+  );
+const countAction = (verb) => actions().filter((l) => l?.startsWith(verb)).length;
 
 beforeEach(() => {
   seq = 0;
@@ -80,6 +86,15 @@ describe('timeAgo', () => {
 });
 
 describe('commentThread rendering', () => {
+  it('keeps the actions on the byline so a row costs one line of height', () => {
+    // They used to sit under the body, which added a row to every comment in a
+    // popover that has little vertical space to give.
+    draw({ comments: [comment()], canWrite: true });
+    const meta = host.querySelector('.igt-cmt__meta');
+    expect(meta.querySelector('.igt-cmt__actions--rest')).not.toBeNull();
+    expect(host.querySelector('.igt-cmt__body .igt-cmt__actions--rest')).toBeNull();
+  });
+
   it('renders each comment with its author and body', () => {
     draw({
       store: storeWith({ [ME]: 'Luke G', [THEM]: 'Ada L' }),
@@ -102,8 +117,7 @@ describe('commentThread rendering', () => {
 
     expect(host.querySelectorAll('.igt-cmt__row--pending').length).toBe(1);
     expect(text('.igt-cmt__time')).toEqual(['sending…']);
-    expect(buttons()).not.toContain('Edit');
-    expect(buttons()).not.toContain('Delete');
+    expect(actions()).toEqual([]);
   });
 
   it('says so when the thread is empty', () => {
@@ -128,20 +142,20 @@ describe('commentThread permissions', () => {
   it('offers Edit only on your own comment, never on someone else s', () => {
     draw({ comments: [comment({ authorId: ME }), comment({ authorId: THEM })], canWrite: true });
     // One Edit (mine) — not two.
-    expect(buttons().filter((b) => b === 'Edit')).toHaveLength(1);
+    expect(countAction('Edit')).toBe(1);
   });
 
   it('offers Delete on your own, and on anyone s once you maintain the project', () => {
     const comments = [comment({ authorId: ME }), comment({ authorId: THEM })];
 
     draw({ comments, canWrite: true, canDeleteAny: false });
-    expect(buttons().filter((b) => b === 'Delete')).toHaveLength(1);
+    expect(countAction('Delete')).toBe(1);
 
     draw({ comments, canWrite: true, canDeleteAny: true });
-    expect(buttons().filter((b) => b === 'Delete')).toHaveLength(2);
+    expect(countAction('Delete')).toBe(2);
     // Still only one Edit: maintaining a project does not license rewriting
     // someone else's words.
-    expect(buttons().filter((b) => b === 'Edit')).toHaveLength(1);
+    expect(countAction('Edit')).toBe(1);
   });
 });
 
@@ -213,7 +227,7 @@ describe('commentThread interaction', () => {
     const c = comment();
     draw({ comments: [c], canWrite: true, on });
 
-    host.querySelectorAll('button').forEach((b) => b.textContent.trim() === 'Edit' && b.click());
+    host.querySelector('[aria-label^="Edit"]').click();
     expect(on.startEdit).toHaveBeenCalledWith(c);
   });
 
