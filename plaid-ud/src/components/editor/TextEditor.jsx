@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   SimpleGrid,
   Stack,
@@ -10,8 +10,6 @@ import {
   Text,
   Alert,
   Paper,
-  Center,
-  Loader,
 } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { cpSlice } from '@larc-iu/plaid-client';
@@ -21,70 +19,42 @@ import {
   hasForeignSubstrateParticipants,
   foreignAnnotationLossForWord,
 } from '../../utils/udLayerUtils.js';
-import { ConlluDocument } from '../../domain/ConlluDocument.js';
-import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canEditProject } from '../../utils/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
-import { DocumentTabs } from './DocumentTabs.jsx';
+import { useDocumentEditor } from './useDocumentEditor.js';
 import { NlpServiceControls } from './NlpServiceControls.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const TextEditor = () => {
-  const { projectId, documentId } = useParams();
   const navigate = useNavigate();
-  const [doc, setDoc] = useState(null);
-  const [project, setProject] = useState(null);
+  // Project, document, the breadcrumbs/tab strip and the version-counter
+  // subscription all come from DocumentEditorShell, which guarantees both the
+  // project and the document are loaded before this renders.
+  const { projectId, documentId, doc, project, reload } = useDocumentEditor();
   const [textContent, setTextContent] = useState('');
   const [originalTokenizedText, setOriginalTokenizedText] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
-  const { getClient, user, logout } = useAuth();
+  const { getClient, user } = useAuth();
 
-  // Subscribe the component to the doc's version counter so any mutation
-  // (sentences/words/morphemes/spans/relations + isSaving + error) triggers
-  // a re-render.
-  useConlluDocument(doc);
   useDocumentTitle('Text Editor', doc?.name, project?.name);
 
-  const fetchData = async (initial) => {
-    const client = getClient();
-    if (!client) {
-      logout();
-      return;
-    }
-    try {
-      if (initial) setLoading(true);
-      const [projectData, next] = await Promise.all([
-        client.projects.get(projectId),
-        ConlluDocument.load(client, projectId, documentId),
-      ]);
-      setProject(projectData);
-      setDoc(next);
-      const text = next.layerInfo.textLayer?.text;
-      if (text?.body) {
-        setTextContent(text.body);
-        const info = next.layerInfo;
-        const hasTokens =
-          (info.sentenceTokenLayer?.tokens || []).length > 0 ||
-          (info.wordTokenLayer?.tokens || []).length > 0;
-        if (hasTokens && !originalTokenizedText) {
-          setOriginalTokenizedText(text.body);
-        }
-      }
-      setLoadError('');
-    } catch (err) {
-      if (err.status === 401) {
-        logout();
-        return;
-      }
-      setLoadError('Failed to load document: ' + (err.message || 'Unknown error'));
-      console.error('Error fetching data:', err);
-    } finally {
-      if (initial) setLoading(false);
-    }
-  };
+  const serverText = doc.layerInfo.textLayer?.text?.body || '';
+
+  // Mirror the server's text into the textarea whenever it changes underneath
+  // us — the initial load, or an NLP service that rewrote the body. Keyed on
+  // the body itself rather than on the doc instance, so the many emits from
+  // ordinary token edits don't stomp on what the user is typing.
+  useEffect(() => {
+    if (!serverText) return;
+    setTextContent(serverText);
+    const info = doc.layerInfo;
+    const hasTokens =
+      (info.sentenceTokenLayer?.tokens || []).length > 0 ||
+      (info.wordTokenLayer?.tokens || []).length > 0;
+    if (hasTokens) setOriginalTokenizedText((prev) => prev || serverText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId, serverText]);
 
   useEffect(() => {
     // The text editor does structural edits (text body, tokenization) that
@@ -93,7 +63,6 @@ export const TextEditor = () => {
     // makes Basic Tokenize / Save Text fail with a spurious 409.
     const client = getClient();
     if (client) client.exitStrictMode();
-    fetchData(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, documentId]);
 
@@ -207,22 +176,6 @@ export const TextEditor = () => {
     });
   };
 
-  if (loading) {
-    return (
-      <Center py={48}>
-        <Loader />
-      </Center>
-    );
-  }
-
-  if (loadError) {
-    return <Alert color="red">{loadError}</Alert>;
-  }
-
-  if (!doc || !project) {
-    return <Alert color="red">Document or project not found</Alert>;
-  }
-
   const layerInfo = doc.layerInfo;
   const sentenceTokens = layerInfo.sentenceTokenLayer?.tokens || [];
   const wordTokens = layerInfo.wordTokenLayer?.tokens || [];
@@ -266,13 +219,6 @@ export const TextEditor = () => {
 
   return (
     <>
-      <DocumentTabs
-        projectId={projectId}
-        documentId={documentId}
-        project={project}
-        document={doc.raw}
-      />
-
       {readOnly && (
         <Alert color="blue" variant="light" mb="sm" py="xs">
           Read-only — you have viewer access to this project, so the text and tokenization can't be
@@ -378,7 +324,7 @@ This is a second sentence for testing.`}
                 documentId={documentId}
                 project={project}
                 enabled
-                onParsed={() => fetchData()}
+                onParsed={reload}
               />
             </Group>
           )}

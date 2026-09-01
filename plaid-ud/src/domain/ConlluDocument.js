@@ -602,6 +602,14 @@ export class ConlluDocument {
     this._emit();
   }
 
+  // Public resync. `DocumentEditorShell` hands this to the tabs as `reload`,
+  // so an NLP service that rewrote the document refreshes it IN PLACE — the
+  // instance (and every component subscribed to it) survives, where building a
+  // fresh ConlluDocument would remount the whole annotation grid.
+  async reload() {
+    return this._reload();
+  }
+
   // Re-fetch the raw document from the server. Used in catch-paths and as
   // an explicit "give up and resync" hook after large multi-batch ops.
   // Emits so the version bumps in lockstep with the `_raw` swap.

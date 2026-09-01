@@ -70,13 +70,19 @@ export const Layout = () => {
       </Box>
 
       <Box component="main" style={{ flex: 1 }}>
-        {isAnnotationEditor ? (
+        {/* One Container that changes shape, never a `cond ? <Outlet/> :
+            <Container><Outlet/></Container>`. Swapping the element AT this
+            position would unmount everything below it when you move into or out
+            of /annotate — which is exactly the remount DocumentEditorShell
+            exists to prevent, since the shell renders through this Outlet. */}
+        <Container
+          size={isAnnotationEditor ? undefined : 'xl'}
+          fluid={isAnnotationEditor}
+          px={isAnnotationEditor ? 0 : undefined}
+          py={isAnnotationEditor ? 0 : 'xl'}
+        >
           <Outlet />
-        ) : (
-          <Container size="xl" py="xl">
-            <Outlet />
-          </Container>
-        )}
+        </Container>
       </Box>
     </Box>
   );

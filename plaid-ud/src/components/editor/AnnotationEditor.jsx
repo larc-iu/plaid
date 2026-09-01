@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, Group, Button, Loader, Text, Center, Alert, Stack } from '@mantine/core';
 import { IconHistory, IconInfoCircle } from '@tabler/icons-react';
 import { NlpServiceControls } from './NlpServiceControls.jsx';
@@ -7,12 +7,10 @@ import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
-import { DocumentTabs } from './DocumentTabs.jsx';
+import { useDocumentEditor } from './useDocumentEditor.js';
 import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { notifications } from '@mantine/notifications';
-import { ConlluDocument } from '../../domain/ConlluDocument.js';
-import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
 import { notifyWarning, notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
@@ -76,8 +74,11 @@ const reportIntegrityFindings = (findings, documentId) => {
 };
 
 export const AnnotationEditor = () => {
-  const { projectId, documentId } = useParams();
   const navigate = useNavigate();
+  // Project, document, the breadcrumbs/tab strip and the version-counter
+  // subscription all come from DocumentEditorShell, which guarantees both the
+  // project and the document are loaded before this renders.
+  const { projectId, documentId, doc, project, reload, setChromeOffset } = useDocumentEditor();
   // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
   // briefly highlights that sentence once the grid is rendered.
   const [searchParams] = useSearchParams();
@@ -89,17 +90,18 @@ export const AnnotationEditor = () => {
   const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
   const [viewingHistoricalState, setViewingHistoricalState] = useState(false);
 
-  // Long-lived current document + ambient component state.
-  const [doc, setDoc] = useState(null);
-  const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const { getClient, user, logout } = useAuth();
+  const { getClient, user } = useAuth();
   // Reconcile-on-open is a WRITE (it can seed syntactic-words + delete
   // relations), so it must run at most once per document — otherwise StrictMode's
   // double-invoke of the mount effect would seed duplicates. Track the last
-  // document we reconciled; navigation to a new doc re-arms it.
+  // document we reconciled; navigation to a new doc re-arms it. `reconcileRef`
+  // holds the in-flight promise so BOTH StrictMode passes await the same repair
+  // before entering strict mode.
   const reconciledDocRef = useRef(null);
+  const reconcileRef = useRef(null);
+  // Gates the grid until the repair has finished and strict mode is on, so no
+  // edit can land un-OCC-guarded in the window where a repair is still writing.
+  const [reconciling, setReconciling] = useState(true);
 
   // Which annotation rows are expanded (document-wide). Persisted to localStorage.
   const [visibleFields, setVisibleFields] = useState(loadVisibleFields);
@@ -114,122 +116,112 @@ export const AnnotationEditor = () => {
     setVisibleFields((prev) => ({ ...prev, [field]: !prev[field] }));
   }, []);
 
-  useConlluDocument(doc);
   useDocumentTitle('Annotate', doc?.name, project?.name);
 
-  const fetchData = async (initial, doReconcile = initial) => {
-    if (!projectId || !documentId) return;
-    const client = getClient();
-    if (!client) {
-      logout();
-      return;
-    }
+  // Reconcile-on-open: heal UD invariants another app may have broken while
+  // this editor was closed (e.g. a sentence split that left a dependency
+  // relation crossing a boundary). Loud on success AND on failure.
+  const runReconcile = useCallback(async () => {
     try {
-      if (initial) setLoading(true);
-      const [projectData, next] = await Promise.all([
-        client.projects.get(projectId),
-        ConlluDocument.load(client, projectId, documentId),
-      ]);
-      setProject(projectData);
-      // Reconcile-on-open: heal UD invariants another app may have broken while
-      // this editor was closed (e.g. a sentence split that left a dependency
-      // relation crossing a boundary). Only on the INITIAL open (not on every
-      // refresh), with edit permission, and BEFORE entering strict mode so the
-      // repair's own write doesn't trip OCC. Loud on success AND on failure.
-      if (initial && doReconcile && canEditProject(projectData, user)) {
-        try {
-          const {
-            deletedRelations,
-            createdSyntacticWords,
-            deletedOrphans,
-            deletedAnnotatedOrphans,
-            dedupedSpans,
-            findings,
-            error,
-          } = await next.reconcileOnOpen();
-          if (error) {
-            notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
-          } else {
-            const parts = [];
-            if (createdSyntacticWords > 0) {
-              parts.push(
-                `added ${createdSyntacticWords} word${createdSyntacticWords === 1 ? '' : 's'} ` +
-                  'to the annotation grid',
-              );
-            }
-            if (deletedOrphans > 0) {
-              let s =
-                `removed ${deletedOrphans} stray word${deletedOrphans === 1 ? '' : 's'} ` +
-                'that no longer matched the text';
-              if (deletedAnnotatedOrphans > 0) {
-                s += ` (${deletedAnnotatedOrphans} had annotations, recoverable via document history)`;
-              }
-              parts.push(s);
-            }
-            if (dedupedSpans > 0) {
-              parts.push(
-                `merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} ` +
-                  "(values joined with ' | ' — review them)",
-              );
-            }
-            if (deletedRelations > 0) {
-              parts.push(
-                `removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
-                  'crossed a sentence boundary',
-              );
-            }
-            if (parts.length) {
-              notifyWarning(
-                `This document was edited in another app: ${parts.join('; ')}. Please review.`,
-                'Document repaired',
-                { autoClose: false },
-              );
-            }
-            reportIntegrityFindings(findings, next.id);
-          }
-        } catch (e) {
-          console.error('Reconcile-on-open failed:', e);
-          notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
-        }
-      }
-      setDoc(next);
-      client.enterStrictMode(documentId);
-      setLoadError('');
-    } catch (err) {
-      if (err.status === 401) {
-        logout();
+      const {
+        deletedRelations,
+        createdSyntacticWords,
+        deletedOrphans,
+        deletedAnnotatedOrphans,
+        dedupedSpans,
+        findings,
+        error,
+      } = await doc.reconcileOnOpen();
+      if (error) {
+        notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
         return;
       }
-      setLoadError('Failed to load document: ' + (err.message || 'Unknown error'));
-      console.error('Error fetching data:', err);
-    } finally {
-      if (initial) setLoading(false);
+      const parts = [];
+      if (createdSyntacticWords > 0) {
+        parts.push(
+          `added ${createdSyntacticWords} word${createdSyntacticWords === 1 ? '' : 's'} ` +
+            'to the annotation grid',
+        );
+      }
+      if (deletedOrphans > 0) {
+        let s =
+          `removed ${deletedOrphans} stray word${deletedOrphans === 1 ? '' : 's'} ` +
+          'that no longer matched the text';
+        if (deletedAnnotatedOrphans > 0) {
+          s += ` (${deletedAnnotatedOrphans} had annotations, recoverable via document history)`;
+        }
+        parts.push(s);
+      }
+      if (dedupedSpans > 0) {
+        parts.push(
+          `merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} ` +
+            "(values joined with ' | ' — review them)",
+        );
+      }
+      if (deletedRelations > 0) {
+        parts.push(
+          `removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
+            'crossed a sentence boundary',
+        );
+      }
+      if (parts.length) {
+        notifyWarning(
+          `This document was edited in another app: ${parts.join('; ')}. Please review.`,
+          'Document repaired',
+          { autoClose: false },
+        );
+      }
+      reportIntegrityFindings(findings, doc.id);
+    } catch (e) {
+      console.error('Reconcile-on-open failed:', e);
+      notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
     }
-  };
+  }, [doc]);
 
   useEffect(() => {
-    // Reconcile once per document. Setting the ref synchronously here (not
-    // inside async fetchData) closes the StrictMode race where both effect runs
-    // pass the check before either has marked the doc reconciled.
-    const doReconcile = reconciledDocRef.current !== documentId;
-    if (doReconcile) reconciledDocRef.current = documentId;
-    fetchData(true, doReconcile);
-    // Strict mode is entered in fetchData to OCC-guard annotation edits. It's
-    // client-GLOBAL, so it must be exited when we leave this document/editor —
-    // otherwise it leaks onto unrelated writes (e.g. tokenizing in the Text
-    // Editor), attaching a stale document-version and triggering spurious 409s.
+    let cancelled = false;
+    // Arm the repair once per document. Setting the ref synchronously here (not
+    // inside the async body) closes the StrictMode race where both effect runs
+    // pass the check before either has marked the doc reconciled — both then
+    // await the SAME promise below rather than repairing twice.
+    if (reconciledDocRef.current !== documentId) {
+      reconciledDocRef.current = documentId;
+      reconcileRef.current = canEditProject(project, user) ? runReconcile() : null;
+    }
+    const pending = reconcileRef.current;
+
+    (async () => {
+      if (pending) await pending;
+      if (cancelled) return;
+      // Strict mode OCC-guards annotation edits, and must be entered only AFTER
+      // the repair's own writes have landed.
+      const client = getClient();
+      if (client) client.enterStrictMode(documentId);
+      setReconciling(false);
+    })();
+
+    // Strict mode is client-GLOBAL, so it must be exited when we leave this
+    // tab — otherwise it leaks onto unrelated writes (e.g. tokenizing in the
+    // Text Editor), attaching a stale document-version and triggering spurious
+    // 409s.
     return () => {
+      cancelled = true;
       const client = getClient();
       if (client) client.exitStrictMode();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, documentId]);
+  }, [documentId, doc]);
 
-  const refreshData = useCallback(() => fetchData(false), [projectId, documentId, getClient]);
+  // The history drawer pushes content right rather than overlaying it. The
+  // breadcrumbs and tab strip live in DocumentEditorShell now, so tell it to
+  // move with us — and put it back when we leave the tab.
+  useEffect(() => {
+    setChromeOffset(isHistoryDrawerOpen ? DRAWER_WIDTH : 0);
+    return () => setChromeOffset(0);
+  }, [isHistoryDrawerOpen, setChromeOffset]);
 
-  // doc-level operation errors now surface as toasts (see ConlluDocument.setError);
-  // only a hard document-load failure stays as a persistent page banner.
-  const error = loadError || '';
+  // doc-level operation errors surface as toasts (see ConlluDocument.setError);
+  // a hard document-load failure is DocumentEditorShell's banner, not ours.
 
   // History functionality
   const {
@@ -268,7 +260,7 @@ export const AnnotationEditor = () => {
   // has rendered. Rows are virtualized but their placeholders hold the slot, so
   // the wrapper is always in the DOM to scroll to.
   useEffect(() => {
-    if (loading || !sentParam || !processedSentences.length) return;
+    if (reconciling || !sentParam || !processedSentences.length) return;
     if (scrolledForRef.current === sentParam) return;
     if (!processedSentences.some((s) => String(s.id) === String(sentParam))) return;
     scrolledForRef.current = sentParam;
@@ -279,10 +271,10 @@ export const AnnotationEditor = () => {
       setTimeout(() => setFlashSentId(null), 2000);
     });
     return () => cancelAnimationFrame(raf);
-  }, [loading, sentParam, processedSentences]);
+  }, [reconciling, sentParam, processedSentences]);
 
   useEffect(() => {
-    if (loading) return;
+    if (reconciling) return;
     if (!projectId || !project) return;
     if (!user) return;
     if (!activeDocument) return;
@@ -299,7 +291,7 @@ export const AnnotationEditor = () => {
     }
     // Non-maintainers can't configure/adopt; rather than bouncing them out, the
     // render shows a clear "not set up for UD" notice (see below).
-  }, [loading, layerInfo, project, projectId, user, navigate, activeDocument]);
+  }, [reconciling, layerInfo, project, projectId, user, navigate, activeDocument]);
 
   // Bind annotation/relation handlers to the current document. When viewing
   // historical state we pass `null` so VirtualSentenceRow disables editing.
@@ -392,19 +384,11 @@ export const AnnotationEditor = () => {
           documentId={documentId}
           project={project}
           enabled={hasText && canEdit && !selectedHistoryEntry}
-          onParsed={refreshData}
+          onParsed={reload}
         />
       </Group>
     </Group>
   );
-
-  // History/parse errors surface as toasts (and the history error also shows
-  // inline within the drawer); only the page-load failure is a banner here.
-  const errorMessages = error ? (
-    <Stack gap="xs" mt="md">
-      <Alert color="red">{error}</Alert>
-    </Stack>
-  ) : null;
 
   // Persistent read-only banner, shown whenever editing is disabled — either
   // because the user only has viewer access or because they're viewing a past
@@ -436,7 +420,7 @@ export const AnnotationEditor = () => {
   // A project not set up for UD, opened by a non-maintainer: maintainers are
   // redirected to /configuration to set it up/adopt it; everyone else gets a
   // clear notice instead of a broken editor or a silent bounce.
-  if (!loading && layerInfo && !layerInfo.isConfigured && !canManageProject(project, user)) {
+  if (!reconciling && layerInfo && !layerInfo.isConfigured && !canManageProject(project, user)) {
     return (
       <Box style={{ width: '100%', minHeight: '100vh' }}>
         <Center py={64}>
@@ -473,30 +457,25 @@ export const AnnotationEditor = () => {
           minHeight: '100vh',
         }}
       >
-        {loading && (
+        {/* Only the BODY waits here — the breadcrumbs and tab strip are the
+            shell's and stay on screen throughout. */}
+        {reconciling && (
           <Center py={48}>
             <Loader />
           </Center>
         )}
 
-        {!loading && !activeDocument && (
+        {!reconciling && !activeDocument && (
           <Text ta="center" c="dimmed" py="xl">
             Document not found
           </Text>
         )}
 
-        {!loading && activeDocument && (
+        {!reconciling && activeDocument && (
           <>
-            <Box px="lg" py="md">
-              <DocumentTabs
-                projectId={projectId}
-                documentId={documentId}
-                project={project}
-                document={activeDocument}
-              />
+            <Box px="lg" pb="md">
               {toolbar}
               {readOnlyBanner}
-              {errorMessages}
               {processedSentences.length > 0 && !readOnly && (
                 <Text size="xs" c="dimmed" mt="sm">
                   Tip: drag from one token to another to create a dependency relation; click a

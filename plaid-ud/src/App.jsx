@@ -15,6 +15,7 @@ import { ProjectImportExport } from './components/projects/ProjectImportExport.j
 import { TextEditor } from './components/editor/TextEditor.jsx';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
 import { ExportEditor } from './components/editor/ExportEditor.jsx';
+import { DocumentEditorShell } from './components/editor/DocumentEditorShell.jsx';
 import './App.css';
 
 function App() {
@@ -74,20 +75,19 @@ function App() {
                 annotation editor's "missing layers" auto-redirect. */}
             <Route path="projects/:projectId/configuration" element={<ProjectConfiguration />} />
 
-            {/* Text editor route */}
-            <Route path="projects/:projectId/documents/:documentId/edit" element={<TextEditor />} />
-
-            {/* Annotation editor route */}
+            {/* The three document-editor tabs are CHILDREN of one shell route,
+                not siblings. The shell's params don't change when you switch
+                tabs, so it stays mounted: the breadcrumbs and tab strip never
+                unmount and the document is loaded once instead of once per
+                tab visit. See DocumentEditorShell. */}
             <Route
-              path="projects/:projectId/documents/:documentId/annotate"
-              element={<AnnotationEditor />}
-            />
-
-            {/* Export editor route */}
-            <Route
-              path="projects/:projectId/documents/:documentId/export"
-              element={<ExportEditor />}
-            />
+              path="projects/:projectId/documents/:documentId"
+              element={<DocumentEditorShell />}
+            >
+              <Route path="edit" element={<TextEditor />} />
+              <Route path="annotate" element={<AnnotationEditor />} />
+              <Route path="export" element={<ExportEditor />} />
+            </Route>
           </Route>
 
           {/* Catch all - redirect to login */}
