@@ -25,11 +25,10 @@
 // TIME goes back to seconds: EAF stores milliseconds, Plaid's alignment layer
 // stores seconds in metadata.timeBegin/timeEnd.
 
-import { makeCpIndexer, matchesAt } from '../align.js';
+import { makeCpIndexer, matchesAt, alignWords } from '../align.js';
 // alignWords is the shared "ordered forms, no offsets" matcher. It currently
 // lives with the CLDF importer that first needed it; it belongs in align.js
 // beside its siblings and should move there when that file next settles.
-import { alignWords } from '../cldf/buildDocuments.js';
 import { ROLES, nodeLabel } from './schema.js';
 import { chainOrder } from './readEaf.js';
 
