@@ -46,7 +46,7 @@ import {
   precedentCounts,
   precedentForm,
 } from '@/domain/precedent';
-import { humanizeError } from '@/utils/feedback';
+import { humanizeError, notifyInfo } from '@/utils/feedback';
 
 // Stable empty precedent results, so the tally memo does not rebuild on every
 // render while the project queries are still in flight.
@@ -92,7 +92,7 @@ const provClass = (base, state) => (state ? `${base}--${state}` : '');
 
 const PROV_TITLE = {
   [PROV_STATES.MACHINE]:
-    'machine-suggested, unverified. Edit to fix, Ctrl+Enter confirms the whole word',
+    'machine-suggested, unverified. Edit to fix, Ctrl+Enter accepts the whole word',
   [PROV_STATES.VERIFIED]: 'machine-suggested, confirmed',
 };
 const provTitle = (value, state) => `${value}: ${PROV_TITLE[state]}`;
@@ -1003,20 +1003,35 @@ export class IgtEditor {
     }
   }
 
-  // Ctrl/Cmd+Enter on any cell of a word column: confirm the WHOLE word's
-  // machine-unverified analysis (segmentation, links, values) in one gesture,
-  // then hop to the same-tier cell of the NEXT word — the review flow is
-  // "glance, Ctrl+Enter, glance, Ctrl+Enter" across a sentence. Deliberate —
-  // plain Enter must stay safe to navigate with. The hop skips the rest of
-  // the current word (it was just confirmed wholesale, cell-by-cell movement
-  // through it adds nothing) and advances even when nothing needed confirming,
-  // so the gesture rides smoothly across mixed machine/human words.
+  // Ctrl/Cmd+Enter on any cell of a word column: accept EVERYTHING proposed on
+  // that word in one gesture, then hop to the same-tier cell of the NEXT word —
+  // the review flow is "glance, Ctrl+Enter, glance, Ctrl+Enter" across a
+  // sentence. "Proposed" means what the annotator sees, not where it came
+  // from: machine-unverified material is confirmed, and every cell showing a
+  // guess is written (the same born-verified write plain Enter makes on one
+  // cell). The two look identical on screen by design, so splitting the
+  // gesture by which of them a cell holds would only be the data model showing
+  // through. The scope split is the real one, and it stays: plain Enter is one
+  // cell then the next cell, Ctrl+Enter is one word then the next word.
+  //
+  // The hop skips the rest of the current word (just accepted wholesale) but
+  // does NOT happen when there was nothing to accept: hopping on a no-op reads
+  // exactly like a confirmation that never happened, which is how this was
+  // first reported.
   _maybeConfirmWord(e) {
     if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return false;
     const wordId = e.target.dataset.confirmWord;
     if (!wordId || this.readOnly) return false;
     e.preventDefault();
-    this._run(() => this.doc.confirmWordAnalysis(wordId));
+    const adoptions = this._wordGuessAdoptions(wordId);
+    if (!adoptions.length && !this._wordHasUnverified(wordId)) {
+      notifyInfo(
+        'Everything here was made by a person already. Enter accepts a guess in one cell.',
+        'Nothing to accept on this word',
+      );
+      return true;
+    }
+    this._run(() => this.doc.confirmWordAnalysis(wordId, adoptions));
     if (!this._advanceToNextWord(e.target, wordId)) {
       // Last word on the page: commit (blur) but keep the caret here rather
       // than dropping focus to <body> (E2). Re-affirmed after the re-render.
@@ -1025,8 +1040,49 @@ export class IgtEditor {
       this._pendingFocus = { cellKey: key };
       const same = key ? this.container.querySelector(`[data-cell-key="${key}"]`) : null;
       if (same) same.focus();
+    } else if (adoptions.length) {
+      // Adopting reloads the document (new spans), which re-renders the grid
+      // out from under the hop target: re-affirm it the way discard does.
+      const key = document.activeElement?.dataset?.cellKey;
+      if (key) this._pendingFocus = { cellKey: key };
     }
     return true;
+  }
+
+  // Every cell in this word's column that is showing a guess right now, as
+  // adoption records for confirmWordAnalysis. Read off the rendered cells
+  // (they already carry the guess in data-guess-*) rather than recomputed, so
+  // "everything proposed on this word" is exactly what the grid is showing.
+  // Guesses only render on empty, enabled annotation cells, so `wa:`/`ma:`
+  // cell keys are the whole of it: orthographies and morpheme forms never
+  // carry one, and sentence fields are their own gesture.
+  _wordGuessAdoptions(wordId) {
+    const col = this.container.querySelector(`[data-word-col="${wordId}"]`);
+    if (!col) return [];
+    const out = [];
+    for (const el of col.querySelectorAll('.igt-field[data-guess-value]')) {
+      if (el.disabled || el.value !== '') continue;
+      const [kind, targetId, ...rest] = (el.dataset.cellKey || '').split(':');
+      const field = rest.join(':');
+      const value = el.dataset.guessValue;
+      if ((kind !== 'wa' && kind !== 'ma') || !targetId || !field || !value) continue;
+      out.push({
+        targetId,
+        field,
+        value,
+        metadata: confirmedInferred(el.dataset.guessSource || 'unknown', { detail: { value } }),
+      });
+    }
+    return out;
+  }
+
+  // Whether this word column holds any machine-unverified material — the same
+  // selector the review sweep uses to find its next stop.
+  _wordHasUnverified(wordId) {
+    const col = this.container.querySelector(`[data-word-col="${wordId}"]`);
+    return !!col?.querySelector(
+      '.igt-field--machine, .igt-token-form--machine, button.igt-vocab__hint--machine:not([disabled])',
+    );
   }
 
   // Ctrl/Cmd+Backspace (or Delete) on any cell of a word column: discard the
@@ -1461,7 +1517,7 @@ export class IgtEditor {
     const alts = !this.readOnly && alternatives ? alternatives() : null;
     const nAlts = alts ? alts.length : 0;
     const baseTitle = g
-      ? `Guess: ${g.value}. Enter confirms, typing replaces`
+      ? `Guess: ${g.value}. Enter accepts it, Ctrl+Enter accepts the whole word, typing replaces`
       : p
         ? provTitle(v, p)
         : filled
@@ -2077,10 +2133,9 @@ export class IgtEditor {
           <strong>Guesses</strong>
           <span
             >violet italic values are guesses from the linked entry or from matching forms.
-            <kbd>↵</kbd> confirms, typing replaces, leaving the cell discards · <kbd>Alt</kbd>+<kbd
-              >↓</kbd
-            >
-            lists every value seen for the form, with counts</span
+            <kbd>↵</kbd> accepts this cell, <kbd>Ctrl</kbd>+<kbd>↵</kbd> accepts the whole word,
+            typing replaces, leaving the cell discards · <kbd>Alt</kbd>+<kbd>↓</kbd> lists every
+            value seen for the form, with counts</span
           >
         </div>
         <div class="igt-legend__row">
@@ -2090,10 +2145,10 @@ export class IgtEditor {
             machine-made, unverified ·
             <span class="igt-legend__prov igt-legend__prov--verified">violet underline</span> =
             machine-made, confirmed by a person · plain = made by a person · editing a value
-            confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> confirms a whole word and jumps to the next ·
-            <kbd>Ctrl</kbd>+<kbd>⌫</kbd> discards a word's unverified proposal ·
-            <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between words and
-            translations with unverified proposals</span
+            confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> accepts everything proposed on a word
+            (machine values and guesses alike) and jumps to the next · <kbd>Ctrl</kbd>+<kbd>⌫</kbd>
+            discards a word's unverified proposal · <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd
+            ><kbd>↓</kbd> jump between words and translations with unverified proposals</span
           >
         </div>
         <div class="igt-legend__row">
@@ -2560,7 +2615,7 @@ export class IgtEditor {
     const wp = provDisplay(token.metadata);
     const wpTitle =
       wp === PROV_STATES.MACHINE
-        ? `${token.content}: machine-tokenized, unverified. Ctrl+Enter confirms the whole word`
+        ? `${token.content}: machine-tokenized, unverified. Ctrl+Enter accepts the whole word`
         : wp === PROV_STATES.VERIFIED
           ? `${token.content}: machine-tokenized, confirmed`
           : token.content;

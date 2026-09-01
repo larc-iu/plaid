@@ -372,11 +372,21 @@ export const analysisCopyMutations = {
     });
   },
 
-  // Confirm every machine-unverified piece of one word's analysis at once —
-  // the deliberate "this whole word looks right" gesture (Ctrl/Cmd+Enter in
-  // the editor): the word's link + spans, and each morpheme's token metadata
-  // (segmentation), link, and spans. No-op (true) when nothing is unverified.
-  async confirmWordAnalysis(wordTokenId) {
+  // Accept everything proposed on one word at once — the deliberate "this whole
+  // word looks right" gesture (Ctrl/Cmd+Enter in the editor). Two kinds of
+  // proposal, one gesture, because on screen they are the same violet italic
+  // and the annotator is vouching for the word either way:
+  //   - machine-unverified material already stored (the word's link + spans,
+  //     each morpheme's token metadata, link and spans) gains provConfirmed;
+  //   - `adoptions` are cells showing a guess, which is NOT stored at all (it
+  //     is a placeholder computed from the linked entry or project precedent —
+  //     see domain/glossGuess.js), so each becomes a new span written exactly
+  //     as the single-cell adoption on plain Enter writes it. What a guess is
+  //     stays the editor's business: an adoption is just
+  //     { targetId, field, value, metadata }, where targetId is this word or
+  //     one of its morphemes.
+  // No-op (true) when there is nothing to confirm and nothing to adopt.
+  async confirmWordAnalysis(wordTokenId, adoptions = []) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
       this.setError(`Word ${wordTokenId} not found`);
@@ -399,14 +409,40 @@ export const analysisCopyMutations = {
     collect(token);
     for (const m of token.morphemes || []) collect(m);
 
-    if (!spanIds.length && !tokenIds.length && !linkIds.length) return true;
+    // Resolve adoptions against the word itself: the scope follows the target,
+    // and a cell that gained a value between the render and the keypress is
+    // skipped rather than given a second span on the same token.
+    const writes = [];
+    for (const { targetId, field, value, metadata } of adoptions) {
+      const target =
+        targetId === token.id ? token : (token.morphemes || []).find((m) => m.id === targetId);
+      if (!target || !value || target.annotations?.[field]?.id) continue;
+      const scope = target === token ? 'word' : 'morpheme';
+      const layer = (this.layerInfo.spanLayers?.[scope] || []).find((sl) => sl.name === field);
+      if (!layer) continue;
+      writes.push({ layerId: layer.id, targetId, value, metadata });
+    }
+
+    if (!spanIds.length && !tokenIds.length && !linkIds.length && !writes.length) return true;
 
     return this._withSaving('Failed to confirm word analysis', async () => {
       await this._client.batched(async () => {
         tokenIds.forEach((id) => this._client.tokens.patchMetadata(id, confirm));
         linkIds.forEach((id) => this._client.vocabLinks.patchMetadata(id, confirm));
         spanIds.forEach((id) => this._client.spans.patchMetadata(id, confirm));
+        writes.forEach((w) =>
+          this._client.spans.create(w.layerId, [w.targetId], w.value, w.metadata || undefined),
+        );
       });
+
+      // Adopted guesses are new spans whose ids only the server knows, so the
+      // optimistic patch below (which can only touch rows already in hand)
+      // can't represent them: resync instead. Pure confirmation, the common
+      // case in a sweep, keeps the patch and stays reload-free.
+      if (writes.length) {
+        await this._reload();
+        return;
+      }
 
       const spanSet = new Set(spanIds);
       const tokenSet = new Set(tokenIds);

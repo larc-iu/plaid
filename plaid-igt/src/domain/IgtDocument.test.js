@@ -1045,11 +1045,56 @@ describe('confirmWordAnalysis', () => {
     expect(w.annotations.POS.metadata.provConfirmed).toBe(true);
   });
 
-  it('is a no-op when nothing on the word is machine-unverified', async () => {
+  it('is a no-op when nothing on the word is machine-unverified and nothing is adopted', async () => {
     const doc = makeDoc();
     const ok = await doc.confirmWordAnalysis('w-1');
     expect(ok).toBe(true);
     expect(kinds(doc.client)).not.toContain('tokens.patchMetadata');
+  });
+
+  it('writes adopted guesses as spans, on the layer each target scope owns', async () => {
+    const doc = makeDoc();
+    const guessed = (source, value) => ({
+      prov: 'inferred',
+      provSource: source,
+      provConfirmed: true,
+      provDetail: { value },
+    });
+    const ok = await doc.confirmWordAnalysis('w-1', [
+      { targetId: 'w-1', field: 'POS', value: 'DET', metadata: guessed('gloss:precedent', 'DET') },
+      { targetId: 'm-1', field: 'Gloss', value: 'the', metadata: guessed('vocab:entry', 'the') },
+    ]);
+    expect(ok).toBe(true);
+    const creates = doc.client.calls.filter((c) => c.kind === 'spans.create');
+    expect(creates.map((c) => c.args.slice(0, 3))).toEqual([
+      ['wsl-0', ['w-1'], 'DET'],
+      ['msl-0', ['m-1'], 'the'],
+    ]);
+    // Born verified: a person pressed the key, so the value needs no review.
+    expect(creates[0].args[3].provConfirmed).toBe(true);
+    expect(creates[0].args[3].provSource).toBe('gloss:precedent');
+  });
+
+  it('skips an adoption whose cell has gained a value since the render', async () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-1'], value: 'N', metadata: {} },
+    ];
+    const doc = makeDoc({ raw });
+    const ok = await doc.confirmWordAnalysis('w-1', [
+      { targetId: 'w-1', field: 'POS', value: 'DET', metadata: {} },
+    ]);
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('spans.create');
+  });
+
+  it('ignores an adoption aimed at a token outside this word', async () => {
+    const doc = makeDoc();
+    const ok = await doc.confirmWordAnalysis('w-1', [
+      { targetId: 'w-2', field: 'POS', value: 'N', metadata: {} },
+    ]);
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('spans.create');
   });
 });
 
