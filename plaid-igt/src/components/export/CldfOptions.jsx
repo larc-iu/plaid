@@ -149,7 +149,10 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
             onChange={(v) => set({ translationField: v === NONE ? null : v })}
           />
         </OptionRow>
-        <OptionRow label="Comment" description="A note carried alongside the example.">
+        <OptionRow
+          label="Comment"
+          description="The CLDF Comment column, filled from one of your sentence fields."
+        >
           <FieldSelect
             value={o.commentField ?? NONE}
             options={sentOptions}
