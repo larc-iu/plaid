@@ -253,3 +253,18 @@ export function commentThread(opts) {
     </div>
   `;
 }
+
+// ---------------------------------------------------------------------------
+// Hot reload
+//
+// An island is a plain class, instantiated once when the tab mounts. A hot
+// update swaps this MODULE, but the live instance keeps its old prototype, so
+// edits to any method here appear to do nothing until the editor is remounted
+// — a stale instance silently rendering the previous build. That is a trap:
+// you fix something, the page updates, and the bug is still there.
+//
+// Invalidate instead, so a change to an island forces a full reload.
+// ---------------------------------------------------------------------------
+if (import.meta.hot) {
+  import.meta.hot.accept(() => import.meta.hot.invalidate());
+}
