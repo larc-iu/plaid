@@ -1316,6 +1316,7 @@ export class IgtEditor {
     // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
     // it alone so the chip hop wins over cell navigation.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
+    if (this._maybeArrowOutOfCell(e)) return;
     if (e.key === 'Enter') this._maybeConfirmGuess(e.target);
     if (e.key === 'Enter') {
       // Commit and advance to the next cell in the same tier (the "fill a row
@@ -1339,6 +1340,31 @@ export class IgtEditor {
       if (this._navMove(e.target, 'up')) e.preventDefault();
     }
   };
+
+  // ← and → leave the cell at the text edges: with the caret collapsed at the
+  // start (an empty cell always qualifies) ArrowLeft moves to the previous cell
+  // on the tier, and at the end ArrowRight moves to the next — the same
+  // same-row movement Enter and Tab make. Inside a value they stay ordinary
+  // caret keys, and a selection (focusing a cell selects it) collapses first,
+  // so editing text is never hijacked. Without this the arrow model was
+  // lopsided: ↑↓ moved rows while ←→ did nothing at all in an empty cell, which
+  // reads as an editor that has stopped responding. Modified arrows (word-wise
+  // movement, shift-selection) stay with the browser, and an open alternatives
+  // list keeps them too — Esc first, then navigate.
+  _maybeArrowOutOfCell(e) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return false;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return false;
+    const el = e.target;
+    if (this._alts && this._alts.cellKey === el.dataset.cellKey) return false;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    if (start !== end) return false;
+    const atEdge = e.key === 'ArrowLeft' ? start === 0 : end === (el.value ?? '').length;
+    if (!atEdge) return false;
+    if (!this._navMove(el, e.key === 'ArrowLeft' ? 'prev' : 'next')) return false;
+    e.preventDefault();
+    return true;
+  }
 
   // All focusable editable cells in DOM order (disabled inputs are excluded —
   // they aren't navigation targets).
@@ -1633,6 +1659,7 @@ export class IgtEditor {
       if (this._maybeDiscardWord(e)) return;
       // Ctrl/Cmd+Arrow belongs to the review sweep (container listener).
       if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
+      if (this._maybeArrowOutOfCell(e)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         if (!this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.target.blur();
@@ -2116,7 +2143,8 @@ export class IgtEditor {
           <strong>Navigate</strong>
           <span
             ><kbd>Enter</kbd>/<kbd>Tab</kbd> next cell in the same row · <kbd>⇧</kbd>+ previous ·
-            <kbd>↑</kbd><kbd>↓</kbd> move rows · <kbd>Esc</kbd> cancel edit</span
+            <kbd>↑</kbd><kbd>↓</kbd> move rows · <kbd>←</kbd><kbd>→</kbd> move along the row from
+            the ends of a value · <kbd>Esc</kbd> cancel edit</span
           >
         </div>
         ${ctx.hasMorphemes
@@ -2870,7 +2898,10 @@ export class IgtEditor {
   _vocabFace(face, opts) {
     const { id, vocabItem, formText, kind } = opts;
     const hasVocabs = Object.keys(this.doc.vocabularies || {}).length > 0;
-    const open = this._popover && this._popover.tokenId === id;
+    // Variant matters, not just the id: a comment popover on a WORD stores
+    // that word's token id too, so matching on the id alone opened the lexicon
+    // menu underneath the comment thread.
+    const open = this._popover?.variant === 'vocab' && this._popover.tokenId === id;
     const canLink = hasVocabs && !this.readOnly;
     const openerClick = (e) => {
       e.stopPropagation();
