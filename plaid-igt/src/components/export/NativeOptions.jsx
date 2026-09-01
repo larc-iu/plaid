@@ -8,6 +8,12 @@ export const NativeOptions = ({ options, onChange }) => (
       vocabularies, and full document data (ids, offsets, metadata, provenance, time alignment),
       packaged as a .zip. Archives can be re-imported as new projects.
     </p>
+    <p className="text-xs text-muted-foreground">
+      Comments are included, and they carry their authors’ email addresses. On re-import the server
+      re-stamps every comment with whoever ran the import, so each one keeps its original author and
+      date as a quoted note at the top of its text. A historical export omits comments, which are
+      not versioned.
+    </p>
     <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
       <span>Embed media files (audio/video) in the archive</span>
       <Switch

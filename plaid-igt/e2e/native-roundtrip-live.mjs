@@ -43,11 +43,11 @@ import { discoverExportLayers } from '../src/export/exportLayers.js';
 import { newPreset } from '../src/export/presets.js';
 import { runExport } from '../src/export/runExport.js';
 import { readNativeArchive } from '../src/import/native/readArchive.js';
+import { stripAttribution } from '../src/import/native/commentAttribution.js';
 import { deriveSetupData, runNativeImport } from '../src/import/native/importEngine.js';
 
 const BACKUP = '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
 const KEEP = process.argv.includes('--keep');
-
 
 // Key order is not a difference (deepEqual never treated it as one), so the
 // cheap equality check canonicalizes it away.
@@ -154,6 +154,27 @@ function normalize(archive) {
       for (const a of data.alignment || []) note(a.id, `alignment:${a.begin}-${a.end}`);
       const desc = (id) => tokenDesc.get(id) ?? `unknown:${id}`;
 
+      // Span id → "field=value", so a comment anchored to an annotation
+      // compares by what it hangs off rather than by a correlation key.
+      const spanDesc = new Map();
+      const noteSpan = (name, e) => {
+        if (e?.id != null) spanDesc.set(e.id, `${name}=${e.value}`);
+      };
+      for (const sn of data.sentences || []) {
+        for (const [n, e] of Object.entries(sn.fields || {})) noteSpan(n, e);
+        for (const w of sn.words || []) {
+          for (const [n, e] of Object.entries(w.fields || {})) noteSpan(n, e);
+          for (const m of w.morphemes || [])
+            for (const [n, e] of Object.entries(m.fields || {})) noteSpan(n, e);
+        }
+      }
+      for (const sp of data.extraSpans || []) noteSpan(sp.layer?.name ?? 'span', sp);
+      const anchorDesc = (a) => {
+        if (a?.type === 'token') return `token:${desc(a.id)}`;
+        if (a?.type === 'span') return `span:${spanDesc.get(a.id) ?? `unknown:${a.id}`}`;
+        return a?.type ?? 'unknown';
+      };
+
       const fields = (f) =>
         Object.fromEntries(
           Object.entries(f || {}).map(([name, e]) => [
@@ -225,6 +246,13 @@ function normalize(archive) {
             precedence: t.precedence,
             metadata: t.metadata,
           }))
+          .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+        // Anchor + the words a person typed. Author and timestamps are
+        // DELIBERATELY excluded: the server restamps both on import, which is
+        // the whole reason the importer writes an attribution note instead.
+        // That the note is present is checked separately.
+        comments: (data.comments || [])
+          .map((c) => ({ anchor: anchorDesc(c.anchor), body: stripAttribution(c.body) }))
           .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
       };
     })
@@ -316,8 +344,40 @@ try {
     },
   ]);
 
+  // Comments on each anchor type the archive can represent, so the round trip
+  // exercises document / text / token / span resolution rather than just one.
+  const spanA = baselineA.tokenLayers
+    .flatMap((tl) => tl.spanLayers || [])
+    .flatMap((sl) => sl.spans || [])[0];
+  check(!!spanA, 'project A has a span to comment on');
+  const seededComments = [
+    ['document', docsA[0].id, 'Whole-document note: check the speaker attribution.'],
+    ['text', baselineA.text.id, 'The baseline has a stray character near the end.'],
+    ['token', sentA.id, 'Is this really one sentence?'],
+    ...(spanA ? [['span', spanA.id, 'This gloss looks like a typo.']] : []),
+  ];
+  for (const [type, id, body] of seededComments) {
+    await client.comments.create(type, id, body);
+  }
+  const commentsA = await client.comments.list(setupA.projectId);
+  check(
+    commentsA.length === seededComments.length,
+    'project A has the seeded comments',
+    `${commentsA.length} vs ${seededComments.length}`,
+  );
+
   // ---- 2. export A ----
   const archiveA = await exportNative(setupA.projectId);
+  const archivedComments = archiveA.documents.flatMap((d) => d.data.comments || []);
+  check(
+    archivedComments.length === seededComments.length,
+    'archive A carries every comment',
+    `${archivedComments.length} vs ${seededComments.length}`,
+  );
+  check(
+    archivedComments.every((c) => c.author?.id && c.createdAt && c.updatedAt),
+    'archived comments record author and both timestamps',
+  );
   check(
     archiveA.documents.some((d) => d.mediaBytes),
     'archive A embeds the media file',
@@ -353,6 +413,32 @@ try {
     importRes.warnings.join('; '),
   );
   check(importRes.imported === archiveA.documents.length, 'all documents imported');
+
+  // Attribution: the server restamps author and dates, so what must survive is
+  // the note. Checked here rather than in the archive comparison, which
+  // deliberately strips it to compare the words themselves.
+  const commentsB = await client.comments.list(setupB.projectId);
+  check(
+    commentsB.length === seededComments.length,
+    'project B has every comment back',
+    `${commentsB.length} vs ${seededComments.length}`,
+  );
+  check(
+    commentsB.every((c) => c.body.startsWith('> Imported from an archive. Originally posted by ')),
+    'every imported comment opens with its original attribution',
+    commentsB.map((c) => c.body.slice(0, 60)).join(' | '),
+  );
+  const originalAuthor = commentsA[0]?.authorId;
+  check(
+    !!originalAuthor && commentsB.every((c) => c.body.includes(originalAuthor)),
+    'the note names the original author',
+  );
+  check(
+    new Set(commentsB.map((c) => c.entityType)).size ===
+      new Set(seededComments.map((c) => c[0])).size,
+    'every anchor type resolved on import',
+    [...new Set(commentsB.map((c) => c.entityType))].join(','),
+  );
 
   // ---- 4 + 5. export B and compare ----
   const archiveB = await exportNative(setupB.projectId);

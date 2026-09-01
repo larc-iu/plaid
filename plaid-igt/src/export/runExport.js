@@ -144,6 +144,43 @@ export async function fetchDocumentMedia(client, documentId, asOf) {
 }
 
 /**
+ * A document's comments, shaped for the native serializer, with each author's
+ * display name resolved once per export and cached across documents.
+ *
+ * Only the native archive carries comments; see the export panels for why no
+ * interchange format does. A comment whose anchor the archive cannot represent
+ * (a relation, owned by another app's layer) is dropped by `commentNodes` and
+ * reported here, so the count in the warning is the honest one.
+ *
+ * A display name that cannot be fetched falls back to null rather than failing
+ * the export: the id is the identity, the name is only a label.
+ */
+export async function loadDocumentComments(client, projectId, documentId, nameCache) {
+  const raw = await client.comments.list(projectId, { documentId });
+  const names = nameCache ?? new Map();
+  for (const c of raw) {
+    if (c.authorId && !names.has(c.authorId)) {
+      names.set(
+        c.authorId,
+        await client.users
+          .get(c.authorId)
+          .then((u) => u?.displayName ?? null)
+          .catch(() => null),
+      );
+    }
+  }
+  return raw.map((c) => ({
+    id: c.id,
+    entityType: c.entityType,
+    entityId: c.entityId,
+    author: { id: c.authorId ?? null, name: names.get(c.authorId) ?? null },
+    body: c.body,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+  }));
+}
+
+/**
  * scope: { type: 'project' } | { type: 'documents', ids: [id] } | { type: 'document', id }
  * asOf: ISO timestamp for historical (time-travel) export — only valid with
  * document scope, since the documents-list endpoint rejects `as-of`.
@@ -215,6 +252,8 @@ export async function runExport({
   // doc JSON records its own mediaFile path), so dedupe incrementally.
   const usedMediaNames = new Set();
   const mediaEntries = [];
+  // Author display names, resolved once per export rather than per document.
+  const authorNames = new Map();
 
   // Sequential per-document fetch + serialize.
   const docFiles = [];
@@ -253,6 +292,26 @@ export async function runExport({
       }
     }
 
+    // Comments ride the native archive only, and never a historical one: they
+    // are unaudited (plaid.sql.comment), so there is no state at `asOf` to
+    // read. Today's comments in a time-travelled archive would carry today's
+    // dates and could anchor to entities that did not yet exist.
+    let docComments = [];
+    if (isNative && !asOf) {
+      try {
+        docComments = await loadDocumentComments(client, project.id, docIds[i], authorNames);
+        const archivable = docComments.filter((c) => c.entityType !== 'relation').length;
+        if (archivable < docComments.length) {
+          warnings.push(
+            `"${name}": ${docComments.length - archivable} comment(s) on relations were not exported. ` +
+              `Relations belong to another app's layers, which this archive does not carry.`,
+          );
+        }
+      } catch (err) {
+        warnings.push(`"${name}": comments could not be fetched: ${err?.message ?? err}`);
+      }
+    }
+
     try {
       docFiles.push({
         name: `${sanitizeFilename(name)}.${ext}`,
@@ -261,7 +320,7 @@ export async function runExport({
         data: isCldf
           ? null
           : isNative
-            ? toJson(serializeDocumentNative(igtDoc, { mediaFile }))
+            ? toJson(serializeDocumentNative(igtDoc, { mediaFile, comments: docComments }))
             : serializeDoc(igtDoc, preset, layers, {
                 exportedAt,
                 onWarning: (msg) => warnings.push(`"${name}": ${msg}`),

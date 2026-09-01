@@ -1,6 +1,7 @@
 // The native "Plaid IGT JSON" format (formatVersion 1) — a lossless archive of
 // an IGT project in IGT terms: sentences > words > morphemes, fields by scope,
-// orthographies, lexicon links, time alignment, provenance. Designed so a
+// orthographies, lexicon links, time alignment, provenance, and the comments
+// left on any of it (the only export target that carries those). Designed so a
 // future importer can rebuild the project (ids are correlation keys, offsets
 // are code points, vocab item order is contractual); see docs/native-format.md
 // for the full specification.
@@ -327,7 +328,39 @@ const alignmentNodes = (alignmentTokens) =>
  * One document. `mediaFile` is the archive path of the embedded media (or
  * null). Offsets are code points into baseline.body; times are seconds.
  */
-export function serializeDocumentNative(igtDoc, { mediaFile = null } = {}) {
+/**
+ * Anchor types a document file can represent. Comments hang off any
+ * project-scoped entity, but this archive is the IGT slice of a project, not
+ * the whole of it: relation layers belong to whichever app owns them (UD's
+ * dependency arcs), and nothing here would give a re-importer a relation to
+ * hang a comment on. Those are dropped by the caller, with a warning.
+ */
+const ARCHIVABLE_ANCHORS = new Set(['document', 'text', 'token', 'span']);
+
+/**
+ * Comment nodes for a document file. Comments are SOCIAL data and behave
+ * unlike everything else archived here: they carry an identity (the author id
+ * IS an email) and wall-clock times that are not the export's own, and they
+ * are not versioned, so `asOf` exports omit them entirely (see runExport).
+ *
+ * `anchor.id` and `id` are correlation keys like every other id in the
+ * archive. `author.name` is the display name AT EXPORT TIME — a label, since
+ * display names change and the id is the identity.
+ */
+export function commentNodes(comments) {
+  return (comments || [])
+    .filter((c) => c && ARCHIVABLE_ANCHORS.has(c.entityType))
+    .map((c) => ({
+      id: c.id,
+      anchor: { type: c.entityType, id: c.entityId },
+      author: { id: c.author?.id ?? null, name: c.author?.name ?? null },
+      body: c.body ?? '',
+      createdAt: c.createdAt ?? null,
+      updatedAt: c.updatedAt ?? null,
+    }));
+}
+
+export function serializeDocumentNative(igtDoc, { mediaFile = null, comments = [] } = {}) {
   const raw = igtDoc.raw || {};
   const layerInfo = igtDoc.layerInfo || {};
   const orthographyNames = (readOrthographies(layerInfo.primaryTokenLayer?.config) || [])
@@ -353,6 +386,7 @@ export function serializeDocumentNative(igtDoc, { mediaFile = null } = {}) {
 
   const { orphanTokens, extraSpans } = completenessSweep(layerInfo, ctx);
   const text = layerInfo.primaryTextLayer?.text;
+  const nodes = commentNodes(comments);
 
   return {
     id: raw.id ?? null,
@@ -366,5 +400,6 @@ export function serializeDocumentNative(igtDoc, { mediaFile = null } = {}) {
     extraVocabLinks: linkIndex.extras,
     extraSpans,
     orphanTokens,
+    ...(nodes.length ? { comments: nodes } : {}),
   };
 }

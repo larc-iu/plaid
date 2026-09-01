@@ -12,7 +12,12 @@
     * They never ride the document read path. `entity_metadata` is bulk
       attached to every entity by `document/get-with-layer-data`; comments
       are fetched only when something actually wants to show them.
-    * No export target carries them.
+    * No INTERCHANGE format carries them: in FLEx, CLDF and ELAN the slot
+      called note/comment is already bound to a user-configured annotation
+      field, so writing a comment there would corrupt an annotation rather
+      than transfer a comment. Only plaid-igt's native archive carries them,
+      and it cannot restore `author_id` or the timestamps on the way back in
+      (see below), so it prepends the original attribution to the body.
 
   Flat by design: no threading, no resolve state, no reactions. A comment is
   a row with an author and a body.

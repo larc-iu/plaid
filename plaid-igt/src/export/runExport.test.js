@@ -60,10 +60,31 @@ const VOCAB = {
   vocabLinks: [],
 };
 
-function stubClient({ docs, failIds = [], vocabFails = false }) {
+function stubClient({
+  docs,
+  failIds = [],
+  vocabFails = false,
+  comments = {},
+  users = {},
+  commentsFail = false,
+}) {
   const calls = [];
   return {
     calls,
+    comments: {
+      list: async (projectId, { documentId } = {}) => {
+        calls.push(['comments.list', projectId, documentId]);
+        if (commentsFail) throw new Error('comment boom');
+        return comments[documentId] || [];
+      },
+    },
+    users: {
+      get: async (id) => {
+        calls.push(['users.get', id]);
+        if (!(id in users)) throw new Error('no such user');
+        return { id, displayName: users[id] };
+      },
+    },
     projects: {
       listDocuments: async (id) => {
         calls.push(['listDocuments', id]);
@@ -387,6 +408,182 @@ describe('runExport — native plaid-igt-json', () => {
     expect(doc.mediaFile).toBe('media/A.wav');
     const manifest = JSON.parse(new TextDecoder().decode(entries['project.json']));
     expect(manifest.documents[0].mediaFile).toBe('media/A.wav');
+  });
+
+  it('omits comments from a historical export, which has no state to read', async () => {
+    // Comments are unaudited, so there is no `as-of` view of them. Exporting
+    // today's would date them wrong and could anchor them to entities that did
+    // not exist at `asOf`.
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const client = stubClient({
+      docs,
+      users: { 'ada@x.com': 'Ada' },
+      comments: {
+        d1: [
+          {
+            id: 'c1',
+            entityType: 'document',
+            entityId: 'd1',
+            authorId: 'ada@x.com',
+            body: 'x',
+            createdAt: '2026-08-14T00:00:00Z',
+            updatedAt: '2026-08-14T00:00:00Z',
+          },
+        ],
+      },
+    });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'document', id: 'd1' },
+      asOf: '2026-01-01T00:00:00Z',
+    });
+    const entries = await unzipBlob(result.blob);
+    const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
+    expect(doc).not.toHaveProperty('comments');
+    expect(client.calls.some((c) => c[0] === 'comments.list')).toBe(false);
+  });
+
+  it("carries a document's comments, with author display names resolved", async () => {
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const client = stubClient({
+      docs,
+      users: { 'ada@x.com': 'Ada Lovelace' },
+      comments: {
+        d1: [
+          {
+            id: 'c1',
+            entityType: 'token',
+            entityId: 't1',
+            authorId: 'ada@x.com',
+            body: 'Dative?',
+            createdAt: '2026-08-14T09:31:07Z',
+            updatedAt: '2026-08-14T09:31:07Z',
+          },
+        ],
+      },
+    });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'project' },
+    });
+    const entries = await unzipBlob(result.blob);
+    const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
+    expect(doc.comments).toHaveLength(1);
+    expect(doc.comments[0]).toMatchObject({
+      id: 'c1',
+      anchor: { type: 'token', id: 't1' },
+      author: { id: 'ada@x.com', name: 'Ada Lovelace' },
+      body: 'Dative?',
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('resolves each author once across the whole export, not once per comment', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi'), rawDoc('d2', 'B', 'yo')];
+    const one = (id, entityId) => ({
+      id,
+      entityType: 'token',
+      entityId,
+      authorId: 'ada@x.com',
+      body: 'x',
+      createdAt: '2026-08-14T00:00:00Z',
+      updatedAt: '2026-08-14T00:00:00Z',
+    });
+    const client = stubClient({
+      docs,
+      users: { 'ada@x.com': 'Ada Lovelace' },
+      comments: { d1: [one('c1', 't1'), one('c2', 't2')], d2: [one('c3', 't3')] },
+    });
+    await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'project' },
+    });
+    expect(client.calls.filter((c) => c[0] === 'users.get')).toHaveLength(1);
+  });
+
+  it('falls back to no display name when the author cannot be looked up', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const client = stubClient({
+      docs,
+      users: {},
+      comments: {
+        d1: [
+          {
+            id: 'c1',
+            entityType: 'document',
+            entityId: 'd1',
+            authorId: 'ghost@x.com',
+            body: 'x',
+            createdAt: '2026-08-14T00:00:00Z',
+            updatedAt: '2026-08-14T00:00:00Z',
+          },
+        ],
+      },
+    });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'project' },
+    });
+    const entries = await unzipBlob(result.blob);
+    const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
+    expect(doc.comments[0].author).toEqual({ id: 'ghost@x.com', name: null });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('warns about comments on relations, which the archive cannot anchor', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const client = stubClient({
+      docs,
+      users: { 'ada@x.com': 'Ada' },
+      comments: {
+        d1: [
+          {
+            id: 'c1',
+            entityType: 'relation',
+            entityId: 'r1',
+            authorId: 'ada@x.com',
+            body: 'nsubj is wrong',
+            createdAt: '2026-08-14T00:00:00Z',
+            updatedAt: '2026-08-14T00:00:00Z',
+          },
+        ],
+      },
+    });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'project' },
+    });
+    const entries = await unzipBlob(result.blob);
+    const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
+    expect(doc).not.toHaveProperty('comments');
+    expect(result.warnings).toEqual([
+      '"A": 1 comment(s) on relations were not exported. ' +
+        "Relations belong to another app's layers, which this archive does not carry.",
+    ]);
+  });
+
+  it('degrades a failed comment fetch to a warning, doc still exported', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const client = stubClient({ docs, commentsFail: true });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'project' },
+    });
+    expect(result.warnings).toEqual(['"A": comments could not be fetched: comment boom']);
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries)).toContain('documents/A.json');
   });
 
   it('skips media when includeMedia is off', async () => {

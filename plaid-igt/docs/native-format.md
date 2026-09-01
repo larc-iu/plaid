@@ -15,7 +15,9 @@ every span layer attached to them (scoped or not), the linked vocabularies, and
 the project's IGT configuration. It deliberately does NOT capture layers owned by
 other Plaid apps sharing the substrate (e.g. UD's syntactic-word layer or
 relation layers), additional text layers, non-IGT project configuration, users
-or permissions, or document history.
+or permissions, or document history. Comments ride along as a faithful record
+(author, body, both timestamps), but re-import cannot restore their authorship —
+see Comments.
 
 ## Versioning policy
 
@@ -168,6 +170,52 @@ lossless even for unusual data:
 - `orphanTokens` — `[{layer, id, begin, end, precedence?, metadata}]`: tokens
   outside every sentence extent, or morphemes matching no word extent. Metadata is
   raw here (no orthography/form lifting).
+- `comments` — `[{id, anchor: {type, id}, author: {id, name}, body, createdAt,
+  updatedAt}]`, **omitted entirely when the document has none**. See Comments below.
+
+## Comments
+
+Comments (discussion anchored to an entity, not annotation of it) are the one
+part of the archive that records a PERSON rather than a piece of language, and
+they behave unlike everything else here.
+
+- `anchor.type` is one of `document`, `text`, `token`, `span` — the anchor types
+  this archive can represent. A comment on a **relation** is dropped at export
+  with a warning: relation layers belong to whichever app owns them (UD's
+  dependency arcs), and this archive carries the IGT substrate only.
+- `author.id` is the user's id, which **is their email address**. `author.name`
+  is their display name at export time, or `null` — a label, since display names
+  change and the id is the identity. An archive therefore contains personal data
+  even when the linguistic content is public.
+- `createdAt` / `updatedAt` are the server's own timestamps. A comment is
+  "edited" iff they differ.
+- **A historical (`asOf`) export omits comments entirely.** They are unaudited
+  (`plaid.sql.comment`), so there is no state at `asOf` to read; today's comments
+  in a time-travelled archive would carry today's dates and could anchor to
+  entities that did not yet exist.
+
+### Attribution does not survive re-import
+
+`plaid.sql.comment/create!` stamps `author_id` from the authenticated caller and
+both timestamps from the clock, with no override, so that nobody — maintainers
+and admins included — can put words in another user's mouth. An importer is
+therefore unable to restore either.
+
+Every imported comment is consequently authored by whoever ran the import and
+dated then. The original attribution survives only as a Markdown blockquote the
+importer prepends to the body:
+
+```
+> Imported from an archive. Originally posted by Ada Lovelace <ada@example.com> on 2026-08-14.
+
+<the original body, untouched>
+```
+
+The importer strips a note it wrote previously before adding its own, so
+repeated export/import cycles do not stack them; the surviving note describes
+what THIS archive recorded. A comment close enough to the server's
+10,000-character ceiling that the note would breach it is imported unchanged
+rather than truncated, and the import reports how many.
 
 ## Provenance
 
@@ -192,7 +240,9 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    `spans.bulkCreate` (dedupe field entries by span id; `extraSpans` records are
    authoritative when their id collides with field entries) →
    `vocabLinks.create(itemId, tokens, metadata)` for inline and extra links →
-   upload media from `mediaFile`. A document is marked done
+   `comments.create` per archived comment (anchors resolved through the same
+   old→new maps; see Comments) → upload media from `mediaFile`. A document is
+   marked done
    (`metadata.nativeImported`) only after every write succeeded; resume skips
    done documents and deletes + redoes half-imported ones.
 4. All offsets are code points; never re-derive them from UTF-16 indices.

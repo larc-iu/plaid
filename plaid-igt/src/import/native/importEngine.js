@@ -16,6 +16,7 @@
 // at creation — it doubles as provenance back to the source archive).
 
 import { documentProgress } from '../progress.js';
+import { attributedBody } from './commentAttribution.js';
 import {
   IGT_NAMESPACE,
   findBaselineTextLayer,
@@ -223,6 +224,7 @@ const DOCUMENT_STEPS = [
   'Creating time alignments',
   'Creating annotations',
   'Linking lexicon',
+  'Restoring comments',
   'Uploading media',
 ];
 
@@ -258,6 +260,8 @@ export async function importNativeDocument({
 
   const body = docData.baseline?.body ?? '';
   const tokenIdMap = new Map(); // archive token id → new token id
+  const spanIdMap = new Map(); // archive span id → new span id
+  let baselineTextId = null; // for comments anchored to the text itself
 
   if (body.length > 0) {
     progress('Creating text');
@@ -268,6 +272,7 @@ export async function importNativeDocument({
       docData.baseline?.metadata || {},
     );
     const textId = text.id ?? text;
+    baselineTextId = textId;
 
     const bulkTokens = async (specs, oldIds) => {
       if (!specs.length) return;
@@ -376,6 +381,7 @@ export async function importNativeDocument({
       let agg = spansById.get(key);
       if (!agg) {
         agg = {
+          id: entry.id ?? null,
           layerKey: `${scope}:${fieldName}`,
           tokens: [],
           value: entry.value ?? null,
@@ -397,8 +403,11 @@ export async function importNativeDocument({
         }
       }
     }
+    // `archiveId` is carried alongside each spec purely so comments anchored to
+    // a span can be reattached after the bulk create returns its new ids. It is
+    // null for a tree entry that had no id of its own.
     const spanSpecs = [];
-    const resolveSpan = (layerKey, tokens, value, metadata, label) => {
+    const resolveSpan = (layerKey, tokens, value, metadata, label, archiveId = null) => {
       const spanLayerId = targets.spanLayerByScopeName.get(layerKey);
       const tokenIds = tokens.map((t) => tokenIdMap.get(t)).filter(Boolean);
       if (!spanLayerId || tokenIds.length !== tokens.length) {
@@ -407,10 +416,18 @@ export async function importNativeDocument({
         );
         return;
       }
-      spanSpecs.push({ spanLayerId, tokens: tokenIds, value, ...(metadata ? { metadata } : {}) });
+      spanSpecs.push({
+        spanLayerId,
+        tokens: tokenIds,
+        value,
+        ...(metadata ? { metadata } : {}),
+        archiveId,
+      });
     };
     for (const agg of spansById.values()) {
-      resolveSpan(agg.layerKey, agg.tokens, agg.value, agg.metadata, agg.layerKey);
+      // A tree entry that carried its own span id correlates back; one keyed
+      // by scope:field:token was synthesized here and has no archive id.
+      resolveSpan(agg.layerKey, agg.tokens, agg.value, agg.metadata, agg.layerKey, agg.id);
     }
     for (const extra of docData.extraSpans || []) {
       resolveSpan(
@@ -419,6 +436,7 @@ export async function importNativeDocument({
         extra.value ?? null,
         extra.metadata,
         `${extra.layer?.name} (extra)`,
+        extra.id ?? null,
       );
     }
     // The bulk endpoint requires all spans in one call to share a layer.
@@ -430,7 +448,13 @@ export async function importNativeDocument({
     for (const specs of byLayer.values()) {
       for (let i = 0; i < specs.length; i += 1000) {
         check();
-        await client.spans.bulkCreate(specs.slice(i, i + 1000));
+        const chunk = specs.slice(i, i + 1000);
+        const { ids } = await client.spans.bulkCreate(
+          chunk.map(({ archiveId: _archiveId, ...spec }) => spec),
+        );
+        chunk.forEach((spec, j) => {
+          if (spec.archiveId != null && ids?.[j]) spanIdMap.set(spec.archiveId, ids[j]);
+        });
       }
     }
 
@@ -466,6 +490,62 @@ export async function importNativeDocument({
           .slice(i, i + 1000)
           .map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
       );
+    }
+  }
+
+  // Comments. Posted one at a time (there is no bulk comment endpoint) inside
+  // a batch, and BEFORE the done marker so an interrupted import redoes them
+  // along with everything else rather than leaving a document half-commented.
+  //
+  // Anchors resolve through the same old→new maps the annotations used. What
+  // cannot be preserved is authorship: the server stamps author and timestamps
+  // from the caller and the clock, so every imported comment belongs to whoever
+  // ran the import, and the original attribution survives only as the note
+  // `attributedBody` puts at the top of the body.
+  const comments = docData.comments || [];
+  if (comments.length > 0) {
+    check();
+    progress('Restoring comments');
+    const anchorFor = (anchor) => {
+      switch (anchor?.type) {
+        case 'document':
+          return docId;
+        case 'text':
+          return baselineTextId;
+        case 'token':
+          return tokenIdMap.get(anchor.id);
+        case 'span':
+          return spanIdMap.get(anchor.id);
+        default:
+          return null;
+      }
+    };
+    let unattributed = 0;
+    const posts = [];
+    for (const c of comments) {
+      const entityId = anchorFor(c.anchor);
+      if (!entityId) {
+        warnings.push(
+          `"${docData.name}": comment ${c.id} skipped (its ${c.anchor?.type ?? 'anchor'} did not survive the import)`,
+        );
+        continue;
+      }
+      const { body: text, attributed } = attributedBody(c);
+      if (!attributed) unattributed += 1;
+      posts.push({ entityType: c.anchor.type, entityId, body: text });
+    }
+    if (unattributed > 0) {
+      warnings.push(
+        `"${docData.name}": ${unattributed} comment(s) were too long to carry their original attribution, so they were imported unchanged.`,
+      );
+    }
+    for (let i = 0; i < posts.length; i += CHUNK) {
+      check();
+      await client.batched(async () => {
+        for (const post of posts.slice(i, i + CHUNK)) {
+          client.comments.create(post.entityType, post.entityId, post.body);
+        }
+      });
     }
   }
 

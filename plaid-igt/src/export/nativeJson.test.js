@@ -184,6 +184,61 @@ describe('serializeDocumentNative', () => {
   });
 });
 
+describe('serializeDocumentNative — comments', () => {
+  const comment = (over = {}) => ({
+    id: 'c1',
+    entityType: 'token',
+    entityId: 't1',
+    author: { id: 'ada@x.com', name: 'Ada Lovelace' },
+    body: 'Dative?',
+    createdAt: '2026-08-14T09:31:07Z',
+    updatedAt: '2026-08-14T09:31:07Z',
+    ...over,
+  });
+
+  it('omits the key entirely when a document has no comments', () => {
+    expect(serializeDocumentNative(makeDoc())).not.toHaveProperty('comments');
+    expect(serializeDocumentNative(makeDoc(), { comments: [] })).not.toHaveProperty('comments');
+  });
+
+  it('records the anchor, the author identity, and both timestamps', () => {
+    const { comments } = serializeDocumentNative(makeDoc(), { comments: [comment()] });
+    expect(comments).toEqual([
+      {
+        id: 'c1',
+        anchor: { type: 'token', id: 't1' },
+        author: { id: 'ada@x.com', name: 'Ada Lovelace' },
+        body: 'Dative?',
+        createdAt: '2026-08-14T09:31:07Z',
+        updatedAt: '2026-08-14T09:31:07Z',
+      },
+    ]);
+  });
+
+  it('carries every anchor type the archive can represent', () => {
+    const types = ['document', 'text', 'token', 'span'];
+    const { comments } = serializeDocumentNative(makeDoc(), {
+      comments: types.map((t, i) => comment({ id: `c${i}`, entityType: t })),
+    });
+    expect(comments.map((c) => c.anchor.type)).toEqual(types);
+  });
+
+  it('drops a comment on a relation, which this archive has no anchor for', () => {
+    // Relation layers belong to whichever app owns them (UD), never to IGT.
+    const { comments } = serializeDocumentNative(makeDoc(), {
+      comments: [comment(), comment({ id: 'c2', entityType: 'relation', entityId: 'r1' })],
+    });
+    expect(comments.map((c) => c.id)).toEqual(['c1']);
+  });
+
+  it('keeps a missing display name as null rather than inventing one', () => {
+    const { comments } = serializeDocumentNative(makeDoc(), {
+      comments: [comment({ author: { id: 'ada@x.com', name: null } })],
+    });
+    expect(comments[0].author).toEqual({ id: 'ada@x.com', name: null });
+  });
+});
+
 describe('serializeVocabularyNative', () => {
   // Item order is the server's, which IS creation order. It must NOT be
   // re-sorted by id: within one bulk write every id shares a UUIDv7

@@ -167,6 +167,14 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
       bulkCreate: async (specs) =>
         record('spans.bulkCreate', [specs], { ids: specs.map(() => fresh('span')) }),
     },
+    comments: {
+      create: (entityType, entityId, body) => {
+        const result = { id: fresh('comment') };
+        record('comments.create', [entityType, entityId, body], result);
+        if (batch) batch.push(result);
+        return result;
+      },
+    },
   };
 }
 
@@ -258,6 +266,77 @@ describe('importVocabulary', () => {
     });
     expect(map.get('item1')).toBe('kept');
     expect(createdItems(client)).toHaveLength(2);
+  });
+});
+
+describe('runNativeImport — comments', () => {
+  const comment = (over = {}) => ({
+    id: 'c1',
+    entityType: 'token',
+    entityId: 'w1',
+    author: { id: 'honestlyada@aol.com', name: 'Ada Lovelace' },
+    body: 'Is this really a dative?',
+    createdAt: '2026-08-14T09:31:07Z',
+    updatedAt: '2026-08-14T09:31:07Z',
+    ...over,
+  });
+
+  // Rebuild the archive with comments, going through the real serializer so
+  // the anchors are the archive's own correlation keys.
+  async function runWith(comments, overrides = {}) {
+    const archive = buildArchive();
+    const project = makeNativeProject();
+    const igtDoc = new IgtDocument({ raw: makeNativeRaw(), project, vocabularies: {} });
+    archive.documents[0].data = serializeDocumentNative(igtDoc, {
+      mediaFile: 'media/Doc One.wav',
+      comments,
+    });
+    const client = stubClient(overrides);
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    return { client, result, posted: callsOf(client, 'comments.create') };
+  }
+
+  it('posts nothing when the archive carries no comments', async () => {
+    const { posted } = await runWith([]);
+    expect(posted).toEqual([]);
+  });
+
+  it('resolves each anchor type to the entity the import actually created', async () => {
+    const { posted } = await runWith([
+      comment({ id: 'c1', entityType: 'document', entityId: 'doc1' }),
+      comment({ id: 'c2', entityType: 'text', entityId: 'text1' }),
+      comment({ id: 'c3', entityType: 'token', entityId: 'w1' }),
+      comment({ id: 'c4', entityType: 'span', entityId: 'sp1' }),
+    ]);
+    expect(posted.map((c) => c[1])).toEqual(['document', 'text', 'token', 'span']);
+    // Every anchor is a NEW id minted during this import, never the archive's
+    // own correlation key.
+    for (const [, , entityId] of posted) {
+      expect(entityId).toMatch(/^(doc|text|tok|span)-\d+$/);
+    }
+  });
+
+  it('prefixes the body with the original attribution, since the server restamps the author', async () => {
+    const { posted } = await runWith([comment()]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0][3]).toBe(
+      '> Imported from an archive. Originally posted by Ada Lovelace <honestlyada@aol.com> on 2026-08-14.\n\n' +
+        'Is this really a dative?',
+    );
+  });
+
+  it('warns and skips rather than guessing when an anchor did not survive', async () => {
+    const { result, posted } = await runWith([comment({ entityId: 'nosuchtoken' })]);
+    expect(posted).toEqual([]);
+    expect(result.warnings).toContain(
+      '"Doc One": comment c1 skipped (its token did not survive the import)',
+    );
+  });
+
+  it('posts comments BEFORE the document is marked done, so a resume redoes them', async () => {
+    const { client } = await runWith([comment()]);
+    const names = client.calls.map(([n]) => n);
+    expect(names.indexOf('comments.create')).toBeLessThan(names.indexOf('documents.setMetadata'));
   });
 });
 
