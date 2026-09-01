@@ -1135,6 +1135,48 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Like the grid labels, a sentence label is the row menu's opener. */
+.igt-sentence-anno__label[role='button'] {
+  cursor: pointer;
+}
+.igt-sentence-anno__label[role='button']:hover .igt-sentence-anno__text {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+.igt-sentence-anno__label[role='button']:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: -2px;
+}
+/* A minimized sentence row is the same 6px stripe with the same dotted cue as a
+   minimized grid row, so "minimized" reads identically above and below the
+   grid. The field itself isn't rendered at all (see _sentenceAnnos): there are
+   no columns down here that need an empty box to stay aligned with. */
+.igt-sentence-anno.is-row-collapsed {
+  height: 6px;
+  min-height: 6px;
+  overflow: hidden;
+}
+.igt-sentence-anno.is-row-collapsed .igt-sentence-anno__label {
+  height: 100%;
+  opacity: 0.45;
+}
+.igt-sentence-anno.is-row-collapsed:hover .igt-sentence-anno__label {
+  opacity: 0.8;
+}
+.igt-sentence-anno.is-row-collapsed .igt-sentence-anno__text {
+  display: none;
+}
+.igt-sentence-anno.is-row-collapsed .igt-sentence-anno__label::after {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 100%;
+  background-image: radial-gradient(circle, currentColor 1px, transparent 1.3px);
+  background-size: 5px 5px;
+  background-position: left center;
+  background-repeat: repeat-x;
+}
 .igt-field--sentence {
   field-sizing: auto; /* width/height are controlled by flex + _autoGrow */
   flex: 1 1 auto;

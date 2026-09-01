@@ -2336,9 +2336,10 @@ export class IgtEditor {
     }
   }
 
-  // Every minimizable row, in the order it appears in the grid. The word-form
-  // and sentence rows are deliberately absent: the word forms ARE the text, and
-  // hiding them would leave columns with nothing to align against.
+  // Every minimizable row, in the order it appears on screen: the grid rows
+  // first, then the sentence-scoped fields that sit under the grid. The
+  // word-form row is deliberately absent — the word forms ARE the text, and
+  // hiding them would leave the columns with nothing to align against.
   _rows(ctx) {
     const rows = [
       ...ctx.orthographies.map((name) => ({ key: `orth:${name}`, name, scope: 'orthography' })),
@@ -2350,6 +2351,7 @@ export class IgtEditor {
         ...ctx.morphFields.map((name) => ({ key: `morph:${name}`, name, scope: 'morpheme' })),
       );
     }
+    rows.push(...ctx.sentFields.map((name) => ({ key: `sent:${name}`, name, scope: 'sentence' })));
     return rows;
   }
 
@@ -2379,6 +2381,22 @@ export class IgtEditor {
     if (!this._rowMenu) return;
     this._rowMenu = null;
     this._rowMenuAnchor = null;
+    this._render(true);
+  }
+
+  // Open the row menu under the label that was clicked (grid label or sentence
+  // label — both are openers). Clicking the SAME label again closes; clicking a
+  // different one moves the menu there rather than making you close and reopen.
+  _openRowMenuFrom(e) {
+    e.stopPropagation();
+    const anchor = e.currentTarget;
+    if (this._rowMenu && this._rowMenuAnchor === anchor) {
+      this._rowMenu = null;
+      this._rowMenuAnchor = null;
+    } else {
+      this._rowMenu = this._computeRowMenuPos(anchor);
+      this._rowMenuAnchor = anchor;
+    }
     this._render(true);
   }
 
@@ -2415,7 +2433,9 @@ export class IgtEditor {
     const Hest = Math.min(
       360,
       92 +
-        this._rows(this._lastCtx ?? { orthographies: [], wordFields: [], morphFields: [] }).length *
+        this._rows(
+          this._lastCtx ?? { orthographies: [], wordFields: [], morphFields: [], sentFields: [] },
+        ).length *
           26,
     );
     const pad = 8;
@@ -2471,20 +2491,7 @@ export class IgtEditor {
     // Clicking any label opens the row menu (minimize / expand). The whole label
     // is the hit target rather than a separate affordance: the column is narrow,
     // and a 6px minimized row has no room for an icon.
-    const openMenu = (e) => {
-      e.stopPropagation();
-      const anchor = e.currentTarget;
-      // Clicking the SAME label again closes; clicking a different one moves the
-      // menu there rather than making you close and reopen it.
-      if (this._rowMenu && this._rowMenuAnchor === anchor) {
-        this._rowMenu = null;
-        this._rowMenuAnchor = null;
-      } else {
-        this._rowMenu = this._computeRowMenuPos(anchor);
-        this._rowMenuAnchor = anchor;
-      }
-      this._render(true);
-    };
+    const openMenu = (e) => this._openRowMenuFrom(e);
     const lbl = (cls, name, scope, key) => {
       const collapsed = this._isCollapsed(key);
       return html` <div
@@ -2733,34 +2740,57 @@ export class IgtEditor {
     `;
   }
 
+  // Sentence-scoped fields, under the grid. They minimize from the same row menu
+  // as the grid rows, and their label is the same kind of opener. Unlike a grid
+  // row, a minimized one drops its field entirely rather than keeping an empty
+  // box: nothing down here has to stay in lockstep with the token columns.
   _sentenceAnnos(sentence, index, ctx) {
     if (!ctx.sentFields.length) return nothing;
     return html`
       <div class="igt-sentence-annos">
-        ${ctx.sentFields.map(
-          (name) => html`
-            <div class="igt-sentence-anno">
-              <span class="igt-sentence-anno__label" title=${name}>${name}</span>
-              ${sentence.annotations?.[name]?.id
-                ? this._commentBadge(
-                    'span',
-                    sentence.annotations[name].id,
-                    `${name} of sentence ${index + 1}`,
-                  )
-                : nothing}
-              ${this._field({
-                key: `sa:${sentence.id}:${name}`,
-                value: sentence.annotations?.[name]?.value ?? '',
-                apply: (v) => this.doc.updateSentenceSpan(sentence.id, name, v),
-                sentence: true,
-                ariaLabel: `${name} for sentence ${index + 1}`,
-                prov: provDisplay(sentence.annotations?.[name]?.metadata),
-                confirmSentence: sentence.id,
-                fieldName: name,
-              })}
+        ${ctx.sentFields.map((name) => {
+          const key = `sent:${name}`;
+          const collapsed = this._isCollapsed(key);
+          return html`
+            <div class="igt-sentence-anno${this._rowCls(key)}">
+              <span
+                class="igt-sentence-anno__label"
+                data-row=${key}
+                title=${collapsed ? `${name} (sentence) — minimized` : `${name} (sentence)`}
+                role="button"
+                tabindex="0"
+                aria-expanded=${collapsed ? 'false' : 'true'}
+                @click=${(e) => this._openRowMenuFrom(e)}
+                @keydown=${(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') this._openRowMenuFrom(e);
+                }}
+              >
+                <span class="igt-sentence-anno__text">${name}</span>
+              </span>
+              ${collapsed
+                ? nothing
+                : html`
+                    ${sentence.annotations?.[name]?.id
+                      ? this._commentBadge(
+                          'span',
+                          sentence.annotations[name].id,
+                          `${name} of sentence ${index + 1}`,
+                        )
+                      : nothing}
+                    ${this._field({
+                      key: `sa:${sentence.id}:${name}`,
+                      value: sentence.annotations?.[name]?.value ?? '',
+                      apply: (v) => this.doc.updateSentenceSpan(sentence.id, name, v),
+                      sentence: true,
+                      ariaLabel: `${name} for sentence ${index + 1}`,
+                      prov: provDisplay(sentence.annotations?.[name]?.metadata),
+                      confirmSentence: sentence.id,
+                      fieldName: name,
+                    })}
+                  `}
             </div>
-          `,
-        )}
+          `;
+        })}
       </div>
     `;
   }
