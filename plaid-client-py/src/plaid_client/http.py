@@ -283,7 +283,8 @@ def list_all(client, path, *, page_size=1000, query=None):
 
 
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
-                 query_params=None, no_batch=False, skip_response_transform=False,
+                 query_params=None, no_batch=False, bypass_batch=False,
+                 skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
                  timeout=_UNSET):
     """Generic request method handling all HTTP logic.
@@ -299,6 +300,12 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             header.
         query_params: Dict of query param key/values to append.
         no_batch: If True, raise when in batch mode.
+        bypass_batch: If True, go over the wire even while a batch is open.
+            For READS only: a batch is a write transaction, its ops return no
+            value to their caller until submit, and the sub-request runs
+            against the tx Connection rather than the pool. A read swallowed
+            by an ambient batch is therefore useless to the caller AND can
+            fail the whole batch (see PlaidClient.query).
         skip_response_transform: Return raw parsed JSON (no transform_response).
         no_auth: Skip Authorization header.
         binary_response: Return raw bytes instead of JSON/text.
@@ -364,8 +371,11 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             url += f'&group-message={quote(str(group["message"]), safe="")}'
         group['written'] = True
 
-    # Batch mode
-    if client.is_batching:
+    # Batch mode. A bypass_batch read is deliberately NOT queued: it belongs to
+    # whoever called it, not to whatever batch happens to be open on this
+    # shared client, and it reads the pre-batch state exactly as it would have
+    # if the batch were not running.
+    if client.is_batching and not bypass_batch:
         if no_batch:
             raise PlaidAPIError(f'This endpoint cannot be used in batch mode: {path}')
         operation = {

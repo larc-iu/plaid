@@ -2149,8 +2149,14 @@ class PlaidClient {
      *   For 'count': {return: 'count', count}. Entity cells are full entity objects
      *   (same shape as the GET endpoints).
      */
+    // bypassBatch: a query is a read. `client.batched()` flips one flag on the
+    // whole client, so a query issued by unrelated code while a batch is open
+    // (the IGT island fetching precedent while a document reconciles) used to
+    // be queued into it: the caller got `{batched: true}` instead of results,
+    // and the server ran the query against the batch's tx Connection, which
+    // 500s and rolls back every write in that batch.
     this.query = (body, auditMessage) =>
-      this._request("POST", "/api/v1/query", { auditMessage, body });
+      this._request("POST", "/api/v1/query", { auditMessage, body, bypassBatch: true });
 
     // Logical-operation groups (audit-log grouping). There is no create: a
     // group row is made lazily by the first write carrying `?group-id=`

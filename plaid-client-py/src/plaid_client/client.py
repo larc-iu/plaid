@@ -2471,7 +2471,12 @@ class PlaidClient:
             'count': {return: 'count', count}. Entity cells are full entity
             dicts (same shape as the GET endpoints).
         """
-        return make_request(self, 'POST', '/api/v1/query', body=body)
+        # bypass_batch: a query is a read. batched() flips one flag on the whole
+        # client, so a query issued while a batch is open would be queued into
+        # it: the caller gets {'batched': True} instead of results, and the
+        # server runs the query against the batch's tx Connection, which errors
+        # and rolls back every write in that batch.
+        return make_request(self, 'POST', '/api/v1/query', body=body, bypass_batch=True)
 
     def enter_strict_mode(self, document_id: str) -> None:
         """Enter strict mode for a specific document.

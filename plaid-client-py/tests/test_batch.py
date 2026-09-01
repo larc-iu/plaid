@@ -55,3 +55,21 @@ if __name__ == '__main__':
     test_exception_in_block_aborts_and_clears_batch()
     test_block_opens_batch_mode()
     print('batch tests passed')
+
+
+def test_query_does_not_join_an_open_batch():
+    """A read must never be swallowed by whatever batch happens to be open on
+    the shared client: it returns nothing to its caller until submit, and the
+    server runs a batched sub-request against the batch's tx Connection, where
+    a query throws and takes every write in the batch down with it. Queries
+    therefore go straight over the wire (here: to a dead port, so the failure
+    itself proves the call left the queue rather than joining it)."""
+    c = _client()
+    with pytest.raises(Exception):
+        with c.batched():
+            c.tokens.create('tl-1', 'text-1', 0, 3, 1)
+            with pytest.raises(Exception):
+                c.query({'find': ['?t'], 'where': [['token', '?t', {}]]})
+            paths = [op['path'].split('?')[0] for op in c.batch_operations]
+            assert paths == ['/api/v1/tokens']
+            raise RuntimeError('done checking')  # abort rather than submit

@@ -132,6 +132,13 @@ export function timeoutSignal(timeout) {
  *   formData        - If true, body is FormData; skip Content-Type header
  *   queryParams     - Object of query param key/values to append
  *   noBatch         - If true, throw when in batch mode
+ *   bypassBatch     - If true, go over the wire even while a batch is open.
+ *                     For READS only: a batch is a write transaction, its
+ *                     ops return no value to their caller until submit, and
+ *                     the sub-request runs against the tx Connection rather
+ *                     than the pool. A read swallowed by an ambient batch is
+ *                     therefore useless to the caller AND can fail the whole
+ *                     batch (see `query`).
  *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
  *   noAuth          - Skip Authorization header
  *   binaryResponse  - Return arrayBuffer instead of JSON/text
@@ -146,6 +153,7 @@ export async function makeRequest(client, method, path, options = {}) {
     formData,
     queryParams,
     noBatch,
+    bypassBatch,
     skipResponseTransform,
     noAuth,
     binaryResponse,
@@ -219,8 +227,11 @@ export async function makeRequest(client, method, path, options = {}) {
     group.written = true;
   }
 
-  // Batch mode
-  if (client.isBatching) {
+  // Batch mode. A `bypassBatch` read is deliberately NOT queued: it belongs to
+  // whoever called it, not to whatever batch happens to be open on this shared
+  // client (a document reconcile, an import), and it reads the pre-batch state
+  // exactly as it would have if the batch were not running.
+  if (client.isBatching && !bypassBatch) {
     if (noBatch) {
       throw new Error(`This endpoint cannot be used in batch mode: ${path}`);
     }
