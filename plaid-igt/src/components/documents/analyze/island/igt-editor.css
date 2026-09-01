@@ -337,8 +337,9 @@
   position: absolute;
   left: 8px;
   top: 14px;
-  min-width: 18px;
-  text-align: center;
+  /* Shrink-wraps its digits rather than reserving a fixed 18px: the comment
+     badge anchors to this box, and a box wider than its text would leave the
+     badge floating off the number instead of touching it. */
   font-size: 11px;
   font-weight: 700;
   color: #6b7280;
@@ -1442,12 +1443,22 @@
  * flagged; solid on hover AND on keyboard focus, because a keyboard user
  * should get the feedback a mouse user gets.
  */
+/* The badge's anchor. NOT `.igt-vocab`, which is a column that also holds the
+   lexicon opener: on a short form the opener is the wider child, so a badge
+   pinned to that box drifts away from the text. This hugs the form itself. */
+.igt-vocab__face {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
 .igt-cmt-badge {
   position: absolute;
-  /* Anchored to `.igt-vocab` (the word/morpheme form itself), not the cell, so
-     it sits beside the text rather than out at the column's edge. */
+  /* Tangent: the badge's left edge meets the form's right edge, whatever the
+     column or the opener beneath it happens to be doing. */
   top: -7px;
-  right: -13px;
+  left: 100%;
+  right: auto;
   z-index: 2;
   min-width: 15px;
   height: 15px;
@@ -1501,8 +1512,8 @@
 /* The sentence badge reveals on hovering the whole CARD, exactly like the copy
    control beside it — hovering a 16px target you cannot see first is not a
    discovery path. */
-.igt-sentence:hover .igt-sentence__cmt .igt-cmt-badge--add,
-.igt-sentence__cmt:focus-within .igt-cmt-badge--add,
+.igt-sentence:hover .igt-sentence__num .igt-cmt-badge--add,
+.igt-sentence__num:focus-within .igt-cmt-badge--add,
 .igt-token-form:focus-within .igt-cmt-badge--add,
 .igt-morph-form:focus-within .igt-cmt-badge--add,
 .igt-cell:focus-within .igt-cmt-badge--add,
@@ -1522,21 +1533,10 @@
   background: #e2e8f0;
 }
 
-/* The sentence badge sits in the card header rather than over a cell, so it
-   needs its own positioning context and a little room. */
-.igt-sentence__cmt {
-  position: relative;
-  display: inline-flex;
-  width: 16px;
-  height: 16px;
-  margin-left: 22px;
-  vertical-align: middle;
-}
-.igt-sentence__cmt .igt-cmt-badge {
-  top: 0;
-  right: auto;
-  left: 0;
-}
+/* The sentence badge sits ON the sentence number, tangent to its right edge —
+   the same rule the word and morpheme badges follow against their forms. The
+   number is its anchor, so it moves with it and stays put whether the sentence
+   is 1 or 100. */
 
 /* Every cell that can carry a badge is the positioning context for it. */
 .igt-cell,
