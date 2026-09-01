@@ -21,6 +21,11 @@
   --igt-form-h: var(--igt-row-h);
   --igt-morph-form-h: var(--igt-morph-h);
   --igt-label-w: 124px;
+  /* Width of a comment badge, and so the trailing room the token grid keeps
+     for one — see .igt-tokens. Sized for a two-digit count (the badge is
+     `min-width: 15px` and grows with its digits); a rarer three-digit thread
+     count spills a few px into the grid's own padding. */
+  --igt-badge-gutter: 20px;
   width: 100%;
   font-size: 14px;
   color: #111827;
@@ -538,6 +543,14 @@
   flex: 1 1 0;
   min-width: 0;
   padding-left: 14px; /* hanging indent for wrapped bands (~1em) */
+  /* Reserved for the comment badge of whichever column ends a band. The badge
+     hangs off its cell's right edge (`left: 100%`), so without a gutter the
+     band's LAST column pushes it past the grid's clip edge: the badge is
+     sliced in half and .igt-grid's overflow-x safety net turns into a real
+     scrollbar on every sentence that wraps. Padding rather than a narrower
+     box, because wrapping measures the CONTENT box: columns now stop a badge's
+     width short of the edge, and the badge paints in the gutter they left. */
+  padding-right: var(--igt-badge-gutter);
 }
 
 .igt-token-col {
@@ -1130,6 +1143,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Same reserved badge gutter as .igt-tokens, and for the same reason: this
+     row is full-width, so its badge hangs off the card's right edge and the
+     page picks up a few px of horizontal scroll. MARGIN, not padding: the row
+     is the badge's own containing block, and padding would widen the box the
+     badge's `left: 100%` measures against. It also lands the translation
+     field's right edge where the token grid's last column ends. */
+  margin-right: var(--igt-badge-gutter);
 }
 .igt-sentence-anno__label {
   flex: 0 0 var(--igt-label-w);
