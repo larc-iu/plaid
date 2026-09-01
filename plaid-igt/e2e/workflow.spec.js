@@ -92,9 +92,11 @@ test('B15-01/02/03: the Auto-analyze dialog cancels cleanly and links on Run', a
     return dialog;
   };
   let dialog = await openDialog();
-  // Three step toggles; the linking method select shows for step 3 (the
-  // fixture project has a lexicon and no analysis service is online).
-  await expect(dialog.getByRole('checkbox')).toHaveCount(3);
+  // Four step toggles (translations, copy previous analyses, propose
+  // segmentation and glosses, link to the lexicon); the linking method select
+  // shows for the last one. The fixture project has a lexicon and no
+  // translation or analysis service online, so those steps are disabled.
+  await expect(dialog.getByRole('checkbox')).toHaveCount(4);
   await expect(dialog.getByRole('combobox')).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
