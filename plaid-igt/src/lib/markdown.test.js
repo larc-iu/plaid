@@ -6,15 +6,14 @@
 // result look unsanitized. Security behavior has to be tested against a
 // faithful parser or not at all.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, html } from 'lit-html';
-import { renderCommentBody } from './renderCommentBody.js';
+import { markdownToSafeHtml } from './markdown.js';
 
 let host;
 
-// Render through lit-html the way the thread does, then read the DOM back —
-// asserting on the sanitized OUTPUT rather than on the markdown string.
+// Parse the sanitized OUTPUT back into a DOM and assert on that, rather than
+// on the HTML string: what matters is the tree a browser would build.
 const draw = (body) => {
-  render(html`<div class="out">${renderCommentBody(body)}</div>`, host);
+  host.innerHTML = `<div class="out">${markdownToSafeHtml(body)}</div>`;
   return host.querySelector('.out');
 };
 
@@ -23,7 +22,7 @@ beforeEach(() => {
   document.body.appendChild(host);
 });
 
-describe('renderCommentBody', () => {
+describe('markdownToSafeHtml', () => {
   it('renders the inline marks people actually use in a comment', () => {
     const out = draw('**bold** and *italic* and `code` and ~~struck~~');
     expect(out.querySelector('strong')?.textContent).toBe('bold');
@@ -75,9 +74,26 @@ describe('renderCommentBody', () => {
     expect(a.getAttribute('rel')).toContain('noopener');
   });
 
-  it('leaves an empty body alone', () => {
-    expect(renderCommentBody('')).toBe('');
-    expect(renderCommentBody(null)).toBe('');
+  it('leaves empty input alone', () => {
+    expect(markdownToSafeHtml('')).toBe('');
+    expect(markdownToSafeHtml(null)).toBe('');
+    expect(markdownToSafeHtml('   ')).toBe('');
+  });
+
+  it('renders a GFM table, which the assistant relies on', () => {
+    const out = draw('| a | b |\n| --- | --- |\n| 1 | 2 |');
+    expect(out.querySelectorAll('th')).toHaveLength(2);
+    expect(out.querySelectorAll('td')).toHaveLength(2);
+  });
+
+  it('keeps a task-list checkbox, disabled', () => {
+    const box = draw('- [x] done').querySelector('input[type="checkbox"]');
+    expect(box).not.toBeNull();
+    expect(box.hasAttribute('checked')).toBe(true);
+  });
+
+  it('renders headings, which a service summary uses', () => {
+    expect(draw('# Title').querySelector('h1')?.textContent).toBe('Title');
   });
 
   it('does not let raw HTML in a comment become markup', () => {

@@ -1,0 +1,130 @@
+/* Compact defaults for rendered Markdown.
+ *
+ * Replaces the per-element inline styles that react-markdown's `components`
+ * map used to apply. Everything is declared explicitly rather than inherited,
+ * because Tailwind's preflight is off outside `.tw` and a service-supplied
+ * summary must look the same wherever it is shown.
+ *
+ * The assistant adds Tailwind Typography's `prose` alongside this, which wins
+ * on the properties it sets and leaves the rest here.
+ */
+
+.md-body > :first-child {
+  margin-top: 0;
+}
+.md-body > :last-child {
+  margin-bottom: 0;
+}
+
+.md-body p {
+  margin: 0.4em 0;
+}
+
+/* Headings render as bold text rather than document headings: this appears in
+   popovers and chat bubbles, where a real <h1> would be both too loud and a
+   lie about the page outline. */
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  font-weight: 600;
+  margin: 0.5em 0 0.2em;
+  line-height: 1.3;
+}
+.md-body h1 {
+  font-size: 0.95rem;
+}
+.md-body h2 {
+  font-size: 0.9rem;
+}
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  font-size: 0.85rem;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 0.3em 0;
+  padding-left: 1.2em;
+}
+.md-body ul {
+  list-style: disc outside;
+}
+.md-body ol {
+  list-style: decimal outside;
+}
+.md-body li {
+  margin: 0.15em 0;
+  display: list-item;
+}
+
+.md-body a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.md-body code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0 0.25em;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+
+.md-body pre {
+  margin: 0.4em 0;
+  padding: 0.5em 0.7em;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.md-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.md-body blockquote {
+  margin: 0.4em 0;
+  padding-left: 0.8em;
+  border-left: 3px solid rgba(0, 0, 0, 0.15);
+  opacity: 0.85;
+}
+
+.md-body hr {
+  border: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  margin: 0.8em 0;
+}
+
+/* A wide table scrolls inside itself instead of stretching the column it sits
+   in — what the old `table` component override did by wrapping it in a
+   scroll container. */
+.md-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+}
+.md-body th,
+.md-body td {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 0.25em 0.5em;
+  text-align: left;
+}
+.md-body th {
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* Task-list checkboxes come through disabled; keep them out of the text flow's
+   way rather than letting the form reset style them. */
+.md-body input[type='checkbox'] {
+  margin-right: 0.4em;
+  vertical-align: middle;
+}
