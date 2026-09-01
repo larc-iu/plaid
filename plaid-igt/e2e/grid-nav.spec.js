@@ -122,6 +122,49 @@ test('C5-02: arrows move between tiers inside the column band', async ({ page })
   expect(await focusedKey(page)).toBe(`ma:${ids.m[1]}:Gloss`);
 });
 
+test('C5-10: left/right move along the tier from the ends of a value', async ({ page }) => {
+  await openAnalyze(page);
+  const set = async (key, value) => {
+    const c = cell(page, key);
+    await c.click();
+    await page.keyboard.press('Control+a');
+    if (value) await page.keyboard.type(value);
+    else await page.keyboard.press('Backspace');
+    await page.keyboard.press('Enter'); // commits (clearing deletes the span)
+    await page.waitForLoadState('networkidle');
+  };
+  // Fixed starting point: this file's earlier rows leave values behind.
+  await set(`ma:${ids.m[0]}:Gloss`, 'aa');
+  await set(`ma:${ids.m[1]}:Gloss`, '');
+
+  const g1 = cell(page, `ma:${ids.m[1]}:Gloss`);
+  await g1.click();
+  await expect(g1).toHaveValue('');
+  // An empty cell has no caret to move, so the arrow leaves at once — the case
+  // that read as a dead editor before.
+  await page.keyboard.press('ArrowLeft');
+  expect(await focusedKey(page)).toBe(`ma:${ids.m[0]}:Gloss`);
+  // Landing on a cell selects its value, so the first ArrowRight only collapses
+  // that selection. Editing keeps the arrows until the caret is at the edge.
+  await page.keyboard.press('ArrowRight');
+  expect(await focusedKey(page)).toBe(`ma:${ids.m[0]}:Gloss`);
+  await page.keyboard.press('ArrowRight');
+  expect(await focusedKey(page)).toBe(`ma:${ids.m[1]}:Gloss`);
+
+  await page.keyboard.type('ab');
+  await page.keyboard.press('ArrowLeft'); // between a and b
+  expect(await focusedKey(page)).toBe(`ma:${ids.m[1]}:Gloss`);
+  await page.keyboard.press('ArrowLeft'); // start of the value
+  expect(await focusedKey(page)).toBe(`ma:${ids.m[1]}:Gloss`);
+  await page.keyboard.press('ArrowLeft'); // now it leaves, committing "ab"
+  expect(await focusedKey(page)).toBe(`ma:${ids.m[0]}:Gloss`);
+  await page.waitForLoadState('networkidle');
+  await expect(g1).toHaveValue('ab');
+
+  await set(`ma:${ids.m[1]}:Gloss`, '');
+  await set(`ma:${ids.m[0]}:Gloss`, '');
+});
+
 test('C5-03: the Translation textarea lets arrows out only at its edges', async ({ page }) => {
   await openAnalyze(page);
   const tr = cell(page, `sa:${ids.s}:Translation`);

@@ -262,6 +262,35 @@ test('A1-11: a guess is offered even when its only source is machine-unverified'
   await expect(c1).toHaveAttribute('data-guess-value', 'SUN');
 });
 
+test('A1-13: the list holds the arrows, and Escape hands the grid back', async ({ page }) => {
+  const d = await mkdoc(`${LOS} ${LOS} ${LOS} ${LOS}`);
+  await client.spans.create(ids.gloss, [d.m[0]], 'DET.PL');
+  await client.spans.create(ids.gloss, [d.m[1]], 'DET.PL');
+  await client.spans.create(ids.gloss, [d.m[2]], 'the.PL');
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${d.id}?tab=analyze`);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+  await page.waitForLoadState('networkidle');
+  const key = (k) => `ma:${k}:Gloss`;
+  const focusedKey = () => page.evaluate(() => document.activeElement?.dataset?.cellKey ?? null);
+  const c3 = page.locator(`.igt-field[data-cell-key="${key(d.m[3])}"]`);
+  await c3.click();
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(page.locator('.igt-alts')).toHaveCount(1);
+  // While the list is up the cell keeps the arrows (they belong to the list's
+  // own navigation, and ← / → must not walk out from under it).
+  await page.keyboard.press('ArrowLeft');
+  expect(await focusedKey()).toBe(key(d.m[3]));
+  // Escape closes the list only, and the grid takes the arrows back: this cell
+  // is empty, so ← leaves it at once instead of doing nothing at all.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.igt-alts')).toHaveCount(0);
+  expect(await focusedKey()).toBe(key(d.m[3]));
+  await page.keyboard.press('ArrowLeft');
+  expect(await focusedKey()).toBe(key(d.m[2]));
+  await expect(c3).toHaveValue('');
+});
+
 test('A1-12: Alt+Down lists the values seen for the form, ranked with counts; picking writes it verified', async ({
   page,
 }) => {
