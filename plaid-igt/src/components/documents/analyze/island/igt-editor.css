@@ -451,6 +451,13 @@
      overflow-y to auto too and classic (non-overlay) scrollbars render a
      useless vertical scrollbar inside every sentence card. */
   overflow-y: hidden;
+  /* Room for the comment badge, which sits just above its cell's top edge —
+     on the FIRST band that edge is this container's, and the badge was being
+     sliced in half. Padding, because overflow clips at the PADDING box.
+     (`overflow-y: clip` with `overflow-clip-margin` would be the tidier fix,
+     but `clip` computes back to `hidden` whenever the other axis scrolls, so
+     it does nothing here.) */
+  padding-top: 8px;
   scrollbar-width: thin;
 }
 
