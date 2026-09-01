@@ -272,10 +272,18 @@ export async function runElanImport(args) {
   return args.client.withOperation('Import ELAN corpus', () => runElanImportImpl(args));
 }
 
-async function runElanImportImpl({ client, projectId, build, onProgress, shouldStop }) {
+async function runElanImportImpl({ client, projectId, build, onProgress, onWarning, shouldStop }) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, build);
-  const warnings = [...build.warnings];
+  // Warnings are reported as they happen, not only in the tally at the end: a
+  // long import is exactly when the user wants to see a problem while there is
+  // still time to stop.
+  const warnings = [];
+  const note = (one, document = null) => {
+    warnings.push(one);
+    onWarning?.(one, { document });
+  };
+  for (const w of build.warnings) note(w);
 
   // Resume bookkeeping: list existing documents once (auto-paginated).
   const existing = await client.projects.listDocuments(projectId);
@@ -309,9 +317,11 @@ async function runElanImportImpl({ client, projectId, build, onProgress, shouldS
       doc,
       onProgress,
       shouldStop,
-      warnings,
+      // A push-alike, so a warning raised while writing is logged the moment it
+      // happens like any other.
+      warnings: { push: (...w) => w.forEach((one) => note(one, doc.name)) },
     });
-    warnings.push(...doc.warnings);
+    for (const w of doc.warnings) note(w, doc.name);
     results.imported += 1;
   }
   onProgress?.({ phase: 'done', ...results });

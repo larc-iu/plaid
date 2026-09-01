@@ -76,6 +76,54 @@ const Panel = ({ tone = 'muted', icon: Icon, title, children }) => {
   );
 };
 
+// Every warning the import raises, in the order it raised them, grouped by the
+// document it came from. On screen while the run is still going, because on a
+// long corpus a problem is worth seeing before the end, and scrollable because
+// a real corpus can raise hundreds.
+const WarningLog = ({ log }) => {
+  const groups = [];
+  for (const entry of log) {
+    const last = groups[groups.length - 1];
+    if (last && last.document === entry.document) last.items.push(entry.text);
+    else groups.push({ document: entry.document, items: [entry.text] });
+  }
+  const asText = () =>
+    groups
+      .map((g) => `${g.document ?? 'Corpus'}\n${g.items.map((t) => `  ${t}`).join('\n')}`)
+      .join('\n\n');
+  return (
+    <Panel
+      tone="warn"
+      icon={AlertTriangle}
+      title={`${log.length} warning${log.length === 1 ? '' : 's'}`}
+    >
+      <div className="mt-2 max-h-64 overflow-y-auto rounded border bg-background/60 p-2">
+        {groups.map((g, gi) => (
+          <div key={gi} className={gi ? 'mt-2' : ''}>
+            <p className="text-xs font-medium">{g.document ?? 'The corpus as a whole'}</p>
+            <ul className="list-inside list-disc text-xs text-muted-foreground">
+              {g.items.map((t, i) => (
+                <li key={i}>{t}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="mt-2"
+        onClick={() => {
+          navigator.clipboard?.writeText(asText());
+          notifySuccess('Warnings copied.', 'Import');
+        }}
+      >
+        Copy
+      </Button>
+    </Panel>
+  );
+};
+
 export const ImportElanProject = () => {
   useDocumentTitle('Import ELAN');
   const { client } = useAuth();
@@ -96,6 +144,9 @@ export const ImportElanProject = () => {
   const [fieldNames, setFieldNames] = useState({});
   const [projectName, setProjectName] = useState('');
   const [progress, setProgress] = useState(null);
+  // Every warning the run raises, in order, kept on screen while it happens
+  // rather than only tallied at the end.
+  const [log, setLog] = useState([]);
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
 
@@ -179,6 +230,7 @@ export const ImportElanProject = () => {
   const startImport = async () => {
     setStage('running');
     setRunError(null);
+    setLog([]);
     stopRef.current = false;
     try {
       if (!setupDoneRef.current) {
@@ -202,6 +254,7 @@ export const ImportElanProject = () => {
         projectId: projectIdRef.current,
         build,
         shouldStop: () => stopRef.current,
+        onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
         onProgress: (p) => {
           if (p.phase !== 'document') return;
           const n = (p.index ?? 0) + 1;
@@ -527,6 +580,8 @@ export const ImportElanProject = () => {
                   </Panel>
                 )}
 
+                {log.length > 0 && <WarningLog log={log} />}
+
                 {stage === 'running' && progress && (
                   <div className="flex flex-col gap-2">
                     <div className="h-2 overflow-hidden rounded bg-muted">
@@ -569,18 +624,22 @@ export const ImportElanProject = () => {
                 {results.redone ? `, ${results.redone} redone` : ''}.
               </p>
             </Panel>
-            {results.warnings.length > 0 && (
-              <Panel
-                tone="warn"
-                icon={AlertTriangle}
-                title={`${results.warnings.length} warning${results.warnings.length === 1 ? '' : 's'}`}
-              >
-                <ul className="mt-1 list-inside list-disc text-xs">
-                  {results.warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
-              </Panel>
+            {log.length > 0 ? (
+              <WarningLog log={log} />
+            ) : (
+              results.warnings.length > 0 && (
+                <Panel
+                  tone="warn"
+                  icon={AlertTriangle}
+                  title={`${results.warnings.length} warning${results.warnings.length === 1 ? '' : 's'}`}
+                >
+                  <ul className="mt-1 list-inside list-disc text-xs">
+                    {results.warnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                </Panel>
+              )
             )}
             <div>
               <Button asChild>

@@ -270,6 +270,29 @@ describe('runElanImport', () => {
     expect(result).toMatchObject({ imported: 1, skipped: 0, redone: 0 });
   });
 
+  it('reports each warning as it happens, tagged with its document', async () => {
+    const client = stubClient();
+    const seen = [];
+    const build = {
+      ...BUILD,
+      warnings: ['A corpus-wide note.'],
+      documents: [{ ...BUILD.documents[0], warnings: ['Utterance 1: something odd.'] }],
+    };
+    const res = await runElanImport({
+      client,
+      projectId: 'p1',
+      build,
+      onWarning: (text, meta) => seen.push([text, meta.document]),
+    });
+    // Streamed in order, the corpus-wide one before any document's.
+    expect(seen).toEqual([
+      ['A corpus-wide note.', null],
+      ['Utterance 1: something odd.', 'Story'],
+    ]);
+    // And the returned tally still holds every one of them.
+    expect(res.warnings).toEqual(['A corpus-wide note.', 'Utterance 1: something odd.']);
+  });
+
   it('skips a document already marked done and redoes a half-imported one', async () => {
     const done = stubClient({
       documents: [{ id: 'old', name: 'Story' }],

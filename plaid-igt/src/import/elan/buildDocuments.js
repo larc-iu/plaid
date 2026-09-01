@@ -376,6 +376,30 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         for (const w of aligned.warnings) {
           docWarnings.push(`Utterance ${si + 1}: ${w}`);
         }
+        // A Plaid word token is a RANGE over the baseline, not a form of its
+        // own, and the matcher case-folds. So when the word tier spells a word
+        // differently from the transcription it sits in, the transcription
+        // wins and the word tier's spelling is gone. Say so: the alternative is
+        // that "Oranje" becomes "oranje" and nothing anywhere mentions it.
+        // Only worth saying when the alignment was otherwise clean. Once
+        // alignWords has fallen back to position, every word after the first
+        // discrepancy is sitting on the wrong text and would be reported here
+        // as a respelling, which is both noise and a misdescription of what
+        // happened. That case already has its own warning.
+        if (!aligned.warnings.length) {
+          const respelled = [];
+          aligned.spans.forEach((span, wi) => {
+            if (!span) return;
+            const inText = body.slice(span.beginU16, span.endU16);
+            const onTier = forms[wi];
+            if (onTier && inText && inText !== onTier) respelled.push(`${onTier} → ${inText}`);
+          });
+          if (respelled.length) {
+            docWarnings.push(
+              `Utterance ${si + 1}: the word tier spells ${respelled.length} word${respelled.length === 1 ? '' : 's'} differently from the text, and the text wins (${respelled.slice(0, 4).join(', ')}${respelled.length > 4 ? ', …' : ''}).`,
+            );
+          }
+        }
       } else {
         wordSpans = [];
         const re = /\S+/g;
