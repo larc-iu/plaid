@@ -412,7 +412,18 @@ export class IgtEditor {
           }
         }}
       >
-        <header class="igt-cmt-pop__head">${label}</header>
+        <header class="igt-cmt-pop__head">
+          <span class="igt-cmt-pop__title">${label}</span>
+          <button
+            class="igt-cmt-pop__close"
+            type="button"
+            title="Close"
+            aria-label="Close comments"
+            @click=${() => this._closePopover(true)}
+          >
+            ×
+          </button>
+        </header>
         ${commentThread({
           store,
           comments: store.threadFor(entityId),
@@ -1256,6 +1267,16 @@ export class IgtEditor {
   }
 
   _predictionKeydown = (e) => {
+    // Escape closes the floating menus (rows, copy format). They were the only
+    // overlays here that took an outside click but not Escape, while the
+    // popovers and the alternatives list all take both. Handled at the
+    // container, above the read-only guard: the opener keeps focus, and both
+    // menus work in a read-only view. No preventDefault — a cell edit's own
+    // Escape has already reverted it by the time this bubbles up.
+    if (e.key === 'Escape') {
+      this._closeRowMenu();
+      this._closeCopyMenu();
+    }
     if (this.readOnly) return;
     // Ctrl/Cmd+Shift+Arrow: hop between WORDS with unverified material (a
     // model's proposals, copied analyses, auto-links) — the whole-word review
@@ -1594,14 +1615,24 @@ export class IgtEditor {
       // Ctrl+Enter: accept a machine-made value as is (the sentence
       // counterpart of the word gesture) and hop to the same field of the
       // next sentence. An edited value commits instead, which verifies it.
+      // Like the word gesture, it holds position when there is nothing to
+      // accept rather than hopping on a silent no-op.
       e.preventDefault();
       const el = e.target;
       const sid = el.dataset.confirmSentence;
       const field = el.dataset.fieldName;
       if (this.readOnly || !sid || !field) return;
-      if (el.value === (el.dataset.orig ?? '')) {
-        this._run(() => this.doc.confirmSentenceSpan(sid, field));
+      const unchanged = el.value === (el.dataset.orig ?? '');
+      if (unchanged && !el.classList.contains('igt-field--machine')) {
+        notifyInfo(
+          el.value
+            ? 'This value was made by a person already.'
+            : 'There is nothing proposed here yet.',
+          `Nothing to accept in ${field}`,
+        );
+        return;
       }
+      if (unchanged) this._run(() => this.doc.confirmSentenceSpan(sid, field));
       if (!this._navMove(el, 'next')) el.blur();
       return;
     }
@@ -2147,6 +2178,13 @@ export class IgtEditor {
             the ends of a value · <kbd>Esc</kbd> cancel edit</span
           >
         </div>
+        <div class="igt-legend__row">
+          <strong>Rows</strong>
+          <span
+            >click a row label (or <kbd>↵</kbd>/<kbd>Space</kbd> on it) to pick which rows show ·
+            minimized rows stay as a thin stripe · <kbd>Esc</kbd> closes the menu</span
+          >
+        </div>
         ${ctx.hasMorphemes
           ? html` <div class="igt-legend__row">
               <strong>Morphemes</strong>
@@ -2383,10 +2421,10 @@ export class IgtEditor {
         aria-label=${`Sentence ${index + 1}`}
       >
         <h3 class="igt-sr-only">Sentence ${index + 1}</h3>
-        <span class="igt-sentence__num" aria-hidden="true">${index + 1}</span>
-        <span class="igt-sentence__cmt"
-          >${this._commentBadge('token', sentence.id, `sentence ${index + 1}`)}</span
-        >
+        <span class="igt-sentence__num">
+          <span aria-hidden="true">${index + 1}</span>
+          ${this._commentBadge('token', sentence.id, `sentence ${index + 1}`)}
+        </span>
         ${this._copyControl(sentence, ctx)}
         <div class="igt-grid">
           <div class="igt-tokens">
@@ -2597,7 +2635,11 @@ export class IgtEditor {
         aria-expanded=${collapsed ? 'false' : 'true'}
         @click=${openMenu}
         @keydown=${(e) => {
-          if (e.key === 'Enter' || e.key === ' ') openMenu(e);
+          // preventDefault: Space on a div scrolls the page.
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openMenu(e);
+          }
         }}
       >
         <span class="igt-row-label__text">${name}</span>
@@ -2655,8 +2697,11 @@ export class IgtEditor {
             vocabItem: token.vocabItem,
             formText: token.content,
             kind: 'word',
+            // Anchored to the FORM, not to the cell: a column is as wide as the
+            // widest morpheme beneath it, so a badge pinned to the cell's right
+            // edge floats far from the word it is about.
+            badge: this._commentBadge('token', token.id, token.content),
           })}
-          ${this._commentBadge('token', token.id, token.content)}
         </div>
         ${ctx.orthographies.map(
           (name) => html`
@@ -2792,9 +2837,14 @@ export class IgtEditor {
               @paste=${this._onMorphPaste(morph, word)}
               @blur=${(e) => this._commitMorphForm(e, morph.id)}
             />`,
-            { id: morph.id, vocabItem: morph.vocabItem, formText: value, kind: 'morpheme' },
+            {
+              id: morph.id,
+              vocabItem: morph.vocabItem,
+              formText: value,
+              kind: 'morpheme',
+              badge: this._commentBadge('token', morph.id, value || 'morpheme'),
+            },
           )}
-          ${this._commentBadge('token', morph.id, value || 'morpheme')}
         </div>
         ${ctx.morphFields.map(
           (name) => html`
@@ -2856,7 +2906,10 @@ export class IgtEditor {
                 aria-expanded=${collapsed ? 'false' : 'true'}
                 @click=${(e) => this._openRowMenuFrom(e)}
                 @keydown=${(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') this._openRowMenuFrom(e);
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this._openRowMenuFrom(e);
+                  }
                 }}
               >
                 <span class="igt-sentence-anno__text">${name}</span>
@@ -2945,7 +2998,8 @@ export class IgtEditor {
     }
     return html`
       <span class="igt-vocab">
-        ${face} ${opener} ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
+        <span class="igt-vocab__face">${face}${opts.badge ?? nothing}</span>
+        ${opener} ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
       </span>
     `;
   }
@@ -3438,4 +3492,19 @@ export class IgtEditor {
       </label>
     `;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Hot reload
+//
+// An island is a plain class, instantiated once when the tab mounts. A hot
+// update swaps this MODULE, but the live instance keeps its old prototype, so
+// edits to any method here appear to do nothing until the editor is remounted
+// — a stale instance silently rendering the previous build. That is a trap:
+// you fix something, the page updates, and the bug is still there.
+//
+// Invalidate instead, so a change to an island forces a full reload.
+// ---------------------------------------------------------------------------
+if (import.meta.hot) {
+  import.meta.hot.accept(() => import.meta.hot.invalidate());
 }
