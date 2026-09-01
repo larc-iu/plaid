@@ -80,17 +80,22 @@ const Panel = ({ tone = 'muted', icon: Icon, title, children }) => {
 // document it came from. On screen while the run is still going, because on a
 // long corpus a problem is worth seeing before the end, and scrollable because
 // a real corpus can raise hundreds.
-const WarningLog = ({ log }) => {
+// Past this many, the list is a wall rather than information, and rendering one
+// node per warning starts to cost. A corpus that capitalises its word tier
+// systematically raises one per utterance, so thousands is a real shape.
+const LOG_RENDER_LIMIT = 200;
+
+export const WarningLog = ({ log }) => {
   const groups = [];
-  for (const entry of log) {
+  for (const entry of log.slice(0, LOG_RENDER_LIMIT)) {
     const last = groups[groups.length - 1];
     if (last && last.document === entry.document) last.items.push(entry.text);
     else groups.push({ document: entry.document, items: [entry.text] });
   }
-  const asText = () =>
-    groups
-      .map((g) => `${g.document ?? 'Corpus'}\n${g.items.map((t) => `  ${t}`).join('\n')}`)
-      .join('\n\n');
+  const hidden = log.length - Math.min(log.length, LOG_RENDER_LIMIT);
+  // Copy takes the whole log, not just the part on screen: the cap is about
+  // what is readable, not about what was recorded.
+  const asText = () => log.map((e) => `${e.document ?? 'Corpus'}\t${e.text}`).join('\n');
   return (
     <Panel
       tone="warn"
@@ -108,6 +113,9 @@ const WarningLog = ({ log }) => {
             </ul>
           </div>
         ))}
+        {hidden > 0 && (
+          <p className="mt-2 text-xs font-medium">and {hidden} more, which Copy includes.</p>
+        )}
       </div>
       <Button
         variant="outline"
