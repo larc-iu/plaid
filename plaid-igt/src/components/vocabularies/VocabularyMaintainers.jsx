@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Trash2, AlertTriangle, Search, Plus } from 'lucide-react';
+import { Trash2, AlertTriangle, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { SearchInput, ListHint } from '@/components/ui/list-search';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 
@@ -53,6 +53,7 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchDenied, setSearchDenied] = useState(false); // 403: caller can't browse the directory
+  const [searchCapped, setSearchCapped] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 250);
@@ -69,15 +70,20 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
           q: debouncedSearch || undefined,
           limit: SEARCH_LIMIT,
         });
+        const entries = page.entries || [];
         const known = new Set(maintainerIds);
-        const results = (page.entries || []).filter((u) => !known.has(u.id));
+        const results = entries.filter((u) => !known.has(u.id));
         if (!cancelled) {
           setSearchResults(results);
           setSearchDenied(false);
+          // Measured before current maintainers are dropped: that filter is why
+          // the rows on screen can number fewer than the server's page.
+          setSearchCapped(entries.length >= SEARCH_LIMIT);
         }
       } catch (err) {
         if (!cancelled) {
           setSearchResults([]);
+          setSearchCapped(false);
           if (err?.status === 403) setSearchDenied(true);
           else console.error('User search failed:', err);
         }
@@ -214,16 +220,12 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
           <h3 className="text-base font-semibold">Add a maintainer</h3>
         </div>
         <div className="flex flex-col gap-2 px-4 py-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-8"
-              placeholder="Search users by name…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onFocus={() => setSearchActive(true)}
-            />
-          </div>
+          <SearchInput
+            placeholder="Search users by name…"
+            value={search}
+            onChange={setSearch}
+            onFocus={() => setSearchActive(true)}
+          />
 
           {searchDenied ? (
             <p className="py-1 text-sm text-muted-foreground">
@@ -273,6 +275,11 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
                     </Button>
                   </div>
                 ))}
+                {searchCapped && (
+                  <ListHint className="pt-2">
+                    Showing the first {SEARCH_LIMIT} matches. Keep typing to narrow the list.
+                  </ListHint>
+                )}
               </div>
             ))
           )}

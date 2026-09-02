@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search as SearchIcon, FileText } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SearchInput, ListHint } from '@/components/ui/list-search';
 import {
   Select,
   SelectTrigger,
@@ -83,19 +83,15 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       {/* Controls */}
       <div className="rounded-lg border bg-card p-4">
         <div className="flex flex-wrap items-end gap-2">
-          <div className="relative min-w-64 flex-1">
-            <SearchIcon className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search this project…"
-              spellCheck={false}
-              value={queryText}
-              onChange={(e) => setQueryText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') runSearch();
-              }}
-              className="pl-8"
-            />
-          </div>
+          <SearchInput
+            className="min-w-64 flex-1"
+            placeholder="Search this project…"
+            value={queryText}
+            onChange={setQueryText}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') runSearch();
+            }}
+          />
           <Select value={matchType} onValueChange={setMatchType}>
             <SelectTrigger className="w-[150px]">
               <SelectValue />
@@ -205,11 +201,11 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             </div>
           ))}
           {result.remainingDocs > 0 && (
-            <p className="text-sm text-muted-foreground">
-              … plus {result.remainingHits.toLocaleString()} more hit
+            <ListHint>
+              Another {result.remainingHits.toLocaleString()} hit
               {result.remainingHits === 1 ? '' : 's'} in {result.remainingDocs} more document
-              {result.remainingDocs === 1 ? '' : 's'}. Refine your search to see them.
-            </p>
+              {result.remainingDocs === 1 ? '' : 's'} are not shown. Refine your search to see them.
+            </ListHint>
           )}
           {result.totalHits === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">No hits.</p>

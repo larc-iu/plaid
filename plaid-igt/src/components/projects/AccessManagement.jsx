@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { UserPlus, Search, Plus, MoreVertical } from 'lucide-react';
+import { UserPlus, Plus, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SearchInput, ListHint } from '@/components/ui/list-search';
 import {
   Select,
   SelectTrigger,
@@ -76,6 +77,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [searchActive, setSearchActive] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
+  const [searchCapped, setSearchCapped] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
 
   // Admin user CRUD.
@@ -148,12 +150,21 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
           q: debouncedSearch || undefined,
           limit: SEARCH_LIMIT,
         });
+        const entries = page.entries || [];
         const memberIds = new Set(members.map((m) => m.id));
-        const results = (page.entries || []).filter((u) => !memberIds.has(u.id));
-        if (!cancelled) setSearchResults(results);
+        const results = entries.filter((u) => !memberIds.has(u.id));
+        if (!cancelled) {
+          setSearchResults(results);
+          // Measured before members are dropped: that filter is why the rows on
+          // screen can number fewer than the page the server actually sent.
+          setSearchCapped(entries.length >= SEARCH_LIMIT);
+        }
       } catch (err) {
         console.error('User search failed:', err);
-        if (!cancelled) setSearchResults([]);
+        if (!cancelled) {
+          setSearchResults([]);
+          setSearchCapped(false);
+        }
       } finally {
         if (!cancelled) setSearchLoading(false);
       }
@@ -409,16 +420,12 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
           <h2 className="text-lg font-semibold">Add a user</h2>
         </div>
         <div className="flex flex-col gap-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-8"
-              placeholder="Search users by name…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onFocus={() => setSearchActive(true)}
-            />
-          </div>
+          <SearchInput
+            placeholder="Search users by name…"
+            value={search}
+            onChange={setSearch}
+            onFocus={() => setSearchActive(true)}
+          />
 
           {searchActive &&
             (searchLoading ? (
@@ -469,6 +476,11 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                     </DropdownMenu>
                   </div>
                 ))}
+                {searchCapped && (
+                  <ListHint className="pt-2">
+                    Showing the first {SEARCH_LIMIT} matches. Keep typing to narrow the list.
+                  </ListHint>
+                )}
               </div>
             ))}
         </div>

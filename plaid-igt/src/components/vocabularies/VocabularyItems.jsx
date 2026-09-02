@@ -1,19 +1,11 @@
 import { useState, useEffect, useId, useLayoutEffect, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import {
-  Plus,
-  Trash2,
-  AlertTriangle,
-  Upload,
-  Download,
-  Search,
-  FileText,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Upload, Download, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
+import { pageSlice, LIST_PAGE_SIZE } from '@/hooks/usePagedList';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -34,7 +26,6 @@ import { BulkAddDialog } from './BulkAddDialog';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
 
 const NEW_ID = '__new__';
-const PAGE_SIZE = 100;
 
 // Drop blank/nullish values so we never persist empty-string metadata keys.
 const cleanMeta = (obj) => {
@@ -527,11 +518,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     });
   }, [items, search, fieldNames, homonyms]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount - 1);
-  const pageItems = filteredItems.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
-  const rangeStart = filteredItems.length === 0 ? 0 : currentPage * PAGE_SIZE + 1;
-  const rangeEnd = Math.min((currentPage + 1) * PAGE_SIZE, filteredItems.length);
+  // Paged with the shared helper rather than the hook: the selection effect
+  // below needs to drive the page itself, so the state stays local.
+  const paged = pageSlice(filteredItems, page);
+  const currentPage = paged.page;
 
   // Reset to page 1 when the result set is re-scoped; jump the list back to top
   // when the page changes.
@@ -555,7 +545,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     if (!selectedId || selectedId === NEW_ID || positionedRef.current === selectedId) return;
     const index = filteredItems.findIndex((i) => i.id === selectedId);
     if (index < 0) return; // not loaded yet, or the search box has it filtered out
-    const wanted = Math.floor(index / PAGE_SIZE);
+    const wanted = Math.floor(index / LIST_PAGE_SIZE);
     if (currentPage !== wanted) {
       setPage(wanted);
       return; // scroll once the right page has rendered
@@ -644,12 +634,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       >
         <div className="flex flex-col gap-2 border-b p-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">
-              Items{' '}
-              <span className="text-muted-foreground">
-                ({search ? `${filteredItems.length} of ${items.length}` : items.length})
-              </span>
-            </span>
+            <span className="text-sm font-medium">Items</span>
             {canManage && (
               <Button size="sm" className="h-7" asChild>
                 <Link to={itemTo(NEW_ID)} onClick={(e) => guardSelect(e, NEW_ID)}>
@@ -658,15 +643,17 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
               </Button>
             )}
           </div>
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
+          <div className="flex items-center gap-2">
+            <SearchInput
+              className="min-w-0 flex-1"
+              inputClassName="h-8"
               placeholder="Search items…"
-              spellCheck={false}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-8 pl-7"
+              onChange={setSearch}
             />
+            {items.length > 0 && (
+              <ListCount shown={filteredItems.length} total={items.length} noun="item" />
+            )}
           </div>
         </div>
 
@@ -689,10 +676,12 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
               No items yet. Click “New”.
             </p>
           ) : filteredItems.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">No matches.</p>
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+              No items match “{search.trim()}”.
+            </p>
           ) : (
             <ul className="divide-y">
-              {pageItems.map((item) => (
+              {paged.pageItems.map((item) => (
                 <li key={item.id}>
                   <Link
                     to={itemTo(item.id)}
@@ -724,31 +713,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
           )}
         </div>
 
-        {pageCount > 1 && (
-          <div className="flex items-center justify-between gap-1 border-t px-2 py-1.5 text-xs text-muted-foreground">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              disabled={currentPage === 0}
-              onClick={() => setPage(currentPage - 1)}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <span className="tabular-nums">
-              {rangeStart}–{rangeEnd} of {filteredItems.length}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              disabled={currentPage >= pageCount - 1}
-              onClick={() => setPage(currentPage + 1)}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
+        <ListPager {...paged} onPage={setPage} />
 
         <div className="flex items-center gap-2 border-t p-2">
           {canManage && (

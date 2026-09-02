@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, ArrowUp, ArrowDown, Search, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, ArrowUp, ArrowDown } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
+import { usePagedList } from '@/hooks/usePagedList';
 import {
   Dialog,
   DialogContent,
@@ -17,8 +19,6 @@ import { cn } from '@/lib/utils';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
-
-const PAGE_SIZE = 100; // documents shown per page (the full list is paged client-side)
 
 // Sortable column header button (renders an arrow for the active column).
 const SortHeader = ({ field, label, sort, onSort, className }) => {
@@ -59,7 +59,6 @@ export const DocumentList = ({
   const [wordsLoading, setWordsLoading] = useState(true);
   const [sort, setSort] = useState({ key: 'updated', dir: 'desc' });
   const [filter, setFilter] = useState('');
-  const [page, setPage] = useState(0);
 
   // Per-document word counts: one aggregate query over the project's primary
   // (word) token-layer tokens, grouped by document. Morphemes are sub-word units
@@ -159,21 +158,9 @@ export const DocumentList = ({
     });
   }, [documents, wordCounts, hasWordLayer, sort, filter]);
 
-  // Page the sorted/filtered list at PAGE_SIZE. `currentPage` is clamped so
-  // deleting documents (or filtering) off the last page falls back into range.
-  const pageCount = Math.max(1, Math.ceil(sortedDocuments.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount - 1);
-  const pageDocuments = sortedDocuments.slice(
-    currentPage * PAGE_SIZE,
-    (currentPage + 1) * PAGE_SIZE,
-  );
-  const rangeStart = sortedDocuments.length === 0 ? 0 : currentPage * PAGE_SIZE + 1;
-  const rangeEnd = Math.min((currentPage + 1) * PAGE_SIZE, sortedDocuments.length);
-
-  // Jump back to the first page when the result set is re-scoped (filter or sort).
-  useEffect(() => {
-    setPage(0);
-  }, [filter, sort]);
+  const paged = usePagedList(sortedDocuments, {
+    resetKey: `${filter}|${sort.key}|${sort.dir}`,
+  });
 
   const renderWords = (documentId) => {
     if (wordsLoading) {
@@ -190,25 +177,15 @@ export const DocumentList = ({
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">Documents</h2>
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Filter by name…"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="w-56 pl-7 pr-7"
-            />
-            {filter && (
-              <button
-                type="button"
-                onClick={() => setFilter('')}
-                aria-label="Clear filter"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
+          <SearchInput
+            className="w-56"
+            placeholder="Search documents…"
+            value={filter}
+            onChange={setFilter}
+          />
+          {documents.length > 0 && (
+            <ListCount shown={sortedDocuments.length} total={documents.length} noun="document" />
+          )}
           {canWrite && (
             <Button onClick={() => setOpen(true)}>
               <Plus className="h-4 w-4" /> Create Document
@@ -219,8 +196,7 @@ export const DocumentList = ({
 
       {documents.length === 0 ? (
         <div className="rounded-md border py-12 text-center text-muted-foreground">
-          <p className="text-base">No documents found</p>
-          <p className="mt-1 text-sm">This project doesn&apos;t have any documents yet.</p>
+          <p className="text-base">No documents yet.</p>
         </div>
       ) : sortedDocuments.length === 0 ? (
         <div className="rounded-md border py-12 text-center text-muted-foreground">
@@ -267,7 +243,7 @@ export const DocumentList = ({
                 </tr>
               </thead>
               <tbody>
-                {pageDocuments.map((d) => {
+                {paged.pageItems.map((d) => {
                   // Each cell wraps its content in a real <a> (rather than a row
                   // onClick) so the row behaves as a true link: middle-click and
                   // right-click → "open in new tab" work natively. Tailwind
@@ -319,31 +295,7 @@ export const DocumentList = ({
               </tbody>
             </table>
 
-            {pageCount > 1 && (
-              <div className="flex items-center justify-between gap-1 border-t px-2 py-1.5 text-xs text-muted-foreground">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  disabled={currentPage === 0}
-                  onClick={() => setPage(currentPage - 1)}
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </Button>
-                <span className="tabular-nums">
-                  {rangeStart}–{rangeEnd} of {sortedDocuments.length}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  disabled={currentPage >= pageCount - 1}
-                  onClick={() => setPage(currentPage + 1)}
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
+            <ListPager {...paged} onPage={paged.setPage} />
           </div>
         </TooltipProvider>
       )}
