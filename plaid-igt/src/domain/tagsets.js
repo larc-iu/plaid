@@ -228,6 +228,32 @@ export const unreachableValues = (tagset) => {
   return (tagset.values || []).filter((v) => [...delims].some((d) => v.value.includes(d)));
 };
 
+/**
+ * The off-tagset values in a whole-word analysis (the extractAnalysis shape:
+ * `{ word: { fields }, morphemes: [{ fields }] }`), as
+ * [{ scope, field, value, violations }].
+ *
+ * Re-analyze propagates ONE analysis to every occurrence of a form, so a single
+ * off-tagset gloss in the chosen target lands everywhere in one click. Unlike a
+ * field-replace, where each row is judged on its own, here every row would
+ * carry the same defect — so this asks about the analysis itself, before any of
+ * it is written.
+ *
+ * `tagsetFor(scope, fieldName)` resolves the governing tagset, or null.
+ */
+export const analysisViolations = (analysis, tagsetFor) => {
+  const out = [];
+  const check = (scope, fields) => {
+    for (const [field, value] of Object.entries(fields || {})) {
+      const violations = validateValue(value ?? '', tagsetFor(scope, field));
+      if (violations.length) out.push({ scope, field, value, violations });
+    }
+  };
+  check('word', analysis?.word?.fields);
+  for (const m of analysis?.morphemes || []) check('morpheme', m?.fields);
+  return out;
+};
+
 /** `governedFields` grouped by tagset name: { name: [record, ...] }. */
 export const byTagsetName = (governed) => {
   const out = {};

@@ -6,7 +6,12 @@ import { readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 
 // `tagsetNames` comes from AnnotationSettings, which holds the live project, so
 // a tagset created in the section above is pickable here immediately.
-export const DocumentMetadataSettings = ({ projectId, client, tagsetNames = [] }) => {
+export const DocumentMetadataSettings = ({
+  projectId,
+  client,
+  tagsetNames = [],
+  violations = {},
+}) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -125,6 +130,8 @@ export const DocumentMetadataSettings = ({ projectId, client, tagsetNames = [] }
         onError={handleError}
         isLoading={isLoading}
         tagsetNames={tagsetNames}
+        violations={violations}
+        projectId={projectId}
         showTitle={false}
       />
     </div>

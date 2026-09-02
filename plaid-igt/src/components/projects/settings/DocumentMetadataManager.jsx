@@ -1,5 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, RotateCcw, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+  Plus,
+  Trash2,
+  RotateCcw,
+  Check,
+  X,
+  ChevronUp,
+  ChevronDown,
+  AlertTriangle,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +40,9 @@ export const DocumentMetadataManager = ({
   onSaveChanges,
   // The project's tagset names, for the per-field picker.
   tagsetNames = [],
+  // "document:<field>" -> how many values its tagset refuses.
+  violations = {},
+  projectId,
   onError,
   isLoading = false,
   showTitle = true,
@@ -257,6 +270,17 @@ export const DocumentMetadataManager = ({
                     <span className={record.enabled ? undefined : 'italic text-muted-foreground'}>
                       {record.name}
                     </span>
+                    {violations[`document:${record.name}`] > 0 && (
+                      <Link
+                        to={`/projects/${projectId}?tab=validate`}
+                        onClick={(event) => event.stopPropagation()}
+                        className="ml-2 inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 align-middle text-xs text-destructive hover:underline"
+                        title="Show these in the Validation tab"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        {violations[`document:${record.name}`]} outside the tagset
+                      </Link>
+                    )}
                   </td>
                   {tagsetNames.length > 0 && (
                     <td className="px-3 py-2" onClick={(event) => event.stopPropagation()}>

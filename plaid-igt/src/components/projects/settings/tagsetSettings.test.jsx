@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts } from '@/test/renderComponent.jsx';
 import { FieldsManager } from './FieldsManager.jsx';
 import { TagsetsManager } from './TagsetsManager.jsx';
@@ -73,6 +74,36 @@ describe('FieldsManager tagset column', () => {
     expect(tagsetCell).toBeGreaterThan(-1);
     expect(controlCell).toBeGreaterThan(-1);
     expect(tagsetCell).toBeLessThan(controlCell);
+    await unmount();
+  });
+
+  it('links a violation count into the Validation tab', async () => {
+    // The badge is the discovery path: without it nothing tells you to go and
+    // look, and the count is only meaningful if you can act on it.
+    const { container, unmount } = await renderComponent(
+      <MemoryRouter>
+        <FieldsManager
+          initialData={FIELDS}
+          tagsetNames={['Leipzig']}
+          projectId="p-1"
+          violations={{ 'morpheme:Gloss': 4 }}
+        />
+      </MemoryRouter>,
+    );
+    const link = all(container, 'a').find((a) => a.textContent.includes('outside the tagset'));
+    expect(link).toBeTruthy();
+    expect(link.textContent).toContain('4');
+    expect(link.getAttribute('href')).toContain('tab=validate');
+    await unmount();
+  });
+
+  it('shows no badge for a field whose values are all in its tagset', async () => {
+    const { container, unmount } = await renderComponent(
+      <MemoryRouter>
+        <FieldsManager initialData={FIELDS} tagsetNames={['Leipzig']} violations={{}} />
+      </MemoryRouter>,
+    );
+    expect(container.textContent).not.toContain('outside the tagset');
     await unmount();
   });
 

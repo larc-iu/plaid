@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -55,6 +57,11 @@ export const FieldsManager = ({
   // Names of the project's tagsets, for the per-field Tagset picker. Empty in
   // setup mode (tagsets are configured in settings, after the fields exist).
   tagsetNames = [],
+  // "scope:field" -> how many of the field's values its tagset refuses. The
+  // count is a link into the Validation tab, which is where you can see and fix
+  // them; a field with no tagset, or no violations, gets nothing.
+  violations = {},
+  projectId,
   showTitle = true,
 }) => {
   const [fields, setFields] = useState([]);
@@ -330,7 +337,20 @@ export const FieldsManager = ({
                       {record.scope}
                     </Badge>
                   </td>
-                  <td className="border-t px-3 py-2 align-middle">{record.name}</td>
+                  <td className="border-t px-3 py-2 align-middle">
+                    {record.name}
+                    {violations[`${record.scope.toLowerCase()}:${record.name}`] > 0 && (
+                      <Link
+                        to={`/projects/${projectId}?tab=validate`}
+                        className="ml-2 inline-flex items-center gap-1 rounded bg-destructive/10 px-1.5 py-0.5 align-middle text-xs text-destructive hover:underline"
+                        title="Show these in the Validation tab"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        {violations[`${record.scope.toLowerCase()}:${record.name}`]} outside the
+                        tagset
+                      </Link>
+                    )}
+                  </td>
                   {tagsetNames.length > 0 && (
                     <td className="border-t px-3 py-2 align-middle">
                       <Select

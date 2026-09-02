@@ -15,7 +15,13 @@ import { readTagsetName } from '@/domain/tagsets';
 
 // `tagsetNames` comes from AnnotationSettings, which holds the live project, so
 // a tagset created in the section above shows up in the picker immediately.
-export const FieldsSettings = ({ projectId, client, tagsetNames = [], onProjectUpdate }) => {
+export const FieldsSettings = ({
+  projectId,
+  client,
+  tagsetNames = [],
+  violations = {},
+  onProjectUpdate,
+}) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   // field name -> span layer id, for usage counts at delete time. Kept in
@@ -309,6 +315,8 @@ export const FieldsSettings = ({ projectId, client, tagsetNames = [], onProjectU
         onError={handleError}
         onCountFieldUsage={handleCountFieldUsage}
         tagsetNames={tagsetNames}
+        violations={violations}
+        projectId={projectId}
         showTitle={false}
       />
     </div>

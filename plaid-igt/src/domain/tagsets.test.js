@@ -5,6 +5,7 @@ import {
   readTagsets,
   readTagsetName,
   resolveTagset,
+  analysisViolations,
   governedFields,
   byTagsetName,
   missingAffixDelimiters,
@@ -426,5 +427,38 @@ describe('unreachableValues', () => {
     const t = { delimiters: '', mode: 'closed', values: [{ value: '1SG.NOM' }] };
     expect(unreachableValues(t)).toEqual([]);
     expect(isValueAllowed('1SG.NOM', t)).toBe(true);
+  });
+});
+
+describe('analysisViolations', () => {
+  const tagsetFor = (scope, field) => (scope === 'morpheme' && field === 'Gloss' ? leipzig : null);
+
+  it('finds an off-tagset gloss anywhere in the analysis', () => {
+    // Re-analyze spreads one analysis to every occurrence, so this is asked of
+    // the analysis before any of it is written.
+    const bad = {
+      word: { fields: { POS: 'anything' } },
+      morphemes: [{ fields: { Gloss: '1SG' } }, { fields: { Gloss: 'ABL' } }],
+    };
+    expect(analysisViolations(bad, tagsetFor)).toEqual([
+      {
+        scope: 'morpheme',
+        field: 'Gloss',
+        value: 'ABL',
+        violations: [{ part: 'ABL', begin: 0, end: 3, reason: 'unknown' }],
+      },
+    ]);
+  });
+
+  it('passes a clean analysis, and one with no governed fields at all', () => {
+    expect(
+      analysisViolations({ morphemes: [{ fields: { Gloss: '1SG.NOM' } }] }, tagsetFor),
+    ).toEqual([]);
+    expect(analysisViolations({ word: { fields: { POS: 'n' } } }, () => null)).toEqual([]);
+  });
+
+  it('tolerates a bare or empty analysis', () => {
+    expect(analysisViolations(null, tagsetFor)).toEqual([]);
+    expect(analysisViolations({}, tagsetFor)).toEqual([]);
   });
 });

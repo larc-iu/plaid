@@ -31,7 +31,14 @@ import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { normalizeVocabFields, humanizeFieldName } from '@/domain/vocabFields';
 import { readVocabFields } from '@/domain/igtConfig';
-import { isValueAllowed, readTagsetName, resolveTagset, tagsetEnforces } from '@/domain/tagsets';
+import {
+  analysisViolations,
+  governedFields,
+  isValueAllowed,
+  readTagsetName,
+  resolveTagset,
+  tagsetEnforces,
+} from '@/domain/tagsets';
 import { MATCH_TYPES, searchDomains } from '../search/searchQueries.js';
 import { MarkedText } from '../search/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
@@ -705,6 +712,16 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
   const r = useRun();
   const cardRows = useMemo(() => cardRowsFor(layerInfo, project), [layerInfo, project]);
 
+  // Re-analyze spreads ONE analysis to every occurrence, so a single off-tagset
+  // value in the chosen target lands everywhere at once. Judge the analysis
+  // before any of it is written, rather than each row as field-replace does.
+  const tagsetFor = useMemo(() => {
+    const by = new Map(
+      governedFields(layerInfo, project?.config).map((g) => [`${g.scope}:${g.field}`, g.tagset]),
+    );
+    return (scope, field) => by.get(`${scope}:${field}`) ?? null;
+  }, [layerInfo, project?.config]);
+
   const preview = async () => {
     if (!form.trim()) return;
     setTargetSig(null);
@@ -723,6 +740,7 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
 
   const plan = r.plan;
   const target = plan?.candidates.find((c) => c.signature === targetSig) ?? null;
+  const targetBad = target ? analysisViolations(target.analysis, tagsetFor) : [];
   const targetName = target
     ? `Analysis ${plan.candidates.findIndex((c) => c.signature === targetSig) + 1}`
     : '';
@@ -740,7 +758,7 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
     : [];
 
   const doApply = async () => {
-    if (!target) return;
+    if (!target || targetBad.length) return;
     const res = await r.run('Apply', () =>
       applyReanalyze(
         client,
@@ -840,9 +858,23 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
               </div>
             </div>
           )}
+          {targetBad.length > 0 && (
+            <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              This analysis holds{' '}
+              {targetBad.map((b, i) => (
+                <Fragment key={`${b.scope}:${b.field}`}>
+                  {i > 0 && ', '}
+                  <strong>{b.value}</strong> in {b.field} ({b.scope})
+                </Fragment>
+              ))}
+              , which its tagset does not allow. Applying it would put that value on every ticked
+              occurrence at once, so pick a different analysis or fix this one in its document
+              first.
+            </p>
+          )}
           {target && (
             <ApplyBar
-              count={selectedRows.length}
+              count={targetBad.length ? 0 : selectedRows.length}
               busy={r.busy}
               onApply={doApply}
               summary={`${plural(selectedRows.length, 'occurrence')} of “${plan.form}” will be re-analyzed as ${label(target.analysis)}, replacing their current analyses.`}
