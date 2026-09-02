@@ -211,7 +211,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   };
 }
 
-// Multi-word MWEs (MWEs, links over two or more word tokens) are drawn in the
+// Multi-word expressions (MWEs, links over two or more word tokens) are drawn in the
 // sentence of their first live member: `sentence.mwes` lists them with
 // their lane and member columns, `sentence.mweLanes` says how many
 // bracket lines the sentence's word band needs, and every word token carries

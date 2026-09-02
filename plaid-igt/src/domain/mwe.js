@@ -1,4 +1,4 @@
-// Multi-word MWEs (MWEs): one lexicon entry linked from two or more WORD tokens
+// Multi-word expressions (MWEs): one lexicon entry linked from two or more WORD tokens
 // at once. The data model needs nothing new — a vocab link already carries a
 // `tokens` list, and plaid-core checks that the members share a document, a
 // text and a token layer — so an MWE is simply a link with two or more
