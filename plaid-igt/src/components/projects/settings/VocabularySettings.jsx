@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { VocabularyManager } from './VocabularyManager';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 
 export const VocabularySettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -90,8 +90,6 @@ export const VocabularySettings = ({ projectId, client }) => {
           await client.projects.unlinkVocab(projectId, vocabId);
         }
       }
-
-      notifySuccess('Vocabulary configuration has been updated', 'Settings Saved');
     } catch (error) {
       console.error('Failed to save vocabularies configuration:', error);
       setHasError(true);

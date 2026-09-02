@@ -268,7 +268,7 @@ export const OrthographiesManager = ({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-7 w-7 text-destructive hover:text-destructive"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
                   onClick={() => requestDeleteOrthography(orth.name)}
                   title="Remove"
                 >

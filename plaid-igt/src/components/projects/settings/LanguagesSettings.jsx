@@ -3,7 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 import { readLanguages, IGT_NAMESPACE } from '@/domain/igtConfig';
 
 // Advisory only: a wrong-looking code still saves, since a project may be
@@ -109,7 +109,6 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
     try {
       if (!client) throw new Error('Not authenticated');
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'languages', draft);
-      notifySuccess('Project languages have been updated.', 'Settings saved');
       onProjectUpdate?.();
     } catch (err) {
       console.error('Failed to save project languages:', err);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { TagsetsManager } from './TagsetsManager.jsx';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { readTagsets, readTagsetName } from '@/domain/tagsets';
@@ -57,7 +57,6 @@ export const TagsetsSettings = ({ projectId, client, onProjectUpdate }) => {
       if (!client) throw new Error('Not authenticated');
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next);
       setTagsets(next);
-      notifySuccess('Tagsets have been updated', 'Settings Saved');
       // Field references are read at load time, so pick up a rename's effect on
       // the "used by" line without a page refresh.
       load();

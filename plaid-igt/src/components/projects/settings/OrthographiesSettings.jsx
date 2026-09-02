@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { OrthographiesManager } from './OrthographiesManager.jsx';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 import {
   findBaselineTextLayer,
   findWordTokenLayer,
@@ -135,8 +135,6 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         'orthographies',
         nonBaselineOrthographies,
       );
-
-      notifySuccess('Orthographies configuration has been updated', 'Settings Saved');
     } catch (error) {
       console.error('Failed to save orthographies configuration:', error);
       setHasError(true);

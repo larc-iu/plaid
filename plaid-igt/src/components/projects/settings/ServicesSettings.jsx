@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ServiceParamForm } from '../../documents/services/ServiceParamForm';
 import { ServiceSummary } from '../../documents/services/ServiceSummary';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
@@ -256,7 +256,7 @@ function SpotCard({ spot, services, draftEntry, onChange, onDiscard, renderBuilt
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 text-destructive"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
                     title="Forget this service (it reappears if it reconnects)"
                     onClick={() => onDiscard(svc.serviceId)}
                   >
@@ -351,7 +351,6 @@ export const ServicesSettings = ({ projectId, client }) => {
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'serviceDefaults', draft);
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'autoAnalysis', autoDraft);
       setDirty(false);
-      notifySuccess('Service defaults saved');
     } catch (error) {
       notifyError(error.message || 'Failed to save service defaults');
     } finally {
@@ -437,7 +436,7 @@ export const ServicesSettings = ({ projectId, client }) => {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 text-destructive"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
                     title="Forget this service"
                     onClick={() => discard(svc.serviceId)}
                   >

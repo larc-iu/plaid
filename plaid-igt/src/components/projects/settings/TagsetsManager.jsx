@@ -204,7 +204,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
               <Button
                 size="icon"
                 variant="ghost"
-                className="ml-auto h-7 w-7 text-destructive hover:text-destructive"
+                className="ml-auto h-7 w-7 text-muted-foreground hover:text-destructive"
                 onClick={() => setPendingDelete(name)}
                 title="Delete tagset"
               >
@@ -253,7 +253,10 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                     className="max-w-[12rem] font-mono"
                     placeholder="e.g. .:>"
                     defaultValue={t.delimiters}
-                    onBlur={(e) => patch(name, { delimiters: e.currentTarget.value })}
+                    onBlur={(e) => {
+                      const next = e.currentTarget.value;
+                      if (next !== t.delimiters) patch(name, { delimiters: next });
+                    }}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
                     <span className="font-mono">{SAMPLE}</span> is checked as{' '}
@@ -468,7 +471,10 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
           <Input
             className="h-7"
             defaultValue={rec.description ?? ''}
-            onBlur={(e) => onPatch({ description: e.currentTarget.value })}
+            onBlur={(e) => {
+              const next = e.currentTarget.value;
+              if (next !== (rec.description ?? '')) onPatch({ description: next });
+            }}
           />
         </td>
         <td className="px-2 py-1">
@@ -484,7 +490,7 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
           <Button
             size="icon"
             variant="ghost"
-            className="h-6 w-6 text-destructive hover:text-destructive"
+            className="h-6 w-6 text-muted-foreground hover:text-destructive"
             onClick={onRemove}
             title="Remove value"
           >
@@ -502,12 +508,15 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
                 <Input
                   className="h-7 max-w-md"
                   defaultValue={String(rec[k] ?? '')}
-                  onBlur={(e) => onPatch({ [k]: e.currentTarget.value })}
+                  onBlur={(e) => {
+                    const next = e.currentTarget.value;
+                    if (next !== String(rec[k] ?? '')) onPatch({ [k]: next });
+                  }}
                 />
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-6 w-6 text-destructive hover:text-destructive"
+                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
                   onClick={() => {
                     const next = { ...rec };
                     delete next[k];

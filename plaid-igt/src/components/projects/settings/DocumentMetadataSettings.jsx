@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { DocumentMetadataManager } from './DocumentMetadataManager.jsx';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 import { readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 
 export const DocumentMetadataSettings = ({ projectId, client }) => {
@@ -74,8 +74,6 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
       }));
 
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'documentMetadata', apiConfig);
-
-      notifySuccess('Document metadata configuration has been updated', 'Settings Saved');
     } catch (error) {
       console.error('Failed to save document metadata configuration:', error);
       setHasError(true);
