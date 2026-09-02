@@ -113,6 +113,10 @@ This is the one place where text by strangers enters a turn, so it is fenced:
 
 ## How it works
 
+`SAMPLE_PROMPT.md` shows the system prompt and the tool list as the model
+receives them, rendered over the test fixture project; regenerate it with
+`python tests/sample_prompt.py` when it has gone stale.
+
 - `web.py`: the optional web tools, the URL guard, and HTML to text.
 - `project.py`: loads a project's IGT shape (layers by role, fields by scope,
   orthographies, lexicons) and documents, and renders documents as compact
