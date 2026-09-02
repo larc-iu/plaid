@@ -64,22 +64,28 @@ export const EMPTY_TAGSET = Object.freeze({
  * Does this part read as a LEXICAL gloss rather than a grammatical one?
  *
  * The Leipzig rules write grammatical glosses in capitals and digits (NOM, 1SG,
- * PST) and lexical glosses as ordinary lowercase words (dog, run). So "contains
- * a lowercase letter" is not a heuristic about meaning, it is a direct read of
- * the convention the glosses are already written in, and the UI can explain it
- * in one sentence.
+ * PST) and lexical glosses as ordinary words (dog, run). What marks a tag is
+ * that it is written in capitals, so a part is lexical when it has a lowercase
+ * letter, or when it has letters but no capital at all. The second clause is
+ * what makes this work for a metalanguage without case: a Hindi or Japanese
+ * stem gloss (कुत्ता, 犬) cannot be written in capitals, so it cannot be
+ * carrying the mark, while NOM and 1SG beside it still are. Under the plain
+ * "has a lowercase letter" rule every such stem was refused, and mixed mode
+ * was closed mode for anyone glossing in those scripts.
  *
- * It is deliberately not clever. `I` for a first-person pronoun has no lowercase
- * and so counts as grammatical, which means listing it in the tagset — exactly
- * what a tagset is for. Guessing whether a pronoun is "really" functional is the
- * part that defies rules, so nothing here tries.
- *
- * Scripts without case (Devanagari, Arabic) have no lowercase letters and so
- * never qualify. That is fine: a gloss is written in the metalanguage, and this
- * only ever ADDS permission to an otherwise closed tagset.
+ * It is deliberately not clever. `I` for a first-person pronoun is a capital
+ * and counts as grammatical, which means listing it in the tagset — exactly
+ * what a tagset is for. A bare digit (3) has no letters and is a tag too.
+ * Guessing whether a pronoun is "really" functional is the part that defies
+ * rules, so nothing here tries.
  */
 const LOWERCASE_RE = /\p{Ll}/u;
-export const isLexicalPart = (part) => LOWERCASE_RE.test(str(part));
+const CAPITAL_RE = /[\p{Lu}\p{Lt}]/u;
+const LETTER_RE = /\p{L}/u;
+export const isLexicalPart = (part) => {
+  const s = str(part);
+  return LOWERCASE_RE.test(s) || (LETTER_RE.test(s) && !CAPITAL_RE.test(s));
+};
 
 // --- reading config --------------------------------------------------------
 

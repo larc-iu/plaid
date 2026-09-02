@@ -59,7 +59,7 @@ const MODES_UI = {
   [MODES.MIXED]: {
     label: 'Closed, plus lexical glosses',
     badge: 'border-transparent bg-indigo-100 text-indigo-800',
-    help: 'Any tag with at least one lowercase letter is allowed, but a tag with no lowercase letter is invalid unless it is on the list. Useful for glosses.',
+    help: 'A tag is allowed if it has a lowercase letter or is in a script without capitals. Anything else must be on the list. Useful for glosses.',
   },
 };
 
@@ -589,8 +589,8 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                       <p className="text-sm">
                         Found <strong>{seedPending.tags.length}</strong> tag
                         {seedPending.tags.length === 1 ? '' : 's'} and{' '}
-                        <strong>{seedPending.lexical.length}</strong> lowercase value
-                        {seedPending.lexical.length === 1 ? '' : 's'} (
+                        <strong>{seedPending.lexical.length}</strong> value
+                        {seedPending.lexical.length === 1 ? '' : 's'} not written in capitals (
                         <span className="font-mono">
                           {seedPending.lexical
                             .slice(0, 5)
@@ -600,7 +600,8 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                         {seedPending.lexical.length > 5 ? ', …' : ''}) not in the list.
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        In a Gloss field, lowercase values are usually stems rather than tags.
+                        In a Gloss field, values not written in capitals are usually stems rather
+                        than tags.
                       </p>
                       <div className="flex gap-2">
                         <Button

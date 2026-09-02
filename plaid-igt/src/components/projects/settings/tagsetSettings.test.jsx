@@ -460,7 +460,7 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     await expandFirst(container, step);
     await step(async () => button(container, 'Add values used in this project').click());
     expect(onSaveChanges).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('1 tag and 2 lowercase values');
+    expect(container.textContent).toContain('1 tag and 2 values not written in capitals');
     expect(container.textContent).toContain('dog, run');
     await step(async () => button(container, 'Add 1 tag').click());
     expect(savedValues(onSaveChanges)).toEqual(['PL', 'PST']);
@@ -487,7 +487,7 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     const { container, step, unmount } = await mountWith({ onSaveChanges, onLoadAttested });
     await expandFirst(container, step);
     await step(async () => button(container, 'Add values used in this project').click());
-    expect(container.textContent).not.toContain('lowercase value');
+    expect(container.textContent).not.toContain('not written in capitals');
     expect(savedValues(onSaveChanges)).toEqual(['PL', '1SG', 'NOM']);
     await unmount();
   });

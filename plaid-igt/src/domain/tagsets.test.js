@@ -434,6 +434,19 @@ describe("mode 'mixed'", () => {
     ]);
   });
 
+  it('lets a stem in a script without capitals through', () => {
+    // A Hindi or Japanese stem cannot be written in capitals, so it cannot be
+    // carrying the mark of a tag. Under "has a lowercase letter" every such
+    // stem was refused, and mixed mode was closed mode for those glossers.
+    expect(validateValue('कुत्ता.PL', gloss)).toEqual([]);
+    expect(validateValue('犬.PL', gloss)).toEqual([]);
+    expect(validateValue('कुत्ता.ABL', gloss).map((x) => x.part)).toEqual(['ABL']);
+  });
+
+  it('still requires a bare number to be listed', () => {
+    expect(validateValue('3.PL', gloss).map((x) => x.part)).toEqual(['3']);
+  });
+
   it('treats "I" as grammatical, so it has to be listed', () => {
     // The case that defies a meaning-based rule. A capitalised gloss with no
     // lowercase letter reads as grammatical, and the fix is one tagset entry.
