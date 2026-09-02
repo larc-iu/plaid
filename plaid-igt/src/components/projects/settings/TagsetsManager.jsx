@@ -14,17 +14,21 @@ import {
   missingAffixDelimiters,
   scanValue,
   unreachableValues,
-  seedValueRecords,
+  seedCandidates,
+  redundantLexicalValues,
 } from '@/domain/tagsets';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
 // the whole map back on every discrete change (add/delete/toggle) or on blur
 // for the text inputs, so a rename does not write once per keystroke.
+// `onSaveChanges(next, meta)` gets `meta.renamed = { from, to }` on a rename,
+// because fields reference a tagset by NAME and the wrapper has to repoint
+// them in the same operation.
 //
-// `usage` maps a tagset name to the fields referencing it ([{scope, name}]),
-// which is what makes a delete safe to reason about. `onLoadAttested(name)`
-// returns the [value, count] rows actually present in those fields, for the
-// "add attested values" seed.
+// `usage` maps a tagset name to the fields referencing it (governedFields
+// records), which is what makes a delete safe to reason about and a rename
+// able to say what it repointed. `onLoadAttested(name)` returns the
+// [value, count] rows actually present in those fields, for the seed.
 
 const SAMPLE = '1SG.NOM';
 
@@ -75,15 +79,19 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
   const deferredQuery = useDeferredValue(valueQuery);
   const [valuePage, setValuePage] = useState(0);
   const [pendingDelete, setPendingDelete] = useState(null);
+  // A seed waiting on a decision: { name, tags, lexical } (see seedCandidates).
+  const [seedPending, setSeedPending] = useState(null);
 
-  const save = async (next) => {
+  const save = async (next, meta) => {
     setDraft(next);
     try {
-      await onSaveChanges(next);
+      await onSaveChanges(next, meta);
+      return true;
     } catch {
       // The settings wrapper reports it; roll the draft back so what's on
       // screen is what the server has.
       setDraft(tagsets);
+      return false;
     }
   };
 
@@ -113,14 +121,15 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
     // deleting and appending (a rename shouldn't move the row to the bottom).
     const next = {};
     for (const [k, v] of Object.entries(draft)) next[k === from ? name : k] = v;
-    await save(next);
+    // Fields point at a tagset BY NAME, so the save carries the rename along
+    // and the wrapper repoints every field that used the old name in the same
+    // operation. Left to the user, they all silently fell back to free.
+    if (!(await save(next, { renamed: { from, to: name } }))) return;
     setOpenName(name);
-    // Fields point at a tagset BY NAME, so a rename orphans them until they are
-    // repointed. Say so rather than silently breaking the reference.
     const fields = usage?.[from] || [];
     if (fields.length) {
       notifyInfo(
-        `${fields.length} field${fields.length === 1 ? '' : 's'} still points at "${from}". Repoint ${fields.length === 1 ? 'it' : 'them'} in Annotation Fields.`,
+        `${fields.length} field${fields.length === 1 ? '' : 's'} now point${fields.length === 1 ? 's' : ''} at "${name}"`,
         'Tagset Renamed',
       );
     }
@@ -152,13 +161,27 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
     return fresh.length;
   };
 
+  const seedWith = async (name, records) => {
+    setSeedPending(null);
+    const n = await handleAddValues(name, records);
+    if (n) notifySuccess(`Added ${n} value${n === 1 ? '' : 's'} found in this project`, 'Seeded');
+  };
+
   // The attested rows are per-tagset (they come from the fields referencing it),
   // so this is never cached across tagsets.
   const handleSeedAttested = async (name) => {
     try {
       const rows = await onLoadAttested(name);
-      const n = await handleAddValues(name, seedValueRecords(rows, draft[name]));
-      if (n) notifySuccess(`Added ${n} value${n === 1 ? '' : 's'} found in this project`, 'Seeded');
+      const { tags, lexical } = seedCandidates(rows, draft[name]);
+      // Lowercase values wait on a decision (see seedCandidates): in a glossed
+      // project they are the stems, and there are far more of them than tags.
+      // Seeding them unasked is how a tagset came to hold 1,700 values.
+      // Nothing to decide when there are none.
+      if (!lexical.length) {
+        await seedWith(name, tags);
+        return;
+      }
+      setSeedPending({ name, tags, lexical });
     } catch (error) {
       console.error('Failed to read attested values:', error);
       notifyError('Could not read the values already used in this project', 'Seed Failed');
@@ -177,7 +200,18 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
     setPasteOpen(false);
   };
 
+  // Returns false when the change is refused, so the row can reset its input.
   const patchValue = (name, index, changes) => {
+    // A renamed value must stay unique: the duplicate would be dropped on the
+    // next read (normalizeTagset keeps the first), taking its description
+    // with it.
+    if (
+      changes.value !== undefined &&
+      draft[name].values.some((v, i) => i !== index && v.value === changes.value)
+    ) {
+      notifyError(`"${changes.value}" is already in the tagset`, 'Duplicate Value');
+      return false;
+    }
     const values = draft[name].values.map((v, i) => (i === index ? { ...v, ...changes } : v));
     return patch(name, { values });
   };
@@ -213,6 +247,9 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
         // A value holding one of its own delimiters is scanned as two parts and
         // can never match, so the list would hold something it rejects.
         const unreachable = unreachableValues(t);
+        // Under mixed, a listed lowercase value is accepted whether listed or
+        // not. Usually the residue of a seed taken before the mode was set.
+        const redundant = redundantLexicalValues(t);
         const missingAffix = missingAffixDelimiters(
           t,
           fields.some((f) => f.scope === 'word'),
@@ -228,6 +265,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                   setOpenName(isOpen ? null : name);
                   setValueQuery('');
                   setValuePage(0);
+                  setSeedPending(null);
                 }}
                 title={isOpen ? 'Collapse' : 'Expand'}
               >
@@ -378,6 +416,35 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                       </div>
                     </div>
                   )}
+                  {redundant.length > 0 && (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <div>
+                        {redundant.length} listed value{redundant.length === 1 ? '' : 's'} contain
+                        {redundant.length === 1 ? 's' : ''} a lowercase letter (
+                        <span className="font-mono">
+                          {redundant
+                            .slice(0, 4)
+                            .map((v) => v.value)
+                            .join(', ')}
+                        </span>
+                        {redundant.length > 4 ? ', …' : ''}). Under “Closed, plus lexical glosses”{' '}
+                        {redundant.length === 1 ? 'it is' : 'they are'} accepted whether listed or
+                        not, so the list is longer than it needs to be.
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="ml-2 h-6"
+                          onClick={() => {
+                            const drop = new Set(redundant.map((v) => v.value));
+                            patch(name, { values: t.values.filter((v) => !drop.has(v.value)) });
+                          }}
+                        >
+                          Remove {redundant.length === 1 ? 'it' : 'them'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   {t.values.length > 0 &&
                     (() => {
                       const q = deferredQuery.trim().toLowerCase();
@@ -459,7 +526,12 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                                 </thead>
                                 <tbody>
                                   {shown.map(({ rec, i }) => {
-                                    const key = `${name}:${i}`;
+                                    // Keyed by value, not position: the row's
+                                    // inputs are uncontrolled, and an index
+                                    // key hands a row's DOM node, text and
+                                    // all, to whichever record slides into
+                                    // its slot after a removal.
+                                    const key = `${name}:${rec.value}`;
                                     const extras = extraKeys(rec);
                                     return (
                                       <ValueRow
@@ -544,6 +616,50 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                           Add values
                         </Button>
                         <Button variant="ghost" onClick={() => setPasteOpen(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {seedPending?.name === name && (
+                    <div className="flex flex-col gap-2 rounded-md border bg-background p-3">
+                      <p className="text-sm">
+                        Found <strong>{seedPending.tags.length}</strong> tag
+                        {seedPending.tags.length === 1 ? '' : 's'} and{' '}
+                        <strong>{seedPending.lexical.length}</strong> value
+                        {seedPending.lexical.length === 1 ? '' : 's'} with a lowercase letter (
+                        <span className="font-mono">
+                          {seedPending.lexical
+                            .slice(0, 5)
+                            .map((v) => v.value)
+                            .join(', ')}
+                        </span>
+                        {seedPending.lexical.length > 5 ? ', …' : ''}) not yet in the list.
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Leipzig writes grammatical glosses in capitals and lexical ones in
+                        lowercase, so in a gloss field the lowercase values are the stems (dog, run)
+                        rather than tags, and a gloss tagset wants only the tags. A part of speech
+                        inventory (n, v, adj) is lowercase by nature and wants everything.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          disabled={seedPending.tags.length === 0}
+                          onClick={() => seedWith(name, seedPending.tags)}
+                        >
+                          Add {seedPending.tags.length} tag
+                          {seedPending.tags.length === 1 ? '' : 's'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            seedWith(name, [...seedPending.tags, ...seedPending.lexical])
+                          }
+                        >
+                          Add all {seedPending.tags.length + seedPending.lexical.length}
+                        </Button>
+                        <Button variant="ghost" onClick={() => setSeedPending(null)}>
                           Cancel
                         </Button>
                       </div>
@@ -636,8 +752,8 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
             defaultValue={rec.value}
             onBlur={(e) => {
               const v = e.currentTarget.value.trim();
-              if (v && v !== rec.value) onPatch({ value: v });
-              else e.currentTarget.value = rec.value;
+              if (v && v !== rec.value && onPatch({ value: v }) !== false) return;
+              e.currentTarget.value = rec.value;
             }}
           />
         </td>

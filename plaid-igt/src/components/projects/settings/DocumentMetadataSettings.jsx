@@ -1,69 +1,49 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { DocumentMetadataManager } from './DocumentMetadataManager.jsx';
+import { DocumentMetadataManager, PREDEFINED_FIELDS } from './DocumentMetadataManager.jsx';
 import { notifyError } from '@/utils/feedback';
 import { readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 
-// `tagsetNames` comes from AnnotationSettings, which holds the live project, so
-// a tagset created in the section above is pickable here immediately.
+// What DocumentMetadataManager shows, read off a project's config. Null means
+// "use the defaults".
+const extractMetadata = (project) => {
+  const current = readDocumentMetadata(project?.config);
+  if (!current || !Array.isArray(current)) return null;
+  const enabled = current.map((field) => ({
+    name: field.name,
+    tagset: field.tagset ?? null,
+    enabled: true, // only enabled fields are stored
+    isCustom: !(field.name in PREDEFINED_FIELDS),
+  }));
+  // A predefined field absent from the config is switched off, not gone: keep
+  // it in the table so it can be switched back on. (Only enabled fields are
+  // stored, so these used to vanish from the table on reload.)
+  const have = new Set(enabled.map((f) => f.name));
+  const disabled = Object.keys(PREDEFINED_FIELDS)
+    .filter((name) => !have.has(name))
+    .map((name) => ({ name, tagset: null, enabled: false, isCustom: false }));
+  return { enabledFields: [...enabled, ...disabled] };
+};
+
+// `project` and `tagsetNames` come from AnnotationSettings, which holds the
+// live project, so a tagset created in the section above is pickable here
+// immediately.
 export const DocumentMetadataSettings = ({
+  project,
   projectId,
   client,
   tagsetNames = [],
   violations = {},
+  onProjectUpdate,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
-  // Helper to check if a field is predefined
-  const isPredefinedField = (fieldName) => {
-    const predefinedFields = [
-      'Date',
-      'Speakers',
-      'Location',
-      'Genre',
-      'Recording Quality',
-      'Transcriber',
-    ];
-    return predefinedFields.includes(fieldName);
-  };
-
-  // Load current project configuration
-  const handleLoadData = async () => {
-    try {
-      setIsLoading(true);
-      setHasError(false);
-
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-      const project = await client.projects.get(projectId);
-
-      // Extract current metadata configuration
-      const currentConfig = readDocumentMetadata(project.config);
-
-      if (currentConfig && Array.isArray(currentConfig)) {
-        // Convert API format back to component format
-        return {
-          enabledFields: currentConfig.map((field) => ({
-            name: field.name,
-            tagset: field.tagset ?? null,
-            enabled: true, // All fields in the config are enabled
-            isCustom: !isPredefinedField(field.name),
-          })),
-        };
-      }
-
-      // Return null to use default predefined fields
-      return null;
-    } catch (error) {
-      console.error('Failed to load document metadata configuration:', error);
-      setHasError(true);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Read off the LIVE project rather than fetched once on mount, so the table
+  // re-syncs whenever the project changes under it — in particular after the
+  // Tagsets section renames a tagset and repoints the fields that used it. A
+  // table still holding the old name would write it back on its next save.
+  const initialData = useMemo(() => extractMetadata(project), [project]);
 
   // Save changes to the API
   const handleSaveChanges = async (data) => {
@@ -84,6 +64,10 @@ export const DocumentMetadataSettings = ({
       }));
 
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'documentMetadata', apiConfig);
+      // The Tagsets section reads which fields point at which tagset off the
+      // project: its "used by" line and seed button for a tagset used only by
+      // a metadata field stayed stale until a reload without this.
+      await onProjectUpdate?.();
     } catch (error) {
       console.error('Failed to save document metadata configuration:', error);
       setHasError(true);
@@ -94,7 +78,7 @@ export const DocumentMetadataSettings = ({
   };
 
   // Handle errors
-  const handleError = (error) => {
+  const handleError = () => {
     setHasError(true);
     notifyError('Failed to update document metadata configuration', 'Configuration Error');
   };
@@ -125,7 +109,7 @@ export const DocumentMetadataSettings = ({
       </p>
 
       <DocumentMetadataManager
-        onLoadData={handleLoadData}
+        initialData={initialData}
         onSaveChanges={handleSaveChanges}
         onError={handleError}
         isLoading={isLoading}

@@ -449,3 +449,39 @@ export const offTagsetValues = (attested, tagset) => {
 /** Those parts as value records, ready to append to a tagset's `values`. */
 export const seedValueRecords = (attested, tagset) =>
   offTagsetParts(attested, tagset).map(({ part }) => ({ value: part }));
+
+/**
+ * What the seed button would add, split by kind:
+ *
+ *   { tags: [{ value }], lexical: [{ value }] }
+ *
+ * `lexical` holds the parts that read as lexical glosses (isLexicalPart: they
+ * contain a lowercase letter). They are kept apart because seeding a Leipzig
+ * tagset from a glossed project would otherwise turn a grammatical inventory
+ * into a word list: a project's stems outnumber its tags many times over, and
+ * a `suggest` tagset (what a new one starts as) pulled in every one of them
+ * without a word said. That is how a tagset came to hold 1,700 values.
+ *
+ * Under `mixed` the lexical bucket is always empty: those values are accepted
+ * without being listed, so listing them adds nothing. Under `closed` and
+ * `suggest` the caller decides, because the split is a reading of the Leipzig
+ * casing convention and not of meaning: a closed POS inventory (n, v, adj) is
+ * entirely "lexical" by this test and wants every one of its values. So the
+ * split is offered, never imposed.
+ */
+export const seedCandidates = (attested, tagset) => {
+  const tags = [];
+  const lexical = [];
+  for (const { part } of offTagsetParts(attested, tagset)) {
+    (isLexicalPart(part) ? lexical : tags).push({ value: part });
+  }
+  return { tags, lexical };
+};
+
+/**
+ * The listed values a `mixed` tagset does not need: the ones it would accept
+ * anyway for containing a lowercase letter. Empty in any other mode, where a
+ * listed lowercase value is doing real work.
+ */
+export const redundantLexicalValues = (tagset) =>
+  tagset?.mode === MODES.MIXED ? (tagset.values || []).filter((v) => isLexicalPart(v.value)) : [];

@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { freqQueries, metadataFreqQuery } from '../search/searchQueries.js';
+import { TagsetsSettings } from './TagsetsSettings.jsx';
+import { FieldsSettings } from './FieldsSettings.jsx';
+import { DocumentMetadataSettings } from './DocumentMetadataSettings.jsx';
 
 // Every span in a layer regardless of value (the REGEXP UDF matches on
 // contains), matching the Validation tab's scan.
 const ANY_VALUE = { regex: '.' };
-import { TagsetsSettings } from './TagsetsSettings.jsx';
-import { FieldsSettings } from './FieldsSettings.jsx';
-import { DocumentMetadataSettings } from './DocumentMetadataSettings.jsx';
 
 // Everything a tagset can govern: the interlinear tiers, the values they may
 // take, the tokens that are skipped, and the fields recorded about each
@@ -26,11 +26,32 @@ export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate
   // tab runs, surfaced here because this is where you are looking when you
   // point a field at a tagset -- otherwise nothing tells you to go and check.
   // Best-effort: a failure leaves the badges off rather than blocking settings.
+  //
+  // Keyed on what the scan actually depends on — which fields are governed,
+  // and each tagset's mode, delimiters and values — not on the project object.
+  // Every save in this section refreshes the project, so keying on the object
+  // re-ran one aggregate query per governed field after each description
+  // blur, field reorder or rename.
   const [violations, setViolations] = useState({});
+  const rulesKey = useMemo(
+    () =>
+      JSON.stringify(
+        governedFields(getIgtLayerInfo(project), project?.config).map((g) => [
+          g.key,
+          g.tagset.mode,
+          g.tagset.delimiters,
+          g.tagset.values.map((v) => v.value),
+        ]),
+      ),
+    [project],
+  );
   useEffect(() => {
     let cancelled = false;
     const governed = governedFields(getIgtLayerInfo(project), project?.config);
-    if (!client || !governed.length) return;
+    if (!client || !governed.length) {
+      setViolations({});
+      return;
+    }
     (async () => {
       const counts = {};
       await Promise.all(
@@ -60,7 +81,8 @@ export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate
     return () => {
       cancelled = true;
     };
-  }, [client, projectId, project]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, projectId, rulesKey]);
 
   return (
     <div className="tw flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
@@ -77,11 +99,11 @@ export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate
       {/* Annotation Fields, and the ignored-token rule that modifies the
           Word-scope ones. Both live in FieldsSettings and save together. */}
       <FieldsSettings
+        project={project}
         projectId={projectId}
         client={client}
         tagsetNames={tagsetNames}
         violations={violations}
-        projectId={projectId}
         onProjectUpdate={onProjectUpdate}
       />
 
@@ -89,10 +111,12 @@ export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate
           closed inventories far more naturally than a gloss ever is, which is
           why these take tagsets too. */}
       <DocumentMetadataSettings
+        project={project}
         projectId={projectId}
         client={client}
         tagsetNames={tagsetNames}
         violations={violations}
+        onProjectUpdate={onProjectUpdate}
       />
     </div>
   );

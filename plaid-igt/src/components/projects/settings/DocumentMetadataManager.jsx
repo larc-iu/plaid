@@ -24,8 +24,9 @@ import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
 
-// Predefined metadata fields common in linguistic annotation
-const PREDEFINED_FIELDS = {
+// Predefined metadata fields common in linguistic annotation: name -> enabled
+// by default. Exported so the settings wrapper can show the switched-off ones.
+export const PREDEFINED_FIELDS = {
   Date: true,
   Speakers: true,
   Location: true,

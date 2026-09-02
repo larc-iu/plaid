@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { TagsetsManager } from './TagsetsManager.jsx';
 import { notifyError } from '@/utils/feedback';
-import { IGT_NAMESPACE } from '@/domain/igtConfig';
+import { IGT_NAMESPACE, readDocumentMetadata } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { byTagsetName, governedFields, readTagsets } from '@/domain/tagsets';
 import { freqQueries, metadataFreqQuery } from '../search/searchQueries.js';
@@ -32,10 +32,29 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     [project],
   );
 
-  const handleSaveChanges = async (next) => {
+  // Fields reference a tagset by name, so a rename has to repoint every field
+  // that used the old name — annotation fields on their span layer, metadata
+  // fields in the project config — or they all quietly fall back to free.
+  const repointFields = async ({ from, to }) => {
+    const fields = byName[from] || [];
+    for (const g of fields) {
+      if (g.kind === 'span') {
+        await client.spanLayers.setConfig(g.layerId, IGT_NAMESPACE, 'tagset', to);
+      }
+    }
+    if (fields.some((g) => g.kind === 'metadata')) {
+      const meta = (readDocumentMetadata(project?.config) || []).map((f) =>
+        f.tagset === from ? { ...f, tagset: to } : f,
+      );
+      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'documentMetadata', meta);
+    }
+  };
+
+  const handleSaveChanges = async (next, meta) => {
     try {
       if (!client) throw new Error('Not authenticated');
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next);
+      if (meta?.renamed) await repointFields(meta.renamed);
       // Hold what we just wrote until the refreshed project comes back, so the
       // editor does not flicker to the pre-save value in between.
       setDraftTagsets(next);

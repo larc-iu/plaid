@@ -21,6 +21,8 @@ import {
   offTagsetParts,
   offTagsetValues,
   seedValueRecords,
+  seedCandidates,
+  redundantLexicalValues,
   unreachableValues,
 } from './tagsets.js';
 
@@ -308,6 +310,60 @@ describe('offTagsetParts / seedValueRecords', () => {
       'ERG',
       'ABL',
     ]);
+  });
+});
+
+describe('seedCandidates', () => {
+  const fresh = { delimiters: '.', mode: 'suggest', values: [] };
+  const attested = [
+    ['dog.PL', 5],
+    ['run.PST', 2],
+    ['NOM', 1],
+  ];
+
+  it('keeps lexical glosses apart from grammatical tags', () => {
+    // A glossed project has many more stems than tags. Seeding them all into
+    // a Leipzig tagset made a 1,700-value word list.
+    expect(seedCandidates(attested, fresh)).toEqual({
+      tags: [{ value: 'PL' }, { value: 'PST' }, { value: 'NOM' }],
+      lexical: [{ value: 'dog' }, { value: 'run' }],
+    });
+  });
+
+  it('has no lexical bucket under mixed, where those are accepted unlisted', () => {
+    expect(seedCandidates(attested, { ...fresh, mode: 'mixed' })).toEqual({
+      tags: [{ value: 'PL' }, { value: 'PST' }, { value: 'NOM' }],
+      lexical: [],
+    });
+  });
+
+  it('files a lowercase POS inventory as lexical, which is why the split is offered, not imposed', () => {
+    const pos = { delimiters: '', mode: 'closed', values: [] };
+    expect(
+      seedCandidates(
+        [
+          ['n', 9],
+          ['v', 4],
+        ],
+        pos,
+      ),
+    ).toEqual({
+      tags: [],
+      lexical: [{ value: 'n' }, { value: 'v' }],
+    });
+  });
+});
+
+describe('redundantLexicalValues', () => {
+  it('lists the lowercase values a mixed tagset accepts without them', () => {
+    const t = { delimiters: '.', mode: 'mixed', values: [{ value: 'NOM' }, { value: 'dog' }] };
+    expect(redundantLexicalValues(t)).toEqual([{ value: 'dog' }]);
+  });
+
+  it('is empty in any other mode, where a listed lowercase value does real work', () => {
+    const pos = { delimiters: '', mode: 'closed', values: [{ value: 'n' }] };
+    expect(redundantLexicalValues(pos)).toEqual([]);
+    expect(redundantLexicalValues({ ...pos, mode: 'suggest' })).toEqual([]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { FieldsManager, fieldKey } from './FieldsManager';
 import { notifyError } from '@/utils/feedback';
@@ -13,153 +13,102 @@ import {
 } from '@/domain/igtConfig';
 import { readTagsetName } from '@/domain/tagsets';
 
-// `tagsetNames` comes from AnnotationSettings, which holds the live project, so
-// a tagset created in the section above shows up in the picker immediately.
+const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
+const isPredefinedField = (fieldName) => PREDEFINED.includes(fieldName);
+
+// A field's identity on a layer: the same (scope, name) pair FieldsManager
+// keys on, read off the layer's config.
+const layerKey = (layer) => fieldKey({ scope: readScope(layer.config), name: layer.name });
+
+// The token layers the annotation fields hang off, and the span layers under
+// them that carry a scope (those are the ones this section manages). Null when
+// the project has no baseline yet, which is what the setup wizard is for.
+const layersOf = (project) => {
+  const textLayer = project?.textLayers?.length ? findBaselineTextLayer(project.textLayers) : null;
+  if (!textLayer) return null;
+  const primary = findWordTokenLayer(textLayer.tokenLayers);
+  if (!primary) return null;
+  const sentence = findSentenceTokenLayer(textLayer.tokenLayers);
+  const morpheme = findMorphemeTokenLayer(textLayer.tokenLayers);
+  // All three scopes — omitting morpheme layers here used to make
+  // Morpheme-field deletion a silent no-op.
+  const spanLayers = [
+    ...(primary.spanLayers || []),
+    ...(sentence?.spanLayers || []),
+    ...(morpheme?.spanLayers || []),
+  ];
+  return { primary, sentence, morpheme, managed: spanLayers.filter((l) => readScope(l.config)) };
+};
+
+// What FieldsManager shows, read off a project. Null means "use the defaults".
+const extractFields = (project) => {
+  const layers = layersOf(project);
+  if (!layers) return null;
+  const ignoredTokensConfig = readIgnoredTokens(layers.primary.config);
+  const fields = layers.managed.map((spanLayer) => ({
+    name: spanLayer.name,
+    scope: readScope(spanLayer.config),
+    isCustom: !isPredefinedField(spanLayer.name),
+    tagset: readTagsetName(spanLayer.config),
+  }));
+  if (fields.length === 0 && !ignoredTokensConfig) return null;
+
+  // Convert ignored tokens API format back to component format
+  let ignoredTokens = null;
+  if (ignoredTokensConfig) {
+    if (ignoredTokensConfig.type === 'unicodePunctuation') {
+      ignoredTokens = {
+        mode: 'unicode-punctuation',
+        unicodePunctuationExceptions: ignoredTokensConfig.whitelist || [],
+        explicitIgnoredTokens: [],
+      };
+    } else {
+      ignoredTokens = {
+        mode: 'explicit-list',
+        unicodePunctuationExceptions: [],
+        explicitIgnoredTokens: ignoredTokensConfig.blacklist || [],
+      };
+    }
+  }
+  return { fields, ignoredTokens };
+};
+
+// `project` and `tagsetNames` come from AnnotationSettings, which holds the
+// live project, so a tagset created in the section above shows up in the
+// picker immediately.
 export const FieldsSettings = ({
+  project,
   projectId,
   client,
   tagsetNames = [],
   violations = {},
   onProjectUpdate,
 }) => {
-  const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
-  // field name -> span layer id, for usage counts at delete time. Kept in
-  // sync by handleLoadData and by creates/deletes in handleSaveChanges.
-  const spanLayerIdsRef = useRef({});
 
-  // Helper to check if a field is predefined
-  const isPredefinedField = (fieldName) => {
-    const predefinedFields = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
-    return predefinedFields.includes(fieldName);
-  };
-
-  // Load current project configuration
-  const handleLoadData = async () => {
-    try {
-      setIsLoading(true);
-      setHasError(false);
-
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-
-      // Get the project which contains text layers
-      const project = await client.projects.get(projectId);
-
-      if (!project.textLayers || project.textLayers.length === 0) {
-        // No text layers yet, return null for defaults
-        return null;
-      }
-
-      // Find the baseline text layer (the shared substrate).
-      const textLayer = findBaselineTextLayer(project.textLayers);
-      if (!textLayer) {
-        // No baseline text layer found, return null for defaults
-        return null;
-      }
-
-      // Get the word, sentence, and morpheme token layers by role.
-      const primaryTokenLayer = findWordTokenLayer(textLayer.tokenLayers);
-      const sentenceTokenLayer = findSentenceTokenLayer(textLayer.tokenLayers);
-      const morphemeTokenLayer = findMorphemeTokenLayer(textLayer.tokenLayers);
-
-      if (!primaryTokenLayer) {
-        return null;
-      }
-
-      // Morpheme layer is now mandatory, so we don't need to set state
-
-      // Extract ignored tokens configuration from primary token layer
-      const ignoredTokensConfig = readIgnoredTokens(primaryTokenLayer.config);
-
-      // Extract fields configuration from span layers under all token layers
-      const primarySpanLayers = primaryTokenLayer.spanLayers || [];
-      const sentenceSpanLayers = sentenceTokenLayer?.spanLayers || [];
-      const morphemeSpanLayers = morphemeTokenLayer?.spanLayers || [];
-      const allSpanLayers = [...primarySpanLayers, ...sentenceSpanLayers, ...morphemeSpanLayers];
-
-      const scopedSpanLayers = allSpanLayers.filter((spanLayer) => readScope(spanLayer.config));
-      // Keyed by (scope, name) — the same name can exist at two scopes.
-      spanLayerIdsRef.current = Object.fromEntries(
-        scopedSpanLayers.map((l) => [fieldKey({ scope: readScope(l.config), name: l.name }), l.id]),
-      );
-
-      const fieldsWithScope = scopedSpanLayers.map((spanLayer) => ({
-        name: spanLayer.name,
-        scope: readScope(spanLayer.config),
-        isCustom: !isPredefinedField(spanLayer.name),
-        tagset: readTagsetName(spanLayer.config),
-      }));
-
-      if (fieldsWithScope.length === 0 && !ignoredTokensConfig) {
-        // No fields or ignored tokens config found, return null for defaults
-        return null;
-      }
-
-      // Convert ignored tokens API format back to component format
-      let ignoredTokens = null;
-      if (ignoredTokensConfig) {
-        if (ignoredTokensConfig.type === 'unicodePunctuation') {
-          ignoredTokens = {
-            mode: 'unicode-punctuation',
-            unicodePunctuationExceptions: ignoredTokensConfig.whitelist || [],
-            explicitIgnoredTokens: [],
-          };
-        } else {
-          ignoredTokens = {
-            mode: 'explicit-list',
-            unicodePunctuationExceptions: [],
-            explicitIgnoredTokens: ignoredTokensConfig.blacklist || [],
-          };
-        }
-      }
-
-      return {
-        fields: fieldsWithScope,
-        ignoredTokens: ignoredTokens,
-      };
-    } catch (error) {
-      console.error('Failed to load fields configuration:', error);
-      setHasError(true);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Read off the LIVE project rather than fetched once on mount, so the table
+  // re-syncs whenever the project changes under it. The case that matters:
+  // renaming a tagset in the section above repoints these fields on the
+  // server, and a table still holding the old name wrote it straight back on
+  // its next save, undoing the rename.
+  const initialData = useMemo(() => extractFields(project), [project]);
 
   // Save changes to the API
   const handleSaveChanges = async (data) => {
     try {
-      setIsLoading(true);
       setHasError(false);
 
       if (!client) {
         throw new Error('Not authenticated');
       }
 
-      // Get the project which contains text layers
-      const project = await client.projects.get(projectId);
-
-      if (!project.textLayers || project.textLayers.length === 0) {
-        throw new Error('No text layers found in project');
-      }
-
-      // Find the baseline text layer (the shared substrate).
-      const textLayer = findBaselineTextLayer(project.textLayers);
-      if (!textLayer) {
+      // Fresh from the server: this creates and deletes layers, so it has to
+      // see the ones that exist right now, not the ones the last render saw.
+      const layers = layersOf(await client.projects.get(projectId));
+      if (!layers) {
         throw new Error('No baseline text layer found in project');
       }
-
-      const primaryTokenLayer = findWordTokenLayer(textLayer.tokenLayers);
-      const sentenceTokenLayer = findSentenceTokenLayer(textLayer.tokenLayers);
-      const morphemeTokenLayer = findMorphemeTokenLayer(textLayer.tokenLayers);
-
-      if (!primaryTokenLayer) {
-        throw new Error('No primary token layer found in project');
-      }
-
-      const primaryTokenLayerId = primaryTokenLayer.id;
+      const { primary, sentence, morpheme, managed } = layers;
 
       // Save ignored tokens configuration to token layer
       if (data.ignoredTokens) {
@@ -175,66 +124,47 @@ export const FieldsSettings = ({
         }
 
         await client.tokenLayers.setConfig(
-          primaryTokenLayerId,
+          primary.id,
           IGT_NAMESPACE,
           'ignoredTokens',
           ignoredTokensConfig,
         );
       }
 
-      // Handle span layers for fields (all three scopes — omitting morpheme
-      // layers here used to make Morpheme-field deletion a silent no-op).
-      const primarySpanLayers = primaryTokenLayer.spanLayers || [];
-      const sentenceSpanLayers = sentenceTokenLayer?.spanLayers || [];
-      const morphemeSpanLayers = morphemeTokenLayer?.spanLayers || [];
-      const existingSpanLayers = [
-        ...primarySpanLayers,
-        ...sentenceSpanLayers,
-        ...morphemeSpanLayers,
-      ];
       const currentFields = data.fields || [];
-
-      // Find span layers that have plaid scope config (these are managed by us)
-      const managedSpanLayers = existingSpanLayers.filter((layer) => readScope(layer.config));
-
-      const layerKey = (layer) => fieldKey({ scope: readScope(layer.config), name: layer.name });
+      // (scope, name) -> span layer id, kept current through the creates and
+      // deletes below so the tagset sync at the end can find every field.
+      const layerIds = new Map(managed.map((l) => [layerKey(l), l.id]));
 
       // Create new span layers for new fields (identity = scope + name)
       for (const field of currentFields) {
-        const existingLayer = managedSpanLayers.find(
-          (layer) => layerKey(layer) === fieldKey(field),
-        );
-
-        if (!existingLayer) {
-          // Choose parent layer based on field scope (Morpheme fields used to
-          // be wrongly parented under the word layer, breaking annotation).
-          const parentLayerId =
-            field.scope === 'Sentence'
-              ? sentenceTokenLayer?.id
-              : field.scope === 'Morpheme'
-                ? morphemeTokenLayer?.id
-                : primaryTokenLayerId;
-          if (!parentLayerId) {
-            throw new Error(
-              `No ${field.scope.toLowerCase()} token layer found for field ${field.name}`,
-            );
-          }
-
-          // Create new span layer
-          const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
-          await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
-          spanLayerIdsRef.current[fieldKey(field)] = spanLayer.id;
+        if (layerIds.has(fieldKey(field))) continue;
+        // Choose parent layer based on field scope (Morpheme fields used to
+        // be wrongly parented under the word layer, breaking annotation).
+        const parentLayerId =
+          field.scope === 'Sentence'
+            ? sentence?.id
+            : field.scope === 'Morpheme'
+              ? morpheme?.id
+              : primary.id;
+        if (!parentLayerId) {
+          throw new Error(
+            `No ${field.scope.toLowerCase()} token layer found for field ${field.name}`,
+          );
         }
+        const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
+        await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
+        layerIds.set(fieldKey(field), spanLayer.id);
       }
 
       // Delete span layers for removed fields
-      for (const existingLayer of managedSpanLayers) {
+      for (const existingLayer of managed) {
         const stillExists = currentFields.find(
           (field) => fieldKey(field) === layerKey(existingLayer),
         );
         if (!stillExists) {
           await client.spanLayers.delete(existingLayer.id);
-          delete spanLayerIdsRef.current[layerKey(existingLayer)];
+          layerIds.delete(layerKey(existingLayer));
         }
       }
 
@@ -242,12 +172,10 @@ export const FieldsSettings = ({
       // never a copy of the list, so pointing two fields at one tagset is what
       // makes them share it. Only write when it actually changed: this runs on
       // every save of the section, including ones that only touched a name.
-      const storedTagset = new Map(
-        managedSpanLayers.map((l) => [layerKey(l), readTagsetName(l.config)]),
-      );
+      const storedTagset = new Map(managed.map((l) => [layerKey(l), readTagsetName(l.config)]));
       for (const field of currentFields) {
         const key = fieldKey(field);
-        const layerId = spanLayerIdsRef.current[key];
+        const layerId = layerIds.get(key);
         if (!layerId) continue;
         const next = field.tagset ?? null;
         // A layer created a moment ago has no stored tagset yet.
@@ -265,18 +193,18 @@ export const FieldsSettings = ({
       console.error('Failed to save fields configuration:', error);
       setHasError(true);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Count existing annotations in a field's span layer (one aggregate query).
   // null = unknown — the delete dialog warns accordingly.
   const handleCountFieldUsage = async (field) => {
-    const layerId = field ? spanLayerIdsRef.current[fieldKey(field)] : null;
-    if (!layerId) return 0; // no backing layer yet -> nothing to lose
+    const layer = field
+      ? (layersOf(project)?.managed || []).find((l) => layerKey(l) === fieldKey(field))
+      : null;
+    if (!layer) return 0; // no backing layer yet -> nothing to lose
     const res = await client.query({
-      where: [['span', '?s', { layer: layerId }]],
+      where: [['span', '?s', { layer: layer.id }]],
       return: { group: [], aggregates: [['count']] },
     });
     const n = res?.results?.[0]?.[0];
@@ -284,7 +212,7 @@ export const FieldsSettings = ({
   };
 
   // Handle errors
-  const handleError = (error) => {
+  const handleError = () => {
     setHasError(true);
     notifyError('Failed to update fields configuration', 'Configuration Error');
   };
@@ -310,7 +238,7 @@ export const FieldsSettings = ({
   return (
     <div className="tw">
       <FieldsManager
-        onLoadData={handleLoadData}
+        initialData={initialData}
         onSaveChanges={handleSaveChanges}
         onError={handleError}
         onCountFieldUsage={handleCountFieldUsage}
