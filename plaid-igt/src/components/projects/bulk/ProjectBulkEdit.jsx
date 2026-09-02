@@ -31,6 +31,7 @@ import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { normalizeVocabFields, humanizeFieldName } from '@/domain/vocabFields';
 import { readVocabFields } from '@/domain/igtConfig';
+import { isValueAllowed, readTagsetName, resolveTagset } from '@/domain/tagsets';
 import { MATCH_TYPES, searchDomains } from '../search/searchQueries.js';
 import { MarkedText } from '../search/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
@@ -370,7 +371,14 @@ const FieldChange = ({ row, target }) => {
     from: row.old,
     to: row.new,
   });
-  return <ChangeGrid lines={lines} />;
+  return (
+    <>
+      <ChangeGrid lines={lines} />
+      {row.invalid && (
+        <p className="mt-1 text-xs text-destructive">Outside the tagset, so it will be skipped.</p>
+      )}
+    </>
+  );
 };
 
 const RespellPanel = ({ project, projectId, client, layerInfo }) => {
@@ -533,6 +541,19 @@ const RespellPanel = ({ project, projectId, client, layerInfo }) => {
 
 // ---- field ----------------------------------------------------------------------
 
+// The tagset governing a replace target, or null. Only annotation fields have
+// one: a morpheme form is a form, not an annotation. A bulk replace is a write
+// like any other, so a closed tagset has to bite here too — otherwise "closed"
+// is bypassable from inside the app that enforces it.
+const tagsetForTarget = (target, layerInfo, project) => {
+  if (!target || target.kind !== 'span') return null;
+  const layer = (layerInfo?.spanLayers?.[target.scope] || []).find((l) => l.id === target.layerId);
+  if (!layer) return null;
+  const t = resolveTagset(layer.config, project?.config);
+  // The name rides along so the warning can say which list refused the values.
+  return t ? { ...t, name: readTagsetName(layer.config) } : null;
+};
+
 const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   const targets = useMemo(
     () => searchDomains(layerInfo, []).filter((d) => d.kind === 'span' || d.kind === 'morpheme'),
@@ -544,6 +565,10 @@ const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   const [repl, setRepl] = useState('');
   const r = useRun();
   const target = targets.find((t) => t.id === targetId) ?? targets[0];
+  const tagset = useMemo(
+    () => tagsetForTarget(target, layerInfo, project),
+    [target, layerInfo, project],
+  );
   const { apply, error } = useMemo(
     () => buildReplacer(find, matchType, repl),
     [find, matchType, repl],
@@ -568,8 +593,15 @@ const FieldPanel = ({ project, projectId, client, layerInfo }) => {
       { reset: true },
     );
     if (!plan) return;
-    r.setPlan({ ...plan, find, repl, target });
-    r.setSelected(new Set(plan.rows.map((x) => x.id)));
+    // A closed tagset refuses the values this replace would produce. Flag those
+    // rows and leave them unticked rather than blocking the whole preview: the
+    // rest of the replace is usually fine, and seeing WHICH values are refused
+    // is how you decide whether to fix the replacement or the tagset.
+    const rows = tagset?.closed
+      ? plan.rows.map((x) => (isValueAllowed(x.new, tagset) ? x : { ...x, invalid: true }))
+      : plan.rows;
+    r.setPlan({ ...plan, rows, find, repl, target, tagset });
+    r.setSelected(new Set(rows.filter((x) => !x.invalid).map((x) => x.id)));
   };
 
   const plan = r.plan;
@@ -577,10 +609,13 @@ const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   const targetLabel = plan?.target?.kind === 'morpheme' ? 'morpheme form' : plan?.target?.field;
 
   const doApply = async () => {
+    // Ticking a flagged row by hand does not make it writable: the same rule
+    // that stops it being typed stops it being bulk-written.
+    const writable = selectedRows.filter((x) => !x.invalid);
     const res = await r.run('Apply', () =>
       applyField(
         client,
-        { rows: selectedRows },
+        { rows: writable },
         { label: `Replace “${plan.find}” → “${plan.repl}” in ${targetLabel}` },
       ),
     );
@@ -631,13 +666,20 @@ const FieldPanel = ({ project, projectId, client, layerInfo }) => {
       {plan && (
         <>
           <ApplyBar
-            count={selectedRows.length}
+            count={selectedRows.filter((x) => !x.invalid).length}
             busy={r.busy}
             onApply={doApply}
-            summary={`${plural(selectedRows.length, 'value')} in ${targetLabel} will be replaced.`}
+            summary={`${plural(selectedRows.filter((x) => !x.invalid).length, 'value')} in ${targetLabel} will be replaced.`}
           >
             <SelectionSummary rows={plan.rows} selected={r.selected} setSelected={r.setSelected} />
           </ApplyBar>
+          {plan.rows.some((x) => x.invalid) && (
+            <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {plural(plan.rows.filter((x) => x.invalid).length, 'value')} would fall outside the{' '}
+              <strong>{plan.tagset?.name ?? 'field'}</strong> tagset and cannot be written. Those
+              rows are marked and will be skipped.
+            </p>
+          )}
           {plan.rows.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">No matching values.</p>
           )}
