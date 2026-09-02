@@ -68,6 +68,7 @@ export function DocumentBaseline() {
                   value={localText}
                   onChange={handleTextChange}
                   placeholder="Enter the document text..."
+                  spellCheck={false}
                   rows={10}
                   className="resize-none overflow-auto"
                   required

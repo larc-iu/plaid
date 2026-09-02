@@ -283,6 +283,7 @@ const SubstitutionFields = ({ find, setFind, matchType, setMatchType, repl, setR
         onChange={(e) => setFind(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onEnter()}
         placeholder={matchType === 'regex' ? 'pattern, e.g. ([aeiou])h' : 'text'}
+        spellCheck={false}
       />
     </div>
     <div className="flex flex-col gap-1">
@@ -308,6 +309,7 @@ const SubstitutionFields = ({ find, setFind, matchType, setMatchType, repl, setR
         onChange={(e) => setRepl(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onEnter()}
         placeholder={matchType === 'regex' ? 'replacement, $1 for groups' : 'replacement'}
+        spellCheck={false}
       />
     </div>
   </div>

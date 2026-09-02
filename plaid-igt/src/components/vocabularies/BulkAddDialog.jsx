@@ -528,6 +528,7 @@ export const BulkAddDialog = ({
             value={pasted}
             onChange={(e) => setPasted(e.target.value)}
             placeholder={`form\t${fieldNames.join('\t')}`}
+            spellCheck={false}
             className="font-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">

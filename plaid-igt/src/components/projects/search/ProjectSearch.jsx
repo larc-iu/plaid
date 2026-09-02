@@ -87,6 +87,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             <SearchIcon className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search this project…"
+              spellCheck={false}
               value={queryText}
               onChange={(e) => setQueryText(e.target.value)}
               onKeyDown={(e) => {

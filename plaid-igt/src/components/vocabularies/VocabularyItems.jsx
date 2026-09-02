@@ -602,6 +602,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
             <Input
               id={fieldId}
               placeholder={`Enter ${humanizeFieldName(field.name).toLowerCase()}`}
+              spellCheck={false}
               value={values[field.name] || ''}
               disabled={disabled}
               onChange={(event) => onChange({ ...values, [field.name]: event.target.value })}
@@ -661,6 +662,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search items…"
+              spellCheck={false}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-8 pl-7"
@@ -824,6 +826,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                     value={editForm}
                     autoFocus={isNew}
                     placeholder="Enter item form"
+                    spellCheck={false}
                     disabled={!canManage}
                     onChange={(e) => setEditForm(e.target.value)}
                     onKeyDown={(e) => {
