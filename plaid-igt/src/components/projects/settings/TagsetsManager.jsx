@@ -83,7 +83,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
       notifyError(`A tagset named "${name}" already exists`, 'Duplicate Tagset');
       return;
     }
-    await save({ ...draft, [name]: { delimiters: '', closed: false, values: [] } });
+    await save({ ...draft, [name]: { delimiters: '', mode: MODES.SUGGEST, values: [] } });
     setNewTagsetName('');
     setOpenName(name);
     notifySuccess(`"${name}" has been created`, 'Tagset Added');
@@ -225,7 +225,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                 {t.values.length} value{t.values.length === 1 ? '' : 's'}
                 {t.delimiters && ` · split on ${[...t.delimiters].join(' ')}`}
                 {fields.length > 0 &&
-                  ` · used by ${fields.map((f) => `${f.name} (${f.scope})`).join(', ')}`}
+                  ` · used by ${fields.map((f) => `${f.field} (${f.scope})`).join(', ')}`}
               </span>
               <Button
                 size="icon"
@@ -289,6 +289,10 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                   <Input
                     className="max-w-[12rem] font-mono"
                     placeholder="e.g. .:>"
+                    // Uncontrolled, so it must remount when the value changes
+                    // from outside (the affix quick-fix below), or the stale
+                    // display gets written back on the next blur.
+                    key={t.delimiters}
                     defaultValue={t.delimiters}
                     onBlur={(e) => {
                       const next = e.currentTarget.value;
@@ -409,7 +413,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                       title={
                         fields.length === 0
                           ? 'No annotation field uses this tagset yet, so there are no values to read. Point a field at it in Annotation Fields below.'
-                          : `Read every value already used in ${fields.map((f) => f.name).join(', ')}`
+                          : `Read every value already used in ${fields.map((f) => f.field).join(', ')}`
                       }
                     >
                       <Sparkles className="h-4 w-4" /> Add values used in this project
@@ -478,7 +482,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
         <p className="mt-1 text-muted-foreground">
           {(usage?.[pendingDelete] || []).length === 0
             ? 'No annotation field uses it. No annotations are affected.'
-            : `${usage[pendingDelete].map((f) => `${f.name} (${f.scope})`).join(', ')} still points at it, and will fall back to accepting any value. No annotations are deleted or changed.`}
+            : `${usage[pendingDelete].map((f) => `${f.field} (${f.scope})`).join(', ')} still points at it, and will fall back to accepting any value. No annotations are deleted or changed.`}
         </p>
       </ConfirmDeleteDialog>
     </div>

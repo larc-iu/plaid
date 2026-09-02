@@ -7,7 +7,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { isValueAllowed, tagsetEnforces, validateValue } from '@/domain/tagsets';
+import { MODES, isValueAllowed, tagsetEnforces, validateValue } from '@/domain/tagsets';
 
 // One document-metadata input, governed by its field's tagset if it has one.
 //
@@ -30,9 +30,11 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
   const violations = tagset ? validateValue(v, tagset) : [];
   const invalid = violations.length > 0;
 
-  // A closed list with no delimiters is exactly a picker. With delimiters the
-  // value is composite and has to stay typable.
-  if (tagsetEnforces(tagset) && !tagset.delimiters) {
+  // Only `closed` is genuinely a fixed list. `mixed` accepts any lowercase
+  // lexical value on top of the list, so a Select there would make values the
+  // grid happily accepts unreachable here. With delimiters the value is
+  // composite and has to stay typable either way.
+  if (tagset?.mode === MODES.CLOSED && !tagset.delimiters) {
     const known = tagset.values.some((t) => t.value === v);
     return (
       <Select
@@ -95,9 +97,19 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
   );
 };
 
-/** Does every governed field hold a value its tagset accepts? */
-export const metadataIsValid = (fields, values, tagsetFor) =>
+/**
+ * May this edit be saved? Only fields the user actually CHANGED are judged.
+ *
+ * The grid refuses a value on the way in and leaves what is already stored
+ * alone (`next !== orig` in IgtEditor._commitField). The form has to match, or
+ * one off-tagset value an import left behind would lock the whole document out
+ * of saving — you could not even rename it — and the deliberately preserved
+ * "(not in tagset)" option would be visible but unsavable.
+ */
+export const metadataIsValid = (fields, values, tagsetFor, original = {}) =>
   fields.every((f) => {
+    const next = values[f.name] ?? '';
+    if (next === (original[f.name] ?? '')) return true;
     const t = tagsetFor(f);
-    return !tagsetEnforces(t) || isValueAllowed(values[f.name] ?? '', t);
+    return !tagsetEnforces(t) || isValueAllowed(next, t);
   });

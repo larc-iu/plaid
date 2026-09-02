@@ -81,7 +81,7 @@ export const useMetadataOperations = () => {
     tagsetFor,
     // Save is blocked while a governed field holds a value its tagset refuses.
     // The form has no per-field commit, so this is where the rule can bite.
-    metadataValid: metadataIsValid(metadataFields, editedMetadata, tagsetFor),
+    metadataValid: metadataIsValid(metadataFields, editedMetadata, tagsetFor, document.metadata),
     isEditing,
     saving,
     deleting,

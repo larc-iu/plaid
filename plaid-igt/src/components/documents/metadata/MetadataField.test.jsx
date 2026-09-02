@@ -32,6 +32,15 @@ describe('choosing the control', () => {
     await unmount();
   });
 
+  it('keeps a text input for MIXED, where lexical values must stay reachable', async () => {
+    // A Select here would make `dog` unenterable even though the grid accepts
+    // it and isValueAllowed says yes.
+    const { container, unmount } = await render({ tagset: { ...closed, mode: 'mixed' } });
+    expect(container.querySelector('[role="combobox"]')).toBeNull();
+    expect(container.querySelector('input')).not.toBeNull();
+    await unmount();
+  });
+
   it('keeps a text input when the value is composite, since it has to be typable', async () => {
     const { container, unmount } = await render({ tagset: { ...closed, delimiters: '.' } });
     expect(container.querySelector('input')).not.toBeNull();
@@ -75,6 +84,17 @@ describe('metadataIsValid', () => {
 
   it('passes when every governed field holds something allowed', () => {
     expect(metadataIsValid(fields, { Genre: 'Song', Note: 'anything' }, tagsetFor)).toBe(true);
+  });
+
+  it('ignores a bad value the user did not touch, so one import cannot lock a document', () => {
+    // The grid refuses only what changed; the form has to match, or an
+    // off-tagset value left by an import would block even a rename.
+    const stored = { Genre: 'Retired' };
+    expect(metadataIsValid(fields, { Genre: 'Retired' }, tagsetFor, stored)).toBe(true);
+    // ...but changing it to something else bad is still refused.
+    expect(metadataIsValid(fields, { Genre: 'AlsoBad' }, tagsetFor, stored)).toBe(false);
+    // ...and fixing it is allowed.
+    expect(metadataIsValid(fields, { Genre: 'Song' }, tagsetFor, stored)).toBe(true);
   });
 
   it('fails on a governed field holding something refused', () => {

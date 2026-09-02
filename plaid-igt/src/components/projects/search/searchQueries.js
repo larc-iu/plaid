@@ -206,7 +206,13 @@ export function freqQueries(domain, spec) {
 /** `.` = has at least one character (the REGEXP UDF matches on contains). */
 const ANY_TEXT = { regex: '.' };
 
-/** [value, count] rows for one document-metadata field, project-wide. */
+/**
+ * [value, count] rows for one document-metadata field, project-wide.
+ *
+ * `field` is interpolated into a dot-path, and the query parser splits field
+ * references on ".", so a name containing one would silently group by nothing.
+ * DocumentMetadataManager rejects periods in field names for this reason.
+ */
 export const metadataFreqQuery = (projectId, field) => ({
   scope: { projectIds: [projectId] },
   where: [['document', '?d', { metadata: { [field]: ANY_TEXT } }]],

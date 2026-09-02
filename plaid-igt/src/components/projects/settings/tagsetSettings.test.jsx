@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all, texts } from '@/test/renderComponent.jsx';
 import { FieldsManager } from './FieldsManager.jsx';
 import { TagsetsManager } from './TagsetsManager.jsx';
+import { byTagsetName, governedFields } from '@/domain/tagsets.js';
 
 // The settings surface around tagsets. Every case here is a bug that was found
 // by hand rather than by a test: a column that never appeared, a button that
@@ -24,6 +25,15 @@ const FIELDS = {
 };
 
 const headers = (c) => texts(c, 'thead th');
+
+// React tracks a controlled input's value, so assigning .value directly does
+// not fire onChange. Go through the native setter the way React's own test
+// utilities do.
+const typeInto = (input, value) => {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+};
 
 // A tagset panel renders its body only when expanded.
 const expandFirst = async (container, step) => {
@@ -78,6 +88,22 @@ describe('FieldsManager tagset column', () => {
 
 describe('TagsetsManager', () => {
   const tagsets = { Leipzig: { delimiters: '.', mode: 'closed', values: [{ value: 'PL' }] } };
+
+  // Build `usage` the way the app does, from governedFields, rather than by
+  // hand. Hand-built records are what let the manager keep reading `f.name`
+  // after the consolidation renamed it to `field`: the tests passed while every
+  // "used by" line on screen said "undefined".
+  const usageFor = (scope, fieldName, mode = 'closed') =>
+    byTagsetName(
+      governedFields(
+        {
+          spanLayers: {
+            [scope]: [{ id: 'l-1', name: fieldName, config: { igt: { tagset: 'Leipzig' } } }],
+          },
+        },
+        { igt: { tagsets: { Leipzig: { ...tagsets.Leipzig, mode } } } },
+      ),
+    );
   const render = (usage = {}) =>
     renderComponent(
       <TagsetsManager
@@ -102,11 +128,32 @@ describe('TagsetsManager', () => {
   });
 
   it('enables it once a field points at the tagset', async () => {
-    const { container, step, unmount } = await render({
-      Leipzig: [{ scope: 'morpheme', name: 'Gloss', id: 'msl-0' }],
-    });
+    const { container, step, unmount } = await render(usageFor('morpheme', 'Gloss'));
     await expandFirst(container, step);
     expect(seedButton(container).disabled).toBe(false);
+    // The usage line names the field. It said "undefined (morpheme)" for as
+    // long as the manager read the pre-consolidation key.
+    expect(container.textContent).toContain('Gloss (morpheme)');
+    await unmount();
+  });
+
+  it('survives adding a tagset', async () => {
+    // Add Tagset built a record with no `mode`, and the badge lookup
+    // MODES_UI[undefined].badge threw, unmounting the whole section.
+    const { container, step, unmount } = await renderComponent(
+      <TagsetsManager
+        tagsets={{}}
+        usage={{}}
+        onSaveChanges={vi.fn()}
+        onLoadAttested={vi.fn(async () => [])}
+      />,
+    );
+    const input = container.querySelector('input');
+    await step(async () => typeInto(input, 'Leipzig'));
+    const add = all(container, 'button').find((b) => b.textContent.includes('Add Tagset'));
+    await step(async () => add.click());
+    expect(container.textContent).toContain('Leipzig');
+    expect(container.textContent).toContain('Suggested');
     await unmount();
   });
 
@@ -117,7 +164,7 @@ describe('TagsetsManager', () => {
     const { container, step, unmount } = await renderComponent(
       <TagsetsManager
         tagsets={mixed}
-        usage={{ Leipzig: [{ scope: 'word', name: 'Gloss', id: 'wsl-0' }] }}
+        usage={usageFor('word', 'Gloss', 'mixed')}
         onSaveChanges={vi.fn()}
         onLoadAttested={vi.fn(async () => [])}
       />,
@@ -133,7 +180,7 @@ describe('TagsetsManager', () => {
     const { container, step, unmount } = await renderComponent(
       <TagsetsManager
         tagsets={mixed}
-        usage={{ Leipzig: [{ scope: 'morpheme', name: 'Gloss', id: 'msl-0' }] }}
+        usage={usageFor('morpheme', 'Gloss', 'mixed')}
         onSaveChanges={vi.fn()}
         onLoadAttested={vi.fn(async () => [])}
       />,

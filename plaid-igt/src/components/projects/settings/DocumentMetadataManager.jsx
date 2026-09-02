@@ -127,6 +127,16 @@ export const DocumentMetadataManager = ({
       return;
     }
 
+    // A metadata field name reaches the query engine as a dot-path
+    // (?d.metadata.<name>, see searchQueries.metadataFreqQuery), and the
+    // parser splits field references on ".". A name containing one would scan
+    // as having no values at all — a silent all-clear in the Validation tab
+    // rather than an error.
+    if (trimmedName.includes('.')) {
+      notifyError('Field names cannot contain a period', 'Invalid Field Name');
+      return;
+    }
+
     // Check for duplicate names (case insensitive)
     const isDuplicate = enabledFields.some(
       (field) => field.name.toLowerCase() === trimmedName.toLowerCase(),
