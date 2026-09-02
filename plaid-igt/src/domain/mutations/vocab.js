@@ -25,6 +25,15 @@ const findPriorLink = (vocabularies, tokenId) => {
   return { link: null, vocabId: null };
 };
 
+// Locate any vocab link by id across all vocabularies.
+const findLinkById = (vocabularies, linkId) => {
+  for (const vocab of Object.values(vocabularies || {})) {
+    const link = (vocab.vocabLinks || []).find((l) => l.id === linkId);
+    if (link) return { link, vocabId: vocab.id };
+  }
+  return { link: null, vocabId: null };
+};
+
 // Locate the vocab containing the given vocab item id.
 const findVocabForItem = (vocabularies, vocabItemId) => {
   for (const vocab of Object.values(vocabularies || {})) {
@@ -233,6 +242,181 @@ export const vocabMutations = {
             if (linked.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType };
           });
         }
+      });
+    });
+  },
+
+  // ---- multiword expressions -------------------------------------------
+  // An expression is one link over two or more WORD tokens (see
+  // domain/expressions.js). These never touch a word's own single-token link:
+  // a word keeps its entry and can sit inside any number of expressions.
+
+  // The member word tokens in text order, or null (with the error set) when
+  // the selection is not two or more distinct words of this document.
+  _expressionMembers(tokenIds) {
+    const ids = [...new Set(tokenIds || [])];
+    const words = this.layerInfo.primaryTokenLayer?.tokens || [];
+    const byId = new Map(words.map((w) => [w.id, w]));
+    const members = ids.map((id) => byId.get(id)).filter(Boolean);
+    if (members.length < 2 || members.length !== ids.length) {
+      this.setError('An expression needs two or more words');
+      return null;
+    }
+    return members.sort((a, b) => a.begin - b.begin).map((w) => w.id);
+  },
+
+  // Link an entry to several words at once. `metadata` carries provenance for
+  // machine-made links; a human link from the popover passes none.
+  async linkExpression(tokenIds, vocabItemId, metadata = null) {
+    const { vocab, item } = findVocabForItem(this._vocabularies, vocabItemId);
+    if (!vocab || !item) {
+      this.setError(`Vocab item ${vocabItemId} not found`);
+      return false;
+    }
+    const tokens = this._expressionMembers(tokenIds);
+    if (!tokens) return false;
+    const vocabId = vocab.id;
+    const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
+    return this._withSaving('Failed to link expression', async () => {
+      const result = await this._client.vocabLinks.create(
+        vocabItemId,
+        tokens,
+        metadata || undefined,
+      );
+      const newLinkId = result?.id || result;
+      this._applyRawPatch((next, info, vocabs) => {
+        const tv = vocabs[vocabId];
+        if (!tv) return;
+        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+        tv.vocabLinks.push({
+          id: newLinkId,
+          tokens,
+          vocabItem: itemSnapshot,
+          ...(metadata ? { metadata } : {}),
+        });
+      });
+    });
+  },
+
+  // Create a new entry (its morph type in `metadata`, phrase or discontiguous
+  // phrase) and link it to the words. The item is created outside the link
+  // call so the link can reference its id.
+  async createAndLinkExpression(tokenIds, vocabId, form, metadata = {}) {
+    if (!this._vocabularies[vocabId]) {
+      this.setError(`Vocabulary ${vocabId} not found`);
+      return false;
+    }
+    const tokens = this._expressionMembers(tokenIds);
+    if (!tokens) return false;
+    const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
+    return this._withSaving('Failed to create and link expression', async () => {
+      const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
+      const newItemId = createResult?.id || createResult;
+      const linkResult = await this._client.vocabLinks.create(newItemId, tokens);
+      const newLinkId = linkResult?.id || linkResult;
+      const newItem = { id: newItemId, form, metadata: metadata || {} };
+      this._applyRawPatch((next, info, vocabs) => {
+        const tv = vocabs[vocabId];
+        if (!tv) return;
+        if (!Array.isArray(tv.items)) tv.items = [];
+        tv.items.push(newItem);
+        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+        tv.vocabLinks.push({ id: newLinkId, tokens, vocabItem: { ...newItem } });
+      });
+    });
+  },
+
+  // Point an existing expression at a different entry: the same words, a new
+  // link (delete + create in one atomic batch). A human choice, so the
+  // machine provenance of the old link does not carry over.
+  async relinkExpression(linkId, vocabItemId) {
+    const { link: prior, vocabId: priorVocabId } = findLinkById(this._vocabularies, linkId);
+    if (!prior) return false;
+    const { vocab, item } = findVocabForItem(this._vocabularies, vocabItemId);
+    if (!vocab || !item) {
+      this.setError(`Vocab item ${vocabItemId} not found`);
+      return false;
+    }
+    const tokens = [...prior.tokens];
+    const vocabId = vocab.id;
+    const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
+    return this._withSaving('Failed to change expression', async () => {
+      const results = await this._client.batched(async () => {
+        this._client.vocabLinks.delete(linkId);
+        this._client.vocabLinks.create(vocabItemId, tokens);
+      });
+      const newLinkId = results[results.length - 1]?.body?.id;
+      this._applyRawPatch((next, info, vocabs) => {
+        if (vocabs[priorVocabId]) {
+          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+            (l) => l.id !== linkId,
+          );
+        }
+        const tv = vocabs[vocabId];
+        if (!tv) return;
+        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+        tv.vocabLinks.push({ id: newLinkId, tokens, vocabItem: itemSnapshot });
+      });
+    });
+  },
+
+  // Change which words an expression covers, keeping its entry and
+  // provenance. Fewer than two words left means the expression is gone.
+  async setExpressionMembers(linkId, tokenIds) {
+    const { link: prior, vocabId } = findLinkById(this._vocabularies, linkId);
+    if (!prior) return false;
+    const ids = [...new Set(tokenIds || [])];
+    if (ids.length < 2) return this.unlinkExpression(linkId);
+    const tokens = this._expressionMembers(ids);
+    if (!tokens) return false;
+    const itemId = prior.vocabItem?.id;
+    const metadata = prior.metadata && Object.keys(prior.metadata).length ? prior.metadata : null;
+    const vocabItem = prior.vocabItem;
+    return this._withSaving('Failed to change expression', async () => {
+      const results = await this._client.batched(async () => {
+        this._client.vocabLinks.delete(linkId);
+        this._client.vocabLinks.create(itemId, tokens, metadata || undefined);
+      });
+      const newLinkId = results[results.length - 1]?.body?.id;
+      this._applyRawPatch((next, info, vocabs) => {
+        const tv = vocabs[vocabId];
+        if (!tv) return;
+        tv.vocabLinks = (tv.vocabLinks || []).filter((l) => l.id !== linkId);
+        tv.vocabLinks.push({
+          id: newLinkId,
+          tokens,
+          vocabItem,
+          ...(metadata ? { metadata } : {}),
+        });
+      });
+    });
+  },
+
+  async unlinkExpression(linkId) {
+    const { link, vocabId } = findLinkById(this._vocabularies, linkId);
+    if (!link) return false;
+    return this._withSaving('Failed to unlink expression', async () => {
+      await this._client.vocabLinks.delete(linkId);
+      this._applyRawPatch((next, info, vocabs) => {
+        if (vocabs[vocabId]) {
+          vocabs[vocabId].vocabLinks = (vocabs[vocabId].vocabLinks || []).filter(
+            (l) => l.id !== linkId,
+          );
+        }
+      });
+    });
+  },
+
+  // Confirm-on-touch for a machine-made expression link (same contract as
+  // confirmVocabLink). No-op for human or already-confirmed links.
+  async confirmExpressionLink(linkId) {
+    const { link, vocabId } = findLinkById(this._vocabularies, linkId);
+    if (!link || !isMachine(link.metadata)) return false;
+    return this._withSaving('Failed to confirm expression', async () => {
+      await this._client.vocabLinks.patchMetadata(linkId, PROV_CONFIRMED);
+      this._applyRawPatch((next, info, vocabs) => {
+        const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === linkId);
+        if (l) l.metadata = { ...(l.metadata || {}), ...PROV_CONFIRMED };
       });
     });
   },

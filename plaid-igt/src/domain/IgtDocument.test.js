@@ -1266,3 +1266,237 @@ describe('confirmSentenceSpan', () => {
     expect(await doc.confirmSentenceSpan(doc.sentences[0].id, 'Nope')).toBe(false);
   });
 });
+
+describe('multiword expressions', () => {
+  // Four words: "the cat sat down".
+  const raw = () =>
+    buildRawDoc({
+      body: 'the cat sat down',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+        { id: 'w-4', begin: 12, end: 16 },
+      ],
+    });
+  const vocabs = (links = []) => ({
+    v1: {
+      id: 'v1',
+      name: 'Lexicon',
+      items: [
+        { id: 'i-cat', form: 'cat', metadata: { morphType: 'stem' } },
+        { id: 'i-sit', form: 'sit down', metadata: { morphType: 'phrase' } },
+        { id: 'i-alt', form: 'sit down', metadata: { morphType: 'phrase' } },
+      ],
+      vocabLinks: links,
+    },
+  });
+  const project = { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } };
+
+  it('derives an expression with lanes and a bracket piece per column', () => {
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      vocabularies: vocabs([
+        { id: 'lk-1', tokens: ['w-3', 'w-4'], vocabItem: { id: 'i-sit', form: 'sit down' } },
+        { id: 'lk-w', tokens: ['w-2'], vocabItem: { id: 'i-cat', form: 'cat' } },
+      ]),
+    });
+    const s = doc.sentences[0];
+    expect(s.expressionLanes).toBe(1);
+    expect(s.expressions).toHaveLength(1);
+    expect(s.expressions[0]).toMatchObject({
+      linkId: 'lk-1',
+      lane: 0,
+      first: 2,
+      last: 3,
+      memberTokenIds: ['w-3', 'w-4'],
+      partial: false,
+      prov: 'human',
+    });
+    expect(s.tokens.map((t) => t.exprPieces[0]?.piece ?? null)).toEqual([
+      null,
+      null,
+      'start',
+      'end',
+    ]);
+    // A word's own link is untouched by expressions.
+    expect(s.tokens[1].vocabItem?.form).toBe('cat');
+    expect(s.tokens[1].exprPieces).toEqual([null]);
+  });
+
+  it('stacks overlapping expressions on separate lanes and dots a skipped word', () => {
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      vocabularies: vocabs([
+        { id: 'lk-1', tokens: ['w-1', 'w-2', 'w-3'], vocabItem: { id: 'i-sit', form: 'a' } },
+        { id: 'lk-2', tokens: ['w-2', 'w-4'], vocabItem: { id: 'i-alt', form: 'b' } },
+      ]),
+    });
+    const s = doc.sentences[0];
+    expect(s.expressionLanes).toBe(2);
+    expect(s.expressions.map((e) => [e.linkId, e.lane])).toEqual([
+      ['lk-1', 0],
+      ['lk-2', 1],
+    ]);
+    expect(s.tokens.map((t) => t.exprPieces.map((p) => p?.piece ?? null))).toEqual([
+      ['start', null],
+      ['mid', 'start'],
+      ['end', 'pass'],
+      [null, 'end'],
+    ]);
+  });
+
+  it('draws only the members that exist, and marks the expression partial', () => {
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      vocabularies: vocabs([
+        { id: 'lk-1', tokens: ['w-1', 'w-gone', 'w-3'], vocabItem: { id: 'i-sit', form: 'x' } },
+        { id: 'lk-2', tokens: ['w-4', 'w-gone'], vocabItem: { id: 'i-alt', form: 'y' } },
+      ]),
+    });
+    const s = doc.sentences[0];
+    expect(s.expressions.map((e) => e.linkId)).toEqual(['lk-1']);
+    expect(s.expressions[0].partial).toBe(true);
+    expect(s.tokens.map((t) => t.exprPieces[0]?.piece ?? null)).toEqual([
+      'start',
+      'pass',
+      'end',
+      null,
+    ]);
+  });
+
+  it('linkExpression links the words in text order and leaves their own links alone', async () => {
+    const client = makeFakeClient();
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      client,
+      vocabularies: vocabs([
+        { id: 'lk-w', tokens: ['w-3'], vocabItem: { id: 'i-cat', form: 'cat' } },
+      ]),
+    });
+    expect(await doc.linkExpression(['w-4', 'w-3'], 'i-sit')).toBe(true);
+    const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
+    expect(create.args[0]).toBe('i-sit');
+    expect(create.args[1]).toEqual(['w-3', 'w-4']);
+    const s = doc.sentences[0];
+    expect(s.expressions[0].item.form).toBe('sit down');
+    expect(s.tokens[2].vocabItem?.form).toBe('cat');
+  });
+
+  it('refuses fewer than two distinct words', async () => {
+    const doc = makeDoc({ raw: raw(), project, vocabularies: vocabs() });
+    expect(await doc.linkExpression(['w-1', 'w-1'], 'i-sit')).toBe(false);
+    expect(doc.error).toMatch(/two or more words/);
+    expect(await doc.linkExpression(['w-1', 'm-1'], 'i-sit')).toBe(false);
+  });
+
+  it('createAndLinkExpression makes the entry with its type, then links it', async () => {
+    const client = makeFakeClient();
+    const doc = makeDoc({ raw: raw(), project, client, vocabularies: vocabs() });
+    const ok = await doc.createAndLinkExpression(['w-2', 'w-4'], 'v1', 'cat down', {
+      morphType: 'discontiguous phrase',
+    });
+    expect(ok).toBe(true);
+    expect(kinds(client)).toEqual(
+      expect.arrayContaining(['vocabItems.create', 'vocabLinks.create']),
+    );
+    const itemCall = client.calls.find((c) => c.kind === 'vocabItems.create');
+    expect(itemCall.args).toEqual(['v1', 'cat down', { morphType: 'discontiguous phrase' }]);
+    const s = doc.sentences[0];
+    expect(s.expressions[0].item.form).toBe('cat down');
+    expect(s.expressions[0].item.metadata.morphType).toBe('discontiguous phrase');
+    expect(s.tokens.map((t) => t.exprPieces[0]?.piece ?? null)).toEqual([
+      null,
+      'start',
+      'pass',
+      'end',
+    ]);
+    expect(doc.vocabularies.v1.items.map((i) => i.form)).toContain('cat down');
+  });
+
+  it('relinkExpression swaps the entry in one batch and keeps the words', async () => {
+    const client = makeFakeClient();
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      client,
+      vocabularies: vocabs([
+        { id: 'lk-1', tokens: ['w-3', 'w-4'], vocabItem: { id: 'i-sit', form: 'sit down' } },
+      ]),
+    });
+    expect(await doc.relinkExpression('lk-1', 'i-alt')).toBe(true);
+    const k = kinds(client);
+    expect(k.indexOf('vocabLinks.delete')).toBeLessThan(k.indexOf('vocabLinks.create'));
+    expect(k.indexOf('vocabLinks.create')).toBeLessThan(k.indexOf('submitBatch'));
+    const e = doc.sentences[0].expressions[0];
+    expect(e.item.id).toBe('i-alt');
+    expect(e.memberTokenIds).toEqual(['w-3', 'w-4']);
+    expect(doc.vocabularies.v1.vocabLinks).toHaveLength(1);
+  });
+
+  it('setExpressionMembers re-covers the words, keeping entry and provenance', async () => {
+    const client = makeFakeClient();
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      client,
+      vocabularies: vocabs([
+        {
+          id: 'lk-1',
+          tokens: ['w-3', 'w-4'],
+          vocabItem: { id: 'i-sit', form: 'sit down' },
+          metadata: { prov: 'inferred', provSource: 'rule' },
+        },
+      ]),
+    });
+    expect(await doc.setExpressionMembers('lk-1', ['w-4', 'w-2', 'w-3'])).toBe(true);
+    const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
+    expect(create.args[1]).toEqual(['w-2', 'w-3', 'w-4']);
+    expect(create.args[2]).toEqual({ prov: 'inferred', provSource: 'rule' });
+    const e = doc.sentences[0].expressions[0];
+    expect(e.memberTokenIds).toEqual(['w-2', 'w-3', 'w-4']);
+    expect(e.prov).toBe('machine');
+    // Down to one word: the expression is simply removed.
+    expect(await doc.setExpressionMembers(e.linkId, ['w-2'])).toBe(true);
+    expect(doc.sentences[0].expressions).toEqual([]);
+  });
+
+  it('unlinkExpression removes the link and the bracket', async () => {
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      vocabularies: vocabs([
+        { id: 'lk-1', tokens: ['w-3', 'w-4'], vocabItem: { id: 'i-sit', form: 'sit down' } },
+      ]),
+    });
+    expect(await doc.unlinkExpression('lk-1')).toBe(true);
+    expect(doc.sentences[0].expressions).toEqual([]);
+    expect(doc.sentences[0].expressionLanes).toBe(0);
+    expect(doc.sentences[0].tokens[2].exprPieces).toEqual([]);
+  });
+
+  it('confirmExpressionLink flips a machine link to verified and ignores a human one', async () => {
+    const client = makeFakeClient();
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      client,
+      vocabularies: vocabs([
+        {
+          id: 'lk-1',
+          tokens: ['w-3', 'w-4'],
+          vocabItem: { id: 'i-sit', form: 'sit down' },
+          metadata: { prov: 'inferred', provSource: 'rule' },
+        },
+        { id: 'lk-2', tokens: ['w-1', 'w-2'], vocabItem: { id: 'i-alt', form: 'the cat' } },
+      ]),
+    });
+    expect(await doc.confirmExpressionLink('lk-1')).toBe(true);
+    expect(doc.sentences[0].expressions.find((e) => e.linkId === 'lk-1').prov).toBe('verified');
+    expect(await doc.confirmExpressionLink('lk-2')).toBe(false);
+  });
+});

@@ -10,6 +10,7 @@
 
 import { provState } from '@larc-iu/plaid-client';
 import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
+import { collectExpressionLinks, bracketPieces, assignLanes } from './expressions.js';
 
 // Local copy of plaid-client-js's cpSlicer (spread the body into code points
 // ONCE; each slice is then O(slice length) — cpSlice re-spreads the whole
@@ -197,6 +198,8 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
 
   const findSentenceForToken = makeBinarySearchSentenceLookup(sortedSentences);
 
+  attachExpressions(enrichedSentences, tokenPositionMaps, collectExpressionLinks(vocabularies));
+
   return {
     sentences: enrichedSentences,
     sortedSentences,
@@ -206,6 +209,76 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
     sentenceIndexLookup,
     findSentenceForToken,
   };
+}
+
+// Multiword expressions (links over two or more word tokens) are drawn in the
+// sentence of their first live member: `sentence.expressions` lists them with
+// their lane and member columns, `sentence.expressionLanes` says how many
+// bracket lines the sentence's word band needs, and every word token carries
+// `exprPieces[lane]` — the piece of bracket its column draws on that lane, or
+// null. A member in another sentence, or one whose token no longer exists,
+// stays out of the drawing (`partial` marks the expression so the validators
+// can say so); an expression with fewer than two live members here is not
+// drawn at all. Mutates the derived sentences in place.
+function attachExpressions(sentences, tokenPositionMaps, exprLinks) {
+  const perSentence = new Map();
+  sentences.forEach((s) => {
+    s.expressions = [];
+    s.expressionLanes = 0;
+    s.tokens.forEach((t) => {
+      t.exprPieces = [];
+    });
+    perSentence.set(s.id, []);
+  });
+  if (!exprLinks.length) return;
+
+  const sentenceOfToken = new Map();
+  sentences.forEach((s) => s.tokens.forEach((t) => sentenceOfToken.set(t.id, s)));
+
+  for (const ex of exprLinks) {
+    const placed = ex.tokenIds
+      .map((id) => ({ id, sentence: sentenceOfToken.get(id) }))
+      .filter((p) => p.sentence);
+    if (!placed.length) continue;
+    const home = placed.reduce(
+      (a, p) => (p.sentence.begin < a.begin ? p.sentence : a),
+      placed[0].sentence,
+    );
+    const posMap = tokenPositionMaps.get(home.id);
+    const here = placed.filter((p) => p.sentence === home);
+    if (here.length < 2) continue;
+    const memberIdx = here.map((p) => posMap.get(p.id)).sort((a, b) => a - b);
+    perSentence.get(home.id).push({
+      ...ex,
+      memberIdx,
+      memberTokenIds: memberIdx.map((i) => home.tokens[i].id),
+      first: memberIdx[0],
+      last: memberIdx[memberIdx.length - 1],
+      partial: here.length !== ex.tokenIds.length,
+    });
+  }
+
+  perSentence.forEach((exprs, sentenceId) => {
+    if (!exprs.length) return;
+    const sentence = sentences.find((s) => s.id === sentenceId);
+    const lanes = assignLanes(exprs.map((e) => ({ first: e.first, last: e.last })));
+    exprs.forEach((e, i) => {
+      e.lane = lanes[i];
+    });
+    exprs.sort((a, b) => a.lane - b.lane || a.first - b.first);
+    const laneCount = Math.max(...lanes) + 1;
+    sentence.expressions = exprs;
+    sentence.expressionLanes = laneCount;
+    sentence.tokens.forEach((t) => {
+      t.exprPieces = new Array(laneCount).fill(null);
+    });
+    for (const e of exprs) {
+      const pieces = bracketPieces(sentence.tokens.length, e.memberIdx);
+      pieces.forEach((piece, i) => {
+        if (piece) sentence.tokens[i].exprPieces[e.lane] = { piece, expression: e };
+      });
+    }
+  });
 }
 
 /** A morpheme's effective type: the linked entry's, else the token's own. */
