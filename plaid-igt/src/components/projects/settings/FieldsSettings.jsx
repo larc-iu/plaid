@@ -196,6 +196,17 @@ export const FieldsSettings = ({
     }
   };
 
+  // Move a field one place among the fields of its scope. Order lives on the
+  // server (span layers have a display order), so this is a shift of the
+  // layer, and the table re-syncs from the refreshed project. The arrows
+  // used to reorder only the table and nothing else; a reload undid them.
+  const handleMoveField = async (field, direction) => {
+    const layer = (layersOf(project)?.managed || []).find((l) => layerKey(l) === fieldKey(field));
+    if (!layer) return;
+    await client.spanLayers.shift(layer.id, direction);
+    await onProjectUpdate?.();
+  };
+
   // Count existing annotations in a field's span layer (one aggregate query).
   // null = unknown — the delete dialog warns accordingly.
   const handleCountFieldUsage = async (field) => {
@@ -242,6 +253,7 @@ export const FieldsSettings = ({
         onSaveChanges={handleSaveChanges}
         onError={handleError}
         onCountFieldUsage={handleCountFieldUsage}
+        onMoveField={handleMoveField}
         tagsetNames={tagsetNames}
         violations={violations}
         projectId={projectId}

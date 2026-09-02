@@ -54,6 +54,11 @@ export const FieldsManager = ({
   // the count; when absent (setup mode — no layers exist yet), deletion is
   // immediate.
   onCountFieldUsage,
+  // Async (field, 'up'|'down'). When provided (settings mode) the server owns
+  // the order and a move is a shift of the field's span layer; the table then
+  // re-syncs from the project. When absent (setup mode) the list order is the
+  // creation order and the move is local.
+  onMoveField,
   // Names of the project's tagsets, for the per-field Tagset picker. Empty in
   // setup mode (tagsets are configured in settings, after the fields exist).
   tagsetNames = [],
@@ -211,12 +216,31 @@ export const FieldsManager = ({
     if (key) await handleDeleteField(key);
   };
 
+  // A field only ever moves among the fields of its own scope: the grid shows
+  // each scope's fields as a group, so crossing into another scope's rows
+  // would reorder nothing on screen.
+  const neighborInScope = (key, direction) => {
+    const i = fields.findIndex((field) => fieldKey(field) === key);
+    if (i === -1) return -1;
+    const j = direction === 'up' ? i - 1 : i + 1;
+    return j >= 0 && j < fields.length && fields[j].scope === fields[i].scope ? j : -1;
+  };
+
   const handleMoveField = async (key, direction) => {
     const currentIndex = fields.findIndex((field) => fieldKey(field) === key);
-    if (currentIndex === -1) return;
+    const newIndex = neighborInScope(key, direction);
+    if (currentIndex === -1 || newIndex === -1) return;
 
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= fields.length) return;
+    if (onMoveField) {
+      try {
+        await onMoveField(fields[currentIndex], direction);
+      } catch (error) {
+        console.error('Failed to move field:', error);
+        if (onError) onError(error);
+        else notifyError('Failed to move the field', 'Save Error');
+      }
+      return;
+    }
 
     const newFields = [...fields];
     const [movedField] = newFields.splice(currentIndex, 1);
@@ -231,11 +255,17 @@ export const FieldsManager = ({
     }
   };
 
-  // Check if new field name would be a duplicate
+  // Would the new field collide with one at the SAME scope? Name alone is not
+  // a collision: Gloss and POS exist at both Word and Morpheme scope by
+  // default, and this used to stop a project without a Word-scope Gloss from
+  // ever adding one.
   const wouldBeDuplicate = () => {
     const trimmedName = newFieldName.trim();
     if (!trimmedName) return false;
-    return fields.some((field) => field.name.toLowerCase() === trimmedName.toLowerCase());
+    return fields.some(
+      (field) =>
+        field.scope === newFieldScope && field.name.toLowerCase() === trimmedName.toLowerCase(),
+    );
   };
 
   const handleIgnoredTokensModeChange = async (mode) => {
@@ -388,7 +418,7 @@ export const FieldsManager = ({
                           event.stopPropagation();
                           handleMoveField(record.key, 'up');
                         }}
-                        disabled={tableData.findIndex((item) => item.key === record.key) === 0}
+                        disabled={neighborInScope(record.key, 'up') === -1}
                         title="Move up"
                       >
                         <ChevronUp className="h-3.5 w-3.5" />
@@ -401,10 +431,7 @@ export const FieldsManager = ({
                           event.stopPropagation();
                           handleMoveField(record.key, 'down');
                         }}
-                        disabled={
-                          tableData.findIndex((item) => item.key === record.key) ===
-                          tableData.length - 1
-                        }
+                        disabled={neighborInScope(record.key, 'down') === -1}
                         title="Move down"
                       >
                         <ChevronDown className="h-3.5 w-3.5" />

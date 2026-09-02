@@ -118,6 +118,59 @@ describe('FieldsManager tagset column', () => {
   });
 });
 
+describe('FieldsManager field order', () => {
+  const three = {
+    fields: [
+      { name: 'POS', scope: 'Word', isCustom: false, tagset: null },
+      { name: 'Note', scope: 'Word', isCustom: true, tagset: null },
+      { name: 'Gloss', scope: 'Morpheme', isCustom: false, tagset: null },
+    ],
+    ignoredTokens: { mode: 'unicode-punctuation', unicodePunctuationExceptions: [] },
+  };
+  const arrows = (c, title) => all(c, `button[title="${title}"]`);
+
+  it('only moves a field among the fields of its own scope', async () => {
+    // The grid shows each scope's fields as a group, so a move across scopes
+    // would reorder nothing on screen.
+    const { container, unmount } = await renderComponent(<FieldsManager initialData={three} />);
+    expect(arrows(container, 'Move up').map((b) => b.disabled)).toEqual([true, false, true]);
+    expect(arrows(container, 'Move down').map((b) => b.disabled)).toEqual([false, true, true]);
+    await unmount();
+  });
+
+  it('hands a move to the server in settings mode rather than reordering the table', async () => {
+    // The arrows used to reorder only the table: nothing was ever written, and
+    // a reload put the rows back.
+    const onMoveField = vi.fn(async () => {});
+    const onSaveChanges = vi.fn();
+    const { container, step, unmount } = await renderComponent(
+      <FieldsManager initialData={three} onMoveField={onMoveField} onSaveChanges={onSaveChanges} />,
+    );
+    await step(async () => arrows(container, 'Move up')[1].click());
+    expect(onMoveField).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Note', scope: 'Word' }),
+      'up',
+    );
+    expect(onSaveChanges).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('lets a name already used at ANOTHER scope be added', async () => {
+    // Gloss exists at Morpheme scope. Adding a Word-scope Gloss was blocked by
+    // a name-only check, while the handler behind the button was scope-aware.
+    const { container, step, unmount } = await renderComponent(
+      <FieldsManager initialData={three} />,
+    );
+    const input = all(container, 'input').find((i) => i.placeholder === 'Enter field name');
+    const add = all(container, 'button').find((b) => b.textContent.includes('Add Field'));
+    await step(async () => typeInto(input, 'Gloss'));
+    expect(add.disabled).toBe(false);
+    await step(async () => typeInto(input, 'POS'));
+    expect(add.disabled).toBe(true);
+    await unmount();
+  });
+});
+
 describe('TagsetsManager', () => {
   const tagsets = { Leipzig: { delimiters: '.', mode: 'closed', values: [{ value: 'PL' }] } };
 
