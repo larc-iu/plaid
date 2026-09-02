@@ -128,6 +128,35 @@ describe('a tagset-governed cell', () => {
   });
 });
 
+describe('spellcheck', () => {
+  // A gloss is not English. Chrome underlines "RqeES.???" in red wavy, which is
+  // exactly the marker an off-tagset value gets, so a native squiggle was
+  // indistinguishable from a validation failure. Asserted on the rendered DOM,
+  // because checking the source for the string is what let a missing attribute
+  // through: the word "spellchecker" in a comment satisfied the count.
+  it('is off on annotation cells and morpheme forms', () => {
+    mount();
+    for (const sel of ['input[data-cell-key^="ma:"]', 'input[data-cell-key^="wa:"]']) {
+      expect(host.querySelector(sel).getAttribute('spellcheck')).toBe('false');
+    }
+    const form = host.querySelector('input[data-prec]');
+    if (form) expect(form.getAttribute('spellcheck')).toBe('false');
+  });
+
+  it('stays ON for an ungoverned sentence field, which is prose', () => {
+    mount();
+    const sentence = host.querySelector('textarea[data-cell-key^="sa:"]');
+    expect(sentence.getAttribute('spellcheck')).toBe('true');
+  });
+
+  it('renders no stray text into the grid', () => {
+    // `//` inside an html`` template is markup, not a comment.
+    mount();
+    expect(host.textContent).not.toContain('//');
+    expect(host.textContent).not.toContain('spellchecker');
+  });
+});
+
 describe('part-aware completion', () => {
   it('narrows on the part under the caret, not the whole cell', () => {
     // Typing the second half of "1SG.NO" must narrow to NOM, not to nothing.
@@ -217,6 +246,24 @@ describe('who owns Enter while the picker is open', () => {
     type(cell, 'N');
     key(cell, 'Enter');
     expect(cell.value).toBe('NOM');
+  });
+
+  it('commits a value already typed in full, instead of picking it again', async () => {
+    // Closed + delimiters: the filter is the part under the caret, so typing
+    // NOM in full leaves NOM highlighted. Picking it is a no-op, and in part
+    // mode a pick deliberately does not commit — so Enter did nothing at all
+    // and the value needed a second Enter to save.
+    const doc = mount();
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan').mockResolvedValue(true);
+    const cell = glossCell();
+    focus(cell);
+    type(cell, '1SG.NOM');
+    key(cell, 'Enter');
+    await flush();
+    // Assert on what was WRITTEN: a successful Enter also navigates, and the
+    // re-render then shows the doc's value, which the mocked write never set.
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][2]).toBe('1SG.NOM');
   });
 
   it('takes the row once the user has arrowed to it, whatever the mode', async () => {

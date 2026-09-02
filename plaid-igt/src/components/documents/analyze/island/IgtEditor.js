@@ -973,10 +973,24 @@ export class IgtEditor {
         this._closeAlts();
         return false; // fall through to the normal commit path
       }
-      e.preventDefault();
       const it = items[this._alts.active];
-      if (it) this._pickAlt(el, it);
-      else this._closeAlts();
+      // Picking a value the cell ALREADY holds changes nothing, and in part
+      // mode a pick deliberately does not commit — so claiming Enter for it
+      // swallowed the keystroke entirely and the value needed a second Enter.
+      // Typing a legal value out in full is the ordinary way to fill a closed
+      // field, so this is the common case, not an edge one.
+      const delims = el.dataset.tagsetDelims || '';
+      const would = it
+        ? delims
+          ? replacePartAtCaret(el.value, el.selectionStart, delims, it.value).value
+          : it.value
+        : null;
+      if (!it || would === el.value) {
+        this._closeAlts();
+        return false; // fall through to the normal commit path
+      }
+      e.preventDefault();
+      this._pickAlt(el, it);
       return true;
     }
     if (e.key === 'Escape') {
@@ -1055,7 +1069,7 @@ export class IgtEditor {
   _repositionAlts() {
     if (!this._alts) return;
     const el = this.container.querySelector(`[data-cell-key="${this._alts.cellKey}"]`);
-    const list = this.container.querySelector('.igt-alts');
+    const list = this._altsRoot?.querySelector('.igt-alts');
     if (!el || !list) return;
     const pos = this._computeAltsPos(el, (this._alts.visible || []).length || 1);
     if (!pos) return;
@@ -1682,13 +1696,16 @@ export class IgtEditor {
       // Provenance renders exactly as on cells (a proposed translation is
       // violet italic until a person edits or Ctrl+Enter-confirms it).
       const ps = filled ? prov : null;
+      // Sentence fields are prose and keep the browser's spellchecker, unless a
+      // tagset governs them, where its squiggle would be indistinguishable from
+      // the one an off-tagset value gets.
       // A sentence-scoped field can carry a tagset too (a Genre or Speech-act
       // field is as controllable as a POS). Same picker, same flagging: only
       // the control differs, because a Translation still has to wrap.
       return html`<textarea
-        class="igt-field igt-field--sentence ${
-          filled ? 'igt-field--filled' : 'igt-field--empty'
-        } ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
+        class="igt-field igt-field--sentence ${filled
+          ? 'igt-field--filled'
+          : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
           'igt-field',
           ps,
         )} ${extraClass}"
@@ -1698,17 +1715,12 @@ export class IgtEditor {
         data-confirm-sentence=${confirmSentence ?? nothing}
         data-field-name=${fieldName ?? nothing}
         aria-label=${ariaLabel ?? nothing}
-        title=${
-          violations.length
-            ? this._violationText(violations, tagset)
-            : ps
-              ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is`
-              : nothing
-        }
+        title=${violations.length
+          ? this._violationText(violations, tagset)
+          : ps
+            ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is`
+            : nothing}
         rows="1"
-        // Sentence fields are prose and keep the browser's spellchecker, unless
-        // a tagset governs them, in which case its squiggle would be
-        // indistinguishable from the validation one.
         spellcheck=${tagset ? 'false' : 'true'}
         ?disabled=${this.readOnly}
         .igtAlts=${alternatives || null}
@@ -1761,6 +1773,7 @@ export class IgtEditor {
       .igtAlts=${alternatives || null}
       placeholder=${g ? g.value : nothing}
       size=${this._fieldSize(g ? g.value : v)}
+      spellcheck="false"
       ?disabled=${this.readOnly}
       ${uncontrolledValue(v)}
       @focus=${this._onFieldFocus}
