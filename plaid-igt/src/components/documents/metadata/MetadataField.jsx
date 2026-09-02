@@ -80,6 +80,9 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
       <Input
         value={v}
         list={listId}
+        // A governed field can carry our squiggle, so the browser's must not
+        // appear beside it meaning something else.
+        spellCheck={tagset ? false : undefined}
         onChange={(e) => onChange(e.target.value)}
         placeholder={`Enter ${field.name}`}
         // The same squiggle the grid uses, so an off-tagset value reads the

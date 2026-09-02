@@ -143,10 +143,17 @@ describe('spellcheck', () => {
     if (form) expect(form.getAttribute('spellcheck')).toBe('false');
   });
 
-  it('stays ON for an ungoverned sentence field, which is prose', () => {
+  it('is off on EVERY editable field in the grid, sentence fields included', () => {
+    // A red wavy underline has to mean exactly one thing here. Enumerated
+    // rather than spot-checked, so a field added later cannot quietly ship
+    // with the browser's spellchecker still on.
     mount();
-    const sentence = host.querySelector('textarea[data-cell-key^="sa:"]');
-    expect(sentence.getAttribute('spellcheck')).toBe('true');
+    const editable = [...host.querySelectorAll('input, textarea')].filter(
+      (el) => el.type !== 'checkbox' && el.type !== 'radio',
+    );
+    expect(editable.length).toBeGreaterThan(0);
+    const on = editable.filter((el) => el.getAttribute('spellcheck') !== 'false');
+    expect(on.map((el) => el.dataset.cellKey ?? el.className)).toEqual([]);
   });
 
   it('renders no stray text into the grid', () => {

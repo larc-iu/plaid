@@ -1696,9 +1696,10 @@ export class IgtEditor {
       // Provenance renders exactly as on cells (a proposed translation is
       // violet italic until a person edits or Ctrl+Enter-confirms it).
       const ps = filled ? prov : null;
-      // Sentence fields are prose and keep the browser's spellchecker, unless a
-      // tagset governs them, where its squiggle would be indistinguishable from
-      // the one an off-tagset value gets.
+      // Off here too. A free translation is the one field in the grid that is
+      // real prose, but a red wavy underline has to mean exactly one thing in
+      // this app — an off-tagset value — and fieldwork translations are full of
+      // idiomatic renderings and notation a dictionary would reject anyway.
       // A sentence-scoped field can carry a tagset too (a Genre or Speech-act
       // field is as controllable as a POS). Same picker, same flagging: only
       // the control differs, because a Translation still has to wrap.
@@ -1721,7 +1722,7 @@ export class IgtEditor {
             ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is`
             : nothing}
         rows="1"
-        spellcheck=${tagset ? 'false' : 'true'}
+        spellcheck="false"
         ?disabled=${this.readOnly}
         .igtAlts=${alternatives || null}
         ${uncontrolledValue(v)}
@@ -3583,6 +3584,7 @@ export class IgtEditor {
       >
         <input
           class="igt-vocab-pop__search"
+          spellcheck="false"
           data-pop-autofocus
           placeholder="Search lexicon…"
           aria-label="Search lexicon"
@@ -3687,6 +3689,7 @@ export class IgtEditor {
                 ? html`+ Create
                     <input
                       class="igt-vocab-pop__create-input"
+                      spellcheck="false"
                       aria-label="New entry form"
                       .value=${live(this._popoverCreateEdit)}
                       @click=${(e) => e.stopPropagation()}
