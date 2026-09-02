@@ -1716,8 +1716,15 @@ export class IgtEditor {
     const p = filled ? prov : null;
     // Alternatives (Alt+↓): computed per render so the list and the caret
     // affordance track the data; the thunk rides on the element for _openAlts.
-    const alts = !this.readOnly && alternatives ? alternatives() : null;
-    const nAlts = alts ? alts.length : 0;
+    // The caret affordance, and only that: the popup itself renders elsewhere
+    // (see _renderAlts), so nothing here needs the list.
+    //
+    // A governed cell skips the count entirely. The caret advertises "Alt+Down
+    // has more" and only shows on focus, which is the exact moment a governed
+    // cell has already opened its list — so it would collide with the text to
+    // say nothing. Skipping it also spares the computation on every such cell
+    // of every render.
+    const nAlts = !tagset && !this.readOnly && alternatives ? alternatives().length : 0;
     const baseTitle = g
       ? `Guess: ${g.value}. Enter accepts it, Ctrl+Enter accepts the whole word, typing replaces`
       : p

@@ -1426,7 +1426,11 @@
 .igt-field--alts:focus {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M1 2.5l3 3 3-3' fill='none' stroke='%237c3aed' stroke-width='1.2'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 1px center;
+  background-position: right 2px center;
+  /* Make room for the caret rather than drawing it over the last character.
+     field-sizing: content measures the text and ADDS the padding, so widening
+     this side is what buys the space; the base padding is 6px. */
+  padding-right: 14px;
 }
 .igt-alts {
   position: fixed;
