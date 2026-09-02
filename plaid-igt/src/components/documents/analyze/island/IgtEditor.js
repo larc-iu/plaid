@@ -677,17 +677,24 @@ export class IgtEditor {
     window.dispatchEvent(new CustomEvent('igt:auto-analyze-open'));
   }
 
-  // After any popover action the re-render replaces the opener/chip node, so
-  // the synchronous focus return in _closePopover is lost; _pendingFocus
-  // re-affirms it on the chip after the data render (E2: focus never lost).
-  _focusChipAfter(tokenId) {
-    this._pendingFocus = { vocabOpener: tokenId };
+  // Run a doc mutation with a focus target to re-affirm after the render it
+  // causes (a popover action re-renders the opener/chip node, so a synchronous
+  // focus return is lost; E2: focus never lost). A mutation that turns out to
+  // be a no-op — a confirm on a link a second click already confirmed —
+  // renders nothing, and a target left waiting would be honored by the next
+  // unrelated render, wherever focus was by then. So a target its own
+  // mutation did not consume is dropped once that mutation settles.
+  _runThenFocus(target, fn) {
+    this._pendingFocus = target;
+    return this._run(fn).then((result) => {
+      if (this._pendingFocus === target) this._pendingFocus = null;
+      return result;
+    });
   }
 
   _confirmLink(tokenId, returnFocus = false) {
     this._closePopover(returnFocus);
-    this._focusChipAfter(tokenId);
-    this._run(() => this.doc.confirmVocabLink(tokenId));
+    this._runThenFocus({ vocabOpener: tokenId }, () => this.doc.confirmVocabLink(tokenId));
   }
 
   // (The old _suggestMorphemeGloss "copy a gloss on link" write is gone: the
@@ -695,12 +702,9 @@ export class IgtEditor {
   // itself, and only writes it — with provenance — when the user confirms.)
   async _toggleVocab(tokenId, item, isLinked, returnFocus = false) {
     this._closePopover(returnFocus);
-    this._focusChipAfter(tokenId);
-    if (isLinked) {
-      await this._run(() => this.doc.unlinkVocab(tokenId));
-    } else {
-      await this._run(() => this.doc.linkVocab(tokenId, item.id));
-    }
+    await this._runThenFocus({ vocabOpener: tokenId }, () =>
+      isLinked ? this.doc.unlinkVocab(tokenId) : this.doc.linkVocab(tokenId, item.id),
+    );
   }
   // Turn the "+ Create" row into an inline editor prefilled with `form`
   // (selected, so typing replaces): single click / Enter edit first, a second
@@ -735,8 +739,9 @@ export class IgtEditor {
   async _createVocab(tokenId, vocabId, form, returnFocus = false) {
     this._closePopover(returnFocus);
     if (!form) return;
-    this._focusChipAfter(tokenId);
-    await this._run(() => this.doc.createAndLinkVocabItem(tokenId, vocabId, form));
+    await this._runThenFocus({ vocabOpener: tokenId }, () =>
+      this.doc.createAndLinkVocabItem(tokenId, vocabId, form),
+    );
   }
 
   _scheduleRender() {
@@ -852,7 +857,11 @@ export class IgtEditor {
       return;
     }
     if (pf.cellKey != null) {
-      const cell = this.container.querySelector(`[data-cell-key="${pf.cellKey}"]`);
+      const cell =
+        this.container.querySelector(`[data-cell-key="${pf.cellKey}"]`) ??
+        (pf.wordId != null
+          ? this.container.querySelector(`.igt-field[data-confirm-word="${pf.wordId}"]`)
+          : null);
       if (cell) cell.focus();
       return;
     }
@@ -954,10 +963,12 @@ export class IgtEditor {
   // through the guess-adoption path (data-guess-* + blur-commit), so it is
   // written born-verified with the row's source, exactly like adopting a
   // placeholder guess; the cell keeps focus.
-  _openAlts(el) {
+  // `explicit`: the user asked for the list (Alt+Down), as opposed to a
+  // governed cell opening it on focus. Escape reads the difference.
+  _openAlts(el, { explicit = false } = {}) {
     const items = typeof el.igtAlts === 'function' ? el.igtAlts() : [];
     if (!items.length) return;
-    this._alts = { cellKey: el.dataset.cellKey, active: 0, filter: '', visible: [] };
+    this._alts = { cellKey: el.dataset.cellKey, active: 0, filter: '', visible: [], explicit };
     this._altsPos = this._computeAltsPos(el, items.length);
     this._renderAlts();
   }
@@ -993,10 +1004,16 @@ export class IgtEditor {
     const open = !!this._alts && this._alts.cellKey === el.dataset.cellKey;
     if (e.altKey && e.key === 'ArrowDown') {
       e.preventDefault();
-      if (!open) this._openAlts(el);
+      if (!open) this._openAlts(el, { explicit: true });
       return true;
     }
     if (!open) return false;
+    // Ctrl/Cmd+Enter is the whole-word accept wherever it is pressed; the list
+    // never takes it, steered or not.
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      this._closeAlts();
+      return false;
+    }
     const items = this._alts.visible || [];
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -1049,9 +1066,11 @@ export class IgtEditor {
       // The same question as Enter: is the list what the user is addressing?
       // A list that opened on its own and has not been typed into or steered
       // is not, so Escape falls through and reverts the cell in one press,
-      // as it does everywhere else. Mid-completion, Escape closes the list
-      // and keeps what was typed.
-      const engaged = !!this._alts.steered || (this._alts.filter || '') !== '';
+      // as it does everywhere else. A list the user ASKED for (Alt+Down) is,
+      // and so is one mid-completion: Escape closes the list, keeps what was
+      // typed, and leaves the cell where it is.
+      const engaged =
+        !!this._alts.steered || !!this._alts.explicit || (this._alts.filter || '') !== '';
       this._closeAlts();
       if (!engaged) return false;
       e.preventDefault();
@@ -1329,7 +1348,15 @@ export class IgtEditor {
       const key = document.activeElement?.dataset?.cellKey;
       if (key) this._pendingFocus = { cellKey: key };
     } else {
+      // Last word on the page: stay here rather than dropping focus to <body>,
+      // as confirm does. The reload may remove this very cell (a discarded
+      // machine morpheme takes its gloss cells with it), so the word's first
+      // remaining cell is the fallback.
+      const key = e.target.dataset.cellKey;
       e.target.blur();
+      this._pendingFocus = { cellKey: key, wordId };
+      const same = key ? this.container.querySelector(`[data-cell-key="${key}"]`) : null;
+      if (same) same.focus();
     }
     return true;
   }
@@ -1547,9 +1574,12 @@ export class IgtEditor {
   // usually survives lit's re-render; _restorePendingFocus re-affirms it.
   _reviewLink(mutate) {
     const next = this._adjacentChip('next');
-    if (next) this._pendingFocus = { vocabOpener: next.dataset.vocabOpener };
-    this._run(mutate);
-    if (next) next.focus();
+    if (!next) {
+      this._run(mutate);
+      return;
+    }
+    this._runThenFocus({ vocabOpener: next.dataset.vocabOpener }, mutate);
+    next.focus();
   }
 
   // While an IME composition is open, Enter picks a candidate, Escape cancels

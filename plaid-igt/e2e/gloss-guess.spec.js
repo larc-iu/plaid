@@ -324,7 +324,10 @@ test('A1-12: Alt+Down lists the values seen for the form, ranked with counts; pi
   await page.keyboard.press('Enter');
   await expect(c3).toHaveValue('the.PL');
   await expect(c3).toHaveClass(/igt-field--verified/);
-  await expect(c3).toBeFocused();
+  // A keyboard pick moves on like Enter on a typed value, and this is the last cell on the tier, so that is a commit-and-blur (grid-nav C5-01).
+  expect(await page.evaluate(() => document.activeElement?.dataset?.cellKey ?? null)).not.toBe(
+    `ma:${d.m[3]}:Gloss`,
+  );
   await page.waitForLoadState('networkidle');
   expect(seen).toEqual(['POST /api/v1/spans']);
   const raw = await client.documents.get(d.id, true);

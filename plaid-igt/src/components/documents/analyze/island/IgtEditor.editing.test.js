@@ -449,3 +449,75 @@ describe('a cell that is focused but untouched', () => {
     expect(c.dataset.orig).toBe('');
   });
 });
+
+describe('Ctrl+Backspace on the last word of the page', () => {
+  it('keeps focus in the grid rather than dropping it to the body', async () => {
+    const { doc } = mount();
+    await doc.updateMorphemeSpan('m-2', 'Gloss', 'PL', MACHINE);
+    await settle();
+    vi.spyOn(doc, 'discardWordAnalysis').mockResolvedValue(true);
+    const c = cell('ma:m-2:Gloss');
+    focus(c);
+    key(c, 'Backspace', { ctrlKey: true });
+    await settle();
+    expect(host.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement.dataset.confirmWord).toBe('w-2');
+  });
+});
+
+describe('Ctrl+Enter while the picker is open', () => {
+  it('is the whole-word accept even after arrowing through the list', async () => {
+    const { doc } = mount({ tagset: LEIPZIG });
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
+    await settle();
+    const c = cell('ma:m-1:Gloss');
+    focus(c);
+    key(c, 'ArrowDown');
+    key(c, 'Enter', { ctrlKey: true });
+    await settle();
+    expect(c.value).toBe('PL');
+    expect(glossOf(doc).value).toBe('PL');
+    // A human-made word: nothing to accept, and it says so.
+    expect(notifyInfo).toHaveBeenCalled();
+  });
+});
+
+describe('Escape on a list opened with Alt+Down', () => {
+  it('closes the list only and keeps the cell, unlike a list that opened on its own', async () => {
+    // The one-press revert for a governed cell (whose list opens on focus)
+    // had swallowed this case too: on an ungoverned cell Escape closed the
+    // list the user had asked for AND left the cell.
+    const { doc } = mount();
+    // Two morphemes sharing a form, one glossed: the other has a list to offer.
+    await doc.updateMorphemeForm('m-1', 'xx');
+    await doc.updateMorphemeForm('m-2', 'xx');
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
+    await settle();
+    const c = cell('ma:m-2:Gloss');
+    focus(c);
+    expect(document.querySelector('.igt-alts')).toBeNull();
+    key(c, 'ArrowDown', { altKey: true });
+    expect(document.querySelector('.igt-alts')).not.toBeNull();
+    key(c, 'Escape');
+    expect(document.querySelector('.igt-alts')).toBeNull();
+    expect(document.activeElement).toBe(c);
+    expect(c.value).toBe('');
+  });
+});
+
+describe('a focus target handed to a mutation', () => {
+  it('is dropped when the mutation turns out to be a no-op', async () => {
+    // Otherwise the next unrelated render honored it, wherever focus was.
+    mount();
+    await editor._runThenFocus({ cellKey: 'ma:m-2:Gloss' }, async () => false);
+    expect(editor._pendingFocus).toBeNull();
+  });
+
+  it('is honored by the render the mutation causes', async () => {
+    const { doc } = mount();
+    await editor._runThenFocus({ cellKey: 'ma:m-2:Gloss' }, () =>
+      doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null),
+    );
+    expect(document.activeElement).toBe(cell('ma:m-2:Gloss'));
+  });
+});
