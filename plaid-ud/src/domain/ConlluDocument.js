@@ -956,8 +956,15 @@ export class ConlluDocument {
         deletedRelations = relIds.length;
       }
 
-      await this._reload();
-      // Validate the reloaded (true server) state — even when nothing healed.
+      // Re-read only when a heal actually wrote. The batches above land
+      // server-side and this instance knows nothing about them, so a heal has
+      // to refetch — but a clean pass has nothing to refetch, and its in-memory
+      // state IS the server state. This runs behind a blocking spinner on every
+      // Annotate open now, so an unconditional reload would make the ordinary
+      // case (nothing to repair) pay a full document fetch for the rare one.
+      const healed = createdSyntacticWords + deletedOrphans + dedupedSpans + deletedRelations > 0;
+      if (healed) await this._reload();
+      // Validate the true server state — even when nothing healed.
       const findings = validateConlluDocument(this.layerInfo);
       return {
         deletedRelations,

@@ -36,6 +36,10 @@ export const DocumentEditorShell = () => {
   // overlaying it. The chrome lives up here now, so it has to move too — the
   // child publishes the offset through the outlet context.
   const [chromeOffset, setChromeOffset] = useState(0);
+  // The tab strip is chrome, so it survives a tab switch — but it must not be
+  // clickable while the body is repairing the document (see DocumentTabs). The
+  // child raises this the same way it publishes its offset.
+  const [chromeBusy, setChromeBusy] = useState(false);
 
   // Re-render on any mutation of the shared document (see useConlluDocument).
   useConlluDocument(doc);
@@ -111,6 +115,7 @@ export const DocumentEditorShell = () => {
             documentId={documentId}
             project={project}
             document={doc?.raw}
+            disabled={chromeBusy}
           />
         </Box>
       </Box>
@@ -134,7 +139,17 @@ export const DocumentEditorShell = () => {
       )}
 
       {!loading && !loadError && doc && project && (
-        <Outlet context={{ projectId, documentId, doc, project, reload, setChromeOffset }} />
+        <Outlet
+          context={{
+            projectId,
+            documentId,
+            doc,
+            project,
+            reload,
+            setChromeOffset,
+            setChromeBusy,
+          }}
+        />
       )}
     </Box>
   );

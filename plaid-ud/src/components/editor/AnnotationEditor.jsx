@@ -12,7 +12,7 @@ import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { notifications } from '@mantine/notifications';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
-import { notifyWarning, notifyError } from '../../utils/feedback.jsx';
+import { notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
@@ -34,10 +34,31 @@ const loadVisibleFields = () => {
   return DEFAULT_VISIBLE_FIELDS;
 };
 
+// A failed repair, said in a way the user can act on. "Could not auto-repair"
+// with no reason is what a production failure looks like from the outside, and
+// the usual cause on a large document is a timeout on the full-body reload
+// rather than anything about the document itself.
+const reconcileFailureReason = (err) => {
+  if (!err) return null;
+  if (/timed out/i.test(err.message || '')) return 'the request timed out';
+  if (err.status === 0) return 'the server could not be reached';
+  if (err.status) return `the server returned HTTP ${err.status}`;
+  return err.message || null;
+};
+
+const reportReconcileFailure = (err) => {
+  console.error('Reconcile-on-open failed:', err);
+  const reason = reconcileFailureReason(err);
+  notifyError(
+    `Could not auto-repair this document. Try reloading.${reason ? ` (${reason})` : ''}`,
+    'Repair failed',
+  );
+};
+
 // Surface validateConlluDocument findings: full detail to the console (grouped),
 // plus ONE consolidated "Data integrity issue detected" toast with a Copy
-// details button. Findings are things we could NOT auto-repair; healed repairs
-// get their own "Document repaired" toast separately.
+// details button. Findings are things we could NOT auto-repair, which is why
+// they interrupt; repairs that SUCCEEDED say nothing (see runReconcile).
 const reportIntegrityFindings = (findings, documentId) => {
   if (!findings?.length) return;
   console.group(`[plaid-ud] Document integrity findings (${findings.length})`);
@@ -78,7 +99,8 @@ export const AnnotationEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter
   // subscription all come from DocumentEditorShell, which guarantees both the
   // project and the document are loaded before this renders.
-  const { projectId, documentId, doc, project, reload, setChromeOffset } = useDocumentEditor();
+  const { projectId, documentId, doc, project, reload, setChromeOffset, setChromeBusy } =
+    useDocumentEditor();
   // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
   // briefly highlights that sentence once the grid is rendered.
   const [searchParams] = useSearchParams();
@@ -120,7 +142,13 @@ export const AnnotationEditor = () => {
 
   // Reconcile-on-open: heal UD invariants another app may have broken while
   // this editor was closed (e.g. a sentence split that left a dependency
-  // relation crossing a boundary). Loud on success AND on failure.
+  // relation crossing a boundary).
+  //
+  // Silent on success, loud on failure. A repair that worked leaves a correct
+  // document and nothing for the user to do, so it goes to the console only —
+  // a toast on every open just trains people to dismiss toasts. A repair that
+  // FAILED, and an invariant we could not heal at all (`findings`), both still
+  // interrupt: those are the cases where the document is still wrong.
   const runReconcile = useCallback(async () => {
     try {
       const {
@@ -133,7 +161,7 @@ export const AnnotationEditor = () => {
         error,
       } = await doc.reconcileOnOpen();
       if (error) {
-        notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
+        reportReconcileFailure(error);
         return;
       }
       const parts = [];
@@ -165,16 +193,11 @@ export const AnnotationEditor = () => {
         );
       }
       if (parts.length) {
-        notifyWarning(
-          `This document was edited in another app: ${parts.join('; ')}. Please review.`,
-          'Document repaired',
-          { autoClose: false },
-        );
+        console.info(`Reconcile-on-open: ${parts.join('; ')}`);
       }
       reportIntegrityFindings(findings, doc.id);
     } catch (e) {
-      console.error('Reconcile-on-open failed:', e);
-      notifyError('Could not auto-repair this document. Try reloading.', 'Repair failed');
+      reportReconcileFailure(e);
     }
   }, [doc]);
 
@@ -211,6 +234,14 @@ export const AnnotationEditor = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, doc]);
+
+  // Lock the shell's tab strip for as long as the body is a spinner. The gate
+  // below keeps edits out of THIS tab while a repair is writing; without this
+  // the user could simply click over to the Text Editor and re-tokenize mid-heal.
+  useEffect(() => {
+    setChromeBusy(reconciling);
+    return () => setChromeBusy(false);
+  }, [reconciling, setChromeBusy]);
 
   // The history drawer pushes content right rather than overlaying it. The
   // breadcrumbs and tab strip live in DocumentEditorShell now, so tell it to
