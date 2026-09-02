@@ -11,10 +11,13 @@ import {
   readIgnoredTokens,
   IGT_NAMESPACE,
 } from '@/domain/igtConfig';
+import { readTagsets, readTagsetName } from '@/domain/tagsets';
 
 export const FieldsSettings = ({ projectId, client }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
+  // The project's tagset names, for the per-field picker (filled during load).
+  const [tagsetNames, setTagsetNames] = useState([]);
   // field name -> span layer id, for usage counts at delete time. Kept in
   // sync by handleLoadData and by creates/deletes in handleSaveChanges.
   const spanLayerIdsRef = useRef({});
@@ -76,10 +79,13 @@ export const FieldsSettings = ({ projectId, client }) => {
         scopedSpanLayers.map((l) => [fieldKey({ scope: readScope(l.config), name: l.name }), l.id]),
       );
 
+      setTagsetNames(Object.keys(readTagsets(project.config)));
+
       const fieldsWithScope = scopedSpanLayers.map((spanLayer) => ({
         name: spanLayer.name,
         scope: readScope(spanLayer.config),
         isCustom: !isPredefinedField(spanLayer.name),
+        tagset: readTagsetName(spanLayer.config),
       }));
 
       if (fieldsWithScope.length === 0 && !ignoredTokensConfig) {
@@ -227,6 +233,24 @@ export const FieldsSettings = ({ projectId, client }) => {
           delete spanLayerIdsRef.current[layerKey(existingLayer)];
         }
       }
+
+      // Sync each field's tagset reference. A field stores the tagset's NAME,
+      // never a copy of the list, so pointing two fields at one tagset is what
+      // makes them share it. Only write when it actually changed: this runs on
+      // every save of the section, including ones that only touched a name.
+      const storedTagset = new Map(
+        managedSpanLayers.map((l) => [layerKey(l), readTagsetName(l.config)]),
+      );
+      for (const field of currentFields) {
+        const key = fieldKey(field);
+        const layerId = spanLayerIdsRef.current[key];
+        if (!layerId) continue;
+        const next = field.tagset ?? null;
+        // A layer created a moment ago has no stored tagset yet.
+        if (next === (storedTagset.get(key) ?? null)) continue;
+        if (next) await client.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'tagset', next);
+        else await client.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'tagset');
+      }
     } catch (error) {
       console.error('Failed to save fields configuration:', error);
       setHasError(true);
@@ -280,6 +304,7 @@ export const FieldsSettings = ({ projectId, client }) => {
         onSaveChanges={handleSaveChanges}
         onError={handleError}
         onCountFieldUsage={handleCountFieldUsage}
+        tagsetNames={tagsetNames}
         showTitle={false}
       />
     </div>

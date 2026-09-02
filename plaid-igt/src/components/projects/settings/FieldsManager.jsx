@@ -19,6 +19,9 @@ import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
 // the name alone.
 export const fieldKey = (f) => `${f.scope}:${f.name}`;
 
+// Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
+const NO_TAGSET = '__none__';
+
 // Default annotation fields: the set a FieldWorks import produces (see
 // import/flex/importEngine.js deriveImportConfig). Keep in sync with the
 // setup wizard's seed in setup/FieldsStep.jsx.
@@ -49,6 +52,9 @@ export const FieldsManager = ({
   // the count; when absent (setup mode — no layers exist yet), deletion is
   // immediate.
   onCountFieldUsage,
+  // Names of the project's tagsets, for the per-field Tagset picker. Empty in
+  // setup mode (tagsets are configured in settings, after the fields exist).
+  tagsetNames = [],
   showTitle = true,
 }) => {
   const [fields, setFields] = useState([]);
@@ -150,6 +156,7 @@ export const FieldsManager = ({
       name: trimmedName,
       scope: newFieldScope,
       isCustom: true,
+      tagset: null,
     };
 
     const updatedFields = [...fields, newField];
@@ -166,6 +173,14 @@ export const FieldsManager = ({
     await saveChanges(updatedFields, ignoredTokens);
 
     notifyInfo(`"${field?.name ?? key}" has been removed`, 'Field Removed');
+  };
+
+  // Point a field at a tagset (or at none). The reference is by name, so this
+  // stores a string rather than a copy of the list.
+  const handleSetTagset = async (key, choice) => {
+    const tagset = choice === NO_TAGSET ? null : choice;
+    const updated = fields.map((f) => (fieldKey(f) === key ? { ...f, tagset } : f));
+    await saveChanges(updated, ignoredTokens);
   };
 
   // Entry point for the trash button: in settings mode open the confirm
@@ -296,6 +311,9 @@ export const FieldsManager = ({
               <tr>
                 <th className="w-[15%] px-3 py-2 text-left font-medium">Scope</th>
                 <th className="px-3 py-2 text-left font-medium">Field Name</th>
+                {tagsetNames.length > 0 && (
+                  <th className="w-[22%] px-3 py-2 text-left font-medium">Tagset</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -359,6 +377,33 @@ export const FieldsManager = ({
                       </div>
                     </div>
                   </td>
+                  {tagsetNames.length > 0 && (
+                    <td className="border-t px-3 py-2 align-middle">
+                      <Select
+                        value={record.tagset ?? NO_TAGSET}
+                        onValueChange={(v) => handleSetTagset(record.key, v)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_TAGSET}>No tagset</SelectItem>
+                          {tagsetNames.map((n) => (
+                            <SelectItem key={n} value={n}>
+                              {n}
+                            </SelectItem>
+                          ))}
+                          {/* A field can point at a tagset that has since been
+                              renamed or deleted. Keep the dangling name
+                              selectable so the picker shows what is actually
+                              stored rather than silently reading as "none". */}
+                          {record.tagset && !tagsetNames.includes(record.tagset) && (
+                            <SelectItem value={record.tagset}>{record.tagset} (missing)</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

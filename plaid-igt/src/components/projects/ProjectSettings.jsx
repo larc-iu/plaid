@@ -16,6 +16,7 @@ import { LanguagesSettings } from './settings/LanguagesSettings.jsx';
 import { DocumentMetadataSettings } from './settings/DocumentMetadataSettings.jsx';
 import { OrthographiesSettings } from './settings/OrthographiesSettings.jsx';
 import { FieldsSettings } from './settings/FieldsSettings.jsx';
+import { TagsetsSettings } from './settings/TagsetsSettings.jsx';
 import { VocabularySettings } from './settings/VocabularySettings.jsx';
 
 export const ProjectSettings = ({ project, projectId, client, onProjectUpdate }) => {
@@ -137,6 +138,11 @@ export const ProjectSettings = ({ project, projectId, client, onProjectUpdate })
 
       {/* Orthographies Configuration */}
       <OrthographiesSettings projectId={projectId} client={client} />
+
+      {/* Tagsets: the value lists the fields below can point at. Above
+          Annotation Fields because a field can only reference one that
+          already exists. */}
+      <TagsetsSettings projectId={projectId} client={client} />
 
       {/* Fields Configuration */}
       <FieldsSettings projectId={projectId} client={client} />
