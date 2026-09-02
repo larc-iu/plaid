@@ -16,7 +16,7 @@ import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
-import { provState, PROV_STATES, confirmedInferred } from '@larc-iu/plaid-client';
+import { PROV, provState, PROV_STATES, confirmedInferred } from '@larc-iu/plaid-client';
 import {
   readOrthographies,
   readIgnoredTokens,
@@ -140,6 +140,12 @@ export class IgtEditor {
     // "+ Create" row when this says no. Default: assume yes (dev/tests).
     this.canWriteVocab = typeof canWriteVocab === 'function' ? canWriteVocab : () => true;
     this.container = container;
+    // The alternatives popup renders into its OWN root, not into the grid
+    // template. It is position:fixed, so it does not need to be a sibling of
+    // the cell — and keeping it out means opening, filtering and closing it
+    // re-render one small element instead of every cell in the document.
+    this._altsRoot = document.createElement('div');
+    document.body.appendChild(this._altsRoot);
     this.doc = doc;
     this.readOnly = readOnly;
     this._lastDataVersion = -1;
@@ -318,6 +324,8 @@ export class IgtEditor {
   }
 
   destroy() {
+    this._altsRoot?.remove();
+    this._altsRoot = null;
     if (this._unsub) this._unsub();
     this._unsub = null;
     if (this._unsubComments) this._unsubComments();
@@ -755,6 +763,8 @@ export class IgtEditor {
   _render(force = false) {
     if (!force && this.doc.dataVersion === this._lastDataVersion) return;
     this._lastDataVersion = this.doc.dataVersion;
+    // Fresh alternatives memo for this pass (see _alternatives).
+    this._altsMemo = new Map();
     // Defensively clear any stale suppress-commit flags so a sticky flag can't
     // swallow a later legitimate edit on a reused node (review H2).
     this.container.querySelectorAll('[data-suppress-commit]').forEach((el) => {
@@ -871,7 +881,7 @@ export class IgtEditor {
     if (this._alts && this._alts.cellKey === e.target.dataset.cellKey) {
       this._alts.filter = this._filterTextFor(e.target);
       this._alts.active = 0;
-      this._render(true);
+      this._renderAlts();
     }
   };
 
@@ -896,14 +906,32 @@ export class IgtEditor {
     if (!items.length) return;
     this._alts = { cellKey: el.dataset.cellKey, active: 0, filter: '', visible: [] };
     this._altsPos = this._computeAltsPos(el, items.length);
-    this._render(true);
+    this._renderAlts();
   }
 
   _closeAlts() {
     if (!this._alts) return;
     this._alts = null;
     this._altsPos = null;
-    this._render(true);
+    this._renderAlts();
+  }
+
+  /**
+   * Render just the popup. Everything that opens, filters, moves within or
+   * closes the list comes here rather than to _render, because a full pass
+   * rebuilds every cell in the document — ~1,200 of them for 300 words — and
+   * a governed cell opens this on every focus, so that cost landed on every
+   * Tab across the grid.
+   */
+  _renderAlts() {
+    const el = this._alts
+      ? this.container.querySelector(`[data-cell-key="${this._alts.cellKey}"]`)
+      : null;
+    const items = el && typeof el.igtAlts === 'function' ? el.igtAlts() : null;
+    render(
+      this._alts && items ? this._altsTemplate(items, this._alts.cellKey) : nothing,
+      this._altsRoot,
+    );
   }
 
   // Returns true when the key was handled by the list.
@@ -924,7 +952,7 @@ export class IgtEditor {
         this._alts.active = (this._alts.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
         // The user has now steered the list, so Enter belongs to it.
         this._alts.steered = true;
-        this._render(true);
+        this._renderAlts();
       }
       return true;
     }
@@ -994,7 +1022,7 @@ export class IgtEditor {
     // a blur-commit here would write a half-finished gloss and lose the caret.
     // Whole-value mode commits as before.
     if (delims) {
-      this._render(true);
+      this._renderAlts();
       el.focus();
       return;
     }
@@ -1657,37 +1685,33 @@ export class IgtEditor {
       // A sentence-scoped field can carry a tagset too (a Genre or Speech-act
       // field is as controllable as a POS). Same picker, same flagging: only
       // the control differs, because a Translation still has to wrap.
-      const sAlts = !this.readOnly && alternatives ? alternatives() : null;
       return html`<textarea
-          class="igt-field igt-field--sentence ${filled
-            ? 'igt-field--filled'
-            : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
-            'igt-field',
-            ps,
-          )} ${extraClass}"
-          data-cell-key=${key}
-          data-has-tagset=${tagset ? '1' : nothing}
-          data-tagset-delims=${tagset?.delimiters || nothing}
-          data-confirm-sentence=${confirmSentence ?? nothing}
-          data-field-name=${fieldName ?? nothing}
-          aria-label=${ariaLabel ?? nothing}
-          title=${violations.length
-            ? this._violationText(violations, tagset)
-            : ps
-              ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is`
-              : nothing}
-          rows="1"
-          ?disabled=${this.readOnly}
-          .igtAlts=${alternatives || null}
-          ${uncontrolledValue(v)}
-          @focus=${this._onFieldFocus}
-          @input=${this._onSentenceInput}
-          @keydown=${this._sentenceKeydown}
-          @blur=${(e) => this._commitField(e, apply, tagset)}
-        ></textarea
-        >${this._alts && this._alts.cellKey === key && sAlts
-          ? this._altsTemplate(sAlts, key)
-          : nothing}`;
+        class="igt-field igt-field--sentence ${filled
+          ? 'igt-field--filled'
+          : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
+          'igt-field',
+          ps,
+        )} ${extraClass}"
+        data-cell-key=${key}
+        data-has-tagset=${tagset ? '1' : nothing}
+        data-tagset-delims=${tagset?.delimiters || nothing}
+        data-confirm-sentence=${confirmSentence ?? nothing}
+        data-field-name=${fieldName ?? nothing}
+        aria-label=${ariaLabel ?? nothing}
+        title=${violations.length
+          ? this._violationText(violations, tagset)
+          : ps
+            ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is`
+            : nothing}
+        rows="1"
+        ?disabled=${this.readOnly}
+        .igtAlts=${alternatives || null}
+        ${uncontrolledValue(v)}
+        @focus=${this._onFieldFocus}
+        @input=${this._onSentenceInput}
+        @keydown=${this._sentenceKeydown}
+        @blur=${(e) => this._commitField(e, apply, tagset)}
+      ></textarea>`;
     }
     const p = filled ? prov : null;
     // Alternatives (Alt+↓): computed per render so the list and the caret
@@ -1707,32 +1731,54 @@ export class IgtEditor {
         ? `${baseTitle ? `${baseTitle}. ` : ''}Alt+↓ lists ${nAlts} values seen for this form`
         : (baseTitle ?? nothing);
     return html`<input
-        class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g
-          ? 'igt-field--guess'
-          : ''} ${nAlts > 1 ? 'igt-field--alts' : ''} ${violations.length
-          ? 'igt-field--invalid'
-          : ''} ${provClass('igt-field', p)} ${extraClass}"
-        data-cell-key=${key}
-        data-has-tagset=${tagset ? '1' : nothing}
-        data-tagset-delims=${tagset?.delimiters || nothing}
-        data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
-        data-guess-value=${g ? g.value : nothing}
-        data-guess-source=${g ? g.source : nothing}
-        data-confirm-word=${confirmWord ?? nothing}
-        aria-label=${ariaLabel ?? nothing}
-        title=${title}
-        .igtAlts=${alternatives || null}
-        placeholder=${g ? g.value : nothing}
-        size=${this._fieldSize(g ? g.value : v)}
-        ?disabled=${this.readOnly}
-        ${uncontrolledValue(v)}
-        @focus=${this._onFieldFocus}
-        @input=${this._onFieldInput}
-        @keydown=${this._basicKeydown}
-        @blur=${(e) => this._commitField(e, apply, tagset)}
-      />${this._alts && this._alts.cellKey === key && alts
-        ? this._altsTemplate(alts, key)
-        : nothing}`;
+      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g
+        ? 'igt-field--guess'
+        : ''} ${nAlts > 1 ? 'igt-field--alts' : ''} ${violations.length
+        ? 'igt-field--invalid'
+        : ''} ${provClass('igt-field', p)} ${extraClass}"
+      data-cell-key=${key}
+      data-has-tagset=${tagset ? '1' : nothing}
+      data-tagset-delims=${tagset?.delimiters || nothing}
+      data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
+      data-guess-value=${g ? g.value : nothing}
+      data-guess-source=${g ? g.source : nothing}
+      data-confirm-word=${confirmWord ?? nothing}
+      aria-label=${ariaLabel ?? nothing}
+      title=${title}
+      .igtAlts=${alternatives || null}
+      placeholder=${g ? g.value : nothing}
+      size=${this._fieldSize(g ? g.value : v)}
+      ?disabled=${this.readOnly}
+      ${uncontrolledValue(v)}
+      @focus=${this._onFieldFocus}
+      @input=${this._onFieldInput}
+      @keydown=${this._basicKeydown}
+      @blur=${(e) => this._commitField(e, apply, tagset)}
+    />`;
+  }
+
+  /**
+   * A cell's alternatives list, memoized for the duration of one render pass.
+   *
+   * `_field` asks EVERY annotation cell for its list on EVERY render, to size
+   * the caret affordance and the tooltip — 1,200 calls for a 300-word document.
+   * That was tolerable while the list only opened on Alt+Down, and stopped
+   * being so when a governed cell began opening it on FOCUS: every Tab across
+   * the grid paid for a full recompute of the whole document.
+   *
+   * The result depends only on (kind, form, field, linked entry) once the
+   * precedent tally is fixed, and a document repeats the same morpheme form
+   * hundreds of times, so the hit rate is high. A cell whose span carries a
+   * model prediction is per-cell by definition and skips the memo.
+   */
+  _alternatives(args) {
+    const detail = args.span?.metadata?.[PROV.detailKey];
+    if (detail) return listAlternatives(args);
+    const key = `${args.kind}\u0000${args.form}\u0000${args.field}\u0000${args.vocabItem?.id ?? ''}`;
+    const memo = (this._altsMemo ||= new Map());
+    let hit = memo.get(key);
+    if (!hit) memo.set(key, (hit = listAlternatives(args)));
+    return hit;
   }
 
   // Why a cell is flagged, for its tooltip and for the rejection toast. Named
@@ -2949,7 +2995,7 @@ export class IgtEditor {
                   this._tagsetFor('word', name),
                 ),
                 alternatives: () =>
-                  listAlternatives({
+                  this._alternatives({
                     precedent: this._precedentTally(),
                     kind: KINDS.WORD,
                     form: this._precedentForm(token.content, KINDS.WORD),
@@ -3079,7 +3125,7 @@ export class IgtEditor {
                   this._tagsetFor('morpheme', name),
                 ),
                 alternatives: () =>
-                  listAlternatives({
+                  this._alternatives({
                     precedent: this._precedentTally(),
                     kind: KINDS.MORPHEME,
                     form: value,
@@ -3149,7 +3195,7 @@ export class IgtEditor {
                       // sentence field is free prose with no list to offer.
                       alternatives: this._tagsetFor('sentence', name)
                         ? () =>
-                            listAlternatives({
+                            this._alternatives({
                               precedent: this._precedentTally(),
                               kind: KINDS.WORD,
                               form: null,

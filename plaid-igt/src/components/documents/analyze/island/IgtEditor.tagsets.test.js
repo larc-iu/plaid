@@ -61,6 +61,13 @@ const mount = (tagset = LEIPZIG) => {
   return doc;
 };
 
+// The picker renders into its own root at body level, not inside the grid: it
+// is position:fixed, and keeping it out of the grid template is what stops a
+// focus from re-rendering every cell in the document.
+const altsList = () => document.querySelector('.igt-alts');
+const altsValues = () =>
+  [...document.querySelectorAll('.igt-alts__value')].map((n) => n.textContent);
+
 /** The first morpheme-scope Gloss cell. */
 const glossCell = () => host.querySelector('input[data-cell-key^="ma:"]');
 
@@ -109,16 +116,15 @@ describe('a tagset-governed cell', () => {
     // The tagset IS the set of legal values, so a picker you have to know a
     // chord to find leaves a closed field looking broken.
     mount();
-    expect(host.querySelector('.igt-alts')).toBeNull();
+    expect(altsList()).toBeNull();
     focus(glossCell());
-    expect(host.querySelector('.igt-alts')).not.toBeNull();
+    expect(altsList()).not.toBeNull();
   });
 
   it('offers every tagset value even with no precedent in the document', () => {
     mount();
     focus(glossCell());
-    const shown = [...host.querySelectorAll('.igt-alts__value')].map((n) => n.textContent);
-    expect(shown.sort()).toEqual(['1SG', 'NOM', 'PL']);
+    expect(altsValues().sort()).toEqual(['1SG', 'NOM', 'PL']);
   });
 });
 
@@ -129,8 +135,7 @@ describe('part-aware completion', () => {
     const cell = glossCell();
     focus(cell);
     type(cell, '1SG.NO');
-    const shown = [...host.querySelectorAll('.igt-alts__value')].map((n) => n.textContent);
-    expect(shown).toEqual(['NOM']);
+    expect(altsValues()).toEqual(['NOM']);
   });
 
   it('replaces only that part on a pick, and leaves the caret after it', () => {
