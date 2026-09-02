@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useDeferredValue, useState } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, Sparkles, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,7 @@ const SAMPLE = '1SG.NOM';
 
 // A seeded Leipzig tagset runs to well over a thousand values, so the table is
 // searched and paged rather than rendered whole.
-const PAGE_SIZE = 50;
+export const PAGE_SIZE = 25;
 
 // How each mode presents itself. The help text is the whole explanation a user
 // gets, so it says what is accepted and when to pick it, not what it is called.
@@ -67,6 +67,12 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [valueQuery, setValueQuery] = useState('');
+  // The input stays instant; the table is allowed to lag behind it. A fixed
+  // debounce would be the wrong tool here — filtering 1,700 strings costs
+  // nothing, the re-render of the rows is the only cost, and a timeout would
+  // add latency on every keystroke whether or not it was needed. This defers
+  // exactly when React is actually behind, and not at all when it is not.
+  const deferredQuery = useDeferredValue(valueQuery);
   const [valuePage, setValuePage] = useState(0);
   const [pendingDelete, setPendingDelete] = useState(null);
 
@@ -374,7 +380,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                   )}
                   {t.values.length > 0 &&
                     (() => {
-                      const q = valueQuery.trim().toLowerCase();
+                      const q = deferredQuery.trim().toLowerCase();
                       const matched = t.values
                         .map((rec, i) => ({ rec, i }))
                         .filter(
@@ -431,7 +437,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                           </div>
                           {shown.length === 0 ? (
                             <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                              No value matches “{valueQuery}”.
+                              No value matches “{deferredQuery}”.
                             </p>
                           ) : (
                             <div className="overflow-hidden rounded-md border bg-background">

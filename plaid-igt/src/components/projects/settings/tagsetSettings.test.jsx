@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts } from '@/test/renderComponent.jsx';
 import { FieldsManager } from './FieldsManager.jsx';
-import { TagsetsManager } from './TagsetsManager.jsx';
+import { TagsetsManager, PAGE_SIZE } from './TagsetsManager.jsx';
 import { byTagsetName, governedFields } from '@/domain/tagsets.js';
 
 // The settings surface around tagsets. Every case here is a bug that was found
@@ -190,11 +190,12 @@ describe('TagsetsManager', () => {
 
   describe('a large value list', () => {
     // A seeded Leipzig tagset runs past a thousand values.
+    const COUNT = PAGE_SIZE * 4 + 20; // several pages, last one partial
     const big = {
       Leipzig: {
         delimiters: '.',
         mode: 'closed',
-        values: Array.from({ length: 120 }, (_, i) => ({ value: `V${i}` })),
+        values: Array.from({ length: COUNT }, (_, i) => ({ value: `V${i}` })),
       },
     };
     const renderBig = (onSaveChanges = vi.fn()) =>
@@ -218,8 +219,8 @@ describe('TagsetsManager', () => {
     it('shows one page at a time instead of every value', async () => {
       const { container, step, unmount } = await renderBig();
       await expandFirst(container, step);
-      expect(rowValues(container)).toHaveLength(50);
-      expect(container.textContent).toContain('page 1 of 3');
+      expect(rowValues(container)).toHaveLength(PAGE_SIZE);
+      expect(container.textContent).toContain('page 1 of 5');
       await unmount();
     });
 
@@ -230,11 +231,11 @@ describe('TagsetsManager', () => {
       const { container, step, unmount } = await renderBig(onSaveChanges);
       await expandFirst(container, step);
       await click(container, step, 'Next');
-      expect(rowValues(container)[0]).toBe('V50');
+      expect(rowValues(container)[0]).toBe(`V${PAGE_SIZE}`);
       await step(async () => all(container, 'button[title="Remove value"]')[0].click());
       const saved = onSaveChanges.mock.calls.at(-1)[0].Leipzig.values.map((v) => v.value);
-      expect(saved).toHaveLength(119);
-      expect(saved).not.toContain('V50');
+      expect(saved).toHaveLength(COUNT - 1);
+      expect(saved).not.toContain(`V${PAGE_SIZE}`);
       expect(saved).toContain('V0');
       await unmount();
     });
@@ -246,9 +247,9 @@ describe('TagsetsManager', () => {
         (i.getAttribute('placeholder') || '').startsWith('Search'),
       );
       await step(async () => typeInto(search, 'V11'));
-      // V11 plus V110..V119 all live past the first page.
+      // V11 plus V110..V119 all live well past the first page.
       expect(rowValues(container)).toContain('V119');
-      expect(container.textContent).toContain('11 of 120');
+      expect(container.textContent).toContain(`11 of ${COUNT}`);
       await unmount();
     });
 
