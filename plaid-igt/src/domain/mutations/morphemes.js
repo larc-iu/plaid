@@ -188,11 +188,15 @@ export const morphemeMutations = {
       });
       const firstPatch = { form: firstForm };
       if (types[0] != null && target.metadata?.morphType == null) firstPatch.morphType = types[0];
+      // Every piece gets an explicit form, an empty one included. A morpheme
+      // with no `form` key renders the word's text (that is how a word's single
+      // default morpheme shows the word), so a right-edge split ("ngo-" with
+      // nothing after the caret yet) used to show the whole word in the new
+      // cell, with the caret at its start.
       const restMeta = (form, i) => ({
-        ...(form ? { form } : {}),
+        form: form ?? '',
         ...(types[i + 1] != null ? { morphType: types[i + 1] } : {}),
       });
-      const metaOrUndefined = (m) => (Object.keys(m).length ? m : undefined);
 
       const results = await this._client.batched(async () => {
         // patch, not set: form edits must not clobber other metadata keys
@@ -213,7 +217,7 @@ export const morphemeMutations = {
             target.begin,
             target.end,
             currentPrecedence + 1 + i,
-            metaOrUndefined(restMeta(form, i)),
+            restMeta(form, i),
           );
         });
       });

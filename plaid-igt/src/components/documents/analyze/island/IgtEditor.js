@@ -66,9 +66,14 @@ import { humanizeError, notifyError, notifyInfo } from '@/utils/feedback';
 // render while the project queries are still in flight.
 const NO_PRECEDENT = Object.freeze({ links: [], values: [] });
 
-// ---- uncontrolledValue: set input.value only when the input is NOT focused.
-// Keeps programmatic changes (split/merge form rewrites, reloads) reflected
-// while never clobbering text the user is mid-edit on.
+// ---- uncontrolledValue: set input.value only when the user is not mid-edit
+// on it. Keeps programmatic changes (split/merge form rewrites, reloads)
+// reflected while never clobbering text the user has typed. A FOCUSED cell is
+// still refreshed when it is untouched — showing exactly what it was focused
+// with — because then there is nothing of the user's to protect and the
+// stored value has moved on underneath (a whole-word accept wrote the guess
+// this very cell was showing; a reload brought in another writer's edit).
+// The baseline moves with it, so Escape and the change check stay honest.
 class UncontrolledValueDirective extends Directive {
   constructor(partInfo) {
     super(partInfo);
@@ -79,7 +84,24 @@ class UncontrolledValueDirective extends Directive {
   update(part, [value]) {
     const el = part.element;
     const v = value ?? '';
-    if (el && document.activeElement !== el && el.value !== v) el.value = v;
+    if (el && el.value !== v) {
+      if (document.activeElement !== el) {
+        el.value = v;
+      } else if ((el.dataset.orig ?? '') === el.value) {
+        // Focus selects a cell's whole text; keep it that way so typing still
+        // replaces.
+        const all = el.selectionStart === 0 && el.selectionEnd === el.value.length;
+        el.value = v;
+        el.dataset.orig = v;
+        if (all) {
+          try {
+            el.select();
+          } catch {
+            /* not selectable */
+          }
+        }
+      }
+    }
     return this.render(value);
   }
   render() {
@@ -341,6 +363,7 @@ export class IgtEditor {
     clearTimeout(this._savedTimer);
     clearTimeout(this._copiedTimer);
     clearTimeout(this._linkTimer);
+    clearTimeout(this._createClickTimer);
     render(nothing, this.container);
   }
 
@@ -808,12 +831,16 @@ export class IgtEditor {
     if (!pf) return;
     // If the user already moved focus into another field while the structural op
     // was in flight, don't yank it back to the computed target (review: focus theft).
+    // A DISABLED field is not that: the paste-split disables its source cell
+    // for the flight, and some browsers leave it as activeElement until
+    // something else takes focus.
     const active = document.activeElement;
     if (
       active &&
       active !== this.container &&
       this.container.contains(active) &&
-      (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+      (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') &&
+      !active.disabled
     ) {
       return;
     }
@@ -853,6 +880,7 @@ export class IgtEditor {
   // ---- field event helpers ----
   _onFieldFocus = (e) => {
     e.target.dataset.orig = e.target.value;
+    e.target.igtPick = null; // a pick belongs to the edit it was made in
     try {
       e.target.select();
     } catch {
@@ -1061,10 +1089,15 @@ export class IgtEditor {
     // pick in part mode (a composite assembled part by part is the user's
     // construction, and stamping the whole value as inferred would overclaim
     // what the source actually proposed).
+    //
+    // Carried as a plain property, NOT in the data-guess-* attributes: lit
+    // owns those, and it only rewrites an attribute when it computes a value
+    // different from the one it last wrote — so a value put there by hand
+    // survives every later render that agrees with the previous one. A pick
+    // parked there outlived its own commit, and Enter on the cell after it was
+    // cleared "adopted" the stale pick straight back.
     if (item.source !== TAGSET_SOURCE && !delims) {
-      el.dataset.guessValue = item.value;
-      el.dataset.guessSource = item.source;
-      el.dataset.guessConfirmed = '1';
+      el.igtPick = { value: item.value, source: item.source };
     }
     this._syncInput(el);
     // Part mode keeps the caret in the cell: the value is mid-construction and
@@ -1275,7 +1308,21 @@ export class IgtEditor {
     if ((e.key !== 'Backspace' && e.key !== 'Delete') || !(e.ctrlKey || e.metaKey)) return false;
     const wordId = e.target.dataset.confirmWord;
     if (!wordId || this.readOnly) return false;
+    // Claimed only over an UNTOUCHED cell, as in a translation field: with
+    // text typed and not yet saved this is the browser's own delete-a-word,
+    // and hopping away (with the commit suppressed) would drop what was typed.
+    if (e.target.value !== (e.target.dataset.orig ?? '')) return false;
     e.preventDefault();
+    // Like confirm, hold position when there is nothing to act on: a hop with
+    // no visible change reads as a discard that never happened, and the
+    // suppressed commit used to leave the cell showing text nobody saved.
+    if (!this._wordHasUnverified(wordId)) {
+      notifyInfo(
+        'Everything here was made by a person already. Only unverified proposals can be discarded this way.',
+        'Nothing to discard on this word',
+      );
+      return true;
+    }
     e.target.dataset.suppressCommit = '1';
     this._run(() => this.doc.discardWordAnalysis(wordId));
     if (this._advanceToNextWord(e.target, wordId)) {
@@ -1505,7 +1552,15 @@ export class IgtEditor {
     if (next) next.focus();
   }
 
+  // While an IME composition is open, Enter picks a candidate, Escape cancels
+  // it and Tab may convert: none of them is the editor's until it closes.
+  // Chrome reports such keys as keyCode 229 as well as isComposing.
+  _composing(e) {
+    return !!e.isComposing || e.keyCode === 229;
+  }
+
   _basicKeydown = (e) => {
+    if (this._composing(e)) return;
     if (this._altsKeydown(e)) return;
     if (this._maybeConfirmWord(e)) return;
     if (this._maybeDiscardWord(e)) return;
@@ -1662,6 +1717,7 @@ export class IgtEditor {
       return;
     }
     const next = el.value;
+    this._syncCellClasses(el, next, tagset);
     // An enforcing tagset refuses a value it does not allow. Typing is the ONLY
     // write that passes through here, so this is the whole of what "closed"
     // enforces: imports, services and the assistant reach the same span layer
@@ -1680,11 +1736,9 @@ export class IgtEditor {
         `${this._violationText(validateValue(next, tagset), tagset)}. Escape puts the saved value back`,
         'Value not allowed',
       );
-      // Nothing re-renders after a refusal, so mark the cell here. Without this
-      // it keeps showing the typed value unsquiggled and unsaved, which reads
-      // as committed until some unrelated render snaps it back. The class goes
-      // away on the next render, when the stored value returns with it.
-      el.classList.add('igt-field--invalid');
+      // Nothing re-renders after a refusal; the class sync above has already
+      // squiggled the cell, so it cannot read as committed. The next commit's
+      // sync takes the squiggle off again once the text is a legal value.
       // Refocusing synchronously inside a blur handler is unreliable, so hand
       // it to a microtask. The focus handler restamps `orig` from whatever is
       // in the cell, which is the refused text — so put the SAVED value back
@@ -1702,13 +1756,43 @@ export class IgtEditor {
       });
       return;
     }
-    const fragment =
+    // What the value was taken from, if it was taken rather than typed: the
+    // placeholder guess adopted with Enter, or a row picked from the list.
+    const pick = el.igtPick ?? null;
+    el.igtPick = null;
+    const adopted =
       el.dataset.guessConfirmed === '1' && next === el.dataset.guessValue
-        ? confirmedInferred(el.dataset.guessSource || 'unknown', { detail: { value: next } })
-        : null;
+        ? { value: next, source: el.dataset.guessSource || 'unknown' }
+        : pick && pick.value === next
+          ? pick
+          : null;
     delete el.dataset.guessConfirmed;
     if (next === (el.dataset.orig ?? '')) return;
+    // Born-verified provenance is for a NEW span made from a suggestion. Over
+    // a stored value a pick is a correction of that value, and the span keeps
+    // its own history: the domain layer verifies a machine span on any human
+    // edit, and a human span stays human. (Stamping the pick's fragment over a
+    // model's span replaced provSource and provDetail with the picker's while
+    // provProb kept the model's number — a span that said "precedent, 80% sure".)
+    const fragment =
+      adopted && (el.dataset.orig ?? '') === ''
+        ? confirmedInferred(adopted.source, { detail: { value: next } })
+        : null;
     this._runKeepingFocus(el, next, () => apply(next, fragment));
+  }
+
+  // Keep the classes this file toggles by hand in step with the cell's text.
+  // lit only rewrites the class attribute when one of ITS interpolations
+  // changes, so a class flipped by hand (the input handler's filled/empty, the
+  // refusal squiggle) outlives the state it described until something else
+  // moves — an Escape or a retype that lands on the saved value re-renders
+  // nothing at all. Called on every commit, which is where a cell's text
+  // settles; the result is exactly what a render of that text would paint.
+  _syncCellClasses(el, value, tagset = null) {
+    const filled = value !== '';
+    el.classList.toggle('igt-field--filled', filled);
+    el.classList.toggle('igt-field--empty', !filled);
+    if (tagset) el.classList.toggle('igt-field--invalid', validateValue(value, tagset).length > 0);
   }
 
   // Run a cell commit; when it FAILS (server unreachable, conflict…) the doc
@@ -1717,15 +1801,20 @@ export class IgtEditor {
   // refocus it so Enter retries (E2: focus is never lost).
   _runKeepingFocus(el, typed, fn) {
     const key = el.dataset.cellKey;
+    // The stored value as of this commit: what Escape must revert to and what
+    // a retry is measured against. Read now rather than after the failure,
+    // when the cell may have been refocused (and restamped) in the meantime.
+    const saved = el.dataset.orig ?? '';
     this._run(fn).then((ok) => {
       if (ok !== false || !key) return;
       const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
       if (!cell) return;
-      // Focus first: the focus handler stamps dataset.orig from the current
-      // value, and `orig` must stay the SAVED value so Enter sees a change.
+      // Focus first (the focus handler stamps dataset.orig from whatever the
+      // reload put in the cell), then restore what was typed over it.
       cell.focus();
       cell.value = typed;
-      cell.dataset.orig = '';
+      cell.dataset.orig = saved;
+      this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
     });
   }
 
@@ -1903,6 +1992,7 @@ export class IgtEditor {
   // translations top to bottom), falling through to the default at the end;
   // Escape reverts.
   _sentenceKeydown = (e) => {
+    if (this._composing(e)) return;
     // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
     // it alone so the chip hop wins over cell navigation.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
@@ -1993,11 +2083,17 @@ export class IgtEditor {
       // Buffer them and replay into the new morpheme once it renders, so fast
       // typing ("ngo-ko") never drops characters (review: split key-drop).
       if (this._morphSplit) {
+        if (this._composing(e)) return;
         e.preventDefault();
         const st = this._morphSplit;
+        const lastSplit = st.splits?.[st.splits.length - 1];
         if (e.key === 'Enter' || e.key === 'Tab') st.commitKey = e.key;
-        else if (e.key === 'Backspace') st.buffer = st.buffer.slice(0, -1);
-        else if ((e.key === '-' || e.key === '=') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        else if (e.key === 'Backspace') {
+          // Takes back whatever was typed last: a boundary if one sits at the
+          // end of the buffer, else a character.
+          if (lastSplit && lastSplit.at === st.buffer.length) st.splits.pop();
+          else st.buffer = st.buffer.slice(0, -1);
+        } else if ((e.key === '-' || e.key === '=') && !e.altKey && !e.ctrlKey && !e.metaKey) {
           // A further split typed mid-flight ("ngo-ko-mi" fast): remember the
           // boundary (and whether it was a clitic one) instead of inserting a
           // literal, and replay it as another split once the new cell exists.
@@ -2006,6 +2102,7 @@ export class IgtEditor {
         // Arrows / Escape / etc. mid-flight are swallowed (no meaningful target).
         return;
       }
+      if (this._composing(e)) return;
       if (this._maybeConfirmWord(e)) return;
       if (this._maybeDiscardWord(e)) return;
       // Ctrl/Cmd+Arrow belongs to the review sweep (container listener).
@@ -2096,6 +2193,11 @@ export class IgtEditor {
           restore(orig);
           return;
         }
+        // The left-hand form is stored now, so it is what this cell was
+        // "focused with": the render that just ran cleared the commit
+        // suppression (it clears every stale flag), and without this the blur
+        // that follows wrote the left-hand form a second time.
+        el.dataset.orig = el.value;
         // Render has run synchronously by now, so the new cell exists; focus it
         // and flush the buffered keystrokes into it.
         this._applyMorphSplitReplay(split);
@@ -2149,64 +2251,86 @@ export class IgtEditor {
     return key.startsWith('mf:') ? key.slice(3) : null;
   }
 
-  _applyMorphSplitReplay(split) {
+  // `split` describes the cell the buffer belongs in: `left` and `right` are
+  // the text around the caret as stored ('' and the split's right-hand form
+  // for a fresh split), `buffer` the characters typed since, `splits` the
+  // boundaries typed among them (offsets into `buffer`), `commitKey` an
+  // Enter/Tab typed last.
+  async _applyMorphSplitReplay(split) {
     if (!split) return;
     const el = this.container.querySelector(
       `.igt-morph-field[data-word="${split.wordId}"][data-prec="${split.precedence}"]`,
     );
     if (!el) return; // new cell didn't render as expected — nothing to replay into
-    el.focus(); // sets dataset.orig to the current value for commit
-    if (split.buffer) {
-      // Base is the split's true right-hand form, NOT el.value: an empty-form
-      // morpheme renders the parent-text fallback ("the"), which must not be
-      // concatenated. Buffered chars were typed after the caret (which sat at
-      // the start of `right`), so: buffer + right.
-      const base = split.right || '';
-      el.value = split.buffer + base;
-      const c = split.buffer.length;
-      try {
-        el.setSelectionRange(c, c);
-      } catch {
-        /* not selectable */
-      }
+    el.focus(); // stamps dataset.orig with the stored form, for the commit
+    const left = split.left || '';
+    const right = split.right || '';
+    const buffer = split.buffer || '';
+    // Built from the split's own pieces rather than read off the cell, and
+    // typed into place: buffered characters went in at the caret.
+    const text = left + buffer + right;
+    const caret = left.length + buffer.length;
+    if (el.value !== text) {
+      el.value = text;
       el.dispatchEvent(new Event('input', { bubbles: true }));
-    } else {
-      try {
-        el.setSelectionRange(0, 0);
-      } catch {
-        /* not selectable */
-      }
     }
-    // Further boundaries typed during the flight: split the new cell again at
-    // those buffered positions (a real split each, never a literal; a "=" cut
-    // keeps its clitic meaning).
-    if (split.splits?.length) {
-      const text = el.value;
-      const byCut = new Map();
-      for (const { at, joiner } of split.splits) {
-        if (at > 0 && at < text.length && !byCut.has(at)) byCut.set(at, joiner);
+    try {
+      el.setSelectionRange(caret, caret);
+    } catch {
+      /* not selectable */
+    }
+    // Further boundaries typed during the flight: split this cell again at
+    // those positions (a real split each, never a literal; a "=" cut keeps
+    // its clitic meaning). Keys typed while THAT split is in flight are
+    // buffered again, against the last new piece, and replayed the same way,
+    // so "ngo-ko-mi-ta" typed in one burst lands piece by piece however slow
+    // the server is.
+    const byCut = new Map();
+    for (const { at, joiner } of split.splits || []) {
+      const abs = left.length + at;
+      if (abs > 0 && abs < text.length && !byCut.has(abs)) byCut.set(abs, joiner);
+    }
+    const cuts = [...byCut.keys()].sort((a, b) => a - b);
+    if (cuts.length) {
+      const segments = [];
+      const joiners = [];
+      let last = 0;
+      for (const c of cuts) {
+        segments.push(text.slice(last, c));
+        joiners.push(byCut.get(c));
+        last = c;
       }
-      const cuts = [...byCut.keys()].sort((a, b) => a - b);
-      if (cuts.length) {
-        const segments = [];
-        const joiners = [];
-        let last = 0;
-        for (const c of cuts) {
-          segments.push(text.slice(last, c));
-          joiners.push(byCut.get(c));
-          last = c;
-        }
-        segments.push(text.slice(last));
-        const morphId = this._morphIdOf(el);
-        el.dataset.suppressCommit = '1';
-        this._pendingFocus = {
-          wordId: split.wordId,
-          precedence: split.precedence + segments.length - 1,
-          cursor: 'end',
-        };
-        this._run(() => this.doc.splitMorphemeMulti(morphId, segments, { joiners }));
+      segments.push(text.slice(last));
+      const morphId = this._morphIdOf(el);
+      const lastCut = cuts[cuts.length - 1];
+      const lastSeg = segments[segments.length - 1];
+      const caretInLast = Math.max(0, Math.min(lastSeg.length, caret - lastCut));
+      // This cell keeps the first segment. Show that now, so the blur that
+      // moving on causes has nothing else to write (the render clears the
+      // suppression flag; `orig` is realigned below once the split is stored).
+      el.value = segments[0];
+      el.dataset.suppressCommit = '1';
+      this._morphSplit = {
+        buffer: '',
+        commitKey: split.commitKey,
+        splits: [],
+        left: lastSeg.slice(0, caretInLast),
+        right: lastSeg.slice(caretInLast),
+        wordId: split.wordId,
+        precedence: split.precedence + segments.length - 1,
+      };
+      const ok = await this._run(() => this.doc.splitMorphemeMulti(morphId, segments, { joiners }));
+      const chained = this._morphSplit;
+      this._morphSplit = null;
+      if (!ok) {
+        el.value = text;
+        delete el.dataset.suppressCommit;
+        el.focus();
         return;
       }
+      el.dataset.orig = el.value;
+      await this._applyMorphSplitReplay(chained);
+      return;
     }
     // A buffered Enter/Tab commits the new cell and advances (blur → commit).
     if (split.commitKey === 'Enter') {
@@ -2256,7 +2380,11 @@ export class IgtEditor {
         delete el.dataset.suppressCommit;
         this._pendingFocus = null;
         el.focus();
+        return;
       }
+      // The first segment is stored; realign the baseline so a late blur of
+      // this cell (the render cleared its suppression flag) writes nothing.
+      el.dataset.orig = el.value;
     };
   }
 
@@ -2268,6 +2396,7 @@ export class IgtEditor {
       return;
     }
     const next = el.value;
+    this._syncCellClasses(el, next);
     if (next === (el.dataset.orig ?? '')) return;
     this._runKeepingFocus(el, next, () => this.doc.updateMorphemeForm(morphId, next));
   }
@@ -3851,8 +3980,13 @@ export class IgtEditor {
           @change=${(e) => {
             e.stopPropagation();
             const value = e.target.value || null;
-            if (linked) this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value);
-            else this.doc.setMorphemeType(morphemeId, value);
+            // Through the op chain like every other edit: the doc drops a
+            // mutation that overlaps one in flight.
+            this._run(() =>
+              linked
+                ? this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value)
+                : this.doc.setMorphemeType(morphemeId, value),
+            );
           }}
         >
           <option value="" ?selected=${current === ''}>—</option>
