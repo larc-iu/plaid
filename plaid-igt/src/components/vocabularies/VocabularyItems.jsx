@@ -657,6 +657,8 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
           </div>
         </div>
 
+        <ListPager {...paged} onPage={setPage} position="top" />
+
         {items.length > 0 && filteredItems.length > 0 && (
           <div
             className={cn(

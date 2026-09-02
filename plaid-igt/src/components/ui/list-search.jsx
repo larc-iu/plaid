@@ -83,18 +83,30 @@ const PagerButton = ({ icon, label, ...props }) => {
   );
 };
 
-// The pager strip, which belongs at the foot of the list's own border. Takes
-// the shape `pageSlice`/`usePagedList` return, so a call site spreads it:
-//   <ListPager {...paged} onPage={paged.setPage} />
+// The pager strip, which belongs inside the list's own border. A paged list
+// carries one above the rows and one below, so that turning the page never
+// means scrolling to the end to find the control. Takes the shape
+// `pageSlice`/`usePagedList` return, so a call site spreads it:
+//   <ListPager {...paged} onPage={paged.setPage} position="top" />
 // Renders nothing when everything already fits on one page.
-export const ListPager = ({ page, pageCount, rangeStart, rangeEnd, total, onPage, className }) => {
+export const ListPager = ({
+  page,
+  pageCount,
+  rangeStart,
+  rangeEnd,
+  total,
+  onPage,
+  position = 'bottom',
+  className,
+}) => {
   if (pageCount <= 1) return null;
   const atStart = page === 0;
   const atEnd = page >= pageCount - 1;
   return (
     <div
       className={cn(
-        'flex items-center justify-between gap-1 border-t px-2 py-1.5 text-xs text-muted-foreground',
+        'flex items-center justify-between gap-1 px-2 py-1.5 text-xs text-muted-foreground',
+        position === 'top' ? 'border-b' : 'border-t',
         className,
       )}
     >

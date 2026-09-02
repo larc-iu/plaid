@@ -205,6 +205,7 @@ export const DocumentList = ({
       ) : (
         <TooltipProvider>
           <div className="overflow-hidden rounded-md border">
+            <ListPager {...paged} onPage={paged.setPage} position="top" />
             {/* table-fixed + colgroup: with `auto` layout the name column's
                 intrinsic width is the full untruncated title, so one long name
                 pushed the table past its wrapper and `overflow-hidden` clipped

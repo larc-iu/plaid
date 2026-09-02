@@ -454,6 +454,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                             </p>
                           ) : (
                             <div className="overflow-hidden rounded-md border bg-background">
+                              <ListPager {...paged} onPage={setValuePage} position="top" />
                               <table className="w-full text-sm">
                                 <thead>
                                   <tr className="text-xs text-muted-foreground">

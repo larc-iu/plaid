@@ -308,6 +308,17 @@ describe('TagsetsManager', () => {
       await unmount();
     });
 
+    it('puts a pager above the rows as well as below', async () => {
+      // A thousand values is a long scroll to reach the only Next button.
+      const { container, step, unmount } = await renderBig();
+      await expandFirst(container, step);
+      const nexts = all(container, 'button').filter(
+        (b) => b.getAttribute('aria-label') === 'Next page',
+      );
+      expect(nexts).toHaveLength(2);
+      await unmount();
+    });
+
     it('skips to the last page and back to the first', async () => {
       const { container, step, unmount } = await renderBig();
       await expandFirst(container, step);
