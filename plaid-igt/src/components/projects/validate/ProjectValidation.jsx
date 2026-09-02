@@ -116,13 +116,16 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       return;
     }
     setExpanded(key);
-    if (hits[key] || !g.domain) return;
+    if (hits[key]) return;
     try {
       const res = await runHitsSearch(client, project, layerInfo, g.domain, value, 'exact');
       setHits((h) => ({ ...h, [key]: res }));
     } catch (err) {
       console.error('Could not locate value:', err);
       notifyError(humanizeError(err), 'Could not find these values');
+      // Record the failure. Leaving the entry unset would sit on "Finding
+      // occurrences…" forever, which reads as a hang once the toast is gone.
+      setHits((h) => ({ ...h, [key]: { failed: true, groups: [] } }));
     }
   };
 
@@ -221,19 +224,26 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             return (
               <div key={row.value} className="border-b last:border-b-0">
                 <div className="flex items-center gap-3 px-3 py-2">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 shrink-0"
-                    onClick={() => locate(g, row.value)}
-                    title={open ? 'Hide occurrences' : 'Show occurrences'}
-                  >
-                    {open ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
-                  </Button>
+                  {g.domain ? (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => locate(g, row.value)}
+                      title={open ? 'Hide occurrences' : 'Show occurrences'}
+                    >
+                      {open ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
+                    </Button>
+                  ) : (
+                    // No searchable domain for this layer, so there is nothing
+                    // to expand. Hold the column rather than offering a control
+                    // that would open an empty panel.
+                    <span className="h-6 w-6 shrink-0" />
+                  )}
                   <code className="rounded bg-destructive/10 px-1.5 py-0.5 text-sm text-destructive">
                     {row.value}
                   </code>
@@ -261,12 +271,18 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                 {open && (
                   <div className="border-t bg-muted/20 px-3 py-2">
                     {!res && <p className="text-sm text-muted-foreground">Finding occurrences…</p>}
-                    {res && res.groups.length === 0 && (
+                    {res?.failed && (
+                      <p className="text-sm text-destructive">
+                        Could not search for this value. Try again.
+                      </p>
+                    )}
+                    {res && !res.failed && res.groups.length === 0 && (
                       <p className="text-sm text-muted-foreground">
                         No occurrences found. The value may have been changed since the last check.
                       </p>
                     )}
                     {res &&
+                      !res.failed &&
                       res.groups.map((grp) => (
                         <div key={grp.docId} className="mb-3 last:mb-0">
                           <p className="mb-1 flex items-center gap-1.5 text-xs font-medium">
@@ -299,7 +315,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                           ))}
                         </div>
                       ))}
-                    {res && res.remainingDocs > 0 && (
+                    {res && !res.failed && res.remainingDocs > 0 && (
                       <p className="text-xs text-muted-foreground">
                         {res.remainingHits} more in {res.remainingDocs} document
                         {res.remainingDocs === 1 ? '' : 's'} not shown.

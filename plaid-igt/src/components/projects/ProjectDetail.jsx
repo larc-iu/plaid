@@ -23,7 +23,7 @@ const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'settings'];
 // maintainers-only; Assistant is open to everyone, since the assistant acts
 // under the user's own permissions). Settings is the last tab in the bar but
 // is path-backed (see above) because its sections are pages of their own.
-const CONTENT_TABS = ['documents', 'search', 'bulk', 'assistant'];
+const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'assistant'];
 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
@@ -108,7 +108,7 @@ export const ProjectDetail = () => {
     ? 'export'
     : onSettings && canManage
       ? 'settings'
-      : contentTab === 'bulk' && !canManage
+      : (contentTab === 'bulk' || contentTab === 'validate') && !canManage
         ? 'documents'
         : contentTab;
 
