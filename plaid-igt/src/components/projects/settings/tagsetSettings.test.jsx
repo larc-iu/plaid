@@ -188,6 +188,82 @@ describe('TagsetsManager', () => {
     await unmount();
   });
 
+  describe('a large value list', () => {
+    // A seeded Leipzig tagset runs past a thousand values.
+    const big = {
+      Leipzig: {
+        delimiters: '.',
+        mode: 'closed',
+        values: Array.from({ length: 120 }, (_, i) => ({ value: `V${i}` })),
+      },
+    };
+    const renderBig = (onSaveChanges = vi.fn()) =>
+      renderComponent(
+        <TagsetsManager
+          tagsets={big}
+          usage={{}}
+          onSaveChanges={onSaveChanges}
+          onLoadAttested={vi.fn(async () => [])}
+        />,
+      );
+    const rowValues = (c) =>
+      all(c, 'tbody tr td:nth-child(2) input').map((i) => i.getAttribute('value') ?? i.value);
+    const click = (c, step, label) =>
+      step(async () =>
+        all(c, 'button')
+          .find((b) => b.textContent.trim() === label)
+          .click(),
+      );
+
+    it('shows one page at a time instead of every value', async () => {
+      const { container, step, unmount } = await renderBig();
+      await expandFirst(container, step);
+      expect(rowValues(container)).toHaveLength(50);
+      expect(container.textContent).toContain('page 1 of 3');
+      await unmount();
+    });
+
+    it('edits the right value on a later page, not the row with the same position', async () => {
+      // The rows carry their index in the FULL list; slicing would otherwise
+      // make row 1 of page 2 edit value 0.
+      const onSaveChanges = vi.fn();
+      const { container, step, unmount } = await renderBig(onSaveChanges);
+      await expandFirst(container, step);
+      await click(container, step, 'Next');
+      expect(rowValues(container)[0]).toBe('V50');
+      await step(async () => all(container, 'button[title="Remove value"]')[0].click());
+      const saved = onSaveChanges.mock.calls.at(-1)[0].Leipzig.values.map((v) => v.value);
+      expect(saved).toHaveLength(119);
+      expect(saved).not.toContain('V50');
+      expect(saved).toContain('V0');
+      await unmount();
+    });
+
+    it('searches the whole list, not just the page on screen', async () => {
+      const { container, step, unmount } = await renderBig();
+      await expandFirst(container, step);
+      const search = all(container, 'input').find((i) =>
+        (i.getAttribute('placeholder') || '').startsWith('Search'),
+      );
+      await step(async () => typeInto(search, 'V11'));
+      // V11 plus V110..V119 all live past the first page.
+      expect(rowValues(container)).toContain('V119');
+      expect(container.textContent).toContain('11 of 120');
+      await unmount();
+    });
+
+    it('says so when a search matches nothing', async () => {
+      const { container, step, unmount } = await renderBig();
+      await expandFirst(container, step);
+      const search = all(container, 'input').find((i) =>
+        (i.getAttribute('placeholder') || '').startsWith('Search'),
+      );
+      await step(async () => typeInto(search, 'zzz'));
+      expect(container.textContent).toContain('No value matches');
+      await unmount();
+    });
+  });
+
   it('warns that a word-scope field needs the affix joiners', async () => {
     // dog-PL is one part without "-", and mixed mode waves it through on the
     // lowercase in "dog" without ever checking PL.

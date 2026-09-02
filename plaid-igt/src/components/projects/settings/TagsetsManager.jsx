@@ -28,6 +28,10 @@ import {
 
 const SAMPLE = '1SG.NOM';
 
+// A seeded Leipzig tagset runs to well over a thousand values, so the table is
+// searched and paged rather than rendered whole.
+const PAGE_SIZE = 50;
+
 // How each mode presents itself. The help text is the whole explanation a user
 // gets, so it says what is accepted and when to pick it, not what it is called.
 const MODES_UI = {
@@ -62,6 +66,8 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
   const [newValue, setNewValue] = useState('');
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [valueQuery, setValueQuery] = useState('');
+  const [valuePage, setValuePage] = useState(0);
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const save = async (next) => {
@@ -212,7 +218,11 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                 size="icon"
                 variant="ghost"
                 className="h-7 w-7 shrink-0"
-                onClick={() => setOpenName(isOpen ? null : name)}
+                onClick={() => {
+                  setOpenName(isOpen ? null : name);
+                  setValueQuery('');
+                  setValuePage(0);
+                }}
                 title={isOpen ? 'Collapse' : 'Expand'}
               >
                 {isOpen ? (
@@ -362,41 +372,111 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                       </div>
                     </div>
                   )}
-                  {t.values.length > 0 && (
-                    <div className="overflow-hidden rounded-md border bg-background">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-xs text-muted-foreground">
-                            <th className="w-8 px-2 py-1.5"></th>
-                            <th className="w-[22%] px-2 py-1.5 text-left font-medium">Value</th>
-                            <th className="px-2 py-1.5 text-left font-medium">Description</th>
-                            <th className="w-24 px-2 py-1.5 text-left font-medium">Color</th>
-                            <th className="w-8 px-2 py-1.5"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {t.values.map((rec, i) => {
-                            const key = `${name}:${i}`;
-                            const extras = extraKeys(rec);
-                            return (
-                              <ValueRow
-                                key={key}
-                                rec={rec}
-                                extras={extras}
-                                expanded={expandedValue === key}
-                                onToggle={() =>
-                                  setExpandedValue(expandedValue === key ? null : key)
-                                }
-                                onPatch={(changes) => patchValue(name, i, changes)}
-                                onReplace={(next) => replaceValue(name, i, next)}
-                                onRemove={() => removeValue(name, i)}
-                              />
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  {t.values.length > 0 &&
+                    (() => {
+                      const q = valueQuery.trim().toLowerCase();
+                      const matched = t.values
+                        .map((rec, i) => ({ rec, i }))
+                        .filter(
+                          ({ rec }) =>
+                            !q ||
+                            rec.value.toLowerCase().includes(q) ||
+                            String(rec.description ?? '')
+                              .toLowerCase()
+                              .includes(q),
+                        );
+                      const pages = Math.max(1, Math.ceil(matched.length / PAGE_SIZE));
+                      const page = Math.min(valuePage, pages - 1);
+                      const shown = matched.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+                      return (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              className="h-8 max-w-[18rem]"
+                              placeholder={`Search ${t.values.length} values`}
+                              value={valueQuery}
+                              onChange={(e) => {
+                                setValueQuery(e.currentTarget.value);
+                                setValuePage(0);
+                              }}
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {matched.length === t.values.length
+                                ? `${t.values.length} value${t.values.length === 1 ? '' : 's'}`
+                                : `${matched.length} of ${t.values.length}`}
+                              {pages > 1 && ` · page ${page + 1} of ${pages}`}
+                            </span>
+                            {pages > 1 && (
+                              <div className="ml-auto flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7"
+                                  disabled={page === 0}
+                                  onClick={() => setValuePage(page - 1)}
+                                >
+                                  Previous
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7"
+                                  disabled={page >= pages - 1}
+                                  onClick={() => setValuePage(page + 1)}
+                                >
+                                  Next
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                          {shown.length === 0 ? (
+                            <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                              No value matches “{valueQuery}”.
+                            </p>
+                          ) : (
+                            <div className="overflow-hidden rounded-md border bg-background">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-xs text-muted-foreground">
+                                    <th className="w-8 px-2 py-1.5"></th>
+                                    <th className="w-[22%] px-2 py-1.5 text-left font-medium">
+                                      Value
+                                    </th>
+                                    <th className="px-2 py-1.5 text-left font-medium">
+                                      Description
+                                    </th>
+                                    <th className="w-24 px-2 py-1.5 text-left font-medium">
+                                      Color
+                                    </th>
+                                    <th className="w-8 px-2 py-1.5"></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {shown.map(({ rec, i }) => {
+                                    const key = `${name}:${i}`;
+                                    const extras = extraKeys(rec);
+                                    return (
+                                      <ValueRow
+                                        key={key}
+                                        rec={rec}
+                                        extras={extras}
+                                        expanded={expandedValue === key}
+                                        onToggle={() =>
+                                          setExpandedValue(expandedValue === key ? null : key)
+                                        }
+                                        onPatch={(changes) => patchValue(name, i, changes)}
+                                        onReplace={(next) => replaceValue(name, i, next)}
+                                        onRemove={() => removeValue(name, i)}
+                                      />
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
 
                   {/* Add one */}
                   <div className="flex items-center gap-2">
