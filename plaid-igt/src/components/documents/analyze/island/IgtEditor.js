@@ -922,11 +922,29 @@ export class IgtEditor {
       const n = items.length;
       if (n) {
         this._alts.active = (this._alts.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+        // The user has now steered the list, so Enter belongs to it.
+        this._alts.steered = true;
         this._render(true);
       }
       return true;
     }
     if (e.key === 'Enter') {
+      // The picker auto-opens on a governed cell, so it must not swallow Enter
+      // in the two cases where the user plainly means "commit what I typed":
+      //
+      //   nothing matches   — the list has no opinion, so closing it and
+      //                       eating the keystroke just costs a second Enter.
+      //   nothing steered   — on a SUGGESTING tagset the typed text is a legal
+      //                       new value, and taking the highlighted row instead
+      //                       would silently turn "N" into "NOM".
+      //
+      // An enforcing tagset keeps the pick either way: the typed prefix is not
+      // a legal value there, so the row is what the user can actually have.
+      const enforcing = el.dataset.tagsetEnforces === '1';
+      if (!items.length || (!this._alts.steered && !enforcing)) {
+        this._closeAlts();
+        return false; // fall through to the normal commit path
+      }
       e.preventDefault();
       const it = items[this._alts.active];
       if (it) this._pickAlt(el, it);
@@ -1563,6 +1581,11 @@ export class IgtEditor {
       !isValueAllowed(next, tagset)
     ) {
       notifyError(this._violationText(validateValue(next, tagset), tagset), 'Value not allowed');
+      // Nothing re-renders after a refusal, so mark the cell here. Without this
+      // it keeps showing the typed value unsquiggled and unsaved, which reads
+      // as committed until some unrelated render snaps it back. The class goes
+      // away on the next render, when the stored value returns with it.
+      el.classList.add('igt-field--invalid');
       // Refocusing synchronously inside a blur handler is unreliable, so hand
       // it to a microtask. The focus handler restamps `orig` from the value
       // that is still there, so blurring again without an edit re-reports
@@ -1692,6 +1715,7 @@ export class IgtEditor {
         data-cell-key=${key}
         data-has-tagset=${tagset ? '1' : nothing}
         data-tagset-delims=${tagset?.delimiters || nothing}
+        data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
         data-guess-value=${g ? g.value : nothing}
         data-guess-source=${g ? g.source : nothing}
         data-confirm-word=${confirmWord ?? nothing}

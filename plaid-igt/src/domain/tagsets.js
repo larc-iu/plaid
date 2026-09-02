@@ -205,10 +205,15 @@ export const WORD_AFFIX_DELIMITERS = Object.freeze(['-', '=']);
  *
  * Only `mixed` is affected. Under `closed` the same value is rejected as one
  * unknown part: annoying, but loudly wrong rather than quietly accepted.
+ *
+ * A tagset with NO delimiters at all is the worst case, not an exempt one --
+ * every composite value is a single part, so nothing is ever checked. It used
+ * to be skipped here on the reasoning that a whole-cell tagset "has no parts
+ * to miss", which had it exactly backwards.
  */
 export const missingAffixDelimiters = (tagset, usedAtWordScope) => {
-  if (!usedAtWordScope || tagset?.mode !== MODES.MIXED || !tagset.delimiters) return [];
-  return WORD_AFFIX_DELIMITERS.filter((d) => !tagset.delimiters.includes(d));
+  if (!usedAtWordScope || tagset?.mode !== MODES.MIXED) return [];
+  return WORD_AFFIX_DELIMITERS.filter((d) => !(tagset.delimiters || '').includes(d));
 };
 
 /** `governedFields` grouped by tagset name: { name: [record, ...] }. */

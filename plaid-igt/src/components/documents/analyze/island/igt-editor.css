@@ -709,15 +709,22 @@
   background: transparent;
 }
 
-/* Off-tagset value. Deliberately louder than the provenance states: those mark
-   who wrote a value, this marks one the project's own rules say is wrong. A
-   closed field never gets here by typing (the commit refuses), so what this
-   flags is what an import, a service or the assistant put there. Last among
-   the field states so it wins on source order. */
+/* Off-tagset value: the spell-checker squiggle, because that is exactly the
+   relationship — the text is legible and kept, something just says it is wrong.
+   Quieter than the old red border and pink fill, which shouted at a whole
+   column when an import brought in one unlisted tag.
+   
+   This is computed from the STORED value on every render, so it flags an
+   off-tagset value whatever wrote it: an import, a service, the assistant, or
+   a token merge folding `dog` and `PL` into `dog | PL`. Typing is the one path
+   that cannot reach here, since the commit refuses first.
+   
+   Last among the field states so it wins on source order over the provenance
+   underlines. skip-ink off keeps the wave continuous under descenders. */
 .igt-field--invalid {
-  border-bottom-style: solid;
-  border-bottom-color: #dc2626;
-  background: #fef2f2;
+  text-decoration: underline wavy #dc2626;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 2px;
 }
 
 /* ---- morpheme sub-grid ---- */

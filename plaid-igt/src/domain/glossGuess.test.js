@@ -292,3 +292,21 @@ describe('allowedGuess', () => {
     expect(allowedGuess(g, null)).toBe(g);
   });
 });
+
+describe('decomposeRows counting', () => {
+  it('counts a part once per occurrence, so PL.PL from 5 words is 10', () => {
+    // Deliberate, not a rounding slip: the list ranks how often a part is
+    // USED, and a value that uses it twice used it twice.
+    const t = tallyOf(sent([word('a', {}, [morph('m', { Gloss: 'PL.PL' })])]), {
+      morphFields: ['Gloss'],
+    });
+    const rows = listAlternatives({
+      precedent: t,
+      kind: 'morpheme',
+      form: 'm',
+      field: 'Gloss',
+      tagset: { delimiters: '.', mode: 'suggest', values: [] },
+    });
+    expect(rows).toEqual([expect.objectContaining({ value: 'PL', count: 2 })]);
+  });
+});

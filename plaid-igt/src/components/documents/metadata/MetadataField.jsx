@@ -41,7 +41,11 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
         value={v === '' ? UNSET : v}
         onValueChange={(next) => onChange(next === UNSET ? '' : next)}
       >
-        <SelectTrigger className={cn(invalid && 'border-destructive text-destructive')}>
+        <SelectTrigger
+          className={cn(
+            invalid && 'underline decoration-destructive decoration-wavy underline-offset-2',
+          )}
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -71,7 +75,11 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
         list={listId}
         onChange={(e) => onChange(e.target.value)}
         placeholder={`Enter ${field.name}`}
-        className={cn(invalid && 'border-destructive text-destructive')}
+        // The same squiggle the grid uses, so an off-tagset value reads the
+        // same way wherever it is shown.
+        className={cn(
+          invalid && 'underline decoration-destructive decoration-wavy underline-offset-2',
+        )}
         aria-invalid={invalid || undefined}
       />
       {tagset && (

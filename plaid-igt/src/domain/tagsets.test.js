@@ -151,8 +151,12 @@ describe('missingAffixDelimiters', () => {
     expect(missingAffixDelimiters({ ...mixed('.'), mode: 'closed' }, true)).toEqual([]);
   });
 
-  it('says nothing for a whole-cell tagset, which has no parts to miss', () => {
-    expect(missingAffixDelimiters(mixed(''), true)).toEqual([]);
+  it('warns loudest for a whole-cell tagset, where nothing is ever checked', () => {
+    // This used to be exempted on the reasoning that a tagset with no
+    // delimiters "has no parts to miss". Backwards: with no delimiters every
+    // composite value is one part, so dog-PL passes on the lowercase in dog
+    // and PL is never looked up at all.
+    expect(missingAffixDelimiters(mixed(''), true)).toEqual(['-', '=']);
   });
 });
 

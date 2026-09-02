@@ -163,6 +163,68 @@ describe('part-aware completion', () => {
   });
 });
 
+describe('an off-tagset value that was never typed', () => {
+  it('renders with the invalid squiggle whatever wrote it', async () => {
+    // Violations are computed from the STORED value on every render, so a
+    // token merge folding `dog` and `PL` into `dog | PL`, an import, a service
+    // or the assistant all get flagged the same way. Typing is the ONLY path
+    // that cannot reach here, because commit refuses first.
+    const doc = mount();
+    const cell = glossCell();
+    const morphId = cell.dataset.cellKey.split(':')[1];
+    await doc.updateMorphemeSpan(morphId, 'Gloss', 'dog | PL', null);
+    await flush();
+    expect(glossCell().classList.contains('igt-field--invalid')).toBe(true);
+  });
+});
+
+describe('who owns Enter while the picker is open', () => {
+  // Enter is preventDefault-ed either way once the picker declines, because
+  // normal Enter handling (commit, move to the next cell) claims it. So assert
+  // on what the cell ENDS UP holding, not on who consumed the event.
+  const key = (el, k) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+  it('leaves the typed text alone when nothing matches', async () => {
+    mount({ ...LEIPZIG, mode: 'suggest' });
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'zzz');
+    key(cell, 'Enter');
+    expect(cell.value).toBe('zzz');
+  });
+
+  it('keeps the typed text on a SUGGESTING tagset rather than taking the highlighted row', async () => {
+    // "N" is a legal new value there, and silently turning it into NOM would
+    // be the picker overruling the user.
+    mount({ ...LEIPZIG, mode: 'suggest' });
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'N');
+    key(cell, 'Enter');
+    expect(cell.value).toBe('N');
+  });
+
+  it('takes the row on an ENFORCING tagset, where the typed prefix is not legal', async () => {
+    mount();
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'N');
+    key(cell, 'Enter');
+    expect(cell.value).toBe('NOM');
+  });
+
+  it('takes the row once the user has arrowed to it, whatever the mode', async () => {
+    mount({ ...LEIPZIG, mode: 'suggest' });
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'N');
+    key(cell, 'ArrowDown');
+    key(cell, 'Enter');
+    expect(cell.value).not.toBe('N');
+  });
+});
+
 describe('commit', () => {
   it('writes a value the tagset allows', async () => {
     const doc = mount();
@@ -217,6 +279,17 @@ describe('commit', () => {
     type(cell, 'whatever');
     await blur(cell);
     expect(spy).toHaveBeenCalled();
+  });
+
+  it('squiggles the cell it just refused, so it cannot read as saved', async () => {
+    // No render happens after a refusal, so without this the cell keeps the
+    // typed value with no mark on it and looks committed.
+    mount();
+    const cell = glossCell();
+    focus(cell);
+    type(cell, '1SG.ABL');
+    await blur(cell);
+    expect(cell.classList.contains('igt-field--invalid')).toBe(true);
   });
 
   it('always allows clearing a cell, which is how an annotation is deleted', async () => {
