@@ -14,6 +14,7 @@
 //     "Leipzig": {
 //       delimiters: ".:>",       // "" = the whole cell is one value
 //       closed: true,            // false = nudge toward the list, allow new
+//       allowLexical: true,      // ...but let lowercase (lexical) parts through
 //       values: [{ value: "NOM", description: "nominative", color: "#a33" }]
 //     }
 //   }
@@ -31,15 +32,41 @@
 
 import { IGT_NAMESPACE } from './igtConfig.js';
 
+const str = (v) => (typeof v === 'string' ? v : '');
+
 /** Value-record keys this app renders. Everything else is free-form. */
 export const RESERVED_VALUE_KEYS = Object.freeze(['description', 'color']);
 
 /** A tagset with nothing configured: whole-cell, open, empty. */
-export const EMPTY_TAGSET = Object.freeze({ delimiters: '', closed: false, values: [] });
+export const EMPTY_TAGSET = Object.freeze({
+  delimiters: '',
+  closed: false,
+  allowLexical: false,
+  values: [],
+});
+
+/**
+ * Does this part read as a LEXICAL gloss rather than a grammatical one?
+ *
+ * The Leipzig rules write grammatical glosses in capitals and digits (NOM, 1SG,
+ * PST) and lexical glosses as ordinary lowercase words (dog, run). So "contains
+ * a lowercase letter" is not a heuristic about meaning, it is a direct read of
+ * the convention the glosses are already written in, and the UI can explain it
+ * in one sentence.
+ *
+ * It is deliberately not clever. `I` for a first-person pronoun has no lowercase
+ * and so counts as grammatical, which means listing it in the tagset — exactly
+ * what a tagset is for. Guessing whether a pronoun is "really" functional is the
+ * part that defies rules, so nothing here tries.
+ *
+ * Scripts without case (Devanagari, Arabic) have no lowercase letters and so
+ * never qualify. That is fine: a gloss is written in the metalanguage, and this
+ * only ever ADDS permission to an otherwise closed tagset.
+ */
+const LOWERCASE_RE = /\p{Ll}/u;
+export const isLexicalPart = (part) => LOWERCASE_RE.test(str(part));
 
 // --- reading config --------------------------------------------------------
-
-const str = (v) => (typeof v === 'string' ? v : '');
 
 /**
  * Normalize one raw tagset into { delimiters, closed, values }. Value records
@@ -55,7 +82,12 @@ export const normalizeTagset = (raw) => {
     seen.add(value);
     values.push({ ...rec, value });
   }
-  return { delimiters: str(raw?.delimiters), closed: raw?.closed === true, values };
+  return {
+    delimiters: str(raw?.delimiters),
+    closed: raw?.closed === true,
+    allowLexical: raw?.allowLexical === true,
+    values,
+  };
 };
 
 /** A project's tagsets by name, normalized: { name: tagset }. Never null. */
@@ -199,6 +231,13 @@ export const tagsetRecord = (tagset, part) => {
  * since a stray delimiter is a typo whether or not new tags are allowed. Only
  * a closed tagset reports 'unknown' — an open one exists precisely to let new
  * values through, and flagging them would make the nudge a nag.
+ *
+ * `allowLexical` is what makes a closed tagset usable on a GLOSS field at all.
+ * Every morpheme has its own cell, so a stem's cell holds `dog` — a gloss that
+ * is not a grammatical tag and never will be. Without it, closing a gloss
+ * tagset rejects every stem in the project. It stays opt-in because part of
+ * speech tags are frequently lowercase themselves (n, v, adj), and turning it
+ * on there would quietly stop enforcing anything.
  */
 export const validateValue = (value, tagset) => {
   if (!tagset) return [];
@@ -208,7 +247,11 @@ export const validateValue = (value, tagset) => {
   for (const p of scanValue(s, tagset.delimiters)) {
     const text = p.text.trim();
     if (!text) out.push({ part: p.text, begin: p.begin, end: p.end, reason: 'empty' });
-    else if (tagset.closed && !tagsetHas(tagset, text))
+    else if (
+      tagset.closed &&
+      !tagsetHas(tagset, text) &&
+      !(tagset.allowLexical && isLexicalPart(text))
+    )
       out.push({ part: text, begin: p.begin, end: p.end, reason: 'unknown' });
   }
   return out;
@@ -236,6 +279,9 @@ export const offTagsetParts = (attested, tagset) => {
     for (const p of scanValue(value ?? '', tagset.delimiters)) {
       const text = p.text.trim();
       if (!text || tagsetHas(tagset, text)) continue;
+      // A lexical gloss is not a tag. Seeding `dog` into a Leipzig tagset would
+      // turn a grammatical inventory into a word list.
+      if (tagset.allowLexical && isLexicalPart(text)) continue;
       counts.set(text, (counts.get(text) || 0) + (n || 0));
     }
   }

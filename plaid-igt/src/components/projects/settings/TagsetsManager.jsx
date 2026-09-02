@@ -198,6 +198,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
               <span className="text-xs text-muted-foreground">
                 {t.values.length} value{t.values.length === 1 ? '' : 's'}
                 {t.delimiters && ` · split on ${[...t.delimiters].join(' ')}`}
+                {t.closed && t.allowLexical && ' · lexical glosses allowed'}
                 {fields.length > 0 &&
                   ` · used by ${fields.map((f) => `${f.name} (${f.scope})`).join(', ')}`}
               </span>
@@ -240,6 +241,31 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                     </span>
                   </span>
                 </label>
+
+                {/* Lexical escape hatch. Only meaningful once the tagset is
+                    closed, since an open one already accepts everything. */}
+                {t.closed && (
+                  <label className="ml-11 flex max-w-2xl items-start gap-3">
+                    <Switch
+                      checked={t.allowLexical}
+                      onCheckedChange={(allowLexical) => patch(name, { allowLexical })}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="text-sm font-medium">Also allow lexical glosses</span>
+                      <span className="block text-xs text-muted-foreground">
+                        Accept any value containing a lowercase letter, on top of the list. Turn
+                        this on for a gloss tagset: the Leipzig rules write grammatical glosses in
+                        capitals (NOM, 1SG) and lexical ones in lowercase (dog, run), and a stem's
+                        gloss will never be in a grammatical inventory. Leave it off where the tags
+                        themselves are lowercase, such as part of speech (n, v, adj), or nothing
+                        would be enforced. A capitalised word with no lowercase letter, like
+                        <span className="font-mono"> I</span>, counts as grammatical, so add it to
+                        the list.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {/* Delimiters */}
                 <div className="flex max-w-2xl flex-col gap-1">

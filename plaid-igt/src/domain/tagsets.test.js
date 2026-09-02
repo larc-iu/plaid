@@ -14,6 +14,7 @@ import {
   tagsetRecord,
   validateValue,
   isValueAllowed,
+  isLexicalPart,
   offTagsetParts,
   offTagsetValues,
   seedValueRecords,
@@ -279,5 +280,75 @@ describe('offTagsetValues', () => {
   it('an OPEN tagset only fails on a stray delimiter', () => {
     const open = { ...leipzig, closed: false };
     expect(offTagsetValues(attested, open).map((r) => r.value)).toEqual(['1SG.']);
+  });
+});
+
+describe('allowLexical', () => {
+  // A Leipzig gloss tagset: grammatical tags listed, lexical glosses let through.
+  const gloss = {
+    delimiters: '.',
+    closed: true,
+    allowLexical: true,
+    values: [{ value: 'PL' }, { value: '1SG' }],
+  };
+
+  it('lets a stem gloss through, which is what makes a closed gloss tagset usable', () => {
+    // Every morpheme has its own cell, so a stem's cell holds `dog`. Without
+    // this, closing a gloss tagset would reject every stem in the project.
+    expect(isValueAllowed('dog', gloss)).toBe(true);
+    expect(isValueAllowed('run.PL', gloss)).toBe(true);
+  });
+
+  it('still requires grammatical tags to be listed', () => {
+    expect(isValueAllowed('ERG', gloss)).toBe(false);
+    expect(validateValue('dog.ERG', gloss)).toEqual([
+      { part: 'ERG', begin: 4, end: 7, reason: 'unknown' },
+    ]);
+  });
+
+  it('treats "I" as grammatical, so it has to be listed', () => {
+    // The case that defies a meaning-based rule. A capitalised gloss with no
+    // lowercase letter reads as grammatical, and the fix is one tagset entry.
+    expect(isValueAllowed('I', gloss)).toBe(false);
+    expect(isValueAllowed('I', { ...gloss, values: [...gloss.values, { value: 'I' }] })).toBe(true);
+  });
+
+  it('is off by default, so a lowercase POS tagset still enforces', () => {
+    // n / v / adj are lowercase tags. If this defaulted on, a closed POS tagset
+    // would accept literally anything.
+    const pos = { delimiters: '', closed: true, allowLexical: false, values: [{ value: 'n' }] };
+    expect(normalizeTagset({ closed: true }).allowLexical).toBe(false);
+    expect(isValueAllowed('n', pos)).toBe(true);
+    expect(isValueAllowed('banana', pos)).toBe(false);
+  });
+
+  it('does nothing on an open tagset, which already allows everything', () => {
+    const open = { ...gloss, closed: false };
+    expect(isValueAllowed('ERG', open)).toBe(true);
+  });
+
+  it('does not seed lexical glosses into the tagset', () => {
+    // `dog` is a gloss, not a member of the grammatical inventory. Seeding it
+    // would turn the tagset into a word list.
+    const attested = [
+      ['dog.PL', 5],
+      ['run.ERG', 3],
+    ];
+    expect(offTagsetParts(attested, gloss)).toEqual([{ part: 'ERG', count: 3 }]);
+  });
+});
+
+describe('isLexicalPart', () => {
+  it('reads the Leipzig casing convention, not meaning', () => {
+    expect(isLexicalPart('dog')).toBe(true);
+    expect(isLexicalPart('walk about')).toBe(true);
+    expect(isLexicalPart('PL')).toBe(false);
+    expect(isLexicalPart('1SG')).toBe(false);
+    expect(isLexicalPart('I')).toBe(false);
+    expect(isLexicalPart('')).toBe(false);
+  });
+
+  it('counts a mixed-case gloss as lexical, so a typo is not a hard block', () => {
+    expect(isLexicalPart('Dog')).toBe(true);
   });
 });

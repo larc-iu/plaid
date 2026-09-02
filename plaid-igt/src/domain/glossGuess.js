@@ -17,7 +17,7 @@
 
 import { PROV } from '@larc-iu/plaid-client';
 import { precedentCounts, pickMajority } from './precedent.js';
-import { isValueAllowed, scanValue, tagsetHas, tagsetRecord } from './tagsets.js';
+import { isValueAllowed, scanValue, tagsetRecord } from './tagsets.js';
 
 const PROV_DETAIL_KEY = PROV.detailKey;
 const PROV_SOURCE_KEY = PROV.sourceKey;
@@ -110,6 +110,8 @@ export const TAGSET_SOURCE = 'tagset';
 // half of "1SG.NO") would be nonsense. In part mode everything whole-valued is
 // decomposed and pooled per part. A CLOSED tagset then keeps only what it
 // allows: offering a value that commit will reject is offering a dead end.
+// ("Allows" is the validator's answer, not bare membership, so a tagset that
+// permits lexical glosses keeps offering the lexical precedent it accepts.)
 export function listAlternatives({
   precedent,
   kind,
@@ -180,7 +182,7 @@ export function listAlternatives({
     }
   }
 
-  if (tagset?.closed) list = list.filter((r) => tagsetHas(tagset, r.value));
+  if (tagset?.closed) list = list.filter((r) => isValueAllowed(r.value, tagset));
 
   list.sort(
     (a, b) =>
