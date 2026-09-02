@@ -15,7 +15,7 @@ import { readTagsetName } from '@/domain/tagsets';
 
 // `tagsetNames` comes from ProjectSettings, which holds the live project, so a
 // tagset created in the section above shows up in the picker immediately.
-export const FieldsSettings = ({ projectId, client, tagsetNames = [] }) => {
+export const FieldsSettings = ({ projectId, client, tagsetNames = [], onProjectUpdate }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   // field name -> span layer id, for usage counts at delete time. Kept in
@@ -249,6 +249,12 @@ export const FieldsSettings = ({ projectId, client, tagsetNames = [] }) => {
         if (next) await client.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'tagset', next);
         else await client.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'tagset');
       }
+
+      // The Tagsets section above reads which fields point at which tagset off
+      // the project, and that is what gates its "Add values used in this
+      // project" button. Without this, pointing a field at a tagset here left
+      // that button disabled until a page reload.
+      await onProjectUpdate?.();
     } catch (error) {
       console.error('Failed to save fields configuration:', error);
       setHasError(true);

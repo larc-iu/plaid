@@ -147,10 +147,20 @@ export const ProjectSettings = ({ project, projectId, client, onProjectUpdate })
       {/* Tagsets: the value lists the fields below can point at. Above
           Annotation Fields because a field can only reference one that
           already exists. */}
-      <TagsetsSettings projectId={projectId} client={client} onProjectUpdate={onProjectUpdate} />
+      <TagsetsSettings
+        project={project}
+        projectId={projectId}
+        client={client}
+        onProjectUpdate={onProjectUpdate}
+      />
 
       {/* Fields Configuration */}
-      <FieldsSettings projectId={projectId} client={client} tagsetNames={tagsetNames} />
+      <FieldsSettings
+        projectId={projectId}
+        client={client}
+        tagsetNames={tagsetNames}
+        onProjectUpdate={onProjectUpdate}
+      />
 
       {/* Vocabulary Configuration */}
       <VocabularySettings projectId={projectId} client={client} />

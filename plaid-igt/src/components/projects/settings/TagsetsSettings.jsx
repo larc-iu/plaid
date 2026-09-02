@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { TagsetsManager } from './TagsetsManager.jsx';
 import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
@@ -14,56 +13,45 @@ import { freqQueries } from '../search/searchQueries.js';
 // empty value to miss.
 const ANY_VALUE = { regex: '.' };
 
-export const TagsetsSettings = ({ projectId, client, onProjectUpdate }) => {
-  const [tagsets, setTagsets] = useState(null);
-  const [usage, setUsage] = useState({});
-  const [spanLayersByTagset, setSpanLayersByTagset] = useState({});
-  const [hasError, setHasError] = useState(false);
+// Everything here is derived from the LIVE project rather than a private fetch.
+// `usage` (which fields point at which tagset) changes when the field table
+// below is edited, so a private copy went stale the moment someone set a tagset
+// on a field: the seed button stayed disabled until a page reload. ProjectSettings
+// holds the project and onProjectUpdate refreshes it, so both sections now read
+// the same object and each other's edits land immediately.
+export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate }) => {
+  const [draftTagsets, setDraftTagsets] = useState(null);
 
-  const load = useCallback(async () => {
-    try {
-      setHasError(false);
-      if (!client) throw new Error('Not authenticated');
-      const project = await client.projects.get(projectId);
-      const info = getIgtLayerInfo(project);
+  const tagsets = draftTagsets ?? readTagsets(project?.config);
 
-      // Which fields point at which tagset. Both the delete warning and the
-      // attested-value queries are driven off this, so it is collected once.
-      const byName = {};
-      const layersByName = {};
-      for (const [scope, layers] of Object.entries(info.spanLayers || {})) {
-        for (const sl of layers || []) {
-          const name = readTagsetName(sl.config);
-          if (!name) continue;
-          (byName[name] ||= []).push({ scope, name: sl.name, id: sl.id });
-          (layersByName[name] ||= []).push(sl.id);
-        }
+  // Which fields point at which tagset. Both the delete warning and the
+  // attested-value queries are driven off this, so it is collected once.
+  const { usage, spanLayersByTagset } = useMemo(() => {
+    const byName = {};
+    const layersByName = {};
+    const info = getIgtLayerInfo(project);
+    for (const [scope, layers] of Object.entries(info.spanLayers || {})) {
+      for (const sl of layers || []) {
+        const name = readTagsetName(sl.config);
+        if (!name) continue;
+        (byName[name] ||= []).push({ scope, name: sl.name, id: sl.id });
+        (layersByName[name] ||= []).push(sl.id);
       }
-      setUsage(byName);
-      setSpanLayersByTagset(layersByName);
-      setTagsets(readTagsets(project.config));
-    } catch (error) {
-      console.error('Failed to load tagsets:', error);
-      setHasError(true);
     }
-  }, [client, projectId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+    return { usage: byName, spanLayersByTagset: layersByName };
+  }, [project]);
 
   const handleSaveChanges = async (next) => {
     try {
       if (!client) throw new Error('Not authenticated');
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next);
-      setTagsets(next);
-      // Field references are read at load time, so pick up a rename's effect on
-      // the "used by" line without a page refresh.
-      load();
-      // And refresh the project itself, since the field table below reads the
-      // tagset names off it: without this a tagset created here does not become
-      // pickable until a page reload.
-      onProjectUpdate?.();
+      // Hold what we just wrote until the refreshed project comes back, so the
+      // editor does not flicker to the pre-save value in between.
+      setDraftTagsets(next);
+      // The field table below reads the tagset names off the project, so a new
+      // tagset is not pickable until this lands.
+      await onProjectUpdate?.();
+      setDraftTagsets(null);
     } catch (error) {
       console.error('Failed to save tagsets:', error);
       notifyError('Failed to save tagsets', 'Save Error');
@@ -93,22 +81,6 @@ export const TagsetsSettings = ({ projectId, client, onProjectUpdate }) => {
     return [...counts.entries()];
   };
 
-  if (hasError) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
-          <div>
-            <p className="text-sm font-medium text-destructive">Configuration Error</p>
-            <p className="text-sm text-muted-foreground">
-              Failed to load or save tagsets. Please refresh the page and try again.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <h2 className="text-lg font-semibold">Tagsets</h2>
@@ -119,16 +91,12 @@ export const TagsetsSettings = ({ projectId, client, onProjectUpdate }) => {
         unrelated to Vocabularies, which hold lexicon entries that words link to.
       </p>
 
-      {tagsets === null ? (
-        <div className="rounded-lg border p-4 text-sm text-muted-foreground">Loading tagsets…</div>
-      ) : (
-        <TagsetsManager
-          tagsets={tagsets}
-          usage={usage}
-          onSaveChanges={handleSaveChanges}
-          onLoadAttested={handleLoadAttested}
-        />
-      )}
+      <TagsetsManager
+        tagsets={tagsets}
+        usage={usage}
+        onSaveChanges={handleSaveChanges}
+        onLoadAttested={handleLoadAttested}
+      />
     </div>
   );
 };

@@ -314,6 +314,7 @@ export const FieldsManager = ({
                 {tagsetNames.length > 0 && (
                   <th className="w-[22%] px-3 py-2 text-left font-medium">Tagset</th>
                 )}
+                <th className="w-px px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -329,54 +330,7 @@ export const FieldsManager = ({
                       {record.scope}
                     </Badge>
                   </td>
-                  <td className="border-t px-3 py-2 align-middle">
-                    <div className="flex items-center justify-between gap-2">
-                      <span>{record.name}</span>
-                      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleMoveField(record.key, 'up');
-                          }}
-                          disabled={tableData.findIndex((item) => item.key === record.key) === 0}
-                          title="Move up"
-                        >
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleMoveField(record.key, 'down');
-                          }}
-                          disabled={
-                            tableData.findIndex((item) => item.key === record.key) ===
-                            tableData.length - 1
-                          }
-                          title="Move down"
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            requestDeleteField(record.key);
-                          }}
-                          title="Remove"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  </td>
+                  <td className="border-t px-3 py-2 align-middle">{record.name}</td>
                   {tagsetNames.length > 0 && (
                     <td className="border-t px-3 py-2 align-middle">
                       <Select
@@ -404,6 +358,51 @@ export const FieldsManager = ({
                       </Select>
                     </td>
                   )}
+                  <td className="w-px whitespace-nowrap border-t px-3 py-2 align-middle">
+                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleMoveField(record.key, 'up');
+                        }}
+                        disabled={tableData.findIndex((item) => item.key === record.key) === 0}
+                        title="Move up"
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleMoveField(record.key, 'down');
+                        }}
+                        disabled={
+                          tableData.findIndex((item) => item.key === record.key) ===
+                          tableData.length - 1
+                        }
+                        title="Move down"
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          requestDeleteField(record.key);
+                        }}
+                        title="Remove"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
