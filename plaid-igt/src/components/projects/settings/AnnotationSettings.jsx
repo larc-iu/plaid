@@ -1,11 +1,13 @@
 import { readTagsets } from '@/domain/tagsets';
 import { TagsetsSettings } from './TagsetsSettings.jsx';
 import { FieldsSettings } from './FieldsSettings.jsx';
+import { DocumentMetadataSettings } from './DocumentMetadataSettings.jsx';
 
-// The interlinear structure: which tiers exist, what values they may take, and
-// which tokens are skipped. The three belong together because they refer to
-// each other — a field points at a tagset by name, and the ignored-token rule
-// (rendered inside FieldsSettings) only affects Word-scope fields.
+// Everything a tagset can govern: the interlinear tiers, the values they may
+// take, the tokens that are skipped, and the fields recorded about each
+// document. They belong together because they refer to each other — a field
+// points at a tagset by name, and the ignored-token rule (rendered inside
+// FieldsSettings) only affects Word-scope fields.
 export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate }) => {
   // Read here rather than in FieldsSettings: the two sections are siblings, so
   // a tagset created above has to reach the field table below without a page
@@ -32,6 +34,11 @@ export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate
         tagsetNames={tagsetNames}
         onProjectUpdate={onProjectUpdate}
       />
+
+      {/* Per-document fields (Date, Speakers, Genre). Genre and Text type are
+          closed inventories far more naturally than a gloss ever is, which is
+          why these take tagsets too. */}
+      <DocumentMetadataSettings projectId={projectId} client={client} tagsetNames={tagsetNames} />
     </div>
   );
 };

@@ -13,12 +13,12 @@ import {
 } from '@/components/ui/dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { LanguagesSettings } from './LanguagesSettings.jsx';
-import { DocumentMetadataSettings } from './DocumentMetadataSettings.jsx';
 
-// What the project IS: its name, the languages it documents, and the fields
-// recorded about each text. Document Metadata sits here rather than with the
-// annotation settings because Date and Speakers describe a text, not its
-// interlinear structure.
+// What the project IS: its name and the languages it documents. Document
+// Metadata used to sit here, on the argument that Date and Speakers describe a
+// text rather than its structure. It moved to Annotation once its fields could
+// be governed by tagsets: they are now configured exactly like annotation
+// fields, and configuration is what this screen is for.
 export const GeneralSettings = ({ project, projectId, client, onProjectUpdate }) => {
   const navigate = useNavigate();
   const [name, setName] = useState(project?.name ?? '');
@@ -132,9 +132,6 @@ export const GeneralSettings = ({ project, projectId, client, onProjectUpdate })
         client={client}
         onProjectUpdate={onProjectUpdate}
       />
-
-      {/* Document Metadata Configuration */}
-      <DocumentMetadataSettings projectId={projectId} client={client} />
 
       <div>
         <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>

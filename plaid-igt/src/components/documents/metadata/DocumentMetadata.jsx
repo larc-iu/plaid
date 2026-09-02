@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { useMetadataOperations } from './useMetadataOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { MetadataField } from './MetadataField.jsx';
 
 export function DocumentMetadata() {
   const { readOnly } = useDocumentCtx();
@@ -47,10 +48,11 @@ export function DocumentMetadata() {
               {ops.metadataFields.map((field) => (
                 <div key={field.name} className="flex flex-col gap-1.5">
                   <Label>{field.name}</Label>
-                  <Input
+                  <MetadataField
+                    field={field}
                     value={ops.editedMetadata[field.name] || ''}
-                    onChange={(e) => ops.updateEditedMetadata(field.name, e.target.value)}
-                    placeholder={`Enter ${field.name}`}
+                    tagset={ops.tagsetFor(field)}
+                    onChange={(v) => ops.updateEditedMetadata(field.name, v)}
                   />
                 </div>
               ))}
@@ -74,7 +76,12 @@ export function DocumentMetadata() {
                   </Button>
                   <Button
                     onClick={ops.handleSave}
-                    disabled={ops.saving || !ops.editedName.trim() || ops.deleting}
+                    disabled={
+                      ops.saving || !ops.editedName.trim() || ops.deleting || !ops.metadataValid
+                    }
+                    title={
+                      ops.metadataValid ? undefined : 'A field holds a value its tagset refuses'
+                    }
                   >
                     <Save className="h-4 w-4" /> {ops.saving ? 'Saving...' : 'Save Changes'}
                   </Button>

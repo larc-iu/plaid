@@ -6,9 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { notifyError, notifySuccess, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
-import { IGT_NAMESPACE } from '@/domain/igtConfig';
+import { IGT_NAMESPACE, readDocumentMetadata } from '@/domain/igtConfig';
 import { offTagsetValues, readTagsetName, readTagsets, resolveTagset } from '@/domain/tagsets';
-import { freqQueries, searchDomains } from '../search/searchQueries.js';
+import {
+  freqQueries,
+  metadataFreqQuery,
+  metadataHitsQuery,
+  searchDomains,
+} from '../search/searchQueries.js';
 import { runHitsSearch } from '../search/searchRunner.js';
 import { MarkedText } from '../search/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
@@ -30,11 +35,28 @@ const SCOPE_CLS = {
   word: 'border-transparent bg-blue-100 text-blue-700',
   morpheme: 'border-transparent bg-violet-100 text-violet-700',
   sentence: 'border-transparent bg-green-100 text-green-700',
+  document: 'border-transparent bg-amber-100 text-amber-700',
 };
 
 // Every span in a layer regardless of value: the REGEXP UDF matches on
 // contains, so "." means "has at least one character".
 const ANY_VALUE = { regex: '.' };
+
+// Documents whose metadata field holds this value, shaped like a hit search so
+// one renderer handles both.
+const locateMetadata = async (client, projectId, field, value) => {
+  const res = await client.query(metadataHitsQuery(projectId, field, value));
+  return {
+    groups: (res?.results || []).map(([docId, docName]) => ({
+      docId: String(docId),
+      docName: docName || '(untitled)',
+      docHits: 1,
+      rows: [],
+    })),
+    remainingDocs: 0,
+    remainingHits: 0,
+  };
+};
 
 const MODE_LABELS = { suggest: 'suggested', closed: 'closed', mixed: 'closed + lexical' };
 
@@ -60,6 +82,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
         const tagset = resolveTagset(sl.config, project?.config);
         if (!tagset) continue;
         out.push({
+          key: sl.id,
           layerId: sl.id,
           field: sl.name,
           scope,
@@ -68,6 +91,22 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
           domain: domains.find((d) => d.kind === 'span' && d.layerId === sl.id),
         });
       }
+    }
+    // Document metadata fields are governed the same way but live on the
+    // document rather than in a span layer, so they carry no layer or domain
+    // and are queried through metadataFreqQuery / metadataHitsQuery instead.
+    const tagsets = readTagsets(project?.config);
+    for (const f of readDocumentMetadata(project?.config) || []) {
+      const tagset = f?.tagset ? tagsets[f.tagset] : null;
+      if (!tagset) continue;
+      out.push({
+        key: `meta:${f.name}`,
+        meta: true,
+        field: f.name,
+        scope: 'document',
+        tagset,
+        tagsetName: f.tagset,
+      });
     }
     return out;
   }, [layerInfo, project?.config, domains]);
@@ -82,9 +121,11 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       const rows = await Promise.all(
         governed.map(async (g) => {
           const results = await Promise.all(
-            freqQueries({ kind: 'span', layerId: g.layerId }, ANY_VALUE).map((q) =>
-              client.query(q),
-            ),
+            g.meta
+              ? [client.query(metadataFreqQuery(projectId, g.field))]
+              : freqQueries({ kind: 'span', layerId: g.layerId }, ANY_VALUE).map((q) =>
+                  client.query(q),
+                ),
           );
           const attested = [];
           for (const r of results) {
@@ -103,7 +144,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     } finally {
       setBusy(false);
     }
-  }, [client, governed]);
+  }, [client, governed, projectId]);
 
   useEffect(() => {
     scan();
@@ -112,7 +153,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   // Where a value actually is. Only run when a row is opened: this is the part
   // that loads documents.
   const locate = async (g, value) => {
-    const key = `${g.layerId}:${value}`;
+    const key = `${g.key}:${value}`;
     if (expanded === key) {
       setExpanded(null);
       return;
@@ -120,7 +161,11 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     setExpanded(key);
     if (hits[key]) return;
     try {
-      const res = await runHitsSearch(client, project, layerInfo, g.domain, value, 'exact');
+      // A metadata violation is a property of a whole document, so there is no
+      // sentence to show in context: the answer is which documents hold it.
+      const res = g.meta
+        ? await locateMetadata(client, projectId, g.field, value)
+        : await runHitsSearch(client, project, layerInfo, g.domain, value, 'exact');
       setHits((h) => ({ ...h, [key]: res }));
     } catch (err) {
       console.error('Could not locate value:', err);
@@ -194,7 +239,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       )}
 
       {fields.map((g) => (
-        <div key={g.layerId} className="overflow-hidden rounded-md border">
+        <div key={g.key} className="overflow-hidden rounded-md border">
           <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
             <Badge variant="secondary" className={SCOPE_CLS[g.scope]}>
               {g.scope}
@@ -217,7 +262,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
           </div>
 
           {g.bad.map((row) => {
-            const key = `${g.layerId}:${row.value}`;
+            const key = `${g.key}:${row.value}`;
             const open = expanded === key;
             const res = hits[key];
             const unknownParts = row.violations
@@ -226,7 +271,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             return (
               <div key={row.value} className="border-b last:border-b-0">
                 <div className="flex items-center gap-3 px-3 py-2">
-                  {g.domain ? (
+                  {g.domain || g.meta ? (
                     <Button
                       size="icon"
                       variant="ghost"
@@ -289,10 +334,23 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                         <div key={grp.docId} className="mb-3 last:mb-0">
                           <p className="mb-1 flex items-center gap-1.5 text-xs font-medium">
                             <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                            {grp.docName}
-                            <span className="font-normal text-muted-foreground">
-                              ({grp.docHits})
-                            </span>
+                            {grp.rows.length ? (
+                              grp.docName
+                            ) : (
+                              // Metadata is the document's default tab, and
+                              // tabTo writes the bare path for a default.
+                              <Link
+                                to={`/projects/${projectId}/documents/${grp.docId}`}
+                                className="text-foreground hover:underline"
+                              >
+                                {grp.docName}
+                              </Link>
+                            )}
+                            {grp.rows.length > 0 && (
+                              <span className="font-normal text-muted-foreground">
+                                ({grp.docHits})
+                              </span>
+                            )}
                           </p>
                           {grp.rows.map((r) => (
                             <Link

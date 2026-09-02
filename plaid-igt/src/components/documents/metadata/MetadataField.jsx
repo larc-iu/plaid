@@ -1,0 +1,103 @@
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
+import { isValueAllowed, tagsetEnforces, validateValue } from '@/domain/tagsets';
+
+// One document-metadata input, governed by its field's tagset if it has one.
+//
+// Three controls rather than one, because the right affordance depends on what
+// the tagset allows. A closed whole-value tagset IS a fixed list, so it gets a
+// real Select. Anything that accepts free text keeps a text input, with the
+// legal values offered through a native <datalist> — no popup to build, and
+// typing still works, which is the whole point of a suggesting tagset.
+//
+// The interlinear editor solves this differently (a lit-html popup with part-
+// aware completion) because a gloss cell is one of hundreds in a keyboard-driven
+// grid. A metadata field is one of five on a form, so native controls are the
+// right amount of machinery.
+
+// Radix Select has no empty-string item value, so "not set" needs a sentinel.
+const UNSET = '__unset__';
+
+export const MetadataField = ({ field, value, tagset, onChange }) => {
+  const v = value ?? '';
+  const violations = tagset ? validateValue(v, tagset) : [];
+  const invalid = violations.length > 0;
+
+  // A closed list with no delimiters is exactly a picker. With delimiters the
+  // value is composite and has to stay typable.
+  if (tagsetEnforces(tagset) && !tagset.delimiters) {
+    const known = tagset.values.some((t) => t.value === v);
+    return (
+      <Select
+        value={v === '' ? UNSET : v}
+        onValueChange={(next) => onChange(next === UNSET ? '' : next)}
+      >
+        <SelectTrigger className={cn(invalid && 'border-destructive text-destructive')}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={UNSET}>Not set</SelectItem>
+          {tagset.values.map((t) => (
+            <SelectItem key={t.value} value={t.value}>
+              {t.value}
+              {t.description ? (
+                <span className="ml-2 text-xs text-muted-foreground">{t.description}</span>
+              ) : null}
+            </SelectItem>
+          ))}
+          {/* A value already in the data that the tagset no longer allows. Kept
+              selectable so the control shows what is actually stored rather
+              than silently reading as "Not set" and overwriting it on save. */}
+          {v !== '' && !known && <SelectItem value={v}>{v} (not in tagset)</SelectItem>}
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  const listId = tagset ? `md-${field.name.replace(/\W+/g, '-')}` : undefined;
+  return (
+    <>
+      <Input
+        value={v}
+        list={listId}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={`Enter ${field.name}`}
+        className={cn(invalid && 'border-destructive text-destructive')}
+        aria-invalid={invalid || undefined}
+      />
+      {tagset && (
+        <datalist id={listId}>
+          {tagset.values.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.description ?? ''}
+            </option>
+          ))}
+        </datalist>
+      )}
+      {invalid && (
+        <p className="text-xs text-destructive">
+          {violations.some((x) => x.reason === 'unknown')
+            ? `${violations
+                .filter((x) => x.reason === 'unknown')
+                .map((x) => `"${x.part}"`)
+                .join(', ')} is not in this field's tagset.`
+            : 'There is a delimiter with nothing beside it.'}
+        </p>
+      )}
+    </>
+  );
+};
+
+/** Does every governed field hold a value its tagset accepts? */
+export const metadataIsValid = (fields, values, tagsetFor) =>
+  fields.every((f) => {
+    const t = tagsetFor(f);
+    return !tagsetEnforces(t) || isValueAllowed(values[f.name] ?? '', t);
+  });

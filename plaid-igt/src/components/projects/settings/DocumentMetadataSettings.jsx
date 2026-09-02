@@ -4,7 +4,9 @@ import { DocumentMetadataManager } from './DocumentMetadataManager.jsx';
 import { notifyError } from '@/utils/feedback';
 import { readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 
-export const DocumentMetadataSettings = ({ projectId, client }) => {
+// `tagsetNames` comes from AnnotationSettings, which holds the live project, so
+// a tagset created in the section above is pickable here immediately.
+export const DocumentMetadataSettings = ({ projectId, client, tagsetNames = [] }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -40,6 +42,7 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
         return {
           enabledFields: currentConfig.map((field) => ({
             name: field.name,
+            tagset: field.tagset ?? null,
             enabled: true, // All fields in the config are enabled
             isCustom: !isPredefinedField(field.name),
           })),
@@ -71,6 +74,8 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
       const enabledFields = data.enabledFields.filter((field) => field.enabled);
       const apiConfig = enabledFields.map((field) => ({
         name: field.name,
+        // Only stored when set, so a field with no tagset stays a bare {name}.
+        ...(field.tagset ? { tagset: field.tagset } : {}),
       }));
 
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'documentMetadata', apiConfig);
@@ -119,6 +124,7 @@ export const DocumentMetadataSettings = ({ projectId, client }) => {
         onSaveChanges={handleSaveChanges}
         onError={handleError}
         isLoading={isLoading}
+        tagsetNames={tagsetNames}
         showTitle={false}
       />
     </div>

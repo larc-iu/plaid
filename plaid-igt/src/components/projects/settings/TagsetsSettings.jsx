@@ -3,8 +3,9 @@ import { TagsetsManager } from './TagsetsManager.jsx';
 import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
+import { readDocumentMetadata } from '@/domain/igtConfig';
 import { readTagsets, readTagsetName } from '@/domain/tagsets';
-import { freqQueries } from '../search/searchQueries.js';
+import { freqQueries, metadataFreqQuery } from '../search/searchQueries.js';
 
 // Every span in a layer, regardless of value. The REGEXP UDF matches on
 // CONTAINS (plaid-core sql/query/exec.clj), so "." means "has at least one
@@ -26,9 +27,10 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
 
   // Which fields point at which tagset. Both the delete warning and the
   // attested-value queries are driven off this, so it is collected once.
-  const { usage, spanLayersByTagset } = useMemo(() => {
+  const { usage, spanLayersByTagset, metaFieldsByTagset } = useMemo(() => {
     const byName = {};
     const layersByName = {};
+    const metaByName = {};
     const info = getIgtLayerInfo(project);
     for (const [scope, layers] of Object.entries(info.spanLayers || {})) {
       for (const sl of layers || []) {
@@ -38,7 +40,14 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
         (layersByName[name] ||= []).push(sl.id);
       }
     }
-    return { usage: byName, spanLayersByTagset: layersByName };
+    // Document metadata fields use tagsets too, and they are not span layers:
+    // their values live on the document, so they need their own query.
+    for (const f of readDocumentMetadata(project?.config) || []) {
+      if (!f?.tagset) continue;
+      (byName[f.tagset] ||= []).push({ scope: 'document', name: f.name, id: `meta:${f.name}` });
+      (metaByName[f.tagset] ||= []).push(f.name);
+    }
+    return { usage: byName, spanLayersByTagset: layersByName, metaFieldsByTagset: metaByName };
   }, [project]);
 
   const handleSaveChanges = async (next) => {
@@ -65,12 +74,14 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
   // there. This is what the seed button and (later) the violations view read.
   const handleLoadAttested = async (name) => {
     const layerIds = spanLayersByTagset[name] || [];
-    if (!layerIds.length) return [];
-    const results = await Promise.all(
-      layerIds.flatMap((layerId) =>
+    const metaFields = metaFieldsByTagset[name] || [];
+    if (!layerIds.length && !metaFields.length) return [];
+    const results = await Promise.all([
+      ...layerIds.flatMap((layerId) =>
         freqQueries({ kind: 'span', layerId }, ANY_VALUE).map((q) => client.query(q)),
       ),
-    );
+      ...metaFields.map((field) => client.query(metadataFreqQuery(projectId, field))),
+    ]);
     const counts = new Map();
     for (const r of results) {
       for (const [value, n] of r?.results || []) {

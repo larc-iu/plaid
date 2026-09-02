@@ -196,3 +196,29 @@ export function freqQueries(domain, spec) {
     return: { ...agg, group: ['?v'] },
   }));
 }
+
+// ---- document metadata -----------------------------------------------------
+// Metadata is not a span layer, so it needs its own queries. A document clause
+// carries no layer id, and a layer id is what implicitly scopes every other
+// query to its project, so these MUST pass an explicit `scope` — without it the
+// query would reach documents in projects the caller never asked about.
+
+/** `.` = has at least one character (the REGEXP UDF matches on contains). */
+const ANY_TEXT = { regex: '.' };
+
+/** [value, count] rows for one document-metadata field, project-wide. */
+export const metadataFreqQuery = (projectId, field) => ({
+  scope: { projectIds: [projectId] },
+  where: [['document', '?d', { metadata: { [field]: ANY_TEXT } }]],
+  return: { group: [`?d.metadata.${field}`], aggregates: [['count']] },
+});
+
+/** The documents whose `field` holds exactly `value`: [{id, name}]. */
+export const metadataHitsQuery = (projectId, field, value) => ({
+  scope: { projectIds: [projectId] },
+  find: ['?d', '?name'],
+  where: [
+    ['document', '?d', { metadata: { [field]: value } }],
+    ['document', '?d', { name: { var: '?name' } }],
+  ],
+});
