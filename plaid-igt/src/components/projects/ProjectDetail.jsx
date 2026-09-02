@@ -49,6 +49,18 @@ export const ProjectDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Settings edits change the PROJECT (its config and layers) and never the
+  // document list, so they refresh only that. Reordering one annotation field
+  // used to re-list every document in the project.
+  const refreshProject = async () => {
+    if (!client) return;
+    try {
+      setProject(await client.projects.get(projectId));
+    } catch (err) {
+      console.error('Could not refresh the project:', err);
+    }
+  };
+
   const fetchData = async (showLoadingSpinner = false) => {
     try {
       if (showLoadingSpinner) setLoading(true);
@@ -274,7 +286,7 @@ export const ProjectDetail = () => {
               project={project}
               projectId={projectId}
               client={client}
-              onProjectUpdate={() => fetchData()}
+              onProjectUpdate={refreshProject}
             />
           </TabsContent>
         )}
@@ -295,7 +307,7 @@ export const ProjectDetail = () => {
             documents={documents}
             canManage={canManage}
             presetId={presetId}
-            onProjectUpdate={() => fetchData()}
+            onProjectUpdate={refreshProject}
           />
         </TabsContent>
         {canManage && (
@@ -307,7 +319,7 @@ export const ProjectDetail = () => {
               user={user}
               section={pathSection || 'general'}
               onSectionChange={(s) => navigate(`/projects/${projectId}/${s}`)}
-              onProjectUpdate={() => fetchData()}
+              onProjectUpdate={refreshProject}
             />
           </TabsContent>
         )}

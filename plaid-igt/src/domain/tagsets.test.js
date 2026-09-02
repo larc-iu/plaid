@@ -5,7 +5,9 @@ import {
   readTagsets,
   readTagsetName,
   resolveTagset,
-  fieldsUsingTagset,
+  governedFields,
+  byTagsetName,
+  missingAffixDelimiters,
   scanValue,
   splitValue,
   partAtCaret,
@@ -83,21 +85,74 @@ describe('reading config', () => {
     expect(t).toBeNull();
     expect(isValueAllowed('anything', t)).toBe(true);
   });
+});
 
-  it('lists the fields using a tagset', () => {
-    const layerInfo = {
-      spanLayers: {
-        word: [{ id: 'a', name: 'POS', config: { igt: { tagset: 'POS' } } }],
-        morpheme: [
-          { id: 'b', name: 'Gloss', config: { igt: { tagset: 'Leipzig' } } },
-          { id: 'c', name: 'POS', config: { igt: { tagset: 'POS' } } },
-        ],
-        sentence: [{ id: 'd', name: 'Translation', config: { igt: {} } }],
-      },
-    };
-    expect(fieldsUsingTagset(layerInfo, 'POS').map((f) => f.id)).toEqual(['a', 'c']);
-    expect(fieldsUsingTagset(layerInfo, 'Leipzig')).toHaveLength(1);
-    expect(fieldsUsingTagset(layerInfo, 'Nobody')).toEqual([]);
+describe('governedFields', () => {
+  const layerInfo = {
+    spanLayers: {
+      word: [{ id: 'a', name: 'POS', config: { igt: { tagset: 'POS' } } }],
+      morpheme: [
+        { id: 'b', name: 'Gloss', config: { igt: { tagset: 'Leipzig' } } },
+        { id: 'c', name: 'POS', config: { igt: { tagset: 'POS' } } },
+      ],
+      sentence: [{ id: 'd', name: 'Translation', config: { igt: {} } }],
+    },
+  };
+  const config = {
+    igt: {
+      tagsets: { Leipzig: leipzig, POS: { values: [{ value: 'n' }] } },
+      documentMetadata: [{ name: 'Date' }, { name: 'Genre', tagset: 'POS' }],
+    },
+  };
+
+  it('covers annotation fields and metadata fields in one list', () => {
+    const g = governedFields(layerInfo, config);
+    expect(g.map((x) => [x.kind, x.field, x.scope, x.tagsetName])).toEqual([
+      ['span', 'POS', 'word', 'POS'],
+      ['span', 'Gloss', 'morpheme', 'Leipzig'],
+      ['span', 'POS', 'morpheme', 'POS'],
+      ['metadata', 'Genre', 'document', 'POS'],
+    ]);
+  });
+
+  it('gives a metadata field a key but no layer, since it is queried off the document', () => {
+    const meta = governedFields(layerInfo, config).find((x) => x.kind === 'metadata');
+    expect([meta.key, meta.layerId]).toEqual(['meta:Genre', null]);
+  });
+
+  it('leaves out fields with no tagset, and references that no longer resolve', () => {
+    const g = governedFields(layerInfo, {
+      igt: { tagsets: {}, documentMetadata: [{ name: 'Genre', tagset: 'Gone' }] },
+    });
+    expect(g).toEqual([]);
+  });
+
+  it('groups by tagset name for the callers that want it that way', () => {
+    const by = byTagsetName(governedFields(layerInfo, config));
+    expect(Object.keys(by).sort()).toEqual(['Leipzig', 'POS']);
+    expect(by.POS.map((x) => x.field)).toEqual(['POS', 'POS', 'Genre']);
+  });
+});
+
+describe('missingAffixDelimiters', () => {
+  const mixed = (delimiters) => ({ delimiters, mode: 'mixed', values: [] });
+
+  it('flags the silent gap: dog-PL passes whole when - is not a delimiter', () => {
+    expect(missingAffixDelimiters(mixed('.'), true)).toEqual(['-', '=']);
+    expect(missingAffixDelimiters(mixed('.-'), true)).toEqual(['=']);
+    expect(missingAffixDelimiters(mixed('.-='), true)).toEqual([]);
+  });
+
+  it('says nothing when no word-scope field uses the tagset', () => {
+    expect(missingAffixDelimiters(mixed('.'), false)).toEqual([]);
+  });
+
+  it('says nothing under closed, where the same value is loudly rejected instead', () => {
+    expect(missingAffixDelimiters({ ...mixed('.'), mode: 'closed' }, true)).toEqual([]);
+  });
+
+  it('says nothing for a whole-cell tagset, which has no parts to miss', () => {
+    expect(missingAffixDelimiters(mixed(''), true)).toEqual([]);
   });
 });
 

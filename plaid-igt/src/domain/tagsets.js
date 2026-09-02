@@ -135,14 +135,86 @@ export const resolveTagset = (spanLayerConfig, projectConfig) => {
   return readTagsets(projectConfig)[name] ?? null;
 };
 
-/** Which fields reference `name`, as [{scope, name}] — for delete warnings. */
-export const fieldsUsingTagset = (layerInfo, name) => {
+/**
+ * Every field in the project governed by a tagset — annotation fields and
+ * document-metadata fields alike — as:
+ *
+ *   { key, kind, field, scope, layerId, tagsetName, tagset }
+ *
+ * `kind` is 'span' or 'metadata', and it decides how the field's values are
+ * reached: a span field has a layerId and is queried through its layer, a
+ * metadata field has none and is queried off the document. `key` is unique
+ * across both.
+ *
+ * ONE answer to "which fields use which tagset", because there are three
+ * callers that need it in three shapes (the settings usage line, the seed
+ * button's queries, the Validation scan) and they drifted the moment metadata
+ * fields existed. Derive, do not recompute.
+ */
+export const governedFields = (layerInfo, projectConfig) => {
+  const tagsets = readTagsets(projectConfig);
   const out = [];
   for (const [scope, layers] of Object.entries(layerInfo?.spanLayers || {})) {
     for (const sl of layers || []) {
-      if (readTagsetName(sl.config) === name) out.push({ scope, name: sl.name, id: sl.id });
+      const tagsetName = readTagsetName(sl.config);
+      const tagset = tagsetName ? (tagsets[tagsetName] ?? null) : null;
+      if (!tagset) continue;
+      out.push({
+        key: sl.id,
+        kind: 'span',
+        field: sl.name,
+        scope,
+        layerId: sl.id,
+        tagsetName,
+        tagset,
+      });
     }
   }
+  for (const f of projectConfig?.[IGT_NAMESPACE]?.documentMetadata || []) {
+    const tagsetName = str(f?.tagset).trim();
+    const tagset = tagsetName ? (tagsets[tagsetName] ?? null) : null;
+    if (!tagset || !f?.name) continue;
+    out.push({
+      key: `meta:${f.name}`,
+      kind: 'metadata',
+      field: f.name,
+      scope: 'document',
+      layerId: null,
+      tagsetName,
+      tagset,
+    });
+  }
+  return out;
+};
+
+/**
+ * The affix joiners a WORD-scope gloss is written with — the same "-" and "="
+ * the morpheme grid splits on (see affixMarkers.js).
+ */
+export const WORD_AFFIX_DELIMITERS = Object.freeze(['-', '=']);
+
+/**
+ * Delimiters a tagset needs but does not have, given that a word-scope field
+ * uses it. Empty when there is nothing to warn about.
+ *
+ * This exists because the gap is SILENT. A word-scope gloss reads `dog-PL`. If
+ * "-" is not a delimiter that is ONE part, and under `mixed` a part holding a
+ * lowercase letter passes whole — so `dog-PL` is accepted without PL ever being
+ * checked against the list. The field looks governed and is not, which is worse
+ * than not governing it at all.
+ *
+ * Only `mixed` is affected. Under `closed` the same value is rejected as one
+ * unknown part: annoying, but loudly wrong rather than quietly accepted.
+ */
+export const missingAffixDelimiters = (tagset, usedAtWordScope) => {
+  if (!usedAtWordScope || tagset?.mode !== MODES.MIXED || !tagset.delimiters) return [];
+  return WORD_AFFIX_DELIMITERS.filter((d) => !tagset.delimiters.includes(d));
+};
+
+/** `governedFields` grouped by tagset name: { name: [record, ...] }. */
+export const byTagsetName = (governed) => {
+  const out = {};
+  for (const g of governed || []) (out[g.tagsetName] ||= []).push(g);
   return out;
 };
 

@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { notifyError, notifySuccess, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
-import { IGT_NAMESPACE, readDocumentMetadata } from '@/domain/igtConfig';
-import { offTagsetValues, readTagsetName, readTagsets, resolveTagset } from '@/domain/tagsets';
+import { IGT_NAMESPACE } from '@/domain/igtConfig';
+import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
 import {
   freqQueries,
   metadataFreqQuery,
@@ -74,42 +74,19 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   const [expanded, setExpanded] = useState(null); // `${layerId}:${value}`
   const [hits, setHits] = useState({});
 
-  // The fields under a tagset, with the span layer and the domain a query needs.
-  const governed = useMemo(() => {
-    const out = [];
-    for (const [scope, layers] of Object.entries(layerInfo?.spanLayers || {})) {
-      for (const sl of layers || []) {
-        const tagset = resolveTagset(sl.config, project?.config);
-        if (!tagset) continue;
-        out.push({
-          key: sl.id,
-          layerId: sl.id,
-          field: sl.name,
-          scope,
-          tagset,
-          tagsetName: readTagsetName(sl.config),
-          domain: domains.find((d) => d.kind === 'span' && d.layerId === sl.id),
-        });
-      }
-    }
-    // Document metadata fields are governed the same way but live on the
-    // document rather than in a span layer, so they carry no layer or domain
-    // and are queried through metadataFreqQuery / metadataHitsQuery instead.
-    const tagsets = readTagsets(project?.config);
-    for (const f of readDocumentMetadata(project?.config) || []) {
-      const tagset = f?.tagset ? tagsets[f.tagset] : null;
-      if (!tagset) continue;
-      out.push({
-        key: `meta:${f.name}`,
-        meta: true,
-        field: f.name,
-        scope: 'document',
-        tagset,
-        tagsetName: f.tagset,
-      });
-    }
-    return out;
-  }, [layerInfo, project?.config, domains]);
+  // The fields under a tagset, from the one place that answers that, plus the
+  // search domain a span field's hit lookup needs.
+  const governed = useMemo(
+    () =>
+      governedFields(layerInfo, project?.config).map((g) => ({
+        ...g,
+        domain:
+          g.kind === 'span'
+            ? domains.find((d) => d.kind === 'span' && d.layerId === g.layerId)
+            : null,
+      })),
+    [layerInfo, project?.config, domains],
+  );
 
   const scan = useCallback(async () => {
     if (!governed.length) {
@@ -121,7 +98,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       const rows = await Promise.all(
         governed.map(async (g) => {
           const results = await Promise.all(
-            g.meta
+            g.kind === 'metadata'
               ? [client.query(metadataFreqQuery(projectId, g.field))]
               : freqQueries({ kind: 'span', layerId: g.layerId }, ANY_VALUE).map((q) =>
                   client.query(q),
@@ -163,9 +140,10 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     try {
       // A metadata violation is a property of a whole document, so there is no
       // sentence to show in context: the answer is which documents hold it.
-      const res = g.meta
-        ? await locateMetadata(client, projectId, g.field, value)
-        : await runHitsSearch(client, project, layerInfo, g.domain, value, 'exact');
+      const res =
+        g.kind === 'metadata'
+          ? await locateMetadata(client, projectId, g.field, value)
+          : await runHitsSearch(client, project, layerInfo, g.domain, value, 'exact');
       setHits((h) => ({ ...h, [key]: res }));
     } catch (err) {
       console.error('Could not locate value:', err);
@@ -271,7 +249,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             return (
               <div key={row.value} className="border-b last:border-b-0">
                 <div className="flex items-center gap-3 px-3 py-2">
-                  {g.domain || g.meta ? (
+                  {g.domain || g.kind === 'metadata' ? (
                     <Button
                       size="icon"
                       variant="ghost"

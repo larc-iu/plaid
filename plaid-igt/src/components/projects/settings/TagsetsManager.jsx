@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Sparkles, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import {
   MODES,
   RESERVED_VALUE_KEYS,
   TAGSET_MODES,
+  missingAffixDelimiters,
   scanValue,
   seedValueRecords,
 } from '@/domain/tagsets';
@@ -194,6 +195,12 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
         const isOpen = openName === name;
         const fields = usage?.[name] || [];
         const preview = scanValue(SAMPLE, t.delimiters);
+        // A word-scope gloss reads "dog-PL". If "-" is not a delimiter, mixed
+        // mode waves the whole thing through on the lowercase in "dog".
+        const missingAffix = missingAffixDelimiters(
+          t,
+          fields.some((f) => f.scope === 'word'),
+        );
         return (
           <div key={name} className="overflow-hidden rounded-md border">
             <div className="flex items-center gap-2 px-3 py-2">
@@ -288,6 +295,33 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                       if (next !== t.delimiters) patch(name, { delimiters: next });
                     }}
                   />
+                  {missingAffix.length > 0 && (
+                    <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <div>
+                        A Word-scope field uses this tagset, and word glosses are written with affix
+                        joiners like <span className="font-mono">dog-PL</span>. Without{' '}
+                        {missingAffix.map((d) => (
+                          <span key={d} className="font-mono">
+                            {d}{' '}
+                          </span>
+                        ))}
+                        in the delimiters, that is checked as one value, and it passes on the
+                        lowercase in <span className="font-mono">dog</span> without{' '}
+                        <span className="font-mono">PL</span> ever being looked up.
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="ml-2 h-6"
+                          onClick={() =>
+                            patch(name, { delimiters: t.delimiters + missingAffix.join('') })
+                          }
+                        >
+                          Add {missingAffix.join(' and ')}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   <p className="mt-1 text-xs text-muted-foreground">
                     <span className="font-mono">{SAMPLE}</span> is checked as{' '}
                     {preview.map((p, i) => (
