@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
-const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'general', 'orthography', 'annotation'];
+const SETTINGS_SECTIONS = ['general', 'lexicon', 'annotation', 'access', 'services'];
 
 // The content tabs, which ride in `?tab=` on the project page (Bulk Edit is
 // maintainers-only; Assistant is open to everyone, since the assistant acts
@@ -27,12 +27,11 @@ const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'assistant'];
 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
-  access: 'Access Management',
-  tokens: 'Access Tokens',
-  services: 'Services',
   general: 'General',
-  orthography: 'Orthography & Vocabularies',
+  lexicon: 'Lexicon',
   annotation: 'Annotation',
+  access: 'Access',
+  services: 'Services',
 };
 
 // Default project view: the document list, a query-engine-powered Search tab,
@@ -197,7 +196,7 @@ export const ProjectDetail = () => {
         onValueChange={(v) => {
           if (v === 'settings') {
             // Enter Settings via its default section; the path drives the panel.
-            navigate(`/projects/${projectId}/access`);
+            navigate(`/projects/${projectId}/general`);
           } else if (v === 'export') {
             navigate(`/projects/${projectId}/export`);
           } else if (onSettings || onExport) {
@@ -306,7 +305,7 @@ export const ProjectDetail = () => {
               projectId={projectId}
               client={client}
               user={user}
-              section={pathSection || 'access'}
+              section={pathSection || 'general'}
               onSectionChange={(s) => navigate(`/projects/${projectId}/${s}`)}
               onProjectUpdate={() => fetchData()}
             />

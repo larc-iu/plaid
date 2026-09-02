@@ -1,4 +1,4 @@
-import { Users, KeyRound, Plug, Settings, Rows3, SpellCheck } from 'lucide-react';
+import { Users, Plug, Settings, Rows3, SpellCheck } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AccessManagement } from './AccessManagement';
 import { ProjectAccessTokens } from './ProjectAccessTokens';
@@ -7,19 +7,19 @@ import { GeneralSettings } from './settings/GeneralSettings.jsx';
 import { OrthographyVocabSettings } from './settings/OrthographyVocabSettings.jsx';
 import { AnnotationSettings } from './settings/AnnotationSettings.jsx';
 
+// What the project is, then what it annotates with, then who may touch it.
 const SECTIONS = [
-  { value: 'access', label: 'Access Management', icon: Users },
-  { value: 'tokens', label: 'Access Tokens', icon: KeyRound },
-  { value: 'services', label: 'Services', icon: Plug },
   { value: 'general', label: 'General', icon: Settings },
-  { value: 'orthography', label: 'Orthography & Vocabularies', icon: SpellCheck },
+  { value: 'lexicon', label: 'Lexicon', icon: SpellCheck },
   { value: 'annotation', label: 'Annotation', icon: Rows3 },
+  { value: 'access', label: 'Access', icon: Users },
+  { value: 'services', label: 'Services', icon: Plug },
 ];
 
 // The Settings tab's body: project administration as a vertical, left-side tab
 // group (Radix Tabs in vertical orientation). Route-backed by the caller — the
-// active section follows /access, /tokens, /services, /general, /orthography,
-// /annotation — so deep links and the browser back button keep working.
+// active section follows /general, /lexicon, /annotation, /access, /services —
+// so deep links and the browser back button keep working.
 export const ProjectSettingsPanel = ({
   project,
   projectId,
@@ -53,17 +53,19 @@ export const ProjectSettingsPanel = ({
       </TabsList>
 
       <div className="min-w-0 flex-1">
+        {/* Who may touch the project, and the tokens they touch it with: two
+            answers to one question, so one section. */}
         <TabsContent value="access" className="mt-0">
-          <AccessManagement
-            project={project}
-            user={user}
-            projectId={projectId}
-            client={client}
-            onDataUpdate={onProjectUpdate}
-          />
-        </TabsContent>
-        <TabsContent value="tokens" className="mt-0">
-          <ProjectAccessTokens />
+          <div className="flex flex-col gap-8 [&>*+*]:border-t [&>*+*]:pt-8">
+            <AccessManagement
+              project={project}
+              user={user}
+              projectId={projectId}
+              client={client}
+              onDataUpdate={onProjectUpdate}
+            />
+            <ProjectAccessTokens />
+          </div>
         </TabsContent>
         <TabsContent value="services" className="mt-0">
           <ServicesSettings projectId={projectId} client={client} />
@@ -76,7 +78,7 @@ export const ProjectSettingsPanel = ({
             onProjectUpdate={onProjectUpdate}
           />
         </TabsContent>
-        <TabsContent value="orthography" className="mt-0">
+        <TabsContent value="lexicon" className="mt-0">
           <OrthographyVocabSettings projectId={projectId} client={client} />
         </TabsContent>
         <TabsContent value="annotation" className="mt-0">
