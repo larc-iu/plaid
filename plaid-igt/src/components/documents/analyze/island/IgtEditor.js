@@ -36,6 +36,7 @@ import {
   readTagsetName,
   replacePartAtCaret,
   resolveTagset,
+  tagsetEnforces,
   validateValue,
 } from '@/domain/tagsets';
 import { commentThread } from '@/components/documents/comments/island/CommentThread.js';
@@ -1547,7 +1548,7 @@ export class IgtEditor {
       return;
     }
     const next = el.value;
-    // A closed tagset refuses a value it does not allow. Typing is the ONLY
+    // An enforcing tagset refuses a value it does not allow. Typing is the ONLY
     // write that passes through here, so this is the whole of what "closed"
     // enforces: imports, services and the assistant reach the same span layer
     // without coming this way, which is what the Validation view is for.
@@ -1556,7 +1557,11 @@ export class IgtEditor {
     // was typed in the cell and put focus back, rather than reverting. The
     // value is wrong, but it is the user's, and silently swallowing a gloss
     // someone just typed is worse than leaving it there to be fixed.
-    if (tagset?.closed && next !== (el.dataset.orig ?? '') && !isValueAllowed(next, tagset)) {
+    if (
+      tagsetEnforces(tagset) &&
+      next !== (el.dataset.orig ?? '') &&
+      !isValueAllowed(next, tagset)
+    ) {
       notifyError(this._violationText(validateValue(next, tagset), tagset), 'Value not allowed');
       // Refocusing synchronously inside a blur handler is unreliable, so hand
       // it to a microtask. The focus handler restamps `orig` from the value

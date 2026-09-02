@@ -187,7 +187,7 @@ describe('listAlternatives', () => {
 describe('listAlternatives with a tagset', () => {
   const tagset = (over = {}) => ({
     delimiters: '',
-    closed: false,
+    mode: 'suggest',
     values: [{ value: 'PL', description: 'plural' }, { value: 'SG' }],
     ...over,
   });
@@ -218,12 +218,12 @@ describe('listAlternatives with a tagset', () => {
     expect([pl.count, pl.source, pl.description]).toEqual([2, PRECEDENT_SOURCE, 'plural']);
   });
 
-  it('an OPEN tagset still offers off-tagset precedent', () => {
+  it('a SUGGESTED tagset still offers off-tagset precedent', () => {
     expect(list({ tagset: tagset() }).map((r) => r.value)).toEqual(['PL', 'GEN', 'SG']);
   });
 
   it('a CLOSED tagset drops off-tagset precedent, since committing it would fail', () => {
-    expect(list({ tagset: tagset({ closed: true }) }).map((r) => r.value)).toEqual(['PL', 'SG']);
+    expect(list({ tagset: tagset({ mode: 'closed' }) }).map((r) => r.value)).toEqual(['PL', 'SG']);
   });
 
   it('delimiters switch the list to parts, pooling counts across whole values', () => {
@@ -241,7 +241,7 @@ describe('listAlternatives with a tagset', () => {
       kind: 'morpheme',
       form: 'm',
       field: 'Gloss',
-      tagset: { delimiters: '.', closed: false, values: [] },
+      tagset: { delimiters: '.', mode: 'suggest', values: [] },
     });
     expect(rows.map((r) => [r.value, r.count])).toEqual([
       ['1SG', 3],
@@ -259,7 +259,7 @@ describe('listAlternatives with a tagset', () => {
       kind: 'morpheme',
       form: 'm',
       field: 'Gloss',
-      tagset: { delimiters: '.', closed: true, values: [{ value: '1SG' }, { value: 'NOM' }] },
+      tagset: { delimiters: '.', mode: 'closed', values: [{ value: '1SG' }, { value: 'NOM' }] },
     });
     expect(rows.map((r) => [r.value, r.count])).toEqual([
       ['1SG', 1],
@@ -276,7 +276,7 @@ describe('listAlternatives with a tagset', () => {
 });
 
 describe('allowedGuess', () => {
-  const closed = { delimiters: '.', closed: true, values: [{ value: 'PL' }] };
+  const closed = { delimiters: '.', mode: 'closed', values: [{ value: 'PL' }] };
 
   it('passes a guess the tagset allows', () => {
     const g = { value: 'PL', source: PRECEDENT_SOURCE };

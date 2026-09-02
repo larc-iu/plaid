@@ -7,7 +7,13 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
-import { RESERVED_VALUE_KEYS, scanValue, seedValueRecords } from '@/domain/tagsets';
+import {
+  MODES,
+  RESERVED_VALUE_KEYS,
+  TAGSET_MODES,
+  scanValue,
+  seedValueRecords,
+} from '@/domain/tagsets';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
 // the whole map back on every discrete change (add/delete/toggle) or on blur
@@ -19,6 +25,26 @@ import { RESERVED_VALUE_KEYS, scanValue, seedValueRecords } from '@/domain/tagse
 // "add attested values" seed.
 
 const SAMPLE = '1SG.NOM';
+
+// How each mode presents itself. The help text is the whole explanation a user
+// gets, so it says what is accepted and when to pick it, not what it is called.
+const MODES_UI = {
+  [MODES.SUGGEST]: {
+    label: 'Suggested',
+    badge: 'border-transparent bg-slate-100 text-slate-700',
+    help: 'Offer the list while annotating, but accept anything typed. Use this to nudge toward consistency without blocking new values.',
+  },
+  [MODES.CLOSED]: {
+    label: 'Closed',
+    badge: 'border-transparent bg-amber-100 text-amber-800',
+    help: 'Accept only values in the list. Right for a fixed inventory like part of speech, where the tags themselves may be lowercase (n, v, adj).',
+  },
+  [MODES.MIXED]: {
+    label: 'Closed, plus lexical glosses',
+    badge: 'border-transparent bg-indigo-100 text-indigo-800',
+    help: "Accept the list, plus any value containing a lowercase letter. Right for a gloss tagset: Leipzig writes grammatical glosses in capitals (NOM, 1SG) and lexical ones in lowercase (dog, run), and a stem's gloss will never be in a grammatical inventory. A capitalised gloss with no lowercase letter, like I, counts as grammatical, so add it to the list.",
+  },
+};
 
 // Everything on a value record that isn't a reserved key: free-form data the
 // project hung off the tag, which this app preserves and shows but never
@@ -185,20 +211,12 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                 )}
               </Button>
               <span className="font-medium">{name}</span>
-              <Badge
-                variant="secondary"
-                className={
-                  t.closed
-                    ? 'border-transparent bg-amber-100 text-amber-800'
-                    : 'border-transparent bg-slate-100 text-slate-700'
-                }
-              >
-                {t.closed ? 'Closed' : 'Open'}
+              <Badge variant="secondary" className={MODES_UI[t.mode].badge}>
+                {MODES_UI[t.mode].label}
               </Badge>
               <span className="text-xs text-muted-foreground">
                 {t.values.length} value{t.values.length === 1 ? '' : 's'}
                 {t.delimiters && ` · split on ${[...t.delimiters].join(' ')}`}
-                {t.closed && t.allowLexical && ' · lexical glosses allowed'}
                 {fields.length > 0 &&
                   ` · used by ${fields.map((f) => `${f.name} (${f.scope})`).join(', ')}`}
               </span>
@@ -224,48 +242,34 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                   />
                 </div>
 
-                {/* Closed */}
-                <label className="flex max-w-2xl items-start gap-3">
-                  <Switch
-                    checked={t.closed}
-                    onCheckedChange={(closed) => patch(name, { closed })}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="text-sm font-medium">Closed</span>
-                    <span className="block text-xs text-muted-foreground">
-                      Values outside the list are rejected when typed into a cell. Open tagsets
-                      offer the list but accept anything. Either way this is a Plaid IGT rule, not a
-                      database constraint: imports, services and the assistant can still write other
-                      values, and the Validation tab is where you find them.
-                    </span>
-                  </span>
-                </label>
-
-                {/* Lexical escape hatch. Only meaningful once the tagset is
-                    closed, since an open one already accepts everything. */}
-                {t.closed && (
-                  <label className="ml-11 flex max-w-2xl items-start gap-3">
-                    <Switch
-                      checked={t.allowLexical}
-                      onCheckedChange={(allowLexical) => patch(name, { allowLexical })}
-                      className="mt-0.5"
-                    />
-                    <span>
-                      <span className="text-sm font-medium">Also allow lexical glosses</span>
-                      <span className="block text-xs text-muted-foreground">
-                        Accept any value containing a lowercase letter, on top of the list. Turn
-                        this on for a gloss tagset: the Leipzig rules write grammatical glosses in
-                        capitals (NOM, 1SG) and lexical ones in lowercase (dog, run), and a stem's
-                        gloss will never be in a grammatical inventory. Leave it off where the tags
-                        themselves are lowercase, such as part of speech (n, v, adj), or nothing
-                        would be enforced. A capitalised word with no lowercase letter, like
-                        <span className="font-mono"> I</span>, counts as grammatical, so add it to
-                        the list.
+                {/* How strictly the list governs. One control, because the
+                    three answers are points on a line rather than independent
+                    switches. */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm font-medium">How the list is applied</p>
+                  {TAGSET_MODES.map((m) => (
+                    <label key={m} className="flex max-w-2xl items-start gap-3">
+                      <input
+                        type="radio"
+                        name={`tagset-mode-${name}`}
+                        className="mt-1"
+                        checked={t.mode === m}
+                        onChange={() => patch(name, { mode: m })}
+                      />
+                      <span>
+                        <span className="text-sm font-medium">{MODES_UI[m].label}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {MODES_UI[m].help}
+                        </span>
                       </span>
-                    </span>
-                  </label>
-                )}
+                    </label>
+                  ))}
+                  <p className="max-w-2xl text-xs text-muted-foreground">
+                    Enforcement is a Plaid IGT rule, not a database constraint. Imports, services
+                    and the assistant can still write other values, and the Validation tab is where
+                    you find them.
+                  </p>
+                </div>
 
                 {/* Delimiters */}
                 <div className="flex max-w-2xl flex-col gap-1">

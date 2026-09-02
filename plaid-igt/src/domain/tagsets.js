@@ -13,8 +13,7 @@
 //   project.config.igt.tagsets = {
 //     "Leipzig": {
 //       delimiters: ".:>",       // "" = the whole cell is one value
-//       closed: true,            // false = nudge toward the list, allow new
-//       allowLexical: true,      // ...but let lowercase (lexical) parts through
+//       mode: "mixed",           // suggest | closed | mixed (see TAGSET_MODES)
 //       values: [{ value: "NOM", description: "nominative", color: "#a33" }]
 //     }
 //   }
@@ -37,11 +36,26 @@ const str = (v) => (typeof v === 'string' ? v : '');
 /** Value-record keys this app renders. Everything else is free-form. */
 export const RESERVED_VALUE_KEYS = Object.freeze(['description', 'color']);
 
-/** A tagset with nothing configured: whole-cell, open, empty. */
+/**
+ * How strictly a tagset governs the fields that use it. ONE axis, because the
+ * three answers are points on a line from advice to rule, not independent
+ * switches:
+ *
+ *   suggest  the list is advice. Every value is accepted.
+ *   closed   the list is the rule. Nothing else is accepted.
+ *   mixed    the list is the rule for grammatical tags, and lexical glosses
+ *            (see isLexicalPart) are accepted alongside it.
+ *
+ * There is no fourth "free" mode: a field with no tagset is free, and a tagset
+ * that governs nothing would be a second way to spell the same thing.
+ */
+export const MODES = Object.freeze({ SUGGEST: 'suggest', CLOSED: 'closed', MIXED: 'mixed' });
+export const TAGSET_MODES = Object.freeze([MODES.SUGGEST, MODES.CLOSED, MODES.MIXED]);
+
+/** A tagset with nothing configured: whole-cell, advisory, empty. */
 export const EMPTY_TAGSET = Object.freeze({
   delimiters: '',
-  closed: false,
-  allowLexical: false,
+  mode: MODES.SUGGEST,
   values: [],
 });
 
@@ -84,8 +98,7 @@ export const normalizeTagset = (raw) => {
   }
   return {
     delimiters: str(raw?.delimiters),
-    closed: raw?.closed === true,
-    allowLexical: raw?.allowLexical === true,
+    mode: TAGSET_MODES.includes(raw?.mode) ? raw.mode : MODES.SUGGEST,
     values,
   };
 };
@@ -232,12 +245,12 @@ export const tagsetRecord = (tagset, part) => {
  * a closed tagset reports 'unknown' — an open one exists precisely to let new
  * values through, and flagging them would make the nudge a nag.
  *
- * `allowLexical` is what makes a closed tagset usable on a GLOSS field at all.
+ * `mixed` is what makes an enforcing tagset usable on a GLOSS field at all.
  * Every morpheme has its own cell, so a stem's cell holds `dog` — a gloss that
- * is not a grammatical tag and never will be. Without it, closing a gloss
- * tagset rejects every stem in the project. It stays opt-in because part of
- * speech tags are frequently lowercase themselves (n, v, adj), and turning it
- * on there would quietly stop enforcing anything.
+ * is not a grammatical tag and never will be. Under `closed` that rejects every
+ * stem in the project. `mixed` is its own mode rather than the default because
+ * part of speech tags are frequently lowercase themselves (n, v, adj), and a
+ * POS tagset in mixed mode would quietly stop enforcing anything.
  */
 export const validateValue = (value, tagset) => {
   if (!tagset) return [];
@@ -248,9 +261,9 @@ export const validateValue = (value, tagset) => {
     const text = p.text.trim();
     if (!text) out.push({ part: p.text, begin: p.begin, end: p.end, reason: 'empty' });
     else if (
-      tagset.closed &&
+      tagset.mode !== MODES.SUGGEST &&
       !tagsetHas(tagset, text) &&
-      !(tagset.allowLexical && isLexicalPart(text))
+      !(tagset.mode === MODES.MIXED && isLexicalPart(text))
     )
       out.push({ part: text, begin: p.begin, end: p.end, reason: 'unknown' });
   }
@@ -259,6 +272,14 @@ export const validateValue = (value, tagset) => {
 
 /** May this value be written to a cell governed by `tagset`? */
 export const isValueAllowed = (value, tagset) => validateValue(value, tagset).length === 0;
+
+/**
+ * Does this tagset REFUSE a value, or only suggest one? The question every
+ * write path asks before rejecting. Distinct from isValueAllowed because a
+ * suggesting tagset still reports a stray delimiter — worth flagging in the
+ * cell, never worth refusing a save over.
+ */
+export const tagsetEnforces = (tagset) => !!tagset && tagset.mode !== MODES.SUGGEST;
 
 // --- inventory: seeding and violations -------------------------------------
 
@@ -281,7 +302,7 @@ export const offTagsetParts = (attested, tagset) => {
       if (!text || tagsetHas(tagset, text)) continue;
       // A lexical gloss is not a tag. Seeding `dog` into a Leipzig tagset would
       // turn a grammatical inventory into a word list.
-      if (tagset.allowLexical && isLexicalPart(text)) continue;
+      if (tagset.mode === MODES.MIXED && isLexicalPart(text)) continue;
       counts.set(text, (counts.get(text) || 0) + (n || 0));
     }
   }

@@ -31,7 +31,7 @@ import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { normalizeVocabFields, humanizeFieldName } from '@/domain/vocabFields';
 import { readVocabFields } from '@/domain/igtConfig';
-import { isValueAllowed, readTagsetName, resolveTagset } from '@/domain/tagsets';
+import { isValueAllowed, readTagsetName, resolveTagset, tagsetEnforces } from '@/domain/tagsets';
 import { MATCH_TYPES, searchDomains } from '../search/searchQueries.js';
 import { MarkedText } from '../search/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
@@ -543,8 +543,8 @@ const RespellPanel = ({ project, projectId, client, layerInfo }) => {
 
 // The tagset governing a replace target, or null. Only annotation fields have
 // one: a morpheme form is a form, not an annotation. A bulk replace is a write
-// like any other, so a closed tagset has to bite here too — otherwise "closed"
-// is bypassable from inside the app that enforces it.
+// like any other, so an enforcing tagset has to bite here too — otherwise the
+// rule is bypassable from inside the app that enforces it.
 const tagsetForTarget = (target, layerInfo, project) => {
   if (!target || target.kind !== 'span') return null;
   const layer = (layerInfo?.spanLayers?.[target.scope] || []).find((l) => l.id === target.layerId);
@@ -593,11 +593,11 @@ const FieldPanel = ({ project, projectId, client, layerInfo }) => {
       { reset: true },
     );
     if (!plan) return;
-    // A closed tagset refuses the values this replace would produce. Flag those
+    // An enforcing tagset refuses the values this replace would produce. Flag
     // rows and leave them unticked rather than blocking the whole preview: the
     // rest of the replace is usually fine, and seeing WHICH values are refused
     // is how you decide whether to fix the replacement or the tagset.
-    const rows = tagset?.closed
+    const rows = tagsetEnforces(tagset)
       ? plan.rows.map((x) => (isValueAllowed(x.new, tagset) ? x : { ...x, invalid: true }))
       : plan.rows;
     r.setPlan({ ...plan, rows, find, repl, target, tagset });

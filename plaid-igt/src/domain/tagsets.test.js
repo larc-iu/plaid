@@ -22,7 +22,7 @@ import {
 
 const leipzig = {
   delimiters: '.:>',
-  closed: true,
+  mode: 'closed',
   values: [
     { value: 'NOM', description: 'nominative' },
     { value: '1SG', description: '1st person singular', color: '#a33' },
@@ -50,9 +50,10 @@ describe('normalizeTagset', () => {
     expect(t.values).toEqual([{ value: 'NOM' }]);
   });
 
-  it('only treats closed === true as closed', () => {
-    expect(normalizeTagset({ closed: 'yes' }).closed).toBe(false);
-    expect(normalizeTagset({ closed: true }).closed).toBe(true);
+  it('falls back to suggest for an unrecognised mode', () => {
+    expect(normalizeTagset({ mode: 'strict' }).mode).toBe('suggest');
+    expect(normalizeTagset({ mode: 'closed' }).mode).toBe('closed');
+    expect(normalizeTagset({ mode: 'mixed' }).mode).toBe('mixed');
   });
 });
 
@@ -71,7 +72,7 @@ describe('reading config', () => {
 
   it('resolves a field to its tagset', () => {
     const t = resolveTagset({ igt: { tagset: 'Leipzig' } }, projectConfig);
-    expect(t.closed).toBe(true);
+    expect(t.mode).toBe('closed');
     expect(t.values).toHaveLength(3);
   });
 
@@ -194,13 +195,13 @@ describe('validateValue', () => {
   });
 
   it('an OPEN tagset allows new values but still flags a stray delimiter', () => {
-    const open = { ...leipzig, closed: false };
+    const open = { ...leipzig, mode: 'suggest' };
     expect(validateValue('1SG.ABL', open)).toEqual([]);
     expect(validateValue('1SG.', open).map((x) => x.reason)).toEqual(['empty']);
   });
 
   it('governs the whole cell when no delimiters are configured', () => {
-    const whole = { delimiters: '', closed: true, values: [{ value: '1SG.NOM' }] };
+    const whole = { delimiters: '', mode: 'closed', values: [{ value: '1SG.NOM' }] };
     expect(isValueAllowed('1SG.NOM', whole)).toBe(true);
     expect(isValueAllowed('1SG', whole)).toBe(false);
   });
@@ -238,7 +239,7 @@ describe('offTagsetParts / seedValueRecords', () => {
   });
 
   it('finds every attested value when the tagset is empty, which is the seed case', () => {
-    const fresh = { delimiters: '.', closed: false, values: [] };
+    const fresh = { delimiters: '.', mode: 'suggest', values: [] };
     // 1SG pools 10+4, NOM 10, ERG 7, ABL 4+1.
     expect(seedValueRecords(attested, fresh).map((r) => r.value)).toEqual([
       '1SG',
@@ -278,17 +279,16 @@ describe('offTagsetValues', () => {
   });
 
   it('an OPEN tagset only fails on a stray delimiter', () => {
-    const open = { ...leipzig, closed: false };
+    const open = { ...leipzig, mode: 'suggest' };
     expect(offTagsetValues(attested, open).map((r) => r.value)).toEqual(['1SG.']);
   });
 });
 
-describe('allowLexical', () => {
+describe("mode 'mixed'", () => {
   // A Leipzig gloss tagset: grammatical tags listed, lexical glosses let through.
   const gloss = {
     delimiters: '.',
-    closed: true,
-    allowLexical: true,
+    mode: 'mixed',
     values: [{ value: 'PL' }, { value: '1SG' }],
   };
 
@@ -313,17 +313,17 @@ describe('allowLexical', () => {
     expect(isValueAllowed('I', { ...gloss, values: [...gloss.values, { value: 'I' }] })).toBe(true);
   });
 
-  it('is off by default, so a lowercase POS tagset still enforces', () => {
-    // n / v / adj are lowercase tags. If this defaulted on, a closed POS tagset
-    // would accept literally anything.
-    const pos = { delimiters: '', closed: true, allowLexical: false, values: [{ value: 'n' }] };
-    expect(normalizeTagset({ closed: true }).allowLexical).toBe(false);
+  it('is its own mode, so a lowercase POS tagset can still be strictly closed', () => {
+    // n / v / adj are lowercase tags. If mixed were the default, a closed POS
+    // tagset would accept literally anything.
+    const pos = { delimiters: '', mode: 'closed', values: [{ value: 'n' }] };
+    expect(normalizeTagset({}).mode).toBe('suggest');
     expect(isValueAllowed('n', pos)).toBe(true);
     expect(isValueAllowed('banana', pos)).toBe(false);
   });
 
-  it('does nothing on an open tagset, which already allows everything', () => {
-    const open = { ...gloss, closed: false };
+  it('is moot under suggest, which already allows everything', () => {
+    const open = { ...gloss, mode: 'suggest' };
     expect(isValueAllowed('ERG', open)).toBe(true);
   });
 

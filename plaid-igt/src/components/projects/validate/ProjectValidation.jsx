@@ -36,6 +36,8 @@ const SCOPE_CLS = {
 // contains, so "." means "has at least one character".
 const ANY_VALUE = { regex: '.' };
 
+const MODE_LABELS = { suggest: 'suggested', closed: 'closed', mixed: 'closed + lexical' };
+
 const reasonText = (violations) => {
   const unknown = violations.filter((v) => v.reason === 'unknown').map((v) => v.part);
   if (unknown.length) return `${unknown.map((u) => `"${u}"`).join(', ')} not in the tagset`;
@@ -174,8 +176,8 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <p className="text-sm text-muted-foreground">
-          Checks every value against its field's tagset. A closed tagset is enforced when you type
-          and when you bulk edit, but imports, services and the assistant write straight to the
+          Checks every value against its field's tagset. An enforcing tagset is applied when you
+          type and when you bulk edit, but imports, services and the assistant write straight to the
           layer, so this is where those show up.
         </p>
         <Button variant="outline" className="ml-auto shrink-0" onClick={scan} disabled={busy}>
@@ -199,8 +201,8 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             </Badge>
             <span className="font-medium">{g.field}</span>
             <span className="text-xs text-muted-foreground">
-              {g.tagsetName} · {g.tagset.closed ? 'closed' : 'open'} · {g.attested.length} distinct
-              value{g.attested.length === 1 ? '' : 's'}
+              {g.tagsetName} · {MODE_LABELS[g.tagset.mode]} · {g.attested.length} distinct value
+              {g.attested.length === 1 ? '' : 's'}
             </span>
             {g.bad.length > 0 ? (
               <span className="ml-auto flex items-center gap-1.5 text-sm font-medium text-destructive">
