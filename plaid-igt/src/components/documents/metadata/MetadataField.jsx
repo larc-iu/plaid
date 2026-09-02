@@ -8,7 +8,13 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { MODES, isValueAllowed, tagsetEnforces, validateValue } from '@/domain/tagsets';
+import {
+  MODES,
+  isValueAllowed,
+  sortedValues,
+  tagsetEnforces,
+  validateValue,
+} from '@/domain/tagsets';
 
 // One document-metadata input, governed by its field's tagset if it has one.
 //
@@ -54,7 +60,7 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={UNSET}>Not set</SelectItem>
-          {tagset.values.map((t) => (
+          {sortedValues(tagset).map((t) => (
             <SelectItem key={t.value} value={t.value}>
               {t.value}
               {t.description ? (
@@ -94,7 +100,7 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
       />
       {tagset && (
         <datalist id={listId}>
-          {tagset.values.map((t) => (
+          {sortedValues(tagset).map((t) => (
             <option key={t.value} value={t.value}>
               {t.description ?? ''}
             </option>

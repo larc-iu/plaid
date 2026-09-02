@@ -354,6 +354,23 @@ export const tagsetRecord = (tagset, part) => {
 };
 
 /**
+ * The order a person expects to read a list of abbreviations in: alphabetical
+ * without regard to case, and with numbers in numeric order (1SG, 2SG, 3PL,
+ * ABL, dog, NOM). Two values that differ only in case still get a fixed order.
+ */
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+export const compareValues = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * A tagset's values in reading order, for DISPLAY: the settings table and the
+ * metadata form's dropdown. The stored order is the order values were added,
+ * which nothing shows and nothing depends on, so it is left alone. The
+ * editor's picker ranks by use instead and never sees this.
+ */
+export const sortedValues = (tagset) =>
+  [...(tagset?.values || [])].sort((x, y) => compareValues(x.value, y.value));
+
+/**
  * Everything wrong with `value` under `tagset`, as
  * [{ part, begin, end, reason }] with reason 'empty' | 'unknown'.
  *

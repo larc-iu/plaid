@@ -271,6 +271,23 @@ describe('TagsetsManager', () => {
           .click(),
       );
 
+    it('jumps to the page a newly added value lands on', async () => {
+      // Reading order puts V50.5 right after V50, on the third page; without
+      // the jump it was added out of sight on whatever page was showing.
+      const { container, step, unmount } = await renderBig();
+      await expandFirst(container, step);
+      const add = all(container, 'input').find((i) => i.placeholder === 'Add a value');
+      await step(async () => typeInto(add, 'V50.5'));
+      await step(async () =>
+        all(container, 'button')
+          .find((b) => b.textContent.trim() === 'Add')
+          .click(),
+      );
+      expect(rowValues(container)).toContain('V50.5');
+      expect(rowValues(container)[0]).toBe(`V${VALUE_PAGE_SIZE * 2}`);
+      await unmount();
+    });
+
     it('shows one page at a time instead of every value', async () => {
       const { container, step, unmount } = await renderBig();
       await expandFirst(container, step);
@@ -485,6 +502,38 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     await unmount();
   });
 
+  it('shows the values in reading order, whatever order they were added in', async () => {
+    const jumbled = {
+      Leipzig: {
+        delimiters: '.',
+        mode: 'closed',
+        values: ['PL', 'ABL', '2SG', '1SG', 'dog'].map((value) => ({ value })),
+      },
+    };
+    const { container, step, unmount } = await mountWith({ tagsets: jumbled });
+    await expandFirst(container, step);
+    expect(rowInputs(container).map((i) => i.value)).toEqual(['1SG', '2SG', 'ABL', 'dog', 'PL']);
+    await unmount();
+  });
+
+  it('edits the record the row shows, not the one at the same position in storage', async () => {
+    // Sorted display, stored order underneath: removing the first ROW must
+    // remove 1SG, which is stored last.
+    const onSaveChanges = vi.fn();
+    const jumbled = {
+      Leipzig: {
+        delimiters: '',
+        mode: 'closed',
+        values: ['PL', '1SG'].map((value) => ({ value })),
+      },
+    };
+    const { container, step, unmount } = await mountWith({ tagsets: jumbled, onSaveChanges });
+    await expandFirst(container, step);
+    await step(async () => all(container, 'button[title="Remove value"]')[0].click());
+    expect(savedValues(onSaveChanges)).toEqual(['PL']);
+    await unmount();
+  });
+
   it('keeps each row showing its own value after the row above it is removed', async () => {
     // The row inputs are uncontrolled. Keyed by position, a removal handed
     // row 1's DOM node (text and all) to the record that slid into slot 1.
@@ -515,11 +564,12 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     };
     const { container, step, unmount } = await mountWith({ tagsets: two, onSaveChanges });
     await expandFirst(container, step);
-    const first = rowInputs(container)[0];
-    await step(async () => blurWith(first, 'NOM'));
+    // Rows read in alphabetical order, so find PL by value, not position.
+    const pl = rowInputs(container).find((i) => i.value === 'PL');
+    await step(async () => blurWith(pl, 'NOM'));
     expect(onSaveChanges).not.toHaveBeenCalled();
     expect(notifyError).toHaveBeenCalledWith(expect.stringContaining('NOM'), 'Duplicate Value');
-    expect(first.value).toBe('PL');
+    expect(pl.value).toBe('PL');
     await unmount();
   });
 });

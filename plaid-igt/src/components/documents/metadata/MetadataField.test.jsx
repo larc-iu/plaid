@@ -78,6 +78,19 @@ describe('a stored value the tagset no longer allows', () => {
   });
 });
 
+describe('the order of the list', () => {
+  it('is alphabetical in the datalist, whatever order the values were added in', async () => {
+    const open = {
+      delimiters: '',
+      mode: 'suggest',
+      values: [{ value: 'Song' }, { value: 'Narrative' }],
+    };
+    const { container, unmount } = await render({ tagset: open });
+    expect(all(container, 'datalist option').map((o) => o.value)).toEqual(['Narrative', 'Song']);
+    await unmount();
+  });
+});
+
 describe('metadataIsValid', () => {
   const fields = [{ name: 'Genre', tagset: 'G' }, { name: 'Note' }];
   const tagsetFor = (f) => (f.tagset ? closed : null);

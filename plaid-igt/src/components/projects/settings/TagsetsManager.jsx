@@ -13,8 +13,10 @@ import {
   MODES,
   RESERVED_VALUE_KEYS,
   TAGSET_MODES,
+  compareValues,
   missingAffixDelimiters,
   scanValue,
+  sortedValues,
   stripSpace,
   unreachableValues,
   seedCandidates,
@@ -162,7 +164,16 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
       );
       return 0;
     }
-    await patch(name, { values: [...t.values, ...fresh] });
+    const values = [...t.values, ...fresh];
+    await patch(name, { values });
+    // The table reads in alphabetical order, so one added value lands
+    // somewhere in the middle: show the page it landed on rather than leaving
+    // it out of sight.
+    if (fresh.length === 1) {
+      const at = sortedValues({ values }).findIndex((v) => v.value === fresh[0].value);
+      setValueQuery('');
+      setValuePage(Math.floor(at / VALUE_PAGE_SIZE));
+    }
     return fresh.length;
   };
 
@@ -427,7 +438,10 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                             String(rec.description ?? '')
                               .toLowerCase()
                               .includes(q),
-                        );
+                        )
+                        // Reading order. `i` still indexes the stored list,
+                        // which is what the row's edits are applied to.
+                        .sort((a, b) => compareValues(a.rec.value, b.rec.value));
                       const paged = pageSlice(matched, valuePage, VALUE_PAGE_SIZE);
                       return (
                         <>

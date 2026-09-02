@@ -15,6 +15,7 @@ import {
   replacePartAtCaret,
   tagsetHas,
   tagsetRecord,
+  sortedValues,
   validateValue,
   isValueAllowed,
   isLexicalPart,
@@ -222,6 +223,24 @@ describe('partAtCaret / replacePartAtCaret', () => {
 
   it('replaces the whole value when nothing is there yet', () => {
     expect(replacePartAtCaret('', 0, '.', 'NOM')).toEqual({ value: 'NOM', caret: 3 });
+  });
+});
+
+describe('sortedValues', () => {
+  it('reads like a list of abbreviations: numbers in order, case ignored', () => {
+    const t = { values: ['dog', 'NOM', '2SG', '10', '1SG', 'ABL'].map((value) => ({ value })) };
+    expect(sortedValues(t).map((v) => v.value)).toEqual(['1SG', '2SG', '10', 'ABL', 'dog', 'NOM']);
+  });
+
+  it('gives two values differing only in case a fixed order', () => {
+    const t = { values: [{ value: 'nom' }, { value: 'NOM' }] };
+    expect(sortedValues(t).map((v) => v.value)).toEqual(['NOM', 'nom']);
+  });
+
+  it('leaves the stored order alone', () => {
+    const t = { values: [{ value: 'PL' }, { value: 'ABL' }] };
+    sortedValues(t);
+    expect(t.values.map((v) => v.value)).toEqual(['PL', 'ABL']);
   });
 });
 
