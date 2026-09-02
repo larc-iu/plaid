@@ -1686,9 +1686,9 @@ export class IgtEditor {
       // field is as controllable as a POS). Same picker, same flagging: only
       // the control differs, because a Translation still has to wrap.
       return html`<textarea
-        class="igt-field igt-field--sentence ${filled
-          ? 'igt-field--filled'
-          : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
+        class="igt-field igt-field--sentence ${
+          filled ? 'igt-field--filled' : 'igt-field--empty'
+        } ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
           'igt-field',
           ps,
         )} ${extraClass}"
@@ -1698,12 +1698,18 @@ export class IgtEditor {
         data-confirm-sentence=${confirmSentence ?? nothing}
         data-field-name=${fieldName ?? nothing}
         aria-label=${ariaLabel ?? nothing}
-        title=${violations.length
-          ? this._violationText(violations, tagset)
-          : ps
-            ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is`
-            : nothing}
+        title=${
+          violations.length
+            ? this._violationText(violations, tagset)
+            : ps
+              ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is`
+              : nothing
+        }
         rows="1"
+        // Sentence fields are prose and keep the browser's spellchecker, unless
+        // a tagset governs them, in which case its squiggle would be
+        // indistinguishable from the validation one.
+        spellcheck=${tagset ? 'false' : 'true'}
         ?disabled=${this.readOnly}
         .igtAlts=${alternatives || null}
         ${uncontrolledValue(v)}
@@ -3092,6 +3098,7 @@ export class IgtEditor {
               aria-label=${`Morpheme form${value ? ` ${value}` : ''}`}
               title=${prov ? provTitle(value, prov) : filled ? value : nothing}
               size=${this._fieldSize(value)}
+              spellcheck="false"
               ?disabled=${this.readOnly}
               ${uncontrolledValue(value)}
               @focus=${this._onMorphFormFocus}
