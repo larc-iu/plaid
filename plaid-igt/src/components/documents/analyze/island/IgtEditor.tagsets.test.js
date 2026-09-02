@@ -364,3 +364,197 @@ describe('commit', () => {
     expect(spy).toHaveBeenCalled();
   });
 });
+
+// Two morphemes sharing one form, glossed differently, so the form's ranked
+// list does NOT start with the cell's own value. With unique forms (the
+// fixture's default) every cell tops its own list, and a wrong pick is
+// invisible because it picks the value already there.
+const twoSharingAForm = async (doc, g0, g1) => {
+  const ids = [...host.querySelectorAll('input[data-cell-key^="ma:"]')].map(
+    (c) => c.dataset.cellKey.split(':')[1],
+  );
+  await doc.updateMorphemeForm(ids[0], 'xx');
+  await doc.updateMorphemeForm(ids[1], 'xx');
+  await doc.updateMorphemeSpan(ids[0], 'Gloss', g0, null);
+  await doc.updateMorphemeSpan(ids[1], 'Gloss', g1, null);
+  await flush();
+};
+const key = (el, k) =>
+  el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+describe('Enter on an untouched governed cell', () => {
+  // The list opens on focus, so Enter reaches the picker on every plain
+  // "commit and move on". On an enforcing tagset it used to take the top row,
+  // which is the form's most frequent gloss — not this cell's value.
+  it('keeps the stored value rather than taking the top of the list', async () => {
+    const doc = mount({ ...LEIPZIG, delimiters: '' });
+    await twoSharingAForm(doc, 'PL', 'NOM');
+    const cell = glossCell();
+    expect(cell.value).toBe('PL');
+    focus(cell);
+    expect(editor._alts.visible[0].value).not.toBe('PL');
+    key(cell, 'Enter');
+    await flush();
+    expect(glossCell().value).toBe('PL');
+  });
+
+  it('keeps a composite value whole in part mode', async () => {
+    // Focus select-alls, so the caret sits at 0 and the "part under the caret"
+    // is the FIRST part: 1SG.NOM became ABL.NOM.
+    const doc = mount({ ...LEIPZIG, values: [...LEIPZIG.values, { value: 'ABL' }] });
+    await twoSharingAForm(doc, '1SG.NOM', 'ABL.ABL');
+    const cell = glossCell();
+    focus(cell);
+    key(cell, 'Enter');
+    await flush();
+    expect(glossCell().value).toBe('1SG.NOM');
+  });
+
+  it('moves on to the next cell, as Enter does everywhere else', async () => {
+    const doc = mount({ ...LEIPZIG, delimiters: '' });
+    await twoSharingAForm(doc, 'PL', 'PL');
+    const cell = glossCell();
+    focus(cell);
+    key(cell, 'Enter');
+    await flush();
+    expect(document.activeElement).not.toBe(glossCell());
+  });
+});
+
+describe('a pick from the keyboard', () => {
+  it('commits and moves on in whole-value mode', async () => {
+    const doc = mount({ ...LEIPZIG, delimiters: '' });
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan').mockResolvedValue(true);
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'N');
+    key(cell, 'Enter');
+    await flush();
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][2]).toBe('NOM');
+    expect(document.activeElement).not.toBe(glossCell());
+  });
+
+  it('stays in the cell in part mode, and the NEXT Enter commits', async () => {
+    const doc = mount();
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan').mockResolvedValue(true);
+    const cell = glossCell();
+    focus(cell);
+    type(cell, '1SG.NO');
+    key(cell, 'Enter');
+    expect(cell.value).toBe('1SG.NOM');
+    expect(spy).not.toHaveBeenCalled();
+    expect(altsList()).toBeNull();
+    key(cell, 'Enter');
+    await flush();
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][2]).toBe('1SG.NOM');
+  });
+
+  it('typing the next delimiter reopens the list for the next part', async () => {
+    mount();
+    const cell = glossCell();
+    focus(cell);
+    type(cell, '1S');
+    key(cell, 'Enter');
+    expect(cell.value).toBe('1SG');
+    expect(altsList()).toBeNull();
+    type(cell, '1SG.');
+    expect(altsList()).not.toBeNull();
+  });
+
+  it('a typed part that is already legal is committed, not re-picked', async () => {
+    const doc = mount();
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan').mockResolvedValue(true);
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'NOM');
+    key(cell, 'Enter');
+    await flush();
+    expect(spy).toHaveBeenCalled();
+  });
+});
+
+describe('a pick with the mouse', () => {
+  it('does not reopen the list over the value just chosen', async () => {
+    mount({ ...LEIPZIG, delimiters: '' });
+    const cell = glossCell();
+    focus(cell);
+    expect(altsList()).not.toBeNull();
+    editor._pickAlt(cell, { value: 'PL', source: 'tagset' });
+    await flush();
+    expect(altsList()).toBeNull();
+  });
+});
+
+describe('after a refusal', () => {
+  it('Escape puts the SAVED value back, not the refused one', async () => {
+    const doc = mount();
+    const cell0 = glossCell();
+    const morphId = cell0.dataset.cellKey.split(':')[1];
+    await doc.updateMorphemeSpan(morphId, 'Gloss', 'PL', null);
+    await flush();
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'ABL');
+    await blur(cell);
+    await flush(); // the refocus microtask
+    expect(cell.value).toBe('ABL');
+    expect(cell.dataset.orig).toBe('PL');
+    key(cell, 'Escape');
+    expect(cell.value).toBe('PL');
+  });
+
+  it('a corrected value commits', async () => {
+    const doc = mount();
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan').mockResolvedValue(true);
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'ABL');
+    await blur(cell);
+    await flush();
+    expect(spy).not.toHaveBeenCalled();
+    type(cell, 'PL');
+    await blur(cell);
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][2]).toBe('PL');
+  });
+
+  it('leaving again with the same refused text is refused again, not silently dropped', async () => {
+    const doc = mount();
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan').mockResolvedValue(true);
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'ABL');
+    await blur(cell);
+    await flush();
+    await blur(cell);
+    expect(spy).not.toHaveBeenCalled();
+    expect(cell.classList.contains('igt-field--invalid')).toBe(true);
+  });
+});
+
+describe('a governed sentence field', () => {
+  it('carries the enforces flag like a grid cell', () => {
+    const raw = buildRawDoc();
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const sentenceLayer = raw.textLayers[0].tokenLayers
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.id === 'ssl-0');
+    sentenceLayer.config.igt.tagset = 'Leipzig';
+    const doc = new IgtDocument({
+      raw,
+      project: projectWith({ ...LEIPZIG, delimiters: '' }),
+      vocabularies: {},
+      client,
+      projectId: 'proj-1',
+    });
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    editor = new IgtEditor(host, doc, {});
+    const ta = host.querySelector('textarea[data-has-tagset]');
+    expect(ta).not.toBeNull();
+    expect(ta.dataset.tagsetEnforces).toBe('1');
+  });
+});

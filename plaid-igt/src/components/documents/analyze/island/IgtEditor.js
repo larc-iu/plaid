@@ -863,7 +863,12 @@ export class IgtEditor {
     // be discovered leaves a closed field looking broken until you guess the
     // chord. Cells without one keep the Alt+Down affordance, since their list
     // is a suggestion rather than the rules.
-    if (e.target.dataset.hasTagset) this._openAlts(e.target);
+    //
+    // Except right after a mouse pick, which refocuses the same cell: the user
+    // just chose from the list, and reopening it over the value they chose
+    // reads as the pick not having taken.
+    if (e.target.dataset.hasTagset && !this._skipAltsOnFocus) this._openAlts(e.target);
+    this._skipAltsOnFocus = false;
   };
 
   // Morpheme form fields must NOT select-all on focus: the split handler reads
@@ -877,13 +882,33 @@ export class IgtEditor {
     const filled = e.target.value !== '';
     e.target.classList.toggle('igt-field--filled', filled);
     e.target.classList.toggle('igt-field--empty', !filled);
-    // Typing while the alternatives list is open narrows it by prefix.
-    if (this._alts && this._alts.cellKey === e.target.dataset.cellKey) {
+    // Typing while the alternatives list is open narrows it by prefix. On a
+    // governed cell typing also REOPENS a closed list: a part-mode pick closes
+    // it, and the next keystroke is usually the delimiter that starts the next
+    // part, which wants the list back without an Alt+Down. Only a person's
+    // keystroke does this — the input events the editor fires itself after a
+    // pick or a guess adoption (see _syncInput) must not reopen what the pick
+    // just closed.
+    const key = e.target.dataset.cellKey;
+    const synthetic = this._syntheticInput;
+    this._syntheticInput = false;
+    const open = !!this._alts && this._alts.cellKey === key;
+    if (!synthetic && !open && e.target.dataset.hasTagset) this._openAlts(e.target);
+    if (this._alts && this._alts.cellKey === key) {
       this._alts.filter = this._filterTextFor(e.target);
       this._alts.active = 0;
       this._renderAlts();
     }
   };
+
+  // Fire an input event for a value the editor set itself, so the cell's
+  // filled/empty classes and the open list catch up, without it counting as
+  // typing (see _onFieldInput).
+  _syncInput(el) {
+    this._syntheticInput = true;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    this._syntheticInput = false;
+  }
 
   // What an open list filters on: the whole cell, or — when the field's tagset
   // splits composite values — just the part the caret is in, since that is the
@@ -957,40 +982,39 @@ export class IgtEditor {
       return true;
     }
     if (e.key === 'Enter') {
-      // The picker auto-opens on a governed cell, so it must not swallow Enter
-      // in the two cases where the user plainly means "commit what I typed":
+      // Whose key is this, the list's or the cell's? The list opens on focus
+      // for a governed cell, so Enter arrives here on every plain "commit and
+      // move on" too, and those have to be handed back. The list keeps Enter
+      // only when taking the highlighted row is plainly what the user wants:
       //
-      //   nothing matches   — the list has no opinion, so closing it and
-      //                       eating the keystroke just costs a second Enter.
-      //   nothing steered   — on a SUGGESTING tagset the typed text is a legal
-      //                       new value, and taking the highlighted row instead
-      //                       would silently turn "N" into "NOM".
+      //   steered      they arrowed to a row. Theirs, whatever the mode.
+      //   completing   on an ENFORCING tagset they typed a prefix that is not
+      //                itself a legal value, and a row matches it. The prefix
+      //                cannot be committed, so the row is what they can have.
       //
-      // An enforcing tagset keeps the pick either way: the typed prefix is not
-      // a legal value there, so the row is what the user can actually have.
+      // Everything else falls through to the ordinary Enter: nothing typed
+      // (an untouched cell — Enter there once replaced a stored PL with the
+      // form's most frequent gloss, and in part mode the first part of
+      // 1SG.NOM, since focus select-all leaves the caret at 0), a suggesting
+      // tagset (the typed text is a legal new value), a typed part that is
+      // already legal (NOM typed out in full), or a pick that would not
+      // change the value.
+      const it = items.length ? items[this._alts.active] : null;
+      const typed = this._alts.filter || '';
       const enforcing = el.dataset.tagsetEnforces === '1';
-      if (!items.length || (!this._alts.steered && !enforcing)) {
-        this._closeAlts();
-        return false; // fall through to the normal commit path
-      }
-      const it = items[this._alts.active];
-      // Picking a value the cell ALREADY holds changes nothing, and in part
-      // mode a pick deliberately does not commit — so claiming Enter for it
-      // swallowed the keystroke entirely and the value needed a second Enter.
-      // Typing a legal value out in full is the ordinary way to fill a closed
-      // field, so this is the common case, not an edge one.
       const delims = el.dataset.tagsetDelims || '';
       const would = it
         ? delims
           ? replacePartAtCaret(el.value, el.selectionStart, delims, it.value).value
           : it.value
         : null;
-      if (!it || would === el.value) {
+      const completing = typed !== '' && enforcing && !isValueAllowed(typed, el.igtTagset ?? null);
+      if (!it || would === el.value || !(this._alts.steered || completing)) {
         this._closeAlts();
         return false; // fall through to the normal commit path
       }
       e.preventDefault();
-      this._pickAlt(el, it);
+      this._pickAlt(el, it, { advance: true });
       return true;
     }
     if (e.key === 'Escape') {
@@ -1002,9 +1026,13 @@ export class IgtEditor {
     return false;
   }
 
-  _pickAlt(el, item) {
+  _pickAlt(el, item, { advance = false } = {}) {
     this._alts = null;
     this._altsPos = null;
+    // Redraw the (now empty) list here, not downstream: the blur that follows
+    // a whole-value pick finds the state already cleared and closes nothing,
+    // which left the old rows on screen once the refocus stopped redrawing.
+    this._renderAlts();
     const delims = el.dataset.tagsetDelims || '';
     if (delims) {
       // Part mode: the pick replaces only the part the caret is in, so
@@ -1031,19 +1059,30 @@ export class IgtEditor {
       el.dataset.guessSource = item.source;
       el.dataset.guessConfirmed = '1';
     }
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+    this._syncInput(el);
     // Part mode keeps the caret in the cell: the value is mid-construction and
     // a blur-commit here would write a half-finished gloss and lose the caret.
-    // Whole-value mode commits as before.
+    // The next Enter commits it (the list is closed now, so Enter is the
+    // cell's again), and typing the next delimiter reopens the list.
     if (delims) {
-      this._renderAlts();
       el.focus();
+      return;
+    }
+    // Whole-value mode commits. From the keyboard it also MOVES ON, exactly as
+    // Enter on a typed value does: the row was the answer for this cell, and
+    // the next cell is where the work is. A mouse pick stays put, but without
+    // reopening the list over the value that was just chosen.
+    if (advance) {
+      if (!this._navMove(el, 'next')) el.blur();
       return;
     }
     const key = el.dataset.cellKey;
     el.blur(); // commits via _commitField (born-verified) and re-renders
     const same = this.container.querySelector(`[data-cell-key="${key}"]`);
-    if (same) same.focus();
+    if (same) {
+      this._skipAltsOnFocus = true;
+      same.focus();
+    }
   }
 
   _pickAltByKey(cellKey, item) {
@@ -1131,7 +1170,7 @@ export class IgtEditor {
     if (el.value === '' && el.dataset.guessValue) {
       el.value = el.dataset.guessValue;
       el.dataset.guessConfirmed = '1';
-      el.dispatchEvent(new Event('input', { bubbles: true }));
+      this._syncInput(el);
     }
   }
 
@@ -1622,19 +1661,29 @@ export class IgtEditor {
       next !== (el.dataset.orig ?? '') &&
       !isValueAllowed(next, tagset)
     ) {
-      notifyError(this._violationText(validateValue(next, tagset), tagset), 'Value not allowed');
+      notifyError(
+        `${this._violationText(validateValue(next, tagset), tagset)}. Escape puts the saved value back`,
+        'Value not allowed',
+      );
       // Nothing re-renders after a refusal, so mark the cell here. Without this
       // it keeps showing the typed value unsquiggled and unsaved, which reads
       // as committed until some unrelated render snaps it back. The class goes
       // away on the next render, when the stored value returns with it.
       el.classList.add('igt-field--invalid');
       // Refocusing synchronously inside a blur handler is unreliable, so hand
-      // it to a microtask. The focus handler restamps `orig` from the value
-      // that is still there, so blurring again without an edit re-reports
-      // nothing — one rejection per attempt, not per blur.
+      // it to a microtask. The focus handler restamps `orig` from whatever is
+      // in the cell, which is the refused text — so put the SAVED value back
+      // as `orig` afterwards. It is what Escape must revert to, and the
+      // yardstick a corrected value is measured against. (With the refused
+      // text as the baseline, every later Tab was a silent no-op that left an
+      // unsaved value on screen, and Escape "reverted" to the very value that
+      // had just been refused.) Leaving again with the same text is refused
+      // again, out loud: each attempt gets its answer.
+      const orig = el.dataset.orig ?? '';
       queueMicrotask(() => {
         el.focus();
         el.value = next;
+        el.dataset.orig = orig;
       });
       return;
     }
@@ -1713,6 +1762,7 @@ export class IgtEditor {
         data-cell-key=${key}
         data-has-tagset=${tagset ? '1' : nothing}
         data-tagset-delims=${tagset?.delimiters || nothing}
+        data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
         data-confirm-sentence=${confirmSentence ?? nothing}
         data-field-name=${fieldName ?? nothing}
         aria-label=${ariaLabel ?? nothing}
@@ -1725,6 +1775,7 @@ export class IgtEditor {
         spellcheck="false"
         ?disabled=${this.readOnly}
         .igtAlts=${alternatives || null}
+        .igtTagset=${tagset}
         ${uncontrolledValue(v)}
         @focus=${this._onFieldFocus}
         @input=${this._onSentenceInput}
@@ -1772,6 +1823,7 @@ export class IgtEditor {
       aria-label=${ariaLabel ?? nothing}
       title=${title}
       .igtAlts=${alternatives || null}
+      .igtTagset=${tagset}
       placeholder=${g ? g.value : nothing}
       size=${this._fieldSize(g ? g.value : v)}
       spellcheck="false"
