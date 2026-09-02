@@ -153,7 +153,7 @@ describe('what it offers to do about a violation', () => {
         <ProjectValidation project={bare} projectId="p-1" client={clientWith([])} />
       </MemoryRouter>,
     );
-    expect(container.textContent).toContain('No annotation field uses a tagset yet');
+    expect(container.textContent).toContain('No field uses a tagset yet');
     await unmount();
   });
 });

@@ -155,7 +155,7 @@ describe('TagsetsManager', () => {
     const { container, step, unmount } = await render({});
     await expandFirst(container, step);
     expect(seedButton(container).disabled).toBe(true);
-    expect(seedButton(container).title).toMatch(/No annotation field uses this tagset/);
+    expect(seedButton(container).title).toMatch(/Assign this tagset to a field first/);
     await unmount();
   });
 
@@ -348,7 +348,7 @@ describe('TagsetsManager: rename, seed and value rows', () => {
       { renamed: { from: 'Leipzig', to: 'Leipzig 2' } },
     );
     expect(notifyInfo).toHaveBeenCalledWith(
-      expect.stringContaining('now points at "Leipzig 2"'),
+      expect.stringContaining('now uses "Leipzig 2"'),
       'Tagset Renamed',
     );
     await unmount();
@@ -366,7 +366,7 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     await expandFirst(container, step);
     await step(async () => button(container, 'Add values used in this project').click());
     expect(onSaveChanges).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('1 tag and 2 values with a lowercase letter');
+    expect(container.textContent).toContain('1 tag and 2 lowercase values');
     expect(container.textContent).toContain('dog, run');
     await step(async () => button(container, 'Add 1 tag').click());
     expect(savedValues(onSaveChanges)).toEqual(['PL', 'PST']);
@@ -393,33 +393,8 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     const { container, step, unmount } = await mountWith({ onSaveChanges, onLoadAttested });
     await expandFirst(container, step);
     await step(async () => button(container, 'Add values used in this project').click());
-    expect(container.textContent).not.toContain('with a lowercase letter');
+    expect(container.textContent).not.toContain('lowercase value');
     expect(savedValues(onSaveChanges)).toEqual(['PL', '1SG', 'NOM']);
-    await unmount();
-  });
-
-  it('offers to drop the lowercase values a mixed tagset accepts anyway', async () => {
-    const onSaveChanges = vi.fn();
-    const mixed = {
-      Leipzig: {
-        delimiters: '.',
-        mode: 'mixed',
-        values: [{ value: 'PL' }, { value: 'dog' }, { value: 'run' }],
-      },
-    };
-    const { container, step, unmount } = await mountWith({ tagsets: mixed, onSaveChanges });
-    await expandFirst(container, step);
-    expect(container.textContent).toContain('2 listed values contain a lowercase letter');
-    await step(async () => button(container, 'Remove them').click());
-    expect(savedValues(onSaveChanges)).toEqual(['PL']);
-    await unmount();
-  });
-
-  it('says nothing about lowercase values outside mixed mode, where they do real work', async () => {
-    const pos = { Leipzig: { delimiters: '', mode: 'closed', values: [{ value: 'n' }] } };
-    const { container, step, unmount } = await mountWith({ tagsets: pos });
-    await expandFirst(container, step);
-    expect(container.textContent).not.toContain('contains a lowercase letter');
     await unmount();
   });
 

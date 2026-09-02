@@ -22,7 +22,6 @@ import {
   offTagsetValues,
   seedValueRecords,
   seedCandidates,
-  redundantLexicalValues,
   unreachableValues,
 } from './tagsets.js';
 
@@ -351,19 +350,6 @@ describe('seedCandidates', () => {
       tags: [],
       lexical: [{ value: 'n' }, { value: 'v' }],
     });
-  });
-});
-
-describe('redundantLexicalValues', () => {
-  it('lists the lowercase values a mixed tagset accepts without them', () => {
-    const t = { delimiters: '.', mode: 'mixed', values: [{ value: 'NOM' }, { value: 'dog' }] };
-    expect(redundantLexicalValues(t)).toEqual([{ value: 'dog' }]);
-  });
-
-  it('is empty in any other mode, where a listed lowercase value does real work', () => {
-    const pos = { delimiters: '', mode: 'closed', values: [{ value: 'n' }] };
-    expect(redundantLexicalValues(pos)).toEqual([]);
-    expect(redundantLexicalValues({ ...pos, mode: 'suggest' })).toEqual([]);
   });
 });
 

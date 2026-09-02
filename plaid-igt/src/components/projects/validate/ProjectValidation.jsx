@@ -187,8 +187,8 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   if (!governed.length) {
     return (
       <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-        No annotation field uses a tagset yet. Point a field at one in Settings → Annotation Fields,
-        and this tab will list any values in the project that fall outside it.
+        No field uses a tagset yet. Assign one under Settings → Annotation, and this tab will list
+        any values outside it.
       </div>
     );
   }
@@ -199,9 +199,9 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <p className="text-sm text-muted-foreground">
-          Checks every value against its field's tagset. An enforcing tagset is applied when you
-          type and when you bulk edit, but imports, services and the assistant write straight to the
-          layer, so this is where those show up.
+          Checks every value in the project against its field's tagset. Closed lists apply to what
+          you type and bulk edit, not to imports, services or the assistant, so their values show up
+          here.
         </p>
         <Button variant="outline" className="ml-auto shrink-0" onClick={scan} disabled={busy}>
           {busy ? 'Checking…' : 'Re-check'}

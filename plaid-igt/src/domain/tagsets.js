@@ -477,11 +477,3 @@ export const seedCandidates = (attested, tagset) => {
   }
   return { tags, lexical };
 };
-
-/**
- * The listed values a `mixed` tagset does not need: the ones it would accept
- * anyway for containing a lowercase letter. Empty in any other mode, where a
- * listed lowercase value is doing real work.
- */
-export const redundantLexicalValues = (tagset) =>
-  tagset?.mode === MODES.MIXED ? (tagset.values || []).filter((v) => isLexicalPart(v.value)) : [];

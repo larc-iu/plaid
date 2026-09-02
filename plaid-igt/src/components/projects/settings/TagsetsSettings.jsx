@@ -99,10 +99,9 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     <div>
       <h2 className="text-lg font-semibold">Tagsets</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Controlled vocabularies for annotation values. A tagset lists the tags an annotation field
-        may use, and any number of fields can share one. The same list usually governs Gloss at both
-        Word and Morpheme scope. Point a field at a tagset in Annotation Fields below. This is
-        unrelated to Vocabularies, which hold lexicon entries that words link to.
+        A tagset is the list of tags a field may use, such as Leipzig glossing abbreviations for
+        Gloss or a part of speech inventory. Assign it to a field under Annotation Fields below. The
+        lexicon is under Vocabularies, not here.
       </p>
 
       <TagsetsManager

@@ -15,7 +15,6 @@ import {
   scanValue,
   unreachableValues,
   seedCandidates,
-  redundantLexicalValues,
 } from '@/domain/tagsets';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
@@ -37,22 +36,22 @@ const SAMPLE = '1SG.NOM';
 export const PAGE_SIZE = 25;
 
 // How each mode presents itself. The help text is the whole explanation a user
-// gets, so it says what is accepted and when to pick it, not what it is called.
+// gets: what can be entered, and which kind of field it suits. Nothing else.
 const MODES_UI = {
   [MODES.SUGGEST]: {
     label: 'Suggested',
     badge: 'border-transparent bg-slate-100 text-slate-700',
-    help: 'Offer the list while annotating, but accept anything typed. Use this to nudge toward consistency without blocking new values.',
+    help: 'The list is offered while you annotate, but anything can be typed.',
   },
   [MODES.CLOSED]: {
     label: 'Closed',
     badge: 'border-transparent bg-amber-100 text-amber-800',
-    help: 'Accept only values in the list. Right for a fixed inventory like part of speech, where the tags themselves may be lowercase (n, v, adj).',
+    help: 'Only tags in the list can be entered. For a fixed inventory such as part of speech.',
   },
   [MODES.MIXED]: {
     label: 'Closed, plus lexical glosses',
     badge: 'border-transparent bg-indigo-100 text-indigo-800',
-    help: "Accept the list, plus any value containing a lowercase letter. Right for a gloss tagset: Leipzig writes grammatical glosses in capitals (NOM, 1SG) and lexical ones in lowercase (dog, run), and a stem's gloss will never be in a grammatical inventory. A capitalised gloss with no lowercase letter, like I, counts as grammatical, so add it to the list.",
+    help: 'Only tags in the list, plus lexical glosses: anything with a lowercase letter, like dog or run. For a Gloss field. A gloss with no lowercase letter, like I, has to be in the list.',
   },
 };
 
@@ -129,7 +128,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
     const fields = usage?.[from] || [];
     if (fields.length) {
       notifyInfo(
-        `${fields.length} field${fields.length === 1 ? '' : 's'} now point${fields.length === 1 ? 's' : ''} at "${name}"`,
+        `${fields.length} field${fields.length === 1 ? '' : 's'} now use${fields.length === 1 ? 's' : ''} "${name}"`,
         'Tagset Renamed',
       );
     }
@@ -232,8 +231,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
     <div className="flex flex-col gap-4">
       {names.length === 0 && (
         <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          No tagsets yet. Create one here, then point an annotation field at it in Annotation
-          Fields.
+          No tagsets yet. Add one, then assign it to a field under Annotation Fields.
         </p>
       )}
 
@@ -247,9 +245,6 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
         // A value holding one of its own delimiters is scanned as two parts and
         // can never match, so the list would hold something it rejects.
         const unreachable = unreachableValues(t);
-        // Under mixed, a listed lowercase value is accepted whether listed or
-        // not. Usually the residue of a seed taken before the mode was set.
-        const redundant = redundantLexicalValues(t);
         const missingAffix = missingAffixDelimiters(
           t,
           fields.some((f) => f.scope === 'word'),
@@ -330,9 +325,8 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                     </label>
                   ))}
                   <p className="max-w-2xl text-xs text-muted-foreground">
-                    Enforcement is a Plaid IGT rule, not a database constraint. Imports, services
-                    and the assistant can still write other values, and the Validation tab is where
-                    you find them.
+                    Closed lists apply to what you type. Values brought in by imports, services or
+                    the assistant are not checked; the Validation tab finds them.
                   </p>
                 </div>
 
@@ -340,9 +334,8 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                 <div className="flex max-w-2xl flex-col gap-1">
                   <p className="text-sm font-medium">Delimiters</p>
                   <p className="text-xs text-muted-foreground">
-                    Characters that separate the parts of a composite value, so each part is checked
-                    on its own. Leave empty to treat the whole cell as one value (right for a part
-                    of speech; wrong for a gloss like <code>1SG.NOM</code>).
+                    Characters that separate tags within one cell, so each tag is checked on its
+                    own. Leave empty if a cell holds a single tag, as for part of speech.
                   </p>
                   <Input
                     className="max-w-[12rem] font-mono"
@@ -361,16 +354,15 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                     <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                       <div>
-                        A Word-scope field uses this tagset, and word glosses are written with affix
-                        joiners like <span className="font-mono">dog-PL</span>. Without{' '}
+                        A Word field uses this tagset. Word glosses join tags with{' '}
                         {missingAffix.map((d) => (
                           <span key={d} className="font-mono">
                             {d}{' '}
                           </span>
                         ))}
-                        in the delimiters, that is checked as one value, and it passes on the
-                        lowercase in <span className="font-mono">dog</span> without{' '}
-                        <span className="font-mono">PL</span> ever being looked up.
+                        as in <span className="font-mono">dog-PL</span>, so add{' '}
+                        {missingAffix.length === 1 ? 'it as a delimiter' : 'them as delimiters'} or{' '}
+                        <span className="font-mono">PL</span> is never checked.
                         <Button
                           size="sm"
                           variant="outline"
@@ -410,38 +402,8 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                           </span>
                         ))}
                         {unreachable.length === 1 ? 'contains' : 'contain'} a delimiter, so{' '}
-                        {unreachable.length === 1 ? 'it is' : 'they are'} split before being looked
-                        up and can never match. Remove the delimiter from the value, or from the
-                        Delimiters box above.
-                      </div>
-                    </div>
-                  )}
-                  {redundant.length > 0 && (
-                    <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <div>
-                        {redundant.length} listed value{redundant.length === 1 ? '' : 's'} contain
-                        {redundant.length === 1 ? 's' : ''} a lowercase letter (
-                        <span className="font-mono">
-                          {redundant
-                            .slice(0, 4)
-                            .map((v) => v.value)
-                            .join(', ')}
-                        </span>
-                        {redundant.length > 4 ? ', …' : ''}). Under “Closed, plus lexical glosses”{' '}
-                        {redundant.length === 1 ? 'it is' : 'they are'} accepted whether listed or
-                        not, so the list is longer than it needs to be.
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="ml-2 h-6"
-                          onClick={() => {
-                            const drop = new Set(redundant.map((v) => v.value));
-                            patch(name, { values: t.values.filter((v) => !drop.has(v.value)) });
-                          }}
-                        >
-                          Remove {redundant.length === 1 ? 'it' : 'them'}
-                        </Button>
+                        {unreachable.length === 1 ? 'it' : 'they'} can never match. Remove it from
+                        the value or from the delimiters.
                       </div>
                     </div>
                   )}
@@ -590,8 +552,8 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                       onClick={() => handleSeedAttested(name)}
                       title={
                         fields.length === 0
-                          ? 'No annotation field uses this tagset yet, so there are no values to read. Point a field at it in Annotation Fields below.'
-                          : `Read every value already used in ${fields.map((f) => f.field).join(', ')}`
+                          ? 'Assign this tagset to a field first.'
+                          : `Add every tag already used in ${fields.map((f) => f.field).join(', ')}`
                       }
                     >
                       <Sparkles className="h-4 w-4" /> Add values used in this project
@@ -601,7 +563,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                   {pasteOpen && (
                     <div className="flex flex-col gap-2 rounded-md border bg-background p-3">
                       <p className="text-xs text-muted-foreground">
-                        One value per line, or comma separated. Values already in the tagset are
+                        One value per line, or comma separated. Values already in the list are
                         skipped.
                       </p>
                       <Textarea
@@ -627,21 +589,18 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                       <p className="text-sm">
                         Found <strong>{seedPending.tags.length}</strong> tag
                         {seedPending.tags.length === 1 ? '' : 's'} and{' '}
-                        <strong>{seedPending.lexical.length}</strong> value
-                        {seedPending.lexical.length === 1 ? '' : 's'} with a lowercase letter (
+                        <strong>{seedPending.lexical.length}</strong> lowercase value
+                        {seedPending.lexical.length === 1 ? '' : 's'} (
                         <span className="font-mono">
                           {seedPending.lexical
                             .slice(0, 5)
                             .map((v) => v.value)
                             .join(', ')}
                         </span>
-                        {seedPending.lexical.length > 5 ? ', …' : ''}) not yet in the list.
+                        {seedPending.lexical.length > 5 ? ', …' : ''}) not in the list.
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Leipzig writes grammatical glosses in capitals and lexical ones in
-                        lowercase, so in a gloss field the lowercase values are the stems (dog, run)
-                        rather than tags, and a gloss tagset wants only the tags. A part of speech
-                        inventory (n, v, adj) is lowercase by nature and wants everything.
+                        In a Gloss field, lowercase values are usually stems rather than tags.
                       </p>
                       <div className="flex gap-2">
                         <Button
@@ -703,8 +662,8 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
         </p>
         <p className="mt-1 text-muted-foreground">
           {(usage?.[pendingDelete] || []).length === 0
-            ? 'No annotation field uses it. No annotations are affected.'
-            : `${usage[pendingDelete].map((f) => `${f.field} (${f.scope})`).join(', ')} still points at it, and will fall back to accepting any value. No annotations are deleted or changed.`}
+            ? 'No field uses it.'
+            : `${usage[pendingDelete].map((f) => `${f.field} (${f.scope})`).join(', ')} ${usage[pendingDelete].length === 1 ? 'uses' : 'use'} it and will accept any value again. No annotations are changed.`}
         </p>
       </ConfirmDeleteDialog>
     </div>
