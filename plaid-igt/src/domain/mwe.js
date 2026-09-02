@@ -1,7 +1,7 @@
-// Multiword expressions: one lexicon entry linked from two or more WORD tokens
+// Multi-word MWEs (MWEs): one lexicon entry linked from two or more WORD tokens
 // at once. The data model needs nothing new — a vocab link already carries a
 // `tokens` list, and plaid-core checks that the members share a document, a
-// text and a token layer — so an expression is simply a link with two or more
+// text and a token layer — so an MWE is simply a link with two or more
 // tokens, kept in text order. Pure helpers here are shared by derive.js (which
 // works out how each word column draws its share of the bracket), the editor
 // (which turns a selection into a new entry's form and type) and the
@@ -9,15 +9,15 @@
 
 import { provState } from '@larc-iu/plaid-client';
 
-export const isExpressionLink = (link) =>
+export const isMweLink = (link) =>
   Array.isArray(link?.tokens) && link.tokens.length >= 2 && !!link.vocabItem;
 
-/** Every expression link across the project's vocabularies. */
-export function collectExpressionLinks(vocabularies) {
+/** Every MWE link across the project's vocabularies. */
+export function collectMweLinks(vocabularies) {
   const out = [];
   Object.values(vocabularies || {}).forEach((vocab) => {
     (vocab.vocabLinks || []).forEach((link) => {
-      if (!isExpressionLink(link)) return;
+      if (!isMweLink(link)) return;
       out.push({
         linkId: link.id,
         vocabId: vocab.id,
@@ -37,10 +37,10 @@ export function collectExpressionLinks(vocabularies) {
 }
 
 /**
- * Which piece of the bracket each of `n` columns draws for an expression whose
+ * Which piece of the bracket each of `n` columns draws for an MWE whose
  * members sit at the sorted positions `memberIdx`: 'start' on the first
  * member, 'end' on the last, 'mid' on a member in between, 'pass' (a dotted
- * run) on a skipped word in between, and null outside the expression. Every
+ * run) on a skipped word in between, and null outside the MWE. Every
  * column draws its own piece, which is what lets a bracket survive the grid's
  * band wrapping without anything measuring the columns.
  */
@@ -60,13 +60,13 @@ export function bracketPieces(n, memberIdx) {
 }
 
 /**
- * First-fit lane assignment for the expressions of one sentence. `spans` is
+ * First-fit lane assignment for the MWEs of one sentence. `spans` is
  * [{first, last}] (column indices); returns the lane of each, in input order.
- * Two expressions share a lane only when their column ranges are disjoint: a
+ * Two MWEs share a lane only when their column ranges are disjoint: a
  * skipped word still carries the dotted pass-through, so it is the ranges
- * that collide, not the member sets. Earlier expressions take lower lanes;
- * among expressions starting on the same column the longer one goes first,
- * so a short expression nested at the start of a long one sits beneath it.
+ * that collide, not the member sets. Earlier MWEs take lower lanes;
+ * among MWEs starting on the same column the longer one goes first,
+ * so a short MWE nested at the start of a long one sits beneath it.
  */
 export function assignLanes(spans) {
   const order = spans
@@ -100,18 +100,18 @@ export const isContiguous = (memberIdx) => {
 };
 
 /**
- * The morph type a new expression entry gets, from the FieldWorks inventory
+ * The morph type a new MWE entry gets, from the FieldWorks inventory
  * (affixMarkers.js): a run of adjacent words is a `phrase`, anything with a
  * word skipped in the middle a `discontiguous phrase`.
  */
-export const expressionMorphType = (memberIdx) =>
+export const mweMorphType = (memberIdx) =>
   isContiguous(memberIdx) ? 'phrase' : 'discontiguous phrase';
 
-export const isExpressionType = (morphType) =>
+export const isMweType = (morphType) =>
   typeof morphType === 'string' && morphType.toLowerCase().includes('phrase');
 
-/** The form a new expression entry is offered: the member surfaces, spaced. */
-export const joinExpressionForm = (surfaces) =>
+/** The form a new MWE entry is offered: the member surfaces, spaced. */
+export const joinMweForm = (surfaces) =>
   (surfaces || [])
     .map((s) => (s ?? '').trim())
     .filter(Boolean)

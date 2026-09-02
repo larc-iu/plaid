@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   bracketPieces,
   assignLanes,
-  expressionMorphType,
-  joinExpressionForm,
-  collectExpressionLinks,
-  isExpressionType,
-} from './expressions.js';
+  mweMorphType,
+  joinMweForm,
+  collectMweLinks,
+  isMweType,
+} from './mwe.js';
 
 describe('bracketPieces', () => {
   it('draws start, middles and end over an unbroken run', () => {
@@ -28,7 +28,7 @@ describe('bracketPieces', () => {
 });
 
 describe('assignLanes', () => {
-  it('keeps disjoint expressions on one lane', () => {
+  it('keeps disjoint MWEs on one lane', () => {
     expect(
       assignLanes([
         { first: 0, last: 1 },
@@ -37,7 +37,7 @@ describe('assignLanes', () => {
     ).toEqual([0, 0]);
   });
 
-  it('gives an overlapping expression the next lane', () => {
+  it('gives an overlapping MWE the next lane', () => {
     expect(
       assignLanes([
         { first: 0, last: 2 },
@@ -46,7 +46,7 @@ describe('assignLanes', () => {
     ).toEqual([0, 1]);
   });
 
-  it('puts a nested shorter expression beneath the longer one it sits in', () => {
+  it('puts a nested shorter MWE beneath the longer one it sits in', () => {
     expect(
       assignLanes([
         { first: 1, last: 2 },
@@ -55,7 +55,7 @@ describe('assignLanes', () => {
     ).toEqual([1, 0]);
   });
 
-  it('reuses a lane once its expression has ended', () => {
+  it('reuses a lane once its MWE has ended', () => {
     expect(
       assignLanes([
         { first: 0, last: 3 },
@@ -68,7 +68,7 @@ describe('assignLanes', () => {
 
   it('ranges collide even when the members do not', () => {
     // 0..3 skipping 1 and 2, and 1..2: the pass-through would run under the
-    // second expression, so they cannot share a lane.
+    // second MWE, so they cannot share a lane.
     expect(
       assignLanes([
         { first: 0, last: 3 },
@@ -78,29 +78,29 @@ describe('assignLanes', () => {
   });
 });
 
-describe('a new expression entry', () => {
+describe('a new MWE entry', () => {
   it('is a phrase when the words are adjacent and a discontiguous phrase otherwise', () => {
-    expect(expressionMorphType([2, 3, 4])).toBe('phrase');
-    expect(expressionMorphType([4, 2, 3])).toBe('phrase');
-    expect(expressionMorphType([1, 3])).toBe('discontiguous phrase');
+    expect(mweMorphType([2, 3, 4])).toBe('phrase');
+    expect(mweMorphType([4, 2, 3])).toBe('phrase');
+    expect(mweMorphType([1, 3])).toBe('discontiguous phrase');
   });
 
   it('takes the member surfaces joined by spaces', () => {
-    expect(joinExpressionForm(['toma', 'el', 'pelo'])).toBe('toma el pelo');
-    expect(joinExpressionForm([' echo', '', 'de ', 'menos'])).toBe('echo de menos');
+    expect(joinMweForm(['toma', 'el', 'pelo'])).toBe('toma el pelo');
+    expect(joinMweForm([' echo', '', 'de ', 'menos'])).toBe('echo de menos');
   });
 
   it('recognises both phrase types', () => {
-    expect(isExpressionType('phrase')).toBe(true);
-    expect(isExpressionType('discontiguous phrase')).toBe(true);
-    expect(isExpressionType('stem')).toBe(false);
-    expect(isExpressionType(null)).toBe(false);
+    expect(isMweType('phrase')).toBe(true);
+    expect(isMweType('discontiguous phrase')).toBe(true);
+    expect(isMweType('stem')).toBe(false);
+    expect(isMweType(null)).toBe(false);
   });
 });
 
-describe('collectExpressionLinks', () => {
+describe('collectMweLinks', () => {
   it('keeps only links over two or more tokens, with their provenance', () => {
-    const out = collectExpressionLinks({
+    const out = collectMweLinks({
       v1: {
         id: 'v1',
         name: 'Lexicon',

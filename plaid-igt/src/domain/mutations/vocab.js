@@ -246,20 +246,20 @@ export const vocabMutations = {
     });
   },
 
-  // ---- multiword expressions -------------------------------------------
-  // An expression is one link over two or more WORD tokens (see
-  // domain/expressions.js). These never touch a word's own single-token link:
-  // a word keeps its entry and can sit inside any number of expressions.
+  // ---- multi-word expressions (MWEs) -------------------------------------------
+  // An MWE is one link over two or more WORD tokens (see
+  // domain/mwe.js). These never touch a word's own single-token link:
+  // a word keeps its entry and can sit inside any number of MWEs.
 
   // The member word tokens in text order, or null (with the error set) when
   // the selection is not two or more distinct words of this document.
-  _expressionMembers(tokenIds) {
+  _mweMembers(tokenIds) {
     const ids = [...new Set(tokenIds || [])];
     const words = this.layerInfo.primaryTokenLayer?.tokens || [];
     const byId = new Map(words.map((w) => [w.id, w]));
     const members = ids.map((id) => byId.get(id)).filter(Boolean);
     if (members.length < 2 || members.length !== ids.length) {
-      this.setError('An expression needs two or more words');
+      this.setError('A multi-word expression needs two or more words');
       return null;
     }
     return members.sort((a, b) => a.begin - b.begin).map((w) => w.id);
@@ -267,17 +267,17 @@ export const vocabMutations = {
 
   // Link an entry to several words at once. `metadata` carries provenance for
   // machine-made links; a human link from the popover passes none.
-  async linkExpression(tokenIds, vocabItemId, metadata = null) {
+  async linkMwe(tokenIds, vocabItemId, metadata = null) {
     const { vocab, item } = findVocabForItem(this._vocabularies, vocabItemId);
     if (!vocab || !item) {
       this.setError(`Vocab item ${vocabItemId} not found`);
       return false;
     }
-    const tokens = this._expressionMembers(tokenIds);
+    const tokens = this._mweMembers(tokenIds);
     if (!tokens) return false;
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
-    return this._withSaving('Failed to link expression', async () => {
+    return this._withSaving('Failed to link multi-word expression', async () => {
       const result = await this._client.vocabLinks.create(
         vocabItemId,
         tokens,
@@ -301,15 +301,15 @@ export const vocabMutations = {
   // Create a new entry (its morph type in `metadata`, phrase or discontiguous
   // phrase) and link it to the words. The item is created outside the link
   // call so the link can reference its id.
-  async createAndLinkExpression(tokenIds, vocabId, form, metadata = {}) {
+  async createAndLinkMwe(tokenIds, vocabId, form, metadata = {}) {
     if (!this._vocabularies[vocabId]) {
       this.setError(`Vocabulary ${vocabId} not found`);
       return false;
     }
-    const tokens = this._expressionMembers(tokenIds);
+    const tokens = this._mweMembers(tokenIds);
     if (!tokens) return false;
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
-    return this._withSaving('Failed to create and link expression', async () => {
+    return this._withSaving('Failed to create and link multi-word expression', async () => {
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
       const newItemId = createResult?.id || createResult;
       const linkResult = await this._client.vocabLinks.create(newItemId, tokens);
@@ -326,10 +326,10 @@ export const vocabMutations = {
     });
   },
 
-  // Point an existing expression at a different entry: the same words, a new
+  // Point an existing MWE at a different entry: the same words, a new
   // link (delete + create in one atomic batch). A human choice, so the
   // machine provenance of the old link does not carry over.
-  async relinkExpression(linkId, vocabItemId) {
+  async relinkMwe(linkId, vocabItemId) {
     const { link: prior, vocabId: priorVocabId } = findLinkById(this._vocabularies, linkId);
     if (!prior) return false;
     const { vocab, item } = findVocabForItem(this._vocabularies, vocabItemId);
@@ -340,7 +340,7 @@ export const vocabMutations = {
     const tokens = [...prior.tokens];
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
-    return this._withSaving('Failed to change expression', async () => {
+    return this._withSaving('Failed to change multi-word expression', async () => {
       const results = await this._client.batched(async () => {
         this._client.vocabLinks.delete(linkId);
         this._client.vocabLinks.create(vocabItemId, tokens);
@@ -360,19 +360,19 @@ export const vocabMutations = {
     });
   },
 
-  // Change which words an expression covers, keeping its entry and
-  // provenance. Fewer than two words left means the expression is gone.
-  async setExpressionMembers(linkId, tokenIds) {
+  // Change which words an MWE covers, keeping its entry and
+  // provenance. Fewer than two words left means the MWE is gone.
+  async setMweMembers(linkId, tokenIds) {
     const { link: prior, vocabId } = findLinkById(this._vocabularies, linkId);
     if (!prior) return false;
     const ids = [...new Set(tokenIds || [])];
-    if (ids.length < 2) return this.unlinkExpression(linkId);
-    const tokens = this._expressionMembers(ids);
+    if (ids.length < 2) return this.unlinkMwe(linkId);
+    const tokens = this._mweMembers(ids);
     if (!tokens) return false;
     const itemId = prior.vocabItem?.id;
     const metadata = prior.metadata && Object.keys(prior.metadata).length ? prior.metadata : null;
     const vocabItem = prior.vocabItem;
-    return this._withSaving('Failed to change expression', async () => {
+    return this._withSaving('Failed to change multi-word expression', async () => {
       const results = await this._client.batched(async () => {
         this._client.vocabLinks.delete(linkId);
         this._client.vocabLinks.create(itemId, tokens, metadata || undefined);
@@ -392,10 +392,10 @@ export const vocabMutations = {
     });
   },
 
-  async unlinkExpression(linkId) {
+  async unlinkMwe(linkId) {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
     if (!link) return false;
-    return this._withSaving('Failed to unlink expression', async () => {
+    return this._withSaving('Failed to unlink multi-word expression', async () => {
       await this._client.vocabLinks.delete(linkId);
       this._applyRawPatch((next, info, vocabs) => {
         if (vocabs[vocabId]) {
@@ -407,12 +407,12 @@ export const vocabMutations = {
     });
   },
 
-  // Confirm-on-touch for a machine-made expression link (same contract as
+  // Confirm-on-touch for a machine-made MWE link (same contract as
   // confirmVocabLink). No-op for human or already-confirmed links.
-  async confirmExpressionLink(linkId) {
+  async confirmMweLink(linkId) {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
     if (!link || !isMachine(link.metadata)) return false;
-    return this._withSaving('Failed to confirm expression', async () => {
+    return this._withSaving('Failed to confirm multi-word expression', async () => {
       await this._client.vocabLinks.patchMetadata(linkId, PROV_CONFIRMED);
       this._applyRawPatch((next, info, vocabs) => {
         const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === linkId);

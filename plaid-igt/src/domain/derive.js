@@ -10,7 +10,7 @@
 
 import { provState } from '@larc-iu/plaid-client';
 import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
-import { collectExpressionLinks, bracketPieces, assignLanes } from './expressions.js';
+import { collectMweLinks, bracketPieces, assignLanes } from './mwe.js';
 
 // Local copy of plaid-client-js's cpSlicer (spread the body into code points
 // ONCE; each slice is then O(slice length) — cpSlice re-spreads the whole
@@ -198,7 +198,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
 
   const findSentenceForToken = makeBinarySearchSentenceLookup(sortedSentences);
 
-  attachExpressions(enrichedSentences, tokenPositionMaps, collectExpressionLinks(vocabularies));
+  attachMwes(enrichedSentences, tokenPositionMaps, collectMweLinks(vocabularies));
 
   return {
     sentences: enrichedSentences,
@@ -211,31 +211,31 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   };
 }
 
-// Multiword expressions (links over two or more word tokens) are drawn in the
-// sentence of their first live member: `sentence.expressions` lists them with
-// their lane and member columns, `sentence.expressionLanes` says how many
+// Multi-word MWEs (MWEs, links over two or more word tokens) are drawn in the
+// sentence of their first live member: `sentence.mwes` lists them with
+// their lane and member columns, `sentence.mweLanes` says how many
 // bracket lines the sentence's word band needs, and every word token carries
-// `exprPieces[lane]` — the piece of bracket its column draws on that lane, or
+// `mwePieces[lane]` — the piece of bracket its column draws on that lane, or
 // null. A member in another sentence, or one whose token no longer exists,
-// stays out of the drawing (`partial` marks the expression so the validators
-// can say so); an expression with fewer than two live members here is not
+// stays out of the drawing (`partial` marks the MWE so the validators
+// can say so); an MWE with fewer than two live members here is not
 // drawn at all. Mutates the derived sentences in place.
-function attachExpressions(sentences, tokenPositionMaps, exprLinks) {
+function attachMwes(sentences, tokenPositionMaps, mweLinks) {
   const perSentence = new Map();
   sentences.forEach((s) => {
-    s.expressions = [];
-    s.expressionLanes = 0;
+    s.mwes = [];
+    s.mweLanes = 0;
     s.tokens.forEach((t) => {
-      t.exprPieces = [];
+      t.mwePieces = [];
     });
     perSentence.set(s.id, []);
   });
-  if (!exprLinks.length) return;
+  if (!mweLinks.length) return;
 
   const sentenceOfToken = new Map();
   sentences.forEach((s) => s.tokens.forEach((t) => sentenceOfToken.set(t.id, s)));
 
-  for (const ex of exprLinks) {
+  for (const ex of mweLinks) {
     const placed = ex.tokenIds
       .map((id) => ({ id, sentence: sentenceOfToken.get(id) }))
       .filter((p) => p.sentence);
@@ -258,24 +258,24 @@ function attachExpressions(sentences, tokenPositionMaps, exprLinks) {
     });
   }
 
-  perSentence.forEach((exprs, sentenceId) => {
-    if (!exprs.length) return;
+  perSentence.forEach((mwes, sentenceId) => {
+    if (!mwes.length) return;
     const sentence = sentences.find((s) => s.id === sentenceId);
-    const lanes = assignLanes(exprs.map((e) => ({ first: e.first, last: e.last })));
-    exprs.forEach((e, i) => {
+    const lanes = assignLanes(mwes.map((e) => ({ first: e.first, last: e.last })));
+    mwes.forEach((e, i) => {
       e.lane = lanes[i];
     });
-    exprs.sort((a, b) => a.lane - b.lane || a.first - b.first);
+    mwes.sort((a, b) => a.lane - b.lane || a.first - b.first);
     const laneCount = Math.max(...lanes) + 1;
-    sentence.expressions = exprs;
-    sentence.expressionLanes = laneCount;
+    sentence.mwes = mwes;
+    sentence.mweLanes = laneCount;
     sentence.tokens.forEach((t) => {
-      t.exprPieces = new Array(laneCount).fill(null);
+      t.mwePieces = new Array(laneCount).fill(null);
     });
-    for (const e of exprs) {
+    for (const e of mwes) {
       const pieces = bracketPieces(sentence.tokens.length, e.memberIdx);
       pieces.forEach((piece, i) => {
-        if (piece) sentence.tokens[i].exprPieces[e.lane] = { piece, expression: e };
+        if (piece) sentence.tokens[i].mwePieces[e.lane] = { piece, mwe: e };
       });
     }
   });

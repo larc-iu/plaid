@@ -1267,7 +1267,7 @@ describe('confirmSentenceSpan', () => {
   });
 });
 
-describe('multiword expressions', () => {
+describe('multi-word expressions', () => {
   // Four words: "the cat sat down".
   const raw = () =>
     buildRawDoc({
@@ -1293,7 +1293,7 @@ describe('multiword expressions', () => {
   });
   const project = { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } };
 
-  it('derives an expression with lanes and a bracket piece per column', () => {
+  it('derives an MWE with lanes and a bracket piece per column', () => {
     const doc = makeDoc({
       raw: raw(),
       project,
@@ -1303,9 +1303,9 @@ describe('multiword expressions', () => {
       ]),
     });
     const s = doc.sentences[0];
-    expect(s.expressionLanes).toBe(1);
-    expect(s.expressions).toHaveLength(1);
-    expect(s.expressions[0]).toMatchObject({
+    expect(s.mweLanes).toBe(1);
+    expect(s.mwes).toHaveLength(1);
+    expect(s.mwes[0]).toMatchObject({
       linkId: 'lk-1',
       lane: 0,
       first: 2,
@@ -1314,18 +1314,18 @@ describe('multiword expressions', () => {
       partial: false,
       prov: 'human',
     });
-    expect(s.tokens.map((t) => t.exprPieces[0]?.piece ?? null)).toEqual([
+    expect(s.tokens.map((t) => t.mwePieces[0]?.piece ?? null)).toEqual([
       null,
       null,
       'start',
       'end',
     ]);
-    // A word's own link is untouched by expressions.
+    // A word's own link is untouched by MWEs.
     expect(s.tokens[1].vocabItem?.form).toBe('cat');
-    expect(s.tokens[1].exprPieces).toEqual([null]);
+    expect(s.tokens[1].mwePieces).toEqual([null]);
   });
 
-  it('stacks overlapping expressions on separate lanes and dots a skipped word', () => {
+  it('stacks overlapping MWEs on separate lanes and dots a skipped word', () => {
     const doc = makeDoc({
       raw: raw(),
       project,
@@ -1335,12 +1335,12 @@ describe('multiword expressions', () => {
       ]),
     });
     const s = doc.sentences[0];
-    expect(s.expressionLanes).toBe(2);
-    expect(s.expressions.map((e) => [e.linkId, e.lane])).toEqual([
+    expect(s.mweLanes).toBe(2);
+    expect(s.mwes.map((e) => [e.linkId, e.lane])).toEqual([
       ['lk-1', 0],
       ['lk-2', 1],
     ]);
-    expect(s.tokens.map((t) => t.exprPieces.map((p) => p?.piece ?? null))).toEqual([
+    expect(s.tokens.map((t) => t.mwePieces.map((p) => p?.piece ?? null))).toEqual([
       ['start', null],
       ['mid', 'start'],
       ['end', 'pass'],
@@ -1348,7 +1348,7 @@ describe('multiword expressions', () => {
     ]);
   });
 
-  it('draws only the members that exist, and marks the expression partial', () => {
+  it('draws only the members that exist, and marks the MWE partial', () => {
     const doc = makeDoc({
       raw: raw(),
       project,
@@ -1358,9 +1358,9 @@ describe('multiword expressions', () => {
       ]),
     });
     const s = doc.sentences[0];
-    expect(s.expressions.map((e) => e.linkId)).toEqual(['lk-1']);
-    expect(s.expressions[0].partial).toBe(true);
-    expect(s.tokens.map((t) => t.exprPieces[0]?.piece ?? null)).toEqual([
+    expect(s.mwes.map((e) => e.linkId)).toEqual(['lk-1']);
+    expect(s.mwes[0].partial).toBe(true);
+    expect(s.tokens.map((t) => t.mwePieces[0]?.piece ?? null)).toEqual([
       'start',
       'pass',
       'end',
@@ -1368,7 +1368,7 @@ describe('multiword expressions', () => {
     ]);
   });
 
-  it('linkExpression links the words in text order and leaves their own links alone', async () => {
+  it('linkMwe links the words in text order and leaves their own links alone', async () => {
     const client = makeFakeClient();
     const doc = makeDoc({
       raw: raw(),
@@ -1378,26 +1378,26 @@ describe('multiword expressions', () => {
         { id: 'lk-w', tokens: ['w-3'], vocabItem: { id: 'i-cat', form: 'cat' } },
       ]),
     });
-    expect(await doc.linkExpression(['w-4', 'w-3'], 'i-sit')).toBe(true);
+    expect(await doc.linkMwe(['w-4', 'w-3'], 'i-sit')).toBe(true);
     const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
     expect(create.args[0]).toBe('i-sit');
     expect(create.args[1]).toEqual(['w-3', 'w-4']);
     const s = doc.sentences[0];
-    expect(s.expressions[0].item.form).toBe('sit down');
+    expect(s.mwes[0].item.form).toBe('sit down');
     expect(s.tokens[2].vocabItem?.form).toBe('cat');
   });
 
   it('refuses fewer than two distinct words', async () => {
     const doc = makeDoc({ raw: raw(), project, vocabularies: vocabs() });
-    expect(await doc.linkExpression(['w-1', 'w-1'], 'i-sit')).toBe(false);
+    expect(await doc.linkMwe(['w-1', 'w-1'], 'i-sit')).toBe(false);
     expect(doc.error).toMatch(/two or more words/);
-    expect(await doc.linkExpression(['w-1', 'm-1'], 'i-sit')).toBe(false);
+    expect(await doc.linkMwe(['w-1', 'm-1'], 'i-sit')).toBe(false);
   });
 
-  it('createAndLinkExpression makes the entry with its type, then links it', async () => {
+  it('createAndLinkMwe makes the entry with its type, then links it', async () => {
     const client = makeFakeClient();
     const doc = makeDoc({ raw: raw(), project, client, vocabularies: vocabs() });
-    const ok = await doc.createAndLinkExpression(['w-2', 'w-4'], 'v1', 'cat down', {
+    const ok = await doc.createAndLinkMwe(['w-2', 'w-4'], 'v1', 'cat down', {
       morphType: 'discontiguous phrase',
     });
     expect(ok).toBe(true);
@@ -1407,9 +1407,9 @@ describe('multiword expressions', () => {
     const itemCall = client.calls.find((c) => c.kind === 'vocabItems.create');
     expect(itemCall.args).toEqual(['v1', 'cat down', { morphType: 'discontiguous phrase' }]);
     const s = doc.sentences[0];
-    expect(s.expressions[0].item.form).toBe('cat down');
-    expect(s.expressions[0].item.metadata.morphType).toBe('discontiguous phrase');
-    expect(s.tokens.map((t) => t.exprPieces[0]?.piece ?? null)).toEqual([
+    expect(s.mwes[0].item.form).toBe('cat down');
+    expect(s.mwes[0].item.metadata.morphType).toBe('discontiguous phrase');
+    expect(s.tokens.map((t) => t.mwePieces[0]?.piece ?? null)).toEqual([
       null,
       'start',
       'pass',
@@ -1418,7 +1418,7 @@ describe('multiword expressions', () => {
     expect(doc.vocabularies.v1.items.map((i) => i.form)).toContain('cat down');
   });
 
-  it('relinkExpression swaps the entry in one batch and keeps the words', async () => {
+  it('relinkMwe swaps the entry in one batch and keeps the words', async () => {
     const client = makeFakeClient();
     const doc = makeDoc({
       raw: raw(),
@@ -1428,17 +1428,17 @@ describe('multiword expressions', () => {
         { id: 'lk-1', tokens: ['w-3', 'w-4'], vocabItem: { id: 'i-sit', form: 'sit down' } },
       ]),
     });
-    expect(await doc.relinkExpression('lk-1', 'i-alt')).toBe(true);
+    expect(await doc.relinkMwe('lk-1', 'i-alt')).toBe(true);
     const k = kinds(client);
     expect(k.indexOf('vocabLinks.delete')).toBeLessThan(k.indexOf('vocabLinks.create'));
     expect(k.indexOf('vocabLinks.create')).toBeLessThan(k.indexOf('submitBatch'));
-    const e = doc.sentences[0].expressions[0];
+    const e = doc.sentences[0].mwes[0];
     expect(e.item.id).toBe('i-alt');
     expect(e.memberTokenIds).toEqual(['w-3', 'w-4']);
     expect(doc.vocabularies.v1.vocabLinks).toHaveLength(1);
   });
 
-  it('setExpressionMembers re-covers the words, keeping entry and provenance', async () => {
+  it('setMweMembers re-covers the words, keeping entry and provenance', async () => {
     const client = makeFakeClient();
     const doc = makeDoc({
       raw: raw(),
@@ -1453,19 +1453,19 @@ describe('multiword expressions', () => {
         },
       ]),
     });
-    expect(await doc.setExpressionMembers('lk-1', ['w-4', 'w-2', 'w-3'])).toBe(true);
+    expect(await doc.setMweMembers('lk-1', ['w-4', 'w-2', 'w-3'])).toBe(true);
     const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
     expect(create.args[1]).toEqual(['w-2', 'w-3', 'w-4']);
     expect(create.args[2]).toEqual({ prov: 'inferred', provSource: 'rule' });
-    const e = doc.sentences[0].expressions[0];
+    const e = doc.sentences[0].mwes[0];
     expect(e.memberTokenIds).toEqual(['w-2', 'w-3', 'w-4']);
     expect(e.prov).toBe('machine');
-    // Down to one word: the expression is simply removed.
-    expect(await doc.setExpressionMembers(e.linkId, ['w-2'])).toBe(true);
-    expect(doc.sentences[0].expressions).toEqual([]);
+    // Down to one word: the MWE is simply removed.
+    expect(await doc.setMweMembers(e.linkId, ['w-2'])).toBe(true);
+    expect(doc.sentences[0].mwes).toEqual([]);
   });
 
-  it('unlinkExpression removes the link and the bracket', async () => {
+  it('unlinkMwe removes the link and the bracket', async () => {
     const doc = makeDoc({
       raw: raw(),
       project,
@@ -1473,13 +1473,13 @@ describe('multiword expressions', () => {
         { id: 'lk-1', tokens: ['w-3', 'w-4'], vocabItem: { id: 'i-sit', form: 'sit down' } },
       ]),
     });
-    expect(await doc.unlinkExpression('lk-1')).toBe(true);
-    expect(doc.sentences[0].expressions).toEqual([]);
-    expect(doc.sentences[0].expressionLanes).toBe(0);
-    expect(doc.sentences[0].tokens[2].exprPieces).toEqual([]);
+    expect(await doc.unlinkMwe('lk-1')).toBe(true);
+    expect(doc.sentences[0].mwes).toEqual([]);
+    expect(doc.sentences[0].mweLanes).toBe(0);
+    expect(doc.sentences[0].tokens[2].mwePieces).toEqual([]);
   });
 
-  it('confirmExpressionLink flips a machine link to verified and ignores a human one', async () => {
+  it('confirmMweLink flips a machine link to verified and ignores a human one', async () => {
     const client = makeFakeClient();
     const doc = makeDoc({
       raw: raw(),
@@ -1495,8 +1495,8 @@ describe('multiword expressions', () => {
         { id: 'lk-2', tokens: ['w-1', 'w-2'], vocabItem: { id: 'i-alt', form: 'the cat' } },
       ]),
     });
-    expect(await doc.confirmExpressionLink('lk-1')).toBe(true);
-    expect(doc.sentences[0].expressions.find((e) => e.linkId === 'lk-1').prov).toBe('verified');
-    expect(await doc.confirmExpressionLink('lk-2')).toBe(false);
+    expect(await doc.confirmMweLink('lk-1')).toBe(true);
+    expect(doc.sentences[0].mwes.find((e) => e.linkId === 'lk-1').prov).toBe('verified');
+    expect(await doc.confirmMweLink('lk-2')).toBe(false);
   });
 });
