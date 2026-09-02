@@ -8,7 +8,7 @@ import {
   PRECEDENT_SOURCE,
   TAGSET_SOURCE,
 } from './glossGuess.js';
-import { createTally, foldDocumentValues } from './precedent.js';
+import { addPrecedent, createTally, foldDocumentValues } from './precedent.js';
 
 const sent = (tokens) => [{ tokens }];
 const word = (content, annotations = {}, morphemes = []) => ({
@@ -308,5 +308,41 @@ describe('decomposeRows counting', () => {
       tagset: { delimiters: '.', mode: 'suggest', values: [] },
     });
     expect(rows).toEqual([expect.objectContaining({ value: 'PL', count: 2 })]);
+  });
+});
+
+describe('what a mixed tagset offers', () => {
+  const mixed = { delimiters: '.', mode: 'mixed', values: [{ value: 'PRT' }, { value: 'RES' }] };
+  const tallyWith = (pairs) => {
+    const t = createTally();
+    for (const [v, n] of pairs) addPrecedent(t, 'morpheme', 'f', 'Gloss', v, n);
+    return t;
+  };
+  const offers = (pairs) =>
+    listAlternatives({
+      precedent: tallyWith(pairs),
+      kind: 'morpheme',
+      form: 'f',
+      field: 'Gloss',
+      tagset: mixed,
+    }).map((r) => r.value);
+
+  it('drops a one-off lexical value, which is nearly always a typo', () => {
+    // RxES has a lowercase x, so mixed ACCEPTS it on commit. Offering it beside
+    // RES forever is what makes the picker worse than useless.
+    expect(
+      offers([
+        ['RES', 502],
+        ['RxES', 1],
+      ]),
+    ).toEqual(['RES', 'PRT']);
+  });
+
+  it('offers a lexical value once it is established', () => {
+    expect(offers([['dog', 12]])).toContain('dog');
+  });
+
+  it('never drops the tagset’s own values, whatever their count', () => {
+    expect(offers([])).toEqual(['PRT', 'RES']);
   });
 });

@@ -105,7 +105,8 @@ export const TAGSET_SOURCE = 'tagset';
 // entry-backed, then alphabetical.
 //
 // An ENFORCING tagset then keeps only what it allows: offering a value that
-// commit will reject is offering a dead end.
+// commit will reject is offering a dead end. It also drops a one-off lexical
+// value, which is a typo far more often than a gloss worth repeating.
 //
 // A tagset with DELIMITERS switches the list from whole-value mode to PART
 // mode, because the caret then sits inside one part of a composite value and
@@ -184,7 +185,24 @@ export function listAlternatives({
     }
   }
 
-  if (tagsetEnforces(tagset)) list = list.filter((r) => isValueAllowed(r.value, tagset));
+  if (tagsetEnforces(tagset)) {
+    list = list.filter((r) => {
+      if (!isValueAllowed(r.value, tagset)) return false;
+      // A value admitted ONLY because it looks lexical (mixed mode: it has a
+      // lowercase letter) has to have been used more than once to be offered.
+      //
+      // Otherwise every typo containing a lowercase letter becomes a permanent
+      // suggestion: mistype RES as RxES once and the picker offers RxES beside
+      // it forever, which is precisely the error a controlled vocabulary is
+      // meant to stop. A hapax is by definition the thing you just typed.
+      //
+      // This narrows what is SUGGESTED, never what is allowed — mixed still
+      // accepts a stem gloss on commit, first use included, and the tagset's
+      // own values are kept whatever their count.
+      const listed = tagset.values.some((v) => v.value === r.value);
+      return listed || r.entry || r.count >= 2;
+    });
+  }
 
   list.sort(
     (a, b) =>
