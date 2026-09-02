@@ -3,7 +3,7 @@
 // blacklist — are NOT emitted as tokens. They're left in the gap between word
 // tokens, so the word layer carries only annotatable words.
 import { describe, it, expect } from 'vitest';
-import { findUntokenizedRanges, tokenizeText } from './tokenizationUtils.js';
+import { findUntokenizedRanges, isUnicodePunctuation, tokenizeText } from './tokenizationUtils.js';
 
 const tokenize = (text, config) => tokenizeText(text, config, findUntokenizedRanges(text, []));
 
@@ -47,5 +47,45 @@ describe('tokenizeText punctuation handling', () => {
       { text: 'a', begin: 0, end: 1 },
       { text: 'b', begin: 2, end: 3 },
     ]);
+  });
+});
+
+// The token-boundary rule is a curated one, not \p{P}, and the curation was
+// never written down — which is how two wrong code points sat in it unnoticed.
+// These pin the parts that a plausible "cleanup" would silently change.
+describe('isUnicodePunctuation', () => {
+  it('breaks on ordinary punctuation', () => {
+    for (const c of ['.', ',', '!', '?', ';', ':', '-', '(', ')', '«', '¿', '।']) {
+      expect(isUnicodePunctuation(c)).toBe(true);
+    }
+  });
+
+  it('breaks on the keyboard symbols too, which \\p{P} alone would drop', () => {
+    // 24 characters hang on this. "=" is the clitic marker, so losing it would
+    // change how every document tokenizes.
+    for (const c of ['=', '+', '<', '>', '$', '^', '`', '|', '~', '¢', '£', '¥']) {
+      expect(isUnicodePunctuation(c)).toBe(true);
+    }
+  });
+
+  it('does not break on letters, digits or whitespace', () => {
+    for (const c of ['a', 'Z', 'ß', 'д', '漢', '5', ' ']) {
+      expect(isUnicodePunctuation(c)).toBe(false);
+    }
+  });
+
+  it('does not break on a combining mark or a letter, whatever the script', () => {
+    // U+111C9 (Sharada Sandhi Mark, Mn) and U+111DA (Sharada Ekam, Lo) were
+    // both in the class. A combining mark cannot stand alone as punctuation,
+    // and eslint's no-misleading-character-class is what caught it.
+    expect(isUnicodePunctuation('\u{111C9}')).toBe(false);
+    expect(isUnicodePunctuation('\u{111DA}')).toBe(false);
+    expect(isUnicodePunctuation('́')).toBe(false); // combining acute
+  });
+
+  it('rejects anything that is not exactly one code point', () => {
+    expect(isUnicodePunctuation('')).toBe(false);
+    expect(isUnicodePunctuation('..')).toBe(false);
+    expect(isUnicodePunctuation(null)).toBe(false);
   });
 });
