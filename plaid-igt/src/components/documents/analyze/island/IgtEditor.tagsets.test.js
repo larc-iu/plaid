@@ -558,3 +558,32 @@ describe('a governed sentence field', () => {
     expect(ta.dataset.tagsetEnforces).toBe('1');
   });
 });
+
+describe('Escape on a governed cell', () => {
+  it('reverts and leaves in one press when the list opened on its own', async () => {
+    // The list opens on focus, so Escape used to need two presses: one to
+    // close a list the user never asked for, one to revert the cell.
+    const doc = mount({ ...LEIPZIG, delimiters: '' });
+    const morphId = glossCell().dataset.cellKey.split(':')[1];
+    await doc.updateMorphemeSpan(morphId, 'Gloss', 'PL', null);
+    await flush();
+    const cell = glossCell();
+    focus(cell);
+    expect(altsList()).not.toBeNull();
+    key(cell, 'Escape');
+    expect(altsList()).toBeNull();
+    expect(document.activeElement).not.toBe(cell);
+    expect(cell.value).toBe('PL');
+  });
+
+  it('only closes the list mid-completion, keeping what was typed', () => {
+    mount();
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'N');
+    key(cell, 'Escape');
+    expect(altsList()).toBeNull();
+    expect(document.activeElement).toBe(cell);
+    expect(cell.value).toBe('N');
+  });
+});

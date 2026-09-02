@@ -55,6 +55,12 @@ describe('normalizeTagset', () => {
     expect(t.values).toEqual([{ value: 'NOM' }]);
   });
 
+  it('never treats whitespace as a delimiter', () => {
+    // A box typed as ". : >" would otherwise split "dog house" in two, and
+    // the header could not show a space among the delimiters.
+    expect(normalizeTagset({ delimiters: ' . : > ' }).delimiters).toBe('.:>');
+  });
+
   it('falls back to suggest for an unrecognised mode', () => {
     expect(normalizeTagset({ mode: 'strict' }).mode).toBe('suggest');
     expect(normalizeTagset({ mode: 'closed' }).mode).toBe('closed');

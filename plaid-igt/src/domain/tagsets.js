@@ -32,6 +32,7 @@
 import { IGT_NAMESPACE } from './igtConfig.js';
 
 const str = (v) => (typeof v === 'string' ? v : '');
+export const stripSpace = (s) => s.replace(/\s+/gu, '');
 
 /** Value-record keys this app renders. Everything else is free-form. */
 export const RESERVED_VALUE_KEYS = Object.freeze(['description', 'color']);
@@ -97,7 +98,9 @@ export const normalizeTagset = (raw) => {
     values.push({ ...rec, value });
   }
   return {
-    delimiters: str(raw?.delimiters),
+    // Whitespace is never a delimiter: a box typed as ". : >" would otherwise
+    // split a two-word stem gloss in two, and the space could not be shown.
+    delimiters: stripSpace(str(raw?.delimiters)),
     mode: TAGSET_MODES.includes(raw?.mode) ? raw.mode : MODES.SUGGEST,
     values,
   };

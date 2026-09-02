@@ -3,6 +3,8 @@ import { Plus, Trash2, ChevronDown, ChevronRight, Sparkles, AlertTriangle } from
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
+import { pageSlice } from '@/hooks/usePagedList';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
@@ -13,6 +15,7 @@ import {
   TAGSET_MODES,
   missingAffixDelimiters,
   scanValue,
+  stripSpace,
   unreachableValues,
   seedCandidates,
 } from '@/domain/tagsets';
@@ -32,8 +35,9 @@ import {
 const SAMPLE = '1SG.NOM';
 
 // A seeded Leipzig tagset runs to well over a thousand values, so the table is
-// searched and paged rather than rendered whole.
-export const PAGE_SIZE = 25;
+// searched and paged rather than rendered whole. Smaller than the app's usual
+// page: a value row is an expandable editor, not a line of text.
+export const VALUE_PAGE_SIZE = 25;
 
 // How each mode presents itself. The help text is the whole explanation a user
 // gets: what can be entered, and which kind of field it suits. Nothing else.
@@ -348,8 +352,10 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                     key={t.delimiters}
                     defaultValue={t.delimiters}
                     onBlur={(e) => {
-                      const next = e.currentTarget.value;
+                      // Spaces are never delimiters (see normalizeTagset).
+                      const next = stripSpace(e.currentTarget.value);
                       if (next !== t.delimiters) patch(name, { delimiters: next });
+                      else e.currentTarget.value = t.delimiters;
                     }}
                   />
                   {missingAffix.length > 0 && (
@@ -422,53 +428,29 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                               .toLowerCase()
                               .includes(q),
                         );
-                      const pages = Math.max(1, Math.ceil(matched.length / PAGE_SIZE));
-                      const page = Math.min(valuePage, pages - 1);
-                      const shown = matched.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+                      const paged = pageSlice(matched, valuePage, VALUE_PAGE_SIZE);
                       return (
                         <>
                           <div className="flex items-center gap-2">
-                            <Input
-                              className="h-8 max-w-[18rem]"
-                              placeholder={`Search ${t.values.length} values`}
+                            <SearchInput
+                              className="w-full max-w-[18rem]"
+                              inputClassName="h-8"
+                              placeholder="Search values…"
                               value={valueQuery}
-                              onChange={(e) => {
-                                setValueQuery(e.currentTarget.value);
+                              onChange={(v) => {
+                                setValueQuery(v);
                                 setValuePage(0);
                               }}
                             />
-                            <span className="text-xs text-muted-foreground">
-                              {matched.length === t.values.length
-                                ? `${t.values.length} value${t.values.length === 1 ? '' : 's'}`
-                                : `${matched.length} of ${t.values.length}`}
-                              {pages > 1 && ` · page ${page + 1} of ${pages}`}
-                            </span>
-                            {pages > 1 && (
-                              <div className="ml-auto flex items-center gap-1">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7"
-                                  disabled={page === 0}
-                                  onClick={() => setValuePage(page - 1)}
-                                >
-                                  Previous
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7"
-                                  disabled={page >= pages - 1}
-                                  onClick={() => setValuePage(page + 1)}
-                                >
-                                  Next
-                                </Button>
-                              </div>
-                            )}
+                            <ListCount
+                              shown={matched.length}
+                              total={t.values.length}
+                              noun="value"
+                            />
                           </div>
-                          {shown.length === 0 ? (
+                          {paged.pageItems.length === 0 ? (
                             <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                              No value matches “{deferredQuery}”.
+                              No values match “{deferredQuery}”.
                             </p>
                           ) : (
                             <div className="overflow-hidden rounded-md border bg-background">
@@ -489,7 +471,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {shown.map(({ rec, i }) => {
+                                  {paged.pageItems.map(({ rec, i }) => {
                                     // Keyed by value, not position: the row's
                                     // inputs are uncontrolled, and an index
                                     // key hands a row's DOM node, text and
@@ -514,6 +496,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                                   })}
                                 </tbody>
                               </table>
+                              <ListPager {...paged} onPage={setValuePage} />
                             </div>
                           )}
                         </>

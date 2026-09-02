@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts } from '@/test/renderComponent.jsx';
 import { FieldsManager } from './FieldsManager.jsx';
-import { TagsetsManager, PAGE_SIZE } from './TagsetsManager.jsx';
+import { TagsetsManager, VALUE_PAGE_SIZE } from './TagsetsManager.jsx';
 import { byTagsetName, governedFields } from '@/domain/tagsets.js';
 import { notifyInfo, notifyError } from '@/utils/feedback';
 
@@ -244,7 +244,7 @@ describe('TagsetsManager', () => {
 
   describe('a large value list', () => {
     // A seeded Leipzig tagset runs past a thousand values.
-    const COUNT = PAGE_SIZE * 4 + 20; // several pages, last one partial
+    const COUNT = VALUE_PAGE_SIZE * 4 + 20; // several pages, last one partial
     const big = {
       Leipzig: {
         delimiters: '.',
@@ -263,18 +263,19 @@ describe('TagsetsManager', () => {
       );
     const rowValues = (c) =>
       all(c, 'tbody tr td:nth-child(2) input').map((i) => i.getAttribute('value') ?? i.value);
+    // The pager's controls are icons, so they are found by their label.
     const click = (c, step, label) =>
       step(async () =>
         all(c, 'button')
-          .find((b) => b.textContent.trim() === label)
+          .find((b) => b.getAttribute('aria-label') === label)
           .click(),
       );
 
     it('shows one page at a time instead of every value', async () => {
       const { container, step, unmount } = await renderBig();
       await expandFirst(container, step);
-      expect(rowValues(container)).toHaveLength(PAGE_SIZE);
-      expect(container.textContent).toContain('page 1 of 5');
+      expect(rowValues(container)).toHaveLength(VALUE_PAGE_SIZE);
+      expect(container.textContent).toContain(`1–${VALUE_PAGE_SIZE} of ${COUNT}`);
       await unmount();
     });
 
@@ -284,12 +285,12 @@ describe('TagsetsManager', () => {
       const onSaveChanges = vi.fn();
       const { container, step, unmount } = await renderBig(onSaveChanges);
       await expandFirst(container, step);
-      await click(container, step, 'Next');
-      expect(rowValues(container)[0]).toBe(`V${PAGE_SIZE}`);
+      await click(container, step, 'Next page');
+      expect(rowValues(container)[0]).toBe(`V${VALUE_PAGE_SIZE}`);
       await step(async () => all(container, 'button[title="Remove value"]')[0].click());
       const saved = onSaveChanges.mock.calls.at(-1)[0].Leipzig.values.map((v) => v.value);
       expect(saved).toHaveLength(COUNT - 1);
-      expect(saved).not.toContain(`V${PAGE_SIZE}`);
+      expect(saved).not.toContain(`V${VALUE_PAGE_SIZE}`);
       expect(saved).toContain('V0');
       await unmount();
     });
@@ -307,6 +308,18 @@ describe('TagsetsManager', () => {
       await unmount();
     });
 
+    it('skips to the last page and back to the first', async () => {
+      const { container, step, unmount } = await renderBig();
+      await expandFirst(container, step);
+      await click(container, step, 'Last page');
+      // The last page is the partial one, and it ends on the final value.
+      expect(rowValues(container).at(-1)).toBe(`V${COUNT - 1}`);
+      expect(container.textContent).toContain(`of ${COUNT}`);
+      await click(container, step, 'First page');
+      expect(rowValues(container)[0]).toBe('V0');
+      await unmount();
+    });
+
     it('says so when a search matches nothing', async () => {
       const { container, step, unmount } = await renderBig();
       await expandFirst(container, step);
@@ -314,7 +327,7 @@ describe('TagsetsManager', () => {
         (i.getAttribute('placeholder') || '').startsWith('Search'),
       );
       await step(async () => typeInto(search, 'zzz'));
-      expect(container.textContent).toContain('No value matches');
+      expect(container.textContent).toContain('No values match');
       await unmount();
     });
   });
@@ -448,6 +461,16 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     await step(async () => button(container, 'Add values used in this project').click());
     expect(container.textContent).not.toContain('lowercase value');
     expect(savedValues(onSaveChanges)).toEqual(['PL', '1SG', 'NOM']);
+    await unmount();
+  });
+
+  it('drops spaces typed into the Delimiters box', async () => {
+    const onSaveChanges = vi.fn();
+    const { container, step, unmount } = await mountWith({ onSaveChanges });
+    await expandFirst(container, step);
+    const box = all(container, 'input').find((i) => i.placeholder === 'e.g. .:>');
+    await step(async () => blurWith(box, '. : >'));
+    expect(onSaveChanges.mock.calls.at(-1)[0].Leipzig.delimiters).toBe('.:>');
     await unmount();
   });
 

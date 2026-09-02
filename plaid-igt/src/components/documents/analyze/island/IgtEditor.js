@@ -1018,8 +1018,15 @@ export class IgtEditor {
       return true;
     }
     if (e.key === 'Escape') {
-      e.preventDefault();
+      // The same question as Enter: is the list what the user is addressing?
+      // A list that opened on its own and has not been typed into or steered
+      // is not, so Escape falls through and reverts the cell in one press,
+      // as it does everywhere else. Mid-completion, Escape closes the list
+      // and keeps what was typed.
+      const engaged = !!this._alts.steered || (this._alts.filter || '') !== '';
       this._closeAlts();
+      if (!engaged) return false;
+      e.preventDefault();
       return true;
     }
     if (e.key === 'Tab') this._closeAlts();
