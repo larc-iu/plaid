@@ -34,9 +34,10 @@
 
 import { PROV_STATES } from '@larc-iu/plaid-client';
 
-import { trimIgnoredEdges } from './igtConfig.js';
+import { trimIgnoredEdges, isTokenIgnored } from './igtConfig.js';
 import { isBoundType } from './affixMarkers.js';
 import { KINDS, SLOT_LINK, precedentCounts, pickMajority } from './precedent.js';
+import { isMweType, isContiguous, joinMweForm } from './mwe.js';
 
 export const AUTO_LINK_SOURCE = 'rule:precedent-or-unique';
 
@@ -54,11 +55,13 @@ const precedentFor = (tally, form, kind) =>
 
 // form -> [itemIds] over the loaded vocab tables (exact), plus a casefolded
 // variant for the fallback tier, plus the set of bound-form item ids (affix
-// or clitic morphType) that word tokens must not take.
+// or clitic morphType) that word tokens must not take, and the set of
+// phrase-typed ids (multi-word expressions) that no single token takes.
 export function buildItemIndex(vocabularies) {
   const exact = new Map();
   const folded = new Map();
   const bound = new Set();
+  const phrase = new Set();
   const add = (map, key, id) => {
     const list = map.get(key);
     if (list) {
@@ -71,19 +74,22 @@ export function buildItemIndex(vocabularies) {
       add(exact, it.form, it.id);
       add(folded, it.form.toLowerCase(), it.id);
       if (isBoundType(it.metadata?.morphType)) bound.add(it.id);
+      if (isMweType(it.metadata?.morphType)) phrase.add(it.id);
     }
   }
-  return { exact, folded, bound };
+  return { exact, folded, bound, phrase };
 }
 
 // Resolution tiers, first hit wins: exact precedent (same kind, then any) >
 // exact item > casefolded precedent > casefolded item. Among multiple items
 // sharing a form, the lexicographically smallest id is taken. A word token
-// sees no bound-form entry at any tier. Returns null only when nothing
-// matches at any tier.
+// sees no bound-form entry at any tier, and no single token sees a
+// phrase-typed one (those are for multi-word expressions, see
+// computeMweProposals). Returns null only when nothing matches at any tier.
 const smallestId = (ids) => (ids && ids.length ? ids.reduce((a, b) => (b < a ? b : a)) : null);
 function resolveForm(form, kind, precedent, items) {
-  const ok = (id) => (id && !(kind === KINDS.WORD && items.bound.has(id)) ? id : null);
+  const ok = (id) =>
+    id && !(kind === KINDS.WORD && items.bound.has(id)) && !items.phrase.has(id) ? id : null;
   const pick = (ids) => smallestId((ids || []).filter((id) => ok(id)));
   const p = ok(precedentFor(precedent, form, kind));
   if (p) return p;
@@ -147,6 +153,107 @@ export function computeAutoLinkProposals({
     // same trim the popover's "+ Create" applies): `derechos.` links to
     // `derechos`. Morpheme forms are used verbatim.
     consider(t, trimIgnoredEdges(t.content ?? '', ignoredCfg), KINDS.WORD);
+  }
+  return proposals;
+}
+
+// ---- multi-word expressions ----
+// Runs of adjacent words are linked as one multi-word expression (MWE) when
+// their joined surfaces match a phrase-typed entry's form, or match a run the
+// open document already links as an MWE by hand (or has confirmed). Exact
+// first, then casefolded, precedent before a form match, as for words. Only
+// adjacent runs: a discontiguous expression is a person's call. A run that
+// already carries an MWE over exactly those words is left alone, whatever it
+// points at. Project-wide MWE precedent is out of reach (the query language
+// cannot tell one link's tokens from another's), so precedent here is the
+// document's own.
+export const MWE_LINK_SOURCE = 'rule:mwe-precedent-or-form';
+
+const wordCount = (form) => form.split(' ').length;
+
+function buildPhraseIndex(vocabularies) {
+  const exact = new Map();
+  const folded = new Map();
+  let longest = 0;
+  const add = (map, key, id) => {
+    const list = map.get(key);
+    if (list) {
+      if (!list.includes(id)) list.push(id);
+    } else map.set(key, [id]);
+  };
+  for (const vocab of Object.values(vocabularies || {})) {
+    for (const it of vocab.items || []) {
+      if (!it.form || !isMweType(it.metadata?.morphType)) continue;
+      const form = joinMweForm(it.form.split(/\s+/));
+      if (wordCount(form) < 2) continue;
+      add(exact, form, it.id);
+      add(folded, form.toLowerCase(), it.id);
+      longest = Math.max(longest, wordCount(form));
+    }
+  }
+  return { exact, folded, longest };
+}
+
+// joined surfaces -> item -> count, from the document's adjacent MWEs a person
+// made or confirmed; plus a casefolded variant.
+function buildMwePrecedent(sentences, ignoredCfg) {
+  const exact = new Map();
+  const folded = new Map();
+  const count = (map, key, id) => {
+    let byItem = map.get(key);
+    if (!byItem) map.set(key, (byItem = new Map()));
+    byItem.set(id, (byItem.get(id) || 0) + 1);
+  };
+  let longest = 0;
+  for (const s of sentences || []) {
+    for (const m of s.mwes || []) {
+      if (m.prov === PROV_STATES.MACHINE || !isContiguous(m.memberIdx)) continue;
+      const form = joinMweForm(
+        m.memberIdx.map((i) => trimIgnoredEdges(s.tokens[i]?.content ?? '', ignoredCfg)),
+      );
+      if (wordCount(form) < 2) continue;
+      count(exact, form, m.item.id);
+      count(folded, form.toLowerCase(), m.item.id);
+      longest = Math.max(longest, wordCount(form));
+    }
+  }
+  return { exact, folded, longest };
+}
+
+export function computeMweProposals({ sentences, vocabularies, ignoredCfg = null }) {
+  const phrases = buildPhraseIndex(vocabularies);
+  const precedent = buildMwePrecedent(sentences, ignoredCfg);
+  const longest = Math.max(phrases.longest, precedent.longest);
+  if (longest < 2) return [];
+  const resolve = (form) => {
+    const lower = form.toLowerCase();
+    return (
+      pickMajority(precedent.exact.get(form), { tieBreak: 'smallest' }) ||
+      smallestId(phrases.exact.get(form)) ||
+      pickMajority(precedent.folded.get(lower), { tieBreak: 'smallest' }) ||
+      smallestId(phrases.folded.get(lower))
+    );
+  };
+  const proposals = [];
+  for (const s of sentences || []) {
+    const covered = new Set((s.mwes || []).map((m) => m.memberTokenIds.join('\u0000')));
+    const words = s.tokens || [];
+    for (let i = 0; i < words.length; i++) {
+      const run = [];
+      for (let j = i; j < words.length && run.length < longest; j++) {
+        // Punctuation the project ignores ends a run: "a , b" is no expression.
+        if (isTokenIgnored(words[j].content, ignoredCfg)) break;
+        run.push(words[j]);
+        if (run.length < 2) continue;
+        const form = joinMweForm(run.map((t) => trimIgnoredEdges(t.content ?? '', ignoredCfg)));
+        if (wordCount(form) !== run.length) continue;
+        const itemId = resolve(form);
+        if (!itemId) continue;
+        const tokenIds = run.map((t) => t.id);
+        if (covered.has(tokenIds.join('\u0000'))) continue;
+        proposals.push({ tokenIds, vocabItemId: itemId, form });
+      }
+    }
   }
   return proposals;
 }

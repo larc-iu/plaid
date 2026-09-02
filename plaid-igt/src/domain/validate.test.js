@@ -67,3 +67,48 @@ describe('formatFindingsForClipboard', () => {
     expect(text).toContain('"tokens":["t1"]');
   });
 });
+
+describe('multi-word expressions', () => {
+  const twoSentences = () =>
+    buildRawDoc({
+      body: 'the cat sat down',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+        { id: 'w-4', begin: 12, end: 16 },
+      ],
+      morphemes: [
+        morph('m-1', 0, 3),
+        morph('m-2', 4, 7),
+        morph('m-3', 8, 11),
+        morph('m-4', 12, 16),
+      ],
+      sentences: [
+        { id: 's-1', begin: 0, end: 7 },
+        { id: 's-2', begin: 8, end: 16 },
+      ],
+    });
+  const vocabs = (links) => ({
+    v1: { id: 'v1', name: 'Lexicon', items: [], vocabLinks: links },
+  });
+  const item = { id: 'i-1', form: 'the cat sat' };
+
+  it('warns about an expression drawn short, and one not drawn at all', async () => {
+    const { deriveSentences } = await import('./derive.js');
+    const raw = twoSentences();
+    const vocabularies = vocabs([
+      { id: 'lk-partial', tokens: ['w-1', 'w-2', 'w-3'], vocabItem: item },
+      { id: 'lk-split', tokens: ['w-2', 'w-3'], vocabItem: item },
+      { id: 'lk-fine', tokens: ['w-3', 'w-4'], vocabItem: item },
+    ]);
+    const layerInfo = getIgtLayerInfo(raw);
+    const { sentences } = deriveSentences(raw, layerInfo, vocabularies);
+    const findings = validateIgtDocument(layerInfo, [], { sentences, vocabularies });
+    expect(findings.map((f) => [f.code, f.context.linkId])).toEqual([
+      ['mwe-partial', 'lk-partial'],
+      ['mwe-undrawn', 'lk-split'],
+    ]);
+    expect(findings.every((f) => f.severity === 'warning')).toBe(true);
+  });
+});

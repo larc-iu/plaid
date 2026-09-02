@@ -4,7 +4,9 @@
 //      has an uncontested prior full analysis project-wide get that analysis
 //      copied onto them (analysisMemory.js + bulkApplyAnalyses);
 //   2. auto-linking: words/morphemes get the precedent-or-unique vocab link
-//      rule (autoLink.js), replacing only machine-unverified links.
+//      rule (autoLink.js), replacing only machine-unverified links; then runs
+//      of words that match a phrase entry, or an expression this document
+//      already has, are linked as multi-word expressions.
 // Everything applied is provenance-stamped and renders as unverified; humans
 // confirm by editing, the popover, or the confirm-word gesture.
 //
@@ -26,7 +28,12 @@ import {
   wordFormDocIndexQuery,
   rankSourceDocs,
 } from './analysisMemory.js';
-import { AUTO_LINK_SOURCE, computeAutoLinkProposals } from './autoLink.js';
+import {
+  AUTO_LINK_SOURCE,
+  MWE_LINK_SOURCE,
+  computeAutoLinkProposals,
+  computeMweProposals,
+} from './autoLink.js';
 import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js';
 
 const MAX_SOURCE_DOCS = 25;
@@ -129,6 +136,23 @@ async function runLinkPhase(doc) {
     precedent,
     ignoredCfg,
   });
-  if (!proposals.length) return 0;
-  return doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE);
+  let linked = 0;
+  if (proposals.length) {
+    const n = await doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE);
+    if (n === false) return false;
+    linked += n;
+  }
+  // Multi-word expressions second, over the reloaded document: runs of words
+  // matching a phrase entry, or an expression this document already has.
+  const mweProposals = computeMweProposals({
+    sentences: doc.sentences,
+    vocabularies: doc.vocabularies,
+    ignoredCfg,
+  });
+  if (mweProposals.length) {
+    const n = await doc.bulkLinkMwes(mweProposals, MWE_LINK_SOURCE);
+    if (n === false) return false;
+    linked += n;
+  }
+  return linked;
 }

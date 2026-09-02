@@ -18,10 +18,15 @@
 // caller logs the lot and surfaces one consolidated toast. Never throws.
 
 import { planMorphemeReconcile, planSpanDedup } from './igtReconcile.js';
+import { collectMweLinks } from './mwe.js';
 
 export const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
 
-export function validateIgtDocument(layerInfo, alignmentTokens = []) {
+export function validateIgtDocument(
+  layerInfo,
+  alignmentTokens = [],
+  { sentences = [], vocabularies = {} } = {},
+) {
   const findings = [];
   const add = (severity, code, message, context = {}) =>
     findings.push({ severity, code, message, context });
@@ -66,6 +71,38 @@ export function validateIgtDocument(layerInfo, alignmentTokens = []) {
   // Alignment timing must be non-inverted (timeEnd >= timeBegin). It lives in
   // opaque token metadata the server does not validate, and the repair (swap
   // the bounds vs. clear them) is ambiguous, so we only report it.
+  // A multi-word expression is drawn in the sentence of its first word. One
+  // whose words sit in several sentences, or on a word that no longer exists,
+  // is drawn short (partial) or not at all; only a person can say what it
+  // should cover now.
+  try {
+    const drawn = new Set();
+    for (const s of sentences || []) {
+      for (const m of s.mwes || []) {
+        drawn.add(m.linkId);
+        if (m.partial) {
+          add(
+            SEVERITY.WARNING,
+            'mwe-partial',
+            `The expression "${m.item?.form ?? ''}" has words outside sentence ${(sentences.indexOf(s) ?? 0) + 1}, or on words that no longer exist. Only its words in that sentence are shown.`,
+            { linkId: m.linkId, sentenceId: s.id, tokens: m.tokenIds },
+          );
+        }
+      }
+    }
+    for (const m of collectMweLinks(vocabularies)) {
+      if (drawn.has(m.linkId)) continue;
+      add(
+        SEVERITY.WARNING,
+        'mwe-undrawn',
+        `The expression "${m.item?.form ?? ''}" has no two words left in one sentence, so it is not shown. Open the entry in its vocabulary to see or remove the link.`,
+        { linkId: m.linkId, tokens: m.tokenIds },
+      );
+    }
+  } catch (err) {
+    add(SEVERITY.ERROR, 'mwe-check-failed', `Expression check threw: ${err?.message || err}`);
+  }
+
   (alignmentTokens || []).forEach((t) => {
     const tb = t.metadata?.timeBegin;
     const te = t.metadata?.timeEnd;

@@ -27,9 +27,9 @@ describe('link precedent from project rows', () => {
   it('uses morphForm over token value and takes the majority item', () => {
     const t = foldLinkRows(createTally(), [
       res([
-        ['item-a', 'perros', null, 'word', 3], // word token: form = value
-        ['item-a', 'whole', 's', 'morpheme', 4], // morpheme token: form = metadata.form
-        ['item-b', 'whole', 's', 'morpheme', 2], // minority for "s"
+        ['item-a', 'perros', null, 'word', null, 3], // word token: form = value
+        ['item-a', 'whole', 's', 'morpheme', null, 4], // morpheme token: form = metadata.form
+        ['item-b', 'whole', 's', 'morpheme', null, 2], // minority for "s"
       ]),
     ]);
     expect(winner(t, 'perros', 'word')).toBe('item-a');
@@ -45,8 +45,8 @@ describe('link precedent from project rows', () => {
   it('breaks count ties to the lexicographically smaller id (and refuses them without a tiebreak)', () => {
     const t = foldLinkRows(createTally(), [
       res([
-        ['item-b', null, 'la', 'morpheme', 2],
-        ['item-a', null, 'la', 'morpheme', 2],
+        ['item-b', null, 'la', 'morpheme', null, 2],
+        ['item-a', null, 'la', 'morpheme', null, 2],
       ]),
     ]);
     expect(winner(t, 'la', 'morpheme')).toBe('item-a');
@@ -55,10 +55,10 @@ describe('link precedent from project rows', () => {
 
   it('merges counts across vocabs', () => {
     const t = foldLinkRows(createTally(), [
-      res([['item-a', null, 'se', 'morpheme', 1]]),
+      res([['item-a', null, 'se', 'morpheme', null, 1]]),
       res([
-        ['item-a', null, 'se', 'morpheme', 2],
-        ['item-b', null, 'se', 'morpheme', 2],
+        ['item-a', null, 'se', 'morpheme', null, 2],
+        ['item-b', null, 'se', 'morpheme', null, 2],
       ]),
     ]);
     expect(winner(t, 'se', 'morpheme')).toBe('item-a'); // 3 > 2
@@ -67,9 +67,9 @@ describe('link precedent from project rows', () => {
   it('answers each kind with its own counts, and a kind without any with what every kind did', () => {
     const t = foldLinkRows(createTally(), [
       res([
-        ['item-w', 'se', null, 'word', 5],
-        ['item-m', 'whole', 'se', 'morpheme', 2],
-        ['item-x', 'se', null, 'other-app', 9], // another app's layer: overall only
+        ['item-w', 'se', null, 'word', null, 5],
+        ['item-m', 'whole', 'se', 'morpheme', null, 2],
+        ['item-x', 'se', null, 'other-app', null, 9], // another app's layer: overall only
       ]),
     ]);
     expect(winner(t, 'se', 'word')).toBe('item-w');
@@ -83,8 +83,8 @@ describe('link precedent from project rows', () => {
       createTally(),
       [
         res([
-          ['i-a', 'derechos.', null, 'word', 2],
-          ['i-b', 'derechos', null, 'word', 1],
+          ['i-a', 'derechos.', null, 'word', null, 2],
+          ['i-b', 'derechos', null, 'word', null, 1],
         ]),
       ],
       ignored,
@@ -103,6 +103,7 @@ describe('queries', () => {
       '?t.value',
       '?t.metadata.form',
       '?tl.config.plaid.role',
+      '?v.metadata.morphType',
     ]);
     expect(qs[0].where.some((c) => c[0] === '!=')).toBe(false);
     const [q] = linkPrecedentQueries(['v1'], { excludeDocId: 'doc-1' });
@@ -174,7 +175,7 @@ describe('value precedent', () => {
 
   it('foldProject takes the editor fetch shape', () => {
     const t = foldProject(createTally(), {
-      links: [res([['item-a', 'la', null, 'word', 2]])],
+      links: [res([['item-a', 'la', null, 'word', null, 2]])],
       values: [{ kind: 'word', field: 'POS', results: res([['la', 'DET', null, null, 2]]) }],
     });
     expect(winner(t, 'la', 'word')).toBe('item-a');
@@ -215,7 +216,11 @@ describe('folding the open document', () => {
   ];
 
   it("folds the document's links onto project rows, keyed like the rows, machine links marked", () => {
-    const t = foldLinkRows(createTally(), [res([['item-a', 'perros', null, 'word', 3]])], ignored);
+    const t = foldLinkRows(
+      createTally(),
+      [res([['item-a', 'perros', null, 'word', null, 3]])],
+      ignored,
+    );
     foldDocumentLinks(t, sentences, ignored);
     expect(links(t, 'perros', 'word')).toEqual(new Map([['item-a', 4]]));
     expect(links(t, 's', 'morpheme')).toEqual(new Map([['item-b', 1]]));
@@ -265,5 +270,19 @@ describe('pickMajority + precedentForm + addPrecedent', () => {
     expect(precedentForm('perros.', KINDS.WORD, ignored)).toBe('perros');
     expect(precedentForm('s.', KINDS.MORPHEME, ignored)).toBe('s.');
     expect(precedentForm(null, KINDS.WORD, ignored)).toBe('');
+  });
+});
+
+describe('multi-word expression links in project rows', () => {
+  it("leaves a phrase entry out of a single form's precedent", () => {
+    const t = foldLinkRows(createTally(), [
+      res([
+        ['i-phrase', 'el', null, 'word', 'phrase', 5],
+        ['i-el', 'el', null, 'word', 'stem', 2],
+        ['i-disc', 'pelo', null, 'word', 'discontiguous phrase', 3],
+      ]),
+    ]);
+    expect(winner(t, 'el', 'word')).toBe('i-el');
+    expect(links(t, 'pelo', 'word')).toBeNull();
   });
 });

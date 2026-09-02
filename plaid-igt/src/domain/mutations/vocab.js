@@ -438,6 +438,40 @@ export const vocabMutations = {
     });
   },
 
+  // Apply multi-word expression proposals from the built-in rule (or any
+  // provider): `proposals` is [{ tokenIds, vocabItemId }]. Only new links are
+  // written, each stamped { prov: 'inferred', provSource } for a person to
+  // confirm; a run that already carries an MWE over exactly those words is
+  // skipped. One bulk create, then one reload. Returns the number of links
+  // written (false on failure).
+  async bulkLinkMwes(proposals, provSource) {
+    const existing = new Set();
+    Object.values(this._vocabularies || {}).forEach((v) =>
+      (v.vocabLinks || []).forEach((l) => {
+        if (Array.isArray(l.tokens) && l.tokens.length >= 2) existing.add(l.tokens.join('\u0000'));
+      }),
+    );
+    const words = new Set((this.layerInfo.primaryTokenLayer?.tokens || []).map((w) => w.id));
+    const creates = [];
+    for (const p of proposals || []) {
+      const { item } = findVocabForItem(this._vocabularies, p.vocabItemId);
+      if (!item) continue;
+      const ids = [...new Set(p.tokenIds || [])];
+      if (ids.length < 2 || !ids.every((id) => words.has(id))) continue;
+      const key = ids.join('\u0000');
+      if (existing.has(key)) continue;
+      existing.add(key);
+      creates.push({ vocabItem: item.id, tokens: ids });
+    }
+    if (!creates.length) return 0;
+    const metadata = stampInferred(provSource);
+    const ok = await this._withSaving('Failed to auto-link multi-word expressions', async () => {
+      await this._client.vocabLinks.bulkCreate(creates.map((c) => ({ ...c, metadata })));
+      await this._reload();
+    });
+    return ok ? creates.length : false;
+  },
+
   async createAndLinkVocabItem(tokenId, vocabId, form, metadata = {}) {
     if (!this._vocabularies[vocabId]) {
       this.setError(`Vocabulary ${vocabId} not found`);

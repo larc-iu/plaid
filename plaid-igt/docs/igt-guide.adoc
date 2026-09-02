@@ -151,6 +151,21 @@ Because a vocabulary is shared, editing an entry updates every document linked t
 Vocabularies have their own area in the app, where you browse and edit entries, define the fields an entry carries, and manage who maintains them.
 Which vocabularies a project draws on is part of the project's settings.
 
+== Multi-word expressions
+
+Some lexical units are longer than a word: an idiom, a phrasal verb, a compound name.
+Link one to a single entry by gathering its words: **Shift+click** each word, or from one of a word's cells press **Shift+→** (and **Shift+←**) to take in its neighbours, with **Ctrl** held to skip a word that does not belong.
+A dashed bracket shows the words gathered so far. Press **Enter** to link them to an entry, or **Esc** to give up.
+The popover works as it does for one word: pick an entry, or create one. A new entry gets the words' surface forms joined by spaces, which you can edit to the citation form before creating, and a type of `phrase` (or `discontiguous phrase` when a word in the middle was skipped).
+
+A linked expression draws as a bracket under its words, inside the gray word band, labelled with the entry's form.
+The bracket runs on across a line break, and a skipped word shows as a dotted stretch.
+A word can belong to several expressions at once; overlapping ones stack, and the band grows a line for each.
+Each word keeps its own entry link and its own morphemes regardless.
+Click a bracket's label to change the entry, unlink it, or confirm one that **Auto-analyze** made (it links a run of words when their joined form matches a phrase entry, or an expression this document already has).
+While that popover is open, Shift+click a word to add it to the expression or take it out.
+The popover for a single word lists the expressions it is part of, and offers **Part of a longer expression…** to start gathering from there.
+
 == Entry Fields
 
 Every entry has a **Form**, its reference form (the headword), which is required.
@@ -249,6 +264,8 @@ To write such a program, see the link:api-py.html[Python client] and link:api-js
 | **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays.
 | **Ctrl/Cmd+Shift** + arrow | Jump to the next or previous word that still has unverified proposals.
 | **Ctrl/Cmd** + arrow | Move between auto-made vocabulary-link suggestions.
+| **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence; add **Ctrl** to skip a word.
+| **Enter** (while gathering) | Link the gathered words to one entry. **Escape** drops them.
 | **Escape** | Close an open popover or menu.
 |===
 

@@ -1479,6 +1479,38 @@ describe('multi-word expressions', () => {
     expect(doc.sentences[0].tokens[2].mwePieces).toEqual([]);
   });
 
+  it('bulkLinkMwes writes only new, well-formed proposals in one bulk create, stamped inferred', async () => {
+    const client = makeFakeClient();
+    client.documents.get = async () => raw();
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      client,
+      vocabularies: vocabs([
+        { id: 'lk-1', tokens: ['w-3', 'w-4'], vocabItem: { id: 'i-sit', form: 'sit down' } },
+      ]),
+    });
+    const n = await doc.bulkLinkMwes(
+      [
+        { tokenIds: ['w-3', 'w-4'], vocabItemId: 'i-alt' }, // already covered
+        { tokenIds: ['w-1', 'w-2'], vocabItemId: 'i-sit' },
+        { tokenIds: ['w-1'], vocabItemId: 'i-sit' }, // one word
+        { tokenIds: ['w-1', 'm-1'], vocabItemId: 'i-sit' }, // not a word
+        { tokenIds: ['w-2', 'w-4'], vocabItemId: 'i-nope' }, // no such entry
+      ],
+      'rule:test',
+    );
+    expect(n).toBe(1);
+    const bulk = client.calls.find((c) => c.kind === 'vocabLinks.bulkCreate');
+    expect(bulk.args[0]).toEqual([
+      {
+        vocabItem: 'i-sit',
+        tokens: ['w-1', 'w-2'],
+        metadata: { prov: 'inferred', provSource: 'rule:test' },
+      },
+    ]);
+  });
+
   it('confirmMweLink flips a machine link to verified and ignores a human one', async () => {
     const client = makeFakeClient();
     const doc = makeDoc({

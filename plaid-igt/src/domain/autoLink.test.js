@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildItemIndex, computeAutoLinkProposals } from './autoLink.js';
+import { buildItemIndex, computeAutoLinkProposals, computeMweProposals } from './autoLink.js';
 import { createTally, foldLinkRows } from './precedent.js';
 
 const res = (rows) => ({ results: rows });
@@ -28,7 +28,7 @@ const morph = (id, form, vocabItem = null) => ({ id, metadata: { form }, vocabIt
 
 describe('computeAutoLinkProposals', () => {
   it('links via precedent, item match, and casefold — breaking ties to the smaller id, skipping human-linked', () => {
-    const precedent = precedentOf(res([['i-prec', null, 'nac', 'morpheme', 2]]));
+    const precedent = precedentOf(res([['i-prec', null, 'nac', 'morpheme', null, 2]]));
     const sentences = sentence([
       word('w1', 'Todos'), // casefold item match -> i-all
       word('w2', 'se'), // two items share 'se' -> smaller id i-se1
@@ -51,7 +51,7 @@ describe('computeAutoLinkProposals', () => {
   });
 
   it('replaces a machine-unverified link when the rule resolves a different item; leaves same-item and protected links', () => {
-    const precedent = precedentOf(res([['i-all', null, 'todos', 'word', 5]]));
+    const precedent = precedentOf(res([['i-all', null, 'todos', 'word', null, 5]]));
     const sentences = sentence([
       word('w1', 'todos', { id: 'i-se1', prov: 'machine' }), // machine, rule says i-all -> replace
       word('w2', 'todos', { id: 'i-all', prov: 'machine' }), // machine, already i-all -> no-op
@@ -66,8 +66,8 @@ describe('computeAutoLinkProposals', () => {
   it('a precedent tie breaks to the lexicographically smaller item id', () => {
     const precedent = precedentOf(
       res([
-        ['i-se1', null, 'todos', 'word', 1],
-        ['i-all', null, 'todos', 'word', 1],
+        ['i-se1', null, 'todos', 'word', null, 1],
+        ['i-all', null, 'todos', 'word', null, 1],
       ]),
     );
     const proposals = computeAutoLinkProposals({
@@ -124,7 +124,7 @@ describe('a word never auto-links to a bound form', () => {
     },
   };
   it('skips affix and clitic entries for word tokens at every tier, morphemes still take them', () => {
-    const precedent = precedentOf(res([['i-s-affix', 's', null, 'word', 4]]));
+    const precedent = precedentOf(res([['i-s-affix', 's', null, 'word', null, 4]]));
     const proposals = computeAutoLinkProposals({
       sentences: sentence([
         word('w1', 's'),
@@ -147,8 +147,8 @@ describe('same-kind precedent ranks homonyms; an entry may serve both kinds', ()
   it('a word follows what words linked, a morpheme what morphemes linked', () => {
     const precedent = precedentOf(
       res([
-        ['i-se2', 'se', null, 'word', 3],
-        ['i-se1', 'whole', 'se', 'morpheme', 9],
+        ['i-se2', 'se', null, 'word', null, 3],
+        ['i-se1', 'whole', 'se', 'morpheme', null, 9],
       ]),
     );
     const proposals = computeAutoLinkProposals({
@@ -162,7 +162,7 @@ describe('same-kind precedent ranks homonyms; an entry may serve both kinds', ()
     ]);
   });
   it('falls back to precedent of any kind, then to the smallest-id homonym', () => {
-    const fromMorphemes = precedentOf(res([['i-se2', 'whole', 'se', 'morpheme', 9]]));
+    const fromMorphemes = precedentOf(res([['i-se2', 'whole', 'se', 'morpheme', null, 9]]));
     expect(
       computeAutoLinkProposals({
         sentences: sentence([word('w1', 'se')]),
@@ -206,5 +206,101 @@ describe('same-kind precedent ranks homonyms; an entry may serve both kinds', ()
       ['m2', 'i-se1'],
       ['w1', 'i-all'],
     ]);
+  });
+});
+
+describe('phrase entries and single tokens', () => {
+  const vocabs = {
+    v1: {
+      id: 'v1',
+      items: [
+        { id: 'i-phr', form: 'sit', metadata: { morphType: 'phrase' } },
+        { id: 'i-sit', form: 'sit', metadata: { morphType: 'stem' } },
+      ],
+    },
+  };
+
+  it('never resolve to a phrase-typed entry, by precedent or by form', () => {
+    expect(buildItemIndex(vocabs).phrase.has('i-phr')).toBe(true);
+    const precedent = precedentOf(res([['i-phr', 'sit', null, 'word', 'phrase', 9]]));
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'sit'), word('w2', 'Sit')]),
+      vocabularies: vocabs,
+      precedent,
+    });
+    expect(proposals.map((p) => p.vocabItemId)).toEqual(['i-sit', 'i-sit']);
+  });
+});
+
+describe('computeMweProposals', () => {
+  const vocabs = {
+    v1: {
+      id: 'v1',
+      items: [
+        { id: 'i-sit', form: 'sit down', metadata: { morphType: 'phrase' } },
+        { id: 'i-give', form: 'give up', metadata: { morphType: 'phrase' } },
+        { id: 'i-long', form: 'sit down and give up', metadata: { morphType: 'phrase' } },
+        { id: 'i-word', form: 'sit', metadata: { morphType: 'stem' } },
+      ],
+    },
+  };
+  const words = (...contents) => contents.map((c, i) => ({ id: `w${i + 1}`, content: c }));
+
+  it('links runs whose joined form matches a phrase entry, exact before casefold, longest too', () => {
+    const s = { tokens: words('Sit', 'down', 'and', 'give', 'up', '.'), mwes: [] };
+    const out = computeMweProposals({ sentences: [s], vocabularies: vocabs });
+    expect(out.map((p) => [p.vocabItemId, p.tokenIds])).toEqual([
+      ['i-sit', ['w1', 'w2']],
+      ['i-long', ['w1', 'w2', 'w3', 'w4', 'w5']],
+      ['i-give', ['w4', 'w5']],
+    ]);
+  });
+
+  it('follows what the document already links by hand, and skips runs already covered', () => {
+    const s = {
+      tokens: words('give', 'up', 'then', 'give', 'up'),
+      mwes: [
+        {
+          linkId: 'l1',
+          item: { id: 'i-other' },
+          prov: 'human',
+          memberIdx: [0, 1],
+          memberTokenIds: ['w1', 'w2'],
+        },
+      ],
+    };
+    const out = computeMweProposals({ sentences: [s], vocabularies: vocabs });
+    // The document's own choice for "give up" outranks the lexicon's form match.
+    expect(out).toEqual([{ tokenIds: ['w4', 'w5'], vocabItemId: 'i-other', form: 'give up' }]);
+  });
+
+  it('does not learn from unverified machine links, nor from discontiguous ones', () => {
+    const s = {
+      tokens: words('give', 'it', 'up', 'give', 'up'),
+      mwes: [
+        {
+          linkId: 'l1',
+          item: { id: 'i-machine' },
+          prov: 'machine',
+          memberIdx: [3, 4],
+          memberTokenIds: ['w4', 'w5'],
+        },
+        {
+          linkId: 'l2',
+          item: { id: 'i-disc' },
+          prov: 'human',
+          memberIdx: [0, 2],
+          memberTokenIds: ['w1', 'w3'],
+        },
+      ],
+    };
+    const out = computeMweProposals({ sentences: [s], vocabularies: vocabs });
+    expect(out).toEqual([]);
+  });
+
+  it('stops a run at punctuation the project ignores', () => {
+    const ignoredCfg = { type: 'unicodePunctuation' };
+    const s = { tokens: words('sit', ',', 'down'), mwes: [] };
+    expect(computeMweProposals({ sentences: [s], vocabularies: vocabs, ignoredCfg })).toEqual([]);
   });
 });

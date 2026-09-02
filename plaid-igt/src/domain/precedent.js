@@ -34,6 +34,7 @@
 
 import { PROV_STATES, ROLES, isMachine } from '@larc-iu/plaid-client';
 import { trimIgnoredEdges } from './igtConfig.js';
+import { isMweType } from './mwe.js';
 
 /** The two kinds of token a decision can hang off (token-layer roles). */
 export const KINDS = Object.freeze({ WORD: ROLES.WORD, MORPHEME: ROLES.MORPHEME });
@@ -82,8 +83,11 @@ const addLink = (tally, kind, form, itemId, n, machine) => {
 
 // One grouped query per vocab: how often each (form, item) pairing has been
 // linked, split by the kind of token that carries the link. Row shape:
-// [itemId, tokenValue, morphForm, role, count] — morphForm for morpheme
-// tokens (their value is just the parent word's slice), tokenValue otherwise.
+// [itemId, tokenValue, morphForm, role, morphType, count] — morphForm for
+// morpheme tokens (their value is just the parent word's slice), tokenValue
+// otherwise; morphType is the entry's, so rows from multi-word expressions
+// (one per member word, since a link over several tokens joins once per
+// token) can be left out of a single word's precedent.
 export function linkPrecedentQueries(vocabIds, { excludeDocId = null } = {}) {
   return vocabIds.map((vid) => ({
     where: [
@@ -94,7 +98,13 @@ export function linkPrecedentQueries(vocabIds, { excludeDocId = null } = {}) {
       ...(excludeDocId ? [['!=', '?t.doc', excludeDocId]] : []),
     ],
     return: {
-      group: ['?v', '?t.value', '?t.metadata.form', '?tl.config.plaid.role'],
+      group: [
+        '?v',
+        '?t.value',
+        '?t.metadata.form',
+        '?tl.config.plaid.role',
+        '?v.metadata.morphType',
+      ],
       aggregates: [['count']],
     },
   }));
@@ -142,7 +152,10 @@ export function valuePrecedentQueries(layerInfo, { excludeDocId = null } = {}) {
 /** Fold linkPrecedentQueries results (one per vocab) into `tally`. */
 export function foldLinkRows(tally, resultsPerVocab, ignoredCfg = null) {
   for (const res of resultsPerVocab || []) {
-    for (const [itemId, value, morphForm, role, n] of res?.results || []) {
+    for (const [itemId, value, morphForm, role, morphType, n] of res?.results || []) {
+      // A phrase entry's links are multi-word expressions: not what this
+      // single form has been given.
+      if (isMweType(morphType)) continue;
       const form =
         morphForm != null && morphForm !== ''
           ? String(morphForm)

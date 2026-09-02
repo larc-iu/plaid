@@ -536,7 +536,10 @@ export class IgtDocument {
       // Validate AFTER healing — whether or not anything was healed — so a heal
       // that silently failed, or an un-healable app-contract violation, still
       // surfaces. validate is pure + read-only; the caller logs + toasts.
-      const findings = validateIgtDocument(this.layerInfo, this.alignmentTokens);
+      const findings = validateIgtDocument(this.layerInfo, this.alignmentTokens, {
+        sentences: this.sentences,
+        vocabularies: this._vocabularies,
+      });
 
       return {
         created: morphemeWork ? wordsNeedingMorpheme.length : 0,
