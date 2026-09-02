@@ -11,13 +11,13 @@ import {
   readIgnoredTokens,
   IGT_NAMESPACE,
 } from '@/domain/igtConfig';
-import { readTagsets, readTagsetName } from '@/domain/tagsets';
+import { readTagsetName } from '@/domain/tagsets';
 
-export const FieldsSettings = ({ projectId, client }) => {
+// `tagsetNames` comes from ProjectSettings, which holds the live project, so a
+// tagset created in the section above shows up in the picker immediately.
+export const FieldsSettings = ({ projectId, client, tagsetNames = [] }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
-  // The project's tagset names, for the per-field picker (filled during load).
-  const [tagsetNames, setTagsetNames] = useState([]);
   // field name -> span layer id, for usage counts at delete time. Kept in
   // sync by handleLoadData and by creates/deletes in handleSaveChanges.
   const spanLayerIdsRef = useRef({});
@@ -78,8 +78,6 @@ export const FieldsSettings = ({ projectId, client }) => {
       spanLayerIdsRef.current = Object.fromEntries(
         scopedSpanLayers.map((l) => [fieldKey({ scope: readScope(l.config), name: l.name }), l.id]),
       );
-
-      setTagsetNames(Object.keys(readTagsets(project.config)));
 
       const fieldsWithScope = scopedSpanLayers.map((spanLayer) => ({
         name: spanLayer.name,

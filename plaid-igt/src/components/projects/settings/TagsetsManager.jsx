@@ -99,7 +99,13 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
     const have = new Set(t.values.map((v) => v.value));
     const fresh = records.filter((r) => r.value && !have.has(r.value));
     if (!fresh.length) {
-      notifyInfo('Every value is already in the tagset', 'Nothing to Add');
+      // Two different nothings: nothing was found, or everything found is
+      // already here. Saying the second when the first happened sends people
+      // looking for a bug in the wrong place.
+      notifyInfo(
+        records.length ? 'Every value found is already in the tagset' : 'No values found',
+        'Nothing to Add',
+      );
       return 0;
     }
     await patch(name, { values: [...t.values, ...fresh] });
@@ -329,7 +335,16 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                     <Button variant="ghost" onClick={() => setPasteOpen((o) => !o)}>
                       Paste a list
                     </Button>
-                    <Button variant="ghost" onClick={() => handleSeedAttested(name)}>
+                    <Button
+                      variant="ghost"
+                      disabled={fields.length === 0}
+                      onClick={() => handleSeedAttested(name)}
+                      title={
+                        fields.length === 0
+                          ? 'No annotation field uses this tagset yet, so there are no values to read. Point a field at it in Annotation Fields below.'
+                          : `Read every value already used in ${fields.map((f) => f.name).join(', ')}`
+                      }
+                    >
                       <Sparkles className="h-4 w-4" /> Add values used in this project
                     </Button>
                   </div>
@@ -452,7 +467,6 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
         <td className="px-2 py-1">
           <Input
             className="h-7"
-            placeholder="What this tag means"
             defaultValue={rec.description ?? ''}
             onBlur={(e) => onPatch({ description: e.currentTarget.value })}
           />
@@ -482,9 +496,6 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
         <tr className="border-t bg-muted/30">
           <td></td>
           <td colSpan={4} className="px-2 py-2">
-            <p className="mb-2 text-xs text-muted-foreground">
-              Custom fields. Plaid IGT stores and shows these but does not interpret them.
-            </p>
             {extras.map((k) => (
               <div key={k} className="mb-1 flex items-center gap-2">
                 <span className="w-32 shrink-0 truncate font-mono text-xs">{k}</span>

@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { readTagsets } from '@/domain/tagsets';
 import { LanguagesSettings } from './settings/LanguagesSettings.jsx';
 import { DocumentMetadataSettings } from './settings/DocumentMetadataSettings.jsx';
 import { OrthographiesSettings } from './settings/OrthographiesSettings.jsx';
@@ -21,6 +22,10 @@ import { VocabularySettings } from './settings/VocabularySettings.jsx';
 
 export const ProjectSettings = ({ project, projectId, client, onProjectUpdate }) => {
   const navigate = useNavigate();
+  // Read here rather than in FieldsSettings: the two sections are siblings, so
+  // a tagset created above has to reach the field table below without a page
+  // reload, and this component is the one holding the live project.
+  const tagsetNames = Object.keys(readTagsets(project?.config));
   const [name, setName] = useState(project?.name ?? '');
   const [savingName, setSavingName] = useState(false);
 
@@ -142,10 +147,10 @@ export const ProjectSettings = ({ project, projectId, client, onProjectUpdate })
       {/* Tagsets: the value lists the fields below can point at. Above
           Annotation Fields because a field can only reference one that
           already exists. */}
-      <TagsetsSettings projectId={projectId} client={client} />
+      <TagsetsSettings projectId={projectId} client={client} onProjectUpdate={onProjectUpdate} />
 
       {/* Fields Configuration */}
-      <FieldsSettings projectId={projectId} client={client} />
+      <FieldsSettings projectId={projectId} client={client} tagsetNames={tagsetNames} />
 
       {/* Vocabulary Configuration */}
       <VocabularySettings projectId={projectId} client={client} />

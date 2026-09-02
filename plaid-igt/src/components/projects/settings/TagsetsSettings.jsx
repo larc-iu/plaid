@@ -14,7 +14,7 @@ import { freqQueries } from '../search/searchQueries.js';
 // empty value to miss.
 const ANY_VALUE = { regex: '.' };
 
-export const TagsetsSettings = ({ projectId, client }) => {
+export const TagsetsSettings = ({ projectId, client, onProjectUpdate }) => {
   const [tagsets, setTagsets] = useState(null);
   const [usage, setUsage] = useState({});
   const [spanLayersByTagset, setSpanLayersByTagset] = useState({});
@@ -61,6 +61,10 @@ export const TagsetsSettings = ({ projectId, client }) => {
       // Field references are read at load time, so pick up a rename's effect on
       // the "used by" line without a page refresh.
       load();
+      // And refresh the project itself, since the field table below reads the
+      // tagset names off it: without this a tagset created here does not become
+      // pickable until a page reload.
+      onProjectUpdate?.();
     } catch (error) {
       console.error('Failed to save tagsets:', error);
       notifyError('Failed to save tagsets', 'Save Error');
