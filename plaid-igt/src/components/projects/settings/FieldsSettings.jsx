@@ -13,8 +13,8 @@ import {
 } from '@/domain/igtConfig';
 import { readTagsetName } from '@/domain/tagsets';
 
-// `tagsetNames` comes from ProjectSettings, which holds the live project, so a
-// tagset created in the section above shows up in the picker immediately.
+// `tagsetNames` comes from AnnotationSettings, which holds the live project, so
+// a tagset created in the section above shows up in the picker immediately.
 export const FieldsSettings = ({ projectId, client, tagsetNames = [], onProjectUpdate }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);

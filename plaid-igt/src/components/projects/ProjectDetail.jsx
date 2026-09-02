@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
-const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'settings'];
+const SETTINGS_SECTIONS = ['access', 'tokens', 'services', 'general', 'orthography', 'annotation'];
 
 // The content tabs, which ride in `?tab=` on the project page (Bulk Edit is
 // maintainers-only; Assistant is open to everyone, since the assistant acts
@@ -30,7 +30,9 @@ const SECTION_TITLES = {
   access: 'Access Management',
   tokens: 'Access Tokens',
   services: 'Services',
-  settings: 'Settings',
+  general: 'General',
+  orthography: 'Orthography & Vocabularies',
+  annotation: 'Annotation',
 };
 
 // Default project view: the document list, a query-engine-powered Search tab,

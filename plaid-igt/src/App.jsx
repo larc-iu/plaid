@@ -209,8 +209,36 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            {/* Settings used to be one long scroll at /settings before it was
+              split into General / Orthography & Vocabularies / Annotation.
+              Without this, that URL falls through to the catch-all and bounces
+              a logged-in user to /login. */}
             <Route
               path="/projects/:projectId/settings"
+              element={<Navigate to="../general" replace relative="path" />}
+            />
+            <Route
+              path="/projects/:projectId/general"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:projectId/orthography"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <ProjectDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:projectId/annotation"
               element={
                 <ProtectedRoute>
                   <AppLayout>

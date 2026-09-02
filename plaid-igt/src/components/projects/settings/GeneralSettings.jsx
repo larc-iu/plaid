@@ -12,20 +12,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { readTagsets } from '@/domain/tagsets';
-import { LanguagesSettings } from './settings/LanguagesSettings.jsx';
-import { DocumentMetadataSettings } from './settings/DocumentMetadataSettings.jsx';
-import { OrthographiesSettings } from './settings/OrthographiesSettings.jsx';
-import { FieldsSettings } from './settings/FieldsSettings.jsx';
-import { TagsetsSettings } from './settings/TagsetsSettings.jsx';
-import { VocabularySettings } from './settings/VocabularySettings.jsx';
+import { LanguagesSettings } from './LanguagesSettings.jsx';
+import { DocumentMetadataSettings } from './DocumentMetadataSettings.jsx';
 
-export const ProjectSettings = ({ project, projectId, client, onProjectUpdate }) => {
+// What the project IS: its name, the languages it documents, and the fields
+// recorded about each text. Document Metadata sits here rather than with the
+// annotation settings because Date and Speakers describe a text, not its
+// interlinear structure.
+export const GeneralSettings = ({ project, projectId, client, onProjectUpdate }) => {
   const navigate = useNavigate();
-  // Read here rather than in FieldsSettings: the two sections are siblings, so
-  // a tagset created above has to reach the field table below without a page
-  // reload, and this component is the one holding the live project.
-  const tagsetNames = Object.keys(readTagsets(project?.config));
   const [name, setName] = useState(project?.name ?? '');
   const [savingName, setSavingName] = useState(false);
 
@@ -140,30 +135,6 @@ export const ProjectSettings = ({ project, projectId, client, onProjectUpdate })
 
       {/* Document Metadata Configuration */}
       <DocumentMetadataSettings projectId={projectId} client={client} />
-
-      {/* Orthographies Configuration */}
-      <OrthographiesSettings projectId={projectId} client={client} />
-
-      {/* Tagsets: the value lists the fields below can point at. Above
-          Annotation Fields because a field can only reference one that
-          already exists. */}
-      <TagsetsSettings
-        project={project}
-        projectId={projectId}
-        client={client}
-        onProjectUpdate={onProjectUpdate}
-      />
-
-      {/* Fields Configuration */}
-      <FieldsSettings
-        projectId={projectId}
-        client={client}
-        tagsetNames={tagsetNames}
-        onProjectUpdate={onProjectUpdate}
-      />
-
-      {/* Vocabulary Configuration */}
-      <VocabularySettings projectId={projectId} client={client} />
 
       <div>
         <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>

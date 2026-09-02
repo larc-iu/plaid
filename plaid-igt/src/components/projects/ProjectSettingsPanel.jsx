@@ -1,21 +1,25 @@
-import { Users, KeyRound, Plug, Settings } from 'lucide-react';
+import { Users, KeyRound, Plug, Settings, Rows3, SpellCheck } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AccessManagement } from './AccessManagement';
 import { ProjectAccessTokens } from './ProjectAccessTokens';
 import { ServicesSettings } from './settings/ServicesSettings';
-import { ProjectSettings } from './ProjectSettings';
+import { GeneralSettings } from './settings/GeneralSettings.jsx';
+import { OrthographyVocabSettings } from './settings/OrthographyVocabSettings.jsx';
+import { AnnotationSettings } from './settings/AnnotationSettings.jsx';
 
 const SECTIONS = [
   { value: 'access', label: 'Access Management', icon: Users },
   { value: 'tokens', label: 'Access Tokens', icon: KeyRound },
   { value: 'services', label: 'Services', icon: Plug },
-  { value: 'settings', label: 'Settings', icon: Settings },
+  { value: 'general', label: 'General', icon: Settings },
+  { value: 'orthography', label: 'Orthography & Vocabularies', icon: SpellCheck },
+  { value: 'annotation', label: 'Annotation', icon: Rows3 },
 ];
 
 // The Settings tab's body: project administration as a vertical, left-side tab
 // group (Radix Tabs in vertical orientation). Route-backed by the caller — the
-// active section follows /access, /tokens, /services, /settings — so deep links
-// and the browser back button keep working.
+// active section follows /access, /tokens, /services, /general, /orthography,
+// /annotation — so deep links and the browser back button keep working.
 export const ProjectSettingsPanel = ({
   project,
   projectId,
@@ -64,8 +68,19 @@ export const ProjectSettingsPanel = ({
         <TabsContent value="services" className="mt-0">
           <ServicesSettings projectId={projectId} client={client} />
         </TabsContent>
-        <TabsContent value="settings" className="mt-0">
-          <ProjectSettings
+        <TabsContent value="general" className="mt-0">
+          <GeneralSettings
+            project={project}
+            projectId={projectId}
+            client={client}
+            onProjectUpdate={onProjectUpdate}
+          />
+        </TabsContent>
+        <TabsContent value="orthography" className="mt-0">
+          <OrthographyVocabSettings projectId={projectId} client={client} />
+        </TabsContent>
+        <TabsContent value="annotation" className="mt-0">
+          <AnnotationSettings
             project={project}
             projectId={projectId}
             client={client}

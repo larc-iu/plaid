@@ -16,9 +16,9 @@ const ANY_VALUE = { regex: '.' };
 // Everything here is derived from the LIVE project rather than a private fetch.
 // `usage` (which fields point at which tagset) changes when the field table
 // below is edited, so a private copy went stale the moment someone set a tagset
-// on a field: the seed button stayed disabled until a page reload. ProjectSettings
-// holds the project and onProjectUpdate refreshes it, so both sections now read
-// the same object and each other's edits land immediately.
+// on a field: the seed button stayed disabled until a page reload.
+// AnnotationSettings holds the project and onProjectUpdate refreshes it, so both
+// sections now read the same object and each other's edits land immediately.
 export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate }) => {
   const [draftTagsets, setDraftTagsets] = useState(null);
 
