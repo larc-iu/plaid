@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { FileText, Search, Replace, Bot, Download, Settings } from 'lucide-react';
+import { FileText, Search, Replace, ShieldCheck, Bot, Download, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectBulkEdit } from './bulk/ProjectBulkEdit.jsx';
+import { ProjectValidation } from './validate/ProjectValidation.jsx';
 import { ProjectAssistant } from './assistant/ProjectAssistant.jsx';
 import { ProjectExport } from './ProjectExport.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
@@ -224,6 +225,14 @@ export const ProjectDetail = () => {
               <Replace className="h-4 w-4" /> Bulk Edit
             </TabsTrigger>
           )}
+          {canManage && (
+            <TabsTrigger
+              value="validate"
+              to={tabTo(`/projects/${projectId}`, 'validate', 'documents')}
+            >
+              <ShieldCheck className="h-4 w-4" /> Validation
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="assistant"
             to={tabTo(`/projects/${projectId}`, 'assistant', 'documents')}
@@ -256,6 +265,16 @@ export const ProjectDetail = () => {
         {canManage && (
           <TabsContent value="bulk">
             <ProjectBulkEdit project={project} projectId={projectId} client={client} />
+          </TabsContent>
+        )}
+        {canManage && (
+          <TabsContent value="validate">
+            <ProjectValidation
+              project={project}
+              projectId={projectId}
+              client={client}
+              onProjectUpdate={() => fetchData()}
+            />
           </TabsContent>
         )}
         <TabsContent value="assistant">

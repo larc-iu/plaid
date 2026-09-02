@@ -15,6 +15,7 @@ import {
   validateValue,
   isValueAllowed,
   offTagsetParts,
+  offTagsetValues,
   seedValueRecords,
 } from './tagsets.js';
 
@@ -244,5 +245,39 @@ describe('offTagsetParts / seedValueRecords', () => {
       'ERG',
       'ABL',
     ]);
+  });
+});
+
+describe('offTagsetValues', () => {
+  const attested = [
+    ['1SG.NOM', 10],
+    ['1SG.ABL', 4],
+    ['ERG', 7],
+    ['1SG.', 2],
+  ];
+
+  it('lists the values that fail, worst first, with why', () => {
+    expect(offTagsetValues(attested, leipzig)).toEqual([
+      {
+        value: 'ERG',
+        count: 7,
+        violations: [{ part: 'ERG', begin: 0, end: 3, reason: 'unknown' }],
+      },
+      {
+        value: '1SG.ABL',
+        count: 4,
+        violations: [{ part: 'ABL', begin: 4, end: 7, reason: 'unknown' }],
+      },
+      { value: '1SG.', count: 2, violations: [{ part: '', begin: 4, end: 4, reason: 'empty' }] },
+    ]);
+  });
+
+  it('says nothing about the values that pass', () => {
+    expect(offTagsetValues([['1SG.NOM', 10]], leipzig)).toEqual([]);
+  });
+
+  it('an OPEN tagset only fails on a stray delimiter', () => {
+    const open = { ...leipzig, closed: false };
+    expect(offTagsetValues(attested, open).map((r) => r.value)).toEqual(['1SG.']);
   });
 });

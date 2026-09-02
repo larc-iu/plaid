@@ -244,6 +244,25 @@ export const offTagsetParts = (attested, tagset) => {
     .sort((a, b) => b.count - a.count || a.part.localeCompare(b.part));
 };
 
+/**
+ * The attested VALUES that fail validation, worst first:
+ * [{ value, count, violations }].
+ *
+ * The sibling of offTagsetParts, answering the other question. That one says
+ * which tags are missing from the list, which is what a seed needs; this says
+ * which cells are wrong, which is what a person fixing them needs to find and
+ * what a bulk replace has to match on.
+ */
+export const offTagsetValues = (attested, tagset) => {
+  if (!tagset) return [];
+  const out = [];
+  for (const [value, n] of attested || []) {
+    const violations = validateValue(value ?? '', tagset);
+    if (violations.length) out.push({ value: value ?? '', count: n || 0, violations });
+  }
+  return out.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+};
+
 /** Those parts as value records, ready to append to a tagset's `values`. */
 export const seedValueRecords = (attested, tagset) =>
   offTagsetParts(attested, tagset).map(({ part }) => ({ value: part }));
