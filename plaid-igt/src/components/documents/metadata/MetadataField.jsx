@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -23,9 +24,12 @@ import { MODES, isValueAllowed, tagsetEnforces, validateValue } from '@/domain/t
 // right amount of machinery.
 
 // Radix Select has no empty-string item value, so "not set" needs a sentinel.
-const UNSET = '__unset__';
+// A NUL keeps it out of the space of values anyone can actually store, which a
+// plain "__unset__" did not.
+const UNSET = '\u0000unset';
 
 export const MetadataField = ({ field, value, tagset, onChange }) => {
+  const uid = useId();
   const v = value ?? '';
   const violations = tagset ? validateValue(v, tagset) : [];
   const invalid = violations.length > 0;
@@ -67,7 +71,10 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
     );
   }
 
-  const listId = tagset ? `md-${field.name.replace(/\W+/g, '-')}` : undefined;
+  // Derived from the name, ids collided for fields differing only in non-word
+  // characters ("A B" and "A-B" both became md-A-B), pointing one field's input
+  // at the other's list.
+  const listId = tagset ? uid : undefined;
   return (
     <>
       <Input

@@ -216,6 +216,18 @@ export const missingAffixDelimiters = (tagset, usedAtWordScope) => {
   return WORD_AFFIX_DELIMITERS.filter((d) => !(tagset.delimiters || '').includes(d));
 };
 
+/**
+ * Values that can never match, because they contain one of the tagset's own
+ * delimiters. `1SG.NOM` in a tagset that splits on "." is scanned as two parts,
+ * neither of which is `1SG.NOM`, so the list holds a value it will reject.
+ * Empty when there are no delimiters.
+ */
+export const unreachableValues = (tagset) => {
+  const delims = tagset?.delimiters || '';
+  if (!delims) return [];
+  return (tagset.values || []).filter((v) => [...delims].some((d) => v.value.includes(d)));
+};
+
 /** `governedFields` grouped by tagset name: { name: [record, ...] }. */
 export const byTagsetName = (governed) => {
   const out = {};
@@ -266,7 +278,8 @@ export const scanValue = (value, delimiters) => {
 export const splitValue = (value, delimiters) => scanValue(value, delimiters).map((p) => p.text);
 
 /**
- * The segment the caret sits in, or null for an empty value. A caret exactly on
+ * The segment the caret sits in. Never null: scanValue always yields at least
+ * one segment, so an empty value gives one empty segment. A caret exactly on
  * a delimiter belongs to the segment it ENDS (typing there continues that
  * segment), which is what makes completing "1SG.NO|" offer NOM rather than
  * restarting.
@@ -287,7 +300,6 @@ export const partAtCaret = (value, caret, delimiters) => {
 export const replacePartAtCaret = (value, caret, delimiters, replacement) => {
   const s = value ?? '';
   const p = partAtCaret(s, caret, delimiters);
-  if (!p) return { value: replacement, caret: replacement.length };
   const next = s.slice(0, p.begin) + replacement + s.slice(p.end);
   return { value: next, caret: p.begin + replacement.length };
 };
@@ -365,10 +377,11 @@ export const tagsetEnforces = (tagset) => !!tagset && tagset.mode !== MODES.SUGG
  * returns over its span layer), the parts that are NOT in the tagset, most
  * frequent first: [{ part, count }].
  *
- * This is the one computation behind three features. The violations view lists
- * it, the Fields settings badge counts it, and "seed from attested" turns it
- * into value records when a field goes open to closed — so all three agree on
- * what counts as off-tagset, and none of them has to load a document to say so.
+ * Used by "add values used in this project", which turns these into value
+ * records. Its sibling offTagsetValues answers the other question — which
+ * CELLS are wrong — and is what the Validation view lists. Neither loads a
+ * document: both read a field's whole value inventory from one aggregate
+ * query.
  */
 export const offTagsetParts = (attested, tagset) => {
   if (!tagset) return [];

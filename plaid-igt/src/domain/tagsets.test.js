@@ -20,6 +20,7 @@ import {
   offTagsetParts,
   offTagsetValues,
   seedValueRecords,
+  unreachableValues,
 } from './tagsets.js';
 
 const leipzig = {
@@ -409,5 +410,21 @@ describe('isLexicalPart', () => {
 
   it('counts a mixed-case gloss as lexical, so a typo is not a hard block', () => {
     expect(isLexicalPart('Dog')).toBe(true);
+  });
+});
+
+describe('unreachableValues', () => {
+  it('flags a value holding one of its own delimiters', () => {
+    // "1SG.NOM" in a tagset that splits on "." is scanned as two parts, so the
+    // list would hold a value it rejects.
+    const t = { delimiters: '.', mode: 'closed', values: [{ value: '1SG.NOM' }, { value: 'PL' }] };
+    expect(unreachableValues(t).map((v) => v.value)).toEqual(['1SG.NOM']);
+    expect(isValueAllowed('1SG.NOM', t)).toBe(false);
+  });
+
+  it('says nothing for a whole-cell tagset, where the value is never split', () => {
+    const t = { delimiters: '', mode: 'closed', values: [{ value: '1SG.NOM' }] };
+    expect(unreachableValues(t)).toEqual([]);
+    expect(isValueAllowed('1SG.NOM', t)).toBe(true);
   });
 });

@@ -17,7 +17,7 @@
 
 import { PROV } from '@larc-iu/plaid-client';
 import { precedentCounts, pickMajority } from './precedent.js';
-import { isValueAllowed, scanValue, tagsetEnforces, tagsetRecord } from './tagsets.js';
+import { isValueAllowed, scanValue, tagsetEnforces } from './tagsets.js';
 
 const PROV_DETAIL_KEY = PROV.detailKey;
 const PROV_SOURCE_KEY = PROV.sourceKey;
@@ -223,9 +223,6 @@ function decomposeRows(rows, delimiters) {
   }
   return [...byPart.values()];
 }
-
-/** The description a tagset gives a value, for the picker row. */
-export const describeValue = (tagset, value) => tagsetRecord(tagset, value)?.description ?? null;
 
 /**
  * A guess only survives if the field's tagset would accept it. A closed field
