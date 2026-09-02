@@ -10,7 +10,7 @@ import { AnnotationSettings } from './settings/AnnotationSettings.jsx';
 // What the project is, then what it annotates with, then who may touch it.
 const SECTIONS = [
   { value: 'general', label: 'General', icon: Settings },
-  { value: 'lexicon', label: 'Lexicon', icon: SpellCheck },
+  { value: 'text-and-vocab', label: 'Text and Vocab', icon: SpellCheck },
   { value: 'annotation', label: 'Annotation', icon: Rows3 },
   { value: 'access', label: 'Access', icon: Users },
   { value: 'services', label: 'Services', icon: Plug },
@@ -18,7 +18,8 @@ const SECTIONS = [
 
 // The Settings tab's body: project administration as a vertical, left-side tab
 // group (Radix Tabs in vertical orientation). Route-backed by the caller — the
-// active section follows /general, /lexicon, /annotation, /access, /services —
+// active section follows /general, /text-and-vocab, /annotation, /access,
+// /services —
 // so deep links and the browser back button keep working.
 export const ProjectSettingsPanel = ({
   project,
@@ -78,7 +79,7 @@ export const ProjectSettingsPanel = ({
             onProjectUpdate={onProjectUpdate}
           />
         </TabsContent>
-        <TabsContent value="lexicon" className="mt-0">
+        <TabsContent value="text-and-vocab" className="mt-0">
           <OrthographyVocabSettings projectId={projectId} client={client} />
         </TabsContent>
         <TabsContent value="annotation" className="mt-0">

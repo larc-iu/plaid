@@ -200,8 +200,8 @@ function App() {
               }
             />
             {/* Settings used to be one long scroll at /settings before it was
-              split into General / Lexicon / Annotation, and the middle section
-              was briefly /orthography. Without these, those URLs fall through
+              split into General / Text and Vocab / Annotation, and the middle
+              section was briefly /orthography and then /lexicon. Without these, those URLs fall through
               to the catch-all and bounce a logged-in user to /login. */}
             <Route
               path="/projects/:projectId/settings"
@@ -209,7 +209,11 @@ function App() {
             />
             <Route
               path="/projects/:projectId/orthography"
-              element={<Navigate to="../lexicon" replace relative="path" />}
+              element={<Navigate to="../text-and-vocab" replace relative="path" />}
+            />
+            <Route
+              path="/projects/:projectId/lexicon"
+              element={<Navigate to="../text-and-vocab" replace relative="path" />}
             />
             {/* Access Tokens folded into Access. */}
             <Route
@@ -227,7 +231,7 @@ function App() {
               }
             />
             <Route
-              path="/projects/:projectId/lexicon"
+              path="/projects/:projectId/text-and-vocab"
               element={
                 <ProtectedRoute>
                   <AppLayout>

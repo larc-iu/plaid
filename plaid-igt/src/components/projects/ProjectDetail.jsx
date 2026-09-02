@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
-const SETTINGS_SECTIONS = ['general', 'lexicon', 'annotation', 'access', 'services'];
+const SETTINGS_SECTIONS = ['general', 'text-and-vocab', 'annotation', 'access', 'services'];
 
 // The content tabs, which ride in `?tab=` on the project page (Bulk Edit is
 // maintainers-only; Assistant is open to everyone, since the assistant acts
@@ -28,7 +28,7 @@ const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'assistant'];
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
   general: 'General',
-  lexicon: 'Lexicon',
+  'text-and-vocab': 'Text and Vocab',
   annotation: 'Annotation',
   access: 'Access',
   services: 'Services',
