@@ -170,12 +170,11 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
       ti++;
     }
     const sentenceAnnotations = annotationsFor(sentence.id, sentSpanMaps);
-    const pieces = computePieces(sentence, tokensInSentence, sliceBody);
     return {
       ...sentence,
       annotations: sentenceAnnotations,
       tokens: tokensInSentence,
-      pieces,
+      pieces: [],
     };
   });
 
@@ -199,6 +198,13 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   const findSentenceForToken = makeBinarySearchSentenceLookup(sortedSentences);
 
   attachMwes(enrichedSentences, tokenPositionMaps, collectMweLinks(vocabularies));
+
+  // Pieces (tokens interleaved with the text no token covers) are COPIES of
+  // the token objects, so they are made only now, once the tokens carry their
+  // multi-word expression bracket pieces.
+  enrichedSentences.forEach((s) => {
+    s.pieces = computePieces(s, s.tokens, sliceBody);
+  });
 
   return {
     sentences: enrichedSentences,

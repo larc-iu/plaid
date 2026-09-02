@@ -1660,3 +1660,233 @@
   outline: 2px solid var(--igt-blue);
   outline-offset: 1px;
 }
+
+/* ---- multi-word expressions (MWEs) ----
+   A lexicon entry linked from several words at once draws as a bracket under
+   the words, inside the gray word band, between the word and its own chip.
+   Every member column draws ITS piece (start / middle / end, or a dotted
+   pass-through under a skipped word), so the bracket survives band wrapping
+   with nothing measuring the columns. Overlapping MWEs stack on lanes:
+   the sentence sets --igt-mwe-lanes and the band grows one 16px line per
+   lane, uniformly across its columns. The label is the entry's form in the
+   same quiet 10px chip voice as a single-word link. */
+.igt-island--vocab .igt-sentence {
+  --igt-form-h: calc(42px + 16px * var(--igt-mwe-lanes, 0));
+}
+.igt-token-form {
+  position: relative;
+}
+/* Room for the lanes in the centered word stack (face, lanes, chip slot). */
+.igt-vocab__mwe-lanes {
+  height: calc(16px * var(--igt-mwe-lanes, 0));
+}
+.igt-mwe {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(21px + 16px * var(--igt-lane, 0));
+  height: 16px;
+  pointer-events: none;
+}
+/* The popover rides inside the label's piece; it must stay clickable. */
+.igt-mwe .igt-vocab-pop {
+  pointer-events: auto;
+}
+/* A lone word gathered so far: just the hint, no rule. */
+.igt-mwe--solo .igt-mwe__label {
+  left: 4px;
+}
+.igt-mwe__rule {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid #b4bcc8;
+}
+.igt-mwe--start .igt-mwe__rule {
+  left: 10px;
+}
+.igt-mwe--end .igt-mwe__rule {
+  right: 10px;
+}
+.igt-mwe--pass .igt-mwe__rule {
+  border-top-style: dotted;
+}
+.igt-mwe__tick {
+  position: absolute;
+  top: -1px;
+  height: 4px;
+  width: 0;
+  border-left: 1px solid #b4bcc8;
+}
+.igt-mwe--start .igt-mwe__tick {
+  left: 10px;
+}
+.igt-mwe--end .igt-mwe__tick {
+  right: 10px;
+}
+/* The label is the MWE's opener: a real button, left-aligned under the
+   bracket's first tick, allowed to run on across the columns to its right
+   (they carry nothing but the rule on this lane). */
+.igt-mwe__label {
+  position: absolute;
+  left: 11px;
+  top: 5px;
+  z-index: 3;
+  pointer-events: auto;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.15;
+  padding: 0 3px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #8a93a3;
+  text-decoration: underline dotted;
+  text-decoration-color: #c9cfd8;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.igt-mwe__label:hover:not(:disabled),
+.igt-mwe__label:focus-visible {
+  color: #1d4ed8;
+  text-decoration-color: currentColor;
+}
+.igt-mwe__label:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: 1px;
+}
+.igt-mwe__label:disabled {
+  cursor: default;
+}
+/* Hovering or focusing any part of an MWE lights the whole bracket. */
+.igt-mwe.is-hot .igt-mwe__rule,
+.igt-mwe.is-hot .igt-mwe__tick {
+  border-color: #1d4ed8;
+}
+/* Machine-made (auto-linked, unconfirmed): the violet of chips and cells. */
+.igt-mwe--machine .igt-mwe__rule,
+.igt-mwe--machine .igt-mwe__tick {
+  border-color: #c4b5fd;
+}
+.igt-mwe--machine .igt-mwe__rule {
+  border-top-style: dashed;
+}
+.igt-mwe--machine .igt-mwe__label {
+  color: var(--igt-violet);
+  font-style: italic;
+  text-decoration-color: #c4b5fd;
+}
+.igt-mwe--verified .igt-mwe__label {
+  text-decoration-color: #c4b5fd;
+}
+/* The selection in progress: a dashed blue bracket under the chosen words. */
+.igt-mwe--pending .igt-mwe__rule,
+.igt-mwe--pending .igt-mwe__tick {
+  border-color: #93c5fd;
+}
+.igt-mwe--pending .igt-mwe__rule {
+  border-top-style: dashed;
+}
+.igt-mwe--pending .igt-mwe__label {
+  color: #1d4ed8;
+  font-weight: 500;
+  text-decoration: none;
+}
+.igt-mwe--pending .igt-mwe__label kbd {
+  font: inherit;
+  font-weight: 600;
+  padding: 0 3px;
+  border: 1px solid #c7d7fe;
+  border-radius: 3px;
+  background: #fff;
+}
+.igt-token-form.is-selected {
+  box-shadow: inset 0 0 0 2px var(--igt-blue);
+  background: #eff6ff;
+}
+.igt-token-form--selectable {
+  cursor: pointer;
+}
+
+/* MWE mode of the lexicon popover: the member words up top. */
+.igt-vocab-pop__members {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 3px;
+}
+.igt-vocab-pop__member {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px 1px 7px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  border: 1px solid #c7d7fe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+.igt-vocab-pop__member-x {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+}
+.igt-vocab-pop__member-x:hover {
+  color: #b91c1c;
+}
+.igt-vocab-pop__hintline {
+  font-size: 10.5px;
+  color: #9aa3b2;
+  padding: 0 2px 5px;
+}
+/* Rows on the single-word popover: start an MWE from this word, and
+   open one it already belongs to. */
+.igt-vocab-pop__mwe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: #f9fafb;
+  border: 1px dashed #d1d5db;
+  border-radius: 4px;
+  color: #4b5563;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.igt-vocab-pop__mwe:hover,
+.igt-vocab-pop__mwe.is-active {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+.igt-vocab-pop__mwe:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: -1px;
+}
+.igt-vocab-pop__mwe svg {
+  flex: none;
+  width: 16px;
+  height: 12px;
+  stroke: #6b7280;
+  fill: none;
+}
+.igt-vocab-pop__mwe-in {
+  color: #9aa3b2;
+  margin-right: 2px;
+}

@@ -49,6 +49,7 @@ import {
 } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { rankVocabItems } from '@/domain/vocabRank';
+import { bracketPieces, isMweType, joinMweForm, mweMorphType } from '@/domain/mwe';
 import {
   KINDS,
   SLOT_LINK,
@@ -65,6 +66,7 @@ import { humanizeError, notifyError, notifyInfo } from '@/utils/feedback';
 // Stable empty precedent results, so the tally memo does not rebuild on every
 // render while the project queries are still in flight.
 const NO_PRECEDENT = Object.freeze({ links: [], values: [] });
+const EMPTY_SET = new Set();
 
 // ---- uncontrolledValue: set input.value only when the user is not mid-edit
 // on it. Keeps programmatic changes (split/merge form rewrites, reloads)
@@ -182,6 +184,10 @@ export class IgtEditor {
     this._popover = null; // { tokenId, kind } | null
     this._popoverPos = null; // { left, top } fixed-position coords (escapes the grid's overflow clip)
     this._popoverSearch = '';
+    // A multi-word expression in the making: the words gathered so far, the
+    // one sentence they belong to, and the word the keyboard cursor sits on.
+    // null when nothing is being gathered (see _mweKeydown / _toggleMweWord).
+    this._mweSel = null; // { sentenceId, tokenIds: Set, cursorId } | null
     // Save-status pill state machine: idle -> saving -> saved(-> idle after a beat).
     // Updated imperatively on every doc emit (incl. isSaving-only emits that don't
     // bump dataVersion), so the indicator reflects in-flight saves without
@@ -234,6 +240,7 @@ export class IgtEditor {
       this._closeCopyMenu();
       this._closeRowMenu();
       this._closeAlts();
+      this._clearMweSelection();
     };
     // The alternatives list (Alt+↓ on a cell): { cellKey, active, filter,
     // visible } while open, null otherwise; positioned like the popover.
@@ -263,6 +270,18 @@ export class IgtEditor {
     // inferred vocab-link chips; Enter/Backspace confirm/remove the focused one
     // (see _predictionKeydown). Container-level so it works from any cell or chip.
     this.container.addEventListener('keydown', this._predictionKeydown);
+    // Hovering any piece of a multi-word expression's bracket lights the whole
+    // bracket, so a member on the next band still reads as part of it.
+    this._onMweHover = (e) => {
+      const el = e.target?.closest?.('[data-mwe]');
+      if (!el) return;
+      const hot = e.type === 'mouseover';
+      this.container
+        .querySelectorAll(`[data-mwe="${el.dataset.mwe}"]`)
+        .forEach((n) => n.classList.toggle('is-hot', hot));
+    };
+    this.container.addEventListener('mouseover', this._onMweHover);
+    this.container.addEventListener('mouseout', this._onMweHover);
     this._render(true);
     this._consumeFocusRequest();
   }
@@ -342,6 +361,7 @@ export class IgtEditor {
     this._popover = null;
     this._popoverPos = null;
     this._popoverSearch = '';
+    this._mweSel = null;
     this._render(true);
   }
 
@@ -359,6 +379,8 @@ export class IgtEditor {
     window.removeEventListener('resize', this._onWinChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
     this.container.removeEventListener('keydown', this._predictionKeydown);
+    this.container.removeEventListener('mouseover', this._onMweHover);
+    this.container.removeEventListener('mouseout', this._onMweHover);
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
     clearTimeout(this._savedTimer);
     clearTimeout(this._copiedTimer);
@@ -744,6 +766,449 @@ export class IgtEditor {
     );
   }
 
+  // ---- multi-word expressions ----
+  // A multi-word expression (MWE) is one lexicon entry linked from two or more
+  // words at once; derive.js hands every word column its pieces of the
+  // bracket (see domain/mwe.js). Gathering the words is a small mode:
+  // Shift+click a word (or Shift+←/→ from one of its cells) starts it, more of
+  // the same adds words, Enter opens the lexicon popover for the whole set,
+  // Esc drops it. An existing MWE opens from its bracket label, and while its
+  // popover is open the same gestures change which words it covers.
+
+  _canLinkMwe() {
+    return !this.readOnly && Object.keys(this.doc.vocabularies || {}).length > 0;
+  }
+
+  _clearMweSelection() {
+    if (!this._mweSel) return;
+    this._mweSel = null;
+    this._render(true);
+  }
+
+  // The words highlighted as members: the selection under way, else the
+  // members of the MWE whose popover is open.
+  _selectedWordIds() {
+    if (this._mweSel) return this._mweSel.tokenIds;
+    const open = this._openMwe();
+    return open ? new Set(open.memberTokenIds) : EMPTY_SET;
+  }
+
+  // The derived MWE behind an open MWE popover, or null (none open, or the
+  // popover is for words not yet linked).
+  _openMwe() {
+    if (this._popover?.kind !== 'mwe' || this._popover.tokenId === 'mwe:new') return null;
+    return this._mweByLink(this._popover.tokenId.slice('mwe:'.length));
+  }
+
+  _mweByLink(linkId) {
+    for (const s of this.doc.sentences) {
+      const hit = (s.mwes || []).find((m) => m.linkId === linkId);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  // The selection's word tokens, in text order.
+  _mweSelTokens() {
+    const sel = this._mweSel;
+    if (!sel) return [];
+    const sentence = this.doc.sentenceLookup.get(sel.sentenceId);
+    return (sentence?.tokens || []).filter((t) => sel.tokenIds.has(t.id));
+  }
+
+  // The words of the open MWE, else of the selection, as token ids in order.
+  _mweTargetIds() {
+    const open = this._openMwe();
+    return open ? [...open.memberTokenIds] : this._mweSelTokens().map((t) => t.id);
+  }
+
+  // An MWE's entry in the shape the popover and the homonym helper expect.
+  _mweItem(mwe) {
+    return {
+      ...mwe.item,
+      vocabId: mwe.vocabId,
+      vocabName: mwe.vocabName,
+      linkId: mwe.linkId,
+      prov: mwe.prov,
+    };
+  }
+
+  // The member surfaces, spaced, each with its edge punctuation trimmed by the
+  // project's ignored-tokens rule — the form a new entry is offered.
+  _mweWords(tokenIds) {
+    return joinMweForm(
+      tokenIds.map((id) =>
+        trimIgnoredEdges(this.doc.tokenLookup.get(id)?.content ?? '', this._ignoredCfg),
+      ),
+    );
+  }
+
+  // The morph type a new entry for these words gets: phrase, or discontiguous
+  // phrase when a word in between is not a member.
+  _mweTypeFor(tokenIds) {
+    const first = this.doc.tokenLookup.get(tokenIds[0]);
+    const sentence = first && this.doc.findSentenceForToken(first);
+    const posMap = sentence ? this.doc.tokenPositionMaps.get(sentence.id) : null;
+    return mweMorphType(tokenIds.map((id) => posMap?.get(id) ?? 0));
+  }
+
+  // Start (or extend) a selection from `wordId` and move its cursor one word
+  // left or right within the sentence, skipping words the project ignores
+  // (punctuation). The word the cursor lands on joins the selection, unless
+  // `skip` (Ctrl held), which leaves a gap for a discontiguous expression.
+  _mweStep(wordId, dir, { skip = false } = {}) {
+    const token = this.doc.tokenLookup.get(wordId);
+    const sentence = token && this.doc.findSentenceForToken(token);
+    if (!sentence) return;
+    let sel = this._mweSel;
+    if (!sel || sel.sentenceId !== sentence.id) {
+      sel = this._mweSel = {
+        sentenceId: sentence.id,
+        tokenIds: new Set([wordId]),
+        cursorId: wordId,
+      };
+    }
+    const words = sentence.tokens.filter((t) => !isTokenIgnored(t.content, this._ignoredCfg));
+    let i = words.findIndex((t) => t.id === sel.cursorId);
+    if (i < 0) i = words.findIndex((t) => t.id === wordId);
+    const next = words[i + dir];
+    if (next) {
+      sel.cursorId = next.id;
+      if (!skip) sel.tokenIds.add(next.id);
+    }
+    this._render(true);
+  }
+
+  // Shift+click on a word: toggle it in the selection, starting one when none
+  // is under way. While an existing MWE's popover is open, the toggle changes
+  // that MWE's words instead.
+  _toggleMweWord(sentenceId, wordId) {
+    const open = this._openMwe();
+    if (open) {
+      const ids = new Set(open.memberTokenIds);
+      if (ids.has(wordId)) ids.delete(wordId);
+      else ids.add(wordId);
+      this._setMweMembers(open, [...ids]);
+      return;
+    }
+    let sel = this._mweSel;
+    if (!sel || sel.sentenceId !== sentenceId) {
+      sel = this._mweSel = { sentenceId, tokenIds: new Set(), cursorId: wordId };
+    }
+    if (sel.tokenIds.has(wordId)) sel.tokenIds.delete(wordId);
+    else sel.tokenIds.add(wordId);
+    sel.cursorId = wordId;
+    if (!sel.tokenIds.size) this._mweSel = null;
+    if (this._popover?.kind === 'mwe') {
+      // The popover for the words so far stays open and follows them.
+      if (!this._mweSel) this._closePopover();
+      else this._render(true);
+      this._focusPopover();
+      return;
+    }
+    // Focus lands on the pending label, so Enter opens the popover.
+    if (this._mweSel) this._pendingFocus = { vocabOpener: 'mwe:new' };
+    this._render(true);
+  }
+
+  // From the single-word popover: begin gathering an MWE around this word.
+  _startMweSelection(sentenceId, wordId) {
+    this._closePopover();
+    this._mweSel = { sentenceId, tokenIds: new Set([wordId]), cursorId: wordId };
+    this._pendingFocus = { vocabOpener: 'mwe:new' };
+    this._render(true);
+  }
+
+  // Keys shared by cells, chips and bracket labels. Returns true when the key
+  // belonged to the selection. Marks the event so the container handler does
+  // not run it a second time after a cell's own handler already has.
+  _mweKeydown(e) {
+    e.igtMweSeen = true;
+    if (!this._canLinkMwe()) return false;
+    const sel = this._mweSel;
+    if (e.key === 'Enter' && sel && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (sel.tokenIds.size >= 2) this._openMwePopover();
+      else notifyInfo('Add another word first: Shift+click it, or Shift+→ from a cell');
+      return true;
+    }
+    if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || !e.shiftKey || e.altKey || e.metaKey)
+      return false;
+    const el = e.target;
+    const wordId = el?.closest?.('[data-word-col]')?.dataset.wordCol ?? sel?.cursorId;
+    if (!wordId) return false;
+    const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+    if (isInput && !sel) {
+      // Only from a collapsed caret at the value's edge, the way ←/→ leave a
+      // cell; inside a value Shift+arrow still selects text.
+      const start = el.selectionStart ?? 0;
+      const end = el.selectionEnd ?? 0;
+      if (start !== end) return false;
+      const atEdge = e.key === 'ArrowLeft' ? start === 0 : end === (el.value ?? '').length;
+      if (!atEdge) return false;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    this._mweStep(wordId, e.key === 'ArrowRight' ? 1 : -1, { skip: e.ctrlKey });
+    return true;
+  }
+
+  // The lexicon popover for the words gathered so far, anchored to the
+  // pending bracket's label on the first of them.
+  _openMwePopover() {
+    if (this._mweSelTokens().length < 2) return;
+    const anchor = this.container.querySelector('[data-vocab-opener="mwe:new"]');
+    this._openPopover('mwe:new', 'mwe', anchor);
+  }
+
+  // An existing MWE's popover (from a single-word popover's "In: …" row),
+  // anchored to its bracket label.
+  _openMweByLink(linkId) {
+    this._closePopover();
+    const key = `mwe:${linkId}`;
+    const anchor = this.container.querySelector(`[data-vocab-opener="${key}"]`);
+    if (!anchor) return;
+    this._openPopover(key, 'mwe', anchor);
+  }
+
+  // A popover row: link the gathered words (new), point an existing MWE at
+  // another entry, or unlink it.
+  async _toggleMwe(item, isLinked, returnFocus = false) {
+    const open = this._openMwe();
+    const tokens = this._mweTargetIds();
+    this._closePopover(returnFocus);
+    if (open) {
+      await this._runThenFocus({ mweOf: tokens[0] }, () =>
+        isLinked ? this.doc.unlinkMwe(open.linkId) : this.doc.relinkMwe(open.linkId, item.id),
+      );
+      return;
+    }
+    if (tokens.length < 2) return;
+    this._mweSel = null;
+    await this._runThenFocus({ mweOf: tokens[0] }, () => this.doc.linkMwe(tokens, item.id));
+  }
+
+  _confirmMwe(linkId, returnFocus = false) {
+    const first = this._mweByLink(linkId)?.memberTokenIds[0];
+    this._closePopover(returnFocus);
+    this._runThenFocus({ mweOf: first }, () => this.doc.confirmMweLink(linkId));
+  }
+
+  // "+ Create" in MWE mode: a new entry typed phrase / discontiguous phrase,
+  // linked from the words (replacing an existing MWE's link, if that is what
+  // the popover was opened on).
+  async _createMwe(vocabId, form, returnFocus = false) {
+    const open = this._openMwe();
+    const tokens = this._mweTargetIds();
+    this._closePopover(returnFocus);
+    if (!form || tokens.length < 2) return;
+    const metadata = { morphType: this._mweTypeFor(tokens) };
+    this._mweSel = null;
+    await this._runThenFocus({ mweOf: tokens[0] }, () =>
+      this.doc.createAndLinkMwe(tokens, vocabId, form, metadata, open?.linkId ?? null),
+    );
+  }
+
+  // Re-cover an existing MWE with different words. The link is remade (a new
+  // id), so its popover closes; focus lands on the new bracket's label.
+  _setMweMembers(mwe, tokenIds) {
+    this._closePopover();
+    const sorted = [...tokenIds].sort(
+      (a, b) =>
+        (this.doc.tokenLookup.get(a)?.begin ?? 0) - (this.doc.tokenLookup.get(b)?.begin ?? 0),
+    );
+    const first = sorted[0] ?? mwe.memberTokenIds[0];
+    this._runThenFocus({ mweOf: first }, () => this.doc.setMweMembers(mwe.linkId, sorted));
+  }
+
+  // × on a member in the popover's strip.
+  _removeMweMember(wordId) {
+    const open = this._openMwe();
+    if (open) {
+      this._setMweMembers(
+        open,
+        open.memberTokenIds.filter((id) => id !== wordId),
+      );
+      return;
+    }
+    const sel = this._mweSel;
+    if (!sel) return;
+    sel.tokenIds.delete(wordId);
+    if (sel.tokenIds.size < 2) {
+      // Too few words for the popover; the pending label carries on.
+      this._closePopover();
+      if (!sel.tokenIds.size) this._mweSel = null;
+      else this._pendingFocus = { vocabOpener: 'mwe:new' };
+    }
+    this._render(true);
+    if (this._popover) this._focusPopover();
+  }
+
+  // Shift+click (or any click while gathering) on a word's form.
+  _onWordFormClick(e, sentence, token) {
+    if (!this._canLinkMwe()) return;
+    const gathering = !!this._mweSel || !!this._openMwe();
+    if (!e.shiftKey && !gathering) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this._toggleMweWord(sentence.id, token.id);
+  }
+
+  // The bracket pieces a word column draws: one per lane of the sentence's
+  // MWEs, plus the pending selection's on a lane of its own.
+  _mweBrackets(token, sctx) {
+    const out = [];
+    (token.mwePieces || []).forEach((p, lane) => {
+      if (p) out.push(this._mwePiece(p.piece, lane, p.mwe, token));
+    });
+    const pend = sctx.pending?.[sctx.posMap.get(token.id)];
+    if (pend) out.push(this._mwePiece(pend, sctx.lanes, null, token));
+    return out;
+  }
+
+  // One column's piece of one bracket. The label on the first member is the
+  // MWE's opener (a real button, keyboard-reachable); the pending selection's
+  // label says what to do next.
+  _mwePiece(piece, lane, mwe, token) {
+    const key = mwe ? `mwe:${mwe.linkId}` : 'mwe:new';
+    const state = mwe ? mwe.prov : null;
+    const cls = [
+      'igt-mwe',
+      `igt-mwe--${piece}`,
+      mwe ? provClass('igt-mwe', state === PROV_STATES.HUMAN ? null : state) : 'igt-mwe--pending',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const open = this._popover?.kind === 'mwe' && this._popover.tokenId === key;
+    const hasLabel = piece === 'start' || piece === 'solo';
+    let label = nothing;
+    if (hasLabel) {
+      const canLink = this._canLinkMwe();
+      let content;
+      let title;
+      if (mwe) {
+        const item = this._mweItem(mwe);
+        const sub = this._homonymSub(item);
+        content = html`${mwe.item.form}${sub != null
+          ? html`<sub class="igt-vocab__sub">${sub}</sub>`
+          : nothing}`;
+        const words = this._mweWords(mwe.memberTokenIds);
+        title =
+          state === PROV_STATES.MACHINE
+            ? `“${words}” auto-linked to "${mwe.item.form}": open to confirm or change`
+            : state === PROV_STATES.VERIFIED
+              ? `“${words}” linked to "${mwe.item.form}": auto-linked, confirmed${canLink ? ' · manage' : ''}`
+              : `“${words}” linked to "${mwe.item.form}"${canLink ? ' · manage' : ''}`;
+      } else {
+        const n = this._mweSel?.tokenIds.size ?? 0;
+        content =
+          n >= 2
+            ? html`${n} words · <kbd>Enter</kbd> links them · <kbd>Esc</kbd>`
+            : html`<kbd>Shift</kbd>+click or <kbd>Shift</kbd>+<kbd>→</kbd> adds words ·
+                <kbd>Esc</kbd>`;
+        title = 'Words being gathered into one multi-word expression';
+      }
+      label = html`<button
+        type="button"
+        class="igt-mwe__label"
+        data-vocab-opener=${key}
+        data-pop-opener=${`vocab:${key}`}
+        data-mwe-first=${token.id}
+        ?disabled=${!canLink}
+        title=${title}
+        @click=${(e) => {
+          e.stopPropagation();
+          if (open) this._closePopover();
+          else if (mwe) this._openPopover(key, 'mwe', e.currentTarget);
+          else this._openMwePopover();
+        }}
+      >
+        ${content}
+      </button>`;
+    }
+    let popover = nothing;
+    if (open && hasLabel) {
+      const tokens = this._mweTargetIds();
+      popover = this._vocabPopover(
+        key,
+        this._mweWords(tokens),
+        mwe ? this._mweItem(mwe) : null,
+        'mwe',
+      );
+    }
+    return html`<span class=${cls} style=${`--igt-lane:${lane}`} data-mwe=${key}>
+      ${piece === 'solo' ? nothing : html`<span class="igt-mwe__rule"></span>`}
+      ${piece === 'start' || piece === 'end' ? html`<span class="igt-mwe__tick"></span>` : nothing}
+      ${label} ${popover}
+    </span>`;
+  }
+
+  // The member words at the top of the popover in MWE mode, each removable.
+  _mweMembersStrip() {
+    const tokens = this._mweTargetIds()
+      .map((id) => this.doc.tokenLookup.get(id))
+      .filter(Boolean);
+    return html`
+      <div class="igt-vocab-pop__members" aria-label="Words in this expression">
+        ${tokens.map(
+          (t) =>
+            html`<span class="igt-vocab-pop__member"
+              >${t.content}<button
+                type="button"
+                class="igt-vocab-pop__member-x"
+                title=${`Remove “${t.content}” from the expression`}
+                aria-label=${`Remove ${t.content}`}
+                @click=${(e) => {
+                  e.stopPropagation();
+                  this._removeMweMember(t.id);
+                }}
+              >
+                ×
+              </button></span
+            >`,
+        )}
+      </div>
+      <div class="igt-vocab-pop__hintline">Shift+click a word to add or remove it</div>
+    `;
+  }
+
+  // The popover's type row in MWE mode: an existing entry's type (editable by
+  // the vocab's maintainers), or the type a new entry will get.
+  _mweTypeRow(currentItem) {
+    const linked = !!currentItem?.vocabId;
+    const vocab = linked ? this.doc.vocabularies?.[currentItem.vocabId] : null;
+    const preset = this._mweTypeFor(this._mweTargetIds());
+    const current = linked ? (currentItem.metadata?.morphType ?? '') : preset;
+    const canEditEntry = linked && !!vocab && this.canWriteVocab(vocab);
+    const title = linked
+      ? canEditEntry
+        ? 'Type of the linked lexicon entry'
+        : 'Type comes from the linked lexicon entry; only its maintainers can change it'
+      : 'The type a new entry gets: phrase when the words are adjacent, discontiguous phrase when one in between is left out';
+    return html`
+      <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
+        <span>${linked ? 'Type (entry)' : 'Type'}</span>
+        <select
+          ?disabled=${this.readOnly || !canEditEntry}
+          aria-label="Lexicon entry type"
+          @change=${(e) => {
+            e.stopPropagation();
+            const value = e.target.value || null;
+            this._run(() =>
+              this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value),
+            );
+          }}
+        >
+          <option value="" ?selected=${current === ''}>—</option>
+          ${FLEX_MORPH_TYPES.map(
+            (t) => html`<option value=${t} ?selected=${current === t}>${t}</option>`,
+          )}
+        </select>
+      </label>
+    `;
+  }
+
   _scheduleRender() {
     if (this.doc.dataVersion === this._lastDataVersion) return;
     this._render();
@@ -854,6 +1319,13 @@ export class IgtEditor {
     if (pf.vocabOpener != null) {
       const chip = this.container.querySelector(`[data-vocab-opener="${pf.vocabOpener}"]`);
       if (chip) chip.focus();
+      return;
+    }
+    // A multi-word expression's bracket label, found by its first word: the
+    // link id changes whenever its words do, the first word rarely does.
+    if (pf.mweOf != null) {
+      const label = this.container.querySelector(`[data-mwe-first="${pf.mweOf}"]`);
+      if (label) label.focus();
       return;
     }
     if (pf.cellKey != null) {
@@ -1477,7 +1949,13 @@ export class IgtEditor {
 
   // Inferred, actionable chips in DOM (= reading) order.
   _inferredChips() {
-    return [...this.container.querySelectorAll('button.igt-vocab__hint--machine:not([disabled])')];
+    // Word and morpheme chips, and the labels of auto-linked multi-word
+    // expressions, in document order.
+    return [
+      ...this.container.querySelectorAll(
+        'button.igt-vocab__hint--machine:not([disabled]), .igt-mwe--machine .igt-mwe__label:not([disabled])',
+      ),
+    ];
   }
 
   // The inferred chip after ('next') / before ('prev') the current focus, or
@@ -1523,10 +2001,17 @@ export class IgtEditor {
     if (e.key === 'Escape') {
       this._closeRowMenu();
       this._closeCopyMenu();
+      const hadPopover = !!this._popover;
       // Keyboard-driven, so focus goes back to the opener.
       this._closePopover(true);
+      // With no popover to close, Escape drops the words gathered for a
+      // multi-word expression (a second Escape, when the popover was open).
+      if (!hadPopover) this._clearMweSelection();
     }
     if (this.readOnly) return;
+    // Gathering words for a multi-word expression from a chip or a bracket
+    // label. A cell runs the same keys through its own handler first.
+    if (!e.igtMweSeen && this._mweKeydown(e)) return;
     // Ctrl/Cmd+Shift+Arrow: hop between WORDS with unverified material (a
     // model's proposals, copied analyses, auto-links) — the whole-word review
     // sweep that pairs with Ctrl+Enter (confirm) and Ctrl+Backspace (discard).
@@ -1546,9 +2031,14 @@ export class IgtEditor {
     // Accept/reject the focused suggestion (Space/click still opens the popover
     // to change it). Only an inferred chip is actionable here.
     const el = document.activeElement;
-    if (!el?.classList?.contains('igt-vocab__hint--machine')) return;
+    const isChip = !!el?.classList?.contains('igt-vocab__hint--machine');
+    // The label of an auto-linked multi-word expression reviews the same way.
+    const isMweLabel =
+      !!el?.classList?.contains('igt-mwe__label') && !!el.closest('.igt-mwe--machine');
+    if (!isChip && !isMweLabel) return;
     const tokenId = el.dataset.vocabOpener;
     if (!tokenId) return;
+    const mweLinkId = isMweLabel ? tokenId.slice('mwe:'.length) : null;
     // Ctrl/Cmd+Backspace on a chip discards the WHOLE word's proposal, like
     // on a cell (cells handle it themselves and mark the event consumed).
     if ((e.ctrlKey || e.metaKey) && (e.key === 'Backspace' || e.key === 'Delete')) {
@@ -1561,10 +2051,14 @@ export class IgtEditor {
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      this._reviewLink(() => this.doc.confirmVocabLink(tokenId));
+      this._reviewLink(() =>
+        mweLinkId ? this.doc.confirmMweLink(mweLinkId) : this.doc.confirmVocabLink(tokenId),
+      );
     } else if (e.key === 'Backspace' || e.key === 'Delete') {
       e.preventDefault();
-      this._reviewLink(() => this.doc.unlinkVocab(tokenId));
+      this._reviewLink(() =>
+        mweLinkId ? this.doc.unlinkMwe(mweLinkId) : this.doc.unlinkVocab(tokenId),
+      );
     }
   };
 
@@ -1591,6 +2085,7 @@ export class IgtEditor {
 
   _basicKeydown = (e) => {
     if (this._composing(e)) return;
+    if (this._mweKeydown(e)) return;
     if (this._altsKeydown(e)) return;
     if (this._maybeConfirmWord(e)) return;
     if (this._maybeDiscardWord(e)) return;
@@ -2133,6 +2628,7 @@ export class IgtEditor {
         return;
       }
       if (this._composing(e)) return;
+      if (this._mweKeydown(e)) return;
       if (this._maybeConfirmWord(e)) return;
       if (this._maybeDiscardWord(e)) return;
       // Ctrl/Cmd+Arrow belongs to the review sweep (container listener).
@@ -2732,6 +3228,15 @@ export class IgtEditor {
           >
         </div>
         <div class="igt-legend__row">
+          <strong>Expressions</strong>
+          <span
+            ><kbd>Shift</kbd>+click words, or <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> from one of
+            a word's cells (<kbd>Ctrl</kbd> too skips a word), gathers them into one multi-word
+            expression · <kbd>↵</kbd> links them to an entry · <kbd>Esc</kbd> drops them · click a
+            bracket's label to change or unlink it, and add or remove words while it is open</span
+          >
+        </div>
+        <div class="igt-legend__row">
           <strong>Review links</strong>
           <span
             ><kbd>Ctrl</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between suggested (violet) links · on
@@ -2918,10 +3423,29 @@ export class IgtEditor {
     // non-editable "gap" column so it stays visible in its true position.
     // Whitespace-only gaps (ordinary inter-word spacing) are dropped.
     const cols = sentence.pieces.filter((p) => p.isToken || (p.content || '').trim() !== '');
+    // Multi-word expressions: the word band grows one line per lane of
+    // brackets, and one more while words are being gathered in this sentence
+    // (the pending bracket, drawn from the selection rather than the data).
+    const lanes = sentence.mweLanes || 0;
+    const posMap = this.doc.tokenPositionMaps.get(sentence.id);
+    const sel = this._mweSel?.sentenceId === sentence.id ? this._mweSel : null;
+    let pending = null;
+    if (sel) {
+      const idx = [...sel.tokenIds]
+        .map((id) => posMap.get(id))
+        .filter((i) => i != null)
+        .sort((a, b) => a - b);
+      pending =
+        idx.length >= 2
+          ? bracketPieces(sentence.tokens.length, idx)
+          : sentence.tokens.map((t, i) => (i === idx[0] ? 'solo' : null));
+    }
+    const sctx = { sentence, posMap, lanes, pending };
     return html`
       <div
         class="igt-sentence"
         data-sentence-id=${sentence.id}
+        style=${`--igt-mwe-lanes:${lanes + (sel ? 1 : 0)}`}
         role="group"
         aria-label=${`Sentence ${index + 1}`}
       >
@@ -2937,7 +3461,7 @@ export class IgtEditor {
             ${repeat(
               cols,
               (p) => (p.isToken ? p.id : `gap:${p.begin}-${p.end}`),
-              (p) => (p.isToken ? this._tokenCol(p, ctx) : this._gapCol(p)),
+              (p) => (p.isToken ? this._tokenCol(p, ctx, sctx) : this._gapCol(p)),
             )}
           </div>
         </div>
@@ -3176,7 +3700,7 @@ export class IgtEditor {
     return Math.max(5, [...(v ?? '')].length + 1);
   }
 
-  _tokenCol(token, ctx) {
+  _tokenCol(token, ctx, sctx) {
     // Ignored tokens (punctuation, per the project's ignored-tokens config) are
     // real word tokens but carry no annotation — no orthographies, no gloss, no
     // lexicon link, and no morpheme is healed onto them (see igtReconcile). They
@@ -3194,9 +3718,23 @@ export class IgtEditor {
         : wp === PROV_STATES.VERIFIED
           ? `${token.content}: machine-tokenized, confirmed`
           : token.content;
+    // Multi-word expressions: a member of the selection (or of the MWE whose
+    // popover is open) is outlined; while gathering, every word is a target.
+    const selected = this._selectedWordIds().has(token.id);
+    const gathering = this._canLinkMwe() && (!!this._mweSel || !!this._openMwe());
     return html`
       <div class="igt-token-col" data-word-col=${token.id}>
-        <div class="igt-token-form ${provClass('igt-token-form', wp)}" title=${wpTitle}>
+        <div
+          class="igt-token-form ${provClass('igt-token-form', wp)} ${selected
+            ? 'is-selected'
+            : ''} ${gathering ? 'igt-token-form--selectable' : ''}"
+          title=${wpTitle}
+          @mousedown=${(e) => {
+            // Shift+click gathers words; keep the browser from selecting text.
+            if (e.shiftKey) e.preventDefault();
+          }}
+          @click=${(e) => this._onWordFormClick(e, sctx.sentence, token)}
+        >
           ${this._vocabFace(token.content, {
             id: token.id,
             vocabItem: token.vocabItem,
@@ -3207,6 +3745,7 @@ export class IgtEditor {
             // edge floats far from the word it is about.
             badge: this._commentBadge('token', token.id, token.content),
           })}
+          ${this._mweBrackets(token, sctx)}
         </div>
         ${ctx.orthographies.map(
           (name) => html`
@@ -3524,10 +4063,13 @@ export class IgtEditor {
         link
       </button>`;
     }
+    // A word's stack keeps room between the word and its chip for the lanes of
+    // multi-word expression brackets (the sentence sets how many).
     return html`
       <span class="igt-vocab">
         <span class="igt-vocab__face">${face}${opts.badge ?? nothing}</span>
-        ${opener} ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
+        ${kind === 'word' ? html`<span class="igt-vocab__mwe-lanes"></span>` : nothing} ${opener}
+        ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
       </span>
     `;
   }
@@ -3667,7 +4209,8 @@ export class IgtEditor {
     // Ranked by vocabRank.js: what this form was linked to before comes
     // first, then form-match tiers; a typed search ranks against the typed
     // text alone.
-    const precForm = this._precedentForm(formText, kind);
+    const isMwe = kind === 'mwe';
+    const precForm = isMwe ? formText : this._precedentForm(formText, kind);
     const items = rankVocabItems(
       (activeVocab?.items || []).map((it) => ({
         ...it,
@@ -3677,9 +4220,20 @@ export class IgtEditor {
       {
         form: formText || '',
         search,
-        precedent: precedentCounts(this._precedentTally(), kind, precForm, SLOT_LINK),
+        // Precedent is tallied per word or morpheme form; the joined form of
+        // a multi-word expression has none.
+        precedent: isMwe
+          ? null
+          : precedentCounts(this._precedentTally(), kind, precForm, SLOT_LINK),
       },
     );
+    // In MWE mode the phrase-typed entries come first, in their ranked order.
+    // Single-word entries stay listed: a fixed spelling can be what is wanted.
+    if (isMwe) {
+      const phrases = items.filter((it) => isMweType(it.metadata?.morphType));
+      const others = items.filter((it) => !isMweType(it.metadata?.morphType));
+      items.splice(0, items.length, ...phrases, ...others);
+    }
     if (currentItem) {
       const i = items.findIndex((it) => it.id === currentItem.id);
       if (i > 0) {
@@ -3710,9 +4264,47 @@ export class IgtEditor {
         ? (activeVocab.items || []).filter((it) => it.form === effectiveForm).length
         : 0;
     const newFormSub = newFormDupes >= 1 ? newFormDupes + 1 : null;
-    // Rows the keyboard can land on: every item plus the create row.
-    const total = limited.length + (canCreate ? 1 : 0);
+    // Rows on a WORD's popover for its multi-word expressions: one per MWE it
+    // belongs to (opens that one), then "Part of a longer expression…", which
+    // starts gathering words around it.
+    const extraRows = [];
+    if (kind === 'word' && this._canLinkMwe()) {
+      const word = this.doc.tokenLookup.get(tokenId);
+      const sentence = word && this.doc.findSentenceForToken(word);
+      for (const m of sentence?.mwes || []) {
+        if (!m.memberTokenIds.includes(tokenId)) continue;
+        extraRows.push({
+          kind: 'in',
+          label: m.item.form,
+          sub: this._homonymSub(this._mweItem(m)),
+          title: `Open the expression “${this._mweWords(m.memberTokenIds)}”`,
+          onSelect: () => this._openMweByLink(m.linkId),
+        });
+      }
+      if (sentence) {
+        extraRows.push({
+          kind: 'start',
+          label: 'Part of a longer expression…',
+          title: 'Gather this word with others into one multi-word expression',
+          onSelect: () => this._startMweSelection(sentence.id, tokenId),
+        });
+      }
+    }
+    // Rows the keyboard can land on: every item, the create row, the extras.
+    const total = limited.length + (canCreate ? 1 : 0) + extraRows.length;
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
+    // The three actions, routed by mode: a word's or morpheme's own link, or
+    // the multi-word expression's.
+    const act = {
+      confirm: (rf) =>
+        isMwe ? this._confirmMwe(currentItem.linkId, rf) : this._confirmLink(tokenId, rf),
+      toggle: (it, linked, rf) =>
+        isMwe ? this._toggleMwe(it, linked, rf) : this._toggleVocab(tokenId, it, linked, rf),
+      create: (form, rf) =>
+        isMwe
+          ? this._createMwe(activeVocab.id, form, rf)
+          : this._createVocab(tokenId, activeVocab.id, form, rf),
+    };
     const pos = this._popoverPos;
     const posStyle = pos
       ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;`
@@ -3726,13 +4318,15 @@ export class IgtEditor {
       if (activeIdx < limited.length) {
         const it = limited[activeIdx];
         const linked = currentItem && it.id === currentItem.id;
-        if (linked && inferredCurrent) this._confirmLink(tokenId, true);
-        else this._toggleVocab(tokenId, it, linked, true);
-      } else if (canCreate) {
+        if (linked && inferredCurrent) act.confirm(true);
+        else act.toggle(it, linked, true);
+      } else if (canCreate && activeIdx === limited.length) {
         // Enter on the create row opens the inline editor (edit the form
         // first); Ctrl/Cmd+Enter creates as-is, like a double-click.
-        if (immediate) this._createVocab(tokenId, activeVocab.id, createForm, true);
+        if (immediate) act.create(createForm, true);
         else this._openCreateEdit(createForm);
+      } else {
+        extraRows[activeIdx - limited.length - (canCreate ? 1 : 0)]?.onSelect();
       }
     };
     // Inline create editor keys: Enter creates (non-empty), Escape goes back
@@ -3742,7 +4336,7 @@ export class IgtEditor {
       if (e.key === 'Enter') {
         e.preventDefault();
         const v = (e.target.value || '').trim();
-        if (v) this._createVocab(tokenId, activeVocab.id, v, true);
+        if (v) act.create(v, true);
       } else if (e.key === 'Escape') {
         e.preventDefault();
         this._cancelCreateEdit();
@@ -3757,13 +4351,13 @@ export class IgtEditor {
       e.stopPropagation();
       if (editingCreate) {
         const v = effectiveForm;
-        if (v) this._createVocab(tokenId, activeVocab.id, v);
+        if (v) act.create(v);
         return;
       }
       if (this._createClickTimer) {
         clearTimeout(this._createClickTimer);
         this._createClickTimer = null;
-        this._createVocab(tokenId, activeVocab.id, createForm);
+        act.create(createForm);
         return;
       }
       this._createClickTimer = setTimeout(() => {
@@ -3805,9 +4399,10 @@ export class IgtEditor {
         data-igt-pop
         style=${posStyle}
         role="dialog"
-        aria-label="Link to lexicon"
+        aria-label=${isMwe ? 'Link words to lexicon' : 'Link to lexicon'}
         @click=${(e) => e.stopPropagation()}
       >
+        ${isMwe ? this._mweMembersStrip() : nothing}
         <input
           class="igt-vocab-pop__search"
           spellcheck="false"
@@ -3841,8 +4436,8 @@ export class IgtEditor {
                   }}
                   @click=${(e) => {
                     e.stopPropagation();
-                    if (confirmable) this._confirmLink(tokenId);
-                    else this._toggleVocab(tokenId, it, linked);
+                    if (confirmable) act.confirm();
+                    else act.toggle(it, linked);
                   }}
                 >
                   <span class="igt-vocab-pop__main">
@@ -3878,7 +4473,7 @@ export class IgtEditor {
                           tabindex="-1"
                           @click=${(e) => {
                             e.stopPropagation();
-                            this._toggleVocab(tokenId, it, true);
+                            act.toggle(it, true);
                           }}
                           >unlink</span
                         >`
@@ -3938,7 +4533,39 @@ export class IgtEditor {
                 : nothing}
             </button>`
           : nothing}
-        ${kind === 'morpheme' ? this._morphTypeRow(tokenId, currentItem) : nothing}
+        ${extraRows.map((r, j) => {
+          const idx = limited.length + (canCreate ? 1 : 0) + j;
+          return html`<button
+            type="button"
+            class="igt-vocab-pop__mwe ${idx === activeIdx ? 'is-active' : ''}"
+            title=${r.title}
+            @mousemove=${(e) => {
+              if (!this._pointerMoved(e)) return;
+              if (this._popoverActiveIndex !== idx) {
+                this._popoverActiveIndex = idx;
+                this._render(true);
+              }
+            }}
+            @click=${(e) => {
+              e.stopPropagation();
+              r.onSelect();
+            }}
+          >
+            <svg viewBox="0 0 16 12" aria-hidden="true">
+              <path d="M1.5 3v6h13V3" stroke-width="1.2" stroke-linecap="round"></path>
+            </svg>
+            ${r.kind === 'in'
+              ? html`<span class="igt-vocab-pop__mwe-in">In:</span> ${r.label}${r.sub != null
+                    ? html`<sub class="igt-vocab-pop__sub">${r.sub}</sub>`
+                    : nothing}`
+              : r.label}
+          </button>`;
+        })}
+        ${kind === 'morpheme'
+          ? this._morphTypeRow(tokenId, currentItem)
+          : isMwe
+            ? this._mweTypeRow(currentItem)
+            : nothing}
         ${vocabs.length
           ? html`<div class="igt-vocab-pop__vocabsel" role="tablist" aria-label="Choose lexicon">
               ${vocabs.map((v) => {

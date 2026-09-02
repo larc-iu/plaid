@@ -300,8 +300,10 @@ export const vocabMutations = {
 
   // Create a new entry (its morph type in `metadata`, phrase or discontiguous
   // phrase) and link it to the words. The item is created outside the link
-  // call so the link can reference its id.
-  async createAndLinkMwe(tokenIds, vocabId, form, metadata = {}) {
+  // call so the link can reference its id. `replaceLinkId` names an existing
+  // MWE link over these words to retire in the same batch (the popover's
+  // "+ Create" on an already-linked expression).
+  async createAndLinkMwe(tokenIds, vocabId, form, metadata = {}, replaceLinkId = null) {
     if (!this._vocabularies[vocabId]) {
       this.setError(`Vocabulary ${vocabId} not found`);
       return false;
@@ -312,10 +314,25 @@ export const vocabMutations = {
     return this._withSaving('Failed to create and link multi-word expression', async () => {
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
       const newItemId = createResult?.id || createResult;
-      const linkResult = await this._client.vocabLinks.create(newItemId, tokens);
-      const newLinkId = linkResult?.id || linkResult;
+      let newLinkId;
+      if (replaceLinkId) {
+        const results = await this._client.batched(async () => {
+          this._client.vocabLinks.delete(replaceLinkId);
+          this._client.vocabLinks.create(newItemId, tokens);
+        });
+        newLinkId = results[results.length - 1]?.body?.id;
+      } else {
+        const linkResult = await this._client.vocabLinks.create(newItemId, tokens);
+        newLinkId = linkResult?.id || linkResult;
+      }
       const newItem = { id: newItemId, form, metadata: metadata || {} };
       this._applyRawPatch((next, info, vocabs) => {
+        if (replaceLinkId) {
+          Object.values(vocabs).forEach((v) => {
+            if (Array.isArray(v.vocabLinks))
+              v.vocabLinks = v.vocabLinks.filter((l) => l.id !== replaceLinkId);
+          });
+        }
         const tv = vocabs[vocabId];
         if (!tv) return;
         if (!Array.isArray(tv.items)) tv.items = [];
