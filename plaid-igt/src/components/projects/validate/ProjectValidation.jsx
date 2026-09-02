@@ -58,7 +58,7 @@ const locateMetadata = async (client, projectId, field, value) => {
   };
 };
 
-const MODE_LABELS = { suggest: 'suggested', closed: 'closed', mixed: 'closed + lexical' };
+const MODE_LABELS = { suggest: 'open', closed: 'closed', mixed: 'closed + lexical' };
 
 const reasonText = (violations) => {
   const unknown = violations.filter((v) => v.reason === 'unknown').map((v) => v.part);

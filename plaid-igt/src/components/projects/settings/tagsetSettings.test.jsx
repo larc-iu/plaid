@@ -185,7 +185,7 @@ describe('TagsetsManager', () => {
     const add = all(container, 'button').find((b) => b.textContent.includes('Add Tagset'));
     await step(async () => add.click());
     expect(container.textContent).toContain('Leipzig');
-    expect(container.textContent).toContain('Suggested');
+    expect(container.textContent).toContain('Open');
     await unmount();
   });
 

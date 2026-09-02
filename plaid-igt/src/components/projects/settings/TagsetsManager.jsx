@@ -39,9 +39,11 @@ export const PAGE_SIZE = 25;
 // gets: what can be entered, and which kind of field it suits. Nothing else.
 const MODES_UI = {
   [MODES.SUGGEST]: {
-    label: 'Suggested',
+    // "Open" against "Closed", the way a linguist already reads open and
+    // closed classes. The stored mode value is still `suggest`.
+    label: 'Open',
     badge: 'border-transparent bg-slate-100 text-slate-700',
-    help: 'The list is offered while you annotate, but anything can be typed.',
+    help: 'The whole list is offered while you annotate, but anything can be typed.',
   },
   [MODES.CLOSED]: {
     label: 'Closed',
@@ -51,7 +53,7 @@ const MODES_UI = {
   [MODES.MIXED]: {
     label: 'Closed, plus lexical glosses',
     badge: 'border-transparent bg-indigo-100 text-indigo-800',
-    help: 'Only tags in the list, plus lexical glosses: anything with a lowercase letter, like dog or run. For a Gloss field. A gloss with no lowercase letter, like I, has to be in the list.',
+    help: 'Any tag with at least one lowercase letter is allowed, but a tag with no lowercase letter is invalid unless it is on the list. Useful for glosses.',
   },
 };
 
