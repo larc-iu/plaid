@@ -17,6 +17,7 @@
 
 import { PROV } from '@larc-iu/plaid-client';
 import { precedentCounts, pickMajority } from './precedent.js';
+import { isValueAllowed, scanValue, tagsetHas, tagsetRecord } from './tagsets.js';
 
 const PROV_DETAIL_KEY = PROV.detailKey;
 const PROV_SOURCE_KEY = PROV.sourceKey;
@@ -93,13 +94,31 @@ export function defaultGuessSource({ precedent }) {
   return composeGuessSources([vocabEntryGuessSource(), precedentGuessSource(precedent)]);
 }
 
+export const TAGSET_SOURCE = 'tagset';
+
 // Every value worth offering for a cell, ranked: what precedent says (with
 // counts, machine-made included as for the guess), what the linked entry
-// says, and what the cell's own producer predicted (provDetail.value, plus
-// a top-k distribution under provDetail.valueProbs when it has one). Rows
-// merge by value; `source` is the provenance source a pick is written with.
-// Rank: count, then probability, then entry-backed, then alphabetical.
-export function listAlternatives({ precedent, kind, form, field, vocabItem = null, span = null }) {
+// says, what the cell's own producer predicted (provDetail.value, plus a top-k
+// distribution under provDetail.valueProbs when it has one), and what the
+// field's tagset allows. Rows merge by value; `source` is the provenance
+// source a pick is written with. Rank: count, then probability, then
+// entry-backed, then alphabetical.
+//
+// A tagset with DELIMITERS switches the list from whole-value mode to PART
+// mode, because the caret then sits inside one part of a composite value and
+// completing it with a whole value ("1SG.NOM" offered while typing the second
+// half of "1SG.NO") would be nonsense. In part mode everything whole-valued is
+// decomposed and pooled per part. A CLOSED tagset then keeps only what it
+// allows: offering a value that commit will reject is offering a dead end.
+export function listAlternatives({
+  precedent,
+  kind,
+  form,
+  field,
+  vocabItem = null,
+  span = null,
+  tagset = null,
+}) {
   const rows = new Map();
   const row = (value) => {
     const v = String(value);
@@ -123,7 +142,7 @@ export function listAlternatives({ precedent, kind, form, field, vocabItem = nul
       }
     }
   }
-  const list = [...rows.values()].map((r) => ({
+  let list = [...rows.values()].map((r) => ({
     ...r,
     source: r.entry
       ? VOCAB_ENTRY_SOURCE
@@ -131,6 +150,38 @@ export function listAlternatives({ precedent, kind, form, field, vocabItem = nul
         ? PRECEDENT_SOURCE
         : span?.metadata?.[PROV_SOURCE_KEY] || PRECEDENT_SOURCE,
   }));
+
+  if (tagset?.delimiters) list = decomposeRows(list, tagset.delimiters);
+
+  // The tagset's own values, so a fresh field with no precedent still offers
+  // the whole list rather than nothing. An attested value keeps its count and
+  // only picks up the description.
+  if (tagset) {
+    const byValue = new Map(list.map((r) => [r.value, r]));
+    for (const rec of tagset.values) {
+      const existing = byValue.get(rec.value);
+      if (existing) {
+        existing.description = rec.description;
+        existing.color = rec.color;
+        continue;
+      }
+      const row = {
+        value: rec.value,
+        count: 0,
+        prob: null,
+        entry: false,
+        model: false,
+        source: TAGSET_SOURCE,
+        description: rec.description,
+        color: rec.color,
+      };
+      byValue.set(rec.value, row);
+      list.push(row);
+    }
+  }
+
+  if (tagset?.closed) list = list.filter((r) => tagsetHas(tagset, r.value));
+
   list.sort(
     (a, b) =>
       b.count - a.count ||
@@ -140,3 +191,43 @@ export function listAlternatives({ precedent, kind, form, field, vocabItem = nul
   );
   return list;
 }
+
+// Whole-value rows to part rows: each row's value is split on the tagset's
+// delimiters and its count credited to every part it contains. Two rows that
+// share a part pool into one ("1SG.NOM" and "1SG.ERG" both feed 1SG), which is
+// what makes a frequent part rank first even when no whole value is frequent.
+function decomposeRows(rows, delimiters) {
+  const byPart = new Map();
+  for (const r of rows) {
+    for (const seg of scanValue(r.value, delimiters)) {
+      const value = seg.text.trim();
+      if (!value) continue;
+      let p = byPart.get(value);
+      if (!p) {
+        byPart.set(
+          value,
+          (p = { value, count: 0, prob: null, entry: false, model: false, source: r.source }),
+        );
+      }
+      p.count += r.count;
+      if (r.prob != null) p.prob = Math.max(p.prob ?? 0, r.prob);
+      p.entry ||= r.entry;
+      p.model ||= r.model;
+      // Precedent is the strongest claim to a source; keep it over a model's.
+      if (r.count) p.source = r.source;
+    }
+  }
+  return [...byPart.values()];
+}
+
+/** The description a tagset gives a value, for the picker row. */
+export const describeValue = (tagset, value) => tagsetRecord(tagset, value)?.description ?? null;
+
+/**
+ * A guess only survives if the field's tagset would accept it. A closed field
+ * whose precedent holds a value the tagset no longer allows must not offer it:
+ * the placeholder invites one keystroke to adopt it, and the commit would then
+ * reject what the cell just told the user to press Enter on.
+ */
+export const allowedGuess = (guess, tagset) =>
+  guess && isValueAllowed(guess.value, tagset) ? guess : null;

@@ -4,7 +4,9 @@ import {
   vocabEntryGuessSource,
   defaultGuessSource,
   listAlternatives,
+  allowedGuess,
   PRECEDENT_SOURCE,
+  TAGSET_SOURCE,
 } from './glossGuess.js';
 import { createTally, foldDocumentValues } from './precedent.js';
 
@@ -179,5 +181,114 @@ describe('listAlternatives', () => {
         (r) => r.value,
       ),
     ).toEqual(['3SG.F', 'DEF']);
+  });
+});
+
+describe('listAlternatives with a tagset', () => {
+  const tagset = (over = {}) => ({
+    delimiters: '',
+    closed: false,
+    values: [{ value: 'PL', description: 'plural' }, { value: 'SG' }],
+    ...over,
+  });
+
+  // "s" has been glossed PL twice and GEN once in this document.
+  const precedent = tallyOf(
+    sent([
+      word('a', {}, [morph('s', { Gloss: 'PL' })]),
+      word('b', {}, [morph('s', { Gloss: 'PL' })]),
+      word('c', {}, [morph('s', { Gloss: 'GEN' })]),
+    ]),
+    { morphFields: ['Gloss'] },
+  );
+  const list = (over = {}) =>
+    listAlternatives({ precedent, kind: 'morpheme', form: 's', field: 'Gloss', ...over });
+
+  it('offers the tagset even where there is no precedent at all', () => {
+    const rows = list({ form: 'zzz', tagset: tagset() });
+    expect(rows.map((r) => [r.value, r.count, r.source])).toEqual([
+      ['PL', 0, TAGSET_SOURCE],
+      ['SG', 0, TAGSET_SOURCE],
+    ]);
+  });
+
+  it('an attested tagset value keeps its count and picks up the description', () => {
+    const rows = list({ tagset: tagset() });
+    const pl = rows.find((r) => r.value === 'PL');
+    expect([pl.count, pl.source, pl.description]).toEqual([2, PRECEDENT_SOURCE, 'plural']);
+  });
+
+  it('an OPEN tagset still offers off-tagset precedent', () => {
+    expect(list({ tagset: tagset() }).map((r) => r.value)).toEqual(['PL', 'GEN', 'SG']);
+  });
+
+  it('a CLOSED tagset drops off-tagset precedent, since committing it would fail', () => {
+    expect(list({ tagset: tagset({ closed: true }) }).map((r) => r.value)).toEqual(['PL', 'SG']);
+  });
+
+  it('delimiters switch the list to parts, pooling counts across whole values', () => {
+    // 1SG.NOM twice and 1SG.ERG once: 1SG outranks either whole value.
+    const t = tallyOf(
+      sent([
+        word('a', {}, [morph('m', { Gloss: '1SG.NOM' })]),
+        word('b', {}, [morph('m', { Gloss: '1SG.NOM' })]),
+        word('c', {}, [morph('m', { Gloss: '1SG.ERG' })]),
+      ]),
+      { morphFields: ['Gloss'] },
+    );
+    const rows = listAlternatives({
+      precedent: t,
+      kind: 'morpheme',
+      form: 'm',
+      field: 'Gloss',
+      tagset: { delimiters: '.', closed: false, values: [] },
+    });
+    expect(rows.map((r) => [r.value, r.count])).toEqual([
+      ['1SG', 3],
+      ['NOM', 2],
+      ['ERG', 1],
+    ]);
+  });
+
+  it('a closed part-mode tagset keeps only its own parts', () => {
+    const t = tallyOf(sent([word('a', {}, [morph('m', { Gloss: '1SG.ABL' })])]), {
+      morphFields: ['Gloss'],
+    });
+    const rows = listAlternatives({
+      precedent: t,
+      kind: 'morpheme',
+      form: 'm',
+      field: 'Gloss',
+      tagset: { delimiters: '.', closed: true, values: [{ value: '1SG' }, { value: 'NOM' }] },
+    });
+    expect(rows.map((r) => [r.value, r.count])).toEqual([
+      ['1SG', 1],
+      ['NOM', 0],
+    ]);
+  });
+
+  it('behaves exactly as before when there is no tagset', () => {
+    expect(list().map((r) => [r.value, r.count])).toEqual([
+      ['PL', 2],
+      ['GEN', 1],
+    ]);
+  });
+});
+
+describe('allowedGuess', () => {
+  const closed = { delimiters: '.', closed: true, values: [{ value: 'PL' }] };
+
+  it('passes a guess the tagset allows', () => {
+    const g = { value: 'PL', source: PRECEDENT_SOURCE };
+    expect(allowedGuess(g, closed)).toBe(g);
+  });
+
+  it('drops one it does not, so Enter never adopts what commit would reject', () => {
+    expect(allowedGuess({ value: 'GEN', source: PRECEDENT_SOURCE }, closed)).toBeNull();
+  });
+
+  it('passes everything when the field has no tagset', () => {
+    const g = { value: 'anything', source: PRECEDENT_SOURCE };
+    expect(allowedGuess(g, null)).toBe(g);
   });
 });

@@ -24,7 +24,20 @@ import {
   isTokenIgnored,
   trimIgnoredEdges,
 } from '@/domain/igtConfig';
-import { defaultGuessSource, listAlternatives } from '@/domain/glossGuess';
+import {
+  allowedGuess,
+  defaultGuessSource,
+  listAlternatives,
+  TAGSET_SOURCE,
+} from '@/domain/glossGuess';
+import {
+  isValueAllowed,
+  partAtCaret,
+  readTagsetName,
+  replacePartAtCaret,
+  resolveTagset,
+  validateValue,
+} from '@/domain/tagsets';
 import { commentThread } from '@/components/documents/comments/island/CommentThread.js';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import {
@@ -46,7 +59,7 @@ import {
   precedentCounts,
   precedentForm,
 } from '@/domain/precedent';
-import { humanizeError, notifyInfo } from '@/utils/feedback';
+import { humanizeError, notifyError, notifyInfo } from '@/utils/feedback';
 
 // Stable empty precedent results, so the tally memo does not rebuild on every
 // render while the project queries are still in flight.
@@ -834,6 +847,12 @@ export class IgtEditor {
     } catch {
       /* noop */
     }
+    // A tagset-governed cell shows its list on focus rather than waiting for
+    // Alt+Down: the tagset IS the set of legal values, so a picker that has to
+    // be discovered leaves a closed field looking broken until you guess the
+    // chord. Cells without one keep the Alt+Down affordance, since their list
+    // is a suggestion rather than the rules.
+    if (e.target.dataset.hasTagset) this._openAlts(e.target);
   };
 
   // Morpheme form fields must NOT select-all on focus: the split handler reads
@@ -849,11 +868,21 @@ export class IgtEditor {
     e.target.classList.toggle('igt-field--empty', !filled);
     // Typing while the alternatives list is open narrows it by prefix.
     if (this._alts && this._alts.cellKey === e.target.dataset.cellKey) {
-      this._alts.filter = e.target.value;
+      this._alts.filter = this._filterTextFor(e.target);
       this._alts.active = 0;
       this._render(true);
     }
   };
+
+  // What an open list filters on: the whole cell, or — when the field's tagset
+  // splits composite values — just the part the caret is in, since that is the
+  // part a pick will replace. Typing the second half of "1SG.NO" must narrow to
+  // NOM, not to nothing.
+  _filterTextFor(el) {
+    const delims = el.dataset.tagsetDelims || '';
+    if (!delims) return el.value;
+    return (partAtCaret(el.value, el.selectionStart, delims)?.text ?? '').trim();
+  }
 
   // ---- alternatives list: Alt+↓ on an annotation cell lists every value
   // seen for the form (domain/glossGuess.js listAlternatives), ranked, with
@@ -915,11 +944,41 @@ export class IgtEditor {
   _pickAlt(el, item) {
     this._alts = null;
     this._altsPos = null;
-    el.value = item.value;
-    el.dataset.guessValue = item.value;
-    el.dataset.guessSource = item.source;
-    el.dataset.guessConfirmed = '1';
+    const delims = el.dataset.tagsetDelims || '';
+    if (delims) {
+      // Part mode: the pick replaces only the part the caret is in, so
+      // completing "1SG.NO" with NOM yields "1SG.NOM" and leaves the caret
+      // after it, ready for the next delimiter.
+      const { value, caret } = replacePartAtCaret(el.value, el.selectionStart, delims, item.value);
+      el.value = value;
+      try {
+        el.setSelectionRange(caret, caret);
+      } catch {
+        /* not selectable */
+      }
+    } else {
+      el.value = item.value;
+    }
+    // Provenance marks a machine suggestion a person confirmed. Two picks are
+    // not that and carry none: one from the TAGSET (a list of legal values is
+    // not a predictor, so choosing from it is an ordinary human edit), and any
+    // pick in part mode (a composite assembled part by part is the user's
+    // construction, and stamping the whole value as inferred would overclaim
+    // what the source actually proposed).
+    if (item.source !== TAGSET_SOURCE && !delims) {
+      el.dataset.guessValue = item.value;
+      el.dataset.guessSource = item.source;
+      el.dataset.guessConfirmed = '1';
+    }
     el.dispatchEvent(new Event('input', { bubbles: true }));
+    // Part mode keeps the caret in the cell: the value is mid-construction and
+    // a blur-commit here would write a half-finished gloss and lose the caret.
+    // Whole-value mode commits as before.
+    if (delims) {
+      this._render(true);
+      el.focus();
+      return;
+    }
     const key = el.dataset.cellKey;
     el.blur(); // commits via _commitField (born-verified) and re-renders
     const same = this.container.querySelector(`[data-cell-key="${key}"]`);
@@ -991,6 +1050,7 @@ export class IgtEditor {
                 @click=${() => this._pickAltByKey(cellKey, it)}
               >
                 <span class="igt-alts__value">${it.value}</span>
+                <span class="igt-alts__desc">${it.description ?? nothing}</span>
                 <span class="igt-alts__tag">${tag(it)}</span>
               </div>`,
           )
@@ -1478,7 +1538,7 @@ export class IgtEditor {
   // provenance fragment recording the guessed value (provDetail.value, so
   // adoptions per guess source stay countable); a typed value carries none
   // (apply(value, null)).
-  _commitField(e, apply) {
+  _commitField(e, apply, tagset = null) {
     if (this.readOnly) return;
     const el = e.target;
     this._closeAlts(); // leaving the cell dismisses its alternatives list
@@ -1487,6 +1547,27 @@ export class IgtEditor {
       return;
     }
     const next = el.value;
+    // A closed tagset refuses a value it does not allow. Typing is the ONLY
+    // write that passes through here, so this is the whole of what "closed"
+    // enforces: imports, services and the assistant reach the same span layer
+    // without coming this way, which is what the Validation view is for.
+    //
+    // Refuse the way a failed save refuses (see _runKeepingFocus): keep what
+    // was typed in the cell and put focus back, rather than reverting. The
+    // value is wrong, but it is the user's, and silently swallowing a gloss
+    // someone just typed is worse than leaving it there to be fixed.
+    if (tagset?.closed && next !== (el.dataset.orig ?? '') && !isValueAllowed(next, tagset)) {
+      notifyError(this._violationText(validateValue(next, tagset), tagset), 'Value not allowed');
+      // Refocusing synchronously inside a blur handler is unreliable, so hand
+      // it to a microtask. The focus handler restamps `orig` from the value
+      // that is still there, so blurring again without an edit re-reports
+      // nothing — one rejection per attempt, not per blur.
+      queueMicrotask(() => {
+        el.focus();
+        el.value = next;
+      });
+      return;
+    }
     const fragment =
       el.dataset.guessConfirmed === '1' && next === el.dataset.guessValue
         ? confirmedInferred(el.dataset.guessSource || 'unknown', { detail: { value: next } })
@@ -1527,9 +1608,14 @@ export class IgtEditor {
     alternatives = null,
     confirmSentence = null,
     fieldName = null,
+    tagset = null,
   }) {
     const v = value ?? '';
     const filled = v !== '';
+    // What is wrong with what is already in the cell. A closed field refuses
+    // to commit these (see _commitField); an open one only flags a stray
+    // delimiter. Either way the cell says so rather than looking fine.
+    const violations = tagset ? validateValue(v, tagset) : [];
     // A guess renders as a styled placeholder: the input VALUE stays empty, so
     // nothing persists unless explicitly confirmed (Enter/Tab — see
     // _maybeConfirmGuess) and stats/jump still see the cell as empty.
@@ -1540,23 +1626,40 @@ export class IgtEditor {
       // Provenance renders exactly as on cells (a proposed translation is
       // violet italic until a person edits or Ctrl+Enter-confirms it).
       const ps = filled ? prov : null;
+      // A sentence-scoped field can carry a tagset too (a Genre or Speech-act
+      // field is as controllable as a POS). Same picker, same flagging: only
+      // the control differs, because a Translation still has to wrap.
+      const sAlts = !this.readOnly && alternatives ? alternatives() : null;
       return html`<textarea
-        class="igt-field igt-field--sentence ${filled
-          ? 'igt-field--filled'
-          : 'igt-field--empty'} ${provClass('igt-field', ps)} ${extraClass}"
-        data-cell-key=${key}
-        data-confirm-sentence=${confirmSentence ?? nothing}
-        data-field-name=${fieldName ?? nothing}
-        aria-label=${ariaLabel ?? nothing}
-        title=${ps ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is` : nothing}
-        rows="1"
-        ?disabled=${this.readOnly}
-        ${uncontrolledValue(v)}
-        @focus=${this._onFieldFocus}
-        @input=${this._onSentenceInput}
-        @keydown=${this._sentenceKeydown}
-        @blur=${(e) => this._commitField(e, apply)}
-      ></textarea>`;
+          class="igt-field igt-field--sentence ${filled
+            ? 'igt-field--filled'
+            : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
+            'igt-field',
+            ps,
+          )} ${extraClass}"
+          data-cell-key=${key}
+          data-has-tagset=${tagset ? '1' : nothing}
+          data-tagset-delims=${tagset?.delimiters || nothing}
+          data-confirm-sentence=${confirmSentence ?? nothing}
+          data-field-name=${fieldName ?? nothing}
+          aria-label=${ariaLabel ?? nothing}
+          title=${violations.length
+            ? this._violationText(violations, tagset)
+            : ps
+              ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is`
+              : nothing}
+          rows="1"
+          ?disabled=${this.readOnly}
+          .igtAlts=${alternatives || null}
+          ${uncontrolledValue(v)}
+          @focus=${this._onFieldFocus}
+          @input=${this._onSentenceInput}
+          @keydown=${this._sentenceKeydown}
+          @blur=${(e) => this._commitField(e, apply, tagset)}
+        ></textarea
+        >${this._alts && this._alts.cellKey === key && sAlts
+          ? this._altsTemplate(sAlts, key)
+          : nothing}`;
     }
     const p = filled ? prov : null;
     // Alternatives (Alt+↓): computed per render so the list and the caret
@@ -1570,15 +1673,20 @@ export class IgtEditor {
         : filled
           ? v
           : (ariaLabel ?? null);
-    const title =
-      nAlts > 1
+    const title = violations.length
+      ? this._violationText(violations, tagset)
+      : nAlts > 1
         ? `${baseTitle ? `${baseTitle}. ` : ''}Alt+↓ lists ${nAlts} values seen for this form`
         : (baseTitle ?? nothing);
     return html`<input
         class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g
           ? 'igt-field--guess'
-          : ''} ${nAlts > 1 ? 'igt-field--alts' : ''} ${provClass('igt-field', p)} ${extraClass}"
+          : ''} ${nAlts > 1 ? 'igt-field--alts' : ''} ${violations.length
+          ? 'igt-field--invalid'
+          : ''} ${provClass('igt-field', p)} ${extraClass}"
         data-cell-key=${key}
+        data-has-tagset=${tagset ? '1' : nothing}
+        data-tagset-delims=${tagset?.delimiters || nothing}
         data-guess-value=${g ? g.value : nothing}
         data-guess-source=${g ? g.source : nothing}
         data-confirm-word=${confirmWord ?? nothing}
@@ -1592,10 +1700,28 @@ export class IgtEditor {
         @focus=${this._onFieldFocus}
         @input=${this._onFieldInput}
         @keydown=${this._basicKeydown}
-        @blur=${(e) => this._commitField(e, apply)}
+        @blur=${(e) => this._commitField(e, apply, tagset)}
       />${this._alts && this._alts.cellKey === key && alts
         ? this._altsTemplate(alts, key)
         : nothing}`;
+  }
+
+  // Why a cell is flagged, for its tooltip and for the rejection toast. Named
+  // parts, because "invalid value" tells a person nothing about which half of
+  // 1SG.ABL to fix.
+  _violationText(violations, tagset) {
+    const unknown = violations.filter((x) => x.reason === 'unknown').map((x) => x.part);
+    const bits = [];
+    if (unknown.length) {
+      const list = unknown.map((u) => `"${u}"`).join(', ');
+      const verb = unknown.length === 1 ? 'is not' : 'are not';
+      const where = tagset?.name ? `the ${tagset.name} tagset` : "this field's tagset";
+      bits.push(`${list} ${verb} in ${where}`);
+    }
+    if (violations.some((x) => x.reason === 'empty')) {
+      bits.push('There is a delimiter with nothing beside it');
+    }
+    return bits.join('. ');
   }
 
   _onSentenceInput = (e) => {
@@ -1611,6 +1737,10 @@ export class IgtEditor {
     // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
     // it alone so the chip hop wins over cell navigation.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
+    // An open picker gets first claim on ↑↓/↵/Esc, exactly as in a grid cell.
+    // It is only ever open on a tagset-governed field, so a plain Translation
+    // keeps every key it has today.
+    if (this._altsKeydown(e)) return;
     // Ctrl/Cmd+Backspace: discard a proposed translation wholesale, the sentence
     // counterpart of the word gesture, then move to the next sentence's same
     // field so a sweep reads "accept, accept, discard, accept" down a document.
@@ -1979,6 +2109,31 @@ export class IgtEditor {
   // non-data re-renders (popover open/keystroke, paging, help toggle…) reuse
   // it. Rebuilds if the pluggable factory is swapped (e.g. a service-backed
   // source).
+  // The tagset governing a field, keyed by the layerInfo scope bucket and the
+  // field name, or null when the field references none (or a name the project
+  // no longer has — see resolveTagset). Memoized on the project object and
+  // layerInfo, both stable between data changes, because this is asked once per
+  // rendered cell.
+  _tagsetFor(scope, name) {
+    const project = this.doc.project;
+    const info = this.doc.layerInfo;
+    if (this._tagsetCacheProject !== project || this._tagsetCacheInfo !== info) {
+      this._tagsetCacheProject = project;
+      this._tagsetCacheInfo = info;
+      const map = new Map();
+      for (const [bucket, layers] of Object.entries(info?.spanLayers || {})) {
+        for (const sl of layers || []) {
+          const t = resolveTagset(sl.config, project?.config);
+          // The name rides along so a rejection can say WHICH list refused the
+          // value. Nothing in tagsets.js reads it.
+          if (t) map.set(`${bucket}:${sl.name}`, { ...t, name: readTagsetName(sl.config) });
+        }
+      }
+      this._tagsetCache = map;
+    }
+    return this._tagsetCache.get(`${scope}:${name}`) ?? null;
+  }
+
   _guessSource(sentences, wordFields, morphFields) {
     const precedent = this._precedentTally();
     if (
@@ -2752,7 +2907,8 @@ export class IgtEditor {
                 value: token.annotations?.[name]?.value ?? '',
                 apply: (v, meta) => this.doc.updateTokenSpan(token.id, name, v, meta),
                 ariaLabel: `${name} for ${token.content}`,
-                guess:
+                tagset: this._tagsetFor('word', name),
+                guess: allowedGuess(
                   ctx.guess?.guessFor(
                     'word',
                     this._precedentForm(token.content, KINDS.WORD),
@@ -2761,6 +2917,8 @@ export class IgtEditor {
                       vocabItem: token.vocabItem,
                     },
                   ) ?? null,
+                  this._tagsetFor('word', name),
+                ),
                 alternatives: () =>
                   listAlternatives({
                     precedent: this._precedentTally(),
@@ -2769,6 +2927,7 @@ export class IgtEditor {
                     field: name,
                     vocabItem: token.vocabItem,
                     span: token.annotations?.[name],
+                    tagset: this._tagsetFor('word', name),
                   }),
                 prov: provDisplay(token.annotations?.[name]?.metadata),
                 confirmWord: token.id,
@@ -2884,9 +3043,12 @@ export class IgtEditor {
                 apply: (v, meta) => this.doc.updateMorphemeSpan(morph.id, name, v, meta),
                 extraClass: 'igt-morph-field',
                 ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
-                guess:
+                tagset: this._tagsetFor('morpheme', name),
+                guess: allowedGuess(
                   ctx.guess?.guessFor('morpheme', value, name, { vocabItem: morph.vocabItem }) ??
-                  null,
+                    null,
+                  this._tagsetFor('morpheme', name),
+                ),
                 alternatives: () =>
                   listAlternatives({
                     precedent: this._precedentTally(),
@@ -2895,6 +3057,7 @@ export class IgtEditor {
                     field: name,
                     vocabItem: morph.vocabItem,
                     span: morph.annotations?.[name],
+                    tagset: this._tagsetFor('morpheme', name),
                   }),
                 prov: provDisplay(morph.annotations?.[name]?.metadata),
                 confirmWord: word.id,
@@ -2952,6 +3115,20 @@ export class IgtEditor {
                       apply: (v) => this.doc.updateSentenceSpan(sentence.id, name, v),
                       sentence: true,
                       ariaLabel: `${name} for sentence ${index + 1}`,
+                      tagset: this._tagsetFor('sentence', name),
+                      // Only worth building for a governed field: an ungoverned
+                      // sentence field is free prose with no list to offer.
+                      alternatives: this._tagsetFor('sentence', name)
+                        ? () =>
+                            listAlternatives({
+                              precedent: this._precedentTally(),
+                              kind: KINDS.WORD,
+                              form: null,
+                              field: name,
+                              span: sentence.annotations?.[name],
+                              tagset: this._tagsetFor('sentence', name),
+                            })
+                        : null,
                       prov: provDisplay(sentence.annotations?.[name]?.metadata),
                       confirmSentence: sentence.id,
                       fieldName: name,
