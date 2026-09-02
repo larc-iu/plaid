@@ -1434,15 +1434,23 @@ export class IgtEditor {
   }
 
   _predictionKeydown = (e) => {
-    // Escape closes the floating menus (rows, copy format). They were the only
-    // overlays here that took an outside click but not Escape, while the
-    // popovers and the alternatives list all take both. Handled at the
-    // container, above the read-only guard: the opener keeps focus, and both
-    // menus work in a read-only view. No preventDefault — a cell edit's own
-    // Escape has already reverted it by the time this bubbles up.
+    // Escape closes the floating menus (rows, copy format) and the popover.
+    // Handled at the container, above the read-only guard: the opener keeps
+    // focus, and all three work in a read-only view. No preventDefault — a
+    // cell edit's own Escape has already reverted it by the time this bubbles
+    // up.
+    //
+    // The popover needs this because it is not always FOCUSED: the vocab one
+    // autofocuses its search box, whose keydown handles Escape and stops
+    // propagation, but the comment one has no autofocus target, so focus stays
+    // on the badge that opened it and the popover's own Escape handler never
+    // sees the key. Closing here matches the outside click that already closes
+    // all three (_onDocClick).
     if (e.key === 'Escape') {
       this._closeRowMenu();
       this._closeCopyMenu();
+      // Keyboard-driven, so focus goes back to the opener.
+      this._closePopover(true);
     }
     if (this.readOnly) return;
     // Ctrl/Cmd+Shift+Arrow: hop between WORDS with unverified material (a
