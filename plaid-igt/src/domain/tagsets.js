@@ -14,15 +14,17 @@
 //     "Leipzig": {
 //       delimiters: ".:>",       // "" = the whole cell is one value
 //       mode: "mixed",           // suggest | closed | mixed (see TAGSET_MODES)
-//       values: [{ value: "NOM", description: "nominative", color: "#a33" }]
+//       values: [{ value: "NOM", description: "nominative" }]
 //     }
 //   }
 //   spanLayer.config.igt.tagset = "Leipzig"
 //
-// A value record's `value` is the only required key. `description` and `color`
-// are reserved and rendered (in the picker and the cell tooltip); every other
-// key is free-form and display-only, so a project can hang whatever it likes
-// off a tag without this module caring.
+// A value record's `value` is the only required key. `description` is reserved
+// and rendered (in the picker and the settings table); every other key is
+// free-form and display-only, so a project can hang whatever it likes off a
+// tag without this module caring. (`color` was reserved once, and a settings
+// column saved it, but nothing ever rendered it; a stored one is now just a
+// free-form key.)
 //
 // CLOSED IS A PLAID-IGT RULE, NOT AN INVARIANT. plaid-core knows nothing about
 // tagsets, so services, the agent, and direct API writes can all still land
@@ -35,7 +37,7 @@ const str = (v) => (typeof v === 'string' ? v : '');
 export const stripSpace = (s) => s.replace(/\s+/gu, '');
 
 /** Value-record keys this app renders. Everything else is free-form. */
-export const RESERVED_VALUE_KEYS = Object.freeze(['description', 'color']);
+export const RESERVED_VALUE_KEYS = Object.freeze(['description']);
 
 /**
  * How strictly a tagset governs the fields that use it. ONE axis, because the

@@ -167,7 +167,6 @@ export function listAlternatives({
       const existing = byValue.get(rec.value);
       if (existing) {
         existing.description = rec.description;
-        existing.color = rec.color;
         continue;
       }
       const row = {
@@ -178,7 +177,6 @@ export function listAlternatives({
         model: false,
         source: TAGSET_SOURCE,
         description: rec.description,
-        color: rec.color,
       };
       byValue.set(rec.value, row);
       list.push(row);

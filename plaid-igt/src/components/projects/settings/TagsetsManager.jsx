@@ -479,9 +479,6 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                                     <th className="px-2 py-1.5 text-left font-medium">
                                       Description
                                     </th>
-                                    <th className="w-24 px-2 py-1.5 text-left font-medium">
-                                      Color
-                                    </th>
                                     <th className="w-8 px-2 py-1.5"></th>
                                   </tr>
                                 </thead>
@@ -671,9 +668,9 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
   );
 };
 
-// One value row. The reserved keys (description, color) are edited inline
-// because they are what almost every tagset uses; anything else the project
-// hangs off the tag lives behind the expander, preserved verbatim.
+// One value row. The description is edited inline because almost every tagset
+// has one; anything else the project hangs off the tag lives behind the
+// expander, preserved verbatim.
 const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemove }) => {
   const [newKey, setNewKey] = useState('');
   const [newVal, setNewVal] = useState('');
@@ -728,15 +725,6 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
           />
         </td>
         <td className="px-2 py-1">
-          <input
-            type="color"
-            className="h-7 w-full cursor-pointer rounded border bg-background"
-            value={rec.color ?? '#cccccc'}
-            onChange={(e) => onPatch({ color: e.currentTarget.value })}
-            title="Color"
-          />
-        </td>
-        <td className="px-2 py-1">
           <Button
             size="icon"
             variant="ghost"
@@ -751,7 +739,7 @@ const ValueRow = ({ rec, extras, expanded, onToggle, onPatch, onReplace, onRemov
       {expanded && (
         <tr className="border-t bg-muted/30">
           <td></td>
-          <td colSpan={4} className="px-2 py-2">
+          <td colSpan={3} className="px-2 py-2">
             {extras.map((k) => (
               <div key={k} className="mb-1 flex items-center gap-2">
                 <span className="w-32 shrink-0 truncate font-mono text-xs">{k}</span>
