@@ -1055,65 +1055,98 @@ export class IgtEditor {
     this._toggleMweWord(sentence.id, token.id);
   }
 
-  // The bracket pieces a word column draws: one per lane of the sentence's
-  // MWEs, plus the pending selection's on a lane of its own.
+  // What a word column draws for the sentence's MWE lanes (and the selection
+  // under way): the LINES, laid over the whole column, and the LABEL rows,
+  // which sit in the word's own stack so that a long entry form widens its
+  // column instead of running past the band and getting clipped.
   _mweBrackets(token, sctx) {
-    const out = [];
+    const rules = [];
+    const rows = [];
+    const add = (piece, lane, mwe) => {
+      if (piece !== 'solo') rules.push(this._mweRule(piece, lane, mwe));
+      if (piece === 'start' || piece === 'solo') rows[lane] = this._mweLabel(mwe, token);
+    };
     (token.mwePieces || []).forEach((p, lane) => {
-      if (p) out.push(this._mwePiece(p.piece, lane, p.mwe, token));
+      if (p) add(p.piece, lane, p.mwe);
     });
     const pend = sctx.pending?.[sctx.posMap.get(token.id)];
-    if (pend) out.push(this._mwePiece(pend, sctx.lanes, null, token));
-    return out;
+    if (pend) add(pend, sctx.lanes, null);
+    const laneCount = sctx.lanes + (sctx.pending ? 1 : 0);
+    const laneRows = [];
+    for (let lane = 0; lane < laneCount; lane++) {
+      laneRows.push(html`<span class="igt-vocab__mwe-lane">${rows[lane] ?? nothing}</span>`);
+    }
+    return { rules, laneRows };
   }
 
-  // One column's piece of one bracket. The label on the first member is the
-  // MWE's opener (a real button, keyboard-reachable); the pending selection's
-  // label says what to do next.
-  _mwePiece(piece, lane, mwe, token) {
-    const key = mwe ? `mwe:${mwe.linkId}` : 'mwe:new';
-    const state = mwe ? mwe.prov : null;
-    const cls = [
-      'igt-mwe',
-      `igt-mwe--${piece}`,
-      mwe ? provClass('igt-mwe', state === PROV_STATES.HUMAN ? null : state) : 'igt-mwe--pending',
-    ]
+  _mweKey(mwe) {
+    return mwe ? `mwe:${mwe.linkId}` : 'mwe:new';
+  }
+
+  // The provenance modifier for an MWE's pieces: pending while gathering,
+  // else the link's machine / verified state, plain for a person's link.
+  _mweState(mwe) {
+    if (!mwe) return 'pending';
+    return mwe.prov === PROV_STATES.HUMAN ? null : mwe.prov;
+  }
+
+  // One column's stretch of one line: full column width, inset at the ends,
+  // dotted under a skipped word.
+  _mweRule(piece, lane, mwe) {
+    const cls = ['igt-mwe', `igt-mwe--${piece}`, provClass('igt-mwe', this._mweState(mwe))]
       .filter(Boolean)
       .join(' ');
+    return html`<span class=${cls} style=${`--igt-lane:${lane}`} data-mwe=${this._mweKey(mwe)}
+      ><span class="igt-mwe__rule"></span
+    ></span>`;
+  }
+
+  // The label on the first member: the MWE's opener (a real button, in the
+  // review sweep when machine-made), or what to do next while gathering.
+  _mweLabel(mwe, token) {
+    const key = this._mweKey(mwe);
+    const state = this._mweState(mwe);
     const open = this._popover?.kind === 'mwe' && this._popover.tokenId === key;
-    const hasLabel = piece === 'start' || piece === 'solo';
-    let label = nothing;
-    if (hasLabel) {
-      const canLink = this._canLinkMwe();
-      let content;
-      let title;
-      if (mwe) {
-        const item = this._mweItem(mwe);
-        const sub = this._homonymSub(item);
-        content = html`${mwe.item.form}${sub != null
-          ? html`<sub class="igt-vocab__sub">${sub}</sub>`
-          : nothing}`;
-        const words = this._mweWords(mwe.memberTokenIds);
-        title =
-          state === PROV_STATES.MACHINE
-            ? `“${words}” auto-linked to "${mwe.item.form}": open to confirm or change`
-            : state === PROV_STATES.VERIFIED
-              ? `“${words}” linked to "${mwe.item.form}": auto-linked, confirmed${canLink ? ' · manage' : ''}`
-              : `“${words}” linked to "${mwe.item.form}"${canLink ? ' · manage' : ''}`;
-      } else {
-        const n = this._mweSel?.tokenIds.size ?? 0;
-        content =
-          n >= 2
-            ? html`${n} words · <kbd>Enter</kbd> links them · <kbd>Esc</kbd>`
-            : html`<kbd>Shift</kbd>+click or <kbd>Shift</kbd>+<kbd>→</kbd> adds words ·
-                <kbd>Esc</kbd>`;
-        title = 'Words being gathered into one multi-word expression';
-      }
-      label = html`<button
+    const canLink = this._canLinkMwe();
+    let content;
+    let title;
+    if (mwe) {
+      const item = this._mweItem(mwe);
+      const sub = this._homonymSub(item);
+      content = html`${mwe.item.form}${sub != null
+        ? html`<sub class="igt-vocab__sub">${sub}</sub>`
+        : nothing}`;
+      const words = this._mweWords(mwe.memberTokenIds);
+      title =
+        state === PROV_STATES.MACHINE
+          ? `“${words}” auto-linked to "${mwe.item.form}": open to confirm or change`
+          : state === PROV_STATES.VERIFIED
+            ? `“${words}” linked to "${mwe.item.form}": auto-linked, confirmed${canLink ? ' · manage' : ''}`
+            : `“${words}” linked to "${mwe.item.form}"${canLink ? ' · manage' : ''}`;
+    } else {
+      const n = this._mweSel?.tokenIds.size ?? 0;
+      content = n >= 2 ? html`${n} words · <kbd>↵</kbd>` : html`add words…`;
+      title =
+        n >= 2
+          ? 'Enter links these words to one entry · Shift+click adds or removes a word · Esc drops them'
+          : 'Shift+click a word, or Shift+→ from a cell, to gather it into the expression · Esc drops it';
+    }
+    let popover = nothing;
+    if (open) {
+      const tokens = this._mweTargetIds();
+      popover = this._vocabPopover(
+        key,
+        this._mweWords(tokens),
+        mwe ? this._mweItem(mwe) : null,
+        'mwe',
+      );
+    }
+    return html`<button
         type="button"
-        class="igt-mwe__label"
+        class="igt-mwe__label ${provClass('igt-mwe__label', state)}"
         data-vocab-opener=${key}
         data-pop-opener=${`vocab:${key}`}
+        data-mwe=${key}
         data-mwe-first=${token.id}
         ?disabled=${!canLink}
         title=${title}
@@ -1124,22 +1157,8 @@ export class IgtEditor {
           else this._openMwePopover();
         }}
       >
-        ${content}
-      </button>`;
-    }
-    let popover = nothing;
-    if (open && hasLabel) {
-      const tokens = this._mweTargetIds();
-      popover = this._vocabPopover(
-        key,
-        this._mweWords(tokens),
-        mwe ? this._mweItem(mwe) : null,
-        'mwe',
-      );
-    }
-    return html`<span class=${cls} style=${`--igt-lane:${lane}`} data-mwe=${key}>
-      ${piece === 'solo' ? nothing : html`<span class="igt-mwe__rule"></span>`} ${label} ${popover}
-    </span>`;
+        ${content}</button
+      >${popover}`;
   }
 
   // The member words at the top of the popover in MWE mode, each removable.
@@ -1951,7 +1970,7 @@ export class IgtEditor {
     // expressions, in document order.
     return [
       ...this.container.querySelectorAll(
-        'button.igt-vocab__hint--machine:not([disabled]), .igt-mwe--machine .igt-mwe__label:not([disabled])',
+        'button.igt-vocab__hint--machine:not([disabled]), .igt-mwe__label--machine:not([disabled])',
       ),
     ];
   }
@@ -2031,8 +2050,7 @@ export class IgtEditor {
     const el = document.activeElement;
     const isChip = !!el?.classList?.contains('igt-vocab__hint--machine');
     // The label of an auto-linked multi-word expression reviews the same way.
-    const isMweLabel =
-      !!el?.classList?.contains('igt-mwe__label') && !!el.closest('.igt-mwe--machine');
+    const isMweLabel = !!el?.classList?.contains('igt-mwe__label--machine');
     if (!isChip && !isMweLabel) return;
     const tokenId = el.dataset.vocabOpener;
     if (!tokenId) return;
@@ -3720,6 +3738,7 @@ export class IgtEditor {
     // popover is open) is outlined; while gathering, every word is a target.
     const selected = this._selectedWordIds().has(token.id);
     const gathering = this._canLinkMwe() && (!!this._mweSel || !!this._openMwe());
+    const brackets = this._mweBrackets(token, sctx);
     return html`
       <div class="igt-token-col" data-word-col=${token.id}>
         <div
@@ -3742,8 +3761,9 @@ export class IgtEditor {
             // widest morpheme beneath it, so a badge pinned to the cell's right
             // edge floats far from the word it is about.
             badge: this._commentBadge('token', token.id, token.content),
+            laneRows: brackets.laneRows,
           })}
-          ${this._mweBrackets(token, sctx)}
+          ${brackets.rules}
         </div>
         ${ctx.orthographies.map(
           (name) => html`
@@ -4061,13 +4081,17 @@ export class IgtEditor {
         link
       </button>`;
     }
-    // A word's stack keeps room between the word and its chip for the lanes of
-    // multi-word expression brackets (the sentence sets how many).
+    // A word's stack holds, between the word and its chip, one row per lane
+    // of multi-word expressions (the sentence sets how many); the first
+    // member's row carries the label, the lines themselves lie over the
+    // column (see _mweBrackets).
     return html`
       <span class="igt-vocab">
         <span class="igt-vocab__face">${face}${opts.badge ?? nothing}</span>
-        ${kind === 'word' ? html`<span class="igt-vocab__mwe-lanes"></span>` : nothing} ${opener}
-        ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
+        ${kind === 'word'
+          ? html`<span class="igt-vocab__mwe-lanes">${opts.laneRows ?? nothing}</span>`
+          : nothing}
+        ${opener} ${open ? this._vocabPopover(id, formText, vocabItem, kind) : nothing}
       </span>
     `;
   }

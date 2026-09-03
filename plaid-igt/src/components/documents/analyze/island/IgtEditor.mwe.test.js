@@ -63,7 +63,7 @@ const linkOver = (id, tokens, item = { id: 'i-sit', form: 'sit down' }, metadata
 });
 
 const form = (wordId) => host.querySelector(`[data-word-col="${wordId}"] .igt-token-form`);
-const pieces = (key) => [...host.querySelectorAll(`[data-mwe="${key}"]`)];
+const pieces = (key) => [...host.querySelectorAll(`.igt-mwe[data-mwe="${key}"]`)];
 const label = (key) => host.querySelector(`button.igt-mwe__label[data-vocab-opener="${key}"]`);
 const popover = () => host.querySelector('.igt-vocab-pop');
 const lanesOf = () => host.querySelector('.igt-sentence').style.getPropertyValue('--igt-mwe-lanes');
@@ -130,15 +130,13 @@ describe('a linked multi-word expression', () => {
       ],
     });
     const lbl = label('mwe:lk-1');
-    expect(lbl.closest('.igt-mwe').classList.contains('igt-mwe--machine')).toBe(true);
+    expect(lbl.classList.contains('igt-mwe__label--machine')).toBe(true);
     lbl.focus();
     key(lbl, 'Enter');
     await settle();
     expect(client.calls.some((c) => c.kind === 'vocabLinks.patchMetadata')).toBe(true);
     expect(doc.sentences[0].mwes[0].prov).toBe('verified');
-    expect(label('mwe:lk-1').closest('.igt-mwe').classList.contains('igt-mwe--verified')).toBe(
-      true,
-    );
+    expect(label('mwe:lk-1').classList.contains('igt-mwe__label--verified')).toBe(true);
   });
 
   it('opens from its label with the entry marked linked, and unlink removes it', async () => {
@@ -300,9 +298,8 @@ describe('gathering words into a multi-word expression', () => {
     click(popover().querySelectorAll('.igt-vocab-pop__mwe')[1]);
     expect(popover()).toBeNull();
     expect(selectedForms()).toEqual(['w-3']);
-    expect(pieces('mwe:new').map((p) => p.className)).toEqual([
-      'igt-mwe igt-mwe--solo igt-mwe--pending',
-    ]);
+    expect(pieces('mwe:new')).toEqual([]);
+    expect(label('mwe:new').textContent.trim()).toBe('add words…');
   });
 
   it('Shift+click while an expression is open re-covers it with the new words', async () => {

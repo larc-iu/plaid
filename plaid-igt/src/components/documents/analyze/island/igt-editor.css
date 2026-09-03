@@ -1676,9 +1676,25 @@
 .igt-token-form {
   position: relative;
 }
-/* Room for the lanes in the centered word stack (face, lanes, chip slot). */
+/* The word's stack spans its column so the lane rows can start at the line's
+   left inset; face and chip stay centered within it. */
+.igt-token-form > .igt-vocab {
+  width: 100%;
+}
+/* One 16px row per lane in the word stack (face, lanes, chip slot). The first
+   member's row holds the label IN FLOW, so a long entry form widens the
+   column rather than running past the band. */
 .igt-vocab__mwe-lanes {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
   height: calc(16px * var(--igt-mwe-lanes, 0));
+}
+.igt-vocab__mwe-lane {
+  position: relative;
+  height: 16px;
+  display: flex;
+  align-items: flex-start;
 }
 .igt-mwe {
   position: absolute;
@@ -1687,14 +1703,6 @@
   top: calc(21px + 16px * var(--igt-lane, 0));
   height: 16px;
   pointer-events: none;
-}
-/* The popover rides inside the label's piece; it must stay clickable. */
-.igt-mwe .igt-vocab-pop {
-  pointer-events: auto;
-}
-/* A lone word gathered so far: just the hint, no rule. */
-.igt-mwe--solo .igt-mwe__label {
-  left: 4px;
 }
 .igt-mwe__rule {
   position: absolute;
@@ -1713,15 +1721,12 @@
 .igt-mwe--pass .igt-mwe__rule {
   border-top-style: dotted;
 }
-/* The label is the MWE's opener: a real button, left-aligned under the
-   line's start, allowed to run on across the columns to its right
-   (they carry nothing but the rule on this lane). */
+/* The label is the MWE's opener: a real button, left-aligned just under the
+   line's start. */
 .igt-mwe__label {
-  position: absolute;
-  left: 11px;
-  top: 5px;
+  position: relative;
+  margin: 5px 0 0 1px;
   z-index: 3;
-  pointer-events: auto;
   font: inherit;
   font-size: 10px;
   font-weight: 400;
@@ -1758,12 +1763,12 @@
   border-color: #c4b5fd;
   border-top-style: dashed;
 }
-.igt-mwe--machine .igt-mwe__label {
+.igt-mwe__label--machine {
   color: var(--igt-violet);
   font-style: italic;
   text-decoration-color: #c4b5fd;
 }
-.igt-mwe--verified .igt-mwe__label {
+.igt-mwe__label--verified {
   text-decoration-color: #c4b5fd;
 }
 /* The selection in progress: a dashed blue line under the chosen words. */
@@ -1771,12 +1776,12 @@
   border-color: #93c5fd;
   border-top-style: dashed;
 }
-.igt-mwe--pending .igt-mwe__label {
+.igt-mwe__label--pending {
   color: #1d4ed8;
   font-weight: 500;
   text-decoration: none;
 }
-.igt-mwe--pending .igt-mwe__label kbd {
+.igt-mwe__label--pending kbd {
   font: inherit;
   font-weight: 600;
   padding: 0 3px;
