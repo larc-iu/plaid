@@ -9,22 +9,23 @@ import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 import { formatTime } from './formatTime.js';
 import { assignLanes } from '../../../domain/alignmentTimes.js';
 
-// Stable hue per speaker label, so a diarized timeline is readable at a glance
-// (same speaker → same color across segments). Unlabeled segments keep the
-// default blue.
-const speakerHue = (name) => {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
-  return h;
+// One colour per speaker, the same on every segment and in every document of
+// the project: the speaker's place in the (sorted) speaker list, stepped round
+// the colour wheel by the golden angle, so the first few speakers are always
+// far apart. A hash of the name put "Speaker 1" and "Speaker 2" one degree
+// apart. Unlabelled segments take the theme's primary colour.
+const speakerHue = (speaker, speakers) => {
+  const i = Math.max(0, speakers.indexOf(speaker));
+  return Math.round((30 + i * 137.508) % 360);
 };
-const segmentColors = (speaker, resizing) => {
+const segmentColors = (speaker, speakers, resizing) => {
   if (!speaker) {
     return {
-      fill: resizing ? 'rgba(25, 118, 210, 0.25)' : 'rgba(25, 118, 210, 0.15)',
-      stroke: '#1976d2',
+      fill: `hsl(var(--primary) / ${resizing ? 0.25 : 0.15})`,
+      stroke: 'hsl(var(--primary))',
     };
   }
-  const hue = speakerHue(speaker);
+  const hue = speakerHue(speaker, speakers);
   return {
     fill: `hsla(${hue}, 65%, 45%, ${resizing ? 0.35 : 0.2})`,
     stroke: `hsl(${hue}, 60%, 40%)`,
@@ -49,6 +50,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
   } = mediaOps;
 
   const currentTime = mediaOps.currentTime;
+  const speakers = doc.knownSpeakers;
 
   // Overlapping segments (cross-talk) stack in lanes instead of painting over
   // each other; a transcript with no overlap is one full-height lane.
@@ -156,7 +158,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
             ref={timelineContainerRef}
             style={{
               overflowX: 'auto',
-              border: '1px solid #e0e0e0',
+              border: '1px solid hsl(var(--border))',
               borderRadius: '4px',
               paddingTop: '50px',
             }}
@@ -170,7 +172,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                 width: `${timelineWidth}px`,
                 minWidth: '100%',
                 cursor: !canCreateSelection ? 'default' : isDragging ? 'grabbing' : 'pointer',
-                backgroundColor: '#f8f9fa',
+                backgroundColor: 'hsl(var(--muted) / 0.5)',
                 userSelect: 'none',
               }}
               onMouseDown={canCreateSelection ? handleMouseDown : undefined}
@@ -204,7 +206,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     top: '20px',
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    color: '#666',
+                    color: 'hsl(var(--muted-foreground))',
                     fontSize: '12px',
                     pointerEvents: 'none',
                   }}
@@ -228,8 +230,8 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                         width: `${(selection.end - selection.start) * pixelsPerSecond}px`,
                         top: 0,
                         bottom: 0,
-                        backgroundColor: 'rgba(34, 139, 230, 0.15)',
-                        border: '2px solid #228be6',
+                        backgroundColor: 'hsl(var(--primary) / 0.15)',
+                        border: '2px solid hsl(var(--primary))',
                         pointerEvents: 'none',
                         zIndex: 4,
                       }}
@@ -256,7 +258,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                 >
                   <span
                     style={{
-                      color: '#228be6',
+                      color: 'hsl(var(--primary))',
                       fontWeight: 600,
                     }}
                   >
@@ -274,7 +276,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
 
                   <span
                     style={{
-                      color: '#228be6',
+                      color: 'hsl(var(--primary))',
                       fontWeight: 600,
                     }}
                   >
@@ -292,8 +294,8 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     width: `${(tempSelection.end - tempSelection.start) * pixelsPerSecond}px`,
                     top: 0,
                     bottom: 0,
-                    backgroundColor: 'rgba(34, 139, 230, 0.2)',
-                    border: '1px solid #228be6',
+                    backgroundColor: 'hsl(var(--primary) / 0.2)',
+                    border: '1px solid hsl(var(--primary))',
                     pointerEvents: 'none',
                     zIndex: 5,
                   }}
@@ -309,7 +311,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                   top: 0,
                   bottom: 0,
                   width: '1px',
-                  backgroundColor: '#c40000',
+                  backgroundColor: 'hsl(var(--destructive))',
                   pointerEvents: 'none',
                   zIndex: 10,
                 }}
@@ -327,7 +329,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                 const displayEnd = isBeingResized ? tempTokenBounds.end : tokenEnd;
                 const displayWidth = (displayEnd - displayStart) * pixelsPerSecond;
                 const speaker = token.metadata?.speaker || '';
-                const colors = segmentColors(speaker, isBeingResized);
+                const colors = segmentColors(speaker, speakers, isBeingResized);
                 const lane = lanes.get(token.id) ?? 0;
 
                 return (
@@ -347,7 +349,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                       fontSize: '12px',
                       overflow: 'hidden',
                       cursor: 'pointer',
-                      color: '#000',
+                      color: 'hsl(var(--foreground))',
                       fontWeight: 500,
                       zIndex: 3,
                     }}

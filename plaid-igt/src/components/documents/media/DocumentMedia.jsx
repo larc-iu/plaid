@@ -44,7 +44,7 @@ export function DocumentMedia() {
   }
 
   return (
-    <div className="tw flex flex-col gap-6" style={{ marginBottom: '400px' }}>
+    <div className="tw flex flex-col gap-6">
       {/* Media Player */}
       <MediaPlayer mediaOps={mediaOps} readOnly={readOnly} />
 
@@ -159,7 +159,7 @@ export function DocumentMedia() {
             >
               <span className="text-sm text-muted-foreground">
                 {mediaOps.alignmentTokens.length > 0
-                  ? `${mediaOps.alignmentTokens.length} segments`
+                  ? `${mediaOps.alignmentTokens.length} ${mediaOps.alignmentTokens.length === 1 ? 'segment' : 'segments'}`
                   : 'No segments yet'}
               </span>
             </div>

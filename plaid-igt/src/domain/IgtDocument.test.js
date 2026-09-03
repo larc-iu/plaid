@@ -1010,6 +1010,32 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     });
   });
 
+  it('updateAlignmentSpeaker confirms a machine-made segment, like any human edit', async () => {
+    const machine = { prov: 'inferred', provSource: 'service:asr' };
+    const raw = buildRawDoc({
+      alignmentTokens: [
+        {
+          id: 'a-1',
+          text: 'text-1',
+          begin: 0,
+          end: 3,
+          metadata: { timeBegin: 0, timeEnd: 1, ...machine },
+        },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    expect(await doc.updateAlignmentSpeaker('a-1', 'Ana')).toBe(true);
+    const patch = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
+    expect(patch.args[1]).toEqual({ speaker: 'Ana', provConfirmed: true });
+    expect(doc.alignmentTokens[0].metadata).toEqual({
+      timeBegin: 0,
+      timeEnd: 1,
+      ...machine,
+      speaker: 'Ana',
+      provConfirmed: true,
+    });
+  });
+
   it('deleteAlignment removes the alignment text range', async () => {
     const raw = buildRawDoc({
       alignmentTokens: [

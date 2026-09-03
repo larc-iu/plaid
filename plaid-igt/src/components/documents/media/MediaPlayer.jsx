@@ -84,8 +84,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
 
   const seekTo = (time) => {
     if (mediaRef.current) {
-      mediaRef.current.pause(); // Stop playback when seeking
-      mediaRef.current.currentTime = time;
+      mediaRef.current.currentTime = time; // a seek never pauses
       onTimeUpdate && onTimeUpdate(time); // Update state immediately
       onSeek && onSeek(time); // Notify parent of seek
     }
@@ -94,8 +93,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
   const skipTime = (seconds) => {
     if (mediaRef.current) {
       const newTime = Math.max(0, Math.min(duration, mediaRef.current.currentTime + seconds));
-      mediaRef.current.pause(); // Stop playback when skipping
-      mediaRef.current.currentTime = newTime;
+      mediaRef.current.currentTime = newTime; // a skip never pauses
       onTimeUpdate && onTimeUpdate(newTime); // Update state immediately
       onSeek && onSeek(newTime); // Notify parent of seek
     }

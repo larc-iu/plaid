@@ -115,7 +115,7 @@ The segment runs from the end of the previous one to wherever playback is when y
 Every segment is a row in the transcript, and the recording follows you: moving into a row plays that segment, Enter saves the row and moves to the next, Escape puts a row back the way it was, and Shift+Space plays or pauses without leaving the row.
 Turn off "Play segment on entry" to play by hand.
 A segment's start and end times are boxes of digits in its row: type into the box under the caret, Left and Right move between boxes, Up and Down step a box by one unit (milliseconds by 10, 100 with Shift), Enter or leaving the time saves, and a segment can never run into its neighbours.
-The speed slider runs from 0.2× to 5×, and the loop button repeats the segment you are on until you pause.
+The speed slider runs from 0.25× to 5×, and the loop button repeats the segment you are on until you pause.
 Shift+Left and Shift+Right move playback one second, in a transcript row or out of one.
 
 The timeline shows the same segments against the waveform.

@@ -23,7 +23,9 @@ const PARAMS_PREFIX = 'plaid_igt_transcribe_params_';
 const RATE_KEY = 'plaid_igt_playback_rate';
 const LOOP_KEY = 'plaid_igt_loop_segment';
 const AUTOPLAY_KEY = 'plaid_igt_play_on_focus';
-export const PLAYBACK_RATE_MIN = 0.2;
+// 0.25 is the slowest Firefox will still play audibly (it mutes below), and
+// Chrome plays it too.
+export const PLAYBACK_RATE_MIN = 0.25;
 export const PLAYBACK_RATE_MAX = 5;
 export const PLAYBACK_RATE_STEP = 0.05;
 // Snap a rate onto the slider's grid and into its range.

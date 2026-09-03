@@ -588,11 +588,14 @@ export const alignmentMutations = {
     }
     const value = (speaker || '').trim();
     return this._withSaving('Failed to update speaker', async () => {
-      await this._client.tokens.patchMetadata(alignmentId, { speaker: value || null });
+      // Any human edit confirms a machine-made segment (write-contract rule 3),
+      // and choosing its speaker is one.
+      const verify = verifyOnEdit(token.metadata) || {};
+      await this._client.tokens.patchMetadata(alignmentId, { speaker: value || null, ...verify });
       this._applyRawPatch((next, infoNext) => {
         const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
         if (t) {
-          t.metadata = { ...(t.metadata || {}) };
+          t.metadata = { ...(t.metadata || {}), ...verify };
           if (value) t.metadata.speaker = value;
           else delete t.metadata.speaker;
         }

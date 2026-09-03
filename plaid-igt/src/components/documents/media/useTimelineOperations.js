@@ -7,7 +7,15 @@ const TIMELINE_HEIGHT = 100;
 const WAVEFORM_AVAILABLE_HEIGHT = 90;
 const MIN_BAR_HEIGHT = 2;
 const WAVEFORM_CACHE_PREFIX = 'plaid_waveform_';
-const WAVEFORM_CACHE_VERSION = 'v1_'; // Increment when waveform generation logic changes
+const WAVEFORM_CACHE_VERSION = 'v2_'; // Increment when waveform generation logic changes
+
+// A theme colour for the canvas, which cannot read CSS variables itself. The
+// shadcn variables hold bare HSL components ("221.2 83.2% 53.3%").
+const themeColor = (name, alpha) => {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const [h, s, l] = raw.split(/\s+/);
+  return h && s && l ? `hsla(${h}, ${s}, ${l}, ${alpha})` : `rgba(144, 202, 249, ${alpha})`;
+};
 
 // Utility functions for waveform caching
 const generateAudioHash = async (arrayBuffer) => {
@@ -194,7 +202,8 @@ export const useTimelineOperations = (mediaOps) => {
   const handleTimelineClick = useCallback(
     (time) => {
       if (mediaElement) {
-        mediaElement.pause(); // Stop playback when clicking timeline
+        // A seek moves playback and leaves it running or paused as it was;
+        // a transcriber scrubbing back to re-hear a stretch wants it to keep going.
         mediaElement.currentTime = time;
         mediaOps.setCurrentTime(time); // Update state immediately
         mediaOps.setPlayingSelection(null);
@@ -586,8 +595,8 @@ export const useTimelineOperations = (mediaOps) => {
         ctx.fillRect(0, 0, effectiveTimelineWidth, TIMELINE_HEIGHT);
 
         // Draw waveform
-        ctx.fillStyle = '#90caf9';
-        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = themeColor('--primary', 0.35);
+        ctx.globalAlpha = 1;
 
         // Use much higher sampling rate for better resolution
         const samples = Math.max(effectiveTimelineWidth * 2, 8000);
@@ -657,8 +666,8 @@ export const useTimelineOperations = (mediaOps) => {
         // Decoding failed, so we have no real amplitude data. Draw a single flat
         // centerline instead of randomized bars (which would read as a genuine
         // signal) to honestly signal "no waveform available".
-        ctx.fillStyle = '#90caf9';
-        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = themeColor('--primary', 0.3);
+        ctx.globalAlpha = 1;
 
         const centerlineHeight = 1;
         ctx.fillRect(
