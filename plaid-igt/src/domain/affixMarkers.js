@@ -41,14 +41,17 @@ export const isValidMorphType = (t) => t == null || FLEX_MORPH_TYPES.includes(t)
 /**
  * What a morph type is called on screen. The stored values are FieldWorks'
  * own inventory (LIFT and .flextext need them verbatim), but "phrase" is
- * FieldWorks-speak: linguists say multi-word expression, so the two phrase
- * types are shown under that name.
+ * FieldWorks-speak: linguists say multi-word expression. FieldWorks' second
+ * phrase type, "discontiguous phrase", is the same thing here (whether an
+ * expression skips a word is plain from its words), so it shows under the
+ * same name and is never offered as a choice, only kept when imported.
  */
-export const morphTypeLabel = (t) => {
-  if (t === 'phrase') return 'multi-word expression';
-  if (t === 'discontiguous phrase') return 'discontiguous multi-word expression';
-  return t;
-};
+export const morphTypeLabel = (t) =>
+  t === 'phrase' || t === 'discontiguous phrase' ? 'multi-word expression' : t;
+
+/** The types a select offers: the inventory, minus the one it never proposes. */
+export const morphTypeOptions = (current = null) =>
+  FLEX_MORPH_TYPES.filter((t) => t !== 'discontiguous phrase' || t === current);
 
 export const isClitic = (morphType) =>
   typeof morphType === 'string' && morphType.toLowerCase().includes('clitic');

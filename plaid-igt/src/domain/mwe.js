@@ -100,12 +100,11 @@ export const isContiguous = (memberIdx) => {
 };
 
 /**
- * The morph type a new MWE entry gets, from the FieldWorks inventory
- * (affixMarkers.js): a run of adjacent words is a `phrase`, anything with a
- * word skipped in the middle a `discontiguous phrase`.
+ * The morph type a new MWE entry gets: FieldWorks' `phrase`, whatever the
+ * words' spacing. Whether an expression skips a word is plain from its
+ * tokens, so FieldWorks' separate `discontiguous phrase` is not used.
  */
-export const mweMorphType = (memberIdx) =>
-  isContiguous(memberIdx) ? 'phrase' : 'discontiguous phrase';
+export const mweMorphType = () => 'phrase';
 
 export const isMweType = (morphType) =>
   typeof morphType === 'string' && morphType.toLowerCase().includes('phrase');

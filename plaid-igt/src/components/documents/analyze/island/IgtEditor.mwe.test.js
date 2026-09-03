@@ -274,7 +274,7 @@ describe('gathering words into a multi-word expression', () => {
     expect(label(`mwe:${doc.sentences[0].mwes[0].linkId}`).textContent.trim()).toBe('sit down');
   });
 
-  it('creating an entry for skipped words types it a discontiguous phrase', async () => {
+  it('creating an entry for skipped words still types it a phrase', async () => {
     const { doc, client } = mount();
     click(form('w-2'), { shiftKey: true });
     click(form('w-4'), { shiftKey: true });
@@ -284,7 +284,7 @@ describe('gathering words into a multi-word expression', () => {
     click(create);
     await settle();
     const item = client.calls.find((c) => c.kind === 'vocabItems.create');
-    expect(item.args).toEqual(['v1', 'cat down', { morphType: 'discontiguous phrase' }]);
+    expect(item.args).toEqual(['v1', 'cat down', { morphType: 'phrase' }]);
     expect(doc.sentences[0].mwes[0].item.form).toBe('cat down');
   });
 

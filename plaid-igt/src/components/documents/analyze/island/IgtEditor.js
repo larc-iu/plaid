@@ -44,8 +44,8 @@ import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/
 import {
   morphemeJoiner,
   isStemType,
-  FLEX_MORPH_TYPES,
   morphTypeLabel,
+  morphTypeOptions,
   splitChainText,
 } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
@@ -844,8 +844,7 @@ export class IgtEditor {
     );
   }
 
-  // The morph type a new entry for these words gets: phrase, or discontiguous
-  // phrase when a word in between is not a member.
+  // The morph type a new entry for these words gets.
   _mweTypeFor(tokenIds) {
     const first = this.doc.tokenLookup.get(tokenIds[0]);
     const sentence = first && this.doc.findSentenceForToken(first);
@@ -1203,7 +1202,7 @@ export class IgtEditor {
       ? canEditEntry
         ? 'Type of the linked lexicon entry'
         : 'Type comes from the linked lexicon entry; only its maintainers can change it'
-      : 'The type a new entry gets: multi-word expression, or discontiguous multi-word expression when a word in between is left out';
+      : 'The type a new entry gets: multi-word expression';
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
         <span>${linked ? 'Type (entry)' : 'Type'}</span>
@@ -1219,7 +1218,7 @@ export class IgtEditor {
           }}
         >
           <option value="" ?selected=${current === ''}>—</option>
-          ${FLEX_MORPH_TYPES.map(
+          ${morphTypeOptions(current).map(
             (t) =>
               html`<option value=${t} ?selected=${current === t}>${morphTypeLabel(t)}</option>`,
           )}
@@ -4696,7 +4695,7 @@ export class IgtEditor {
           }}
         >
           <option value="" ?selected=${current === ''}>—</option>
-          ${FLEX_MORPH_TYPES.map(
+          ${morphTypeOptions(current).map(
             (t) =>
               html`<option value=${t} ?selected=${current === t}>${morphTypeLabel(t)}</option>`,
           )}

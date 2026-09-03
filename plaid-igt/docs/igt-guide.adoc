@@ -156,7 +156,7 @@ Which vocabularies a project draws on is part of the project's settings.
 Some lexical units are longer than a word: an idiom, a phrasal verb, a compound name.
 Link one to a single entry by gathering its words: **Shift+click** each word, or from one of a word's cells press **Shift+→** (and **Shift+←**) to take in its neighbours, with **Ctrl** held to skip a word that does not belong.
 A dashed line shows the words gathered so far. Press **Enter** to link them to an entry, or **Esc** to give up.
-The popover works as it does for one word: pick an entry, or create one. A new entry gets the words' surface forms joined by spaces, which you can edit to the citation form before creating, and a type of multi-word expression (discontiguous, when a word in the middle was skipped). That type is what FieldWorks calls a phrase, and it exports as one.
+The popover works as it does for one word: pick an entry, or create one. A new entry gets the words' surface forms joined by spaces, which you can edit to the citation form before creating, and the type multi-word expression, which is what FieldWorks calls a phrase, and exports as one.
 
 A linked multi-word expression draws as a line under its words, inside the gray word band, labelled with the entry's form.
 The line runs on across a line break, and a skipped word (or punctuation in between) shows as a dotted stretch.

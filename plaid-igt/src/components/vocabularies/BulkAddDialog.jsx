@@ -151,11 +151,9 @@ const n = (x) => x.toLocaleString();
 // value the interlinear renderer can't interpret.
 const MORPH_BY_KEY = new Map([
   ...FLEX_MORPH_TYPES.map((t) => [t.toLowerCase().replace(/[\s_-]+/g, ''), t]),
-  // The names the app shows for FieldWorks' two phrase types.
+  // The name the app shows for FieldWorks' phrase type.
   ['multiwordexpression', 'phrase'],
   ['mwe', 'phrase'],
-  ['discontiguousmultiwordexpression', 'discontiguous phrase'],
-  ['discontiguousmwe', 'discontiguous phrase'],
 ]);
 const normalizeValue = (field, raw) =>
   field === 'morphType' ? (MORPH_BY_KEY.get(raw.toLowerCase().replace(/[\s_-]+/g, '')) ?? '') : raw;

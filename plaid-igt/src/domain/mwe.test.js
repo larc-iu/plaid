@@ -79,10 +79,9 @@ describe('assignLanes', () => {
 });
 
 describe('a new MWE entry', () => {
-  it('is a phrase when the words are adjacent and a discontiguous phrase otherwise', () => {
+  it('is a phrase whether or not the words are adjacent', () => {
     expect(mweMorphType([2, 3, 4])).toBe('phrase');
-    expect(mweMorphType([4, 2, 3])).toBe('phrase');
-    expect(mweMorphType([1, 3])).toBe('discontiguous phrase');
+    expect(mweMorphType([1, 3])).toBe('phrase');
   });
 
   it('takes the member surfaces joined by spaces', () => {

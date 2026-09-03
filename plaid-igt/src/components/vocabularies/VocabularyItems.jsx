@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
-import { FLEX_MORPH_TYPES, morphTypeLabel } from '@/domain/affixMarkers';
+import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
@@ -582,7 +582,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
               }
             >
               <option value="">—</option>
-              {FLEX_MORPH_TYPES.map((t) => (
+              {morphTypeOptions(values.morphType).map((t) => (
                 <option key={t} value={t}>
                   {morphTypeLabel(t)}
                 </option>

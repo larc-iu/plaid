@@ -1398,17 +1398,17 @@ describe('multi-word expressions', () => {
     const client = makeFakeClient();
     const doc = makeDoc({ raw: raw(), project, client, vocabularies: vocabs() });
     const ok = await doc.createAndLinkMwe(['w-2', 'w-4'], 'v1', 'cat down', {
-      morphType: 'discontiguous phrase',
+      morphType: 'phrase',
     });
     expect(ok).toBe(true);
     expect(kinds(client)).toEqual(
       expect.arrayContaining(['vocabItems.create', 'vocabLinks.create']),
     );
     const itemCall = client.calls.find((c) => c.kind === 'vocabItems.create');
-    expect(itemCall.args).toEqual(['v1', 'cat down', { morphType: 'discontiguous phrase' }]);
+    expect(itemCall.args).toEqual(['v1', 'cat down', { morphType: 'phrase' }]);
     const s = doc.sentences[0];
     expect(s.mwes[0].item.form).toBe('cat down');
-    expect(s.mwes[0].item.metadata.morphType).toBe('discontiguous phrase');
+    expect(s.mwes[0].item.metadata.morphType).toBe('phrase');
     expect(s.tokens.map((t) => t.mwePieces[0]?.piece ?? null)).toEqual([
       null,
       'start',
