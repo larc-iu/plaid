@@ -100,11 +100,14 @@ export class IgtDocument {
     // and dead-ends the editor. Load the document AT the snapshot, but project
     // config + vocab live (layer structure is immutable; live vocab is fine for a
     // read-only historical view).
-    const [raw, project] = await Promise.all([
+    // The vocabularies need only the project, so they download alongside the
+    // document instead of after it (a large document is seconds of transfer).
+    const projectP = client.projects.get(projectId);
+    const [raw, project, { vocabularies }] = await Promise.all([
       client.documents.get(documentId, true, at),
-      client.projects.get(projectId),
+      projectP,
+      projectP.then((project) => loadProjectVocabularies(client, project)),
     ]);
-    const { vocabularies } = await loadProjectVocabularies(client, project);
     return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf });
   }
 

@@ -1309,10 +1309,15 @@ export class IgtEditor {
     this._fitPopover();
     this._restorePendingFocus();
     // Size sentence textareas to their content (uncontrolledValue may have just
-    // written a programmatic value, e.g. on load / reload).
-    this.container
-      .querySelectorAll('textarea.igt-field--sentence')
-      .forEach((el) => this._autoGrow(el));
+    // written a programmatic value, e.g. on load / reload). All the reads
+    // happen between the two rounds of writes, so the page lays out twice
+    // rather than once per textarea.
+    const areas = [...this.container.querySelectorAll('textarea.igt-field--sentence')];
+    for (const el of areas) el.style.height = 'auto';
+    const heights = areas.map((el) => Math.min(el.scrollHeight, 200));
+    areas.forEach((el, i) => {
+      el.style.height = `${heights[i]}px`;
+    });
   }
 
   // Re-anchor the open popover with its REAL height: the estimate that placed
