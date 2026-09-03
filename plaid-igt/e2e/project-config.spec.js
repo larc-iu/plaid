@@ -151,19 +151,23 @@ test('B5-13: no ignore config at all: nothing is ignored, nothing trimmed', asyn
   });
 });
 
-test('C2-01: the Create Document dialog needs a name and submits on Enter', async ({ page }) => {
+test('C2-01: the New Document dialog needs a name, submits on Enter, and opens the document', async ({
+  page,
+}) => {
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}`);
-  await page.getByRole('button', { name: 'Create Document' }).click();
+  await page.getByRole('button', { name: 'New Document' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  const submit = dialog.getByRole('button', { name: /Create Document/ });
+  const submit = dialog.getByRole('button', { name: /^Create$/ });
   await expect(submit).toBeDisabled();
   await dialog.getByRole('textbox').first().fill('Enter-made doc');
   await expect(submit).toBeEnabled();
   await dialog.getByRole('textbox').first().press('Enter');
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByText('Enter-made doc').first()).toBeVisible();
+  // A new document opens straight on its Baseline tab.
+  await expect(page).toHaveURL(/\/documents\/[0-9a-f-]+\?tab=baseline/);
+  await expect(page.getByRole('heading', { name: 'Enter-made doc' })).toBeVisible();
   const docs = await client.projects.listDocuments(projectId);
   expect(docs.some((d) => d.name === 'Enter-made doc')).toBe(true);
 });
@@ -179,7 +183,7 @@ test('C2-03 + B1-10: a reader gets no Create button and a read-only editor', asy
   await seedAuth(page, auth);
   await page.goto(`/#/projects/${projectId}`);
   await expect(page.getByText('Config doc')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Create Document' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'New Document' })).toHaveCount(0);
   await openAnalyze(page, auth);
   await expect(page.locator('.igt-island')).toHaveClass(/igt-island--readonly/);
   await expect(page.locator('.igt-vocab__opener')).toHaveCount(0);

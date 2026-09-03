@@ -318,11 +318,15 @@ test('B3-01/04: arrows move the highlight and clamp; Tab stays in the search box
   await expect(rows(page).first()).toHaveClass(/is-active/);
   await page.keyboard.press('ArrowDown');
   await expect(rows(page).nth(1)).toHaveClass(/is-active/);
-  await page.keyboard.press('ArrowDown', { delay: 10 });
+  const n = await rows(page).count();
+  for (let i = 1; i < n; i++) await page.keyboard.press('ArrowDown', { delay: 10 });
+  await expect(createRow(page)).toHaveClass(/is-active/);
+  // Below the create row a word's popover offers the multi-word expression
+  // row; the highlight clamps on that last row.
+  const mweRow = page.locator('.igt-vocab-pop__mwe').last();
   for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowDown');
-  await expect(createRow(page)).toHaveClass(/is-active/);
-  await page.keyboard.press('ArrowDown');
-  await expect(createRow(page)).toHaveClass(/is-active/);
+  await expect(mweRow).toHaveClass(/is-active/);
+  await expect(createRow(page)).not.toHaveClass(/is-active/);
   for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowUp');
   await expect(rows(page).first()).toHaveClass(/is-active/);
   await expect(active()).toHaveCount(1);

@@ -64,8 +64,12 @@ test('C3 first save creates the sentence partition; C4-01 the built-in tokenizer
   page,
 }) => {
   await openTab(page, 'baseline');
-  await page.getByRole('button', { name: 'Edit Text' }).click();
-  await page.getByPlaceholder('Enter the document text...').fill(BODY);
+  // An empty document opens straight into the editor; one with text waits
+  // behind Edit Text.
+  await page.locator('textarea#baseline-text, button:has-text("Edit Text")').first().waitFor();
+  const editButton = page.getByRole('button', { name: 'Edit Text' });
+  if (await editButton.isVisible()) await editButton.click();
+  await page.getByPlaceholder('Type or paste the text').fill(BODY);
   await page.getByRole('button', { name: 'Save Changes' }).click();
   await page.waitForLoadState('networkidle');
   await expect.poll(async () => (await layerOf(ROLES.SENTENCE)).tokens.length).toBe(1);
@@ -153,7 +157,7 @@ test('C3-01/02: appending needs no confirm and extends the sentence; a mid-text 
 
   await openTab(page, 'baseline');
   await page.getByRole('button', { name: 'Edit Text' }).click();
-  const ta = page.getByPlaceholder('Enter the document text...');
+  const ta = page.getByPlaceholder('Type or paste the text');
   await ta.fill(`${BODY} equal`);
   await page.getByRole('button', { name: 'Save Changes' }).click();
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
