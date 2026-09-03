@@ -118,33 +118,34 @@
     (mapv psc/->uuid (json/read-str s))))
 
 (defn- bulk-metadata-by-entity
-  "Bulk-fetch entity_metadata for the given entity-ids and return a
-  `{[entity-type entity-id] {key value}}` map. One query (chunked)
-  replaces the per-row `metadata/get-metadata` calls the old walker
-  issued. The entity_metadata PK is (entity_type, entity_id, key) so
-  partitioning by [entity-type entity-id] keeps lookups unambiguous
-  even when the same id happens to be reused under different types."
-  [db entity-ids]
-  (if (empty? entity-ids)
-    {}
-    (let [ids (vec (distinct entity-ids))
-          chunks (partition-all 4000 ids)
-          rows (into []
-                     (mapcat (fn [chunk]
-                               (psc/q db {:select [:entity_type :entity_id :key :value]
-                                          :from [:entity_metadata]
-                                          :where [:in :entity_id (vec chunk)]})))
-                     chunks)]
-      (reduce (fn [acc r]
-                (let [k [(:entity_type r) (:entity_id r)]
-                      v (try
-                          ;; metadata values are JSON-encoded; keep
-                          ;; nested keys as STRINGS to match v2 round-tripping
-                          ;; (see metadata/decode-value).
-                          (json/read-str (:value r))
-                          (catch Exception _ (:value r)))]
-                  (update acc k (fnil assoc {}) (:key r) v)))
-              {} rows))))
+  "Bulk-fetch entity_metadata for the given `[entity-type ids]` groups and
+  return a `{[entity-type entity-id] {key value}}` map. One query per type
+  and 4000-id chunk replaces the per-row `metadata/get-metadata` calls the
+  old walker issued. Every query names the entity_type so the primary key
+  (entity_type, entity_id, key) serves the lookup: filtering on entity_id
+  alone scans the whole table, which at a million rows cost seconds per
+  document read."
+  [db typed-ids]
+  (let [rows (into []
+                   (mapcat (fn [[entity-type ids]]
+                             (mapcat (fn [chunk]
+                                       (psc/q db {:select [:entity_type :entity_id :key :value]
+                                                  :from [:entity_metadata]
+                                                  :where [:and
+                                                          [:= :entity_type entity-type]
+                                                          [:in :entity_id (vec chunk)]]}))
+                                     (partition-all 4000 (distinct ids)))))
+                   typed-ids)]
+    (reduce (fn [acc r]
+              (let [k [(:entity_type r) (:entity_id r)]
+                    v (try
+                        ;; metadata values are JSON-encoded; keep
+                        ;; nested keys as STRINGS to match v2 round-tripping
+                        ;; (see metadata/decode-value).
+                        (json/read-str (:value r))
+                        (catch Exception _ (:value r)))]
+                (update acc k (fnil assoc {}) (:key r) v)))
+            {} rows)))
 
 (defn- attach-meta
   "Mirror of `metadata/add-metadata-to-response`, but reads from a
@@ -319,19 +320,17 @@
                                :from [:vocab_maintainers]
                                :where [:in :vocab_layer_id vlayer-ids]
                                :order-by [:user_id]}))
-          ;; --- 8. Bulk entity_metadata for every entity in this doc:
-          ;; document + texts + tokens + spans + relations + vocab-links + vocab-items.
-          ;; (vocab-item ids may span all docs but the entity_metadata PK
-          ;; includes entity_type so the filter `entity_id IN (...)` is safe.) ---
-          meta-ids (-> []
-                       (into [id])
-                       (into (map :id) text-rows)
-                       (into (map :id) token-rows)
-                       (into (map :id) span-rows)
-                       (into (map :id) relation-rows)
-                       (into (map :id) vl-rows)
-                       (into (map :id) vi-rows))
-          meta-idx (bulk-metadata-by-entity db meta-ids)
+          ;; --- 8. Bulk entity_metadata for every entity in this doc, by type:
+          ;; texts + tokens + spans + relations + vocab-links + vocab-items. (The
+          ;; document's own metadata is attached by the caller.) ---
+          meta-idx (bulk-metadata-by-entity
+                    db
+                    [["text" (map :id text-rows)]
+                     ["token" (map :id token-rows)]
+                     ["span" (map :id span-rows)]
+                     ["relation" (map :id relation-rows)]
+                     ["vocab-link" (map :id vl-rows)]
+                     ["vocab-item" (map :id vi-rows)]])
           ;; --- Grouping helpers (no further DB hits below). ---
           token-rows-by-layer (group-by :token_layer_id token-rows)
           span-rows-by-layer (group-by :span_layer_id span-rows)
