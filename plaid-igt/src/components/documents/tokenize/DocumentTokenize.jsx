@@ -141,11 +141,13 @@ export function DocumentTokenize() {
                 <div className="flex items-start gap-2">
                   <Info className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600" />
                   <div>
-                    <p className="text-sm font-medium">No sentence partition</p>
+                    <p className="text-sm font-medium">
+                      {text?.body ? 'No sentences yet' : 'No text yet'}
+                    </p>
                     <p className="text-sm text-muted-foreground">
                       {text?.body
-                        ? 'This document has baseline text but no sentence partition yet. Re-save the text on the Baseline tab to create one. Word tokens must live inside a sentence.'
-                        : 'Add baseline text on the Baseline tab first. Saving it creates the sentence partition that word tokens live inside.'}
+                        ? 'The text has not been divided into sentences. Save it again on the Baseline tab, and it can be split into sentences and words here.'
+                        : 'Add the text on the Baseline tab first. Once it is saved, it can be split into sentences and words here.'}
                     </p>
                   </div>
                 </div>
@@ -255,9 +257,9 @@ export function DocumentTokenize() {
             </div>
           )}
 
-          {/* Progress */}
-          <div className="rounded-lg border bg-card p-4" style={{ minHeight: '120px' }}>
-            {ops.isTokenizing || ops.isProcessing ? (
+          {/* Progress, only while something runs: an empty reserved box is dead space. */}
+          {(ops.isTokenizing || ops.isProcessing) && (
+            <div className="rounded-lg border bg-card p-4">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
                   <Play className="h-4 w-4" />
@@ -271,19 +273,8 @@ export function DocumentTokenize() {
                 </div>
                 <p className="text-sm text-muted-foreground">{ops.currentOperation}</p>
               </div>
-            ) : (
-              <div
-                style={{
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <p className="text-sm text-muted-foreground"></p>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {!layers?.primaryTokenLayer && (
             <>

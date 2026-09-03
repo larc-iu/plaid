@@ -19,9 +19,8 @@ export const OrthographiesStep = ({
       {/* Explanatory header */}
       <div>
         <p className="text-sm">
-          Configure orthographic representations for your project. The <strong>Baseline</strong>{' '}
-          orthography represents your token layer and cannot be removed. You can add additional
-          orthographies like IPA, alternative writing systems, or normalized forms.
+          The <strong>Baseline</strong> is the text as you type it. Add other ways of writing each
+          word beside it, such as an IPA transcription, another script, or a normalized spelling.
         </p>
       </div>
 

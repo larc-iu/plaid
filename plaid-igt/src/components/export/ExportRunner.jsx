@@ -184,7 +184,8 @@ export const ExportRunner = ({
       ) : presets.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           This project has no export presets yet. A preset fixes the format (plain text, FLEx, CLDF,
-          ELAN, or a lossless Plaid IGT archive) and which layers to include.
+          ELAN, or a lossless Plaid IGT archive) and which fields to include. A maintainer creates
+          one under Manage export presets.
         </p>
       ) : (
         <>

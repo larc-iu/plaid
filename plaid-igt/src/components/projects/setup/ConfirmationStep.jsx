@@ -194,7 +194,7 @@ export const ConfirmationStep = ({
         <p className="mb-2 font-medium">Document Metadata Fields</p>
         <ul className="list-disc pl-5 text-sm">
           {enabledFields.map((field) => (
-            <li key={field.name}>
+            <li key={`${field.scope}-${field.name}`}>
               {field.name}{' '}
               {field.isCustom && (
                 <Badge className="border-transparent bg-orange-100 text-orange-700">Custom</Badge>
@@ -242,7 +242,7 @@ export const ConfirmationStep = ({
         <p className="mb-2 font-medium">Annotation Fields</p>
         <ul className="list-disc pl-5 text-sm">
           {fieldsData.fields.map((field) => (
-            <li key={field.name}>
+            <li key={`${field.scope}-${field.name}`}>
               {field.name} - <Badge className={scopeBadgeClasses[field.scope]}>{field.scope}</Badge>
             </li>
           ))}
@@ -364,7 +364,7 @@ export const ConfirmationStep = ({
 
       <div className="flex flex-col gap-4">
         <ProjectInfoReview />
-        <LayerSelectionReview />
+        {!isNewProject && <LayerSelectionReview />}
         <DocumentMetadataReview />
         <OrthographiesReview />
         <FieldsReview />

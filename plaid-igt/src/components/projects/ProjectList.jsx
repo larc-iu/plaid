@@ -171,8 +171,10 @@ export const ProjectList = () => {
 
       {projects.length === 0 ? (
         <Card className="p-10 text-center text-muted-foreground">
-          <p className="text-lg">No projects found</p>
-          <p className="mt-1 text-sm">You don&apos;t have access to any projects yet.</p>
+          <p className="text-lg">No projects yet</p>
+          <p className="mt-1 text-sm">
+            Create one with New Project, or ask a project's maintainer for an invitation link.
+          </p>
         </Card>
       ) : (
         <TooltipProvider>

@@ -41,9 +41,8 @@ export const VocabularyStep = ({
       {/* Explanatory header */}
       <div>
         <p className="text-sm">
-          Configure vocabularies for your project. Vocabularies allow you to link tokens to
-          document-independent vocabulary entries, allowing you to track constructs such as
-          morphemes, words, or multi-word expressions.
+          A vocabulary is a shared lexicon. Link words and morphemes to its entries so the same item
+          is glossed the same way everywhere, in this project and in others that share it.
         </p>
       </div>
 

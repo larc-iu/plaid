@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, ArrowUp, ArrowDown } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
@@ -107,6 +108,8 @@ export const DocumentList = ({
     };
   }, [project, client]);
 
+  const navigate = useNavigate();
+
   const handleCreateDocument = async () => {
     if (!documentName.trim()) {
       notifyError('Document name is required', 'Error');
@@ -121,10 +124,12 @@ export const DocumentList = ({
       if (primaryTextLayer) {
         await client.texts.create(primaryTextLayer.id, newDocument.id, '', {});
       }
-      notifySuccess(`Document "${documentName}" created successfully`, 'Success');
+      notifySuccess(`Document "${documentName}" created`, 'Success');
       setDocumentName('');
       setOpen(false);
       if (onDocumentCreated) onDocumentCreated({ ...newDocument, name: documentName.trim() });
+      // A new document is empty, so the next thing to do is type its text.
+      navigate(`/projects/${projectId}/documents/${newDocument.id}?tab=baseline`);
     } catch (error) {
       console.error('Failed to create document:', error);
       notifyError(humanizeError(error, 'Could not create the document.'), 'Error');
@@ -188,7 +193,7 @@ export const DocumentList = ({
           )}
           {canWrite && (
             <Button onClick={() => setOpen(true)}>
-              <Plus className="h-4 w-4" /> Create Document
+              <Plus className="h-4 w-4" /> New Document
             </Button>
           )}
         </div>
@@ -304,7 +309,7 @@ export const DocumentList = ({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create New Document</DialogTitle>
+            <DialogTitle>New document</DialogTitle>
             <DialogDescription>
               Name the document; you can add its text on the Baseline tab afterwards.
             </DialogDescription>
@@ -327,7 +332,7 @@ export const DocumentList = ({
               Cancel
             </Button>
             <Button onClick={handleCreateDocument} disabled={!documentName.trim() || isCreating}>
-              {isCreating ? 'Creating…' : 'Create Document'}
+              {isCreating ? 'Creating…' : 'Create'}
             </Button>
           </DialogFooter>
         </DialogContent>
