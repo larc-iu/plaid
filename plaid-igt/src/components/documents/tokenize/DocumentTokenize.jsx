@@ -80,7 +80,7 @@ export function DocumentTokenize() {
           className="rounded-lg border bg-card"
           style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
         >
-          <div className="p-4" style={{ borderBottom: '1px solid #e0e0e0' }}>
+          <div className="border-b p-4">
             <div className="flex items-center gap-2">
               <h3 className="text-base font-semibold">Tokens</h3>
               <Tooltip>
@@ -568,13 +568,8 @@ function TokenComponent({
       onMouseDown={handleMouseDown}
       onMouseEnter={handleMouseEnter}
       onContextMenu={handleRightClick}
-      className={`token ${isDraggingHere ? 'token-dragging' : ''}`}
-      style={{
-        backgroundColor: isSelected ? '#1976d2' : '#e3f2fd',
-        color: isSelected ? 'white' : 'inherit',
-        border: `1px solid ${isSelected ? '#1565c0' : '#bbdefb'}`,
-        cursor: readOnly ? 'default' : isDraggingHere ? 'grabbing' : 'pointer',
-      }}
+      className={`token ${isSelected ? 'token-selected' : ''} ${isDraggingHere ? 'token-dragging' : ''}`}
+      style={{ cursor: readOnly ? 'default' : isDraggingHere ? 'grabbing' : 'pointer' }}
     >
       {piece.content}
     </span>
