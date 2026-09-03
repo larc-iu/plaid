@@ -332,7 +332,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
           value={draft}
           rows={1}
           spellCheck={false}
-          placeholder="Type what you just heard, then press Enter"
+          placeholder="New segment"
           aria-label="New segment text"
           className="min-h-8 resize-none py-1.5 text-sm"
           onChange={(e) => setDraft(e.target.value)}
@@ -340,8 +340,8 @@ const NewSegmentRow = memo(function NewSegmentRow({
         />
         <p className="text-xs text-muted-foreground">
           {ready
-            ? `New segment from ${formatTime(prevEnd)} to the playhead, now at ${formatTime(currentTime)}. Enter saves it.`
-            : `Play or seek past ${formatTime(prevEnd)} to set where this segment ends. To add a segment earlier in the recording, drag on the timeline.`}
+            ? `${formatTime(prevEnd)} to playhead (${formatTime(currentTime)}). Enter to save.`
+            : `Playhead must be past ${formatTime(prevEnd)}. For earlier segments, drag on the timeline.`}
         </p>
       </div>
       <div className="h-8 w-8" />
@@ -481,7 +481,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
             onCheckedChange={(on) => mediaOps.setAutoPlayOnFocus(on)}
           />
           <Label htmlFor="transcript-play-on-focus" className="text-xs font-normal">
-            Play each segment as you move into it
+            Play segment on entry
           </Label>
         </div>
       </div>
@@ -498,8 +498,8 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
         {segments.length === 0 && (
           <p className="py-2 text-sm text-muted-foreground">
             {readOnly
-              ? 'No transcript yet.'
-              : 'No segments yet. Play the recording and type the first utterance below, drag on the timeline, or run a transcription service.'}
+              ? 'No segments.'
+              : 'No segments yet. Add one below, drag on the timeline, or run a transcription service.'}
           </p>
         )}
         {segments.map((token, index) => (

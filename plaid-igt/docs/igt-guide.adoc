@@ -113,7 +113,7 @@ Media is optional, and a document with none is simply a text.
 To transcribe by ear, play the recording, then type the utterance you just heard into the **New segment** row and press Enter.
 The segment runs from the end of the previous one to wherever the playhead is when you save.
 Every segment is a row in the transcript, and the recording follows you: moving into a row plays that segment, Enter saves the row and moves to the next, Escape puts a row back the way it was, and Ctrl+Space plays or pauses without leaving the row.
-Turn off "Play each segment as you move into it" if you would rather play by hand.
+Turn off "Play segment on entry" to play by hand.
 The speed control slows the recording down, and the loop button repeats the segment you are on until you pause.
 
 The timeline shows the same segments against the waveform.

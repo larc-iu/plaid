@@ -491,10 +491,10 @@ export const useMediaOperations = () => {
     async (alignmentId) => {
       if (
         !(await confirm({
-          title: 'Delete this segment?',
+          title: 'Delete segment?',
           description:
-            'Its text leaves the baseline, along with any words, glosses and other annotations on that text. ' +
-            'This cannot be undone.',
+            "This removes the segment's text from the baseline, including any words, glosses, " +
+            'and annotations on it. This cannot be undone.',
           confirmLabel: 'Delete segment',
           destructive: true,
         }))

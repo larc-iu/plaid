@@ -169,7 +169,7 @@ describe('TranscriptList', () => {
   it('the new-segment row waits for the playhead to pass the last segment, then creates from its end', async () => {
     const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
     const r = await renderComponent(element(doc, makeOps({ currentTime: 1.0 })));
-    expect(r.container.textContent).toContain('Play or seek past 0:03.000');
+    expect(r.container.textContent).toContain('Playhead must be past 0:03.000');
     const fresh = newTextarea(r.container);
     await r.step(() => setValue(fresh, 'dog'));
     await r.step(async () => {
@@ -179,7 +179,7 @@ describe('TranscriptList', () => {
     expect(doc.createAlignment).not.toHaveBeenCalled();
 
     await r.rerender(element(doc, makeOps({ currentTime: 4.2 })));
-    expect(r.container.textContent).toContain('now at 0:04.200');
+    expect(r.container.textContent).toContain('0:03.000 to playhead (0:04.200)');
     expect(fresh.value).toBe('dog');
     await r.step(async () => {
       press(fresh, 'Enter');
@@ -199,7 +199,7 @@ describe('TranscriptList', () => {
     const doc = makeDoc({ body: '', tokens: [] });
     const r = await renderComponent(element(doc, makeOps({ currentTime: 2.5 })));
     expect(r.container.textContent).toContain('No segments yet');
-    expect(r.container.textContent).toContain('from 0:00.000 to the playhead, now at 0:02.500');
+    expect(r.container.textContent).toContain('0:00.000 to playhead (0:02.500)');
     await r.unmount();
   });
 

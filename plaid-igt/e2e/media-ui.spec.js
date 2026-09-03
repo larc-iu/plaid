@@ -83,7 +83,7 @@ test('the transcript adds a segment at the playhead and Enter saves an edit', as
   // The flow needs a decoded recording (duration > 0). Headless Chromium decodes
   // the 6s WAV; if it ever does not, say so instead of failing on a hint string.
   await page.getByRole('button', { name: 'Skip forward 5 seconds' }).click();
-  const hint = page.getByText(/now at 0:05\.000/);
+  const hint = page.getByText(/to playhead \(0:05\.000\)/);
   if (!(await hint.isVisible().catch(() => false))) {
     test.skip(true, 'media did not decode in headless Chromium, so the playhead cannot move');
   }

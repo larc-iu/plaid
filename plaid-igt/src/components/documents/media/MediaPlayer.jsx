@@ -300,17 +300,13 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
                   size="icon"
                   className={cn('ml-2 h-10 w-10', loopSegment && 'text-primary')}
                   onClick={() => setLoopSegment(!loopSegment)}
-                  aria-label="Loop the segment"
+                  aria-label="Loop segment"
                   aria-pressed={!!loopSegment}
                 >
                   <Repeat className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>
-                {loopSegment
-                  ? 'Looping: a segment repeats until you pause'
-                  : 'Loop: repeat the segment you play until you pause'}
-              </TooltipContent>
+              <TooltipContent>{loopSegment ? 'Loop segment: on' : 'Loop segment'}</TooltipContent>
             </Tooltip>
           </div>
 
