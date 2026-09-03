@@ -571,18 +571,32 @@ export const useMediaOperations = () => {
         seekBy(e.key === 'ArrowLeft' ? -1 : 1);
         return;
       }
+      // Shift+Space plays or pauses the selected stretch, outside a text box.
+      // (Inside one, the row handles it for its own segment.) Shift because
+      // it is the one modifier every platform leaves alone: Ctrl+Space and
+      // Cmd+Space belong to macOS, Alt+Space to Windows and GNOME.
+      if (
+        e.code === 'Space' &&
+        e.shiftKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !TAGS_TO_IGNORE.includes(e.target?.tagName)
+      ) {
+        e.preventDefault();
+        const el = mediaElementRef.current;
+        if (!el) return;
+        if (isPlaying) el.pause();
+        else if (selection) handlePlaySelection();
+        else el.play().catch(() => {});
+        return;
+      }
       if (TAGS_TO_IGNORE.includes(e.target?.tagName)) return;
       // ESC key to clear selection
       if (e.key === 'Escape') {
         if (selection) {
           setSelection(null);
           setPopoverOpened(false);
-        }
-      } else if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
-        // Ctrl/Cmd+Space to play selection
-        e.preventDefault();
-        if (selection && mediaElementRef.current) {
-          handlePlaySelection();
         }
       } else if (e.key === ' ') {
         // Space key to toggle playback

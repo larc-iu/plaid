@@ -101,20 +101,26 @@ test('the transcript adds a segment at the playhead and Enter saves an edit', as
   await fresh.press('Enter');
   const row = page.getByLabel('Segment 1 text');
   await expect(row).toHaveValue('hello there', { timeout: 15000 });
-  await expect(page.getByLabel('Segment 1 start')).toHaveValue('0:00.000');
-  await expect(page.getByLabel('Segment 1 end')).toHaveValue('0:05.000');
+  const start = page.getByRole('group', { name: 'Segment 1 start' });
+  const end = page.getByRole('group', { name: 'Segment 1 end' });
+  await expect(start).toHaveAttribute('data-value', '0:00.000');
+  await expect(end).toHaveAttribute('data-value', '0:05.000');
   await expect(fresh).toHaveValue('');
 
-  // A boundary nudged by keyboard is saved when the field is left, and survives
-  // a reload: the patch went to the server, not just the row.
-  const end = page.getByLabel('Segment 1 end');
-  await end.focus();
-  await end.press('ArrowDown');
-  await expect(end).toHaveValue('0:04.990');
-  await end.press('Tab');
-  await expect(end).toHaveValue('0:04.990');
+  // A boundary nudged by keyboard in its milliseconds box is saved when the
+  // time is left, and survives a reload: the patch went to the server.
+  const endMs = page.getByLabel('Segment 1 end milliseconds');
+  await endMs.focus();
+  await endMs.press('ArrowDown');
+  await expect(end).toHaveAttribute('data-value', '0:04.990');
+  await endMs.press('Tab');
+  await expect(end).toHaveAttribute('data-value', '0:04.990');
   await openMedia(page);
-  await expect(page.getByLabel('Segment 1 end')).toHaveValue('0:04.990', { timeout: 15000 });
+  await expect(page.getByRole('group', { name: 'Segment 1 end' })).toHaveAttribute(
+    'data-value',
+    '0:04.990',
+    { timeout: 15000 },
+  );
   await expect(page.getByLabel('Segment 1 text')).toHaveValue('hello there');
 
   // Editing the row: Enter saves (the token is recreated) and moves on to the

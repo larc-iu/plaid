@@ -18,7 +18,8 @@ import { cn } from '@/lib/utils';
 import { notifyError } from '@/utils/feedback';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
-import { formatTime, parseTime } from './formatTime.js';
+import { formatTime } from './formatTime.js';
+import { TimecodeField } from './TimecodeField.jsx';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
@@ -33,18 +34,21 @@ import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 // stay. A time edit only patches metadata, so the row and its focus stay put.
 // The document single-flights its writes, so a commit waits for any write in
 // flight before issuing its own instead of being dropped.
+//
+// Play/pause inside a row is Shift+Space: the one modifier every platform
+// leaves alone in a text box (Ctrl+Space and Cmd+Space belong to macOS,
+// Alt+Space to Windows and GNOME). Matched on the key code so it holds
+// whatever character the layout would have typed.
 
 const SPEAKER_LIST_ID = 'transcript-speaker-options';
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
-
-// A boundary nudge is 10 ms, or 100 ms with Shift: fine enough to land a
-// boundary by ear, coarse enough that holding the key moves it visibly.
-const NUDGE = 0.01;
-const NUDGE_SHIFT = 0.1;
 // The shortest segment a keyboard edit may leave behind.
 const MIN_SEGMENT = 0.01;
+
+const isPlayChord = (e) =>
+  e.code === 'Space' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
 
 // Resolves once the document has no write in flight.
 const whenIdle = (doc) =>
@@ -66,98 +70,6 @@ const autoGrow = (el) => {
   el.style.height = `${el.scrollHeight}px`;
 };
 
-// One boundary of a segment: shows the time, takes a typed time, and nudges
-// with Up/Down. Commits on Enter or blur, keeps focus on Enter so a nudge can
-// be heard (Ctrl/Cmd+Space) and nudged again. The parent decides whether the
-// new time is legal; a refusal puts the field back.
-const TimeField = memo(function TimeField({ value, label, onCommit, onPlayToggle }) {
-  const [draft, setDraftState] = useState(formatTime(value));
-  const draftRef = useRef(draft);
-  const dirtyRef = useRef(false);
-  const inFlight = useRef(null);
-  const setDraft = (v) => {
-    draftRef.current = v;
-    setDraftState(v);
-  };
-
-  useEffect(() => {
-    if (!dirtyRef.current) setDraft(formatTime(value));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-
-  const revert = () => {
-    dirtyRef.current = false;
-    setDraft(formatTime(value));
-  };
-
-  const commit = () => {
-    if (inFlight.current) return inFlight.current;
-    const run = async () => {
-      if (!dirtyRef.current) return true;
-      const parsed = parseTime(draftRef.current);
-      if (parsed === null) {
-        notifyError('Times look like 1:05.250, or plain seconds.', 'Not a time');
-        revert();
-        return false;
-      }
-      if (Math.abs(parsed - value) < 0.0005) {
-        revert();
-        return true;
-      }
-      dirtyRef.current = false;
-      const ok = await onCommit(parsed);
-      if (!ok) setDraft(formatTime(value));
-      return ok;
-    };
-    inFlight.current = run().finally(() => {
-      inFlight.current = null;
-    });
-    return inFlight.current;
-  };
-
-  const nudge = (direction, shift) => {
-    const base = parseTime(draftRef.current) ?? value;
-    const step = shift ? NUDGE_SHIFT : NUDGE;
-    const next = Math.max(0, Math.round((base + direction * step) * 1000) / 1000);
-    dirtyRef.current = true;
-    setDraft(formatTime(next));
-  };
-
-  const onKeyDown = (e) => {
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      nudge(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      commit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      revert();
-    } else if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      onPlayToggle();
-    }
-  };
-
-  return (
-    <input
-      type="text"
-      inputMode="decimal"
-      value={draft}
-      aria-label={label}
-      spellCheck={false}
-      autoComplete="off"
-      className="h-4 w-[4.6rem] rounded border border-transparent bg-transparent px-0.5 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground hover:border-input focus:border-input focus:text-foreground focus:outline-none"
-      onChange={(e) => {
-        dirtyRef.current = true;
-        setDraft(e.target.value);
-      }}
-      onKeyDown={onKeyDown}
-      onBlur={commit}
-    />
-  );
-});
-
 const SegmentRow = memo(function SegmentRow({
   token,
   index,
@@ -165,6 +77,7 @@ const SegmentRow = memo(function SegmentRow({
   active,
   playing,
   readOnly,
+  duration,
   onFocusRow,
   onCommit,
   onCommitTime,
@@ -244,22 +157,27 @@ const SegmentRow = memo(function SegmentRow({
     return inFlight.current;
   };
 
+  const playToggle = () => onPlayToggle(token);
+
   const onTextKeyDown = async (e) => {
-    if (e.key === 'Enter') {
+    if (isPlayChord(e)) {
+      e.preventDefault();
+      playToggle();
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       const timeBegin = timeBeginOf(token);
       if (await commit()) onAdvance(timeBegin);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       revert();
-    } else if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      onPlayToggle(token);
     }
   };
 
   const onSpeakerKeyDown = async (e) => {
-    if (e.key === 'Enter') {
+    if (isPlayChord(e)) {
+      e.preventDefault();
+      playToggle();
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       if (await commit()) textRef.current?.focus();
     } else if (e.key === 'Escape') {
@@ -269,7 +187,6 @@ const SegmentRow = memo(function SegmentRow({
   };
 
   const machine = isMachine(token.metadata);
-  const playToggle = () => onPlayToggle(token);
 
   return (
     <div
@@ -287,15 +204,17 @@ const SegmentRow = memo(function SegmentRow({
           </>
         ) : (
           <>
-            <TimeField
+            <TimecodeField
               value={timeBeginOf(token)}
               label={`Segment ${index + 1} start`}
+              duration={duration}
               onCommit={(seconds) => onCommitTime(token.id, 'begin', seconds)}
               onPlayToggle={playToggle}
             />
-            <TimeField
+            <TimecodeField
               value={timeEndOf(token)}
               label={`Segment ${index + 1} end`}
+              duration={duration}
               onCommit={(seconds) => onCommitTime(token.id, 'end', seconds)}
               onPlayToggle={playToggle}
             />
@@ -416,15 +335,15 @@ const NewSegmentRow = memo(function NewSegmentRow({
   };
 
   const onKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (isPlayChord(e)) {
+      e.preventDefault();
+      onToggle();
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       submit();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setDraft('');
-    } else if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      onToggle();
     }
   };
 
@@ -486,7 +405,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
 
   const segments = useMemo(() => [...doc.alignmentTokens].sort(byTime), [doc.alignmentTokens]);
   const body = doc.body || '';
-  const { currentTime = 0, isPlaying, playingSelection, selection } = mediaOps;
+  const { currentTime = 0, isPlaying, playingSelection, selection, duration = 0 } = mediaOps;
 
   const activeId = useMemo(() => {
     const hit = segments.find((t) => timeBeginOf(t) <= currentTime && currentTime < timeEndOf(t));
@@ -566,13 +485,13 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
       const token = sorted[i];
       const timeBegin = which === 'begin' ? seconds : timeBeginOf(token);
       const timeEnd = which === 'end' ? seconds : timeEndOf(token);
-      const duration = opsRef.current.duration;
+      const length = opsRef.current.duration;
       if (timeEnd - timeBegin < MIN_SEGMENT) {
         notifyError('A segment must end after it starts.', 'Time not saved');
         return false;
       }
-      if (Number.isFinite(duration) && duration > 0 && timeEnd > duration + 0.001) {
-        notifyError(`The recording ends at ${formatTime(duration)}.`, 'Time not saved');
+      if (Number.isFinite(length) && length > 0 && timeEnd > length + 0.001) {
+        notifyError(`The recording ends at ${formatTime(length)}.`, 'Time not saved');
         return false;
       }
       const prev = sorted[i - 1];
@@ -683,6 +602,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
             active={token.id === activeId}
             playing={token.id === playingId}
             readOnly={readOnly}
+            duration={duration}
             onFocusRow={handleFocusRow}
             onCommit={handleCommit}
             onCommitTime={handleCommitTime}

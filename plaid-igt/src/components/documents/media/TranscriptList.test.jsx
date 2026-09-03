@@ -22,12 +22,14 @@ function makeDoc({ body, tokens }) {
     getSnapshot: () => 0,
     editAlignment: vi.fn(async () => true),
     updateAlignmentSpeaker: vi.fn(async () => true),
+    updateAlignmentBounds: vi.fn(async () => true),
     createAlignment: vi.fn(async () => true),
   };
 }
 
 const makeOps = (over = {}) => ({
   currentTime: 0,
+  duration: 10,
   isPlaying: false,
   playingSelection: null,
   selection: null,
@@ -54,8 +56,11 @@ const setValue = (el, value) => {
   Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set.call(el, value);
   el.dispatchEvent(new Event('input', { bubbles: true }));
 };
-const press = (el, key, init = {}) =>
-  el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+const press = (el, key, init = {}) => {
+  const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+  el.dispatchEvent(ev);
+  return ev;
+};
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 const element = (doc, ops, readOnly = false) => (
@@ -66,15 +71,17 @@ const element = (doc, ops, readOnly = false) => (
 
 const rowTextareas = (root) => all(root, 'textarea[aria-label^="Segment"]');
 const newTextarea = (root) => root.querySelector('textarea[aria-label="New segment text"]');
+const timeGroup = (root, n, which) =>
+  root.querySelector(`[role="group"][aria-label="Segment ${n} ${which}"]`);
+const timeBox = (root, n, which, unit) =>
+  root.querySelector(`input[aria-label="Segment ${n} ${which} ${unit}"]`);
 
 describe('TranscriptList', () => {
   it('lists segments in time order with millisecond times and the stored text', async () => {
     const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
     const r = await renderComponent(element(doc, makeOps()));
     expect(rowTextareas(r.container).map((t) => t.value)).toEqual(['the', 'cat']);
-    const times = all(r.container, 'input[aria-label$=" start"], input[aria-label$=" end"]').map(
-      (i) => i.value,
-    );
+    const times = all(r.container, '[role="group"][data-value]').map((g) => g.dataset.value);
     expect(times).toEqual(['0:00.000', '0:01.500', '0:01.500', '0:03.000']);
     expect(all(r.container, 'input[aria-label="Segment 1 speaker"]')[0].value).toBe('Ana');
     expect(r.container.textContent).toContain('2 segments');
@@ -97,6 +104,21 @@ describe('TranscriptList', () => {
     expect(quiet.setSelection).toHaveBeenCalledWith({ start: 0, end: 1.5 });
     expect(quiet.playRange).not.toHaveBeenCalled();
     await r2.unmount();
+  });
+
+  it('Shift+Space in a row plays its segment, and Ctrl+Space no longer does', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const ops = makeOps({ autoPlayOnFocus: false });
+    const r = await renderComponent(element(doc, ops));
+    const second = rowTextareas(r.container)[1];
+    await r.step(() => second.focus());
+    const shifted = press(second, ' ', { code: 'Space', shiftKey: true });
+    expect(shifted.defaultPrevented).toBe(true);
+    expect(ops.playRange).toHaveBeenCalledWith({ start: 1.5, end: 3 });
+    const ctrl = press(second, ' ', { code: 'Space', ctrlKey: true });
+    expect(ctrl.defaultPrevented).toBe(false);
+    expect(ops.playRange).toHaveBeenCalledTimes(1);
+    await r.unmount();
   });
 
   it('Enter saves a changed row with its times and speaker, then moves to the next row', async () => {
@@ -168,7 +190,7 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 
-  it('the new-segment row waits for the playhead to pass the last segment, then creates from its end', async () => {
+  it('the new-segment row waits for playback to pass the last segment, then creates from its end', async () => {
     const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
     const r = await renderComponent(element(doc, makeOps({ currentTime: 1.0 })));
     expect(r.container.textContent).toContain('Playback must be past 0:03.000');
@@ -205,85 +227,80 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 
-  describe('time fields', () => {
-    const timeInput = (root, n, which) =>
-      root.querySelector(`input[aria-label="Segment ${n} ${which}"]`);
-    const withBounds = () => {
+  describe('segment times', () => {
+    it('typing into the milliseconds box and pressing Enter saves the boundary in place', async () => {
       const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
-      doc.updateAlignmentBounds = vi.fn(async () => true);
-      return doc;
-    };
-
-    it('shows the boundaries as editable times and saves a typed one', async () => {
-      const doc = withBounds();
-      const r = await renderComponent(element(doc, makeOps({ duration: 10 })));
-      const end = timeInput(r.container, 2, 'end');
-      expect(end.value).toBe('0:03.000');
-      await r.step(() => end.focus());
-      await r.step(() => setValue(end, '0:02.500'));
+      const r = await renderComponent(element(doc, makeOps()));
+      const ms = timeBox(r.container, 2, 'end', 'milliseconds');
+      await r.step(() => ms.focus());
+      await r.step(() => setValue(ms, '500'));
+      expect(timeGroup(r.container, 2, 'end').dataset.value).toBe('0:03.500');
       await r.step(async () => {
-        press(end, 'Enter');
+        press(ms, 'Enter');
         await settle();
       });
-      expect(doc.updateAlignmentBounds).toHaveBeenCalledWith('b', { timeBegin: 1.5, timeEnd: 2.5 });
-      expect(document.activeElement).toBe(end); // Enter keeps focus, so a nudge can follow
+      expect(doc.updateAlignmentBounds).toHaveBeenCalledWith('b', { timeBegin: 1.5, timeEnd: 3.5 });
+      expect(document.activeElement).toBe(ms); // Enter keeps the caret, so a nudge can follow
       await r.unmount();
     });
 
-    it('Up and Down nudge by 10 ms, with Shift by 100 ms, and blur saves', async () => {
-      const doc = withBounds();
-      const r = await renderComponent(element(doc, makeOps({ duration: 10 })));
-      const end = timeInput(r.container, 2, 'end');
-      await r.step(() => end.focus());
-      await r.step(() => press(end, 'ArrowUp'));
-      expect(end.value).toBe('0:03.010');
-      await r.step(() => press(end, 'ArrowDown', { shiftKey: true }));
-      expect(end.value).toBe('0:02.910');
+    it('Up and Down step the box under the caret, carrying across boxes, and leaving saves', async () => {
+      const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+      const r = await renderComponent(element(doc, makeOps()));
+      const ms = timeBox(r.container, 2, 'end', 'milliseconds');
+      await r.step(() => ms.focus());
+      await r.step(() => press(ms, 'ArrowUp'));
+      expect(timeGroup(r.container, 2, 'end').dataset.value).toBe('0:03.010');
+      await r.step(() => press(ms, 'ArrowDown', { shiftKey: true }));
+      expect(timeGroup(r.container, 2, 'end').dataset.value).toBe('0:02.910');
+      const s = timeBox(r.container, 2, 'end', 'seconds');
+      await r.step(() => press(s, 'ArrowUp'));
+      expect(timeGroup(r.container, 2, 'end').dataset.value).toBe('0:03.910');
       await r.step(async () => {
-        end.blur();
+        ms.blur();
         await settle();
       });
       expect(doc.updateAlignmentBounds).toHaveBeenCalledWith('b', {
         timeBegin: 1.5,
-        timeEnd: 2.91,
+        timeEnd: 3.91,
       });
       await r.unmount();
     });
 
-    it('Escape puts a time back, and text that is not a time is refused', async () => {
-      const doc = withBounds();
-      const r = await renderComponent(element(doc, makeOps({ duration: 10 })));
-      const begin = timeInput(r.container, 2, 'start');
-      await r.step(() => setValue(begin, '0:01.000'));
-      await r.step(() => press(begin, 'Escape'));
-      expect(begin.value).toBe('0:01.500');
-      await r.step(() => setValue(begin, 'soon'));
-      await r.step(async () => {
-        press(begin, 'Enter');
-        await settle();
-      });
+    it('Escape puts a time back, and a letter never lands in a box', async () => {
+      const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+      const r = await renderComponent(element(doc, makeOps()));
+      const s = timeBox(r.container, 2, 'start', 'seconds');
+      await r.step(() => s.focus());
+      await r.step(() => setValue(s, '02'));
+      expect(timeGroup(r.container, 2, 'start').dataset.value).toBe('0:02.500');
+      await r.step(() => press(s, 'Escape'));
+      expect(timeGroup(r.container, 2, 'start').dataset.value).toBe('0:01.500');
+      const letter = press(s, 'x');
+      expect(letter.defaultPrevented).toBe(true);
       expect(doc.updateAlignmentBounds).not.toHaveBeenCalled();
-      expect(begin.value).toBe('0:01.500');
       await r.unmount();
     });
 
     it('refuses a boundary that runs into a neighbour, past the recording, or past its own other end', async () => {
-      const doc = withBounds();
+      const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
       const r = await renderComponent(element(doc, makeOps({ duration: 4 })));
-      const tryValue = async (field, value) => {
-        await r.step(() => setValue(field, value));
+      const tryValue = async (box, digits) => {
+        await r.step(() => box.focus());
+        await r.step(() => setValue(box, digits));
         await r.step(async () => {
-          press(field, 'Enter');
+          press(box, 'Enter');
           await settle();
         });
       };
-      await tryValue(timeInput(r.container, 2, 'start'), '0:01.000'); // before the first ends (1.5)
-      await tryValue(timeInput(r.container, 1, 'end'), '0:02.000'); // into the second (starts 1.5)
-      await tryValue(timeInput(r.container, 2, 'end'), '0:05.000'); // past a 4 s recording
-      await tryValue(timeInput(r.container, 2, 'end'), '0:01.500'); // no length left
+      await tryValue(timeBox(r.container, 2, 'start', 'seconds'), '01'); // before the first ends (1.5)
+      await tryValue(timeBox(r.container, 1, 'end', 'seconds'), '02'); // into the second (starts 1.5)
+      await tryValue(timeBox(r.container, 2, 'end', 'seconds'), '05'); // past a 4 s recording
+      await tryValue(timeBox(r.container, 2, 'end', 'seconds'), '01'); // no length left
       expect(doc.updateAlignmentBounds).not.toHaveBeenCalled();
-      expect(timeInput(r.container, 2, 'start').value).toBe('0:01.500');
-      expect(timeInput(r.container, 1, 'end').value).toBe('0:01.500');
+      expect(timeGroup(r.container, 2, 'start').dataset.value).toBe('0:01.500');
+      expect(timeGroup(r.container, 1, 'end').dataset.value).toBe('0:01.500');
+      expect(timeGroup(r.container, 2, 'end').dataset.value).toBe('0:03.000');
       await r.unmount();
     });
   });

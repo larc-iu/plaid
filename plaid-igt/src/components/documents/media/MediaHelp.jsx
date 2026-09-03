@@ -46,10 +46,10 @@ export function MediaHelp() {
       aria-label="Keyboard help"
     >
       <Row label="Playback">
-        <Kbd>Space</Kbd> play / pause, outside a text box · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+
-        <Kbd>Space</Kbd> play / pause the segment you are in, or the selected stretch ·{' '}
-        <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+<Kbd>←</Kbd> <Kbd>→</Kbd> back / forward 1 s · speed 0.2× to
-        5×, click the value for 1× · loop repeats the segment until you pause
+        <Kbd>Space</Kbd> play / pause, outside a text box · <Kbd>⇧</Kbd>+<Kbd>Space</Kbd> play /
+        pause the segment you are in, or the selected stretch · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+
+        <Kbd>←</Kbd> <Kbd>→</Kbd> back / forward 1 s · speed 0.2× to 5×, click the value for 1× ·
+        loop repeats the segment until you pause
       </Row>
       <Row label="Transcript">
         one row per segment, in time order · moving into a row plays it (switch it off above the
@@ -58,9 +58,10 @@ export function MediaHelp() {
         to playback at <Kbd>Enter</Kbd>
       </Row>
       <Row label="Times">
-        a segment's start and end are editable: type a time (1:05.250, or seconds) · <Kbd>↑</Kbd>{' '}
-        <Kbd>↓</Kbd> nudge 10 ms, <Kbd>⇧</Kbd>+ 100 ms · <Kbd>Enter</Kbd> or leaving the field saves
-        · <Kbd>Esc</Kbd> puts it back · a segment cannot run into its neighbours
+        a segment's start and end are boxes of digits · type into the box under the caret ·{' '}
+        <Kbd>←</Kbd> <Kbd>→</Kbd> move between boxes · <Kbd>↑</Kbd> <Kbd>↓</Kbd> step the box
+        (milliseconds by 10, <Kbd>⇧</Kbd>+ by 100) · <Kbd>Enter</Kbd> or leaving the time saves ·{' '}
+        <Kbd>Esc</Kbd> puts it back · a segment cannot run into its neighbours
       </Row>
       <Row label="Timeline">
         drag an empty stretch to add a segment · drag an edge to trim · click a segment to open it ·
