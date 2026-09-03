@@ -473,7 +473,7 @@ interface DocumentsBundle {
   checkLock(documentId: string, asOf?: string): Promise<any>;
   acquireLock(documentId: string, auditMessage?: string): Promise<any>;
   releaseLock(documentId: string, auditMessage?: string): Promise<any>;
-  getMedia(documentId: string, asOf?: string): Promise<ArrayBuffer>;
+  getMedia(documentId: string): Promise<ArrayBuffer>;
   uploadMedia(
     documentId: string,
     file: File,

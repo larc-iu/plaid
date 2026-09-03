@@ -1401,15 +1401,18 @@ class DocumentsResource(_Resource):
                 logging.getLogger(__name__).warning(
                     "Failed to release lock on document %s: %s", document_id, release_err)
 
-    def get_media(self, document_id: str, *, as_of: str | None = None) -> bytes:
-        """Get media file for a document.
+    def get_media(self, document_id: str) -> bytes:
+        """Get the media file for a document.
+
+        Media is not versioned, so there is no as-of form: the route refuses the
+        parameter. Prefer the document's own media URL, which carries the file's
+        version for caching.
 
         Args:
             document_id: The document ID
-            as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/documents/{document_id}/media',
-                             query_params={'as-of': as_of}, no_batch=True, binary_response=True)
+                             no_batch=True, binary_response=True)
 
     def upload_media(self, document_id: str, file, audit_message=None) -> Any:
         """Upload a media file for a document. Uses Apache Tika for content validation.

@@ -1247,13 +1247,13 @@ class PlaidClient {
           auditMessage,
         }),
       /**
-       * Get media file for a document
+       * Get the media file for a document. Media is not versioned, so there is
+       * no as-of form: the route refuses the parameter. Prefer the document's
+       * own `mediaUrl`, which carries the file's version for caching.
        * @param {string} documentId - The document ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      getMedia: (documentId, asOf) =>
+      getMedia: (documentId) =>
         this._request("GET", `/api/v1/documents/${documentId}/media`, {
-          queryParams: { "as-of": asOf },
           noBatch: true,
           binaryResponse: true,
         }),
