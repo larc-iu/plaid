@@ -39,6 +39,15 @@ export function AppLayout({ children }) {
               'Vocabularies',
               location.pathname.startsWith('/vocabularies'),
             )}
+            {/* The user guide is published with the docs site, not bundled here. */}
+            <a
+              href="https://larc-iu.github.io/plaid/igt-guide.html"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+            >
+              Guide
+            </a>
           </nav>
           <div className="ml-auto">
             {user && <UserButton user={user} client={client} onLogout={logout} />}
