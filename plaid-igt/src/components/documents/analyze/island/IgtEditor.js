@@ -1138,9 +1138,7 @@ export class IgtEditor {
       );
     }
     return html`<span class=${cls} style=${`--igt-lane:${lane}`} data-mwe=${key}>
-      ${piece === 'solo' ? nothing : html`<span class="igt-mwe__rule"></span>`}
-      ${piece === 'start' || piece === 'end' ? html`<span class="igt-mwe__tick"></span>` : nothing}
-      ${label} ${popover}
+      ${piece === 'solo' ? nothing : html`<span class="igt-mwe__rule"></span>`} ${label} ${popover}
     </span>`;
   }
 

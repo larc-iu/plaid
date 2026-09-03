@@ -1662,11 +1662,11 @@
 }
 
 /* ---- multi-word expressions (MWEs) ----
-   A lexicon entry linked from several words at once draws as a bracket under
-   the words, inside the gray word band, between the word and its own chip.
-   Every member column draws ITS piece (start / middle / end, or a dotted
-   pass-through under a skipped word), so the bracket survives band wrapping
-   with nothing measuring the columns. Overlapping MWEs stack on lanes:
+   A lexicon entry linked from several words at once draws as a plain line
+   under the words, inside the gray word band, between the word and its own
+   chip. Every member column draws ITS piece (start / middle / end, or a
+   dotted pass-through under a skipped word), so the line survives band
+   wrapping with nothing measuring the columns. Overlapping MWEs stack on lanes:
    the sentence sets --igt-mwe-lanes and the band grows one 16px line per
    lane, uniformly across its columns. The label is the entry's form in the
    same quiet 10px chip voice as a single-word link. */
@@ -1713,21 +1713,8 @@
 .igt-mwe--pass .igt-mwe__rule {
   border-top-style: dotted;
 }
-.igt-mwe__tick {
-  position: absolute;
-  top: -1px;
-  height: 4px;
-  width: 0;
-  border-left: 1px solid #b4bcc8;
-}
-.igt-mwe--start .igt-mwe__tick {
-  left: 10px;
-}
-.igt-mwe--end .igt-mwe__tick {
-  right: 10px;
-}
 /* The label is the MWE's opener: a real button, left-aligned under the
-   bracket's first tick, allowed to run on across the columns to its right
+   line's start, allowed to run on across the columns to its right
    (they carry nothing but the rule on this lane). */
 .igt-mwe__label {
   position: absolute;
@@ -1762,17 +1749,13 @@
 .igt-mwe__label:disabled {
   cursor: default;
 }
-/* Hovering or focusing any part of an MWE lights the whole bracket. */
-.igt-mwe.is-hot .igt-mwe__rule,
-.igt-mwe.is-hot .igt-mwe__tick {
+/* Hovering or focusing any part of an MWE lights its whole line. */
+.igt-mwe.is-hot .igt-mwe__rule {
   border-color: #1d4ed8;
 }
 /* Machine-made (auto-linked, unconfirmed): the violet of chips and cells. */
-.igt-mwe--machine .igt-mwe__rule,
-.igt-mwe--machine .igt-mwe__tick {
-  border-color: #c4b5fd;
-}
 .igt-mwe--machine .igt-mwe__rule {
+  border-color: #c4b5fd;
   border-top-style: dashed;
 }
 .igt-mwe--machine .igt-mwe__label {
@@ -1783,12 +1766,9 @@
 .igt-mwe--verified .igt-mwe__label {
   text-decoration-color: #c4b5fd;
 }
-/* The selection in progress: a dashed blue bracket under the chosen words. */
-.igt-mwe--pending .igt-mwe__rule,
-.igt-mwe--pending .igt-mwe__tick {
-  border-color: #93c5fd;
-}
+/* The selection in progress: a dashed blue line under the chosen words. */
 .igt-mwe--pending .igt-mwe__rule {
+  border-color: #93c5fd;
   border-top-style: dashed;
 }
 .igt-mwe--pending .igt-mwe__label {
