@@ -47,6 +47,17 @@ describe('validateIgtDocument', () => {
     expect(f).toMatchObject({ severity: 'warning', context: { id: 'a1' } });
     expect(findings.filter((x) => x.code === 'alignment-time-inverted')).toHaveLength(1);
   });
+
+  it('warns about segments that overlap in time without different speakers, and not about cross-talk', () => {
+    const findings = validateIgtDocument(getIgtLayerInfo(buildRawDoc()), [
+      { id: 'a1', begin: 0, end: 3, metadata: { timeBegin: 0, timeEnd: 4, speaker: 'Ana' } },
+      { id: 'a2', begin: 4, end: 7, metadata: { timeBegin: 3, timeEnd: 5, speaker: 'Ben' } }, // cross-talk
+      { id: 'a3', begin: 8, end: 11, metadata: { timeBegin: 4.5, timeEnd: 6, speaker: 'Ben' } }, // Ben over Ben
+    ]);
+    const overlaps = findings.filter((x) => x.code === 'alignment-time-overlap');
+    expect(overlaps).toHaveLength(1);
+    expect(overlaps[0]).toMatchObject({ severity: 'warning', context: { ids: ['a2', 'a3'] } });
+  });
 });
 
 describe('formatFindingsForClipboard', () => {

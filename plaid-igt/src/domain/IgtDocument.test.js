@@ -970,6 +970,46 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     });
   });
 
+  it('updateAlignmentBounds refuses a range that runs into the same voice, and allows cross-talk', async () => {
+    const raw = buildRawDoc({
+      body: 'the cat sat',
+      alignmentTokens: [
+        {
+          id: 'a-1',
+          text: 'text-1',
+          begin: 0,
+          end: 3,
+          metadata: { timeBegin: 0, timeEnd: 2, speaker: 'Ana' },
+        },
+        {
+          id: 'a-2',
+          text: 'text-1',
+          begin: 4,
+          end: 7,
+          metadata: { timeBegin: 3, timeEnd: 5, speaker: 'Ana' },
+        },
+        {
+          id: 'a-3',
+          text: 'text-1',
+          begin: 8,
+          end: 11,
+          metadata: { timeBegin: 6, timeEnd: 8, speaker: 'Ben' },
+        },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    // Ana's second segment dragged back over Ana's first: refused, nothing written.
+    expect(await doc.updateAlignmentBounds('a-2', { timeBegin: 1, timeEnd: 5 })).toBe(false);
+    expect(doc.error).toMatch(/previous segment ends at 2\.000 s/);
+    expect(kinds(doc.client)).not.toContain('tokens.patchMetadata');
+    // Ben's segment dragged back over Ana's: cross-talk, allowed.
+    expect(await doc.updateAlignmentBounds('a-3', { timeBegin: 4, timeEnd: 8 })).toBe(true);
+    expect(doc.alignmentTokens.find((t) => t.id === 'a-3').metadata).toMatchObject({
+      timeBegin: 4,
+      timeEnd: 8,
+    });
+  });
+
   it('deleteAlignment removes the alignment text range', async () => {
     const raw = buildRawDoc({
       alignmentTokens: [

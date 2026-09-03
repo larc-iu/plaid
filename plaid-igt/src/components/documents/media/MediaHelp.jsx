@@ -71,7 +71,7 @@ export function MediaHelp() {
       </Row>
       <Row label="Speakers">
         a label per segment · the timeline colors each speaker alike · a new segment keeps the last
-        speaker
+        speaker · two segments may overlap in time only when their speakers differ (cross-talk)
       </Row>
       <Row label="Machine">
         a row marked <span className="text-violet-600">machine</span> was made by a service ·

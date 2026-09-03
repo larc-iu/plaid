@@ -19,6 +19,7 @@ import { notifyError } from '@/utils/feedback';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { formatTime } from './formatTime.js';
+import { rangeProblem } from '../../../domain/alignmentTimes.js';
 import { TimecodeField } from './TimecodeField.jsx';
 import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
@@ -508,29 +509,13 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
       const token = sorted[i];
       const timeBegin = which === 'begin' ? seconds : timeBeginOf(token);
       const timeEnd = which === 'end' ? seconds : timeEndOf(token);
-      const length = opsRef.current.duration;
-      if (timeEnd - timeBegin < MIN_SEGMENT) {
-        notifyError('A segment must end after it starts.', 'Time not saved');
-        return false;
-      }
-      if (Number.isFinite(length) && length > 0 && timeEnd > length + 0.001) {
-        notifyError(`The recording ends at ${formatTime(length)}.`, 'Time not saved');
-        return false;
-      }
-      const prev = sorted[i - 1];
-      const next = sorted[i + 1];
-      if (prev && timeBegin < timeEndOf(prev)) {
-        notifyError(
-          `The previous segment ends at ${formatTime(timeEndOf(prev))}.`,
-          'Time not saved',
-        );
-        return false;
-      }
-      if (next && timeEnd > timeBeginOf(next)) {
-        notifyError(
-          `The next segment starts at ${formatTime(timeBeginOf(next))}.`,
-          'Time not saved',
-        );
+      const problem = rangeProblem(doc.alignmentTokens, id, timeBegin, timeEnd, {
+        duration: opsRef.current.duration,
+        minWidth: MIN_SEGMENT,
+        format: formatTime,
+      });
+      if (problem) {
+        notifyError(problem, 'Time not saved');
         return false;
       }
       return doc.updateAlignmentBounds(id, { timeBegin, timeEnd });

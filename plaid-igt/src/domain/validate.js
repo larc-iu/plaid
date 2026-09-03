@@ -18,6 +18,7 @@
 // caller logs the lot and surfaces one consolidated toast. Never throws.
 
 import { planMorphemeReconcile, planSpanDedup } from './igtReconcile.js';
+import { conflictingPairs } from './alignmentTimes.js';
 import { collectMweLinks } from './mwe.js';
 
 export const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
@@ -106,6 +107,15 @@ export function validateIgtDocument(
       `Multi-word expression check threw: ${err?.message || err}`,
     );
   }
+
+  conflictingPairs(alignmentTokens || []).forEach(([a, b]) => {
+    add(
+      SEVERITY.WARNING,
+      'alignment-time-overlap',
+      `Two segments overlap in time without different speakers (${a.metadata?.timeBegin}-${a.metadata?.timeEnd} and ${b.metadata?.timeBegin}-${b.metadata?.timeEnd}). Only cross-talk between labelled speakers may overlap.`,
+      { ids: [a.id, b.id], speakers: [a.metadata?.speaker ?? null, b.metadata?.speaker ?? null] },
+    );
+  });
 
   (alignmentTokens || []).forEach((t) => {
     const tb = t.metadata?.timeBegin;

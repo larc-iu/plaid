@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { notifyWarning } from '@/utils/feedback';
+import { clampResize } from '../../../domain/alignmentTimes.js';
 
 // Constants
 const TIMELINE_HEIGHT = 100;
@@ -278,16 +279,22 @@ export const useTimelineOperations = (mediaOps) => {
         let newStart = prevBounds.start;
         let newEnd = prevBounds.end;
 
-        if (resizingHandle === 'left') {
-          newStart = Math.max(0, Math.min(currentTime, prevBounds.end - 0.1)); // Min 0.1s width
-        } else if (resizingHandle === 'right') {
-          newEnd = Math.min(mediaOps.duration, Math.max(currentTime, prevBounds.start + 0.1)); // Min 0.1s width
-        }
+        // An edge stops at the recording's ends, 0.1 s short of the segment's
+        // other edge, and at any segment it may not overlap (alignmentTimes).
+        const clamped = clampResize(
+          doc.alignmentTokens || [],
+          resizingToken.id,
+          resizingHandle,
+          currentTime,
+          { duration: mediaOps.duration },
+        );
+        if (resizingHandle === 'left') newStart = clamped;
+        else if (resizingHandle === 'right') newEnd = clamped;
 
         return { start: newStart, end: newEnd };
       });
     },
-    [isResizing, resizingToken, resizingHandle, getTimeFromPosition, mediaOps.duration],
+    [isResizing, resizingToken, resizingHandle, getTimeFromPosition, mediaOps.duration, doc],
   );
 
   const handleResizeEnd = useCallback(

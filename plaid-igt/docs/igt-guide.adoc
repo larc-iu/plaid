@@ -122,6 +122,7 @@ The timeline shows the same segments against the waveform.
 Drag across an empty stretch to add a segment anywhere in the recording, drag a segment's edge to trim it, and click one to hear it and edit its row.
 Times are shown to the millisecond everywhere.
 Speakers are labeled per segment, and the timeline colors each speaker's segments alike.
+Two segments may overlap in time only when they carry different speaker labels, which is how cross-talk is recorded; a dragged edge stops at any segment it may not overlap.
 With a transcription service connected, a model can take the first pass, and its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
 
 == Tokenize

@@ -18,6 +18,7 @@
 
 import { cpLength, cpSlice, cpIndexOf, verifyOnEdit } from '@larc-iu/plaid-client';
 import { applyTextEditsLocally } from '../textEdits.js';
+import { rangeProblem } from '../alignmentTimes.js';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
@@ -538,6 +539,23 @@ export const alignmentMutations = {
       this.setError(
         `The new time range would put this segment out of order with the ${inversion} segment.`,
       );
+      return false;
+    }
+
+    // In time the only rule is cross-talk: a segment may overlap another only
+    // when both are labelled with different speakers.
+    const problem = rangeProblem(
+      alignmentTokenLayer?.tokens || [],
+      alignmentId,
+      timeBegin,
+      timeEnd,
+      {
+        minWidth: 0,
+        format: (s) => `${s.toFixed(3)} s`,
+      },
+    );
+    if (problem) {
+      this.setError(problem);
       return false;
     }
 

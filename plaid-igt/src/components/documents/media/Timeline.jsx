@@ -7,6 +7,7 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useTimelineOperations } from './useTimelineOperations.js';
 import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 import { formatTime } from './formatTime.js';
+import { assignLanes } from '../../../domain/alignmentTimes.js';
 
 // Stable hue per speaker label, so a diarized timeline is readable at a glance
 // (same speaker → same color across segments). Unlabeled segments keep the
@@ -48,6 +49,13 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
   } = mediaOps;
 
   const currentTime = mediaOps.currentTime;
+
+  // Overlapping segments (cross-talk) stack in lanes instead of painting over
+  // each other; a transcript with no overlap is one full-height lane.
+  const { lanes, count: laneCount } = React.useMemo(
+    () => assignLanes(doc.alignmentTokens || []),
+    [doc.alignmentTokens],
+  );
 
   // Use timeline operations hook directly
   const timelineOps = useTimelineOperations(mediaOps);
@@ -320,6 +328,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                 const displayWidth = (displayEnd - displayStart) * pixelsPerSecond;
                 const speaker = token.metadata?.speaker || '';
                 const colors = segmentColors(speaker, isBeingResized);
+                const lane = lanes.get(token.id) ?? 0;
 
                 return (
                   <div
@@ -328,8 +337,8 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                       position: 'absolute',
                       left: `${displayStart * pixelsPerSecond}px`,
                       width: `${displayWidth}px`,
-                      top: 0,
-                      bottom: 0,
+                      top: `${(lane * 100) / laneCount}%`,
+                      height: `${100 / laneCount}%`,
                       backgroundColor: colors.fill,
                       border: `1px solid ${colors.stroke}`,
                       borderRadius: '0px',
