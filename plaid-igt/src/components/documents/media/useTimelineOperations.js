@@ -198,18 +198,21 @@ export const useTimelineOperations = (mediaOps) => {
         mediaOps.setCurrentTime(time); // Update state immediately
         mediaOps.setPlayingSelection(null);
 
-        // If clicking inside existing selection, open popover (if not already open)
-        if (
-          mediaOps.selection &&
-          time >= mediaOps.selection.start &&
-          time <= mediaOps.selection.end &&
-          !mediaOps.popoverOpened
-        ) {
+        // A click inside a dragged stretch reopens its popover. A selection that
+        // is an existing segment (a row was entered) belongs to the transcript,
+        // not to the popover, which only makes new segments.
+        const sel = mediaOps.selection;
+        const isSegment =
+          sel &&
+          (doc.alignmentTokens || []).some(
+            (t) => t.metadata?.timeBegin === sel.start && t.metadata?.timeEnd === sel.end,
+          );
+        if (sel && time >= sel.start && time <= sel.end && !mediaOps.popoverOpened && !isSegment) {
           mediaOps.setPopoverOpened(true);
         }
       }
     },
-    [mediaElement, mediaOps],
+    [mediaElement, mediaOps, doc],
   );
 
   const handleSelectionCreate = useCallback(
@@ -221,14 +224,12 @@ export const useTimelineOperations = (mediaOps) => {
     [mediaOps],
   );
 
+  // After a segment is made or trimmed: drop the selection and the popover.
+  // No reload: the mutations patch the document in place.
   const handleAlignmentCreated = useCallback(async () => {
-    // Clear selection and trigger reload since we removed optimistic updates
     mediaOps.setSelection(null);
     mediaOps.setPopoverOpened(false);
-
-    // Reload to get updated document state
-    await doc._reload();
-  }, [mediaOps, doc]);
+  }, [mediaOps]);
 
   // Mouse event handlers for timeline
   const handleMouseDown = useCallback(

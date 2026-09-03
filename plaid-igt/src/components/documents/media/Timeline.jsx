@@ -212,7 +212,6 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                   onClose={() => setPopoverOpened(false)}
                   selection={selection}
                   onAlignmentCreated={handleAlignmentCreated}
-                  readOnly={readOnly}
                   selectionBox={
                     <div
                       style={{
@@ -346,8 +345,9 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     onClick={(e) => {
                       if (isResizing) return;
                       e.stopPropagation();
-                      // Create selection from alignment token
-                      handleSelectionCreate(displayStart, displayEnd);
+                      // The transcript row is where a segment is edited: focus
+                      // it (which selects and, on entry, plays the segment).
+                      mediaOps.requestSegmentFocus(token.id);
                     }}
                     title={`${speaker ? speaker + ': ' : ''}${cpSlice(doc.body || '', token.begin, token.end) || ''} (${formatTime(displayStart)} - ${formatTime(displayEnd)})`}
                   >

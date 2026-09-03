@@ -86,6 +86,13 @@ export const useMediaOperations = () => {
   const [selection, setSelection] = useState(null);
   const [playingSelection, setPlayingSelection] = useState(null);
   const [popoverOpened, setPopoverOpened] = useState(false);
+  // A click on a timeline segment asks the transcript to focus that row. A
+  // fresh object per request, so the same segment can be asked for twice.
+  const [segmentFocusRequest, setSegmentFocusRequest] = useState(null);
+  const requestSegmentFocus = useCallback(
+    (id) => setSegmentFocusRequest({ id, at: Date.now() }),
+    [],
+  );
   const [pixelsPerSecond, setPixelsPerSecond] = useState(25);
   const [asrAlgorithm, setAsrAlgorithm] = useState('');
   const [asrAlgorithmOptions, setAsrAlgorithmOptions] = useState([]);
@@ -733,6 +740,8 @@ export const useMediaOperations = () => {
     setPlayingSelection,
     popoverOpened,
     setPopoverOpened,
+    segmentFocusRequest,
+    requestSegmentFocus,
     pixelsPerSecond,
     setPixelsPerSecond,
 

@@ -3,25 +3,18 @@ import { cpSlice, cpLength } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 
-// Alignment popover operations, backed by the shared IgtDocument. The read
-// helpers (existing alignment lookup, available-text boundaries, canAlign) are
-// derived from `doc.alignmentTokens` + `doc.body`; the four mutations delegate
-// straight to the domain methods (which do the batch/cascade + optimistic patch
-// + reload-on-error + error toast). `isProcessing` mirrors `doc.isSaving`.
+// The timeline popover's operations, backed by the shared IgtDocument: make a
+// segment from new text, or from the baseline text still free between the
+// neighbouring segments. The two mutations delegate straight to the domain
+// methods (which patch in place, reload on error, and toast). `isProcessing`
+// mirrors `doc.isSaving`. Editing and deleting an existing segment happen in
+// its transcript row, not here.
 export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   const { doc } = useDocumentCtx();
   useIgtDocument(doc);
 
-  // Find existing alignment token that matches current selection
-  const getExistingAlignment = useCallback(() => {
-    return (doc.alignmentTokens || []).find(
-      (token) =>
-        token.metadata?.timeBegin === selection?.start &&
-        token.metadata?.timeEnd === selection?.end,
-    );
-  }, [selection, doc]);
-
-  // Find available text boundaries for alignment
+  // The stretch of baseline text a segment at `selection` may take: whatever
+  // lies between the segment before it in time and the one after.
   const getAvailableTextBoundaries = useCallback(() => {
     const alignmentTokens = doc.alignmentTokens || [];
     const sortedTokens = [...alignmentTokens].sort(
@@ -29,8 +22,6 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
     );
 
     const textLength = cpLength(doc.body || '');
-
-    // Find constraints from neighboring alignment tokens
     let leftBoundary = 0;
     let rightBoundary = textLength;
 
@@ -49,20 +40,13 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
     return { leftBoundary, rightBoundary };
   }, [doc, selection]);
 
-  // Get available text for alignment
   const getAvailableText = useCallback(() => {
     const { leftBoundary, rightBoundary } = getAvailableTextBoundaries();
-    const fullText = doc.body || '';
-    return cpSlice(fullText, leftBoundary, rightBoundary);
+    return cpSlice(doc.body || '', leftBoundary, rightBoundary);
   }, [getAvailableTextBoundaries, doc]);
 
-  // Check if baseline text is available for alignment
-  const canAlign = useCallback(() => {
-    const availableText = getAvailableText();
-    return availableText.trim().length > 0;
-  }, [getAvailableText]);
+  const canAlign = useCallback(() => getAvailableText().trim().length > 0, [getAvailableText]);
 
-  // Create new alignment
   const createAlignment = useCallback(
     async (text, speaker) => {
       const ok = await doc.createAlignment({
@@ -71,44 +55,12 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
         timeEnd: selection.end,
         speaker,
       });
-      if (ok && onAlignmentCreated) {
-        onAlignmentCreated();
-      }
+      if (ok && onAlignmentCreated) onAlignmentCreated();
       return ok;
     },
     [doc, selection, onAlignmentCreated],
   );
 
-  // Edit existing alignment. Relabeling the speaker alone takes the cheap
-  // metadata-only path (no baseline rewrite / token churn); a text change goes
-  // through the full delete+insert cascade, carrying the speaker along.
-  const editAlignment = useCallback(
-    async (text, existingAlignment, speaker) => {
-      if (!existingAlignment) return false;
-      const originalText =
-        cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) || '';
-      const textChanged = text !== originalText;
-      const speakerChanged = (speaker || '').trim() !== (existingAlignment.metadata?.speaker || '');
-      let ok = true;
-      if (!textChanged && speakerChanged) {
-        ok = await doc.updateAlignmentSpeaker(existingAlignment.id, speaker);
-      } else if (textChanged) {
-        ok = await doc.editAlignment(existingAlignment.id, {
-          text,
-          timeBegin: selection.start,
-          timeEnd: selection.end,
-          speaker,
-        });
-      }
-      if (ok && onAlignmentCreated) {
-        onAlignmentCreated();
-      }
-      return ok;
-    },
-    [doc, selection, onAlignmentCreated],
-  );
-
-  // Align existing baseline text
   const alignBaseline = useCallback(
     async (text, speaker) => {
       const ok = await doc.alignBaseline({
@@ -117,41 +69,18 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
         timeEnd: selection.end,
         speaker,
       });
-      if (ok && onAlignmentCreated) {
-        onAlignmentCreated();
-      }
+      if (ok && onAlignmentCreated) onAlignmentCreated();
       return ok;
     },
     [doc, selection, onAlignmentCreated],
   );
 
-  // Delete alignment
-  const deleteAlignment = useCallback(
-    async (existingAlignment) => {
-      if (!existingAlignment) return false;
-      const ok = await doc.deleteAlignment(existingAlignment.id);
-      if (ok && onAlignmentCreated) {
-        onAlignmentCreated();
-      }
-      return ok;
-    },
-    [doc, onAlignmentCreated],
-  );
-
   return {
-    // State
     isProcessing: doc.isSaving,
-
-    // Operations
     createAlignment,
-    editAlignment,
     alignBaseline,
-    deleteAlignment,
-
-    // Calculations
     getAvailableTextBoundaries,
     getAvailableText,
-    getExistingAlignment,
     canAlign,
   };
 };

@@ -123,6 +123,12 @@ test('the transcript adds a segment at the playhead and Enter saves an edit', as
   );
   await expect(page.getByLabel('Segment 1 text')).toHaveValue('hello there');
 
+  // A click on the segment in the timeline lands in its transcript row, with
+  // no popover in the way.
+  await page.locator('[title^="hello there"]').click();
+  await expect(page.getByLabel('Segment 1 text')).toBeFocused();
+  await expect(page.getByText('New segment', { exact: true })).toHaveCount(0);
+
   // Editing the row: Enter saves (the token is recreated) and moves on to the
   // new-segment row, which is the last thing after the last segment.
   const rowAgain = page.getByLabel('Segment 1 text');

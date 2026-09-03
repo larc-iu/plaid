@@ -31,6 +31,7 @@ const makeOps = (over = {}) => ({
   currentTime: 0,
   duration: 10,
   getCurrentTime: () => null,
+  segmentFocusRequest: null,
   isPlaying: false,
   playingSelection: null,
   selection: null,
@@ -105,6 +106,17 @@ describe('TranscriptList', () => {
     expect(quiet.setSelection).toHaveBeenCalledWith({ start: 0, end: 1.5 });
     expect(quiet.playRange).not.toHaveBeenCalled();
     await r2.unmount();
+  });
+
+  it('a timeline click on a segment lands in its row with the caret at the end, and plays it', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const ops = makeOps();
+    const r = await renderComponent(element(doc, ops));
+    await r.rerender(element(doc, makeOps({ segmentFocusRequest: { id: 'b', at: 1 } })));
+    const second = rowTextareas(r.container)[1];
+    expect(document.activeElement).toBe(second);
+    expect(second.selectionStart).toBe(second.value.length);
+    await r.unmount();
   });
 
   it('Shift+Space in a row plays its segment, and Ctrl+Space no longer does', async () => {

@@ -64,9 +64,10 @@ export function MediaHelp() {
         <Kbd>Esc</Kbd> puts it back · a segment cannot run into its neighbours
       </Row>
       <Row label="Timeline">
-        drag an empty stretch to add a segment · drag an edge to trim · click a segment to open it ·
-        in the popover <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+<Kbd>Enter</Kbd> saves, <Kbd>Esc</Kbd>{' '}
-        cancels, <Kbd>Delete</Kbd> removes · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+wheel zooms, wheel pans
+        drag an empty stretch to add a segment · drag an edge to trim · click a segment to hear it
+        and edit its row · in the new-segment popover <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+
+        <Kbd>Enter</Kbd> saves, <Kbd>Esc</Kbd> cancels · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+wheel zooms,
+        wheel pans
       </Row>
       <Row label="Speakers">
         a label per segment · the timeline colors each speaker alike · a new segment keeps the last

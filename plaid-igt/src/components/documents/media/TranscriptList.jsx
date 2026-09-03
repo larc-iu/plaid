@@ -48,6 +48,12 @@ const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
 // The shortest segment a keyboard edit may leave behind.
 const MIN_SEGMENT = 0.01;
 
+// The time column is the same fixed width in every row, so the speaker and
+// text columns line up down the list whatever the row shows there: two rows of
+// digit boxes, plain times, or an hours box on a long recording.
+const TIME_COLUMN =
+  'flex w-[5.5rem] shrink-0 flex-col pt-1 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground';
+
 const isPlayChord = (e) =>
   e.code === 'Space' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
 
@@ -197,7 +203,7 @@ const SegmentRow = memo(function SegmentRow({
         active && 'border-primary/60 bg-primary/5',
       )}
     >
-      <div className="flex flex-col pt-1 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground">
+      <div className={TIME_COLUMN}>
         {readOnly ? (
           <>
             <span>{formatTime(timeBeginOf(token))}</span>
@@ -355,7 +361,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
 
   return (
     <div className="grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border border-dashed px-2 py-1.5">
-      <div className="flex w-[4.6rem] flex-col pt-1 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground">
+      <div className={TIME_COLUMN}>
         <span>{formatTime(prevEnd)}</span>
         <span>{ready ? formatTime(currentTime) : '…'}</span>
       </div>
@@ -411,7 +417,14 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
 
   const segments = useMemo(() => [...doc.alignmentTokens].sort(byTime), [doc.alignmentTokens]);
   const body = doc.body || '';
-  const { currentTime = 0, isPlaying, playingSelection, selection, duration = 0 } = mediaOps;
+  const {
+    currentTime = 0,
+    isPlaying,
+    playingSelection,
+    selection,
+    duration = 0,
+    segmentFocusRequest,
+  } = mediaOps;
   // The new-segment row's running clock redraws a few times a second while the
   // recording plays, and is exact the moment it pauses.
   const shownTime = useThrottledValue(currentTime, RUNNING_TIME_MS, { bypass: !isPlaying });
@@ -560,6 +573,24 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
       ?.querySelector(`[data-segment-id="${match.id}"]`)
       ?.scrollIntoView?.({ block: 'nearest' });
   }, [selection, segments]);
+
+  // A click on a timeline segment lands in its row, caret at the end; the
+  // focus itself selects the segment and plays it on entry. With no row to
+  // focus (read-only), the segment is selected and played directly.
+  useEffect(() => {
+    if (!segmentFocusRequest) return;
+    const token = doc.alignmentTokens.find((t) => t.id === segmentFocusRequest.id);
+    if (!token) return;
+    const el = textRefs.current.get(token.id);
+    if (el) {
+      el.focus();
+      const n = el.value.length;
+      el.setSelectionRange(n, n);
+    } else {
+      handleFocusRow(token);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentFocusRequest]);
 
   const prevEnd = segments.length ? Math.max(...segments.map(timeEndOf)) : 0;
 
