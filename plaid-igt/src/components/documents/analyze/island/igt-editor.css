@@ -6,10 +6,12 @@
 .igt-island {
   --igt-blue: #2563eb;
   --igt-violet: #6d28d9;
-  /* Desaturated violet for large/recurring surfaces (row labels) — the full
-     --igt-violet next to the near-black labels read as shouting. The vivid
-     violet stays for small semantic cues (guesses, inferred links, chips). */
-  --igt-violet-soft: #7a6aa6;
+  /* Morpheme scope is teal, a hue of its own: violet is machine provenance
+     and must never be mistaken for a row label. The softer teal is for the
+     large recurring surfaces (row labels, joiners); the full teal for the
+     legend chip. */
+  --igt-teal: #0f766e;
+  --igt-teal-soft: #3d8a83;
   --igt-green: #15803d;
   --igt-row-h: 30px;
   --igt-morph-h: 26px;
@@ -244,9 +246,9 @@
   border-left-color: var(--igt-blue);
 }
 .igt-legend__chip--morph {
-  background: #f4f1fb;
-  color: var(--igt-violet);
-  border-left-color: var(--igt-violet);
+  background: #e6f4f1;
+  color: var(--igt-teal);
+  border-left-color: var(--igt-teal);
 }
 .igt-legend__chip--sent {
   background: #f0fdf4;
@@ -506,7 +508,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Scope accents: orthography (slate), word (blue), morpheme (violet). The
+/* Scope accents: orthography (slate), word (blue), morpheme (teal). The
    sentence-scoped Translation label is styled separately below. */
 .igt-row-label--orth {
   border-left-color: #94a3b8;
@@ -517,8 +519,8 @@
 .igt-row-label--morph {
   height: var(--igt-morph-h);
   font-weight: 600;
-  color: var(--igt-violet-soft);
-  border-left-color: var(--igt-violet-soft);
+  color: var(--igt-teal-soft);
+  border-left-color: var(--igt-teal-soft);
 }
 /* The "Morphemes" label fronts the morpheme FORM row, which is taller than
    the annotation rows when vocab hints are in play. */
@@ -752,10 +754,10 @@
   background: #f5f5f7;
   border-radius: 3px;
 }
-/* Linked to a stem/root lexicon entry: the lavender accent the plain chips
-   used to have — reads as "lexically identified". */
+/* Linked to a stem/root lexicon entry: a teal tint, the morpheme scope's own
+   hue — reads as "lexically identified". */
 .igt-morph-form--stem {
-  background: #f4f1fb;
+  background: #e9f4f2;
 }
 /* Display-only affix joint between adjacent morphemes ("-", or "=" for
    clitics, from metadata.morphType) — not part of the editable form, and not
@@ -774,7 +776,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #8d7fb5;
+  color: #6ba39c;
   font-size: 13px;
   user-select: none;
   pointer-events: none;

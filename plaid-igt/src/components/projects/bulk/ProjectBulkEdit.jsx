@@ -333,7 +333,7 @@ const Progress = ({ text }) =>
 // rather than a change.
 const SCOPE_CLS = {
   word: 'text-blue-700',
-  morpheme: 'text-violet-700',
+  morpheme: 'text-teal-700',
   sentence: 'text-green-700',
 };
 const ChangeGrid = ({ lines }) => {

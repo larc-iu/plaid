@@ -315,10 +315,10 @@ export const FieldsManager = ({
     key: fieldKey(field),
   }));
 
-  // Color classes for scope badges (Word=blue, Morpheme=violet, Sentence=green)
+  // Color classes for scope badges (Word=blue, Morpheme=teal, Sentence=green)
   const scopeBadgeClasses = {
     Word: 'border-transparent bg-blue-100 text-blue-700',
-    Morpheme: 'border-transparent bg-violet-100 text-violet-700',
+    Morpheme: 'border-transparent bg-teal-100 text-teal-700',
     Sentence: 'border-transparent bg-green-100 text-green-700',
   };
 

@@ -56,7 +56,7 @@ export const FieldsStep = ({
             Word
           </Badge>{' '}
           scope fields apply to words,{' '}
-          <Badge variant="secondary" className="border-transparent bg-violet-100 text-violet-700">
+          <Badge variant="secondary" className="border-transparent bg-teal-100 text-teal-700">
             Morpheme
           </Badge>{' '}
           scope fields apply to morphemes, and{' '}

@@ -887,7 +887,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                                   <MarkedText text={row.text} marks={row.marks} />
                                 </p>
                                 {row.notes.length > 0 && (
-                                  <p className="mt-0.5 text-xs text-violet-700">
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
                                     {[...new Set(row.notes)].join(' · ')}
                                   </p>
                                 )}
