@@ -200,57 +200,30 @@ export function tokenizeText(text, config, untokenizedRanges) {
 }
 
 /**
- * Tokenize text into sentences, treating newline + whitespace as boundaries
- * @param {string} text - Full text content
- * @param {Array} existingSentenceTokens - Existing sentence tokens
- * @returns {Array} Array of sentence token objects
+ * One sentence per line, as a cover of the whole text in code-point offsets:
+ * each sentence runs from the first character of its line to the first
+ * character of the next non-blank line, so blank lines and indentation belong
+ * to the sentence before them and the partition has no gaps. The importers
+ * and the bundled tokenizer service produce the same shape.
+ * @param {string} text
+ * @returns {Array<{begin: number, end: number}>}
  */
-export function tokenizeSentences(text, existingSentenceTokens = []) {
+export function lineSentenceRanges(text) {
   if (!text) return [];
-
-  const sentences = [];
-
-  // Find untokenized ranges for sentences
-  const untokenizedRanges = findUntokenizedRanges(text, existingSentenceTokens);
-
-  for (const range of untokenizedRanges) {
-    const substring = cpSlice(text, range.start, range.end);
-
-    // Split on newline followed by optional whitespace. The regex works in
-    // UTF-16 (match.index / lastEnd are UTF-16 indices into `substring`), so
-    // convert each boundary to a code-point offset before storing it.
-    const sentenceRegex = /\n\s*/g;
-    let lastEnd = 0;
-    let match;
-
-    while ((match = sentenceRegex.exec(substring)) !== null) {
-      if (match.index > lastEnd) {
-        const sentenceText = substring.slice(lastEnd, match.index);
-        if (sentenceText.trim().length > 0) {
-          sentences.push({
-            text: sentenceText,
-            begin: range.start + utf16ToCp(substring, lastEnd),
-            end: range.start + utf16ToCp(substring, match.index),
-          });
-        }
-      }
-      lastEnd = match.index + match[0].length;
-    }
-
-    // Handle final sentence in range
-    if (lastEnd < substring.length) {
-      const sentenceText = substring.slice(lastEnd);
-      if (sentenceText.trim().length > 0) {
-        sentences.push({
-          text: sentenceText,
-          begin: range.start + utf16ToCp(substring, lastEnd),
-          end: range.end,
-        });
-      }
-    }
+  const starts = [0]; // UTF-16 indices, converted once at the end
+  const lineBreak = /\n\s*/g;
+  let match;
+  while ((match = lineBreak.exec(text)) !== null) {
+    const next = match.index + match[0].length;
+    if (next >= text.length) break; // only whitespace follows
+    // A line that is all whitespace belongs to the sentence before it.
+    if (text.slice(starts[starts.length - 1], match.index).trim() === '') continue;
+    starts.push(next);
   }
-
-  return sentences;
+  return starts.map((start, i) => ({
+    begin: utf16ToCp(text, start),
+    end: i + 1 < starts.length ? utf16ToCp(text, starts[i + 1]) : cpLength(text),
+  }));
 }
 
 /**

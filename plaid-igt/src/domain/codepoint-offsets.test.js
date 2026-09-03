@@ -7,7 +7,7 @@ import { buildRawDoc, makeFakeClient } from './test-helpers.js';
 import {
   findUntokenizedRanges,
   tokenizeText,
-  tokenizeSentences,
+  lineSentenceRanges,
   validateTokenization,
 } from '../utils/tokenizationUtils.js';
 
@@ -45,13 +45,21 @@ describe('code-point offsets (astral text)', () => {
     expect(validateTokenization(tokens, text).isValid).toBe(true);
   });
 
-  it('tokenizeSentences splits on newlines in code-point offsets', () => {
+  it('lineSentenceRanges covers the text one line per sentence in code-point offsets', () => {
     const text = '😀a\nb'; // code points: 😀(0) a(1) \n(2) b(3)
-    const sents = tokenizeSentences(text, []);
-    expect(sents.map((s) => s.text)).toEqual(['😀a', 'b']);
-    expect(sents.map((s) => [s.begin, s.end])).toEqual([
-      [0, 2],
-      [3, 4],
+    expect(lineSentenceRanges(text)).toEqual([
+      { begin: 0, end: 3 },
+      { begin: 3, end: 4 },
     ]);
+  });
+
+  it('lineSentenceRanges gives blank lines and indentation to the sentence before them', () => {
+    expect(lineSentenceRanges('one\n\n  two\n')).toEqual([
+      { begin: 0, end: 7 },
+      { begin: 7, end: 11 },
+    ]);
+    expect(lineSentenceRanges('\n\none')).toEqual([{ begin: 0, end: 5 }]);
+    expect(lineSentenceRanges('one')).toEqual([{ begin: 0, end: 3 }]);
+    expect(lineSentenceRanges('')).toEqual([]);
   });
 });

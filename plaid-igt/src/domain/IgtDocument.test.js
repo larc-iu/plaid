@@ -869,11 +869,11 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(k).not.toContain('submitBatch');
   });
 
-  it('saveBaselineText re-seeds a full-span sentence when the save leaves no partition', async () => {
+  it('saveBaselineText re-seeds one sentence per line when the save leaves no partition', async () => {
     const raw = buildRawDoc({ sentences: [], words: [], morphemes: [] });
     const client = makeFakeClient({ reloadDoc: raw }); // reload also shows an empty partition
     const doc = makeDoc({ raw, client });
-    const ok = await doc.saveBaselineText('a whole new body');
+    const ok = await doc.saveBaselineText('a whole new body\n\nand a second line\n');
     expect(ok).toBe(true);
     const k = kinds(doc.client);
     expect(k).toContain('texts.update');
@@ -881,7 +881,8 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(k).not.toContain('tokens.bulkDelete');
     const seed = doc.client.calls.find((c) => c.kind === 'tokens.bulkCreate');
     expect(seed.args[0]).toEqual([
-      { tokenLayerId: 'sentL', text: 'text-1', begin: 0, end: [...'a whole new body'].length },
+      { tokenLayerId: 'sentL', text: 'text-1', begin: 0, end: 18 }, // line, blank line
+      { tokenLayerId: 'sentL', text: 'text-1', begin: 18, end: 36 }, // line, final newline
     ]);
   });
 

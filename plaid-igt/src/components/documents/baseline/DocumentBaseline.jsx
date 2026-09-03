@@ -7,7 +7,7 @@ import { useBaselineOperations } from './useBaselineOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 
 export function DocumentBaseline() {
-  const { readOnly } = useDocumentCtx();
+  const { doc, readOnly } = useDocumentCtx();
   const ops = useBaselineOperations();
 
   // Local state for text input to prevent cursor jumping
@@ -31,6 +31,15 @@ export function DocumentBaseline() {
     }
   }, [ops.isEditing, ops.editedText]);
 
+  // A document with no text yet opens straight into the editor: typing the
+  // text is the only thing to do here, and a button in front of an empty box
+  // is a step nobody needs.
+  const emptyOnArrival = !readOnly && !(doc.body || '').trim();
+  useEffect(() => {
+    if (emptyOnArrival && !ops.isEditing) ops.handleEdit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleTextChange = (e) => {
     const newText = e.target.value;
     setLocalText(newText);
@@ -46,7 +55,7 @@ export function DocumentBaseline() {
             <div>
               <h2 className="text-lg font-semibold">Baseline Text</h2>
               <p className="text-sm text-muted-foreground">
-                Edit the primary text content for this document
+                The text you are analyzing, written the way you work with it.
               </p>
             </div>
             {!ops.isEditing && !readOnly && (
@@ -67,7 +76,7 @@ export function DocumentBaseline() {
                   id="baseline-text"
                   value={localText}
                   onChange={handleTextChange}
-                  placeholder="Enter the document text..."
+                  placeholder="Type or paste the text"
                   spellCheck={false}
                   rows={10}
                   className="resize-none overflow-auto"
@@ -75,16 +84,22 @@ export function DocumentBaseline() {
                 />
               </div>
 
-              <div className="rounded-md border border-border bg-muted p-3">
-                <div className="flex items-start gap-2">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                  <p className="text-sm">
-                    <strong>Note:</strong> Existing tokenization and annotations are kept and
-                    adjusted to match your edits. Words inside text you delete are removed along
-                    with their annotations.
-                  </p>
+              {ops.body?.trim() ? (
+                <div className="rounded-md border border-border bg-muted p-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p className="text-sm">
+                      Existing sentences, words, and annotations are kept and adjusted to match your
+                      edits. Words inside text you delete are removed along with their annotations.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Each line becomes a sentence. Sentence breaks can be moved later on the Tokenize
+                  tab.
+                </p>
+              )}
 
               <div className="flex items-center justify-end gap-2">
                 <Button variant="outline" onClick={ops.handleCancel} disabled={ops.saving}>

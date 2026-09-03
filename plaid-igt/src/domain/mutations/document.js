@@ -3,6 +3,12 @@
 // (_withSaving, _applyRawPatch, _reload, layerInfo, body, etc.).
 
 import { cpLength } from '@larc-iu/plaid-client';
+import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
+
+// One sentence per line of a freshly saved text. The server keeps the
+// partition in step with later edits; the Tokenize tab moves the breaks.
+const sentenceSeed = (tokenLayerId, text, body) =>
+  lineSentenceRanges(body).map(({ begin, end }) => ({ tokenLayerId, text, begin, end }));
 
 export const documentMutations = {
   // Baseline-text edit. The server's text update does all the heavy lifting
@@ -40,14 +46,9 @@ export const documentMutations = {
         const newTextObj = await this._client.texts.create(primaryTextLayer.id, this.id, newBody);
         if (newLen > 0) {
           try {
-            await this._client.tokens.bulkCreate([
-              {
-                tokenLayerId: sentenceTokenLayer.id,
-                text: newTextObj.id,
-                begin: 0,
-                end: newLen,
-              },
-            ]);
+            await this._client.tokens.bulkCreate(
+              sentenceSeed(sentenceTokenLayer.id, newTextObj.id, newBody),
+            );
           } catch (bulkCreateError) {
             console.error(
               'Sentence partition create failed after text create; rolling back text:',
@@ -70,21 +71,16 @@ export const documentMutations = {
 
       // A replacement that shares nothing with the old body deletes the old
       // sentence tokens outright (an empty partition is server-valid), which
-      // would leave the Analyze tab blank. Seed a single full-span sentence
-      // whenever the edit leaves a non-empty body with no partition.
+      // would leave the Analyze tab blank. Seed the partition again, one
+      // sentence per line, whenever the edit leaves a non-empty body with none.
       if (newLen > 0) {
         const freshInfo = this.layerInfo;
         const freshTextId = freshInfo.primaryTextLayer?.text?.id;
         const sentencesAfter = freshInfo.sentenceTokenLayer?.tokens || [];
         if (freshTextId && sentencesAfter.length === 0) {
-          await this._client.tokens.bulkCreate([
-            {
-              tokenLayerId: sentenceTokenLayer.id,
-              text: freshTextId,
-              begin: 0,
-              end: newLen,
-            },
-          ]);
+          await this._client.tokens.bulkCreate(
+            sentenceSeed(sentenceTokenLayer.id, freshTextId, newBody),
+          );
           await this._reload();
         }
       }
