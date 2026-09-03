@@ -57,6 +57,8 @@ Follow the instructions below to quickly set up a local Plaid server using the l
 4. Visit <http://localhost:8080/api/v1/docs/> to ensure the server is running.
 5. Try one of the bundled apps in your browser: the UD editor at <http://localhost:8080/ud/> or the IGT editor at <http://localhost:8080/igt/>.
 
+To run Plaid for a class or a group, on a machine that stays on and behind HTTPS, follow link:manual.html#_deployment[Deployment] in the manual.
+
 NOTE: Plaid listens on port 8080. On first launch it writes `data/config.toml` next to the JAR with every setting at its default, so to use a different port, set `[server] port` there and restart. (Plaid's own development server runs on 8085 instead, so that it does not collide with a release JAR on the same machine. See the link:dev.html[development guide] if you are building Plaid from source.)
 
 == Learn More

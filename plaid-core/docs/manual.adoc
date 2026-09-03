@@ -1392,6 +1392,123 @@ $ java -jar plaid.jar --config /etc/plaid/config.toml
 $ PLAID_CONFIG=/etc/plaid/config.toml java -jar plaid.jar
 ----
 
+= Deployment
+
+This section is for whoever runs Plaid for other people: a course, a research group, a documentation project.
+It assumes nothing beyond the <<_configuration>> section above.
+Plaid is one process with one SQLite database, so a small machine that stays on is enough: a departmental virtual machine or the smallest cloud instance will serve a class.
+
+== What you need
+
+* A machine that stays on, reachable by your users, running Linux (the notes below are for Linux; the jar itself runs anywhere Java does).
+* https://www.oracle.com/java/technologies/downloads/[JDK 21 or later].
+* `plaid.jar` from https://github.com/larc-iu/plaid/releases[the releases page].
+* A hostname, if you want HTTPS (and you do, for anything that leaves your desk).
+
+Everything Plaid stores lives in one directory, `data/`, next to the jar (or wherever `[database] path` and the other paths in `config.toml` point): the database `plaid.db`, uploaded recordings under `media/`, nightly backups under `backups/`, the configuration file, the signing secret `jwt-secret.txt`, and logs if you send them to a file.
+Keep that directory private to the account that runs Plaid.
+
+== First launch
+
+Create a user for the service and a home for the jar, then run it once by hand:
+
+[source,console]
+----
+$ sudo useradd --system --home /srv/plaid --create-home plaid
+$ sudo -u plaid mkdir -p /srv/plaid && sudo cp plaid.jar /srv/plaid/
+$ cd /srv/plaid && sudo -u plaid java -jar plaid.jar
+----
+
+On first launch Plaid asks for the administrator's email address and password.
+That address is the account's permanent id and what you sign in with.
+It then writes `data/config.toml` with every setting at its default and starts listening on port 8080.
+Stop it with Ctrl+C once you have seen it start; from here on a service manager runs it.
+
+== Running it as a service
+
+A systemd unit keeps Plaid running across reboots and collects its logs:
+
+[source,ini]
+----
+# /etc/systemd/system/plaid.service
+[Unit]
+Description=Plaid annotation server
+After=network.target
+
+[Service]
+User=plaid
+WorkingDirectory=/srv/plaid
+ExecStart=/usr/bin/java -jar /srv/plaid/plaid.jar
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+----
+
+[source,console]
+----
+$ sudo systemctl enable --now plaid
+$ sudo journalctl -u plaid -f      # follow the log
+----
+
+Leave `[logging] file` unset so the log goes to stdout, where journald keeps and rotates it.
+
+== HTTPS
+
+Plaid speaks plain HTTP on its port.
+Put a reverse proxy in front of it to terminate HTTPS, and serve the apps and the API through the same hostname so browsers see one origin and no CORS configuration is needed.
+https://caddyserver.com/[Caddy] does this in three lines and fetches its certificates itself:
+
+[source,text]
+----
+plaid.example.edu {
+    reverse_proxy localhost:8080
+    request_body {
+        max_size 220MB
+    }
+}
+----
+
+Two things any proxy must allow for: request bodies as large as `[media] max_file_size_mb` (recordings are uploaded whole), and the server's event streams, which are long-lived responses the proxy must pass through without buffering.
+Caddy does both with the configuration above; nginx needs `client_max_body_size` raised and `proxy_buffering off` on the `/api/` location.
+
+If the proxy must run on another hostname than the API, list the app's origin under `[cors] allowed_origins` instead.
+
+== Backups
+
+Every night at `[backup] time` (03:00 by default) Plaid writes a consistent, compacted snapshot of the database to `data/backups/plaid-backup-<timestamp>.zip` and keeps the most recent `retention` of them.
+That protects against a bad edit, not against a lost machine: copy the newest zip somewhere else on a schedule, and copy `data/media/` with it, since recordings are files on disk and not in the database.
+
+For a backup right now while the server runs, use SQLite's own copy rather than `cp` (the database is in WAL mode, and a plain copy misses recent writes):
+
+[source,console]
+----
+$ sqlite3 /srv/plaid/data/plaid.db ".backup /srv/plaid/data/manual-$(date +%F).db"
+----
+
+To restore: stop the service, put the database file from the backup in place of `data/plaid.db` (removing any `plaid.db-wal` and `plaid.db-shm` beside it), restore `data/media/`, and start the service.
+
+== Upgrading
+
+Take a backup, replace `plaid.jar`, restart the service.
+Database migrations run on startup.
+The bundled apps are part of the jar, so they upgrade with it.
+
+== Bringing in a class
+
+The administrator signs in first, at `https://plaid.example.edu/igt/`, and either runs the course project themselves or creates the instructor's account from a project's **Settings > Access**, where an administrator can also add and reset users.
+The instructor creates the project and, under the same **Access** section, mints **invitation links**: each grants a role on the project, is good for a set number of uses and days, and lets whoever opens it choose their own password.
+One link with fifteen uses is a class.
+A student who forgets a password gets a password-reset link from the administrator, minted in the same place.
+The IGT guide's link:igt-guide.html#_sharing_and_permissions[Sharing and Permissions] section covers the roles.
+
+== Settings worth a look
+
+* `[auth] jwt_ttl_seconds`: how long a login lasts. The default is thirty days; a shared lab machine may want a day.
+* `[media] max_file_size_mb`: the largest recording a document may carry. Raise the proxy's limit with it.
+* `[api] expose_openapi`: turn off if the API description should not be public.
+* `[backup] directory`: point it at a mounted volume or a synced folder to get backups off the machine for free.
+
 = Development
 
 For information on how to work on **Plaid itself** (not an app which uses Plaid), see link:dev.html[the development  guide].
