@@ -187,7 +187,7 @@ const SegmentRow = memo(function SegmentRow({
       playToggle();
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (await commit()) textRef.current?.focus();
+      if (await commit()) textRef.current?.focus({ preventScroll: true });
     } else if (e.key === 'Escape') {
       e.preventDefault();
       revert();
@@ -413,6 +413,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
   opsRef.current = mediaOps;
 
   const containerRef = useRef(null);
+  const listRef = useRef(null);
   const textRefs = useRef(new Map());
   const newTextRef = useRef(null);
 
@@ -449,16 +450,29 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
     else textRefs.current.delete(id);
   }, []);
 
-  const handleFocusRow = useCallback((token) => {
-    const ops = opsRef.current;
-    const range = { start: timeBeginOf(token), end: timeEndOf(token) };
-    ops.setPopoverOpened(false);
-    ops.setSelection(range);
-    if (ops.autoPlayOnFocus) ops.playRange(range);
-    containerRef.current
-      ?.querySelector(`[data-segment-id="${token.id}"]`)
-      ?.scrollIntoView?.({ block: 'nearest' });
+  // Bring a row to a quarter of the way down the transcript's own scroll box.
+  // Only that box moves: scrolling the page as well (what scrollIntoView does)
+  // dragged the recording controls and the timeline out of the viewport.
+  const revealRow = useCallback((id) => {
+    const box = listRef.current;
+    const row = box?.querySelector(`[data-segment-id="${id}"]`);
+    if (!box || !row) return;
+    const rowTop =
+      row.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+    box.scrollTop = Math.max(0, rowTop - box.clientHeight * 0.25);
   }, []);
+
+  const handleFocusRow = useCallback(
+    (token) => {
+      const ops = opsRef.current;
+      const range = { start: timeBeginOf(token), end: timeEndOf(token) };
+      ops.setPopoverOpened(false);
+      ops.setSelection(range);
+      if (ops.autoPlayOnFocus) ops.playRange(range);
+      revealRow(token.id);
+    },
+    [revealRow],
+  );
 
   const handlePlayToggle = useCallback(
     (token) => {
@@ -539,7 +553,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
     (timeBegin) => {
       const next = [...doc.alignmentTokens].sort(byTime).find((t) => timeBeginOf(t) > timeBegin);
       const el = next ? textRefs.current.get(next.id) : newTextRef.current;
-      el?.focus();
+      el?.focus({ preventScroll: true }); // the row's own scroll box follows; the page does not
     },
     [doc],
   );
@@ -554,10 +568,8 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
       (t) => timeBeginOf(t) === selection.start && timeEndOf(t) === selection.end,
     );
     if (!match) return;
-    containerRef.current
-      ?.querySelector(`[data-segment-id="${match.id}"]`)
-      ?.scrollIntoView?.({ block: 'nearest' });
-  }, [selection, segments]);
+    revealRow(match.id);
+  }, [selection, segments, revealRow]);
 
   // A click on a timeline segment lands in its row, caret at the end; the
   // focus itself selects the segment and plays it on entry. With no row to
@@ -568,7 +580,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
     if (!token) return;
     const el = textRefs.current.get(token.id);
     if (el) {
-      el.focus();
+      el.focus({ preventScroll: true });
       const n = el.value.length;
       el.setSelectionRange(n, n);
     } else {
@@ -611,7 +623,10 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
       {/* The rows scroll inside a bounded box so a long transcript never pushes
           the recording controls, the timeline, or the new-segment row out of
           reach. Focus and timeline picks scroll their row into view. */}
-      <div className="flex max-h-[45vh] min-h-[6rem] flex-col gap-1.5 overflow-y-auto pr-1">
+      <div
+        ref={listRef}
+        className="flex max-h-[45vh] min-h-[6rem] flex-col gap-1.5 overflow-y-auto pr-1"
+      >
         {segments.length === 0 && (
           <p className="py-2 text-sm text-muted-foreground">
             {readOnly

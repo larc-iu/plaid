@@ -124,10 +124,13 @@ test('the transcript adds a segment at the playhead and Enter saves an edit', as
   await expect(page.getByLabel('Segment 1 text')).toHaveValue('hello there');
 
   // A click on the segment in the timeline lands in its transcript row, with
-  // no popover in the way.
+  // no popover in the way, and the page itself does not move: only the
+  // transcript's own box may scroll, or the timeline would leave the viewport.
+  const pageY = await page.evaluate(() => window.scrollY);
   await page.locator('[title^="hello there"]').click();
   await expect(page.getByLabel('Segment 1 text')).toBeFocused();
   await expect(page.getByText('New segment', { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(pageY);
 
   // Editing the row: Enter saves (the token is recreated) and moves on to the
   // new-segment row, which is the last thing after the last segment.

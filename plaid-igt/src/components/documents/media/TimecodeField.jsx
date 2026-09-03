@@ -104,7 +104,7 @@ export const TimecodeField = memo(function TimecodeField({
   const focusSegment = (key) => {
     const el = inputs.current[key];
     if (!el) return;
-    el.focus();
+    el.focus({ preventScroll: true });
     el.select();
   };
   const neighbour = (key, dir) => {
