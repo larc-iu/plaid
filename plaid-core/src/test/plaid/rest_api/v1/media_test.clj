@@ -20,7 +20,6 @@
           (is (= 206 (:status response)))
           (is (= "3" (get-in response [:headers "Content-Length"])))
           (is (= "bytes 0-2/10" (get-in response [:headers "Content-Range"])))
-          (is (= "private, max-age=3600" (get-in response [:headers "Cache-Control"])))
           (is (= "abc" (body-string response)))))
       (testing "open-ended range"
         (is (= "hij" (body-string

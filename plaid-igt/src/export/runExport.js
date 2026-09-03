@@ -118,15 +118,16 @@ const extOfContentType = (contentType) => {
 };
 
 /**
- * Fetch a document's media. Same endpoint and auth as
- * client.documents.getMedia, but issued directly with fetch: the client's
- * _request is bounded by its default 30s timeout, which large media files
- * can easily exceed. (If the media route or auth scheme ever changes, getMedia
- * in plaid-client-js is the reference.) Returns { bytes, ext }.
+ * Fetch a document's media by the `mediaUrl` its document record carries. That
+ * URL names the file's version (`?v=`), so the browser cache can never hand
+ * back a recording that has since been replaced. A historical export gets the
+ * current recording too: media is not versioned, and the media route refuses
+ * `as-of`. Issued directly with fetch rather than client.documents.getMedia
+ * because the client's _request is bounded by its default 30s timeout, which
+ * large media files can easily exceed. Returns { bytes, ext, mime }.
  */
-export async function fetchDocumentMedia(client, documentId, asOf) {
-  const qs = asOf ? `?as-of=${encodeURIComponent(asOf)}` : '';
-  const res = await fetch(`${client.baseUrl}/api/v1/documents/${documentId}/media${qs}`, {
+export async function fetchDocumentMedia(client, mediaUrl) {
+  const res = await fetch(`${client.baseUrl}${mediaUrl}`, {
     headers: { Authorization: `Bearer ${client.token}` },
   });
   if (!res.ok) throw new Error(`media fetch failed (${res.status})`);
@@ -279,7 +280,7 @@ export async function runExport({
     let mediaType = '';
     if (includeMedia && igtDoc.raw?.mediaUrl) {
       try {
-        const { bytes, ext: mediaExt, mime } = await fetchMedia(client, docIds[i], asOf);
+        const { bytes, ext: mediaExt, mime } = await fetchMedia(client, igtDoc.raw.mediaUrl);
         let candidate = `${sanitizeFilename(name)}${mediaExt}`;
         [candidate] = dedupeFilenames([...usedMediaNames, candidate]).slice(-1);
         usedMediaNames.add(candidate);

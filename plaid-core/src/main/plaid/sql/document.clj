@@ -48,9 +48,9 @@
   :metadata when entity_metadata has rows for the document."
   [db id]
   (when-let [doc (row->document (psc/fetch-by-id db :documents id))]
-    (let [with-media (cond-> doc
-                       (media/media-exists? id)
-                       (assoc :document/media-url (str "/api/v1/documents/" id "/media")))]
+    (let [with-media (if-let [url (media/media-url id)]
+                       (assoc doc :document/media-url url)
+                       doc)]
       (metadata/add-metadata-to-response db with-media "document" id))))
 
 (defn project-id

@@ -234,10 +234,10 @@
   deleted from OLTP the URL is omitted: the media route's auth resolves
   the project from OLTP and would 403/404 (option B, task #138)."
   [m db doc-id]
-  (let [doc-deleted? (nil? (psc/fetch-by-id db :documents doc-id))]
+  (let [doc-deleted? (nil? (psc/fetch-by-id db :documents doc-id))
+        url (when-not doc-deleted? (media/media-url doc-id))]
     (cond-> m
-      (and (not doc-deleted?) (media/media-exists? doc-id))
-      (assoc :document/media-url (str "/api/v1/documents/" doc-id "/media")))))
+      url (assoc :document/media-url url))))
 
 (defn- build-document
   [db entity]

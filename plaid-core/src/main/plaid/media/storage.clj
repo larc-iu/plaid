@@ -131,6 +131,26 @@
   [doc-id]
   (some? (find-existing-media-file doc-id)))
 
+(defn media-version
+  "A cache key for the media file currently on disk for `doc-id`, or nil when
+  there is none: its last-modified time and size, which a delete and re-upload
+  always changes. Cheap (one directory listing, no content sniffing), so the
+  document read can afford it."
+  [doc-id]
+  (when-let [[file-path _] (find-existing-media-file doc-id)]
+    (let [file (io/file file-path)]
+      (str (.lastModified file) "-" (.length file)))))
+
+(defn media-url
+  "The URL clients fetch a document's media from, or nil when it has none. The
+  path alone is stable across a delete and re-upload, and a browser that cached
+  the bytes under it kept serving the deleted file. The file's version rides
+  along as `?v=` so the URL changes the moment the file does, and the media
+  route may then let a versioned response be cached for good."
+  [doc-id]
+  (when-let [v (media-version doc-id)]
+    (str "/api/v1/documents/" doc-id "/media?v=" v)))
+
 (defn get-media-info
   "Get information about a media file (size, extension, content-type)"
   [doc-id]
@@ -329,7 +349,8 @@
       {:success true
        :file (io/file (:file-path info))
        :content-type (:content-type info)
-       :size (:size info)}
+       :size (:size info)
+       :last-modified (:last-modified info)}
       {:success false :error "Media file not found"})
     (catch Exception e
       (log/error e "Failed to get media file for document" doc-id)

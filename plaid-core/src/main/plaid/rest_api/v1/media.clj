@@ -82,7 +82,8 @@
       (close [] (.close input)))))
 
 (defn stream-file-response
-  "Create a streaming response for a file with RFC-style single-range support."
+  "Create a streaming response for a file with RFC-style single-range support.
+  Cache headers are the handler's business (see `media-cache-headers`)."
   [file content-type size range-header]
   (if range-header
     (if-let [{:keys [start end]} (parse-byte-range range-header size)]
@@ -95,35 +96,61 @@
             (response/header "Content-Type" content-type)
             (response/header "Content-Length" (str length))
             (response/header "Content-Range" (str "bytes " start "-" end "/" size))
-            (response/header "Accept-Ranges" "bytes")
-            (response/header "Cache-Control" "private, max-age=3600")))
+            (response/header "Accept-Ranges" "bytes")))
       {:status 416
        :headers {"Content-Range" (str "bytes */" size)
-                 "Accept-Ranges" "bytes"
-                 "Cache-Control" "private, max-age=3600"}
+                 "Accept-Ranges" "bytes"}
        :body ""})
     (-> (response/response (FileInputStream. file))
         (response/header "Content-Type" content-type)
         (response/header "Content-Length" (str size))
-        (response/header "Accept-Ranges" "bytes")
-        (response/header "Cache-Control" "private, max-age=3600"))))
+        (response/header "Accept-Ranges" "bytes"))))
+
+(defn media-cache-headers
+  "The path `/documents/:id/media` never changes across a delete and re-upload,
+  and a browser that cached the bytes under it kept serving the deleted file
+  for the old hour-long max-age. Same contract as profile pictures now: a
+  request naming the file's version (`?v=`, as the document's `media-url`
+  carries it) can never go stale and is cached for a year; a bare request must
+  revalidate every time, which the ETag turns into a 304 while nothing changed."
+  [versioned?]
+  {"Cache-Control" (if versioned?
+                     "private, max-age=31536000, immutable"
+                     "private, no-cache")})
+
+(defn media-etag
+  "The same version the document's `media-url` carries, as a validator."
+  [{:keys [last-modified size]}]
+  (str "\"" last-modified "-" size "\""))
 
 (def media-routes
   ["/media"
    {:parameters {:path [:map [:document-id :uuid]]}}
 
    [""
-    {:get {:summary "Get media file for a document"
+    {:get {:summary (str "Get media file for a document. Fetch it through the document's "
+                         "<body>media-url</body>, whose <body>?v=</body> names the file's version: that "
+                         "response may be cached for a year and still changes the moment the file is "
+                         "replaced. A bare request is served with an ETag and must revalidate.")
            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
-           :handler (fn [{{{:keys [document-id]} :path} :parameters headers :headers}]
+           :handler (fn [{{{:keys [document-id]} :path} :parameters headers :headers
+                          query-params :query-params}]
                       (let [result (media/get-media-file document-id)
                             range-header (get headers "range")]
                         (if (:success result)
-                          (stream-file-response
-                           (:file result)
-                           (:content-type result)
-                           (:size result)
-                           range-header)
+                          (let [etag (media-etag result)
+                                ;; Blank counts as absent: `?v=` with nothing after
+                                ;; it names no particular file.
+                                cache (media-cache-headers
+                                       (not (str/blank? (get query-params "v"))))]
+                            (if (= (get headers "if-none-match") etag)
+                              {:status 304 :headers (assoc cache "ETag" etag) :body ""}
+                              (-> (stream-file-response
+                                   (:file result)
+                                   (:content-type result)
+                                   (:size result)
+                                   range-header)
+                                  (update :headers merge cache {"ETag" etag}))))
                           {:status 404
                            :body {:error (:error result)}})))}
 

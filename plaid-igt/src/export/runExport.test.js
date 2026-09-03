@@ -396,12 +396,13 @@ describe('runExport — native plaid-igt-json', () => {
       project: PROJECT,
       preset: nativePreset(),
       scope: { type: 'project' },
-      fetchMedia: async (_c, id, asOf) => {
-        fetched.push([id, asOf]);
+      fetchMedia: async (_c, url) => {
+        fetched.push(url);
         return { bytes: new Uint8Array([9, 9]), ext: '.wav' };
       },
     });
-    expect(fetched).toEqual([['d1', null]]);
+    // Fetched by the document's own mediaUrl, which carries the file's version.
+    expect(fetched).toEqual(['/api/v1/documents/d1/media']);
     const entries = await unzipBlob(result.blob);
     expect([...entries['media/A.wav']]).toEqual([9, 9]);
     const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
