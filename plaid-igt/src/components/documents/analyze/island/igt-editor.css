@@ -1758,10 +1758,11 @@
 .igt-mwe.is-hot .igt-mwe__rule {
   border-color: #1d4ed8;
 }
-/* Machine-made (auto-linked, unconfirmed): the violet of chips and cells. */
+/* State is COLOR only, so the line's pattern is free to mean one thing: a
+   dotted stretch is a skipped word. Machine-made (auto-linked, unconfirmed):
+   the violet of chips and cells. */
 .igt-mwe--machine .igt-mwe__rule {
   border-color: #c4b5fd;
-  border-top-style: dashed;
 }
 .igt-mwe__label--machine {
   color: var(--igt-violet);
@@ -1771,10 +1772,9 @@
 .igt-mwe__label--verified {
   text-decoration-color: #c4b5fd;
 }
-/* The selection in progress: a dashed blue line under the chosen words. */
+/* The selection in progress: a blue line under the chosen words. */
 .igt-mwe--pending .igt-mwe__rule {
   border-color: #93c5fd;
-  border-top-style: dashed;
 }
 .igt-mwe__label--pending {
   color: #1d4ed8;
