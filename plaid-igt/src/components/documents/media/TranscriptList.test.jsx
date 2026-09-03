@@ -38,6 +38,7 @@ const makeOps = (over = {}) => ({
   setSelection: vi.fn(),
   setPopoverOpened: vi.fn(),
   playRange: vi.fn(),
+  playRangeFromHere: vi.fn(),
   pausePlayback: vi.fn(),
   togglePlayback: vi.fn(),
   autoPlayOnFocus: true,
@@ -119,7 +120,7 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 
-  it('Shift+Space in a row plays its segment, and Ctrl+Space no longer does', async () => {
+  it('Shift+Space in a row plays on within its segment (never from its start), and Ctrl+Space no longer does', async () => {
     const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
     const ops = makeOps({ autoPlayOnFocus: false });
     const r = await renderComponent(element(doc, ops));
@@ -127,10 +128,13 @@ describe('TranscriptList', () => {
     await r.step(() => second.focus());
     const shifted = press(second, ' ', { code: 'Space', shiftKey: true });
     expect(shifted.defaultPrevented).toBe(true);
-    expect(ops.playRange).toHaveBeenCalledWith({ start: 1.5, end: 3 });
+    // The resume-or-restart operation, not the seek-to-start one that
+    // play-on-entry uses.
+    expect(ops.playRangeFromHere).toHaveBeenCalledWith({ start: 1.5, end: 3 });
+    expect(ops.playRange).not.toHaveBeenCalled();
     const ctrl = press(second, ' ', { code: 'Space', ctrlKey: true });
     expect(ctrl.defaultPrevented).toBe(false);
-    expect(ops.playRange).toHaveBeenCalledTimes(1);
+    expect(ops.playRangeFromHere).toHaveBeenCalledTimes(1);
     await r.unmount();
   });
 

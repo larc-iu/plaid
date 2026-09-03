@@ -146,6 +146,56 @@ test('the transcript adds a segment at the playhead and Enter saves an edit', as
   expect.soft(realFailures, 'no unexpected API failures during transcription').toEqual([]);
 });
 
+test('Shift+Space in a row pauses and plays on from there; only a finished segment starts over', async ({
+  page,
+}) => {
+  const diag = collectClientErrors(page);
+  await seedAuth(page);
+  await openMedia(page);
+  const row = page.getByLabel('Segment 1 text');
+  await expect(row).toHaveValue('hello there friend', { timeout: 15000 });
+  const state = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('audio, video');
+      return el ? { t: el.currentTime, paused: el.paused } : null;
+    });
+  const paused = async () => (await state())?.paused;
+
+  // Into the row: the segment (0 to 4.99 s) plays from its start.
+  await row.focus();
+  await page.waitForTimeout(150);
+  if (await paused()) await row.press('Shift+Space');
+  await expect.poll(paused).toBe(false);
+  await page.waitForTimeout(700);
+
+  // Pause mid-segment, then the chord again: playback goes on from where it
+  // stopped, never back to the start.
+  await row.press('Shift+Space');
+  await expect.poll(paused).toBe(true);
+  const { t: pausedAt } = await state();
+  expect(pausedAt).toBeGreaterThan(0.3);
+  expect(pausedAt).toBeLessThan(4);
+  await row.press('Shift+Space');
+  await expect.poll(paused).toBe(false);
+  await page.waitForTimeout(300);
+  const { t: resumedAt } = await state();
+  expect(resumedAt).toBeGreaterThanOrEqual(pausedAt);
+  expect(resumedAt).toBeLessThan(pausedAt + 1.5);
+
+  // It stops at the segment's end; from there the chord starts the segment over.
+  await expect.poll(paused, { timeout: 10000 }).toBe(true);
+  expect((await state()).t).toBeGreaterThan(4.5);
+  await row.press('Shift+Space');
+  await expect.poll(paused).toBe(false);
+  await page.waitForTimeout(200);
+  expect((await state()).t).toBeLessThan(1.5);
+  await row.press('Shift+Space');
+  await expect.poll(paused).toBe(true);
+
+  const realFailures = diag.failures.filter((f) => !/\/media(\?|$)/.test(f.url || ''));
+  expect.soft(realFailures, 'no unexpected API failures during playback').toEqual([]);
+});
+
 test('uploaded media can be deleted from the UI', async ({ page }) => {
   await seedAuth(page);
   await openMedia(page);

@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 // The Media tab's "?" legend, the counterpart of the Analyze grid's: every
 // gesture the tab answers to, in one place, so nobody has to open the guide to
-// learn that Enter saves a row or that Ctrl/Cmd+Space replays a segment.
+// learn that Enter saves a row or that Shift+Space pauses and resumes a segment.
 
 const Kbd = ({ children }) => (
   <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-[11px]">{children}</kbd>
@@ -46,10 +46,10 @@ export function MediaHelp() {
       aria-label="Keyboard help"
     >
       <Row label="Playback">
-        <Kbd>Space</Kbd> play / pause, outside a text box · <Kbd>⇧</Kbd>+<Kbd>Space</Kbd> play /
-        pause the segment you are in, or the selected stretch · <Kbd>⇧</Kbd>+<Kbd>←</Kbd>{' '}
-        <Kbd>→</Kbd> back / forward 1 s · speed 0.25× to 5×, click the value for 1× · loop repeats
-        the segment until you pause
+        <Kbd>Space</Kbd> play / pause, outside a text box · <Kbd>⇧</Kbd>+<Kbd>Space</Kbd> pause /
+        resume the segment you are in, or the selected stretch (from its start when playback is
+        elsewhere) · <Kbd>⇧</Kbd>+<Kbd>←</Kbd> <Kbd>→</Kbd> back / forward 1 s · speed 0.25× to 5×,
+        click the value for 1× · loop repeats the segment until you pause
       </Row>
       <Row label="Transcript">
         one row per segment, in time order · moving into a row plays it (switch it off above the

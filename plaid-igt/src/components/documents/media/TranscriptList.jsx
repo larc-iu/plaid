@@ -484,8 +484,11 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
         ops.playingSelection &&
         ops.playingSelection.start === range.start &&
         ops.playingSelection.end === range.end;
+      // Pause, or play on: from where playback stopped when that is inside
+      // the segment (a transcriber pauses to type and picks up where they
+      // left off), from the segment's start when playback is elsewhere.
       if (ops.isPlaying && isThis) ops.pausePlayback();
-      else ops.playRange(range);
+      else ops.playRangeFromHere(range);
     },
     [doc],
   );

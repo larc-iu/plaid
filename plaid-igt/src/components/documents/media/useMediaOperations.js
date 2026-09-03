@@ -291,6 +291,24 @@ export const useMediaOperations = () => {
     el.play().catch(() => {});
   }, []);
 
+  // Play a stretch the way a transcriber expects of a segment they paused in:
+  // on from where playback stopped when that is inside the stretch (pausing
+  // to type must not throw the listener back to the start), from the start
+  // when playback is elsewhere or already at the end. Stops at the end
+  // either way.
+  const playRangeFromHere = useCallback((range) => {
+    const el = mediaElementRef.current;
+    if (!range || !el) return;
+    const at = el.currentTime;
+    const inside = Number.isFinite(at) && at >= range.start && at < range.end - 0.05;
+    if (!inside) {
+      el.currentTime = range.start;
+      setCurrentTime(range.start);
+    }
+    setPlayingSelection({ start: range.start, end: range.end });
+    el.play().catch(() => {});
+  }, []);
+
   const handlePlaySelection = useCallback(() => {
     if (selection) playRange(selection);
   }, [selection, playRange]);
@@ -589,7 +607,8 @@ export const useMediaOperations = () => {
         seekBy(e.key === 'ArrowLeft' ? -1 : 1);
         return;
       }
-      // Shift+Space plays or pauses the selected stretch, outside a text box.
+      // Shift+Space pauses, or plays the selected stretch on from where it
+      // stopped, outside a text box.
       // (Inside one, the row handles it for its own segment.) Shift because
       // it is the one modifier every platform leaves alone: Ctrl+Space and
       // Cmd+Space belong to macOS, Alt+Space to Windows and GNOME.
@@ -605,7 +624,7 @@ export const useMediaOperations = () => {
         const el = mediaElementRef.current;
         if (!el) return;
         if (isPlaying) el.pause();
-        else if (selection) handlePlaySelection();
+        else if (selection) playRangeFromHere(selection);
         else el.play().catch(() => {});
         return;
       }
@@ -630,7 +649,7 @@ export const useMediaOperations = () => {
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [selection, isPlaying, handlePlaySelection, seekBy]);
+  }, [selection, isPlaying, playRangeFromHere, seekBy]);
 
   // Monitor range playback: at the end of the range, loop back to its start
   // when looping is on, otherwise snap to the end and pause.
@@ -780,6 +799,7 @@ export const useMediaOperations = () => {
     handleClearSelection,
     getCurrentTime,
     playRange,
+    playRangeFromHere,
     pausePlayback,
     togglePlayback,
     seekBy,
