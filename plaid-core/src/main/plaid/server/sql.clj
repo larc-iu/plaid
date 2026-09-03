@@ -79,6 +79,28 @@
     (catch Exception e
       (log/warn e "WAL checkpoint failed during shutdown"))))
 
+(defn- refresh-planner-stats!
+  "Run a sampled ANALYZE so SQLite plans against the database as it is
+   now, then drop the pool's open connections so every later one loads
+   the fresh statistics (a connection reads them when it opens). Stale
+   statistics mislead: a table analysed when it held a few rows keeps
+   being planned as tiny, and the planner scans it rather than probe its
+   primary key, which cost seconds per document read on a million-row
+   entity_metadata. Sampling caps the work at a few hundred rows per
+   index, so this is cheap even on a large database."
+  [datasource]
+  (try
+    (let [t0 (System/nanoTime)]
+      (with-open [conn (.getConnection datasource)
+                  stmt (.createStatement conn)]
+        (.execute stmt "PRAGMA analysis_limit=400;")
+        (.execute stmt "ANALYZE;"))
+      (.softEvictConnections (.getHikariPoolMXBean datasource))
+      (log/info (format "Planner statistics refreshed in %dms"
+                        (quot (- (System/nanoTime) t0) 1000000))))
+    (catch Exception e
+      (log/warn e "ANALYZE failed at startup; SQLite plans with the statistics it has"))))
+
 (defn- coerce-slow-query-threshold-ms
   "Coerce the operator-supplied :slow-query-threshold-ms config value to
   long. Strings parse via Long/parseLong (env-var case where Aero's
@@ -195,6 +217,7 @@
                                  (constantly threshold-ms))
                ds (psc/build-datasource db-path pool-cfg)]
            (run-migrations! ds)
+           (refresh-planner-stats! ds)
            (when (and (empty? (pxu/get-all ds))
                       (not (System/getenv "SKIP_ACCOUNT_CREATION_PROMPT")))
              (make-admin-user ds))
