@@ -53,6 +53,13 @@ test('file picker uploads media and reveals the timeline', async ({ page }) => {
   await expect(page.getByText('Timeline', { exact: true })).toBeVisible({ timeout: 15000 });
   await expect(page.getByText('Upload Media File')).toHaveCount(0);
 
+  // The "?" legend opens and closes from the Recording header.
+  const help = page.getByRole('button', { name: 'Keyboard help' });
+  await help.click();
+  await expect(page.getByRole('region', { name: 'Keyboard help' })).toContainText('Transcript');
+  await help.click();
+  await expect(page.getByRole('region', { name: 'Keyboard help' })).toHaveCount(0);
+
   // The media PUT round-tripped (mediaUrl now set on the document).
   const putMedia = diag.apiCalls.find((c) => c.method === 'PUT' && /\/media(\?|$)/.test(c.url));
   expect(putMedia, 'a PUT .../media call was made').toBeTruthy();

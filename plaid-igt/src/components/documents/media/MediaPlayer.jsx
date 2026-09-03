@@ -15,6 +15,7 @@ import {
   Repeat,
 } from 'lucide-react';
 import { formatTime } from './formatTime.js';
+import { MediaHelp, MediaHelpButton } from './MediaHelp.jsx';
 import { PLAYBACK_RATE_MIN, PLAYBACK_RATE_MAX, PLAYBACK_RATE_STEP } from './useMediaOperations.js';
 
 export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
@@ -49,6 +50,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
   // because the default was 'video' and the box only hid once metadata said
   // otherwise — and stayed if the file never loaded).
   const [mediaType, setMediaType] = useState('unknown');
+  const [helpOpen, setHelpOpen] = useState(false);
   const animationFrameRef = useRef(null);
 
   // Expose media element reference to parent
@@ -126,8 +128,9 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
     <TooltipProvider>
       <div className="tw rounded-lg border bg-card p-4">
         <div className="flex items-center justify-between mb-4">
-          <div>
+          <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold">Recording</h3>
+            <MediaHelpButton open={helpOpen} onToggle={() => setHelpOpen((v) => !v)} />
           </div>
           {mediaUrl && (
             <div className="flex items-center gap-2">
@@ -151,6 +154,8 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
         </div>
 
         <div className="flex flex-col gap-4">
+          {helpOpen && <MediaHelp />}
+
           {/* Media error. `mediaLoadError` is the fetch that builds the blob
               failing; `mediaError` is the element rejecting what it got. The
               fetch is what surfaces an auth/network failure now that <video>
