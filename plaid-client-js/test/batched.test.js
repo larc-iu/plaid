@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { PlaidClient } from '../src/index.js';
+import { PlaidClient, MAX_BATCH_OPS } from '../src/index.js';
 
 function makeClient() {
   return new PlaidClient('http://localhost:0', 'dummy-token');
@@ -60,4 +60,35 @@ test('the block runs with batch mode open', async () => {
   await client.batched(async () => { inside = client.isBatchMode(); });
   assert.strictEqual(inside, true);
   assert.strictEqual(client.isBatchMode(), false);
+});
+
+// The server caps a batch at MAX_BATCH_OPS. A larger one is sent as
+// consecutive requests with the results concatenated in queue order, so a
+// repair or bulk edit over a big document never fails on its size alone.
+test('a batch over the server cap goes as consecutive requests, results in order', async () => {
+  const client = makeClient();
+  const sizes = [];
+  const realFetch = global.fetch;
+  global.fetch = async (_url, opts) => {
+    const ops = JSON.parse(opts.body);
+    sizes.push(ops.length);
+    const body = ops.map((op) => ({ status: 200, body: { path: op.path } }));
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  try {
+    const n = MAX_BATCH_OPS + 1;
+    const results = await client.batched(async () => {
+      for (let i = 0; i < n; i++) client.documents.update(`doc-${i}`, `name-${i}`);
+    });
+    assert.deepStrictEqual(sizes, [MAX_BATCH_OPS, 1]);
+    assert.strictEqual(results.length, n);
+    assert.ok(results[0].body.path.endsWith('doc-0'));
+    assert.ok(results[n - 1].body.path.endsWith(`doc-${n - 1}`));
+    assert.strictEqual(client.isBatchMode(), false);
+  } finally {
+    global.fetch = realFetch;
+  }
 });

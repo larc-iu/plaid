@@ -83,6 +83,12 @@ async function anonymousPost(baseUrl, path, body, options = {}) {
   }
 }
 
+/**
+ * The server's cap on operations per batch request (plaid.rest-api.v1.batch).
+ * A batch queued past it is submitted as consecutive requests.
+ */
+const MAX_BATCH_OPS = 1000;
+
 class PlaidClient {
   /**
    * Create a new PlaidClient instance
@@ -2432,71 +2438,84 @@ class PlaidClient {
     }
 
     try {
-      let url = `${this.baseUrl}/api/v1/batch`;
-      const body = this.batchOperations.map((op) => ({
+      const url = `${this.baseUrl}/api/v1/batch`;
+      const ops = this.batchOperations.map((op) => ({
         path: op.path,
         method: op.method.toUpperCase(),
         ...(op.body && { body: op.body }),
       }));
-
-      const fetchOptions = {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      };
-
-      try {
-        // Retry a 503: the batch is atomic, so a refused one wrote nothing and
-        // repeating it is safe. A fresh timeout signal per attempt — an
-        // AbortSignal.timeout stays aborted once it fires.
-        const response = await retryWhileBusy(async () => {
-          const signal = timeoutSignal(this.batchTimeout);
-          const res = await fetch(
-            url,
-            signal ? { ...fetchOptions, signal } : fetchOptions,
-          );
-          if (!res.ok) {
-            throw makeHttpError(res, await parseErrorBody(res), url, "POST");
-          }
-          return res;
-        });
-
-        const results = await response.json();
-
-        // Extract document versions from each batch response
-        for (const result of results) {
-          if (result.headers && result.headers["X-Document-Versions"]) {
-            try {
-              const versionsMap = JSON.parse(
-                result.headers["X-Document-Versions"],
-              );
-              if (typeof versionsMap === "object" && versionsMap !== null) {
-                // Clone once per response, then merge — not once per entry.
-                this.documentVersions = {
-                  ...this.documentVersions,
-                  ...versionsMap,
-                };
-              }
-            } catch (e) {
-              console.warn(
-                "Failed to parse document versions header from batch response:",
-                e,
-              );
-            }
-          }
-        }
-
-        return results.map((result) => transformResponse(result));
-      } catch (error) {
-        if (error.status) throw error;
-        throw makeNetworkError(error, url, "POST");
+      // The server caps a batch at MAX_BATCH_OPS so one transaction cannot
+      // hold the write lock without bound. A larger batch goes as consecutive
+      // requests, results concatenated in queue order: it could not have been
+      // one transaction anyway, and a repair or bulk edit over a big document
+      // must not fail on its size alone.
+      const results = [];
+      for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
+        results.push(...(await this._postBatch(url, ops.slice(i, i + MAX_BATCH_OPS))));
       }
+      return results;
     } finally {
       this.isBatching = false;
       this.batchOperations = [];
+    }
+  }
+
+  /** POST one batch request (at most MAX_BATCH_OPS operations); resolves to its transformed results. */
+  async _postBatch(url, body) {
+    const fetchOptions = {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    };
+
+    try {
+      // Retry a 503: the batch is atomic, so a refused one wrote nothing and
+      // repeating it is safe. A fresh timeout signal per attempt — an
+      // AbortSignal.timeout stays aborted once it fires.
+      const response = await retryWhileBusy(async () => {
+        const signal = timeoutSignal(this.batchTimeout);
+        const res = await fetch(
+          url,
+          signal ? { ...fetchOptions, signal } : fetchOptions,
+        );
+        if (!res.ok) {
+          throw makeHttpError(res, await parseErrorBody(res), url, "POST");
+        }
+        return res;
+      });
+
+      const results = await response.json();
+
+      // Extract document versions from each batch response
+      for (const result of results) {
+        if (result.headers && result.headers["X-Document-Versions"]) {
+          try {
+            const versionsMap = JSON.parse(
+              result.headers["X-Document-Versions"],
+            );
+            if (typeof versionsMap === "object" && versionsMap !== null) {
+              // Clone once per response, then merge — not once per entry.
+              this.documentVersions = {
+                ...this.documentVersions,
+                ...versionsMap,
+              };
+            }
+          } catch (e) {
+            console.warn(
+              "Failed to parse document versions header from batch response:",
+              e,
+            );
+          }
+        }
+      }
+
+      return results.map((result) => transformResponse(result));
+    } catch (error) {
+      if (error.status) throw error;
+      throw makeNetworkError(error, url, "POST");
     }
   }
 
@@ -2715,3 +2734,4 @@ export {
   verifyOnEdit,
   serviceSource,
 } from "./provenance.js";
+export { MAX_BATCH_OPS };

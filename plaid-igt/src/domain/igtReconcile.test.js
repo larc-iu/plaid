@@ -189,7 +189,12 @@ describe('IgtDocument.reconcileOnOpen', () => {
     const res = await doc.reconcileOnOpen();
 
     expect(res).toMatchObject({ created: 1, deleted: 0 });
-    expect(client.calls.filter((c) => c.kind === 'tokens.create').length).toBe(1);
+    // One bulk create carries every bare word, so a big document stays under
+    // the server's per-batch cap.
+    const bulk = client.calls.filter((c) => c.kind === 'tokens.bulkCreate');
+    expect(bulk.length).toBe(1);
+    expect(bulk[0].args[0]).toMatchObject([{ begin: 4, end: 7, precedence: 1 }]);
+    expect(client.calls.filter((c) => c.kind === 'tokens.create').length).toBe(0);
     const morphemes = doc.layerInfo.morphemeTokenLayer.tokens;
     expect(morphemes.length).toBe(2);
     // the new morpheme is full-width over the bare word [4, 7]

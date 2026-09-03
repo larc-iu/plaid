@@ -463,10 +463,19 @@ export class IgtDocument {
         const results = await this._client.batched(async () => {
           if (morphemeWork && orphanMorphemeIds.length)
             this._client.tokens.bulkDelete(orphanMorphemeIds);
-          if (morphemeWork) {
-            wordsNeedingMorpheme.forEach((w) => {
-              this._client.tokens.create(morphemeLayer.id, textId, w.begin, w.end, 1);
-            });
+          // One bulk create for every bare word: a document with thousands of
+          // them must stay under the server's per-batch cap, and the ids come
+          // back in input order.
+          if (morphemeWork && wordsNeedingMorpheme.length) {
+            this._client.tokens.bulkCreate(
+              wordsNeedingMorpheme.map((w) => ({
+                tokenLayerId: morphemeLayer.id,
+                text: textId,
+                begin: w.begin,
+                end: w.end,
+                precedence: 1,
+              })),
+            );
           }
           // Dedup ops LAST so the morpheme-create result slicing below stays simple.
           dedupPlans.forEach((p) => {
@@ -481,11 +490,10 @@ export class IgtDocument {
             this._client.tokens.patchMetadata(p.morphemeId, { morphType: p.morphType });
           });
         });
-        // Op order: the optional bulkDelete first, then one create per bare word.
+        // Op order: the optional bulkDelete first, then the bulk create.
         const createOffset = morphemeWork && orphanMorphemeIds.length ? 1 : 0;
-        const createCount = morphemeWork ? wordsNeedingMorpheme.length : 0;
-        const createResults = results.slice(createOffset, createOffset + createCount);
-        const newIds = createResults.map((r) => r?.body?.id ?? r?.id);
+        const created = morphemeWork && wordsNeedingMorpheme.length ? results[createOffset] : null;
+        const newIds = created?.body?.ids ?? created?.ids ?? [];
         const removed = new Set(orphanMorphemeIds);
 
         this._applyRawPatch((next, infoNext, vocabs) => {

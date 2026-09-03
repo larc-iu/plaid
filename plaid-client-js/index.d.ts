@@ -852,6 +852,9 @@ export function cpIndexOf(s: string, sub: string, fromCp?: number): number;
 export const PLAID_NAMESPACE: "plaid";
 /** The config key, under `plaid`, holding a layer's role. */
 export const ROLE_KEY: "role";
+
+/** The server's cap on operations per batch request; a larger batch goes as consecutive requests. */
+export const MAX_BATCH_OPS: 1000;
 /** The fixed role inventory; only these values are interoperable across apps. */
 export const ROLES: {
   readonly BASELINE: "baseline";

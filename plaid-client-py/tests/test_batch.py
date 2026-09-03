@@ -73,3 +73,39 @@ def test_query_does_not_join_an_open_batch():
             paths = [op['path'].split('?')[0] for op in c.batch_operations]
             assert paths == ['/api/v1/tokens']
             raise RuntimeError('done checking')  # abort rather than submit
+
+
+def test_a_batch_over_the_server_cap_goes_as_consecutive_requests_results_in_order(monkeypatch):
+    # The server caps a batch at MAX_BATCH_OPS. A larger one is sent as
+    # consecutive requests with the results concatenated in queue order, so a
+    # repair or bulk edit over a big document never fails on its size alone.
+    import json
+    from plaid_client.client import MAX_BATCH_OPS
+    c = _client()
+    sizes = []
+
+    class Resp:
+        ok = True
+        status_code = 200
+
+        def __init__(self, ops):
+            self._ops = ops
+
+        def json(self):
+            return [{'status': 200, 'body': {'path': op['path']}} for op in self._ops]
+
+    def fake_post(url, headers=None, data=None, timeout=None):
+        ops = json.loads(data)
+        sizes.append(len(ops))
+        return Resp(ops)
+
+    monkeypatch.setattr(c.session, 'post', fake_post)
+    n = MAX_BATCH_OPS + 1
+    with c.batched() as b:
+        for i in range(n):
+            c.documents.update(f'doc-{i}', f'name-{i}')
+    assert sizes == [MAX_BATCH_OPS, 1]
+    assert len(b.results) == n
+    assert b.results[0]['body']['path'].endswith('doc-0')
+    assert b.results[-1]['body']['path'].endswith(f'doc-{n - 1}')
+    assert c.is_batch_mode() is False

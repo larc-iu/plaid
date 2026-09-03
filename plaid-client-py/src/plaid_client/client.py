@@ -17,6 +17,10 @@ from plaid_client.http import (
 )
 from plaid_client.transforms import transform_response
 from plaid_client.sse import SSEConnection
+
+# The server's cap on operations per batch request (plaid.rest-api.v1.batch).
+# A batch queued past it is submitted as consecutive requests.
+MAX_BATCH_OPS = 1000
 from plaid_client import services as svc
 
 
@@ -2620,44 +2624,54 @@ class PlaidClient:
 
         try:
             url = f'{self.base_url}/api/v1/batch'
-            body = []
+            ops = []
             for op in self.batch_operations:
                 entry = {'path': op['path'], 'method': op['method'].upper()}
                 if 'body' in op:
                     entry['body'] = op['body']
-                body.append(entry)
+                ops.append(entry)
 
             headers = {
                 'Authorization': f'Bearer {self.token}',
                 'Content-Type': 'application/json',
             }
 
-            # Retry a 503: the batch is atomic, so a refused one wrote nothing
-            # and repeating it is safe. The batch timeout is its own, longer
-            # budget — giving up here does not stop the server's transaction.
-            def attempt():
-                resp = self.session.post(url, headers=headers, data=json.dumps(body),
-                                         timeout=self.batch_timeout)
-                if not resp.ok:
-                    raise build_api_error(resp, url, 'POST')
-                return resp
+            # The server caps a batch at MAX_BATCH_OPS so one transaction
+            # cannot hold the write lock without bound. A larger batch goes
+            # as consecutive requests, results concatenated in queue order:
+            # it could not have been one transaction anyway, and a repair or
+            # bulk edit over a big document must not fail on its size alone.
+            results_out: list[Any] = []
+            for start in range(0, len(ops), MAX_BATCH_OPS):
+                body = ops[start:start + MAX_BATCH_OPS]
 
-            response = retry_while_busy(attempt)
+                # Retry a 503: the batch is atomic, so a refused one wrote
+                # nothing and repeating it is safe. The batch timeout is its
+                # own, longer budget — giving up here does not stop the
+                # server's transaction.
+                def attempt(body=body):
+                    resp = self.session.post(url, headers=headers, data=json.dumps(body),
+                                             timeout=self.batch_timeout)
+                    if not resp.ok:
+                        raise build_api_error(resp, url, 'POST')
+                    return resp
 
-            results = response.json()
+                response = retry_while_busy(attempt)
+                results = response.json()
 
-            for result in results:
-                if isinstance(result, dict) and 'headers' in result:
-                    dv_header = result['headers'].get('X-Document-Versions')
-                    if dv_header:
-                        try:
-                            versions_map = json.loads(dv_header)
-                            if isinstance(versions_map, dict):
-                                self.document_versions.update(versions_map)
-                        except (json.JSONDecodeError, TypeError):
-                            pass
+                for result in results:
+                    if isinstance(result, dict) and 'headers' in result:
+                        dv_header = result['headers'].get('X-Document-Versions')
+                        if dv_header:
+                            try:
+                                versions_map = json.loads(dv_header)
+                                if isinstance(versions_map, dict):
+                                    self.document_versions.update(versions_map)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
 
-            return [transform_response(r) for r in results]
+                results_out.extend(transform_response(r) for r in results)
+            return results_out
         except PlaidAPIError:
             raise
         except Exception as e:
