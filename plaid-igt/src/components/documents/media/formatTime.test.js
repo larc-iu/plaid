@@ -1,5 +1,37 @@
 import { describe, it, expect } from 'vitest';
-import { formatTime } from './formatTime.js';
+import { formatTime, parseTime } from './formatTime.js';
+
+describe('parseTime', () => {
+  it('reads what formatTime writes, and bare seconds', () => {
+    expect(parseTime('0:03.417')).toBe(3.417);
+    expect(parseTime('1:05.500')).toBe(65.5);
+    expect(parseTime('1:02:05.250')).toBe(3725.25);
+    expect(parseTime('65.25')).toBe(65.25);
+    expect(parseTime('7')).toBe(7);
+    expect(parseTime(' 0:03 ')).toBe(3);
+  });
+
+  it('pads a short fraction as decimal digits, not as milliseconds', () => {
+    expect(parseTime('3.5')).toBe(3.5);
+    expect(parseTime('0:03.4')).toBe(3.4);
+    expect(parseTime('0:03.41')).toBe(3.41);
+  });
+
+  it('rejects text that is not a time', () => {
+    expect(parseTime('')).toBeNull();
+    expect(parseTime('abc')).toBeNull();
+    expect(parseTime('1:75.000')).toBeNull();
+    expect(parseTime('1:75:00.000')).toBeNull();
+    expect(parseTime('3.4567')).toBeNull();
+    expect(parseTime('-2')).toBeNull();
+  });
+
+  it('round-trips through formatTime', () => {
+    for (const s of [0, 0.001, 59.999, 60, 3599.999, 3600, 3725.25]) {
+      expect(parseTime(formatTime(s))).toBe(s);
+    }
+  });
+});
 
 describe('formatTime', () => {
   it('shows milliseconds, always', () => {

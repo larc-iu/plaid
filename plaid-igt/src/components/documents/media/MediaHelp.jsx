@@ -57,6 +57,11 @@ export function MediaHelp() {
         · <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the previous one
         to playback at <Kbd>Enter</Kbd>
       </Row>
+      <Row label="Times">
+        a segment's start and end are editable: type a time (1:05.250, or seconds) · <Kbd>↑</Kbd>{' '}
+        <Kbd>↓</Kbd> nudge 10 ms, <Kbd>⇧</Kbd>+ 100 ms · <Kbd>Enter</Kbd> or leaving the field saves
+        · <Kbd>Esc</Kbd> puts it back · a segment cannot run into its neighbours
+      </Row>
       <Row label="Timeline">
         drag an empty stretch to add a segment · drag an edge to trim · click a segment to open it ·
         in the popover <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+<Kbd>Enter</Kbd> saves, <Kbd>Esc</Kbd>{' '}

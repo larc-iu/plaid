@@ -114,6 +114,7 @@ To transcribe by ear, play the recording, then type the utterance you just heard
 The segment runs from the end of the previous one to wherever playback is when you save.
 Every segment is a row in the transcript, and the recording follows you: moving into a row plays that segment, Enter saves the row and moves to the next, Escape puts a row back the way it was, and Ctrl+Space plays or pauses without leaving the row.
 Turn off "Play segment on entry" to play by hand.
+A segment's start and end times are editable in its row: type a time, or press Up and Down to nudge by 10 milliseconds, 100 with Shift; Enter or leaving the field saves, and a segment can never run into its neighbours.
 The speed slider runs from 0.2× to 5×, and the loop button repeats the segment you are on until you pause.
 Ctrl/Cmd+Left and Ctrl/Cmd+Right move playback one second, in a transcript row or out of one.
 
@@ -283,6 +284,7 @@ To write such a program, see the link:api-py.html[Python client] and link:api-js
 | **Ctrl/Cmd+Space** (Media tab) | Play or pause the segment you are in, or the selected stretch of the timeline.
 | **Ctrl/Cmd+Left** / **Ctrl/Cmd+Right** (Media tab) | Move playback one second back or forward.
 | **Enter** / **Escape** (transcript row) | Save the row and move to the next, or put the row back the way it was.
+| **Up** / **Down** (segment time) | Nudge a segment's start or end by 10 milliseconds, 100 with Shift.
 |===
 
 = Future Work

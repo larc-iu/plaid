@@ -15,9 +15,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { notifyError } from '@/utils/feedback';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
-import { formatTime } from './formatTime.js';
+import { formatTime, parseTime } from './formatTime.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
@@ -28,7 +29,8 @@ import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 // Rows are keyed by token id. Editing a segment's text recreates its token
 // (delete + insert cascade, see mutations/alignment.js), so a row that was just
 // edited unmounts and its successor mounts. Focus therefore always MOVES on a
-// commit (to the next row, or to the new-segment row) and never tries to stay.
+// text commit (to the next row, or to the new-segment row) and never tries to
+// stay. A time edit only patches metadata, so the row and its focus stay put.
 // The document single-flights its writes, so a commit waits for any write in
 // flight before issuing its own instead of being dropped.
 
@@ -36,6 +38,13 @@ const SPEAKER_LIST_ID = 'transcript-speaker-options';
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
+
+// A boundary nudge is 10 ms, or 100 ms with Shift: fine enough to land a
+// boundary by ear, coarse enough that holding the key moves it visibly.
+const NUDGE = 0.01;
+const NUDGE_SHIFT = 0.1;
+// The shortest segment a keyboard edit may leave behind.
+const MIN_SEGMENT = 0.01;
 
 // Resolves once the document has no write in flight.
 const whenIdle = (doc) =>
@@ -57,6 +66,98 @@ const autoGrow = (el) => {
   el.style.height = `${el.scrollHeight}px`;
 };
 
+// One boundary of a segment: shows the time, takes a typed time, and nudges
+// with Up/Down. Commits on Enter or blur, keeps focus on Enter so a nudge can
+// be heard (Ctrl/Cmd+Space) and nudged again. The parent decides whether the
+// new time is legal; a refusal puts the field back.
+const TimeField = memo(function TimeField({ value, label, onCommit, onPlayToggle }) {
+  const [draft, setDraftState] = useState(formatTime(value));
+  const draftRef = useRef(draft);
+  const dirtyRef = useRef(false);
+  const inFlight = useRef(null);
+  const setDraft = (v) => {
+    draftRef.current = v;
+    setDraftState(v);
+  };
+
+  useEffect(() => {
+    if (!dirtyRef.current) setDraft(formatTime(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const revert = () => {
+    dirtyRef.current = false;
+    setDraft(formatTime(value));
+  };
+
+  const commit = () => {
+    if (inFlight.current) return inFlight.current;
+    const run = async () => {
+      if (!dirtyRef.current) return true;
+      const parsed = parseTime(draftRef.current);
+      if (parsed === null) {
+        notifyError('Times look like 1:05.250, or plain seconds.', 'Not a time');
+        revert();
+        return false;
+      }
+      if (Math.abs(parsed - value) < 0.0005) {
+        revert();
+        return true;
+      }
+      dirtyRef.current = false;
+      const ok = await onCommit(parsed);
+      if (!ok) setDraft(formatTime(value));
+      return ok;
+    };
+    inFlight.current = run().finally(() => {
+      inFlight.current = null;
+    });
+    return inFlight.current;
+  };
+
+  const nudge = (direction, shift) => {
+    const base = parseTime(draftRef.current) ?? value;
+    const step = shift ? NUDGE_SHIFT : NUDGE;
+    const next = Math.max(0, Math.round((base + direction * step) * 1000) / 1000);
+    dirtyRef.current = true;
+    setDraft(formatTime(next));
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      nudge(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      revert();
+    } else if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      onPlayToggle();
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft}
+      aria-label={label}
+      spellCheck={false}
+      autoComplete="off"
+      className="h-4 w-[4.6rem] rounded border border-transparent bg-transparent px-0.5 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground hover:border-input focus:border-input focus:text-foreground focus:outline-none"
+      onChange={(e) => {
+        dirtyRef.current = true;
+        setDraft(e.target.value);
+      }}
+      onKeyDown={onKeyDown}
+      onBlur={commit}
+    />
+  );
+});
+
 const SegmentRow = memo(function SegmentRow({
   token,
   index,
@@ -66,6 +167,7 @@ const SegmentRow = memo(function SegmentRow({
   readOnly,
   onFocusRow,
   onCommit,
+  onCommitTime,
   onAdvance,
   onDelete,
   onPlayToggle,
@@ -167,6 +269,7 @@ const SegmentRow = memo(function SegmentRow({
   };
 
   const machine = isMachine(token.metadata);
+  const playToggle = () => onPlayToggle(token);
 
   return (
     <div
@@ -177,8 +280,27 @@ const SegmentRow = memo(function SegmentRow({
       )}
     >
       <div className="flex flex-col pt-1 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground">
-        <span>{formatTime(timeBeginOf(token))}</span>
-        <span>{formatTime(timeEndOf(token))}</span>
+        {readOnly ? (
+          <>
+            <span>{formatTime(timeBeginOf(token))}</span>
+            <span>{formatTime(timeEndOf(token))}</span>
+          </>
+        ) : (
+          <>
+            <TimeField
+              value={timeBeginOf(token)}
+              label={`Segment ${index + 1} start`}
+              onCommit={(seconds) => onCommitTime(token.id, 'begin', seconds)}
+              onPlayToggle={playToggle}
+            />
+            <TimeField
+              value={timeEndOf(token)}
+              label={`Segment ${index + 1} end`}
+              onCommit={(seconds) => onCommitTime(token.id, 'end', seconds)}
+              onPlayToggle={playToggle}
+            />
+          </>
+        )}
         {machine && (
           <span className="mt-0.5 text-[10px] uppercase tracking-wide text-violet-600">
             machine
@@ -235,7 +357,7 @@ const SegmentRow = memo(function SegmentRow({
           size="icon"
           className="h-8 w-8"
           aria-label={playing ? 'Pause segment' : 'Play segment'}
-          onClick={() => onPlayToggle(token)}
+          onClick={playToggle}
         >
           {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         </Button>
@@ -256,7 +378,7 @@ const SegmentRow = memo(function SegmentRow({
 });
 
 // The row that adds a segment by ear: it runs from the end of the last
-// segment to wherever the playhead is when Enter is pressed. Adding a segment
+// segment to wherever playback is when Enter is pressed. Adding a segment
 // earlier in the recording is the timeline's job (drag over the stretch).
 const NewSegmentRow = memo(function NewSegmentRow({
   prevEnd,
@@ -308,7 +430,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
 
   return (
     <div className="grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border border-dashed px-2 py-1.5">
-      <div className="flex flex-col pt-1 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground">
+      <div className="flex w-[4.6rem] flex-col pt-1 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground">
         <span>{formatTime(prevEnd)}</span>
         <span>{ready ? formatTime(currentTime) : '…'}</span>
       </div>
@@ -395,16 +517,21 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
       ?.scrollIntoView?.({ block: 'nearest' });
   }, []);
 
-  const handlePlayToggle = useCallback((token) => {
-    const ops = opsRef.current;
-    const range = { start: timeBeginOf(token), end: timeEndOf(token) };
-    const isThis =
-      ops.playingSelection &&
-      ops.playingSelection.start === range.start &&
-      ops.playingSelection.end === range.end;
-    if (ops.isPlaying && isThis) ops.pausePlayback();
-    else ops.playRange(range);
-  }, []);
+  const handlePlayToggle = useCallback(
+    (token) => {
+      const ops = opsRef.current;
+      // The token handed over may predate a time edit; play what is stored now.
+      const live = doc.alignmentTokens.find((t) => t.id === token.id) ?? token;
+      const range = { start: timeBeginOf(live), end: timeEndOf(live) };
+      const isThis =
+        ops.playingSelection &&
+        ops.playingSelection.start === range.start &&
+        ops.playingSelection.end === range.end;
+      if (ops.isPlaying && isThis) ops.pausePlayback();
+      else ops.playRange(range);
+    },
+    [doc],
+  );
 
   const handleCommit = useCallback(
     async (id, { text, speaker }) => {
@@ -423,6 +550,48 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
       }
       if (speaker !== storedSpeaker) return doc.updateAlignmentSpeaker(id, speaker);
       return true;
+    },
+    [doc],
+  );
+
+  // A typed or nudged boundary. Legal when the segment keeps a positive length,
+  // stays inside the recording, and does not run into its neighbours in time;
+  // anything else is refused with the reason, and the field goes back.
+  const handleCommitTime = useCallback(
+    async (id, which, seconds) => {
+      await whenIdle(doc);
+      const sorted = [...doc.alignmentTokens].sort(byTime);
+      const i = sorted.findIndex((t) => t.id === id);
+      if (i < 0) return false;
+      const token = sorted[i];
+      const timeBegin = which === 'begin' ? seconds : timeBeginOf(token);
+      const timeEnd = which === 'end' ? seconds : timeEndOf(token);
+      const duration = opsRef.current.duration;
+      if (timeEnd - timeBegin < MIN_SEGMENT) {
+        notifyError('A segment must end after it starts.', 'Time not saved');
+        return false;
+      }
+      if (Number.isFinite(duration) && duration > 0 && timeEnd > duration + 0.001) {
+        notifyError(`The recording ends at ${formatTime(duration)}.`, 'Time not saved');
+        return false;
+      }
+      const prev = sorted[i - 1];
+      const next = sorted[i + 1];
+      if (prev && timeBegin < timeEndOf(prev)) {
+        notifyError(
+          `The previous segment ends at ${formatTime(timeEndOf(prev))}.`,
+          'Time not saved',
+        );
+        return false;
+      }
+      if (next && timeEnd > timeBeginOf(next)) {
+        notifyError(
+          `The next segment starts at ${formatTime(timeBeginOf(next))}.`,
+          'Time not saved',
+        );
+        return false;
+      }
+      return doc.updateAlignmentBounds(id, { timeBegin, timeEnd });
     },
     [doc],
   );
@@ -516,6 +685,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
             readOnly={readOnly}
             onFocusRow={handleFocusRow}
             onCommit={handleCommit}
+            onCommitTime={handleCommitTime}
             onAdvance={handleAdvance}
             onDelete={handleDelete}
             onPlayToggle={handlePlayToggle}

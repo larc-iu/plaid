@@ -101,14 +101,27 @@ test('the transcript adds a segment at the playhead and Enter saves an edit', as
   await fresh.press('Enter');
   const row = page.getByLabel('Segment 1 text');
   await expect(row).toHaveValue('hello there', { timeout: 15000 });
-  await expect(page.getByText('0:00.000').first()).toBeVisible();
-  await expect(page.getByText('0:05.000').first()).toBeVisible();
+  await expect(page.getByLabel('Segment 1 start')).toHaveValue('0:00.000');
+  await expect(page.getByLabel('Segment 1 end')).toHaveValue('0:05.000');
   await expect(fresh).toHaveValue('');
+
+  // A boundary nudged by keyboard is saved when the field is left, and survives
+  // a reload: the patch went to the server, not just the row.
+  const end = page.getByLabel('Segment 1 end');
+  await end.focus();
+  await end.press('ArrowDown');
+  await expect(end).toHaveValue('0:04.990');
+  await end.press('Tab');
+  await expect(end).toHaveValue('0:04.990');
+  await openMedia(page);
+  await expect(page.getByLabel('Segment 1 end')).toHaveValue('0:04.990', { timeout: 15000 });
+  await expect(page.getByLabel('Segment 1 text')).toHaveValue('hello there');
 
   // Editing the row: Enter saves (the token is recreated) and moves on to the
   // new-segment row, which is the last thing after the last segment.
-  await row.fill('hello there friend');
-  await row.press('Enter');
+  const rowAgain = page.getByLabel('Segment 1 text');
+  await rowAgain.fill('hello there friend');
+  await rowAgain.press('Enter');
   await expect(page.getByLabel('Segment 1 text')).toHaveValue('hello there friend', {
     timeout: 15000,
   });
