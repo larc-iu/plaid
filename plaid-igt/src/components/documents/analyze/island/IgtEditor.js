@@ -3215,17 +3215,17 @@ export class IgtEditor {
         <div class="igt-legend__row">
           <strong>Guesses</strong>
           <span
-            >violet italic values are guesses from the linked entry or from matching forms.
-            <kbd>↵</kbd> accepts this cell, <kbd>Ctrl</kbd>+<kbd>↵</kbd> accepts the whole word,
-            typing replaces, leaving the cell discards · <kbd>Alt</kbd>+<kbd>↓</kbd> lists every
-            value seen for the form, with counts</span
+            >gray italic placeholders are guesses from the linked entry or from matching forms, not
+            yet in the document. <kbd>↵</kbd> takes this cell's, <kbd>Ctrl</kbd>+<kbd>↵</kbd>
+            takes the whole word's, typing replaces, leaving the cell drops it ·
+            <kbd>Alt</kbd>+<kbd>↓</kbd> lists every value seen for the form, with counts</span
           >
         </div>
         <div class="igt-legend__row">
           <strong>Provenance</strong>
           <span
-            ><span class="igt-legend__prov igt-legend__prov--machine">violet italic</span> =
-            machine-made, unverified ·
+            ><span class="igt-legend__prov igt-legend__prov--machine">violet italic</span> = a
+            machine wrote it into the document, unverified ·
             <span class="igt-legend__prov igt-legend__prov--verified">violet underline</span> =
             machine-made, confirmed by a person · plain = made by a person · editing a value
             confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> accepts everything proposed on a word

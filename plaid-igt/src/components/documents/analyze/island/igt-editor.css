@@ -675,16 +675,14 @@
 .igt-field--filled {
   color: #111827;
 }
-/* Gloss guess (FLEx-style): the suggestion lives in the placeholder — violet
-   italic, clearly not-yet-real — and is only written on explicit confirm. */
+/* Gloss guess (FLEx-style): the suggestion lives in the placeholder and is
+   only written on explicit confirm. An ordinary gray placeholder, NOT violet:
+   violet means a machine wrote something into the document, and a guess is
+   not in the document until a person takes it. */
 .igt-field--guess::placeholder {
-  color: var(--igt-violet);
+  color: #9ca3af;
   font-style: italic;
-  opacity: 0.75;
-}
-.igt-field--guess {
-  border-bottom-style: dashed;
-  border-bottom-color: #c4b5fd;
+  opacity: 1;
 }
 
 /* ---- provenance states ----

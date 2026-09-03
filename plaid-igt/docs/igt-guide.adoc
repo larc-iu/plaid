@@ -132,7 +132,8 @@ What you can do here:
 * **Copy as IGT**: copy a formatted version of a sentence to the clipboard for pasting into a paper or a message, as aligned plain text, tab-separated text, LaTeX (gb4e or ExPex), or leipzig.js HTML.
 
 Plaid IGT also tracks where each value came from.
-A machine-made value, such as an unconfirmed guess or an auto-made vocabulary link, shows in **violet italic** to mark it unverified.
+A machine-made value, such as a gloss a service proposed or an auto-made vocabulary link, shows in **violet italic** to mark it unverified: it is in the document, and waits for a person to confirm or discard it.
+A guess is different: a faint gray placeholder in an empty cell that is not in the document at all until you take it with Enter.
 Anything you type shows plain, and editing a machine value confirms it.
 Hover over an annotation to reveal text indicating its provenance.
 The exact editing gestures are collected under <<_keyboard_shortcuts>>.
