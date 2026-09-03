@@ -556,15 +556,17 @@ export const useMediaOperations = () => {
   // Setup hotkeys (replaces Mantine useHotkeys; ignores events from form fields).
   useEffect(() => {
     const onKeyDown = (e) => {
-      // Ctrl/Cmd+Left / Ctrl/Cmd+Right seek one second, in a text box or out of
-      // one, so a transcriber can re-hear a stretch without leaving the row.
-      // Inside the transcript's text boxes this takes the place of word-jump
-      // (Ctrl) and line start/end (Cmd); on a Mac, Ctrl+Arrow belongs to the
-      // system, so Cmd is the only key that can carry the gesture there.
+      // Shift+Left / Shift+Right seek one second, in a text box or out of one,
+      // so a transcriber can re-hear a stretch without leaving the row. Shift
+      // for the same reason as Shift+Space: Ctrl+Arrow is Mission Control on a
+      // Mac and Cmd+Arrow is line start/end in every text box, while Shift is
+      // the one modifier every platform leaves alone. Inside a row this costs
+      // extending a selection by one character, and nothing else.
       if (
-        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
         !e.altKey &&
-        !e.shiftKey &&
         (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
       ) {
         e.preventDefault();

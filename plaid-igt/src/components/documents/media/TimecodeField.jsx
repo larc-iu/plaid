@@ -152,7 +152,9 @@ export const TimecodeField = memo(function TimecodeField({
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault();
       nudge(key, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
-    } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && plain) {
+    } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && plain && !e.shiftKey) {
+      // Plain arrows move between boxes; Shift+Arrow is the tab's seek and is
+      // left for the document to handle.
       e.preventDefault();
       const nextKey = neighbour(key, e.key === 'ArrowLeft' ? -1 : 1);
       if (nextKey) focusSegment(nextKey);

@@ -47,9 +47,9 @@ export function MediaHelp() {
     >
       <Row label="Playback">
         <Kbd>Space</Kbd> play / pause, outside a text box · <Kbd>⇧</Kbd>+<Kbd>Space</Kbd> play /
-        pause the segment you are in, or the selected stretch · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+
-        <Kbd>←</Kbd> <Kbd>→</Kbd> back / forward 1 s · speed 0.2× to 5×, click the value for 1× ·
-        loop repeats the segment until you pause
+        pause the segment you are in, or the selected stretch · <Kbd>⇧</Kbd>+<Kbd>←</Kbd>{' '}
+        <Kbd>→</Kbd> back / forward 1 s · speed 0.2× to 5×, click the value for 1× · loop repeats
+        the segment until you pause
       </Row>
       <Row label="Transcript">
         one row per segment, in time order · moving into a row plays it (switch it off above the

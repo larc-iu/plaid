@@ -56,6 +56,10 @@ describe('TimecodeField', () => {
     expect(document.activeElement).toBe(box(r.container, 'milliseconds'));
     await r.step(() => press(box(r.container, 'milliseconds'), 'ArrowLeft'));
     expect(document.activeElement).toBe(s);
+    // Shift+Arrow is the tab's seek, not box movement: left alone here.
+    const seek = press(s, 'ArrowRight', { shiftKey: true });
+    expect(seek.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(s);
     await r.step(() => setValue(s, '12'));
     await r.step(async () => {
       press(box(r.container, 'milliseconds'), 'Enter');
