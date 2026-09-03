@@ -338,6 +338,56 @@
         :else
         (handler req)))))
 
+(def ^:private gzip-content-types
+  #{"application/json" "text/javascript" "application/javascript" "text/css"
+    "text/html" "image/svg+xml" "application/xml" "text/plain"})
+
+(defn- header-value
+  "A response header by name, whatever case the producer used."
+  [headers name]
+  (some (fn [[k v]] (when (= (str/lower-case (str k)) name) v)) headers))
+
+(defn- gzip-eligible? [req resp]
+  (let [ct (some-> (header-value (:headers resp) "content-type")
+                   str/lower-case (str/split #";") first str/trim)
+        body (:body resp)
+        accept (or (get-in req [:headers "accept-encoding"]) "")]
+    (and (re-find #"\bgzip\b" accept)
+         (contains? gzip-content-types ct)
+         (nil? (header-value (:headers resp) "content-encoding"))
+         (nil? (header-value (:headers resp) "content-range"))
+         (not (#{204 304} (:status resp)))
+         (or (string? body) (bytes? body)
+             (instance? java.io.InputStream body) (instance? java.io.File body))
+         (not (and (string? body) (< (count body) 1024))))))
+
+(defn- gzip-bytes ^bytes [body]
+  (let [bos (java.io.ByteArrayOutputStream.)]
+    (with-open [gz (java.util.zip.GZIPOutputStream. bos)]
+      (cond
+        (string? body) (.write gz (.getBytes ^String body "UTF-8"))
+        (bytes? body) (.write gz ^bytes body)
+        :else (io/copy body gz)))
+    (.toByteArray bos)))
+
+(defn wrap-gzip-response
+  "Gzip text-like responses (JSON, scripts, styles, markup) for clients that
+   accept it: a document body is megabytes of JSON that shrinks tenfold on
+   the wire. Media, event streams, ranged and already-encoded responses,
+   and anything under a kilobyte pass through untouched."
+  [handler]
+  (fn [req]
+    (let [resp (handler req)]
+      (if (and (map? resp) (gzip-eligible? req resp))
+        (-> resp
+            (assoc :body (gzip-bytes (:body resp)))
+            (update :headers
+                    (fn [headers]
+                      (-> (into {} (remove (fn [[k _]] (= (str/lower-case (str k)) "content-length")))
+                                headers)
+                          (assoc "Content-Encoding" "gzip" "Vary" "Accept-Encoding")))))
+        resp))))
+
 (defn- cors-origin-has-regex-meta?
   "True when an operator-supplied CORS origin string contains characters
   that ring-cors's `Pattern/quote` will treat literally — typically a
@@ -389,6 +439,9 @@
         wrap-static-resources
         wrap-health
         (wrap-defaults defaults-config)
+        ;; Outside wrap-defaults so static files already carry the
+        ;; Content-Type the eligibility check reads.
+        wrap-gzip-response
         ;; JSON body cap sits AFTER wrap-defaults so the upstream
         ;; handlers see Content-Length on raw bytes (not on what a
         ;; downstream parser might inflate). Placed inside wrap-cors
