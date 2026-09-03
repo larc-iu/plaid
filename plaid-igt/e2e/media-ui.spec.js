@@ -74,6 +74,43 @@ test('file picker uploads media and reveals the timeline', async ({ page }) => {
   expect.soft(realFailures, 'no unexpected API failures during upload').toEqual([]);
 });
 
+test('the transcript adds a segment at the playhead and Enter saves an edit', async ({ page }) => {
+  const diag = collectClientErrors(page);
+  await seedAuth(page);
+  await openMedia(page);
+  await expect(page.getByText('Timeline', { exact: true })).toBeVisible({ timeout: 15000 });
+
+  // The flow needs a decoded recording (duration > 0). Headless Chromium decodes
+  // the 6s WAV; if it ever does not, say so instead of failing on a hint string.
+  await page.getByRole('button', { name: 'Skip forward 5 seconds' }).click();
+  const hint = page.getByText(/now at 0:05\.000/);
+  if (!(await hint.isVisible().catch(() => false))) {
+    test.skip(true, 'media did not decode in headless Chromium, so the playhead cannot move');
+  }
+
+  // Type what was "heard" and save: the segment runs from 0 to the playhead.
+  const fresh = page.getByLabel('New segment text');
+  await fresh.fill('hello there');
+  await fresh.press('Enter');
+  const row = page.getByLabel('Segment 1 text');
+  await expect(row).toHaveValue('hello there', { timeout: 15000 });
+  await expect(page.getByText('0:00.000').first()).toBeVisible();
+  await expect(page.getByText('0:05.000').first()).toBeVisible();
+  await expect(fresh).toHaveValue('');
+
+  // Editing the row: Enter saves (the token is recreated) and moves on to the
+  // new-segment row, which is the last thing after the last segment.
+  await row.fill('hello there friend');
+  await row.press('Enter');
+  await expect(page.getByLabel('Segment 1 text')).toHaveValue('hello there friend', {
+    timeout: 15000,
+  });
+  await expect(page.getByLabel('New segment text')).toBeFocused();
+
+  const realFailures = diag.failures.filter((f) => !/\/media(\?|$)/.test(f.url || ''));
+  expect.soft(realFailures, 'no unexpected API failures during transcription').toEqual([]);
+});
+
 test('uploaded media can be deleted from the UI', async ({ page }) => {
   await seedAuth(page);
   await openMedia(page);
@@ -81,15 +118,9 @@ test('uploaded media can be deleted from the UI', async ({ page }) => {
   // Media should already be present from the previous test (same throwaway doc).
   await expect(page.getByText('Timeline', { exact: true })).toBeVisible({ timeout: 15000 });
 
-  // The delete control lives in the player; accept it via the confirm() dialog.
-  page.on('dialog', (d) => d.accept());
-  const delBtn = page.getByRole('button', { name: /delete media/i });
-  if (await delBtn.count()) {
-    await delBtn.first().click();
-    await expect(page.getByText('Upload Media File')).toBeVisible({ timeout: 15000 });
-  } else {
-    test
-      .info()
-      .annotations.push({ type: 'note', text: 'no explicit Delete Media button found; skipped' });
-  }
+  // The delete control lives in the player and confirms through the app's own
+  // dialog (an AlertDialog, not window.confirm), so accept it by its button.
+  await page.getByRole('button', { name: 'Delete media file' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByText('Upload Media File')).toBeVisible({ timeout: 15000 });
 });

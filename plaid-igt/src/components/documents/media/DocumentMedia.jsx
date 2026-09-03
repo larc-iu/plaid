@@ -14,6 +14,7 @@ import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useMediaOperations } from './useMediaOperations.js';
 import { MediaPlayer } from './MediaPlayer.jsx';
 import { Timeline } from './Timeline.jsx';
+import { TranscriptList } from './TranscriptList.jsx';
 import { MediaUpload } from './MediaUpload.jsx';
 import { ServiceSummary } from '../services/ServiceSummary.jsx';
 import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
@@ -51,6 +52,9 @@ export function DocumentMedia() {
       <div className="relative">
         <Timeline mediaOps={mediaOps} readOnly={readOnly} />
       </div>
+
+      {/* Transcript: the segments as rows, for transcribing by ear */}
+      <TranscriptList mediaOps={mediaOps} readOnly={readOnly} />
 
       {/* ASR Controls */}
       <div className="rounded-lg border bg-muted/50 p-4">

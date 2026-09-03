@@ -6,13 +6,7 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/comp
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useTimelineOperations } from './useTimelineOperations.js';
 import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
-
-// Utility function for formatting time
-const formatTime = (seconds) => {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-};
+import { formatTime } from './formatTime.js';
 
 // Stable hue per speaker label, so a diarized timeline is readable at a glance
 // (same speaker → same color across segments). Unlabeled segments keep the

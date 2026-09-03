@@ -106,11 +106,21 @@ A project can also define additional **orthographies**, alternate representation
 
 == Media
 
-The **Media** tab allows you to associate an audio or video file with the document and transcribe speech.
-The text of this transcribed speech is added to the baseline text for the document.
-With a transcription service connected, this transcription can also be performed automatically for you by a model (see <<_services>>).
-Media is optional, useful for phonetic reference and for checking your segmentation against the recording.
-Diarization is not yet fully supported, but a workaround for the moment is to indicate the speaker with a sentence-level annotation.
+The **Media** tab attaches an audio or video file to the document and holds its transcript as time-aligned segments.
+Each segment is a stretch of the recording with its text, which becomes part of the baseline, and an optional speaker label.
+Media is optional, and a document with none is simply a text.
+
+To transcribe by ear, play the recording, then type the utterance you just heard into the **New segment** row and press Enter.
+The segment runs from the end of the previous one to wherever the playhead is when you save.
+Every segment is a row in the transcript, and the recording follows you: moving into a row plays that segment, Enter saves the row and moves to the next, Escape puts a row back the way it was, and Ctrl+Space plays or pauses without leaving the row.
+Turn off "Play each segment as you move into it" if you would rather play by hand.
+The speed control slows the recording down, and the loop button repeats the segment you are on until you pause.
+
+The timeline shows the same segments against the waveform.
+Drag across an empty stretch to add a segment anywhere in the recording, drag a segment's edge to trim it, and click one to open it.
+Times are shown to the millisecond everywhere.
+Speakers are labeled per segment, and the timeline colors each speaker's segments alike.
+With a transcription service connected, a model can take the first pass, and its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
 
 == Tokenize
 
@@ -268,6 +278,9 @@ To write such a program, see the link:api-py.html[Python client] and link:api-js
 | **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence; add **Ctrl** to skip a word.
 | **Enter** (while gathering) | Link the gathered words to one entry. **Escape** drops them.
 | **Escape** | Close an open popover or menu.
+| **Space** (Media tab) | Play or pause the recording, when you are not typing in a box.
+| **Ctrl/Cmd+Space** (Media tab) | Play or pause the segment you are in, or the selected stretch of the timeline.
+| **Enter** / **Escape** (transcript row) | Save the row and move to the next, or put the row back the way it was.
 |===
 
 = Future Work

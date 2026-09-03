@@ -18,6 +18,36 @@ const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
 const SERVICE_KEY = 'plaid_igt_transcribe_service';
 const PARAMS_PREFIX = 'plaid_igt_transcribe_params_';
 
+// Per-user listening preferences. They shape how the recording is heard, not
+// what is stored, so they live in the browser like the copy-as-IGT favorite.
+const RATE_KEY = 'plaid_igt_playback_rate';
+const LOOP_KEY = 'plaid_igt_loop_segment';
+const AUTOPLAY_KEY = 'plaid_igt_play_on_focus';
+export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+const readStored = (key, fallback, parse) => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const value = parse(raw);
+    return value === undefined ? fallback : value;
+  } catch {
+    return fallback;
+  }
+};
+const writeStored = (key, value) => {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // A full or blocked store only loses the preference for next time.
+  }
+};
+const parseRate = (raw) => {
+  const n = Number(raw);
+  return PLAYBACK_RATES.includes(n) ? n : undefined;
+};
+const parseBool = (raw) => (raw === 'true' ? true : raw === 'false' ? false : undefined);
+
 // Media tab operations, backed by the shared IgtDocument. This hook OWNS all
 // transient media UI state (playback position, selection, popover, ASR options)
 // as local React state, and delegates every mutation to the domain model
@@ -53,6 +83,15 @@ export const useMediaOperations = () => {
   const [transcriptionProgress, setTranscriptionProgress] = useState(0);
   const [currentOperation, setCurrentOperation] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+
+  // Listening preferences (see the *_KEY constants). `playbackRateRef` mirrors
+  // the state for the deps-`[]` element registration, like `volumeRef`.
+  const [playbackRate, setPlaybackRate] = useState(() => readStored(RATE_KEY, 1, parseRate));
+  const playbackRateRef = useRef(playbackRate);
+  const [loopSegment, setLoopSegmentState] = useState(() => readStored(LOOP_KEY, false, parseBool));
+  const [autoPlayOnFocus, setAutoPlayOnFocusState] = useState(() =>
+    readStored(AUTOPLAY_KEY, true, parseBool),
+  );
 
   // ASR service hook
   const {
@@ -151,7 +190,10 @@ export const useMediaOperations = () => {
     // Apply the current volume to a freshly-registered element. This covers the
     // element mounting after the initial 0.8 (or a later value) was set, since
     // the `[volume]` effect below won't re-run just because the ref changed.
-    if (element) element.volume = volumeRef.current;
+    if (element) {
+      element.volume = volumeRef.current;
+      element.playbackRate = playbackRateRef.current;
+    }
   }, []);
 
   const setAutoScrollToTime = useCallback((fn) => {
@@ -210,20 +252,57 @@ export const useMediaOperations = () => {
     }
   }, [duration]);
 
+  // Play one stretch of the recording and stop (or loop) at its end. Setting
+  // currentTime moves the official playback position at once, so play() picks
+  // up from the new position without waiting for `seeked`. The returned
+  // promise is ignored: a rejection here is the browser's autoplay policy, and
+  // every caller runs from a user gesture.
+  const playRange = useCallback((range) => {
+    const el = mediaElementRef.current;
+    if (!range || !el) return;
+    el.currentTime = range.start;
+    setCurrentTime(range.start);
+    setPlayingSelection({ start: range.start, end: range.end });
+    el.play().catch(() => {});
+  }, []);
+
   const handlePlaySelection = useCallback(() => {
-    if (selection && mediaElementRef.current) {
-      mediaElementRef.current.currentTime = selection.start;
-      setPlayingSelection(selection);
+    if (selection) playRange(selection);
+  }, [selection, playRange]);
 
-      // Wait for seek to complete before starting playback
-      const handleSeeked = () => {
-        mediaElementRef.current.removeEventListener('seeked', handleSeeked);
-        mediaElementRef.current.play();
-      };
+  const pausePlayback = useCallback(() => {
+    mediaElementRef.current?.pause();
+  }, []);
 
-      mediaElementRef.current.addEventListener('seeked', handleSeeked);
+  // Play from the playhead, or pause. Free playback (no range) never auto-stops.
+  const togglePlayback = useCallback(() => {
+    const el = mediaElementRef.current;
+    if (!el) return;
+    if (isPlaying) {
+      el.pause();
+    } else {
+      setPlayingSelection(null);
+      el.play().catch(() => {});
     }
-  }, [selection]);
+  }, [isPlaying]);
+
+  const handlePlaybackRateChange = useCallback((rate) => {
+    const value = PLAYBACK_RATES.includes(rate) ? rate : 1;
+    playbackRateRef.current = value;
+    setPlaybackRate(value);
+    if (mediaElementRef.current) mediaElementRef.current.playbackRate = value;
+    writeStored(RATE_KEY, value);
+  }, []);
+
+  const setLoopSegment = useCallback((on) => {
+    setLoopSegmentState(!!on);
+    writeStored(LOOP_KEY, !!on);
+  }, []);
+
+  const setAutoPlayOnFocus = useCallback((on) => {
+    setAutoPlayOnFocusState(!!on);
+    writeStored(AUTOPLAY_KEY, !!on);
+  }, []);
 
   const handleClearSelection = useCallback(() => {
     setSelection(null);
@@ -406,6 +485,27 @@ export const useMediaOperations = () => {
     setCurrentOperation('');
   }, [alignmentTokens, doc, updateProgress, confirm]);
 
+  // Deleting a segment deletes its text from the baseline (the cascade then
+  // removes the token), so it is confirmed with what actually goes.
+  const handleDeleteAlignment = useCallback(
+    async (alignmentId) => {
+      if (
+        !(await confirm({
+          title: 'Delete this segment?',
+          description:
+            'Its text leaves the baseline, along with any words, glosses and other annotations on that text. ' +
+            'This cannot be undone.',
+          confirmLabel: 'Delete segment',
+          destructive: true,
+        }))
+      ) {
+        return false;
+      }
+      return doc.deleteAlignment(alignmentId);
+    },
+    [doc, confirm],
+  );
+
   const handleAlgorithmChange = useCallback((value) => {
     setAsrAlgorithm(value);
     // Cache the selection
@@ -422,6 +522,11 @@ export const useMediaOperations = () => {
     volumeRef.current = volume;
     if (mediaElementRef.current) mediaElementRef.current.volume = volume;
   }, [volume]);
+
+  useEffect(() => {
+    playbackRateRef.current = playbackRate;
+    if (mediaElementRef.current) mediaElementRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
 
   // Setup hotkeys (replaces Mantine useHotkeys; ignores events from form fields).
   useEffect(() => {
@@ -455,17 +560,21 @@ export const useMediaOperations = () => {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [selection, isPlaying, handlePlaySelection]);
 
-  // Monitor selection playback and auto-pause at end
+  // Monitor range playback: at the end of the range, loop back to its start
+  // when looping is on, otherwise snap to the end and pause.
   useEffect(() => {
     const monitorSelection = () => {
       if (playingSelection && mediaElementRef.current && isPlaying) {
         const t = mediaElementRef.current.currentTime;
         if (t >= playingSelection.end) {
-          // Reached end of selection, snap to exact end and pause
-          mediaElementRef.current.currentTime = playingSelection.end;
-          mediaElementRef.current.pause();
-          setPlayingSelection(null);
-          return; // Stop monitoring
+          if (loopSegment) {
+            mediaElementRef.current.currentTime = playingSelection.start;
+          } else {
+            mediaElementRef.current.currentTime = playingSelection.end;
+            mediaElementRef.current.pause();
+            setPlayingSelection(null);
+            return; // Stop monitoring
+          }
         }
       }
 
@@ -489,7 +598,7 @@ export const useMediaOperations = () => {
         selectionMonitorRef.current = null;
       }
     };
-  }, [playingSelection, isPlaying]);
+  }, [playingSelection, isPlaying, loopSegment]);
 
   // Trigger service discovery on component mount
   useEffect(() => {
@@ -595,10 +704,24 @@ export const useMediaOperations = () => {
     handleSkipToEnd,
     handlePlaySelection,
     handleClearSelection,
+    playRange,
+    pausePlayback,
+    togglePlayback,
+
+    // Listening preferences
+    playbackRate,
+    handlePlaybackRateChange,
+    loopSegment,
+    setLoopSegment,
+    autoPlayOnFocus,
+    setAutoPlayOnFocus,
 
     // Media file operations
     handleMediaUpload,
     handleDeleteMedia,
+
+    // Segment operations
+    handleDeleteAlignment,
 
     // ASR operations
     handleAsrDropdownInteraction,

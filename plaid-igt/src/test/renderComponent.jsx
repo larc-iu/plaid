@@ -25,6 +25,12 @@ export async function renderComponent(element) {
         await fn();
       });
     },
+    /** Render a new element into the same root (new props, same instances). */
+    async rerender(next) {
+      await act(async () => {
+        root.render(next);
+      });
+    },
     async unmount() {
       await act(async () => {
         root.unmount();

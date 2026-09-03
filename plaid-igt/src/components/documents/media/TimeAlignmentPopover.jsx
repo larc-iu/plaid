@@ -9,15 +9,11 @@ import { cn } from '@/lib/utils';
 import { notifySuccess } from '@/utils/feedback';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useAlignmentEditor } from './useAlignmentEditor.js';
+import { formatTime } from './formatTime.js';
+import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 
 // Matches Mantine useHotkeys default: ignore key events originating from form fields.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
-
-// Sticky speaker for fast diarization: a new segment defaults to the speaker of
-// the previously-saved one, so labeling a run of same-speaker turns is one
-// keystroke (just save). Session-scoped; the persisted truth is the token
-// metadata + the project speaker cache.
-let lastSpeaker = '';
 
 export const TimeAlignmentPopover = ({
   opened,
@@ -63,7 +59,7 @@ export const TimeAlignmentPopover = ({
         // Default to 'new' mode, let user choose
         setMode('new');
         setText('');
-        setSpeaker(lastSpeaker);
+        setSpeaker(getStickySpeaker());
       }
     }
   }, [opened, existingAlignment]);
@@ -117,7 +113,7 @@ export const TimeAlignmentPopover = ({
 
       if (!ok) return; // Domain method toasted the error via doc.onError
 
-      lastSpeaker = sp; // sticky default for the next new segment
+      setStickySpeaker(sp); // sticky default for the next new segment
 
       notifySuccess(
         mode === 'edit'
@@ -175,12 +171,6 @@ export const TimeAlignmentPopover = ({
     return () => document.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, readOnly, mode, text, speaker, saving, isProcessing, existingAlignment]);
-
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
 
   const stop = (e) => e.stopPropagation();
 

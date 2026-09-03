@@ -1,6 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
@@ -12,14 +19,10 @@ import {
   FastForward,
   Volume2,
   Trash2,
+  Repeat,
 } from 'lucide-react';
-
-// Utility function for formatting time
-const formatTime = (seconds) => {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-};
+import { formatTime } from './formatTime.js';
+import { PLAYBACK_RATES } from './useMediaOperations.js';
 
 export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
   // Destructure what we need from mediaOps
@@ -40,6 +43,10 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
     setMediaElement: onMediaElementReady,
     handleSeek: onSeek,
     handleDeleteMedia: onDeleteMedia,
+    playbackRate,
+    handlePlaybackRateChange: onPlaybackRateChange,
+    loopSegment,
+    setLoopSegment,
   } = mediaOps;
 
   const mediaRef = useRef(null);
@@ -127,7 +134,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
       <div className="tw rounded-lg border bg-card p-4">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base font-semibold">Time Alignment</h3>
+            <h3 className="text-base font-semibold">Recording</h3>
           </div>
           {mediaUrl && (
             <div className="flex items-center gap-2">
@@ -139,6 +146,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
                     className="h-9 w-9"
                     onClick={onDeleteMedia}
                     disabled={readOnly}
+                    aria-label="Delete media file"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -218,6 +226,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
                   size="icon"
                   className="h-10 w-10"
                   onClick={onSkipToBeginning}
+                  aria-label="Skip to beginning"
                 >
                   <SkipBack className="h-5 w-5" />
                 </Button>
@@ -232,6 +241,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
                   size="icon"
                   className="h-10 w-10"
                   onClick={() => skipTime(-5)}
+                  aria-label="Skip back 5 seconds"
                 >
                   <Rewind className="h-5 w-5" />
                 </Button>
@@ -241,7 +251,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size="icon" className="h-12 w-12" onClick={togglePlayback}>
+                <Button
+                  size="icon"
+                  className="h-12 w-12"
+                  onClick={togglePlayback}
+                  aria-label={isPlaying ? 'Pause' : 'Play'}
+                >
                   {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
                 </Button>
               </TooltipTrigger>
@@ -255,6 +270,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
                   size="icon"
                   className="h-10 w-10"
                   onClick={() => skipTime(5)}
+                  aria-label="Skip forward 5 seconds"
                 >
                   <FastForward className="h-5 w-5" />
                 </Button>
@@ -264,11 +280,37 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={onSkipToEnd}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10"
+                  onClick={onSkipToEnd}
+                  aria-label="Skip to end"
+                >
                   <SkipForward className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Skip to end</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={loopSegment ? 'secondary' : 'ghost'}
+                  size="icon"
+                  className={cn('ml-2 h-10 w-10', loopSegment && 'text-primary')}
+                  onClick={() => setLoopSegment(!loopSegment)}
+                  aria-label="Loop the segment"
+                  aria-pressed={!!loopSegment}
+                >
+                  <Repeat className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {loopSegment
+                  ? 'Looping: a segment repeats until you pause'
+                  : 'Loop: repeat the segment you play until you pause'}
+              </TooltipContent>
             </Tooltip>
           </div>
 
@@ -287,17 +329,38 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
             />
           </div>
 
-          {/* Volume Control */}
-          <div className="flex items-center gap-2">
-            <Volume2 className="h-4 w-4" />
-            <Slider
-              value={[volume]}
-              onValueChange={([v]) => onVolumeChange(v)}
-              min={0}
-              max={1}
-              step={0.1}
-              className="max-w-[150px] flex-1"
-            />
+          {/* Volume and speed */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Volume2 className="h-4 w-4" />
+              <Slider
+                value={[volume]}
+                onValueChange={([v]) => onVolumeChange(v)}
+                min={0}
+                max={1}
+                step={0.1}
+                className="w-[150px]"
+                aria-label="Volume"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Speed</span>
+              <Select
+                value={String(playbackRate ?? 1)}
+                onValueChange={(v) => onPlaybackRateChange(Number(v))}
+              >
+                <SelectTrigger className="h-8 w-[88px]" aria-label="Playback speed">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLAYBACK_RATES.map((rate) => (
+                    <SelectItem key={rate} value={String(rate)}>
+                      {rate}×
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
