@@ -294,7 +294,7 @@ describe('gathering words into a multi-word expression', () => {
     const rows = [...popover().querySelectorAll('.igt-vocab-pop__mwe')].map((r) =>
       r.textContent.replace(/\s+/g, ' ').trim(),
     );
-    expect(rows).toEqual(['In: sit down', 'Part of a longer expression…']);
+    expect(rows).toEqual(['In: sit down', 'Part of a multi-word expression…']);
     click(popover().querySelectorAll('.igt-vocab-pop__mwe')[1]);
     expect(popover()).toBeNull();
     expect(selectedForms()).toEqual(['w-3']);
@@ -311,5 +311,70 @@ describe('gathering words into a multi-word expression', () => {
     const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
     expect(create.args[1]).toEqual(['w-2', 'w-3', 'w-4']);
     expect(doc.sentences[0].mwes[0].memberTokenIds).toEqual(['w-2', 'w-3', 'w-4']);
+  });
+});
+
+describe('punctuation inside a multi-word expression', () => {
+  // "the , cat" with the comma untokenized (a gap column), and "the cat ." with
+  // the full stop tokenized but ignored by the project (an inert column).
+  function mountWith({ body, words, ignore = false, link }) {
+    const raw = buildRawDoc({ body, words });
+    if (ignore) {
+      const wordLayer = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
+      wordLayer.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
+    }
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const doc = new IgtDocument({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: {
+        v1: {
+          id: 'v1',
+          name: 'Lexicon',
+          items: [
+            { id: 'i-sit', form: 'the cat', metadata: { morphType: 'discontiguous phrase' } },
+          ],
+          vocabLinks: [link],
+        },
+      },
+      client,
+      projectId: 'proj-1',
+    });
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    editor = new IgtEditor(host, doc, {});
+    return doc;
+  }
+
+  it('a gap column between two members draws the dotted pass-through', () => {
+    mountWith({
+      body: 'the , cat',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 6, end: 9 },
+      ],
+      link: linkOver('lk-1', ['w-1', 'w-2']),
+    });
+    const gap = host.querySelector('.igt-gap-col .igt-mwe');
+    expect(gap).not.toBeNull();
+    expect(gap.className).toBe('igt-mwe igt-mwe--pass');
+    expect(gap.dataset.mwe).toBe('mwe:lk-1');
+  });
+
+  it('an ignored punctuation token between two members draws it too', () => {
+    mountWith({
+      body: 'the , cat',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-p', begin: 4, end: 5 },
+        { id: 'w-2', begin: 6, end: 9 },
+      ],
+      ignore: true,
+      link: linkOver('lk-1', ['w-1', 'w-2']),
+    });
+    expect(host.querySelector('[data-word-col="w-p"]')).toBeNull();
+    const gap = host.querySelector('.igt-gap-col .igt-mwe');
+    expect(gap.className).toBe('igt-mwe igt-mwe--pass');
   });
 });

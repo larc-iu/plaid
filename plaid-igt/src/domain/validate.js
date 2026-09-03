@@ -84,7 +84,7 @@ export function validateIgtDocument(
           add(
             SEVERITY.WARNING,
             'mwe-partial',
-            `The expression "${m.item?.form ?? ''}" has words outside sentence ${(sentences.indexOf(s) ?? 0) + 1}, or on words that no longer exist. Only its words in that sentence are shown.`,
+            `The multi-word expression "${m.item?.form ?? ''}" has words outside sentence ${(sentences.indexOf(s) ?? 0) + 1}, or on words that no longer exist. Only its words in that sentence are shown.`,
             { linkId: m.linkId, sentenceId: s.id, tokens: m.tokenIds },
           );
         }
@@ -95,12 +95,16 @@ export function validateIgtDocument(
       add(
         SEVERITY.WARNING,
         'mwe-undrawn',
-        `The expression "${m.item?.form ?? ''}" has no two words left in one sentence, so it is not shown. Open the entry in its vocabulary to see or remove the link.`,
+        `The multi-word expression "${m.item?.form ?? ''}" has no two words left in one sentence, so it is not shown. Open the entry in its vocabulary to see or remove the link.`,
         { linkId: m.linkId, tokens: m.tokenIds },
       );
     }
   } catch (err) {
-    add(SEVERITY.ERROR, 'mwe-check-failed', `Expression check threw: ${err?.message || err}`);
+    add(
+      SEVERITY.ERROR,
+      'mwe-check-failed',
+      `Multi-word expression check threw: ${err?.message || err}`,
+    );
   }
 
   (alignmentTokens || []).forEach((t) => {

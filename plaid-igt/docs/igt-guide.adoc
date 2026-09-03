@@ -155,16 +155,16 @@ Which vocabularies a project draws on is part of the project's settings.
 
 Some lexical units are longer than a word: an idiom, a phrasal verb, a compound name.
 Link one to a single entry by gathering its words: **Shift+click** each word, or from one of a word's cells press **Shift+→** (and **Shift+←**) to take in its neighbours, with **Ctrl** held to skip a word that does not belong.
-A dashed bracket shows the words gathered so far. Press **Enter** to link them to an entry, or **Esc** to give up.
-The popover works as it does for one word: pick an entry, or create one. A new entry gets the words' surface forms joined by spaces, which you can edit to the citation form before creating, and a type of `phrase` (or `discontiguous phrase` when a word in the middle was skipped).
+A dashed line shows the words gathered so far. Press **Enter** to link them to an entry, or **Esc** to give up.
+The popover works as it does for one word: pick an entry, or create one. A new entry gets the words' surface forms joined by spaces, which you can edit to the citation form before creating, and a type of multi-word expression (discontiguous, when a word in the middle was skipped). That type is what FieldWorks calls a phrase, and it exports as one.
 
-A linked expression draws as a bracket under its words, inside the gray word band, labelled with the entry's form.
-The bracket runs on across a line break, and a skipped word shows as a dotted stretch.
-A word can belong to several expressions at once; overlapping ones stack, and the band grows a line for each.
+A linked multi-word expression draws as a line under its words, inside the gray word band, labelled with the entry's form.
+The line runs on across a line break, and a skipped word (or punctuation in between) shows as a dotted stretch.
+A word can belong to several multi-word expressions at once; overlapping ones stack, and the band grows a line for each.
 Each word keeps its own entry link and its own morphemes regardless.
-Click a bracket's label to change the entry, unlink it, or confirm one that **Auto-analyze** made (it links a run of words when their joined form matches a phrase entry, or an expression this document already has).
-While that popover is open, Shift+click a word to add it to the expression or take it out.
-The popover for a single word lists the expressions it is part of, and offers **Part of a longer expression…** to start gathering from there.
+Click a line's label to change the entry, unlink it, or confirm one that **Auto-analyze** made (it links a run of words when their joined form matches a multi-word expression entry, or one this document already has).
+While that popover is open, Shift+click a word to add it to the multi-word expression or take it out.
+The popover for a single word lists the multi-word expressions it is part of, and offers **Part of a multi-word expression…** to start gathering from there.
 
 == Entry Fields
 

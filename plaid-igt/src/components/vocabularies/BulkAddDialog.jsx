@@ -149,9 +149,14 @@ const n = (x) => x.toLocaleString();
 // Morph types are a controlled vocabulary. Accept any casing an external
 // dictionary uses, and drop what isn't in the inventory rather than storing a
 // value the interlinear renderer can't interpret.
-const MORPH_BY_KEY = new Map(
-  FLEX_MORPH_TYPES.map((t) => [t.toLowerCase().replace(/[\s_-]+/g, ''), t]),
-);
+const MORPH_BY_KEY = new Map([
+  ...FLEX_MORPH_TYPES.map((t) => [t.toLowerCase().replace(/[\s_-]+/g, ''), t]),
+  // The names the app shows for FieldWorks' two phrase types.
+  ['multiwordexpression', 'phrase'],
+  ['mwe', 'phrase'],
+  ['discontiguousmultiwordexpression', 'discontiguous phrase'],
+  ['discontiguousmwe', 'discontiguous phrase'],
+]);
 const normalizeValue = (field, raw) =>
   field === 'morphType' ? (MORPH_BY_KEY.get(raw.toLowerCase().replace(/[\s_-]+/g, '')) ?? '') : raw;
 

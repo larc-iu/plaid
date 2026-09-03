@@ -38,6 +38,18 @@ export const FLEX_MORPH_TYPES = [
 /** Is this a storable morph type? (null/undefined = "no type" is also valid) */
 export const isValidMorphType = (t) => t == null || FLEX_MORPH_TYPES.includes(t);
 
+/**
+ * What a morph type is called on screen. The stored values are FieldWorks'
+ * own inventory (LIFT and .flextext need them verbatim), but "phrase" is
+ * FieldWorks-speak: linguists say multi-word expression, so the two phrase
+ * types are shown under that name.
+ */
+export const morphTypeLabel = (t) => {
+  if (t === 'phrase') return 'multi-word expression';
+  if (t === 'discontiguous phrase') return 'discontiguous multi-word expression';
+  return t;
+};
+
 export const isClitic = (morphType) =>
   typeof morphType === 'string' && morphType.toLowerCase().includes('clitic');
 

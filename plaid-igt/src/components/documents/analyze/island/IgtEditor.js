@@ -45,6 +45,7 @@ import {
   morphemeJoiner,
   isStemType,
   FLEX_MORPH_TYPES,
+  morphTypeLabel,
   splitChainText,
 } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
@@ -1129,7 +1130,7 @@ export class IgtEditor {
       title =
         n >= 2
           ? 'Enter links these words to one entry · Shift+click adds or removes a word · Esc drops them'
-          : 'Shift+click a word, or Shift+→ from a cell, to gather it into the expression · Esc drops it';
+          : 'Shift+click a word, or Shift+→ from a cell, to gather it into the multi-word expression · Esc drops it';
     }
     let popover = nothing;
     if (open) {
@@ -1167,14 +1168,14 @@ export class IgtEditor {
       .map((id) => this.doc.tokenLookup.get(id))
       .filter(Boolean);
     return html`
-      <div class="igt-vocab-pop__members" aria-label="Words in this expression">
+      <div class="igt-vocab-pop__members" aria-label="Words in this multi-word expression">
         ${tokens.map(
           (t) =>
             html`<span class="igt-vocab-pop__member"
               >${t.content}<button
                 type="button"
                 class="igt-vocab-pop__member-x"
-                title=${`Remove “${t.content}” from the expression`}
+                title=${`Remove “${t.content}” from the multi-word expression`}
                 aria-label=${`Remove ${t.content}`}
                 @click=${(e) => {
                   e.stopPropagation();
@@ -1202,7 +1203,7 @@ export class IgtEditor {
       ? canEditEntry
         ? 'Type of the linked lexicon entry'
         : 'Type comes from the linked lexicon entry; only its maintainers can change it'
-      : 'The type a new entry gets: phrase when the words are adjacent, discontiguous phrase when one in between is left out';
+      : 'The type a new entry gets: multi-word expression, or discontiguous multi-word expression when a word in between is left out';
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>
         <span>${linked ? 'Type (entry)' : 'Type'}</span>
@@ -1219,7 +1220,8 @@ export class IgtEditor {
         >
           <option value="" ?selected=${current === ''}>—</option>
           ${FLEX_MORPH_TYPES.map(
-            (t) => html`<option value=${t} ?selected=${current === t}>${t}</option>`,
+            (t) =>
+              html`<option value=${t} ?selected=${current === t}>${morphTypeLabel(t)}</option>`,
           )}
         </select>
       </label>
@@ -3244,7 +3246,7 @@ export class IgtEditor {
           >
         </div>
         <div class="igt-legend__row">
-          <strong>Expressions</strong>
+          <strong>Multi-word expressions</strong>
           <span
             ><kbd>Shift</kbd>+click words, or <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> from one of
             a word's cells (<kbd>Ctrl</kbd> too skips a word), gathers them into one multi-word
@@ -3446,17 +3448,18 @@ export class IgtEditor {
     const posMap = this.doc.tokenPositionMaps.get(sentence.id);
     const sel = this._mweSel?.sentenceId === sentence.id ? this._mweSel : null;
     let pending = null;
+    let pendingIdx = null;
     if (sel) {
-      const idx = [...sel.tokenIds]
+      pendingIdx = [...sel.tokenIds]
         .map((id) => posMap.get(id))
         .filter((i) => i != null)
         .sort((a, b) => a - b);
       pending =
-        idx.length >= 2
-          ? bracketPieces(sentence.tokens.length, idx)
-          : sentence.tokens.map((t, i) => (i === idx[0] ? 'solo' : null));
+        pendingIdx.length >= 2
+          ? bracketPieces(sentence.tokens.length, pendingIdx)
+          : sentence.tokens.map((t, i) => (i === pendingIdx[0] ? 'solo' : null));
     }
-    const sctx = { sentence, posMap, lanes, pending };
+    const sctx = { sentence, posMap, lanes, pending, pendingIdx: sel ? pendingIdx : null };
     return html`
       <div
         class="igt-sentence"
@@ -3477,7 +3480,7 @@ export class IgtEditor {
             ${repeat(
               cols,
               (p) => (p.isToken ? p.id : `gap:${p.begin}-${p.end}`),
-              (p) => (p.isToken ? this._tokenCol(p, ctx, sctx) : this._gapCol(p)),
+              (p) => (p.isToken ? this._tokenCol(p, ctx, sctx) : this._gapCol(p, sctx)),
             )}
           </div>
         </div>
@@ -3722,7 +3725,13 @@ export class IgtEditor {
     // lexicon link, and no morpheme is healed onto them (see igtReconcile). They
     // render like a gap: in the text, but plainly not glossed.
     if (isTokenIgnored(token.content, ctx.ignoredCfg)) {
-      return this._inertCol(token.content, `${token.content}: excluded from annotation`);
+      // Still a column a multi-word expression may run across: it draws the
+      // lines' pieces, never a label.
+      return this._inertCol(
+        token.content,
+        `${token.content}: excluded from annotation`,
+        this._mweBrackets(token, sctx).rules,
+      );
     }
     // Machine-made word tokens (a tokenizer service stamps prov on token
     // metadata) show the same violet/dashed treatment on the form band;
@@ -3829,20 +3838,38 @@ export class IgtEditor {
   // render this way — the text in the header, nothing editable below, a
   // full-height column rule so it reads as a real grid column. Only the top
   // (word-form) band is occupied, so the gray header strip stays continuous.
-  _inertCol(content, title) {
+  _inertCol(content, title, rules = nothing) {
     const text = (content || '').trim();
     return html`
       <div class="igt-gap-col">
-        <div class="igt-gap-form" title=${title}>${text}</div>
+        <div class="igt-gap-form" title=${title}>${text}${rules}</div>
       </div>
     `;
   }
 
   // A run of baseline text that no word token covers — punctuation, stray
   // characters, anything between or around tokens.
-  _gapCol(piece) {
+  _gapCol(piece, sctx) {
     const text = (piece.content || '').trim();
-    return this._inertCol(text, `${text}: not part of any word`);
+    return this._inertCol(text, `${text}: not part of any word`, this._mweGapRules(piece, sctx));
+  }
+
+  // A gap (text no word covers, such as a comma) that lies inside a
+  // multi-word expression's span draws the dotted pass-through on that lane,
+  // so the line reads as one line from first word to last.
+  _mweGapRules(piece, sctx) {
+    const tokens = sctx.sentence.tokens;
+    let next = tokens.findIndex((t) => t.begin >= piece.end);
+    if (next < 0) next = tokens.length;
+    const rules = [];
+    for (const m of sctx.sentence.mwes || []) {
+      if (m.first < next && next <= m.last) rules.push(this._mweRule('pass', m.lane, m));
+    }
+    const pi = sctx.pendingIdx;
+    if (pi && pi.length >= 2 && pi[0] < next && next <= pi[pi.length - 1]) {
+      rules.push(this._mweRule('pass', sctx.lanes, null));
+    }
+    return rules;
   }
 
   _morphemes(token, ctx) {
@@ -4207,7 +4234,7 @@ export class IgtEditor {
     const inlineNames = Object.keys(fields).filter((n) => fields[n]?.inline);
     const names = inlineNames.length ? inlineNames : Object.keys(meta);
     const vals = names
-      .map((n) => meta[n])
+      .map((n) => (n === 'morphType' ? morphTypeLabel(meta[n]) : meta[n]))
       .filter((v) => v != null && String(v).trim() !== '')
       .map(String);
     return inlineNames.length ? vals.join(' · ') : (vals[0] ?? '');
@@ -4299,14 +4326,14 @@ export class IgtEditor {
           kind: 'in',
           label: m.item.form,
           sub: this._homonymSub(this._mweItem(m)),
-          title: `Open the expression “${this._mweWords(m.memberTokenIds)}”`,
+          title: `Open the multi-word expression “${this._mweWords(m.memberTokenIds)}”`,
           onSelect: () => this._openMweByLink(m.linkId),
         });
       }
       if (sentence) {
         extraRows.push({
           kind: 'start',
-          label: 'Part of a longer expression…',
+          label: 'Part of a multi-word expression…',
           title: 'Gather this word with others into one multi-word expression',
           onSelect: () => this._startMweSelection(sentence.id, tokenId),
         });
@@ -4670,7 +4697,8 @@ export class IgtEditor {
         >
           <option value="" ?selected=${current === ''}>—</option>
           ${FLEX_MORPH_TYPES.map(
-            (t) => html`<option value=${t} ?selected=${current === t}>${t}</option>`,
+            (t) =>
+              html`<option value=${t} ?selected=${current === t}>${morphTypeLabel(t)}</option>`,
           )}
         </select>
       </label>

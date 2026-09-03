@@ -612,6 +612,7 @@
   border-left: none;
 }
 .igt-gap-form {
+  position: relative;
   height: var(--igt-form-h);
   display: flex;
   align-items: center;
