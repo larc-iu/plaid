@@ -8,7 +8,7 @@
 // hits in M more documents" accounting from the grouped-by-doc counts.
 
 import { cpSlice } from '@larc-iu/plaid-client';
-import { IgtDocument } from '@/domain/IgtDocument';
+import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { buildMatchSpec, hitsQueries, hitsByDocQueries, freqQueries } from './searchQueries.js';
 
 const MAX_DOCS = 12;
@@ -137,10 +137,19 @@ export async function runHitsSearch(client, project, layerInfo, domain, queryTex
   const docsByCount = [...docCounts.entries()].sort((a, b) => b[1] - a[1]);
   const toLoad = docsByCount.slice(0, MAX_DOCS);
 
+  // The lexicon once, shared by every document: a link's entry (its type,
+  // for one) is resolved through the vocabulary's items.
+  const { vocabularies } = await loadProjectVocabularies(client, project);
   const docs = await Promise.all(
     toLoad.map(async ([docId]) => {
       const raw = await client.documents.get(docId, true);
-      return new IgtDocument({ raw, project, vocabularies: {}, client, projectId: project.id });
+      return new IgtDocument({
+        raw,
+        project,
+        vocabularies: rebaseVocabLinks(vocabularies),
+        client,
+        projectId: project.id,
+      });
     }),
   );
 

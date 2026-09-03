@@ -638,7 +638,6 @@ export class IgtDocument {
             infoNext.primaryTokenLayer.tokens = [];
           infoNext.primaryTokenLayer.tokens.push({
             id: newRightTokenId,
-            text: token.text,
             begin: leftEnd,
             end: originalEnd,
             metadata: {},
@@ -700,7 +699,7 @@ export async function loadProjectVocabularies(client, project, asOf) {
 // against a different snapshot. This is why `_reload` re-fetches instead of
 // re-merging: merging a second raw onto an already-merged set would keep the
 // first snapshot's links.
-function rebaseVocabLinks(vocabularies) {
+export function rebaseVocabLinks(vocabularies) {
   const out = {};
   for (const [id, v] of Object.entries(vocabularies || {})) {
     out[id] = { ...v, vocabLinks: [] };

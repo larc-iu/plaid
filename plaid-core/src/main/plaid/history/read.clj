@@ -389,31 +389,26 @@
             ;; --- builders (shape-identical to the OLTP deep read) ---
             build-token (fn [r]
                           (-> {:token/id (:id r)
-                               :token/document (:document_id r)
-                               :token/text (:text_id r)
                                :token/begin (:begin r)
                                :token/end (:end_ r)
                                :token/precedence (:precedence r)}
                               (attach-meta r)))
             build-span (fn [r]
                          (-> {:span/id (:id r)
-                              :span/document (:document_id r)
                               :span/value (psc/read-json (:value r))
                               :span/tokens (or (:tokens r) [])}
                              (attach-meta r)))
             build-relation (fn [r]
                              (-> {:relation/id (:id r)
-                                  :relation/document (:document_id r)
                                   :relation/source (:source_span_id r)
                                   :relation/target (:target_span_id r)
                                   :relation/value (psc/read-json (:value r))}
                                  (attach-meta r)))
             build-vocab-item (fn [vi-id]
                                (when-let [row (vi-by-id vi-id)]
-                                 (-> {:vocab-item/id vi-id
-                                      :vocab-item/layer (:vocab_layer_id row)
-                                      :vocab-item/form (:form row)}
-                                     (attach-meta row))))
+                                 {:vocab-item/id vi-id
+                                  :vocab-item/layer (:vocab_layer_id row)
+                                  :vocab-item/form (:form row)}))
             build-link (fn [vl-id]
                          (let [row (vl-by-id vl-id)]
                            (-> {:vocab-link/id vl-id

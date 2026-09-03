@@ -161,8 +161,11 @@
 
 (defn get-with-layer-data
   "Deep document read: document + text-layers + token-layers + spans +
-  relations + vocabs. Result shape is exactly the v2 shape so the same
-  REST tests pass against either backend.
+  relations + vocabs. Rows inside the document do not repeat what the
+  nesting already says: a token carries no document or text id, a span
+  or relation no document id, and a vocab link names its entry by id,
+  layer, and form (the entry's metadata is on the vocab layer read).
+  The history read (`plaid.history.read`) builds the same shape.
 
   Implementation: ~11 batched queries (vs the previous walker's
   O(layers × kinds + rows) round trips). Token-id arrays for spans
@@ -321,16 +324,16 @@
                                :where [:in :vocab_layer_id vlayer-ids]
                                :order-by [:user_id]}))
           ;; --- 8. Bulk entity_metadata for every entity in this doc, by type:
-          ;; texts + tokens + spans + relations + vocab-links + vocab-items. (The
-          ;; document's own metadata is attached by the caller.) ---
+          ;; texts + tokens + spans + relations + vocab-links. (The document's
+          ;; own metadata is attached by the caller; a vocab item's stays with
+          ;; the vocab layer read.) ---
           meta-idx (bulk-metadata-by-entity
                     db
                     [["text" (map :id text-rows)]
                      ["token" (map :id token-rows)]
                      ["span" (map :id span-rows)]
                      ["relation" (map :id relation-rows)]
-                     ["vocab-link" (map :id vl-rows)]
-                     ["vocab-item" (map :id vi-rows)]])
+                     ["vocab-link" (map :id vl-rows)]])
           ;; --- Grouping helpers (no further DB hits below). ---
           token-rows-by-layer (group-by :token_layer_id token-rows)
           span-rows-by-layer (group-by :span_layer_id span-rows)
@@ -370,31 +373,29 @@
           build-token (fn [r]
                         (attach-meta meta-idx "token" (:id r)
                                      {:token/id (:id r)
-                                      :token/document (:document_id r)
-                                      :token/text (:text_id r)
                                       :token/begin (:begin r)
                                       :token/end (:end_ r)
                                       :token/precedence (:precedence r)}))
           build-span (fn [r]
                        (attach-meta meta-idx "span" (:id r)
                                     {:span/id (:id r)
-                                     :span/document (:document_id r)
                                      :span/value (psc/read-json (:value r))
                                      :span/tokens (or (decode-token-id-array (:token_ids r))
                                                       [])}))
           build-relation (fn [r]
                            (attach-meta meta-idx "relation" (:id r)
                                         {:relation/id (:id r)
-                                         :relation/document (:document_id r)
                                          :relation/source (:source_span_id r)
                                          :relation/target (:target_span_id r)
                                          :relation/value (psc/read-json (:value r))}))
+          ;; A link names its entry by id, layer, and form only: the entry's
+          ;; metadata lives in the vocab layer read, and repeating it on every
+          ;; link made up a quarter of a large document's body.
           build-vocab-item (fn [vi-id]
                              (when-let [row (vi-by-id vi-id)]
-                               (attach-meta meta-idx "vocab-item" vi-id
-                                            {:vocab-item/id vi-id
-                                             :vocab-item/layer (:vocab_layer_id row)
-                                             :vocab-item/form (:form row)})))
+                               {:vocab-item/id vi-id
+                                :vocab-item/layer (:vocab_layer_id row)
+                                :vocab-item/form (:form row)}))
           build-link (fn [vl-id]
                        (let [row (vl-by-id vl-id)
                              tok-vec (or (decode-token-id-array (:token_ids row)) [])

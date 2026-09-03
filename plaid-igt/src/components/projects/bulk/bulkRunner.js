@@ -11,7 +11,7 @@
 // forms, current analyses) without asking the query language to project things
 // it can't.
 
-import { IgtDocument, loadProjectVocabularies } from '@/domain/IgtDocument';
+import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { readIgnoredTokens } from '@/domain/igtConfig';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
 import {
@@ -47,12 +47,6 @@ async function findDocs(client, domain, spec) {
 // Vocab tables are mutated by mergeRawVocabLinks (each document folds its own
 // links in), so every IgtDocument gets its own link-free copy of the shared
 // item tables.
-const freshVocabs = (vocabularies) => {
-  const out = {};
-  for (const [id, v] of Object.entries(vocabularies || {})) out[id] = { ...v, vocabLinks: [] };
-  return out;
-};
-
 // Load documents one at a time (a bulk edit can touch every document in the
 // project, and a burst of parallel GETs for big documents is what makes the
 // tab feel stuck). `onProgress(done, total)` drives the progress line.
@@ -65,7 +59,7 @@ async function loadDocs(client, project, docEntries, vocabularies, onProgress) {
       new IgtDocument({
         raw,
         project,
-        vocabularies: freshVocabs(vocabularies),
+        vocabularies: rebaseVocabLinks(vocabularies),
         client,
         projectId: project.id,
       }),

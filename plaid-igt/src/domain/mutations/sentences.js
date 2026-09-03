@@ -67,7 +67,6 @@ export const sentenceMutations = {
         if (newRightId) {
           tokens.push({
             id: newRightId,
-            text: containing.text,
             begin: charPos,
             end: originalEnd,
           });

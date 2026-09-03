@@ -9,6 +9,7 @@
 // `sentences`.
 
 import { provState } from '@larc-iu/plaid-client';
+import { itemsById, linkedItem } from './vocabLookup.js';
 import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
 import { collectMweLinks, bracketPieces, assignLanes } from './mwe.js';
 
@@ -358,14 +359,13 @@ function makeBinarySearchSentenceLookup(sortedSentences) {
 function collectSingleTokenVocabLinks(vocabularies) {
   const out = {};
   Object.values(vocabularies || {}).forEach((vocab) => {
+    const byId = itemsById(vocab);
     (vocab.vocabLinks || []).forEach((link) => {
       if (!Array.isArray(link.tokens) || link.tokens.length !== 1 || !link.vocabItem) return;
       const tokenId = link.tokens[0];
       const linkMeta = link.metadata || {};
       out[tokenId] = {
-        id: link.vocabItem.id,
-        form: link.vocabItem.form,
-        metadata: link.vocabItem.metadata || {},
+        ...linkedItem(byId, link),
         vocabId: vocab.id,
         vocabName: vocab.name,
         linkId: link.id,

@@ -8,6 +8,7 @@
 // validators.
 
 import { provState } from '@larc-iu/plaid-client';
+import { itemsById, linkedItem } from './vocabLookup.js';
 
 export const isMweLink = (link) =>
   Array.isArray(link?.tokens) && link.tokens.length >= 2 && !!link.vocabItem;
@@ -16,17 +17,14 @@ export const isMweLink = (link) =>
 export function collectMweLinks(vocabularies) {
   const out = [];
   Object.values(vocabularies || {}).forEach((vocab) => {
+    const byId = itemsById(vocab);
     (vocab.vocabLinks || []).forEach((link) => {
       if (!isMweLink(link)) return;
       out.push({
         linkId: link.id,
         vocabId: vocab.id,
         vocabName: vocab.name,
-        item: {
-          id: link.vocabItem.id,
-          form: link.vocabItem.form,
-          metadata: link.vocabItem.metadata || {},
-        },
+        item: linkedItem(byId, link),
         tokenIds: [...link.tokens],
         metadata: link.metadata || {},
         prov: provState(link.metadata || {}),

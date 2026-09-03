@@ -146,11 +146,8 @@ export const vocabMutations = {
         newLinkId = result?.id || result;
       }
 
-      const itemSnapshot = {
-        id: vocabItem.id,
-        form: vocabItem.form,
-        metadata: vocabItem.metadata || {},
-      };
+      // The shape a document read gives a link's entry: id, layer, and form.
+      const itemSnapshot = { id: vocabItem.id, layer: targetVocabId, form: vocabItem.form };
 
       this._applyRawPatch((next, info, vocabs) => {
         if (priorLink && priorVocabId && vocabs[priorVocabId]) {
@@ -232,9 +229,6 @@ export const vocabMutations = {
         if (!v) return;
         (v.items || []).forEach((it) => {
           if (it.id === itemId) it.metadata = setType(it.metadata);
-        });
-        (v.vocabLinks || []).forEach((l) => {
-          if (l.vocabItem?.id === itemId) l.vocabItem.metadata = setType(l.vocabItem.metadata);
         });
         if (morphType != null) {
           const linked = new Set(linkedMorphemes);
