@@ -15,6 +15,7 @@ import {
   Repeat,
 } from 'lucide-react';
 import { formatTime } from './formatTime.js';
+import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { MediaHelp, MediaHelpButton } from './MediaHelp.jsx';
 import { PLAYBACK_RATE_MIN, PLAYBACK_RATE_MAX, PLAYBACK_RATE_STEP } from './useMediaOperations.js';
 
@@ -52,6 +53,9 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
   const [mediaType, setMediaType] = useState('unknown');
   const [helpOpen, setHelpOpen] = useState(false);
   const animationFrameRef = useRef(null);
+  // The clock's digits redraw a few times a second while playing; the slider
+  // keeps every frame.
+  const shownTime = useThrottledValue(currentTime, RUNNING_TIME_MS, { bypass: !isPlaying });
 
   // Expose media element reference to parent
   useEffect(() => {
@@ -311,7 +315,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
           {/* Time Display and Seek Bar */}
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between gap-1">
-              <span className="text-sm text-muted-foreground">{formatTime(currentTime || 0)}</span>
+              <span className="text-sm text-muted-foreground">{formatTime(shownTime || 0)}</span>
               <span className="text-sm text-muted-foreground">{formatTime(duration || 0)}</span>
             </div>
 

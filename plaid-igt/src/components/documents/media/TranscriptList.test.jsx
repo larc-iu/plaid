@@ -30,6 +30,7 @@ function makeDoc({ body, tokens }) {
 const makeOps = (over = {}) => ({
   currentTime: 0,
   duration: 10,
+  getCurrentTime: () => null,
   isPlaying: false,
   playingSelection: null,
   selection: null,
@@ -216,6 +217,25 @@ describe('TranscriptList', () => {
       speaker: '',
     });
     expect(fresh.value).toBe('');
+    await r.unmount();
+  });
+
+  it("the new segment ends at the recording's own clock, which may be ahead of the displayed one", async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const ops = makeOps({ currentTime: 4.2, getCurrentTime: () => 4.37 });
+    const r = await renderComponent(element(doc, ops));
+    const fresh = newTextarea(r.container);
+    await r.step(() => setValue(fresh, 'dog'));
+    await r.step(async () => {
+      press(fresh, 'Enter');
+      await settle();
+    });
+    expect(doc.createAlignment).toHaveBeenCalledWith({
+      text: 'dog',
+      timeBegin: 3,
+      timeEnd: 4.37,
+      speaker: '',
+    });
     await r.unmount();
   });
 

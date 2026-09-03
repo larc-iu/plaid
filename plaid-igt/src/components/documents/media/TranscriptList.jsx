@@ -20,6 +20,7 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { formatTime } from './formatTime.js';
 import { TimecodeField } from './TimecodeField.jsx';
+import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
@@ -302,6 +303,7 @@ const SegmentRow = memo(function SegmentRow({
 const NewSegmentRow = memo(function NewSegmentRow({
   prevEnd,
   currentTime,
+  readCurrentTime,
   onCreate,
   onToggle,
   textRef,
@@ -319,10 +321,14 @@ const NewSegmentRow = memo(function NewSegmentRow({
     if (!canCreate || busy) return;
     setBusy(true);
     try {
+      // `currentTime` is the displayed clock, which redraws a few times a
+      // second; the recording's own clock is the one that gets saved. While
+      // playing it can only be ahead of the display, never behind `prevEnd`.
+      const exact = readCurrentTime?.();
       const ok = await onCreate({
         text: draft.trim(),
         timeBegin: prevEnd,
-        timeEnd: currentTime,
+        timeEnd: Math.max(currentTime, Number.isFinite(exact) ? exact : currentTime),
         speaker: speaker.trim(),
       });
       if (ok) {
@@ -406,6 +412,10 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
   const segments = useMemo(() => [...doc.alignmentTokens].sort(byTime), [doc.alignmentTokens]);
   const body = doc.body || '';
   const { currentTime = 0, isPlaying, playingSelection, selection, duration = 0 } = mediaOps;
+  // The new-segment row's running clock redraws a few times a second while the
+  // recording plays, and is exact the moment it pauses.
+  const shownTime = useThrottledValue(currentTime, RUNNING_TIME_MS, { bypass: !isPlaying });
+  const readCurrentTime = useCallback(() => opsRef.current.getCurrentTime?.() ?? null, []);
 
   const activeId = useMemo(() => {
     const hit = segments.find((t) => timeBeginOf(t) <= currentTime && currentTime < timeEndOf(t));
@@ -617,7 +627,8 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
         <div className="mt-1.5">
           <NewSegmentRow
             prevEnd={prevEnd}
-            currentTime={currentTime}
+            currentTime={shownTime}
+            readCurrentTime={readCurrentTime}
             onCreate={handleCreate}
             onToggle={handleToggleFree}
             textRef={newTextRef}

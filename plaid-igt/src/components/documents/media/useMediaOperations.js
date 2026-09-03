@@ -213,6 +213,13 @@ export const useMediaOperations = () => {
     setCurrentTime(time);
   }, []);
 
+  // The recording's own clock, for a write that must not use a displayed
+  // (throttled) time: the element is the truth, the state is a picture of it.
+  const getCurrentTime = useCallback(() => {
+    const el = mediaElementRef.current;
+    return el && Number.isFinite(el.currentTime) ? el.currentTime : null;
+  }, []);
+
   const handleDurationChange = useCallback((d) => {
     setDuration(d);
   }, []);
@@ -760,6 +767,7 @@ export const useMediaOperations = () => {
     handleSkipToEnd,
     handlePlaySelection,
     handleClearSelection,
+    getCurrentTime,
     playRange,
     pausePlayback,
     togglePlayback,
