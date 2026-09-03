@@ -411,7 +411,7 @@ export const useMediaOperations = () => {
         title: 'Replace existing transcript?',
         description:
           'This document already has a transcript. Transcribing again will REPLACE it, ' +
-          'discarding the existing text, tokens, time alignments, and any annotations on them. ' +
+          'discarding the existing text, tokens, segments, and any annotations on them. ' +
           'This cannot be undone.',
         confirmLabel: 'Replace',
         destructive: true,
@@ -488,23 +488,23 @@ export const useMediaOperations = () => {
 
     if (
       !(await confirm({
-        title: 'Clear all time alignments?',
+        title: 'Clear all segments?',
         description:
-          'This will remove every time-alignment segment on this document. ' +
+          'This removes every segment from this document. The text stays in the baseline. ' +
           'This cannot be undone.',
-        confirmLabel: 'Clear alignments',
+        confirmLabel: 'Clear segments',
         destructive: true,
       }))
     ) {
       return;
     }
 
-    updateProgress(25, 'Clearing alignments...');
+    updateProgress(25, 'Clearing segments…');
     const count = alignmentTokens.length;
     const ok = await doc.clearAlignments();
-    updateProgress(100, 'Alignments cleared!');
+    updateProgress(100, 'Segments cleared');
     if (ok) {
-      notifySuccess(`Cleared ${count} time alignments`, 'Success');
+      notifySuccess(`Cleared ${count} segments`, 'Success');
     }
     setTranscriptionProgress(0);
     setCurrentOperation('');

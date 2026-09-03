@@ -96,7 +96,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               <span className="text-sm font-medium">Timeline</span>
               {!readOnly && (
                 <span className="text-xs text-muted-foreground">
-                  Drag on the timeline to create a time alignment
+                  Drag on the timeline to add a segment
                 </span>
               )}
             </div>

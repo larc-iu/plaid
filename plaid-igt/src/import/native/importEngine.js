@@ -221,7 +221,7 @@ const DOCUMENT_STEPS = [
   'Creating sentences',
   'Creating words',
   'Creating morphemes',
-  'Creating time alignments',
+  'Creating segments',
   'Creating annotations',
   'Linking lexicon',
   'Restoring comments',
@@ -345,7 +345,7 @@ export async function importNativeDocument({
     if (alignment.length) {
       check();
       if (targets.alignmentLayerId) {
-        progress('Creating time alignments');
+        progress('Creating segments');
         await bulkTokens(
           alignment.map((a) => ({
             tokenLayerId: targets.alignmentLayerId,

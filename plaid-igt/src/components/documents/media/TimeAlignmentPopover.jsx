@@ -116,11 +116,7 @@ export const TimeAlignmentPopover = ({
       setStickySpeaker(sp); // sticky default for the next new segment
 
       notifySuccess(
-        mode === 'edit'
-          ? 'Alignment updated successfully'
-          : mode === 'align'
-            ? 'Text aligned successfully'
-            : 'Time-aligned text created successfully',
+        mode === 'edit' ? 'Segment updated' : mode === 'align' ? 'Text aligned' : 'Segment created',
         'Success',
       );
 
@@ -142,7 +138,7 @@ export const TimeAlignmentPopover = ({
 
       if (!ok) return; // Domain method toasted the error via doc.onError
 
-      notifySuccess('Alignment deleted successfully', 'Success');
+      notifySuccess('Segment deleted', 'Success');
 
       // Reset and close immediately
       setText('');
@@ -196,26 +192,25 @@ export const TimeAlignmentPopover = ({
           <div>
             <p className="text-sm font-medium">
               {readOnly
-                ? 'View Time Alignment'
+                ? 'Segment'
                 : mode === 'edit'
-                  ? 'Edit Alignment'
+                  ? 'Edit segment'
                   : mode === 'align'
-                    ? 'Align Baseline Text'
-                    : 'Create Time Alignment'}
+                    ? 'Align existing text'
+                    : 'New segment'}
             </p>
             <p className="text-xs text-muted-foreground">
               {formatTime(selection?.start || 0)} - {formatTime(selection?.end || 0)}
               {readOnly && ' (read-only mode)'}
-              {!readOnly && mode === 'edit' && ' (editing existing)'}
-              {!readOnly && mode === 'align' && ' (aligning baseline text)'}
+              {!readOnly && mode === 'align' && ' (existing text)'}
             </p>
           </div>
 
           {!readOnly && mode !== 'edit' && (
             <div className="inline-flex rounded-md border p-0.5 text-sm">
               {[
-                { label: 'Create New', value: 'new' },
-                { label: 'Align Existing', value: 'align' },
+                { label: 'New text', value: 'new' },
+                { label: 'Existing text', value: 'align' },
               ].map((opt) => (
                 <button
                   key={opt.value}
@@ -242,7 +237,7 @@ export const TimeAlignmentPopover = ({
                 {existingAlignment
                   ? cpSlice(doc.body || '', existingAlignment.begin, existingAlignment.end) ||
                     'No content'
-                  : 'No alignment data for this time range'}
+                  : 'No segment in this time range'}
               </p>
               {existingAlignment?.metadata?.speaker && (
                 <p className="mt-2 text-sm">
@@ -253,8 +248,8 @@ export const TimeAlignmentPopover = ({
           ) : mode === 'align' && !canAlign() ? (
             <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3">
               <p className="text-sm">
-                No unaligned baseline text is available in this time range. All text between
-                neighboring alignments has already been aligned.
+                No unaligned text is available for this time range. Everything between the
+                neighboring segments already belongs to a segment.
               </p>
             </div>
           ) : (
@@ -262,7 +257,7 @@ export const TimeAlignmentPopover = ({
               <>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="alignment-text">
-                    {mode === 'align' ? 'Baseline Text to Align' : 'Transcription'}{' '}
+                    {mode === 'align' ? 'Text to align' : 'Transcription'}{' '}
                     <span className="text-destructive">*</span>
                   </Label>
                   <Textarea
@@ -270,8 +265,8 @@ export const TimeAlignmentPopover = ({
                     ref={textareaRef}
                     placeholder={
                       mode === 'align'
-                        ? 'Select portion of text to align...'
-                        : 'Enter the text for this time segment...'
+                        ? 'Keep the part of the text this segment covers'
+                        : 'Text of this segment'
                     }
                     value={text}
                     onChange={(e) => setText(e.target.value)}
@@ -281,8 +276,7 @@ export const TimeAlignmentPopover = ({
                   />
                   {mode === 'align' && (
                     <p className="text-xs text-muted-foreground">
-                      Edit this text to select the portion you want to align with the time
-                      selection.
+                      Trim this to the part of the text the selected time covers.
                     </p>
                   )}
                 </div>

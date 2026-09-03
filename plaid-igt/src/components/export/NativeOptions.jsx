@@ -23,7 +23,7 @@ export const NativeOptions = ({ options, onChange }) => (
     </label>
     <p className="text-xs text-muted-foreground">
       Large media can make the export slow or exceed browser memory. Disable to produce a data-only
-      archive (time alignments are kept either way).
+      archive (time-aligned segments are kept either way).
     </p>
   </div>
 );

@@ -70,7 +70,7 @@ export const alignmentMutations = {
   async createAlignment({ text, timeBegin, timeEnd, speaker }) {
     const trimmed = (text || '').trim();
     if (!trimmed) {
-      this.setError('Alignment text is required');
+      this.setError('Segment text is required');
       return false;
     }
     if (timeEnd < timeBegin) {
@@ -157,7 +157,7 @@ export const alignmentMutations = {
 
     if (temporalInversion) {
       this.setError(
-        'Cannot insert alignment: temporal and positional ordering conflict. Delete the conflicting alignment first.',
+        'Cannot add a segment here: it would be out of time order with an existing segment. Delete that segment first.',
       );
       return false;
     }
@@ -172,7 +172,7 @@ export const alignmentMutations = {
     );
     const overlap = findOverlappingAlignment(projectedTokens, tokenBegin, tokenEnd);
     if (overlap) {
-      this.setError('The new alignment range overlaps an existing alignment.');
+      this.setError('The new segment overlaps an existing segment.');
       return false;
     }
 
@@ -238,7 +238,7 @@ export const alignmentMutations = {
   async editAlignment(existingAlignmentId, { text, timeBegin, timeEnd, speaker }) {
     const trimmed = (text || '').trim();
     if (!trimmed) {
-      this.setError('Alignment text is required');
+      this.setError('Segment text is required');
       return false;
     }
     if (timeEnd < timeBegin) {
@@ -261,7 +261,7 @@ export const alignmentMutations = {
     const alignmentTokens = alignmentTokenLayer.tokens || [];
     const existingAlignment = alignmentTokens.find((t) => t.id === existingAlignmentId);
     if (!existingAlignment) {
-      this.setError('Alignment not found');
+      this.setError('Segment not found');
       return false;
     }
 
@@ -279,7 +279,7 @@ export const alignmentMutations = {
     );
     if (inversion) {
       this.setError(
-        `The new time range would put this alignment out of temporal order with the ${inversion} alignment.`,
+        `The new time range would put this segment out of order with the ${inversion} segment.`,
       );
       return false;
     }
@@ -300,7 +300,7 @@ export const alignmentMutations = {
       existingAlignmentId,
     );
     if (overlap) {
-      this.setError('The updated alignment range would overlap an existing alignment.');
+      this.setError('The edited segment would overlap an existing segment.');
       return false;
     }
 
@@ -379,7 +379,7 @@ export const alignmentMutations = {
   async alignBaseline({ text, timeBegin, timeEnd, speaker }) {
     const trimmed = (text || '').trim();
     if (!trimmed) {
-      this.setError('Alignment text is required');
+      this.setError('Segment text is required');
       return false;
     }
     if (timeEnd < timeBegin) {
@@ -427,7 +427,7 @@ export const alignmentMutations = {
       const existsAnywhere = cpIndexOf(fullText, trimmed) !== -1;
       this.setError(
         existsAnywhere
-          ? 'The selected text lies outside the range available for this time slot. A neighboring alignment would be out of temporal order. Adjust the time range or the neighboring alignments.'
+          ? 'The selected text lies outside what this time range can cover: a neighboring segment would fall out of time order. Adjust the time range or the neighboring segments.'
           : 'Selected text not found in the baseline.',
       );
       return false;
@@ -437,7 +437,7 @@ export const alignmentMutations = {
 
     const overlap = findOverlappingAlignment(alignmentTokens, actualBegin, actualEnd);
     if (overlap) {
-      this.setError('The selected text range overlaps an existing alignment.');
+      this.setError('The selected text overlaps an existing segment.');
       return false;
     }
 
@@ -488,7 +488,7 @@ export const alignmentMutations = {
     }
     const existingAlignment = (alignmentTokenLayer.tokens || []).find((t) => t.id === alignmentId);
     if (!existingAlignment) {
-      this.setError('Alignment not found');
+      this.setError('Segment not found');
       return false;
     }
 
@@ -519,7 +519,7 @@ export const alignmentMutations = {
     const alignmentTokenLayer = info.alignmentTokenLayer;
     const token = (alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
     if (!token) {
-      this.setError('Alignment not found');
+      this.setError('Segment not found');
       return false;
     }
     if (timeEnd < timeBegin) {
@@ -536,7 +536,7 @@ export const alignmentMutations = {
     );
     if (inversion) {
       this.setError(
-        `The new time range would put this alignment out of temporal order with the ${inversion} alignment.`,
+        `The new time range would put this segment out of order with the ${inversion} segment.`,
       );
       return false;
     }
@@ -565,7 +565,7 @@ export const alignmentMutations = {
     const info = this.layerInfo;
     const token = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
     if (!token) {
-      this.setError('Alignment not found');
+      this.setError('Segment not found');
       return false;
     }
     const value = (speaker || '').trim();

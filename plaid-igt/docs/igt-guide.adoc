@@ -299,5 +299,6 @@ A more structured vocabulary model (allowing for first-class representation of s
 
 == Audio and time alignment
 
-The current media support is deliberately lightweight: a single recording, one alignment tier, and segment-level (rather than word-level) transcription.
-In the future, we may offer finer-grained alignment down to the level of the word and multiple alignment tiers.
+Media support is deliberately lightweight: one recording per document and one tier of utterance-level segments.
+Plaid IGT is a glossing tool, not a phonetics workbench, so word-level and finer alignment are out of scope.
+For phonetic analysis, export the document to ELAN (`.eaf`) and continue there.

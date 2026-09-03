@@ -113,7 +113,7 @@ export function DocumentMedia() {
               readOnly
             }
           >
-            Clear Alignments
+            Clear segments
           </Button>
         </div>
 
@@ -159,8 +159,8 @@ export function DocumentMedia() {
             >
               <span className="text-sm text-muted-foreground">
                 {mediaOps.alignmentTokens.length > 0
-                  ? `${mediaOps.alignmentTokens.length} time alignments`
-                  : 'No time alignments yet'}
+                  ? `${mediaOps.alignmentTokens.length} segments`
+                  : 'No segments yet'}
               </span>
             </div>
           )}
