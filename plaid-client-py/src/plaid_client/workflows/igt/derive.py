@@ -111,6 +111,7 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
                 translations[tid] = sp.get('value') or ''
 
     body = (tl.get('text') or {}).get('body') or ''
+    text_id = (tl.get('text') or {}).get('id')
     chars = list(body)
     ignored_cfg = ((word_layer.get('config') or {}).get('igt') or {}).get('ignoredTokens')
     orth_key = f'orthog:{orthography}' if orthography else None
@@ -146,7 +147,7 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
                 text = (w.get('metadata') or {}).get(orth_key) or surface
             ms = morphs_by_extent.get((w['begin'], w['end']), [])
             ws.append({
-                'token': w, 'surface': surface, 'text': text, 'morphs': ms,
+                'token': w, 'text_id': text_id, 'surface': surface, 'text': text, 'morphs': ms,
                 'spans': word_spans.get(w['id'], []), 'links': word_links.get(w['id'], []),
                 'morph_spans': {m['id']: morph_spans.get(m['id'], []) for m in ms},
                 'morph_links': {m['id']: morph_links.get(m['id'], []) for m in ms},

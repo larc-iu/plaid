@@ -50,7 +50,7 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
     (model, language, ...) each stamp extends."""
     if not plans:
         return 0
-    text_id = plans[0]['word']['token']['text']
+    text_id = plans[0]['word']['text_id']
     written = 0
     for chunk in chunk_plans(plans):
         # batch 1: clear replaced material, patch the first morpheme, create

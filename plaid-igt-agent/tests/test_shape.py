@@ -225,7 +225,7 @@ def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
     def split(sid, pos):
         for t in c._documents['d1']['text_layers'][0]['token_layers'][0]['tokens']:
             if t['id'] == sid:
-                new = {'id': f'{sid}-r', 'text': t['text'], 'begin': pos, 'end': t['end']}
+                new = {'id': f'{sid}-r', 'begin': pos, 'end': t['end']}
                 t['end'] = pos
                 c._documents['d1']['text_layers'][0]['token_layers'][0]['tokens'].append(new)
                 c.log.append(('tokens', 'split', (sid, pos), {}))

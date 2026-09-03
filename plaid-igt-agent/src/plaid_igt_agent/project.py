@@ -446,7 +446,7 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
                     fields=morph_spans.get(m['id'], {}), link=morph_links.get(m['id'])))
             ws.append(Word(
                 id=w['id'], index=len(ws) + 1, surface=surface, begin=w['begin'], end=w['end'],
-                text_id=w['text'], metadata=meta,
+                text_id=text.get('id'), metadata=meta,
                 orthographies={o: meta.get(f'orthog:{o}') for o in project.orthographies
                                if meta.get(f'orthog:{o}')},
                 fields=word_spans.get(w['id'], {}), morphemes=morphemes, link=word_links.get(w['id'])))
