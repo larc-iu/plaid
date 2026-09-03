@@ -981,6 +981,98 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(ok).toBe(true);
     expect(kinds(doc.client)).toContain('texts.update'); // delete op on the body
   });
+
+  // The three text-editing alignment mutations patch the document in place from
+  // the batch's ids instead of refetching it: a full document GET grows with
+  // the document and was the lag between Enter and the row appearing.
+  it('createAlignment patches in place: no refetch, real id, sentence stretched over the new text', async () => {
+    const doc = makeDoc(); // body 'the cat', one sentence [0,7), words the/cat
+    const ok = await doc.createAlignment({ text: 'hi', timeBegin: 0, timeEnd: 1, speaker: 'Ana' });
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('documents.get');
+    expect(doc.body).toBe('the cat hi');
+    expect(doc.alignmentTokens).toHaveLength(1);
+    const [a] = doc.alignmentTokens;
+    expect(a.id).toMatch(/^tok-/); // the id the batch answered with, not a placeholder
+    expect(a).toMatchObject({
+      begin: 8,
+      end: 10,
+      metadata: { timeBegin: 0, timeEnd: 1, speaker: 'Ana' },
+    });
+    expect(doc.layerInfo.sentenceTokenLayer.tokens).toEqual([
+      { id: 's-1', text: 'text-1', begin: 0, end: 10 },
+    ]);
+    // Words before the insert are untouched.
+    expect(doc.layerInfo.primaryTokenLayer.tokens.map((t) => [t.begin, t.end])).toEqual([
+      [0, 3],
+      [4, 7],
+    ]);
+  });
+
+  it('createAlignment on an empty document seeds the sentence partition with the returned id', async () => {
+    const raw = buildRawDoc({ body: '', sentences: [], words: [], morphemes: [] });
+    const doc = makeDoc({ raw });
+    const ok = await doc.createAlignment({ text: 'hello', timeBegin: 0, timeEnd: 2 });
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('documents.get');
+    expect(doc.body).toBe('hello');
+    expect(doc.alignmentTokens[0]).toMatchObject({ begin: 0, end: 5 });
+    const [s] = doc.layerInfo.sentenceTokenLayer.tokens;
+    expect(s.id).toMatch(/^tok-/);
+    expect(s).toMatchObject({ begin: 0, end: 5 });
+  });
+
+  it('editAlignment replaces the text in place, dropping the words inside it and shifting the rest', async () => {
+    const raw = buildRawDoc({
+      body: 'the cat sat',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+      ],
+      alignmentTokens: [
+        { id: 'a-1', text: 'text-1', begin: 4, end: 7, metadata: { timeBegin: 1, timeEnd: 2 } },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    const ok = await doc.editAlignment('a-1', { text: 'dogs', timeBegin: 1, timeEnd: 2 });
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('documents.get');
+    expect(doc.body).toBe('the dogs sat');
+    expect(doc.alignmentTokens).toHaveLength(1);
+    expect(doc.alignmentTokens[0].id).not.toBe('a-1'); // the token is recreated
+    expect(doc.alignmentTokens[0]).toMatchObject({ begin: 4, end: 8 });
+    expect(doc.layerInfo.primaryTokenLayer.tokens.map((t) => [t.id, t.begin, t.end])).toEqual([
+      ['w-1', 0, 3],
+      ['w-3', 9, 12],
+    ]);
+    expect(doc.layerInfo.sentenceTokenLayer.tokens[0]).toMatchObject({ begin: 0, end: 12 });
+  });
+
+  it('deleteAlignment in the middle keeps one separator and shifts what follows, in place', async () => {
+    const raw = buildRawDoc({
+      body: 'the cat sat',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+      ],
+      alignmentTokens: [
+        { id: 'a-1', text: 'text-1', begin: 4, end: 7, metadata: { timeBegin: 1, timeEnd: 2 } },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    const ok = await doc.deleteAlignment('a-1');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('documents.get');
+    expect(doc.body).toBe('the sat');
+    expect(doc.alignmentTokens).toEqual([]);
+    expect(doc.layerInfo.primaryTokenLayer.tokens.map((t) => [t.id, t.begin, t.end])).toEqual([
+      ['w-1', 0, 3],
+      ['w-3', 4, 7],
+    ]);
+    expect(doc.layerInfo.sentenceTokenLayer.tokens[0]).toMatchObject({ begin: 0, end: 7 });
+  });
 });
 
 describe('clearing an annotation cell', () => {

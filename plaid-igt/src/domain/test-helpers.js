@@ -88,6 +88,7 @@ export function buildRawDoc(opts = {}) {
           {
             id: 'sentL',
             name: 'Sentences',
+            overlapMode: 'partitioning',
             config: { plaid: { role: ROLES.SENTENCE } },
             tokens: sentenceTokens,
             spanLayers: sentSpanLayers,
@@ -96,6 +97,7 @@ export function buildRawDoc(opts = {}) {
           {
             id: 'wordL',
             name: 'Words',
+            overlapMode: 'non-overlapping',
             config: {
               plaid: { role: ROLES.WORD },
               igt: { orthographies: opts.orthographies ?? [{ name: 'IPA' }] },
@@ -107,6 +109,7 @@ export function buildRawDoc(opts = {}) {
           {
             id: 'morphL',
             name: 'Morphemes',
+            overlapMode: 'any',
             config: { plaid: { role: ROLES.MORPHEME } },
             tokens: morphemes,
             spanLayers: morphSpanLayers,
@@ -115,6 +118,7 @@ export function buildRawDoc(opts = {}) {
           {
             id: 'alignL',
             name: 'Alignment',
+            overlapMode: 'non-overlapping',
             config: { plaid: { role: ROLES.TIME_ALIGNMENT } },
             tokens: opts.alignmentTokens ?? [],
             spanLayers: [],

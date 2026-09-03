@@ -5,22 +5,34 @@
 // Alignment tokens live on a separate `:non-overlapping` token layer; each
 // has a character range `[begin, end)` plus `{timeBegin, timeEnd}` metadata
 // linking audio/video time to text. Editing the alignment's text also edits
-// the body, which triggers the server's text-edit cascade — too sprawling
-// to mirror locally, so create/edit/delete reload after a successful write.
-// `alignBaseline` and `updateAlignmentBounds` skip the text edit and patch
-// optimistically.
+// the body, which triggers the server's text-edit cascade. That cascade is
+// mirrored locally (../textEdits.js) so create/edit/delete patch the document
+// in place from the batch's returned ids: a refetch grows with the document
+// and was the lag between Enter and the row appearing. Every mutation here
+// still falls back to a reload when the server's answer lacks what the patch
+// needs, and `_withSaving` reloads on any failure.
 //
 // Offsets (token begin/end, text-edit op index/value) are Unicode CODE POINTS,
 // so measurement/slicing/search uses cpLength/cpSlice/cpIndexOf, not the UTF-16
 // `.length`/`.substring`/`.indexOf` (which mis-place tokens around astral text).
 
 import { cpLength, cpSlice, cpIndexOf, verifyOnEdit } from '@larc-iu/plaid-client';
+import { applyTextEditsLocally } from '../textEdits.js';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
   (tokens || []).find((t) => t.id !== excludeId && t.begin < end && t.end > begin) || null;
 
 const sortByBegin = (a, b) => a.begin - b.begin;
+
+// Add a freshly created alignment token to the local layer, in begin order.
+const pushAlignmentToken = (infoNext, token) => {
+  const layer = infoNext.alignmentTokenLayer;
+  if (!layer) return;
+  if (!Array.isArray(layer.tokens)) layer.tokens = [];
+  layer.tokens.push(token);
+  layer.tokens.sort(sortByBegin);
+};
 
 // Alignment-token metadata: the time bounds plus an optional speaker label
 // (diarization). A blank speaker is omitted so we never persist an empty key.
@@ -166,24 +178,25 @@ export const alignmentMutations = {
 
     const newTextLength = cpLength(existingText) + cpLength(insertedText);
     const hasExistingSentences = (sentenceTokenLayer.tokens || []).length > 0;
+    // Empty partitioning layer: compensate-after-cascade skips it, so we must
+    // seed the partition. Otherwise the cascade reindexes surviving sentences
+    // to cover the inserted text.
+    const seedSentence = !hasExistingSentences && newTextLength > 0;
+    const textOps = [{ type: 'insert', index: insertBegin, value: insertedText }];
+    const meta = alignmentMeta(timeBegin, timeEnd, speaker);
 
     return this._withSaving('Failed to create alignment', async () => {
-      await this._client.batched(async () => {
-        this._client.texts.update(textId, [
-          { type: 'insert', index: insertBegin, value: insertedText },
-        ]);
+      const results = await this._client.batched(async () => {
+        this._client.texts.update(textId, textOps);
         this._client.tokens.create(
           alignmentTokenLayer.id,
           textId,
           tokenBegin,
           tokenEnd,
           undefined,
-          alignmentMeta(timeBegin, timeEnd, speaker),
+          meta,
         );
-        // Empty partitioning layer: compensate-after-cascade skips it, so we
-        // must seed the partition. Otherwise the cascade reindexes surviving
-        // sentences to cover the inserted text.
-        if (!hasExistingSentences && newTextLength > 0) {
+        if (seedSentence) {
           this._client.tokens.bulkCreate([
             {
               tokenLayerId: sentenceTokenLayer.id,
@@ -194,7 +207,27 @@ export const alignmentMutations = {
           ]);
         }
       });
-      await this._reload();
+      const newId = results?.[1]?.body?.id;
+      const seededId = seedSentence ? results?.[2]?.body?.ids?.[0] : null;
+      if (!newId || (seedSentence && !seededId)) {
+        await this._reload(); // the batch answered without the ids the patch needs
+      } else {
+        this._applyRawPatch((next, infoNext, vocabs) => {
+          applyTextEditsLocally(next, textId, textOps, vocabs);
+          pushAlignmentToken(infoNext, {
+            id: newId,
+            text: textId,
+            begin: tokenBegin,
+            end: tokenEnd,
+            metadata: meta,
+          });
+          if (seededId) {
+            infoNext.sentenceTokenLayer.tokens = [
+              { id: seededId, text: textId, begin: 0, end: newTextLength },
+            ];
+          }
+        });
+      }
       await this._rememberSpeaker(speaker);
     });
   },
@@ -288,9 +321,11 @@ export const alignmentMutations = {
     const sentences = sentenceTokenLayer.tokens || [];
     const cascadeWipesAllSentences =
       sentences.length === 0 || sentences.every((s) => s.begin >= tokenBegin && s.end <= tokenEnd);
+    const seedSentence = cascadeWipesAllSentences && newTextLength > 0;
+    const meta = alignmentMeta(timeBegin, timeEnd, speaker);
 
     return this._withSaving('Failed to edit alignment', async () => {
-      await this._client.batched(async () => {
+      const results = await this._client.batched(async () => {
         this._client.texts.update(textId, textOps);
         this._client.tokens.create(
           alignmentTokenLayer.id,
@@ -298,9 +333,9 @@ export const alignmentMutations = {
           tokenBegin,
           newAlignmentEnd,
           undefined,
-          alignmentMeta(timeBegin, timeEnd, speaker),
+          meta,
         );
-        if (cascadeWipesAllSentences && newTextLength > 0) {
+        if (seedSentence) {
           this._client.tokens.bulkCreate([
             {
               tokenLayerId: sentenceTokenLayer.id,
@@ -311,7 +346,29 @@ export const alignmentMutations = {
           ]);
         }
       });
-      await this._reload();
+      const newId = results?.[1]?.body?.id;
+      const seededId = seedSentence ? results?.[2]?.body?.ids?.[0] : null;
+      if (!newId || (seedSentence && !seededId)) {
+        await this._reload(); // the batch answered without the ids the patch needs
+      } else {
+        this._applyRawPatch((next, infoNext, vocabs) => {
+          // The delete removes the old alignment token (and any words inside
+          // the range, with their annotations); the insert shifts what follows.
+          applyTextEditsLocally(next, textId, textOps, vocabs);
+          pushAlignmentToken(infoNext, {
+            id: newId,
+            text: textId,
+            begin: tokenBegin,
+            end: newAlignmentEnd,
+            metadata: meta,
+          });
+          if (seededId) {
+            infoNext.sentenceTokenLayer.tokens = [
+              { id: seededId, text: textId, begin: 0, end: newTextLength },
+            ];
+          }
+        });
+      }
       await this._rememberSpeaker(speaker);
     });
   },
@@ -414,7 +471,8 @@ export const alignmentMutations = {
 
   // Delete an alignment by deleting its body text (the cascade then deletes
   // the alignment token). Swallows the surrounding inter-token whitespace so
-  // we don't leave a double space.
+  // we don't leave a double space, keeping ONE separator when text survives on
+  // both sides so the neighbours do not run together.
   async deleteAlignment(alignmentId) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
@@ -441,12 +499,16 @@ export const alignmentMutations = {
     let afterText = cpSlice(currentText, tokenEnd);
     beforeText = beforeText.replace(/\s+$/, '');
     afterText = afterText.replace(/^\s+/, '');
-    const numDeleted = cpLength(currentText) - (cpLength(afterText) + cpLength(beforeText));
-    const index = cpLength(beforeText);
+    const keepSeparator = beforeText && afterText ? 1 : 0;
+    const index = cpLength(beforeText) + keepSeparator;
+    const numDeleted = cpLength(currentText) - cpLength(afterText) - index;
+    const textOps = [{ type: 'delete', index, value: numDeleted }];
 
     return this._withSaving('Failed to delete alignment', async () => {
-      await this._client.texts.update(textId, [{ type: 'delete', index, value: numDeleted }]);
-      await this._reload();
+      await this._client.texts.update(textId, textOps);
+      this._applyRawPatch((next, infoNext, vocabs) => {
+        applyTextEditsLocally(next, textId, textOps, vocabs);
+      });
     });
   },
 
