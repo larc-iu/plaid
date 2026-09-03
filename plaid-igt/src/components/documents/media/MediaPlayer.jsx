@@ -1,13 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
@@ -22,7 +15,7 @@ import {
   Repeat,
 } from 'lucide-react';
 import { formatTime } from './formatTime.js';
-import { PLAYBACK_RATES } from './useMediaOperations.js';
+import { PLAYBACK_RATE_MIN, PLAYBACK_RATE_MAX, PLAYBACK_RATE_STEP } from './useMediaOperations.js';
 
 export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
   // Destructure what we need from mediaOps
@@ -325,8 +318,34 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
             />
           </div>
 
-          {/* Volume and speed */}
+          {/* Speed on the left, volume on the right: volume is where players
+              keep it, and the speed slider must not sit in its place. */}
           <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Speed</span>
+              <Slider
+                value={[playbackRate ?? 1]}
+                min={PLAYBACK_RATE_MIN}
+                max={PLAYBACK_RATE_MAX}
+                step={PLAYBACK_RATE_STEP}
+                onValueChange={([v]) => onPlaybackRateChange(v)}
+                className="w-[160px]"
+                aria-label="Playback speed"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-14 text-right text-sm tabular-nums text-foreground hover:text-primary"
+                    onClick={() => onPlaybackRateChange(1)}
+                    aria-label="Reset speed"
+                  >
+                    {(playbackRate ?? 1).toFixed(2)}×
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Reset to 1×</TooltipContent>
+              </Tooltip>
+            </div>
             <div className="flex items-center gap-2">
               <Volume2 className="h-4 w-4" />
               <Slider
@@ -338,24 +357,6 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
                 className="w-[150px]"
                 aria-label="Volume"
               />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Speed</span>
-              <Select
-                value={String(playbackRate ?? 1)}
-                onValueChange={(v) => onPlaybackRateChange(Number(v))}
-              >
-                <SelectTrigger className="h-8 w-[88px]" aria-label="Playback speed">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PLAYBACK_RATES.map((rate) => (
-                    <SelectItem key={rate} value={String(rate)}>
-                      {rate}×
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
         </div>

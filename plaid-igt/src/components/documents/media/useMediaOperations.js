@@ -23,7 +23,16 @@ const PARAMS_PREFIX = 'plaid_igt_transcribe_params_';
 const RATE_KEY = 'plaid_igt_playback_rate';
 const LOOP_KEY = 'plaid_igt_loop_segment';
 const AUTOPLAY_KEY = 'plaid_igt_play_on_focus';
-export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+export const PLAYBACK_RATE_MIN = 0.2;
+export const PLAYBACK_RATE_MAX = 5;
+export const PLAYBACK_RATE_STEP = 0.05;
+// Snap a rate onto the slider's grid and into its range.
+export const clampRate = (rate) => {
+  const n = Number(rate);
+  if (!Number.isFinite(n)) return 1;
+  const snapped = Math.round(n / PLAYBACK_RATE_STEP) * PLAYBACK_RATE_STEP;
+  return Number(Math.min(PLAYBACK_RATE_MAX, Math.max(PLAYBACK_RATE_MIN, snapped)).toFixed(2));
+};
 
 const readStored = (key, fallback, parse) => {
   try {
@@ -44,7 +53,7 @@ const writeStored = (key, value) => {
 };
 const parseRate = (raw) => {
   const n = Number(raw);
-  return PLAYBACK_RATES.includes(n) ? n : undefined;
+  return Number.isFinite(n) ? clampRate(n) : undefined;
 };
 const parseBool = (raw) => (raw === 'true' ? true : raw === 'false' ? false : undefined);
 
@@ -286,8 +295,24 @@ export const useMediaOperations = () => {
     }
   }, [isPlaying]);
 
+  // Move playback by `delta` seconds, keeping it in the recording. Any range
+  // being played is dropped: after a seek the user is listening freely.
+  const seekBy = useCallback(
+    (delta) => {
+      const el = mediaElementRef.current;
+      if (!el) return;
+      const max = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : duration;
+      const t = Math.max(0, Math.min(max || 0, el.currentTime + delta));
+      el.currentTime = t;
+      setCurrentTime(t);
+      setPlayingSelection(null);
+      if (autoScrollToTimeRef.current) autoScrollToTimeRef.current(t);
+    },
+    [duration],
+  );
+
   const handlePlaybackRateChange = useCallback((rate) => {
-    const value = PLAYBACK_RATES.includes(rate) ? rate : 1;
+    const value = clampRate(rate);
     playbackRateRef.current = value;
     setPlaybackRate(value);
     if (mediaElementRef.current) mediaElementRef.current.playbackRate = value;
@@ -531,6 +556,21 @@ export const useMediaOperations = () => {
   // Setup hotkeys (replaces Mantine useHotkeys; ignores events from form fields).
   useEffect(() => {
     const onKeyDown = (e) => {
+      // Ctrl/Cmd+Left / Ctrl/Cmd+Right seek one second, in a text box or out of
+      // one, so a transcriber can re-hear a stretch without leaving the row.
+      // Inside the transcript's text boxes this takes the place of word-jump
+      // (Ctrl) and line start/end (Cmd); on a Mac, Ctrl+Arrow belongs to the
+      // system, so Cmd is the only key that can carry the gesture there.
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.altKey &&
+        !e.shiftKey &&
+        (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      ) {
+        e.preventDefault();
+        seekBy(e.key === 'ArrowLeft' ? -1 : 1);
+        return;
+      }
       if (TAGS_TO_IGNORE.includes(e.target?.tagName)) return;
       // ESC key to clear selection
       if (e.key === 'Escape') {
@@ -538,8 +578,8 @@ export const useMediaOperations = () => {
           setSelection(null);
           setPopoverOpened(false);
         }
-      } else if (e.key === ' ' && e.ctrlKey) {
-        // Ctrl+Space to play selection
+      } else if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
+        // Ctrl/Cmd+Space to play selection
         e.preventDefault();
         if (selection && mediaElementRef.current) {
           handlePlaySelection();
@@ -558,7 +598,7 @@ export const useMediaOperations = () => {
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [selection, isPlaying, handlePlaySelection]);
+  }, [selection, isPlaying, handlePlaySelection, seekBy]);
 
   // Monitor range playback: at the end of the range, loop back to its start
   // when looping is on, otherwise snap to the end and pause.
@@ -707,6 +747,7 @@ export const useMediaOperations = () => {
     playRange,
     pausePlayback,
     togglePlayback,
+    seekBy,
 
     // Listening preferences
     playbackRate,

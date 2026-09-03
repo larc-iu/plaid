@@ -111,10 +111,11 @@ Each segment is a stretch of the recording with its text, which becomes part of 
 Media is optional, and a document with none is simply a text.
 
 To transcribe by ear, play the recording, then type the utterance you just heard into the **New segment** row and press Enter.
-The segment runs from the end of the previous one to wherever the playhead is when you save.
+The segment runs from the end of the previous one to wherever playback is when you save.
 Every segment is a row in the transcript, and the recording follows you: moving into a row plays that segment, Enter saves the row and moves to the next, Escape puts a row back the way it was, and Ctrl+Space plays or pauses without leaving the row.
 Turn off "Play segment on entry" to play by hand.
-The speed control slows the recording down, and the loop button repeats the segment you are on until you pause.
+The speed slider runs from 0.2× to 5×, and the loop button repeats the segment you are on until you pause.
+Ctrl/Cmd+Left and Ctrl/Cmd+Right move playback one second, in a transcript row or out of one.
 
 The timeline shows the same segments against the waveform.
 Drag across an empty stretch to add a segment anywhere in the recording, drag a segment's edge to trim it, and click one to open it.
@@ -280,6 +281,7 @@ To write such a program, see the link:api-py.html[Python client] and link:api-js
 | **Escape** | Close an open popover or menu.
 | **Space** (Media tab) | Play or pause the recording, when you are not typing in a box.
 | **Ctrl/Cmd+Space** (Media tab) | Play or pause the segment you are in, or the selected stretch of the timeline.
+| **Ctrl/Cmd+Left** / **Ctrl/Cmd+Right** (Media tab) | Move playback one second back or forward.
 | **Enter** / **Escape** (transcript row) | Save the row and move to the next, or put the row back the way it was.
 |===
 

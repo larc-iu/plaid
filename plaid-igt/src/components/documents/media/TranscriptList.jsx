@@ -340,8 +340,8 @@ const NewSegmentRow = memo(function NewSegmentRow({
         />
         <p className="text-xs text-muted-foreground">
           {ready
-            ? `${formatTime(prevEnd)} to playhead (${formatTime(currentTime)}). Enter to save.`
-            : `Playhead must be past ${formatTime(prevEnd)}. For earlier segments, drag on the timeline.`}
+            ? `${formatTime(prevEnd)} to ${formatTime(currentTime)} (playback). Enter to save.`
+            : `Playback must be past ${formatTime(prevEnd)}. For earlier segments, drag on the timeline.`}
         </p>
       </div>
       <div className="h-8 w-8" />
@@ -494,7 +494,10 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
         </datalist>
       )}
 
-      <div className="flex flex-col gap-1.5">
+      {/* The rows scroll inside a bounded box so a long transcript never pushes
+          the recording controls, the timeline, or the new-segment row out of
+          reach. Focus and timeline picks scroll their row into view. */}
+      <div className="flex max-h-[45vh] min-h-[6rem] flex-col gap-1.5 overflow-y-auto pr-1">
         {segments.length === 0 && (
           <p className="py-2 text-sm text-muted-foreground">
             {readOnly
@@ -519,7 +522,9 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
             registerText={registerText}
           />
         ))}
-        {!readOnly && (
+      </div>
+      {!readOnly && (
+        <div className="mt-1.5">
           <NewSegmentRow
             prevEnd={prevEnd}
             currentTime={currentTime}
@@ -527,8 +532,8 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
             onToggle={handleToggleFree}
             textRef={newTextRef}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
