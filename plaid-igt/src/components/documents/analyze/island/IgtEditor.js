@@ -68,6 +68,9 @@ import { humanizeError, notifyError, notifyInfo } from '@/utils/feedback';
 // render while the project queries are still in flight.
 const NO_PRECEDENT = Object.freeze({ links: [], values: [] });
 const EMPTY_SET = new Set();
+// Minimum time between tab-focus-triggered precedent refetches (see
+// _onVisibility in the constructor and the force path in _ensurePrecedent).
+const PRECEDENT_REFRESH_MIN_MS = 60_000;
 
 // ---- uncontrolledValue: set input.value only when the user is not mid-edit
 // on it. Keeps programmatic changes (split/merge form rewrites, reloads)
@@ -267,6 +270,19 @@ export class IgtEditor {
     window.addEventListener('beforeunload', this._onBeforeUnload);
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
+    // Project-wide precedent (_ensurePrecedent) is fetched once and then held
+    // for the life of this instance, so a decision someone else makes
+    // elsewhere in the project while this document stays open otherwise never
+    // shows up in gloss guesses or the lexicon popover's ranking. Refetching
+    // on every keystroke would be wasteful; refetching when the tab regains
+    // focus catches it at the moment a person actually resumes work, which is
+    // when staleness would otherwise be noticed.
+    this._onVisibility = () => {
+      if (document.visibilityState !== 'visible' || this.readOnly) return;
+      if (Date.now() - (this._precedentFetchedAt || 0) < PRECEDENT_REFRESH_MIN_MS) return;
+      this._ensurePrecedent(true);
+    };
+    document.addEventListener('visibilitychange', this._onVisibility);
     // Keyboard review of auto-linker suggestions: Ctrl/Cmd+Arrow hops between
     // inferred vocab-link chips; Enter/Backspace confirm/remove the focused one
     // (see _predictionKeydown). Container-level so it works from any cell or chip.
@@ -379,6 +395,7 @@ export class IgtEditor {
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
+    document.removeEventListener('visibilitychange', this._onVisibility);
     this.container.removeEventListener('keydown', this._predictionKeydown);
     this.container.removeEventListener('mouseover', this._onMweHover);
     this.container.removeEventListener('mouseout', this._onMweHover);
@@ -4156,7 +4173,11 @@ export class IgtEditor {
   // twice. Until the queries answer, everything ranks on the document alone;
   // the island re-renders when they land. A failed fetch keeps it that way
   // (popover and guesses still work).
-  _ensurePrecedent() {
+  //
+  // `force` bypasses the same-key cache: someone else's decision elsewhere in
+  // the project between fetches would otherwise never be seen for the life of
+  // this instance (see the visibilitychange listener in the constructor).
+  _ensurePrecedent(force = false) {
     const doc = this.doc;
     const vocabIds = Object.keys(doc?.vocabularies || {}).sort();
     const valueQueries = doc?.layerInfo
@@ -4165,9 +4186,10 @@ export class IgtEditor {
     const key = `${doc?.id}|${vocabIds.join(',')}|${valueQueries
       .map((q) => q.query.where[0][2].layer)
       .join(',')}`;
-    if (this._precedent?.key === key) return;
+    if (!force && this._precedent?.key === key) return;
     const state = { key, results: null };
     this._precedent = state;
+    this._precedentFetchedAt = Date.now();
     if (!doc?.client || (!vocabIds.length && !valueQueries.length)) return;
     const client = doc.client;
     Promise.all([
