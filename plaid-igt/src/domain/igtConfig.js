@@ -15,6 +15,7 @@
 // under the shared word layer).
 
 import { ROLES, findByRole } from '@larc-iu/plaid-client';
+import { isZeroMorph } from './zeroMorph.js';
 
 /** plaid-igt's private config namespace (distinct from the reserved `plaid`). */
 export const IGT_NAMESPACE = 'igt';
@@ -42,12 +43,16 @@ export const readOrthographies = (config) => readIgt(config, 'orthographies') ??
 export const readIgnoredTokens = (config) => readIgt(config, 'ignoredTokens') ?? null;
 
 // "Punctuation" for the ignore rule: Unicode punctuation and symbols, EXCEPT
-// pictographs (emoji). An emoji token in an object-language transcript is a
-// word-like unit a linguist may well want to gloss (an interjection, a
-// gesture); treating it as punctuation silently removed its annotation cells.
+// pictographs (emoji) and the zero morph. An emoji token in an object-language
+// transcript is a word-like unit a linguist may well want to gloss (an
+// interjection, a gesture); treating it as punctuation silently removed its
+// annotation cells. ∅ is Sm, so it falls under \p{S} on the letter of the rule
+// while being the most meaning-bearing character in the app: without this it
+// would lose its annotation cells the same way, and trimIgnoredEdges would eat
+// the zero off a form like `ta∅`.
 const PUNCT_CHAR_RE = /[\p{P}\p{S}]/u;
 const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
-const isPunctChar = (c) => PUNCT_CHAR_RE.test(c) && !PICTOGRAPH_RE.test(c);
+const isPunctChar = (c) => PUNCT_CHAR_RE.test(c) && !PICTOGRAPH_RE.test(c) && !isZeroMorph(c);
 /**
  * Is a token excluded from word-level annotation under an ignored-tokens config
  * (`readIgnoredTokens` shape)? `content` is the token's surface text. Shared by

@@ -14,6 +14,7 @@
 
 import { cpSlice, verifyOnEdit } from '@larc-iu/plaid-client';
 import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
+import { isZeroMorph } from '../zeroMorph.js';
 
 // A human edit of a machine-made, unverified morpheme verifies its
 // segmentation (provenance write-contract rule 3): merge { provConfirmed:
@@ -278,7 +279,15 @@ export const morphemeMutations = {
       const body = this.body;
       const previousForm = formOf(previous, body);
       const currentForm = formOf(target, body);
-      const mergedForm = previousForm + currentForm;
+      // A zero morph contributes no surface material, so merging across one
+      // drops it rather than gluing the character on: Backspace at the start of
+      // a cell after `dog` + `∅` gives `dog`, not `dog∅`. Merging two zeros
+      // leaves one.
+      const mergedForm = isZeroMorph(previousForm)
+        ? currentForm
+        : isZeroMorph(currentForm)
+          ? previousForm
+          : previousForm + currentForm;
       const subsequents = siblings.slice(idx + 1);
 
       await this._client.batched(async () => {

@@ -35,6 +35,7 @@
 import { PROV_STATES, ROLES, isMachine } from '@larc-iu/plaid-client';
 import { trimIgnoredEdges } from './igtConfig.js';
 import { isMweType } from './mwe.js';
+import { isZeroMorph } from './zeroMorph.js';
 
 /** The two kinds of token a decision can hang off (token-layer roles). */
 export const KINDS = Object.freeze({ WORD: ROLES.WORD, MORPHEME: ROLES.MORPHEME });
@@ -63,7 +64,13 @@ export const createTally = () => new Map();
 
 /** Count `n` decisions of `value` for (kind, form, slot). */
 export function addPrecedent(tally, kind, form, slot, value, n = 1, { machine = false } = {}) {
-  if (!form || value == null || value === '' || !(n > 0)) return;
+  // A zero morph is skipped here, and that one guard is the whole story for
+  // four consumers: the gloss guess, the Alt+↓ alternatives list, vocabRank's
+  // precedent boost and autoLink's precedent tier all read this tally. Every
+  // zero in the project shares the one form ∅ while realizing unrelated
+  // categories, so a tally over it would confidently propose the project's
+  // most common zero gloss for every zero cell in it.
+  if (!form || isZeroMorph(form) || value == null || value === '' || !(n > 0)) return;
   const k = keyOf(kind, form, slot);
   let byValue = tally.get(k);
   if (!byValue) tally.set(k, (byValue = new Map()));

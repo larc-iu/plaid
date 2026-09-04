@@ -50,6 +50,9 @@ import {
 } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { rankVocabItems } from '@/domain/vocabRank';
+import { composeAppend, composePending } from '@/domain/compose';
+import { ZERO_MORPH } from '@/domain/zeroMorph';
+import { composePendingOn, handleComposeBeforeInput } from '@/lib/composeInput';
 import { bracketPieces, isMweType, joinMweForm, mweMorphType } from '@/domain/mwe';
 import {
   KINDS,
@@ -287,6 +290,19 @@ export class IgtEditor {
     // inferred vocab-link chips; Enter/Backspace confirm/remove the focused one
     // (see _predictionKeydown). Container-level so it works from any cell or chip.
     this.container.addEventListener('keydown', this._predictionKeydown);
+    // Backslash codes (`\sw` -> ə, `\0/` -> ∅) in every text field of the grid.
+    // Delegated: `beforeinput` bubbles, and every text field here holds language
+    // data, so there is nothing in the island to opt out. See lib/composeInput.js
+    // for why this is not a keydown handler.
+    this._onBeforeInput = (e) => {
+      const el = e.target;
+      const tag = el?.tagName;
+      const typed = el?.type;
+      if (tag === 'TEXTAREA' || (tag === 'INPUT' && (!typed || typed === 'text'))) {
+        handleComposeBeforeInput(e);
+      }
+    };
+    this.container.addEventListener('beforeinput', this._onBeforeInput);
     // Hovering any piece of a multi-word expression's bracket lights the whole
     // bracket, so a member on the next band still reads as part of it.
     this._onMweHover = (e) => {
@@ -397,6 +413,7 @@ export class IgtEditor {
     window.removeEventListener('beforeunload', this._onBeforeUnload);
     document.removeEventListener('visibilitychange', this._onVisibility);
     this.container.removeEventListener('keydown', this._predictionKeydown);
+    this.container.removeEventListener('beforeinput', this._onBeforeInput);
     this.container.removeEventListener('mouseover', this._onMweHover);
     this.container.removeEventListener('mouseout', this._onMweHover);
     if (this._repositionRaf) cancelAnimationFrame(this._repositionRaf);
@@ -2639,6 +2656,21 @@ export class IgtEditor {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }
 
+  // Type one character at the caret, replacing any selection, and let the
+  // ordinary input path see it. Used by the Alt chords in a morpheme form cell.
+  _insertLiteral(el, ch) {
+    const s = el.selectionStart ?? el.value.length;
+    const en = el.selectionEnd ?? s;
+    el.value = el.value.slice(0, s) + ch + el.value.slice(en);
+    const c = s + ch.length;
+    try {
+      el.setSelectionRange(c, c);
+    } catch {
+      /* noop */
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   // ---- morpheme form field (adds split/merge/delete key handling) ----
   _morphFormKeydown(morph, word, siblings) {
     return async (e) => {
@@ -2651,18 +2683,34 @@ export class IgtEditor {
         e.preventDefault();
         const st = this._morphSplit;
         const lastSplit = st.splits?.[st.splits.length - 1];
+        // A backslash code half-typed into the buffer: `-` and `=` belong to
+        // the code (`\i-` is ɨ, `\-5` is ˥), not to a new boundary.
+        const midCode = composePending(st.buffer, st.buffer.length, { escapedAt: st.escapedAt });
         if (e.key === 'Enter' || e.key === 'Tab') st.commitKey = e.key;
         else if (e.key === 'Backspace') {
           // Takes back whatever was typed last: a boundary if one sits at the
           // end of the buffer, else a character.
           if (lastSplit && lastSplit.at === st.buffer.length) st.splits.pop();
           else st.buffer = st.buffer.slice(0, -1);
-        } else if ((e.key === '-' || e.key === '=') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        } else if (
+          (e.key === '-' || e.key === '=') &&
+          !e.altKey &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !midCode
+        ) {
           // A further split typed mid-flight ("ngo-ko-mi" fast): remember the
           // boundary (and whether it was a clitic one) instead of inserting a
           // literal, and replay it as another split once the new cell exists.
           st.splits = [...(st.splits || []), { at: st.buffer.length, joiner: e.key }];
-        } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) st.buffer += e.key;
+        } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          // Composed as it goes, never in one pass at replay: `st.splits` holds
+          // offsets into this buffer, and a late pass would move the text out
+          // from under them.
+          const next = composeAppend(st.buffer, e.key, { escapedAt: st.escapedAt });
+          st.buffer = next.value;
+          st.escapedAt = next.escapedAt;
+        }
         // Arrows / Escape / etc. mid-flight are swallowed (no meaningful target).
         return;
       }
@@ -2710,25 +2758,29 @@ export class IgtEditor {
         el.focus();
       };
 
+      // Alt+0 types the zero morph. It sits with Alt+- and Alt+= because it is
+      // the same gesture (Alt inserts a character this cell would otherwise
+      // read as a command), and it earns a chord of its own rather than only
+      // the `\0/` code because a zero is roughly one morpheme in eight in real
+      // data, common enough that a student meets it on their first text.
+      if (e.key === '0' && e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        this._insertLiteral(el, ZERO_MORPH);
+        return;
+      }
       // "-" splits at an affix boundary, "=" at a clitic boundary (the clitic
       // side is typed by the shared positional rule, see affixMarkers.js).
       // Ctrl/Cmd+- and Ctrl/Cmd+= are the browser's zoom keys: leave them.
-      if ((e.key === '-' || e.key === '=') && !e.ctrlKey && !e.metaKey) {
+      // A half-typed backslash code owns these keys first: 22 codes END in one
+      // (`\i-` ɨ, `\l-` ɬ, `\u-` ʉ) and 18 BEGIN with one (the `\-5`..`\-1`
+      // tone bars). Falling through lets beforeinput compose them.
+      if ((e.key === '-' || e.key === '=') && !e.ctrlKey && !e.metaKey && !composePendingOn(el)) {
         const joiner = e.key;
         if (e.altKey) {
           // Alt+- / Alt+= inserts the literal character (reduplication forms,
           // forms that contain a hyphen) rather than splitting the morpheme.
           e.preventDefault();
-          const s = el.selectionStart ?? el.value.length;
-          const en = el.selectionEnd ?? s;
-          el.value = el.value.slice(0, s) + joiner + el.value.slice(en);
-          const c = s + 1;
-          try {
-            el.setSelectionRange(c, c);
-          } catch {
-            /* noop */
-          }
-          el.dispatchEvent(new Event('input', { bubbles: true }));
+          this._insertLiteral(el, joiner);
           return;
         }
         e.preventDefault();
@@ -2746,6 +2798,7 @@ export class IgtEditor {
         // bails on — so _applyMorphSplitReplay locates + focuses the new cell.
         this._morphSplit = {
           buffer: '',
+          escapedAt: -1,
           commitKey: null,
           right,
           wordId: word.id,
@@ -2877,6 +2930,7 @@ export class IgtEditor {
       el.dataset.suppressCommit = '1';
       this._morphSplit = {
         buffer: '',
+        escapedAt: -1,
         commitKey: split.commitKey,
         splits: [],
         left: lastSeg.slice(0, caretInLast),

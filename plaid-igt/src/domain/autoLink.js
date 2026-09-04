@@ -36,6 +36,7 @@ import { PROV_STATES } from '@larc-iu/plaid-client';
 
 import { trimIgnoredEdges, isTokenIgnored } from './igtConfig.js';
 import { isBoundType } from './affixMarkers.js';
+import { isZeroMorph } from './zeroMorph.js';
 import { KINDS, SLOT_LINK, precedentCounts, pickMajority } from './precedent.js';
 import { isMweType, isContiguous, joinMweForm } from './mwe.js';
 
@@ -131,6 +132,12 @@ export function computeAutoLinkProposals({
   const items = buildItemIndex(vocabularies);
   const proposals = [];
   const consider = (entity, form, kind) => {
+    // A zero morph is never auto-linked. Its form carries no information to
+    // match on, so with one ∅ entry in the lexicon every zero in the project
+    // would link to it, and with several `resolveForm` would pick by smallest
+    // id. Linking a zero to the right entry is a human judgement, and it stays
+    // available by hand: the lexicon popover still ranks ∅ entries for it.
+    if (isZeroMorph(form)) return;
     const { open, currentItemId } = linkTarget(entity);
     if (!open) return;
     const itemId = resolveForm(form ?? '', kind, precedent, items);
