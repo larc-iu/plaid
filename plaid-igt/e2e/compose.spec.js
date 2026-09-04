@@ -84,6 +84,9 @@ test('Alt+0 types a zero morph and it round-trips', async ({ page }) => {
   await seedAuth(page);
   await openAnalyze(page, projectId, documentId);
 
+  // This one commits, and the fixture project is reused by name across runs,
+  // so put the form back at the end.
+  const original = await page.locator('.igt-island .igt-morph-field').first().inputValue();
   const cell = await freshCell(page);
   await page.keyboard.press('Alt+0');
   await expect(cell).toHaveValue('∅');
@@ -94,7 +97,15 @@ test('Alt+0 types a zero morph and it round-trips', async ({ page }) => {
   await page.waitForLoadState('networkidle');
   await page.getByRole('tab', { name: 'Analyze' }).click();
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
-  await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue('∅');
+  const reloaded = page.locator('.igt-island .igt-morph-field').first();
+  await expect(reloaded).toHaveValue('∅');
+
+  await reloaded.click();
+  await reloaded.press('Control+a');
+  await page.keyboard.type(original);
+  await reloaded.press('Tab');
+  await page.waitForTimeout(600);
+  await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue(original);
 });
 
 test('codes work outside the island too', async ({ page }) => {
