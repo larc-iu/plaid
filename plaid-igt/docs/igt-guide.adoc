@@ -385,6 +385,10 @@ Nothing happens until you type the backslash, so ordinary words are never change
 This works in the Analyze grid, the baseline, the transcript, lexicon entries, and document metadata.
 It does not apply where a backslash has to mean itself, such as a regular expression in Search or Bulk Edit.
 
+If this language is written with a character none of the built-in codes cover, add a code for it under **Settings → Text and Vocab → Special characters**.
+A code is two characters, it applies to everyone working on the project, and it can replace a built-in code by binding the same two characters to something else.
+The same screen looks up a built-in code, so you can check what `\ct` types before binding anything near it.
+
 The empty set ∅, for a morpheme with a grammatical job and no sound, has a code of its own (`\0/`) and a shortcut in the Analyze grid: **Alt+0** in a morpheme form types it.
 Write it as ∅ rather than a capital O with a stroke or a zero, so it exports as a zero morph and the Validation tab does not flag it.
 

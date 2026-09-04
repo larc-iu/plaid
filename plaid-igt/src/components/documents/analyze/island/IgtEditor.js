@@ -52,7 +52,7 @@ import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { rankVocabItems } from '@/domain/vocabRank';
 import { composeAppend, composePending } from '@/domain/compose';
 import { ZERO_MORPH } from '@/domain/zeroMorph';
-import { composePendingOn, handleComposeBeforeInput } from '@/lib/composeInput';
+import { activeComposeTable, composePendingOn, handleComposeBeforeInput } from '@/lib/composeInput';
 import { bracketPieces, isMweType, joinMweForm, mweMorphType } from '@/domain/mwe';
 import {
   KINDS,
@@ -2707,7 +2707,10 @@ export class IgtEditor {
           // Composed as it goes, never in one pass at replay: `st.splits` holds
           // offsets into this buffer, and a late pass would move the text out
           // from under them.
-          const next = composeAppend(st.buffer, e.key, { escapedAt: st.escapedAt });
+          const next = composeAppend(st.buffer, e.key, {
+            escapedAt: st.escapedAt,
+            table: activeComposeTable(),
+          });
           st.buffer = next.value;
           st.escapedAt = next.escapedAt;
         }
@@ -3292,9 +3295,11 @@ export class IgtEditor {
         <div class="igt-legend__row">
           <strong>Special characters</strong>
           <span
-            >type <kbd></kbd> and a two-letter code in any text field: <em>sw</em> → ə,
-            <em> g</em> → ŋ, <em>?g</em> → ʔ, <em></em
-          ></span>
+            >type <kbd>\\</kbd> and a two-letter code in any text field: <em>\\sw</em> → ə,
+            <em>\\ng</em> → ŋ, <em>\\?g</em> → ʔ, <em>\\0/</em> → ∅ · these are Praat's codes ·
+            <em>\\u0250</em> → any character by number · <kbd>\\</kbd><kbd>\\</kbd> for a plain
+            backslash · add codes for this project under Settings → Text and Vocab</span
+          >
         </div>
       </div>
     `;

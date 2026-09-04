@@ -80,7 +80,12 @@ export const ProjectSettingsPanel = ({
           />
         </TabsContent>
         <TabsContent value="text-and-vocab" className="mt-0">
-          <OrthographyVocabSettings projectId={projectId} client={client} />
+          <OrthographyVocabSettings
+            project={project}
+            projectId={projectId}
+            client={client}
+            onProjectUpdate={onProjectUpdate}
+          />
         </TabsContent>
         <TabsContent value="annotation" className="mt-0">
           <AnnotationSettings

@@ -104,6 +104,7 @@ export function buildProjectFile({ project, documents, vocabularies, asOf = null
       languages: igtConfig('languages'),
       speakers: igtConfig('speakers'),
       serviceDefaults: igtConfig('serviceDefaults'),
+      compose: igtConfig('compose'),
       exportPresets: igtConfig('export'),
     },
     layers: {

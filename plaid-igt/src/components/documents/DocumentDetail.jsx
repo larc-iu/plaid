@@ -24,6 +24,7 @@ import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { useDelayedFlag } from '@/hooks/useDelayedFlag';
+import { useComposeProject } from '@/hooks/useCompose';
 
 // Renders only the active tab's panel (others stay unmounted).
 const Panel = ({ active, children }) => (active ? children : null);
@@ -142,6 +143,8 @@ const DocumentEditor = () => {
   const docPath = `/projects/${projectId}/documents/${documentId}`;
 
   const permissions = useDocumentPermissions(doc?.project);
+  // A code bound under Settings applies in the grid and every other field here.
+  useComposeProject(doc?.project);
   const history = useDocumentHistory(documentId, client);
 
   // Comments live in their own store, not on IgtDocument: they are social data,

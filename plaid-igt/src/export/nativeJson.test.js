@@ -291,6 +291,7 @@ describe('buildProjectFile', () => {
       languages: null,
       speakers: null,
       serviceDefaults: null,
+      compose: null,
       exportPresets: null,
     });
     expect(out.layers).toMatchObject({
@@ -320,6 +321,7 @@ describe('buildProjectFile', () => {
       speakers: ['Speaker 1', 'Speaker 2'],
       serviceDefaults: { analyze: { impl: 'polygloss' } },
       export: { presets: [{ name: 'For the paper' }] },
+      compose: { codes: [{ code: "b'", char: 'ɓ' }] },
     });
     const out = buildProjectFile({
       project,
@@ -332,6 +334,7 @@ describe('buildProjectFile', () => {
     expect(out.schema.speakers).toEqual(['Speaker 1', 'Speaker 2']);
     expect(out.schema.serviceDefaults).toEqual({ analyze: { impl: 'polygloss' } });
     expect(out.schema.exportPresets).toEqual({ presets: [{ name: 'For the paper' }] });
+    expect(out.schema.compose).toEqual({ codes: [{ code: "b'", char: 'ɓ' }] });
   });
 
   it("carries each field's tagset reference, on the field", () => {

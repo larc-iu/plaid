@@ -459,6 +459,7 @@ describe('runNativeImport (full archive)', () => {
       speakers: ['Speaker 1'],
       serviceDefaults: { analyze: { impl: 'polygloss' } },
       exportPresets: { presets: [{ name: 'For the paper' }] },
+      compose: { codes: [{ code: "b'", char: 'ɓ' }] },
     });
     const client = stubClient();
     await runNativeImport({ client, projectId: 'newp', archive });
@@ -471,6 +472,7 @@ describe('runNativeImport (full archive)', () => {
     expect(written.serviceDefaults).toEqual({ analyze: { impl: 'polygloss' } });
     // Stored under its own key, which is `export`, not `exportPresets`.
     expect(written.export).toEqual({ presets: [{ name: 'For the paper' }] });
+    expect(written.compose).toEqual({ codes: [{ code: "b'", char: 'ɓ' }] });
     // documentMetadata is rewritten so a metadata field's tagset comes back.
     expect(written.documentMetadata).toEqual([{ name: 'Source' }]);
   });

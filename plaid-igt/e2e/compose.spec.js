@@ -124,3 +124,64 @@ test('codes work outside the island too', async ({ page }) => {
   await page.keyboard.type(' \\ng');
   await expect(area).toHaveValue(/ŋ$/);
 });
+
+test('the legend spells the codes correctly', async ({ page }) => {
+  // The legend is a lit template literal, where `\sw` is a JS escape, not two
+  // characters. Getting this wrong silently prints "sw" and turns `\ng` into a
+  // line break, which is exactly what happened once. Only a rendered check
+  // catches it.
+  const { projectId, documentId } = await getFixture();
+  await seedAuth(page);
+  await openAnalyze(page, projectId, documentId);
+
+  await page.locator('.igt-island .igt-help-btn').click();
+  const legend = page.locator('.igt-island .igt-legend');
+  await legend.waitFor({ state: 'visible' });
+  const text = await legend.innerText();
+
+  for (const code of ['\\sw', '\\ng', '\\?g', '\\0/', '\\u0250']) {
+    expect(text, `legend should show ${code}`).toContain(code);
+  }
+  expect(text).toContain('Alt');
+  expect(text).toContain('∅');
+});
+
+test('a code bound in Settings works in the grid', async ({ page }) => {
+  // The whole point of project-wide configuration, and the part no unit test
+  // reaches: Settings writes the config, and the composer has to pick it up in
+  // a different screen entirely.
+  const { projectId, documentId } = await getFixture();
+  await seedAuth(page);
+
+  await page.goto(`/#/projects/${projectId}/text-and-vocab`);
+  await page.waitForLoadState('networkidle');
+  const section = page.locator('h2', { hasText: 'Special characters' });
+  await section.waitFor({ state: 'visible' });
+
+  await page.getByRole('button', { name: 'Add a code' }).click();
+  await page.locator('#code-0').fill("b'");
+  await page.locator('#char-0').fill('ɓ');
+  await page.getByRole('button', { name: 'Save codes' }).click();
+  await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
+
+  // Now use it somewhere else in the app.
+  await openAnalyze(page, projectId, documentId);
+  const cell = await freshCell(page);
+  await page.keyboard.type("a\\b'c");
+  await expect(cell).toHaveValue('aɓc');
+
+  // A built-in code still works alongside it.
+  await cell.press('Control+a');
+  await page.keyboard.type('\\sw');
+  await expect(cell).toHaveValue('ə');
+
+  // Put the project back.
+  await page.goto(`/#/projects/${projectId}/text-and-vocab`);
+  await page.waitForLoadState('networkidle');
+  await page
+    .getByRole('button', { name: /Remove code/ })
+    .first()
+    .click();
+  await page.getByRole('button', { name: 'Save codes' }).click();
+  await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
+});

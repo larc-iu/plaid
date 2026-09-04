@@ -96,6 +96,14 @@ export const trimIgnoredEdges = (content, cfg) => {
 /** A project's enabled document-metadata fields: [{name}], or null. */
 export const readDocumentMetadata = (config) => readIgt(config, 'documentMetadata') ?? null;
 
+/**
+ * A project's own compose codes: `{codes: [{code, char, description?}]}`, or
+ * null. These LAYER OVER the built-in Praat codes rather than replacing them,
+ * so a project that binds one code still has the other four hundred. See
+ * domain/composeConfig.js for the merge.
+ */
+export const readCompose = (config) => readIgt(config, 'compose') ?? null;
+
 // --- Language identity -----------------------------------------------------
 
 /**

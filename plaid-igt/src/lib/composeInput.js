@@ -19,6 +19,22 @@
 // arrive as longer `insertText` payloads and are left alone.
 
 import { composeInsert, composePending } from '@/domain/compose.js';
+import { BUILT_IN_TABLE, resolveComposeTable } from '@/domain/composeConfig.js';
+
+// The table in force right now. A project can bind codes of its own on top of
+// the built-in ones, and the fields that compose are spread across the app, so
+// the active project's table is parked here rather than threaded through every
+// one of them. There is one open project at a time, and `setComposeProject` is
+// called wherever a project is loaded or refreshed.
+let activeTable = BUILT_IN_TABLE;
+
+/** Point the composer at this project's codes. Pass null to go back to the built-ins. */
+export const setComposeProject = (project) => {
+  activeTable = project ? resolveComposeTable(project.config) : BUILT_IN_TABLE;
+};
+
+/** The table in force, for callers that need to look a code up themselves. */
+export const activeComposeTable = () => activeTable;
 
 // Which backslash in this field is a literal the user escaped. Element state,
 // not a WeakMap keyed by value, because the island reuses inputs across
@@ -90,7 +106,7 @@ export function handleComposeBeforeInput(e) {
   // pending in front of it.
   if (caret == null || caret !== el.selectionEnd) return false;
 
-  const r = composeInsert(el.value, caret, ch, { escapedAt: escapedAtOf(el) });
+  const r = composeInsert(el.value, caret, ch, { escapedAt: escapedAtOf(el), table: activeTable });
   if (!r) return false;
 
   e.preventDefault();

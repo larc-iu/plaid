@@ -32,11 +32,18 @@ const HEX_DIGIT = /[0-9a-fA-F]/;
 // `\u`, then the digits accumulated so far, anchored at the caret.
 const HEX_PENDING = /\\u([0-9a-fA-F]{0,3})$/;
 
-/** The character a code produces, or null. */
-export const lookupCode = (code) => COMPOSE_TABLE[code] ?? null;
+// Every entry point takes an optional `table`, so a project can bind codes of
+// its own on top of the built-in ones (see domain/composeConfig.js). It stays
+// optional because most of this app has no project in hand, and the built-in
+// table is the right answer there.
+const tableOr = (t) => t || COMPOSE_TABLE;
 
-/** Is `code` a complete table code? */
-export const isComposeCode = (code) => lookupCode(code) != null;
+/** The character a code produces in `table`, or null. */
+export const lookupCode = (code, table) =>
+  Object.prototype.hasOwnProperty.call(tableOr(table), code) ? tableOr(table)[code] : null;
+
+/** Is `code` a complete code? */
+export const isComposeCode = (code, table) => lookupCode(code, table) != null;
 
 /**
  * Decide what typing `ch` at `caret` in `value` should do.
@@ -51,7 +58,7 @@ export const isComposeCode = (code) => lookupCode(code) != null;
  * a range selected, the typed character replaces the range and no code can be
  * pending in front of it.
  */
-export function composeInsert(value, caret, ch, { escapedAt = -1 } = {}) {
+export function composeInsert(value, caret, ch, { escapedAt = -1, table } = {}) {
   if (typeof value !== 'string' || !(caret >= 0) || typeof ch !== 'string' || ch.length !== 1) {
     return null;
   }
@@ -66,7 +73,7 @@ export function composeInsert(value, caret, ch, { escapedAt = -1 } = {}) {
   // A complete two-character code. Checked BEFORE the hex escape so that the
   // table always wins: `\u-` is ʉ, not the start of a code point.
   if (opensAt(caret - CODE_LENGTH)) {
-    const hit = lookupCode(value.slice(caret - CODE_LENGTH + 1, caret) + ch);
+    const hit = lookupCode(value.slice(caret - CODE_LENGTH + 1, caret) + ch, table);
     if (hit != null) return { start: caret - CODE_LENGTH, end: caret, text: hit };
   }
 
@@ -113,8 +120,8 @@ export function composePending(value, caret, { escapedAt = -1 } = {}) {
  *
  * Returns the new string and the escape state to carry to the next character.
  */
-export function composeAppend(value, ch, { escapedAt = -1 } = {}) {
-  const r = composeInsert(value, value.length, ch, { escapedAt });
+export function composeAppend(value, ch, { escapedAt = -1, table } = {}) {
+  const r = composeInsert(value, value.length, ch, { escapedAt, table });
   if (!r) return { value: value + ch, escapedAt };
   return {
     value: value.slice(0, r.start) + r.text + value.slice(r.end),
@@ -128,7 +135,7 @@ export function composeAppend(value, ch, { escapedAt = -1 } = {}) {
  * is in flight and replays them into the new cell, so the replay runs this
  * rather than losing the codes typed during the round trip.
  */
-export function composeString(s) {
+export function composeString(s, { table } = {}) {
   if (typeof s !== 'string' || !s.includes(COMPOSE_PREFIX)) return s;
   let out = '';
   let i = 0;
@@ -142,7 +149,7 @@ export function composeString(s) {
       i += 2;
       continue;
     }
-    const hit = lookupCode(s.slice(i + 1, i + 1 + CODE_LENGTH));
+    const hit = lookupCode(s.slice(i + 1, i + 1 + CODE_LENGTH), table);
     if (hit != null) {
       out += hit;
       i += 1 + CODE_LENGTH;

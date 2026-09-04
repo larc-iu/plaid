@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { attachCompose } from '@/lib/composeInput.js';
+import { attachCompose, setComposeProject } from '@/lib/composeInput.js';
 
 /**
  * Wire the backslash composer to an input or textarea, and merge the result
@@ -29,4 +29,17 @@ export function useCompose(enabled, forwardedRef) {
   }, [enabled]);
 
   return setRef;
+}
+
+/**
+ * Point the composer at the open project's own codes, for as long as this
+ * screen is up. Called from the two places that hold a project (the project
+ * page and the document page), so a code bound in Settings works everywhere in
+ * the app without every field having to know about the project.
+ */
+export function useComposeProject(project) {
+  React.useEffect(() => {
+    setComposeProject(project ?? null);
+    return () => setComposeProject(null);
+  }, [project]);
 }

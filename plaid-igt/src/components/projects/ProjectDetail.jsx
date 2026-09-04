@@ -14,6 +14,7 @@ import { readInitialized } from '@/domain/igtConfig';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { cn } from '@/lib/utils';
+import { useComposeProject } from '@/hooks/useCompose';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
@@ -52,6 +53,9 @@ export const ProjectDetail = () => {
   // Settings edits change the PROJECT (its config and layers) and never the
   // document list, so they refresh only that. Reordering one annotation field
   // used to re-list every document in the project.
+  // A code bound under Settings applies everywhere this project is open.
+  useComposeProject(project);
+
   const refreshProject = async () => {
     if (!client) return;
     try {

@@ -601,6 +601,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     ['languages', schema.languages],
     ['speakers', schema.speakers],
     ['serviceDefaults', schema.serviceDefaults],
+    ['compose', schema.compose],
     ['export', schema.exportPresets],
     ['documentMetadata', schema.documentMetadata],
   ]) {

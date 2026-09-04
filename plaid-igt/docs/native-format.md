@@ -70,6 +70,7 @@ the upload's media type is validated from its filename.
 | `schema.languages` | the project's `{object, meta}` language identity, `null` when unset |
 | `schema.speakers` | the project's known speaker labels, `null` when unset |
 | `schema.serviceDefaults` | the project's stored service defaults, `null` when unset |
+| `schema.compose` | the project's own backslash compose codes, `{codes: [{code, char, description?}]}`, `null` when unset. These layer over the built-in codes, so only the project's own are carried |
 | `schema.exportPresets` | the project's saved export presets (stored under config key `export`), `null` when unset |
 | `layers` | substrate layer ids (`baselineText`, `sentence`, `word`, `morpheme`, `timeAlignment`, `spanLayers: [{id, name, scope}]`) — **informative only**, for debugging and correlation |
 | `documents` | manifest: `[{id, name, file, mediaFile}]` (`mediaFile` null when no media was embedded) |
@@ -236,7 +237,7 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
 1. Project setup from `schema` (orthographies, fields by scope, ignored tokens,
    document metadata; one vocabulary per `vocabularies/*.json`), then the stored
    project config the wizard does not cover, written verbatim: `autoAnalysis`,
-   `tagsets`, `languages`, `speakers`, `serviceDefaults`, `export`, and
+   `tagsets`, `languages`, `speakers`, `serviceDefaults`, `compose`, `export`, and
    `documentMetadata` again (the wizard creates it as bare `{name}` rows, so the
    archive's version is written over it to restore each field's `tagset`).
    Each governed field's `tagset` is then set on its own span layer.
