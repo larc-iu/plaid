@@ -80,12 +80,19 @@ the upload's media type is validated from its filename.
 
 ```jsonc
 { "id": "…", "name": "Lexicon",
-  "fields": [{ "name": "morphType", "inline": false }, { "name": "gloss", "inline": true }, …],
+  "fields": [{ "name": "morphType", "inline": false }, { "name": "gloss", "inline": true },
+             { "name": "pos", "inline": true, "tagset": "POS" }, …],
+  "tagsets": { "POS": { "delimiters": "", "mode": "closed", "values": [{ "value": "n" }, …] } },
   "items":  [{ "id": "…", "form": "perro", "metadata": { "gloss": "dog", … } }, …] }
 ```
 
 - `fields` is the normalized, ordered field inventory (`form` is never a field — it
-  is the item's own headword).
+  is the item's own headword). A field's `tagset` names one of the vocabulary's own
+  tagsets and is absent when none governs it; `lang` (a FLEx custom field's writing
+  system) is likewise present only when set.
+- `tagsets` is the vocabulary's own tagset map, the same shape as the project's
+  `schema.tagsets`, `null` when it has none. A vocabulary carries its own because it
+  is shared across projects.
 - Item `metadata` is exported wholesale (custom fields, FLEx guids, examples, …).
 - **Items keep the order the server returned them in, and that order is
   contractual.** It is creation order, which is what homonym subscripts
@@ -241,7 +248,8 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    `documentMetadata` again (the wizard creates it as bare `{name}` rows, so the
    archive's version is written over it to restore each field's `tagset`).
    Each governed field's `tagset` is then set on its own span layer.
-2. Per vocabulary: create items **in array order**, mapping old item ids to new.
+2. Per vocabulary: write `fields` (with each `tagset`/`lang`) and `tagsets`, then create
+   items **in array order**, mapping old item ids to new.
    The importer stamps each created item's metadata with `nativeImportId` (the
    archive item id) for resume dedupe and provenance.
 3. Per document: `documents.create(name, metadata)` → `texts.create(body)` →

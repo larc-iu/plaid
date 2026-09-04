@@ -134,14 +134,23 @@ export function buildProjectFile({ project, documents, vocabularies, asOf = null
  * each export/import cycle permuted the whole vocabulary.
  */
 export function serializeVocabularyNative(vocab) {
-  const fields = normalizeVocabFields(readVocabFields(vocab?.config)).map(({ name, inline }) => ({
-    name,
-    inline,
-  }));
+  // A field's `tagset` names one of the vocabulary's own tagsets (below) and
+  // `lang` is a FLEx custom field's writing system; both are carried only
+  // when set, so a plain field stays `{name, inline}`.
+  const fields = normalizeVocabFields(readVocabFields(vocab?.config)).map(
+    ({ name, inline, tagset, lang }) => ({
+      name,
+      inline,
+      ...(tagset ? { tagset } : {}),
+      ...(lang ? { lang } : {}),
+    }),
+  );
   const items = (vocab?.items || []).map((it) =>
     withMetadata({ id: it.id, form: it.form }, it.metadata),
   );
-  return { id: vocab?.id ?? null, name: vocab?.name ?? null, fields, items };
+  // The vocabulary's tagsets, verbatim like the project's: null when unset.
+  const tagsets = vocab?.config?.[IGT_NAMESPACE]?.tagsets ?? null;
+  return { id: vocab?.id ?? null, name: vocab?.name ?? null, fields, tagsets, items };
 }
 
 // ---- documents/*.json -------------------------------------------------------

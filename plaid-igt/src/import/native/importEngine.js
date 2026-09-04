@@ -152,14 +152,29 @@ export async function importVocabulary({ client, vocabId, vocabData, onProgress,
     if (shouldStop?.()) throw new ImportCancelled();
   };
 
-  // Field schema first, so the editor renders the columns from the start.
+  // Field schema first, so the editor renders the columns from the start. A
+  // field's `tagset` names one of the vocabulary's own tagsets, written next;
+  // `lang` is a FLEx custom field's writing system, read back by the LIFT
+  // export. Both only when the archive has them.
   if (vocabData.fields?.length) {
     await client.vocabLayers.setConfig(
       vocabId,
       IGT_NAMESPACE,
       'fields',
-      Object.fromEntries(vocabData.fields.map((f) => [f.name, { inline: !!f.inline }])),
+      Object.fromEntries(
+        vocabData.fields.map((f) => [
+          f.name,
+          {
+            inline: !!f.inline,
+            ...(f.tagset ? { tagset: f.tagset } : {}),
+            ...(f.lang ? { lang: f.lang } : {}),
+          },
+        ]),
+      ),
     );
+  }
+  if (vocabData.tagsets && Object.keys(vocabData.tagsets).length) {
+    await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', vocabData.tagsets);
   }
 
   const existing = await client.vocabLayers.get(vocabId, true);

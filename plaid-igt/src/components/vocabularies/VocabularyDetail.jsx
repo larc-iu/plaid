@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -16,13 +16,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import { readVocabFields, IGT_NAMESPACE } from '@/domain/igtConfig';
 import {
   normalizeVocabFields,
   seedDefaultFields,
   fieldsToConfig,
   humanizeFieldName,
+  vocabGovernedFields,
 } from '@/domain/vocabFields';
+import { readTagsets, byTagsetName } from '@/domain/tagsets';
+import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +45,9 @@ import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
+
+// Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
+const NO_TAGSET = '__none__';
 
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
@@ -52,6 +65,18 @@ export const VocabularyDetail = () => {
   // Normalized field inventory: [{name, inline, immutable}], morphType always present.
   const [fields, setFields] = useState([]);
   const [newFieldName, setNewFieldName] = useState('');
+  // The vocabulary's own tagsets (config.igt.tagsets, the project's shape).
+  // Held here between a save and the refetch so the editor does not flicker
+  // back to the pre-save list in between.
+  const [draftTagsets, setDraftTagsets] = useState(null);
+  const tagsets = draftTagsets ?? readTagsets(vocabulary?.config);
+  const tagsetNames = Object.keys(tagsets);
+  // Which fields point at which tagset: the delete warning, the rename
+  // repoint and the seed all read this.
+  const tagsetUsage = useMemo(
+    () => byTagsetName(vocabGovernedFields(fields, vocabulary?.config)),
+    [fields, vocabulary],
+  );
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const openDeleteModal = () => setDeleteModalOpened(true);
   const closeDeleteModal = () => setDeleteModalOpened(false);
@@ -231,7 +256,7 @@ export const VocabularyDetail = () => {
     await saveFields(next);
   };
 
-  const saveFields = async (updatedFields) => {
+  const saveFields = async (updatedFields, { quiet = false } = {}) => {
     try {
       setFields(updatedFields);
 
@@ -243,12 +268,59 @@ export const VocabularyDetail = () => {
           'fields',
           fieldsToConfig(updatedFields),
         );
-        notifySuccess('Fields updated successfully', 'Success');
+        if (!quiet) notifySuccess('Fields updated successfully', 'Success');
       }
     } catch (err) {
       console.error('Error saving custom fields:', err);
       notifyError('Failed to save fields', 'Error');
     }
+  };
+
+  // Point a field at one of the vocabulary's tagsets (or at none). By name,
+  // like a project field, so the list is stored once.
+  const handleSetTagset = async (fieldName, choice) => {
+    const tagset = choice === NO_TAGSET ? null : choice;
+    await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, tagset } : f)));
+  };
+
+  // Fields reference a tagset by name, so a rename repoints every field that
+  // used the old name in the same operation, or they quietly fall back to
+  // free. Same contract as the project's TagsetsSettings.
+  const handleSaveTagsets = async (next, meta) => {
+    try {
+      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', next);
+      const renamed = meta?.renamed;
+      if (renamed && fields.some((f) => f.tagset === renamed.from)) {
+        await saveFields(
+          fields.map((f) => (f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f)),
+          { quiet: true },
+        );
+      }
+      setDraftTagsets(next);
+      await updateVocabulary();
+      setDraftTagsets(null);
+    } catch (err) {
+      console.error('Failed to save tagsets:', err);
+      notifyError('Failed to save tagsets', 'Save Error');
+      throw err;
+    }
+  };
+
+  // The [value, count] rows present in the fields this tagset governs, for
+  // the seed button. One fetch of the items, only when asked.
+  const handleLoadAttested = async (name) => {
+    const names = (tagsetUsage[name] || []).map((g) => g.name);
+    if (!names.length) return [];
+    const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
+    const counts = new Map();
+    for (const it of items) {
+      for (const n of names) {
+        const v = it.metadata?.[n];
+        if (typeof v !== 'string' || !v) continue;
+        counts.set(v, (counts.get(v) || 0) + 1);
+      }
+    }
+    return [...counts.entries()];
   };
 
   const handleDelete = async () => {
@@ -300,6 +372,43 @@ export const VocabularyDetail = () => {
                       onCheckedChange={() => handleToggleInline(field.name)}
                     />
                   </div>
+                  {/* Morph type is its own fixed list, so it never takes a
+                      tagset. Everything else can, once the vocabulary has one
+                      (or already points at one that was since removed). */}
+                  {!isNewVocabulary &&
+                    field.name !== 'morphType' &&
+                    (tagsetNames.length > 0 || field.tagset) && (
+                      <div className="flex items-center gap-2">
+                        <Label
+                          htmlFor={`tagset-${field.name}`}
+                          className="text-xs text-muted-foreground"
+                        >
+                          Tagset
+                        </Label>
+                        <Select
+                          value={field.tagset ?? NO_TAGSET}
+                          onValueChange={(v) => handleSetTagset(field.name, v)}
+                        >
+                          <SelectTrigger id={`tagset-${field.name}`} className="h-7 w-40 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_TAGSET}>No tagset</SelectItem>
+                            {tagsetNames.map((n) => (
+                              <SelectItem key={n} value={n}>
+                                {n}
+                              </SelectItem>
+                            ))}
+                            {/* A dangling name stays selectable so the picker
+                                shows what is stored rather than reading as
+                                "none" and overwriting it. */}
+                            {field.tagset && !tagsetNames.includes(field.tagset) && (
+                              <SelectItem value={field.tagset}>{field.tagset} (missing)</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                 </div>
                 <div className="flex items-center gap-0.5 text-muted-foreground">
                   <button
@@ -490,10 +599,33 @@ export const VocabularyDetail = () => {
                       <p className="text-sm text-muted-foreground">
                         Fields on every vocabulary item. Field names cannot be "form" or duplicate
                         existing fields (case-insensitive). Fields set to{' '}
-                        <strong>Show inline</strong> also appear in the interlinear view.
+                        <strong>Show inline</strong> also appear in the interlinear view. A field
+                        can be held to a tagset, defined below.
                       </p>
 
                       {renderCustomFieldsEditor()}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex flex-col gap-4">
+                      <h3 className="text-base font-semibold">Tagsets</h3>
+                      <p className="text-sm text-muted-foreground">
+                        A tagset is the list of values a field may hold, such as the part of speech
+                        inventory. Assign it to a field above. A closed tagset keeps every entry to
+                        the list, in the editor and in Bulk Add, and marks the entries already
+                        outside it.
+                      </p>
+                      <TagsetsManager
+                        tagsets={tagsets}
+                        usage={tagsetUsage}
+                        onSaveChanges={handleSaveTagsets}
+                        onLoadAttested={handleLoadAttested}
+                        emptyHint="No tagsets yet. Add one, then assign it to a field above."
+                        seedLabel="Add values used in this vocabulary"
+                        valuesNoun="entries"
+                        enforceNote="Closed lists apply to what you type here and to Bulk Add. Values brought in by an import or a service are not checked; the item list marks them."
+                      />
                     </div>
                   </div>
 

@@ -262,6 +262,29 @@ describe('serializeVocabularyNative', () => {
       { id: 'b', form: 'zeta', metadata: { gloss: 'z' } },
       { id: 'a', form: 'alpha' }, // empty metadata omitted
     ]);
+    expect(out.tagsets).toBeNull(); // none configured
+  });
+
+  it("carries the vocabulary's own tagsets and each field's tagset / lang", () => {
+    const tagsets = { POS: { delimiters: '', mode: 'closed', values: [{ value: 'n' }] } };
+    const out = serializeVocabularyNative({
+      id: 'v1',
+      name: 'Lex',
+      config: {
+        igt: {
+          fields: { pos: { inline: true, tagset: 'POS' }, Plural: { inline: false, lang: 'ru' } },
+          tagsets,
+        },
+      },
+      items: [],
+    });
+    expect(out.fields).toEqual([
+      { name: 'morphType', inline: false },
+      { name: 'gloss', inline: true },
+      { name: 'pos', inline: true, tagset: 'POS' },
+      { name: 'Plural', inline: false, lang: 'ru' },
+    ]);
+    expect(out.tagsets).toEqual(tagsets);
   });
 });
 

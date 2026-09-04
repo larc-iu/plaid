@@ -25,9 +25,50 @@
 //
 // Everything in this module is pure and synchronous. The dialog owns the I/O.
 
+import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
+import { isValueAllowed, tagsetEnforces } from '../domain/tagsets.js';
+
 /** Mapping sentinels: a column becomes the item's form, or is left out. */
 export const FORM = '__form__';
 export const IGNORE = '__ignore__';
+
+// ---------------------------------------------------------------------------
+// 0. value normalization
+// ---------------------------------------------------------------------------
+
+// Morph types are a controlled vocabulary. Accept any casing an external
+// dictionary uses, and drop what isn't in the inventory rather than storing a
+// value the interlinear renderer can't interpret.
+const MORPH_BY_KEY = new Map([
+  ...FLEX_MORPH_TYPES.map((t) => [t.toLowerCase().replace(/[\s_-]+/g, ''), t]),
+  // The name the app shows for FieldWorks' phrase type.
+  ['multiwordexpression', 'phrase'],
+  ['mwe', 'phrase'],
+]);
+
+/** The inventory's own spelling of a morph type, or '' when it is not one. */
+export const normalizeMorphType = (raw) =>
+  MORPH_BY_KEY.get(
+    String(raw ?? '')
+      .toLowerCase()
+      .replace(/[\s_-]+/g, ''),
+  ) ?? '';
+
+/**
+ * The `normalizeValue` rowsToEntries takes, for a vocabulary whose fields may
+ * be governed by tagsets. `tagsetFor(field)` is the tagset governing that
+ * field, or null. A value an ENFORCING tagset refuses is rejected (reported
+ * on the entry, never stored), the same way an unknown morph type is; a
+ * suggesting tagset lets everything through, since that is what it is for.
+ */
+export const makeValueNormalizer =
+  (tagsetFor = () => null) =>
+  (field, raw) => {
+    if (field === 'morphType') return normalizeMorphType(raw);
+    const tagset = tagsetFor(field);
+    if (tagsetEnforces(tagset) && !isValueAllowed(raw, tagset)) return '';
+    return raw;
+  };
 
 /** What to do with rows that can fill in blanks on an existing entry. */
 export const ENRICH_FILL = 'fill';
@@ -635,6 +676,15 @@ export const planVocabImport = ({
 /** Rows whose values were partly rejected (an unusable morph type, say). */
 export const countRejected = (entries) =>
   entries.reduce((n, e) => n + (e.rejected?.length ? 1 : 0), 0);
+
+/** The fields that had a value rejected, in first-seen order. */
+export const rejectedFields = (entries) => {
+  const out = [];
+  for (const e of entries) {
+    for (const r of e.rejected || []) if (!out.includes(r.field)) out.push(r.field);
+  }
+  return out;
+};
 
 /** One change as a phrase: `pos: N` for an addition, `gloss: cat > wildcat` for a clash. */
 export const describeChange = (c) =>

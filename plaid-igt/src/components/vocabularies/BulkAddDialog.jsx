@@ -20,7 +20,6 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { FLEX_MORPH_TYPES } from '@/domain/affixMarkers';
 import { humanizeFieldName, fieldDescription } from '@/domain/vocabFields';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
 import {
@@ -36,8 +35,14 @@ import {
   rowsToEntries,
   planVocabImport,
   countRejected,
+  rejectedFields,
+  makeValueNormalizer,
   serializeImportReport,
 } from '@/import/vocabBulk';
+
+// A stable "no field is governed", so the default does not remake the
+// normalizer (and with it every entry and the whole plan) on each render.
+const NO_TAGSETS = () => null;
 
 // One bulkCreate carries this many entries: the server caps a JSON body at
 // 10MB, and a few hundred KB per request also gives the progress line
@@ -145,18 +150,6 @@ const selectClass =
   'h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60';
 
 const n = (x) => x.toLocaleString();
-
-// Morph types are a controlled vocabulary. Accept any casing an external
-// dictionary uses, and drop what isn't in the inventory rather than storing a
-// value the interlinear renderer can't interpret.
-const MORPH_BY_KEY = new Map([
-  ...FLEX_MORPH_TYPES.map((t) => [t.toLowerCase().replace(/[\s_-]+/g, ''), t]),
-  // The name the app shows for FieldWorks' phrase type.
-  ['multiwordexpression', 'phrase'],
-  ['mwe', 'phrase'],
-]);
-const normalizeValue = (field, raw) =>
-  field === 'morphType' ? (MORPH_BY_KEY.get(raw.toLowerCase().replace(/[\s_-]+/g, '')) ?? '') : raw;
 
 // Whether two values are the same as far as the merge is concerned. Mirrors the
 // planner's comparison so the highlighting agrees with the decision.
@@ -307,11 +300,15 @@ export const BulkAddDialog = ({
   vocabularyId,
   vocabularyName,
   fields,
+  // field name -> the tagset governing it, or null. A value a closed tagset
+  // refuses is left out of the row, the way an unknown morph type is.
+  tagsetFor = NO_TAGSETS,
   existingItems,
   client,
   onImported,
 }) => {
   const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
+  const normalizeValue = useMemo(() => makeValueNormalizer(tagsetFor), [tagsetFor]);
   const fileInputRef = useRef(null);
 
   const [step, setStep] = useState('source');
@@ -342,7 +339,7 @@ export const BulkAddDialog = ({
 
   const entries = useMemo(
     () => rowsToEntries(rows, mapping, { hasHeader, normalizeValue }),
-    [rows, mapping, hasHeader],
+    [rows, mapping, hasHeader, normalizeValue],
   );
   const plan = useMemo(
     () =>
@@ -367,6 +364,10 @@ export const BulkAddDialog = ({
   };
 
   const rejectedRows = useMemo(() => countRejected(entries), [entries]);
+  const rejectedIn = useMemo(
+    () => rejectedFields(entries).map(humanizeFieldName).join(', '),
+    [entries],
+  );
   const formColumns = mapping.filter((m) => m === FORM).length;
   const ignoredColumns = mapping.filter((m) => m === IGNORE).length;
   const columnCount = mapping.length;
@@ -768,8 +769,9 @@ export const BulkAddDialog = ({
         {rejectedRows > 0 && (
           <p className="flex items-start gap-1.5 text-xs text-amber-600">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {n(rejectedRows)} row{rejectedRows === 1 ? ' has a' : 's have an'} unrecognized Morph
-            Type. That value is left out and the rest of the row still imports.
+            {n(rejectedRows)} row{rejectedRows === 1 ? ' has a' : 's have a'} value that{' '}
+            {rejectedIn} does not accept. That value is left out and the rest of the row still
+            imports.
           </p>
         )}
 

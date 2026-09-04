@@ -221,6 +221,10 @@ You can add your own fields, reorder them, and remove any except Form, Morph Typ
 Each field can be marked **inline**, which shows it both as a column in the vocabulary table and on each entry's row in the link popover.
 Other fields stay available on the entry's own edit form.
 
+A field can be held to a **tagset** (see <<_tagsets>>), so a part of speech is always `n` and never sometimes `noun`.
+A vocabulary keeps its own tagsets, under its Settings, because it is shared across projects; define one there, then pick it on the field.
+A closed tagset becomes a dropdown on the entry form, refuses a value outside the list in Bulk Add, and marks the entries already outside it: the item list counts them, and a click shows only those, so a lexicon imported before the tagset existed is brought into line one entry at a time or by adding the value to the list.
+
 = Project Settings
 
 A maintainer opens a project's **Settings** tab. It has five sections.
@@ -244,6 +248,7 @@ Removing a field first tells you how many values it holds.
 
 A **tagset** is a controlled list of values for a field: the parts of speech your project uses, the Leipzig abbreviations you gloss with, the genres a document can be.
 Define tagsets under Annotation, then point any field at one. Several fields can share a tagset, so Gloss at the word scope and Gloss at the morpheme scope agree.
+A vocabulary's entry fields take tagsets too, kept with the vocabulary (see <<_entry_fields>>).
 
 Each tagset has a mode:
 
@@ -316,7 +321,7 @@ Whatever a service produces is stamped unverified, the same violet-italic state 
 Start a project from existing data on the **New Project** screen.
 Currently supported formats include:
 
-* **FieldWorks (FLEx)**: a project backup (`.fwbackup`), bringing in its texts, words, morphemes, glosses, translations, and the full lexicon. Some FLEx detail that Plaid does not model is dropped on import.
+* **FieldWorks (FLEx)**: a project backup (`.fwbackup`), bringing in its texts, words, morphemes, glosses, translations, and the full lexicon. Every lexicon field that carries values comes along as an entry field unless you untick it. Some FLEx detail that Plaid does not model is dropped on import.
 * **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity.
 * **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, and time alignment.
 * **Native Plaid IGT archive** (`.zip`): restores a project exactly, including its vocabularies, media, and comments.

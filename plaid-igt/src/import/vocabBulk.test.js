@@ -21,6 +21,9 @@ import {
   CONFLICT_SKIP,
   ENRICH_FILL,
   AMBIGUOUS_SKIP,
+  makeValueNormalizer,
+  normalizeMorphType,
+  rejectedFields,
 } from './vocabBulk.js';
 
 const FIELDS = ['morphType', 'gloss', 'pos', 'definition'];
@@ -579,5 +582,46 @@ describe('serializeImportReport', () => {
       '2\tperro\tExpanded\tadds pos\tpos: N',
       '',
     ]);
+  });
+});
+
+describe('makeValueNormalizer', () => {
+  const closed = { delimiters: '', mode: 'closed', values: [{ value: 'n' }, { value: 'v' }] };
+  const tagsetFor = (field) => (field === 'pos' ? closed : null);
+
+  it('maps a morph type to the inventory spelling and rejects an unknown one', () => {
+    const normalize = makeValueNormalizer();
+    expect(normalize('morphType', 'Suffix')).toBe('suffix');
+    expect(normalizeMorphType('MWE')).toBe('phrase');
+    expect(normalize('morphType', 'thing')).toBe('');
+  });
+
+  it('rejects a value a closed tagset refuses, and leaves ungoverned fields alone', () => {
+    const normalize = makeValueNormalizer(tagsetFor);
+    expect(normalize('pos', 'n')).toBe('n');
+    expect(normalize('pos', 'noun')).toBe('');
+    expect(normalize('gloss', 'anything at all')).toBe('anything at all');
+  });
+
+  it('lets a suggesting tagset through: that is what suggesting is for', () => {
+    const normalize = makeValueNormalizer(() => ({ ...closed, mode: 'suggest' }));
+    expect(normalize('pos', 'noun')).toBe('noun');
+  });
+
+  it('reports rejections per entry, and rejectedFields names the fields once each', () => {
+    const rows = [
+      { line: 1, cells: ['perro', 'dog', 'noun'] },
+      { line: 2, cells: ['gato', 'cat', 'n'] },
+      { line: 3, cells: ['casa', 'house', 'noun'] },
+    ];
+    const entries = rowsToEntries(rows, [FORM, 'gloss', 'pos'], {
+      normalizeValue: makeValueNormalizer(tagsetFor),
+    });
+    expect(entries[0]).toMatchObject({
+      values: { gloss: 'dog' },
+      rejected: [{ field: 'pos', value: 'noun' }],
+    });
+    expect(entries[1].values).toEqual({ gloss: 'cat', pos: 'n' });
+    expect(rejectedFields(entries)).toEqual(['pos']);
   });
 });

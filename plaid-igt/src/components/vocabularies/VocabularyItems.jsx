@@ -1,4 +1,4 @@
-import { useState, useEffect, useId, useLayoutEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useId, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, AlertTriangle, Upload, Download, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,9 @@ import {
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
 import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
-import { humanizeFieldName } from '@/domain/vocabFields';
+import { humanizeFieldName, vocabTagsetByField } from '@/domain/vocabFields';
+import { validateValue } from '@/domain/tagsets';
+import { TagsetField, changedValuesAllowed } from '@/components/shared/TagsetField.jsx';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
@@ -171,6 +173,31 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
   const hasGloss = useMemo(() => fields.some((f) => f.name === 'gloss'), [fields]);
   const homonyms = useMemo(() => buildHomonymIndex(items), [items]);
+
+  // field name -> the tagset governing it, the vocabulary's own (see
+  // vocabFields.js). Everything below that judges a value asks this.
+  const tagsetByField = useMemo(
+    () => vocabTagsetByField(fields, vocabulary?.config),
+    [fields, vocabulary],
+  );
+  const tagsetFor = useCallback((name) => tagsetByField.get(name) ?? null, [tagsetByField]);
+  // Entries holding a value their field's tagset refuses (or a stray
+  // delimiter). Every entry is already in memory, so the count is exact and
+  // costs nothing, where the project needs a Validation tab and a query.
+  const offTagsetIds = useMemo(() => {
+    const out = new Set();
+    if (!tagsetByField.size) return out;
+    for (const it of items) {
+      for (const [name, tagset] of tagsetByField) {
+        if (validateValue(String(it.metadata?.[name] ?? ''), tagset).length) {
+          out.add(it.id);
+          break;
+        }
+      }
+    }
+    return out;
+  }, [items, tagsetByField]);
+  const [offTagsetOnly, setOffTagsetOnly] = useState(false);
 
   const selectedItem = useMemo(
     () =>
@@ -392,6 +419,14 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
     : !!selectedItem &&
       (editForm.trim() !== selectedItem.form ||
         !metaEqual(editFields, selectedItem.metadata || {}));
+  // Only a CHANGED value is held to its tagset, so an off-tagset value an
+  // import left behind does not lock the entry (see changedValuesAllowed).
+  const saveAllowed = changedValuesAllowed(
+    fields,
+    editFields,
+    (f) => tagsetFor(f.name),
+    isNew ? {} : selectedItem?.metadata || {},
+  );
 
   // Switching away with unsaved edits would silently discard them — confirm
   // first. The rows are links, so this only intercepts the plain click that
@@ -414,6 +449,10 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   const handleSave = async () => {
     if (!editForm.trim()) {
       notifyError('Item form cannot be empty', 'Invalid Form');
+      return;
+    }
+    if (!saveAllowed) {
+      notifyError('A field holds a value its tagset does not accept.', 'Not saved');
       return;
     }
     try {
@@ -495,9 +534,9 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   // ---- left list (search + sort by form) ----
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = items;
+    let list = offTagsetOnly ? items.filter((it) => offTagsetIds.has(it.id)) : items;
     if (q) {
-      list = items.filter(
+      list = list.filter(
         (it) =>
           it.form.toLowerCase().includes(q) ||
           fieldNames.some((f) =>
@@ -516,7 +555,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
       // ids do not sort into creation order within a bulk write.
       return (homonyms.get(a.id) ?? 0) - (homonyms.get(b.id) ?? 0);
     });
-  }, [items, search, fieldNames, homonyms]);
+  }, [items, search, fieldNames, homonyms, offTagsetOnly, offTagsetIds]);
 
   // Paged with the shared helper rather than the hook: the selection effect
   // below needs to drive the page itself, so the state stays local.
@@ -527,7 +566,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
   // when the page changes.
   useEffect(() => {
     setPage(0);
-  }, [search]);
+  }, [search, offTagsetOnly]);
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = 0;
   }, [currentPage]);
@@ -588,6 +627,17 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                 </option>
               ))}
             </select>
+          ) : tagsetFor(field.name) ? (
+            <TagsetField
+              id={fieldId}
+              field={field}
+              value={values[field.name] || ''}
+              tagset={tagsetFor(field.name)}
+              placeholder={`Enter ${humanizeFieldName(field.name).toLowerCase()}`}
+              spellCheck={false}
+              disabled={disabled}
+              onChange={(v) => onChange({ ...values, [field.name]: v })}
+            />
           ) : (
             <Input
               compose
@@ -656,6 +706,25 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
               <ListCount shown={filteredItems.length} total={items.length} noun="item" />
             )}
           </div>
+          {offTagsetIds.size > 0 && (
+            <button
+              type="button"
+              aria-pressed={offTagsetOnly}
+              onClick={() => setOffTagsetOnly((v) => !v)}
+              title={
+                offTagsetOnly
+                  ? 'Show every item'
+                  : 'Show only the items with a value outside its tagset'
+              }
+              className={cn(
+                'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-destructive hover:underline',
+                offTagsetOnly ? 'bg-destructive/20' : 'bg-destructive/10',
+              )}
+            >
+              <AlertTriangle className="h-3 w-3" />
+              {offTagsetIds.size.toLocaleString()} outside tagset
+            </button>
+          )}
         </div>
 
         <ListPager {...paged} onPage={setPage} position="top" />
@@ -707,6 +776,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                       </span>
                     )}
                     <span className="text-right text-xs tabular-nums text-muted-foreground">
+                      {offTagsetIds.has(item.id) && (
+                        <span title="A value is outside its tagset">
+                          <AlertTriangle className="mr-1 inline h-3 w-3 text-destructive" />
+                        </span>
+                      )}
                       {usageCounts ? (usageCounts[item.id] ?? 0) : ''}
                     </span>
                   </Link>
@@ -828,7 +902,11 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                     <Button variant="outline" size="sm" onClick={cancelEdit} disabled={!dirty}>
                       Cancel
                     </Button>
-                    <Button size="sm" onClick={handleSave} disabled={!dirty || !editForm.trim()}>
+                    <Button
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={!dirty || !editForm.trim() || !saveAllowed}
+                    >
                       {isNew ? 'Create' : 'Save'}
                     </Button>
                   </div>
@@ -958,6 +1036,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
         vocabularyId={vocabularyId}
         vocabularyName={vocabulary?.name}
         fields={fields}
+        tagsetFor={tagsetFor}
         existingItems={items}
         client={client}
         onImported={handleImported}

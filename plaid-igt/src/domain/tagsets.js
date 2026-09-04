@@ -2,8 +2,11 @@
 //
 // Not to be confused with a "vocabulary" in plaid-igt, which is the lexicon
 // (src/components/vocabularies, client.projects.linkVocab). A tagset governs
-// what may be TYPED into an annotation cell; a vocabulary holds lexical
-// entries that cells LINK to. The two never interact.
+// what may be TYPED into a field; a vocabulary holds lexical entries that
+// cells LINK to. A vocabulary's own entry fields (POS, say) can be governed
+// too: it carries its own `config.igt.tagsets` in this same shape, because it
+// is shared across projects and edited outside any of them, so it cannot
+// borrow a project's list (see vocabFields.js).
 //
 // A tagset is a project-level object, referenced by name from the fields that
 // use it, because the same list is almost always wanted at two scopes at once

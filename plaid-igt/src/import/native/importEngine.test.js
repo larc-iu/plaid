@@ -258,6 +258,44 @@ describe('importVocabulary', () => {
     ]);
   });
 
+  it("writes each field's tagset / lang and the vocabulary's tagsets before the items", async () => {
+    const tagsets = { POS: { delimiters: '', mode: 'closed', values: [{ value: 'n' }] } };
+    const client = stubClient();
+    await importVocabulary({
+      client,
+      vocabId: 'newvocab',
+      vocabData: serializeVocabularyNative({
+        ...VOCAB,
+        config: {
+          igt: {
+            fields: { pos: { inline: true, tagset: 'POS' }, Plural: { inline: false, lang: 'ru' } },
+            tagsets,
+          },
+        },
+      }),
+    });
+    const configs = callsOf(client, 'vocabLayers.setConfig').map((c) => c.slice(1));
+    expect(configs).toEqual([
+      [
+        'newvocab',
+        'igt',
+        'fields',
+        {
+          morphType: { inline: false },
+          gloss: { inline: true },
+          pos: { inline: true, tagset: 'POS' },
+          Plural: { inline: false, lang: 'ru' },
+        },
+      ],
+      ['newvocab', 'igt', 'tagsets', tagsets],
+    ]);
+    // Both land before the first item is created.
+    const order = client.calls.map((c) => c[0]);
+    expect(order.lastIndexOf('vocabLayers.setConfig')).toBeLessThan(
+      order.indexOf('vocabItems.bulkCreate'),
+    );
+  });
+
   it('resumes by nativeImportId without duplicating', async () => {
     const client = stubClient({
       existingItems: [{ id: 'kept', form: 'perro', metadata: { nativeImportId: 'item1' } }],

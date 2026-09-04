@@ -16,7 +16,8 @@ import {
   validateValue,
 } from '@/domain/tagsets';
 
-// One document-metadata input, governed by its field's tagset if it has one.
+// One form input governed by a tagset, if its field has one: a document
+// metadata field on the Metadata tab, an entry field in the vocabulary editor.
 //
 // Three controls rather than one, because the right affordance depends on what
 // the tagset allows. A closed whole-value tagset IS a fixed list, so it gets a
@@ -26,7 +27,7 @@ import {
 //
 // The interlinear editor solves this differently (a lit-html popup with part-
 // aware completion) because a gloss cell is one of hundreds in a keyboard-driven
-// grid. A metadata field is one of five on a form, so native controls are the
+// grid. A field here is one of five on a form, so native controls are the
 // right amount of machinery.
 
 // Radix Select has no empty-string item value, so "not set" needs a sentinel.
@@ -34,7 +35,7 @@ import {
 // plain "__unset__" did not.
 const UNSET = '\u0000unset';
 
-export const MetadataField = ({ field, value, tagset, onChange }) => {
+export const TagsetField = ({ field, value, tagset, onChange, ...inputProps }) => {
   const uid = useId();
   const v = value ?? '';
   const violations = tagset ? validateValue(v, tagset) : [];
@@ -50,8 +51,10 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
       <Select
         value={v === '' ? UNSET : v}
         onValueChange={(next) => onChange(next === UNSET ? '' : next)}
+        disabled={inputProps.disabled}
       >
         <SelectTrigger
+          id={inputProps.id}
           className={cn(
             invalid && 'underline decoration-destructive decoration-wavy underline-offset-2',
           )}
@@ -92,6 +95,7 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
         spellCheck={tagset ? false : undefined}
         onChange={(e) => onChange(e.target.value)}
         placeholder={`Enter ${field.name}`}
+        {...inputProps}
         // The same squiggle the grid uses, so an off-tagset value reads the
         // same way wherever it is shown.
         className={cn(
@@ -126,12 +130,13 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
  * May this edit be saved? Only fields the user actually CHANGED are judged.
  *
  * The grid refuses a value on the way in and leaves what is already stored
- * alone (`next !== orig` in IgtEditor._commitField). The form has to match, or
- * one off-tagset value an import left behind would lock the whole document out
- * of saving — you could not even rename it — and the deliberately preserved
- * "(not in tagset)" option would be visible but unsavable.
+ * alone (`next !== orig` in IgtEditor._commitField). A form has to match, or
+ * one off-tagset value an import left behind would lock the whole document
+ * (or lexicon entry) out of saving — you could not even rename it — and the
+ * deliberately preserved "(not in tagset)" option would be visible but
+ * unsavable.
  */
-export const metadataIsValid = (fields, values, tagsetFor, original = {}) =>
+export const changedValuesAllowed = (fields, values, tagsetFor, original = {}) =>
   fields.every((f) => {
     const next = values[f.name] ?? '';
     if (next === (original[f.name] ?? '')) return true;

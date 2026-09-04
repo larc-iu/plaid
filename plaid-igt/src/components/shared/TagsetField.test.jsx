@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@/test/renderComponent.jsx';
-import { MetadataField, metadataIsValid } from './MetadataField.jsx';
+import { TagsetField, changedValuesAllowed } from './TagsetField.jsx';
 
-// The document-side metadata control picks its widget from what the tagset
+// The form-side control (metadata, lexicon entries) picks its widget from what the tagset
 // allows, which is the branch worth pinning: a fixed list gets a Select, and
 // anything that accepts free text has to stay typable.
 
@@ -14,7 +14,7 @@ const closed = {
 };
 
 const render = (props) =>
-  renderComponent(<MetadataField field={field} value="" onChange={vi.fn()} {...props} />);
+  renderComponent(<TagsetField field={field} value="" onChange={vi.fn()} {...props} />);
 
 describe('choosing the control', () => {
   it('gives a closed whole-value tagset a real picker', async () => {
@@ -91,36 +91,36 @@ describe('the order of the list', () => {
   });
 });
 
-describe('metadataIsValid', () => {
+describe('changedValuesAllowed', () => {
   const fields = [{ name: 'Genre', tagset: 'G' }, { name: 'Note' }];
   const tagsetFor = (f) => (f.tagset ? closed : null);
 
   it('passes when every governed field holds something allowed', () => {
-    expect(metadataIsValid(fields, { Genre: 'Song', Note: 'anything' }, tagsetFor)).toBe(true);
+    expect(changedValuesAllowed(fields, { Genre: 'Song', Note: 'anything' }, tagsetFor)).toBe(true);
   });
 
   it('ignores a bad value the user did not touch, so one import cannot lock a document', () => {
     // The grid refuses only what changed; the form has to match, or an
     // off-tagset value left by an import would block even a rename.
     const stored = { Genre: 'Retired' };
-    expect(metadataIsValid(fields, { Genre: 'Retired' }, tagsetFor, stored)).toBe(true);
+    expect(changedValuesAllowed(fields, { Genre: 'Retired' }, tagsetFor, stored)).toBe(true);
     // ...but changing it to something else bad is still refused.
-    expect(metadataIsValid(fields, { Genre: 'AlsoBad' }, tagsetFor, stored)).toBe(false);
+    expect(changedValuesAllowed(fields, { Genre: 'AlsoBad' }, tagsetFor, stored)).toBe(false);
     // ...and fixing it is allowed.
-    expect(metadataIsValid(fields, { Genre: 'Song' }, tagsetFor, stored)).toBe(true);
+    expect(changedValuesAllowed(fields, { Genre: 'Song' }, tagsetFor, stored)).toBe(true);
   });
 
   it('fails on a governed field holding something refused', () => {
-    expect(metadataIsValid(fields, { Genre: 'Retired' }, tagsetFor)).toBe(false);
+    expect(changedValuesAllowed(fields, { Genre: 'Retired' }, tagsetFor)).toBe(false);
   });
 
   it('treats an empty value as fine: not filling a field in is not an error', () => {
-    expect(metadataIsValid(fields, {}, tagsetFor)).toBe(true);
+    expect(changedValuesAllowed(fields, {}, tagsetFor)).toBe(true);
   });
 
   it('ignores a suggesting tagset, which refuses nothing', () => {
     expect(
-      metadataIsValid(fields, { Genre: 'Retired' }, () => ({ ...closed, mode: 'suggest' })),
+      changedValuesAllowed(fields, { Genre: 'Retired' }, () => ({ ...closed, mode: 'suggest' })),
     ).toBe(true);
   });
 });

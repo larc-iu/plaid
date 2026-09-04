@@ -69,7 +69,19 @@ const MODES_UI = {
 const extraKeys = (rec) =>
   Object.keys(rec).filter((k) => k !== 'value' && !RESERVED_VALUE_KEYS.includes(k));
 
-export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }) => {
+export const TagsetsManager = ({
+  tagsets,
+  usage,
+  onSaveChanges,
+  onLoadAttested,
+  // The wording that differs between a project's tagsets and a vocabulary's:
+  // where a field gets assigned, what the seed reads, what a delete leaves
+  // alone.
+  emptyHint = 'No tagsets yet. Add one, then assign it to a field under Annotation Fields.',
+  seedLabel = 'Add values used in this project',
+  valuesNoun = 'annotations',
+  enforceNote = 'Closed lists apply to what you type. Values brought in by imports, services or the assistant are not checked; the Validation tab finds them.',
+}) => {
   const [draft, setDraft] = useState(tagsets);
   const [openName, setOpenName] = useState(null);
   const [expandedValue, setExpandedValue] = useState(null);
@@ -248,7 +260,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
     <div className="flex flex-col gap-4">
       {names.length === 0 && (
         <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          No tagsets yet. Add one, then assign it to a field under Annotation Fields.
+          {emptyHint}
         </p>
       )}
 
@@ -341,10 +353,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                       </span>
                     </label>
                   ))}
-                  <p className="max-w-2xl text-xs text-muted-foreground">
-                    Closed lists apply to what you type. Values brought in by imports, services or
-                    the assistant are not checked; the Validation tab finds them.
-                  </p>
+                  <p className="max-w-2xl text-xs text-muted-foreground">{enforceNote}</p>
                 </div>
 
                 {/* Delimiters */}
@@ -553,7 +562,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
                           : `Add every tag already used in ${fields.map((f) => f.field).join(', ')}`
                       }
                     >
-                      <Sparkles className="h-4 w-4" /> Add values used in this project
+                      <Sparkles className="h-4 w-4" /> {seedLabel}
                     </Button>
                   </div>
 
@@ -661,7 +670,7 @@ export const TagsetsManager = ({ tagsets, usage, onSaveChanges, onLoadAttested }
         <p className="mt-1 text-muted-foreground">
           {(usage?.[pendingDelete] || []).length === 0
             ? 'No field uses it.'
-            : `${usage[pendingDelete].map((f) => `${f.field} (${f.scope})`).join(', ')} ${usage[pendingDelete].length === 1 ? 'uses' : 'use'} it and will accept any value again. No annotations are changed.`}
+            : `${usage[pendingDelete].map((f) => `${f.field} (${f.scope})`).join(', ')} ${usage[pendingDelete].length === 1 ? 'uses' : 'use'} it and will accept any value again. No ${valuesNoun} are changed.`}
         </p>
       </ConfirmDeleteDialog>
     </div>

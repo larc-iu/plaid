@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { useMetadataOperations } from './useMetadataOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { MetadataField } from './MetadataField.jsx';
+import { TagsetField } from '@/components/shared/TagsetField.jsx';
 
 export function DocumentMetadata() {
   const { readOnly } = useDocumentCtx();
@@ -48,7 +48,7 @@ export function DocumentMetadata() {
               {ops.metadataFields.map((field) => (
                 <div key={field.name} className="flex flex-col gap-1.5">
                   <Label>{field.name}</Label>
-                  <MetadataField
+                  <TagsetField
                     field={field}
                     value={ops.editedMetadata[field.name] || ''}
                     tagset={ops.tagsetFor(field)}

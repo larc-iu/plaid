@@ -5,7 +5,7 @@ import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess } from '@/utils/feedback';
 import { readDocumentMetadata } from '@/domain/igtConfig';
 import { readTagsets } from '@/domain/tagsets';
-import { metadataIsValid } from './MetadataField.jsx';
+import { changedValuesAllowed } from '@/components/shared/TagsetField.jsx';
 
 // Metadata tab operations, backed by the shared IgtDocument. All transient
 // editing state (isEditing / drafts / modal / spinners) is component-local;
@@ -81,7 +81,12 @@ export const useMetadataOperations = () => {
     tagsetFor,
     // Save is blocked while a governed field holds a value its tagset refuses.
     // The form has no per-field commit, so this is where the rule can bite.
-    metadataValid: metadataIsValid(metadataFields, editedMetadata, tagsetFor, document.metadata),
+    metadataValid: changedValuesAllowed(
+      metadataFields,
+      editedMetadata,
+      tagsetFor,
+      document.metadata,
+    ),
     isEditing,
     saving,
     deleting,
