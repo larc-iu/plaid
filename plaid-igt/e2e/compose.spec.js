@@ -178,7 +178,7 @@ test('a code added in Settings works in the grid', async ({ page }) => {
   // Put the project back.
   await page.goto(`/#/projects/${projectId}/text-and-vocab`);
   await page.waitForLoadState('networkidle');
-  await page.getByLabel('Find a code').fill("b'");
+  await page.getByLabel('Search codes').fill("b'");
   await page.getByRole('button', { name: "Remove code b'" }).click();
   await page.getByRole('button', { name: 'Save codes' }).click();
   await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
@@ -191,7 +191,7 @@ test('a built-in code can be changed and reset', async ({ page }) => {
 
   await page.goto(`/#/projects/${projectId}/text-and-vocab`);
   await page.waitForLoadState('networkidle');
-  await page.getByLabel('Find a code').fill('sw');
+  await page.getByLabel('Search codes').fill('sw');
   const row = page.locator('[data-code-row="sw"]');
   await row.waitFor({ state: 'visible' });
   await row.locator('input').first().fill('Ə');
@@ -207,7 +207,7 @@ test('a built-in code can be changed and reset', async ({ page }) => {
   // Reset puts it back the way it ships.
   await page.goto(`/#/projects/${projectId}/text-and-vocab`);
   await page.waitForLoadState('networkidle');
-  await page.getByLabel('Find a code').fill('sw');
+  await page.getByLabel('Search codes').fill('sw');
   await page.getByRole('button', { name: 'Reset code sw' }).click();
   await page.getByRole('button', { name: 'Save codes' }).click();
   await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
+import { usePagedList } from '@/hooks/usePagedList';
 import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, readCompose } from '@/domain/igtConfig';
 import {
@@ -15,8 +17,6 @@ import {
   rowsToConfig,
   validateCode,
 } from '@/domain/composeConfig';
-
-const PAGE_SIZE = 25;
 
 const ORIGIN_LABEL = {
   changed: 'Changed',
@@ -37,7 +37,6 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   const [draft, setDraft] = useState(saved);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState('');
-  const [page, setPage] = useState(0);
 
   useEffect(() => {
     setDraft(saved);
@@ -64,9 +63,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     );
   }, [draft, q]);
 
-  const pageCount = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
-  const current = Math.min(page, pageCount - 1);
-  const shown = matches.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
+  const paged = usePagedList(matches, { resetKey: q });
 
   const patch = (row, next) =>
     setDraft((rows) => rows.map((r) => (r === row ? { ...r, ...next } : r)));
@@ -95,7 +92,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   const addRow = () => {
     setQ('');
     setDraft((rows) => [{ code: '', char: '', description: '', origin: 'added' }, ...rows]);
-    setPage(0);
+    paged.setPage(0);
   };
 
   const save = async () => {
@@ -128,27 +125,22 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
       <div className="flex max-w-4xl flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-64 flex-1">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setPage(0);
-              }}
-              placeholder="Find a code, a character, or a note"
-              aria-label="Find a code"
-              className="h-9 pl-8"
-              spellCheck={false}
-            />
-          </div>
-          <Button variant="outline" size="sm" onClick={addRow}>
+          <SearchInput
+            className="w-full max-w-[20rem]"
+            inputClassName="h-8"
+            placeholder="Search codes…"
+            value={q}
+            onChange={setQ}
+          />
+          <ListCount shown={matches.length} total={draft.length} noun="code" />
+          {changedCount > 0 && (
+            <span className="whitespace-nowrap text-xs text-muted-foreground">
+              · {changedCount} changed by this project
+            </span>
+          )}
+          <Button variant="outline" size="sm" className="ml-auto" onClick={addRow}>
             <Plus className="h-4 w-4" /> Add a code
           </Button>
-          <span className="text-xs text-muted-foreground">
-            {matches.length} of {draft.length}
-            {changedCount > 0 && ` · ${changedCount} changed by this project`}
-          </span>
         </div>
 
         <div className="overflow-hidden rounded-md border">
@@ -158,10 +150,11 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
             <span>Note</span>
             <span />
           </div>
-          {shown.length === 0 && (
-            <p className="px-3 py-4 text-sm text-muted-foreground">Nothing matches.</p>
+          <ListPager {...paged} onPage={paged.setPage} position="top" />
+          {paged.pageItems.length === 0 && (
+            <p className="px-3 py-4 text-sm text-muted-foreground">No codes match “{q}”.</p>
           )}
-          {shown.map((row) => {
+          {paged.pageItems.map((row) => {
             const problems = problemsByCode.get(row) || [];
             const gone = row.origin === 'removed';
             const key = `${row.code}:${row.origin}:${draft.indexOf(row)}`;
@@ -247,31 +240,8 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
               </div>
             );
           })}
+          <ListPager {...paged} onPage={paged.setPage} />
         </div>
-
-        {pageCount > 1 && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={current === 0}
-              onClick={() => setPage(current - 1)}
-            >
-              Previous
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              Page {current + 1} of {pageCount}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={current >= pageCount - 1}
-              onClick={() => setPage(current + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        )}
 
         <p className="text-xs text-muted-foreground">
           A code is exactly {CODE_LENGTH} characters, and never a space or a backslash. There are{' '}
