@@ -136,6 +136,37 @@ describe('formatLeipzig', () => {
   });
 });
 
+describe('LaTeX escaping of composed characters', () => {
+  // Two compose codes produce a LaTeX special (`\bs` a backslash, `\un` an
+  // underscore), so a form typed with either has to come out escaped. The rest
+  // of what the codes produce is Unicode and rides through untouched, which is
+  // correct for XeLaTeX/LuaLaTeX and is what keeps the PDF's text layer
+  // searchable. See docs/igt-guide.adoc under Analyze.
+  const one = (form, gloss) => ({
+    annotations: {},
+    tokens: [
+      {
+        content: form,
+        annotations: {},
+        morphemes: [{ metadata: { form }, annotations: { Gloss: { value: gloss } } }],
+      },
+    ],
+  });
+  const F = { morphFields: ['Gloss'], wordFields: [], sentFields: [] };
+
+  it('escapes a composed backslash and underscore', () => {
+    const out = formatGb4e(one('a\\b', 'c_d'), F);
+    expect(out).toContain('a\\textbackslash{}b');
+    expect(out).toContain('c\\_d');
+  });
+
+  it('leaves IPA and the zero morph as the characters themselves', () => {
+    const out = formatGb4e(one('kətʔaːŋ', '∅'), F);
+    expect(out).toContain('kətʔaːŋ');
+    expect(out).toContain('∅');
+  });
+});
+
 describe('formatGb4e', () => {
   it('emits two aligned lines with {} for empty glosses and the translation', () => {
     const out = formatGb4e(SENT, FIELDS);

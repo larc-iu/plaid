@@ -152,7 +152,7 @@ What you can do here:
 * **Review machine work**: **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next, **Ctrl/Cmd+Backspace** discards a word's or a translation's unverified proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
 * **Fill sentence fields**: record the free translation, the speaker, and other sentence-scope values on each sentence's row.
 * **Show only the rows you need**: click a row's label to choose which rows show. A minimized row stays as a thin stripe you can click back open.
-* **Copy as IGT**: copy a formatted version of a sentence to the clipboard for pasting into a paper or a message, as aligned plain text, tab-separated text, LaTeX (gb4e or ExPex), or leipzig.js HTML.
+* **Copy as IGT**: copy a formatted version of a sentence to the clipboard for pasting into a paper or a message, as aligned plain text, tab-separated text, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX formats carry characters like ə and ∅ as they are, so typeset them with XeLaTeX or LuaLaTeX and a font that has the glyphs. They keep the characters searchable and copyable in the finished PDF, which a `tipa` transcription does not.
 
 Plaid IGT also tracks where each value came from.
 A machine-made value, such as a gloss a service proposed or an auto-made vocabulary link, shows in **violet italic** to mark it unverified: it is in the document, and waits for a person to confirm or discard it.
