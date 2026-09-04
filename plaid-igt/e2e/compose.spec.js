@@ -139,11 +139,40 @@ test('the legend spells the codes correctly', async ({ page }) => {
   await legend.waitFor({ state: 'visible' });
   const text = await legend.innerText();
 
-  for (const code of ['\\sw', '\\ng', '\\?g', '\\0/', '\\u0250']) {
+  for (const code of ['\\sw', '\\ng', '\\?g', '\\00', '\\u0250']) {
     expect(text, `legend should show ${code}`).toContain(code);
   }
   expect(text).toContain('Alt');
   expect(text).toContain('∅');
+});
+
+test('every zero-morph code types the same character', async ({ page }) => {
+  const { projectId, documentId } = await getFixture();
+  await seedAuth(page);
+  await openAnalyze(page, projectId, documentId);
+
+  // The fixture project is shared with every other spec, so put the form back.
+  const original = await page.locator('.igt-island .igt-morph-field').first().inputValue();
+
+  for (const code of ['\\00', '\\0/', '\\O|']) {
+    const cell = await freshCell(page);
+    await page.keyboard.type(code);
+    await expect(cell, `${code} should type the zero morph`).toHaveValue('∅');
+  }
+
+  // `\0` alone is one character short, so it waits rather than firing. That is
+  // what keeps `\0^` and `\0v` reachable.
+  const cell = await freshCell(page);
+  await page.keyboard.type('\\0');
+  await expect(cell).toHaveValue('\\0');
+  await page.keyboard.type('^');
+  await expect(cell).toHaveValue('\u030A');
+
+  await cell.press('Control+a');
+  await page.keyboard.type(original);
+  await cell.press('Tab');
+  await page.waitForTimeout(600);
+  await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue(original);
 });
 
 test('a code added in Settings works in the grid', async ({ page }) => {

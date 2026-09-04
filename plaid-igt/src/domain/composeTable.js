@@ -5,12 +5,13 @@
 // every code is EXACTLY two characters, which makes the set prefix-free and the
 // scan in compose.js unambiguous without lookahead.
 //
-// GENERATED from longchar.cpp, plus ONE hand-added alias: `\0/` for ∅. Praat
-// spells the empty set `\O|`, which is kept, but a zero morph is roughly one
-// morpheme in eight in real FLEx data, so it also gets a code parallel to
-// `\o/` (ø) and `\O/` (Ø). Do not hand-edit anything else here.
+// GENERATED from longchar.cpp, plus TWO hand-added aliases for ∅: `\00` and
+// `\0/`. Praat spells the empty set `\O|`, which is kept, but a zero morph is
+// roughly one morpheme in eight in real FLEx data, so it also gets the code
+// people reach for (`\00`) and one parallel to `\o/` (ø) and `\O/` (Ø).
+// Re-add all three after a regeneration. Do not hand-edit anything else here.
 //
-// 442 codes.
+// 443 codes.
 
 export const COMPOSE_TABLE = Object.freeze({
   '!d': '¡', // inverted exclamation mark
@@ -48,6 +49,7 @@ export const COMPOSE_TABLE = Object.freeze({
   '//': '\u0338', // combining long solidus overlay
   '/d': '∕', // division slash
   '0/': '∅', // empty set
+  '00': '∅', // empty set
   '0^': '\u030A', // combining ring above
   '0v': '\u0325', // combining ring below
   '3v': '\u0339', // combining right half ring below

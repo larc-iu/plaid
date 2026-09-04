@@ -390,7 +390,7 @@ Search for a code to see what it types, point it at a different character, take 
 A code is always two characters, and whatever you set applies to everyone working on the project.
 A code you change is marked as such and can be put back with the reset button beside it, so nothing is lost by experimenting.
 
-The empty set ∅, for a morpheme with a grammatical job and no sound, has a code of its own (`\0/`) and a shortcut in the Analyze grid: **Alt+0** in a morpheme form types it.
+The empty set ∅, for a morpheme with a grammatical job and no sound, has a code of its own (`\00`) and a shortcut in the Analyze grid: **Alt+0** in a morpheme form types it.
 Write it as ∅ rather than a capital O with a stroke or a zero, so it exports as a zero morph and the Validation tab does not flag it.
 
 TIP: If you type a lot of one language, a system keyboard such as SIL Keyman is worth setting up, and it works everywhere on your computer rather than only here.

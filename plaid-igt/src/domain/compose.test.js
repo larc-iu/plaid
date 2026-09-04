@@ -43,9 +43,10 @@ describe('the table', () => {
     expect(isComposeCode('zz')).toBe(false);
   });
 
-  it('spells the empty set both Praat\u2019s way and the easy way', () => {
-    expect(lookupCode('O|')).toBe('∅');
-    expect(lookupCode('0/')).toBe('∅');
+  it('spells the empty set Praat\u2019s way and two easier ways', () => {
+    expect(lookupCode('O|')).toBe('∅'); // Praat's own
+    expect(lookupCode('00')).toBe('∅'); // the one people reach for
+    expect(lookupCode('0/')).toBe('∅'); // parallel to \o/ and \O/
   });
 
   it('never maps `u` + a hex digit, so the code-point escape is unambiguous', () => {
@@ -75,6 +76,16 @@ describe('typing codes', () => {
     for (const w of ['blue', 'true', 'queue', 'duel', 'sweet', 'ngoma']) {
       expect(type(w)).toBe(w);
     }
+  });
+
+  it('types the zero morph from any of its codes', () => {
+    expect(type('\\00')).toBe('∅');
+    expect(type('\\0/')).toBe('∅');
+    expect(type('\\O|')).toBe('∅');
+    // Still two characters after the backslash: `\0` alone is not a code, and
+    // must stay pending so `\0^` and `\0v` remain reachable.
+    expect(type('\\0')).toBe('\\0');
+    expect(type('\\0^')).toBe('\u030A');
   });
 
   it('takes a code point by number', () => {

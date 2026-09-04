@@ -3296,7 +3296,7 @@ export class IgtEditor {
           <strong>Special characters</strong>
           <span
             >type <kbd>\\</kbd> and a two-letter code in any text field: <em>\\sw</em> → ə,
-            <em>\\ng</em> → ŋ, <em>\\?g</em> → ʔ, <em>\\0/</em> → ∅ · these are Praat's codes ·
+            <em>\\ng</em> → ŋ, <em>\\?g</em> → ʔ, <em>\\00</em> → ∅ · these are Praat's codes ·
             <em>\\u0250</em> → any character by number · <kbd>\\</kbd><kbd>\\</kbd> for a plain
             backslash · add codes for this project under Settings → Text and Vocab</span
           >

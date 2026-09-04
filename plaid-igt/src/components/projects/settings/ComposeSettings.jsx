@@ -119,7 +119,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
       <h2 className="text-lg font-semibold">Special characters</h2>
       <p className="mb-4 mt-1 max-w-3xl text-sm text-muted-foreground">
         Type a backslash and a two-letter code in any field to enter a character your keyboard does
-        not have: <code>\sw</code> gives ə, <code>\0/</code> gives ∅. Every code is listed here.
+        not have: <code>\sw</code> gives ə, <code>\00</code> gives ∅. Every code is listed here.
         Change what one types, take one out, or add your own for this project.
       </p>
 
