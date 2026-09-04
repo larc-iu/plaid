@@ -92,7 +92,11 @@ export const ImportFlexProject = () => {
       setOrthoNames(Object.fromEntries(build.orthographyWss.map((ws) => [ws, ws])));
       setSelectedTexts(new Set(build.documents.map((d) => d.guid)));
       setSelectedWss(new Set(analysisWssAvailable));
-      setSelectedLexFields(new Set());
+      // Every other lexicon field the file has values for starts ticked. The
+      // parser only reports fields with non-empty text, so this is "keep what
+      // is there": an unticked default cost the CLDF importer its POS tier
+      // and here would silently drop the notes fields of a whole dictionary.
+      setSelectedLexFields(new Set(ir.lexiconFields.map((f) => f.name)));
       setLexiconMode('new');
       setLexiconName(null);
       setExistingVocabId('');
@@ -546,8 +550,8 @@ export const ImportFlexProject = () => {
                 <p className="mb-1 font-medium">Lexicon fields</p>
                 <p className="mb-3 text-sm text-muted-foreground">
                   Form, gloss, part of speech, definition, morph type, examples and custom fields
-                  are always imported. These other FLEx fields carry values too. Tick the ones to
-                  keep as fields on the lexicon entries.
+                  are always imported. These other FLEx fields carry values too, and each becomes a
+                  field on the lexicon entries. Untick any you do not want.
                 </p>
                 <div className="flex flex-col gap-2">
                   {parsed.ir.lexiconFields.map((f) => {

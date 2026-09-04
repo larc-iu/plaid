@@ -51,15 +51,16 @@ test('review screen: lexicon destination + opt-in lexicon fields', async ({ page
   await newRadio.check();
   await expect(name).toHaveValue('Qusar dictionary');
 
-  // The other FLEx lexicon fields, unticked, with counts.
+  // The other FLEx lexicon fields, with counts, every one ticked to start:
+  // the file has values for each, and dropping them is the opt-in.
   const card = page
     .locator('div', { has: page.getByText('Lexicon fields', { exact: true }) })
     .last();
   const note = card.getByRole('checkbox', { name: /Socio Linguistics Note/ });
-  await expect(note).not.toBeChecked();
+  await expect(note).toBeChecked();
   await expect(card.getByText(/Socio Linguistics Note/)).toBeVisible();
   await expect(card.getByText(/54 senses/)).toBeVisible();
   await expect(card.getByText(/16 entries/)).toBeVisible();
-  await note.check();
-  await expect(note).toBeChecked();
+  await note.uncheck();
+  await expect(note).not.toBeChecked();
 });
