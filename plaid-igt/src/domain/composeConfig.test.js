@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   BUILT_IN_TABLE,
+  composeRows,
+  isBuiltInCode,
   readProjectCodes,
+  readRemovedCodes,
   resolveComposeTable,
+  rowsToConfig,
   shadowsBuiltIn,
   validateCode,
 } from './composeConfig.js';
@@ -124,5 +128,102 @@ describe('shadowsBuiltIn', () => {
   it('knows which codes already mean something', () => {
     expect(shadowsBuiltIn('sw')).toBe(true);
     expect(shadowsBuiltIn("b'")).toBe(false);
+  });
+});
+
+const BUILT_IN_COUNT = Object.keys(BUILT_IN_TABLE).length;
+
+describe('every code as an editable entry', () => {
+  it('lists all the built-ins when a project has changed nothing', () => {
+    const rows = composeRows({ igt: {} });
+    expect(rows).toHaveLength(BUILT_IN_COUNT);
+    expect(rows.every((r) => r.origin === 'built-in')).toBe(true);
+    expect(rows.find((r) => r.code === 'sw')).toMatchObject({ char: 'ə' });
+  });
+
+  it('shows a changed built-in with its new character', () => {
+    const rows = composeRows(withCodes([{ code: 'ng', char: 'ŋ̊', description: 'voiceless' }]));
+    expect(rows).toHaveLength(BUILT_IN_COUNT); // still one entry, not two
+    expect(rows.find((r) => r.code === 'ng')).toMatchObject({
+      char: 'ŋ̊',
+      description: 'voiceless',
+      origin: 'changed',
+    });
+  });
+
+  it('keeps a removed built-in in the list so it can be put back', () => {
+    const rows = composeRows({ igt: { compose: { removed: ['ng'] } } });
+    expect(rows).toHaveLength(BUILT_IN_COUNT);
+    expect(rows.find((r) => r.code === 'ng')).toMatchObject({ origin: 'removed', char: 'ŋ' });
+  });
+
+  it('adds a project code at the end', () => {
+    const rows = composeRows(withCodes([{ code: "b'", char: 'ɓ' }]));
+    expect(rows).toHaveLength(BUILT_IN_COUNT + 1);
+    expect(rows.at(-1)).toMatchObject({ code: "b'", char: 'ɓ', origin: 'added' });
+  });
+});
+
+describe('a removed built-in', () => {
+  it('is gone from the table', () => {
+    const table = resolveComposeTable({ igt: { compose: { removed: ['ng'] } } });
+    expect(table.ng).toBeUndefined();
+    expect(table.sw).toBe('ə'); // the rest survive
+    expect(type('\\ng', table)).toBe('\\ng');
+  });
+
+  it('is ignored when it names something that is not built in', () => {
+    expect(readRemovedCodes({ igt: { compose: { removed: ["b'", 'ng'] } } })).toEqual(['ng']);
+  });
+
+  it('loses to an entry that also changes it', () => {
+    // Removing and rebinding the same code is contradictory; the binding wins,
+    // which is what the settings screen produces when a row is edited.
+    const table = resolveComposeTable({
+      igt: { compose: { removed: ['ng'], codes: [{ code: 'ng', char: 'X' }] } },
+    });
+    expect(table.ng).toBe('X');
+  });
+});
+
+describe('what gets stored', () => {
+  const rowsOf = (config) => composeRows(config);
+
+  it('is nothing at all when no entry was touched', () => {
+    expect(rowsToConfig(rowsOf({ igt: {} }))).toEqual({ codes: [], removed: [] });
+  });
+
+  it('is only the entries that differ', () => {
+    const rows = rowsOf({ igt: {} }).map((r) => (r.code === 'sw' ? { ...r, char: 'Ə' } : r));
+    expect(rowsToConfig(rows)).toEqual({ codes: [{ code: 'sw', char: 'Ə' }], removed: [] });
+  });
+
+  it('records a removal, and drops it again on reset', () => {
+    const rows = rowsOf({ igt: {} }).map((r) =>
+      r.code === 'ng' ? { ...r, origin: 'removed' } : r,
+    );
+    expect(rowsToConfig(rows)).toEqual({ codes: [], removed: ['ng'] });
+    const back = rows.map((r) => (r.code === 'ng' ? { ...r, origin: 'built-in' } : r));
+    expect(rowsToConfig(back)).toEqual({ codes: [], removed: [] });
+  });
+
+  it('round-trips through the config and back to the same entries', () => {
+    const edited = rowsOf({ igt: {} })
+      .map((r) => (r.code === 'sw' ? { ...r, char: 'Ə', origin: 'changed' } : r))
+      .map((r) => (r.code === 'ng' ? { ...r, origin: 'removed' } : r))
+      .concat({ code: "b'", char: 'ɓ', description: '', origin: 'added' });
+    const stored = rowsToConfig(edited);
+    const reread = composeRows({ igt: { compose: stored } });
+    expect(reread.find((r) => r.code === 'sw')).toMatchObject({ char: 'Ə', origin: 'changed' });
+    expect(reread.find((r) => r.code === 'ng')).toMatchObject({ origin: 'removed' });
+    expect(reread.find((r) => r.code === "b'")).toMatchObject({ char: 'ɓ', origin: 'added' });
+    expect(reread).toHaveLength(BUILT_IN_COUNT + 1);
+  });
+});
+
+describe('isBuiltInCode', () => {
+  it('separates what ships from what a project added', () => {
+    expect(isBuiltInCode('sw')).toBe(true);
+    expect(isBuiltInCode("b'")).toBe(false);
   });
 });

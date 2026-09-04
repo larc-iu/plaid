@@ -146,7 +146,7 @@ test('the legend spells the codes correctly', async ({ page }) => {
   expect(text).toContain('∅');
 });
 
-test('a code bound in Settings works in the grid', async ({ page }) => {
+test('a code added in Settings works in the grid', async ({ page }) => {
   // The whole point of project-wide configuration, and the part no unit test
   // reaches: Settings writes the config, and the composer has to pick it up in
   // a different screen entirely.
@@ -155,16 +155,16 @@ test('a code bound in Settings works in the grid', async ({ page }) => {
 
   await page.goto(`/#/projects/${projectId}/text-and-vocab`);
   await page.waitForLoadState('networkidle');
-  const section = page.locator('h2', { hasText: 'Special characters' });
-  await section.waitFor({ state: 'visible' });
+  await page.locator('h2', { hasText: 'Special characters' }).waitFor({ state: 'visible' });
 
   await page.getByRole('button', { name: 'Add a code' }).click();
-  await page.locator('#code-0').fill("b'");
-  await page.locator('#char-0').fill('ɓ');
+  // The row is keyed by its code, so it moves out from under this locator the
+  // moment the code is typed.
+  await page.locator('[data-code-row=""]').getByLabel('Code', { exact: true }).fill("b'");
+  await page.locator(`[data-code-row="b'"]`).locator('input').nth(1).fill('ɓ');
   await page.getByRole('button', { name: 'Save codes' }).click();
   await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
 
-  // Now use it somewhere else in the app.
   await openAnalyze(page, projectId, documentId);
   const cell = await freshCell(page);
   await page.keyboard.type("a\\b'c");
@@ -178,10 +178,42 @@ test('a code bound in Settings works in the grid', async ({ page }) => {
   // Put the project back.
   await page.goto(`/#/projects/${projectId}/text-and-vocab`);
   await page.waitForLoadState('networkidle');
-  await page
-    .getByRole('button', { name: /Remove code/ })
-    .first()
-    .click();
+  await page.getByLabel('Find a code').fill("b'");
+  await page.getByRole('button', { name: "Remove code b'" }).click();
   await page.getByRole('button', { name: 'Save codes' }).click();
   await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
+});
+
+test('a built-in code can be changed and reset', async ({ page }) => {
+  // Every built-in is an entry, not a hardcoded fact.
+  const { projectId, documentId } = await getFixture();
+  await seedAuth(page);
+
+  await page.goto(`/#/projects/${projectId}/text-and-vocab`);
+  await page.waitForLoadState('networkidle');
+  await page.getByLabel('Find a code').fill('sw');
+  const row = page.locator('[data-code-row="sw"]');
+  await row.waitFor({ state: 'visible' });
+  await row.locator('input').first().fill('Ə');
+  await expect(row.getByText('Changed')).toBeVisible();
+  await page.getByRole('button', { name: 'Save codes' }).click();
+  await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
+
+  await openAnalyze(page, projectId, documentId);
+  const cell = await freshCell(page);
+  await page.keyboard.type('\\sw');
+  await expect(cell).toHaveValue('Ə');
+
+  // Reset puts it back the way it ships.
+  await page.goto(`/#/projects/${projectId}/text-and-vocab`);
+  await page.waitForLoadState('networkidle');
+  await page.getByLabel('Find a code').fill('sw');
+  await page.getByRole('button', { name: 'Reset code sw' }).click();
+  await page.getByRole('button', { name: 'Save codes' }).click();
+  await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
+
+  await openAnalyze(page, projectId, documentId);
+  const back = await freshCell(page);
+  await page.keyboard.type('\\sw');
+  await expect(back).toHaveValue('ə');
 });

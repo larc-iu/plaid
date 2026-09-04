@@ -1,103 +1,113 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, Search } from 'lucide-react';
+import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, readCompose } from '@/domain/igtConfig';
 import {
   BUILT_IN_TABLE,
   CODE_LENGTH,
-  readProjectCodes,
-  shadowsBuiltIn,
+  builtInRow,
+  composeRows,
+  isBuiltInCode,
+  rowsToConfig,
   validateCode,
 } from '@/domain/composeConfig';
 
-const BUILT_IN_ROWS = Object.entries(BUILT_IN_TABLE).sort(([a], [b]) =>
-  a.toLowerCase().localeCompare(b.toLowerCase()),
-);
+const PAGE_SIZE = 25;
 
-const blankRow = () => ({ code: '', char: '', description: '' });
-
-/** The searchable list of codes that work without any setup. */
-const BuiltInReference = () => {
-  const [q, setQ] = useState('');
-  const matches = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return [];
-    return BUILT_IN_ROWS.filter(
-      ([code, char]) => code.toLowerCase().includes(needle) || char === needle,
-    ).slice(0, 60);
-  }, [q]);
-
-  return (
-    <div className="flex flex-col gap-2">
-      <Label htmlFor="compose-search" className="text-xs font-normal text-muted-foreground">
-        Look up a built-in code
-      </Label>
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          id="compose-search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Paste a character, or type part of a code"
-          className="h-9 pl-8"
-          spellCheck={false}
-        />
-      </div>
-      {q.trim() !== '' && (
-        <div className="max-h-48 overflow-y-auto rounded-md border">
-          {matches.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">Nothing matches.</p>
-          ) : (
-            <ul className="divide-y">
-              {matches.map(([code, char]) => (
-                <li key={code} className="flex items-center gap-3 px-3 py-1.5 text-sm">
-                  <code className="w-20 shrink-0 text-muted-foreground">{`\\${code}`}</code>
-                  <span className="text-base">{char}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
+const ORIGIN_LABEL = {
+  changed: 'Changed',
+  added: 'Added',
+  removed: 'Removed',
 };
 
+const byCode = (a, b) => a.code.toLowerCase().localeCompare(b.code.toLowerCase());
+
 /**
- * Settings → Text and Vocab → Special characters. A project's own backslash
- * codes, on top of the built-in ones.
+ * Settings → Text and Vocab → Special characters. Every code is an entry here:
+ * the built-in ones can be pointed somewhere else or taken out, and a project
+ * can add its own. Only what a project actually changed is stored, so a code
+ * nobody touched still picks up a correction later.
  */
 export const ComposeSettings = ({ project, projectId, client, onProjectUpdate }) => {
-  const saved = useMemo(() => readProjectCodes(project?.config), [project?.config]);
+  const saved = useMemo(() => composeRows(project?.config).sort(byCode), [project?.config]);
   const [draft, setDraft] = useState(saved);
   const [saving, setSaving] = useState(false);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     setDraft(saved);
   }, [saved]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const problems = draft.map((row) => validateCode(row, draft));
-  const canSave = dirty && !saving && problems.every((p) => p.length === 0);
+  const problemsByCode = useMemo(() => {
+    const m = new Map();
+    for (const row of draft) m.set(row, validateCode(row, draft));
+    return m;
+  }, [draft]);
+  const canSave = dirty && !saving && [...problemsByCode.values()].every((p) => p.length === 0);
 
-  const setRow = (i, patch) =>
-    setDraft((rows) => rows.map((r, j) => (i === j ? { ...r, ...patch } : r)));
-  const removeRow = (i) => setDraft((rows) => rows.filter((_, j) => j !== i));
+  const changedCount = draft.filter((r) => r.origin !== 'built-in').length;
+
+  const matches = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return draft;
+    return draft.filter(
+      (r) =>
+        r.code.toLowerCase().includes(needle) ||
+        r.char === q.trim() ||
+        (r.description || '').toLowerCase().includes(needle),
+    );
+  }, [draft, q]);
+
+  const pageCount = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
+  const current = Math.min(page, pageCount - 1);
+  const shown = matches.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
+
+  const patch = (row, next) =>
+    setDraft((rows) => rows.map((r) => (r === row ? { ...r, ...next } : r)));
+
+  const editRow = (row, next) => {
+    const merged = { ...row, ...next };
+    const base = builtInRow(row.code);
+    const origin = !base
+      ? 'added'
+      : merged.char === base.char && !merged.description
+        ? 'built-in'
+        : 'changed';
+    patch(row, { ...next, origin });
+  };
+
+  const removeRow = (row) => {
+    if (isBuiltInCode(row.code)) patch(row, { origin: 'removed' });
+    else setDraft((rows) => rows.filter((r) => r !== row));
+  };
+
+  const resetRow = (row) => {
+    const base = builtInRow(row.code);
+    if (base) patch(row, { ...base, origin: 'built-in' });
+  };
+
+  const addRow = () => {
+    setQ('');
+    setDraft((rows) => [{ code: '', char: '', description: '', origin: 'added' }, ...rows]);
+    setPage(0);
+  };
 
   const save = async () => {
     if (!canSave) return;
     setSaving(true);
     try {
       if (!client) throw new Error('Not authenticated');
-      const codes = draft.map(({ code, char, description }) =>
-        description ? { code, char, description } : { code, char },
-      );
-      // Keep any other keys under `compose` that a later version may add.
       const existing = readCompose(project?.config) || {};
-      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'compose', { ...existing, codes });
+      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'compose', {
+        ...existing,
+        ...rowsToConfig(draft),
+      });
       onProjectUpdate?.();
     } catch (err) {
       console.error('Failed to save the project codes:', err);
@@ -112,103 +122,162 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
       <h2 className="text-lg font-semibold">Special characters</h2>
       <p className="mb-4 mt-1 max-w-3xl text-sm text-muted-foreground">
         Type a backslash and a two-letter code in any field to enter a character your keyboard does
-        not have: <code>\sw</code> gives ə, <code>\0/</code> gives ∅. Hundreds of codes work
-        already, and you can add codes of your own for this project below.
+        not have: <code>\sw</code> gives ə, <code>\0/</code> gives ∅. Every code is listed here.
+        Change what one types, take one out, or add your own for this project.
       </p>
 
-      <div className="flex max-w-3xl flex-col gap-6">
-        <BuiltInReference />
+      <div className="flex max-w-4xl flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-64 flex-1">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Find a code, a character, or a note"
+              aria-label="Find a code"
+              className="h-9 pl-8"
+              spellCheck={false}
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={addRow}>
+            <Plus className="h-4 w-4" /> Add a code
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {matches.length} of {draft.length}
+            {changedCount > 0 && ` · ${changedCount} changed by this project`}
+          </span>
+        </div>
 
-        <div className="flex flex-col gap-2">
-          <Label className="text-xs font-normal text-muted-foreground">This project's codes</Label>
-          {draft.length === 0 && (
-            <p className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
-              No codes of your own yet. Add one if this language is written with a character the
-              built-in codes do not cover.
-            </p>
+        <div className="overflow-hidden rounded-md border">
+          <div className="grid grid-cols-[7rem_6rem_1fr_5.5rem] items-center gap-2 border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
+            <span>Code</span>
+            <span>Types</span>
+            <span>Note</span>
+            <span />
+          </div>
+          {shown.length === 0 && (
+            <p className="px-3 py-4 text-sm text-muted-foreground">Nothing matches.</p>
           )}
-
-          {draft.map((row, i) => (
-            <div key={i} className="flex flex-col gap-1 rounded-md border p-3">
-              <div className="flex items-end gap-2">
-                <div className="flex w-28 flex-col gap-1">
-                  <Label htmlFor={`code-${i}`} className="text-xs font-normal">
-                    Code
-                  </Label>
-                  <Input
-                    id={`code-${i}`}
-                    value={row.code}
-                    onChange={(e) => setRow(i, { code: e.target.value })}
-                    placeholder="b'"
-                    className="h-8 font-mono"
-                    spellCheck={false}
-                    aria-invalid={problems[i].length > 0 || undefined}
-                  />
+          {shown.map((row) => {
+            const problems = problemsByCode.get(row) || [];
+            const gone = row.origin === 'removed';
+            const key = `${row.code}:${row.origin}:${draft.indexOf(row)}`;
+            return (
+              <div key={key} className="border-b last:border-b-0" data-code-row={row.code}>
+                <div className="grid grid-cols-[7rem_6rem_1fr_5.5rem] items-center gap-2 px-3 py-1.5">
+                  {isBuiltInCode(row.code) ? (
+                    <code
+                      className={`text-sm ${gone ? 'text-muted-foreground line-through' : ''}`}
+                      title="A built-in code. Change what it types, or take it out."
+                    >{`\\${row.code}`}</code>
+                  ) : (
+                    <Input
+                      value={row.code}
+                      onChange={(e) => editRow(row, { code: e.target.value })}
+                      placeholder="b'"
+                      aria-label="Code"
+                      className="h-8 font-mono"
+                      spellCheck={false}
+                      aria-invalid={problems.length > 0 || undefined}
+                    />
+                  )}
+                  {gone ? (
+                    <span className="text-sm text-muted-foreground line-through">{row.char}</span>
+                  ) : (
+                    <Input
+                      compose
+                      value={row.char}
+                      onChange={(e) => editRow(row, { char: e.target.value })}
+                      aria-label={`What \\${row.code || 'this code'} types`}
+                      className="h-8 text-base"
+                      spellCheck={false}
+                    />
+                  )}
+                  {gone ? (
+                    <span className="text-sm text-muted-foreground">Taken out of this project</span>
+                  ) : (
+                    <Input
+                      value={row.description || ''}
+                      onChange={(e) => editRow(row, { description: e.target.value })}
+                      placeholder={isBuiltInCode(row.code) ? '' : 'implosive b'}
+                      aria-label="Note"
+                      className="h-8"
+                    />
+                  )}
+                  <div className="flex items-center justify-end gap-1">
+                    {ORIGIN_LABEL[row.origin] && (
+                      <Badge variant="secondary" className="hidden font-normal sm:inline-flex">
+                        {ORIGIN_LABEL[row.origin]}
+                      </Badge>
+                    )}
+                    {row.origin !== 'built-in' && isBuiltInCode(row.code) && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => resetRow(row)}
+                        title="Put this code back the way it ships"
+                        aria-label={`Reset code ${row.code}`}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {!gone && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() => removeRow(row)}
+                        title="Take this code out of the project"
+                        aria-label={`Remove code ${row.code || 'new'}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex w-24 flex-col gap-1">
-                  <Label htmlFor={`char-${i}`} className="text-xs font-normal">
-                    Types
-                  </Label>
-                  <Input
-                    id={`char-${i}`}
-                    compose
-                    value={row.char}
-                    onChange={(e) => setRow(i, { char: e.target.value })}
-                    placeholder="ɓ"
-                    className="h-8 text-base"
-                    spellCheck={false}
-                  />
-                </div>
-                <div className="flex flex-1 flex-col gap-1">
-                  <Label htmlFor={`desc-${i}`} className="text-xs font-normal">
-                    Note (optional)
-                  </Label>
-                  <Input
-                    id={`desc-${i}`}
-                    value={row.description || ''}
-                    onChange={(e) => setRow(i, { description: e.target.value })}
-                    placeholder="implosive b"
-                    className="h-8"
-                  />
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 shrink-0"
-                  onClick={() => removeRow(i)}
-                  title="Remove this code"
-                  aria-label={`Remove code ${row.code || i + 1}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {problems.map((p) => (
+                  <p key={p} className="px-3 pb-1.5 text-xs text-destructive">
+                    {p}
+                  </p>
+                ))}
               </div>
-              {problems[i].map((p) => (
-                <p key={p} className="text-xs text-destructive">
-                  {p}
-                </p>
-              ))}
-              {problems[i].length === 0 && shadowsBuiltIn(row.code) && (
-                <p className="text-xs text-muted-foreground">
-                  Replaces the built-in <code>{`\\${row.code}`}</code>, which types{' '}
-                  {BUILT_IN_TABLE[row.code]}.
-                </p>
-              )}
-            </div>
-          ))}
+            );
+          })}
+        </div>
 
-          <div>
+        {pageCount > 1 && (
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setDraft((rows) => [...rows, blankRow()])}
+              disabled={current === 0}
+              onClick={() => setPage(current - 1)}
             >
-              <Plus className="h-4 w-4" /> Add a code
+              Previous
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Page {current + 1} of {pageCount}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={current >= pageCount - 1}
+              onClick={() => setPage(current + 1)}
+            >
+              Next
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            A code is exactly {CODE_LENGTH} characters, and never a space or a backslash.
-          </p>
-        </div>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          A code is exactly {CODE_LENGTH} characters, and never a space or a backslash. There are{' '}
+          {Object.keys(BUILT_IN_TABLE).length} built-in codes, taken from Praat, so a code you
+          already know from there works here.
+        </p>
 
         <div>
           <Button onClick={save} disabled={!canSave}>

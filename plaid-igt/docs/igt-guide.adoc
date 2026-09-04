@@ -377,7 +377,7 @@ Mint a named **API token** on your profile page instead: it can be revoked on it
 Most language data needs characters a keyboard does not have.
 Type a backslash followed by a two-letter code in any field that holds language data, and the code turns into the character as you finish it: `\sw` gives ə, `\ng` gives ŋ, `\?g` gives ʔ, `\ae` gives æ, `\:f` gives the length mark ː, and `\'1` gives the stress mark ˈ.
 
-The codes are Praat's, so if you already use Praat they are the ones you know, and the full list is in its manual under Phonetic symbols.
+The codes are Praat's, so if you already use Praat they are the ones you know, and the full list is under Settings → Text and Vocab → Special characters.
 For anything not in the list, `\u0250` and the like give any character by its Unicode number.
 Type two backslashes for a plain backslash.
 
@@ -385,9 +385,10 @@ Nothing happens until you type the backslash, so ordinary words are never change
 This works in the Analyze grid, the baseline, the transcript, lexicon entries, and document metadata.
 It does not apply where a backslash has to mean itself, such as a regular expression in Search or Bulk Edit.
 
-If this language is written with a character none of the built-in codes cover, add a code for it under **Settings → Text and Vocab → Special characters**.
-A code is two characters, it applies to everyone working on the project, and it can replace a built-in code by binding the same two characters to something else.
-The same screen looks up a built-in code, so you can check what `\ct` types before binding anything near it.
+**Settings → Text and Vocab → Special characters** lists every code, and each one is yours to change.
+Search for a code to see what it types, point it at a different character, take it out of the project, or add a code of your own for a character none of the built-in ones cover.
+A code is always two characters, and whatever you set applies to everyone working on the project.
+A code you change is marked as such and can be put back with the reset button beside it, so nothing is lost by experimenting.
 
 The empty set ∅, for a morpheme with a grammatical job and no sound, has a code of its own (`\0/`) and a shortcut in the Analyze grid: **Alt+0** in a morpheme form types it.
 Write it as ∅ rather than a capital O with a stroke or a zero, so it exports as a zero morph and the Validation tab does not flag it.
