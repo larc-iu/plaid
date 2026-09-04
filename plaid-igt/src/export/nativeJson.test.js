@@ -287,6 +287,11 @@ describe('buildProjectFile', () => {
       ignoredTokens: null,
       documentMetadata: [{ name: 'Source' }],
       autoAnalysis: { enabled: false },
+      tagsets: null,
+      languages: null,
+      speakers: null,
+      serviceDefaults: null,
+      exportPresets: null,
     });
     expect(out.layers).toMatchObject({
       baselineText: 'tl1',
@@ -303,6 +308,45 @@ describe('buildProjectFile', () => {
     );
     expect(out.documents).toHaveLength(1);
     expect(out.vocabularies).toHaveLength(1);
+  });
+
+  it('carries the project config the wizard cannot rebuild', () => {
+    // The archive is meant to be lossless. These all used to be dropped, so a
+    // round trip quietly returned a project with no tagsets and no languages.
+    const project = buildProject();
+    Object.assign(project.config.igt, {
+      tagsets: { Leipzig: { delimiters: '.', mode: 'closed', values: [{ value: 'PL' }] } },
+      languages: { object: { name: 'Lamkang', glottocode: 'lamk1238' }, meta: { name: 'English' } },
+      speakers: ['Speaker 1', 'Speaker 2'],
+      serviceDefaults: { analyze: { impl: 'polygloss' } },
+      export: { presets: [{ name: 'For the paper' }] },
+    });
+    const out = buildProjectFile({
+      project,
+      documents: [],
+      vocabularies: [],
+      exportedAt: 'x',
+    });
+    expect(out.schema.tagsets).toEqual(project.config.igt.tagsets);
+    expect(out.schema.languages).toEqual(project.config.igt.languages);
+    expect(out.schema.speakers).toEqual(['Speaker 1', 'Speaker 2']);
+    expect(out.schema.serviceDefaults).toEqual({ analyze: { impl: 'polygloss' } });
+    expect(out.schema.exportPresets).toEqual({ presets: [{ name: 'For the paper' }] });
+  });
+
+  it("carries each field's tagset reference, on the field", () => {
+    // A tagset that arrives without knowing which field it governs is a list
+    // that enforces nothing.
+    const project = buildProject();
+    const gloss = project.textLayers
+      .flatMap((tl) => tl.tokenLayers || [])
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.name === 'Gloss');
+    gloss.config.igt.tagset = 'Leipzig';
+    const out = buildProjectFile({ project, documents: [], vocabularies: [], exportedAt: 'x' });
+    expect(out.schema.fields.morpheme).toEqual([{ name: 'Gloss', tagset: 'Leipzig' }]);
+    // A field with no tagset stays a bare name.
+    expect(out.schema.fields.sentence).toEqual([{ name: 'Translation' }]);
   });
 
   it('passes through null autoAnalysis without baking defaults', () => {

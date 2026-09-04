@@ -30,6 +30,7 @@ import {
   IGT_NAMESPACE,
   readVocabFields,
 } from '../domain/igtConfig.js';
+import { readTagsetName } from '../domain/tagsets.js';
 import { normalizeVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers } from './exportLayers.js';
 
@@ -62,9 +63,27 @@ const igtLayers = (project) => {
 export function buildProjectFile({ project, documents, vocabularies, asOf = null, exportedAt }) {
   const { textLayer, wordLayer, sentenceLayer, morphemeLayer, alignmentLayer } = igtLayers(project);
   const fields = discoverExportLayers(project);
-  const spanLayers = [wordLayer, sentenceLayer, morphemeLayer, alignmentLayer]
-    .flatMap((tl) => tl?.spanLayers || [])
-    .map((sl) => ({ id: sl.id, name: sl.name, scope: readScope(sl.config) }));
+  const allSpanLayers = [wordLayer, sentenceLayer, morphemeLayer, alignmentLayer].flatMap(
+    (tl) => tl?.spanLayers || [],
+  );
+  const spanLayers = allSpanLayers.map((sl) => ({
+    id: sl.id,
+    name: sl.name,
+    scope: readScope(sl.config),
+  }));
+  // Which tagset governs each field. Carried on the field rather than on the
+  // layer row because the importer builds fields from `schema.fields`, and a
+  // tagset that arrives without its field is a list nothing enforces.
+  const tagsetOf = new Map(
+    allSpanLayers.map((sl) => [`${readScope(sl.config)}:${sl.name}`, readTagsetName(sl.config)]),
+  );
+  const fieldRow = (scope) => (name) => {
+    const tagset = tagsetOf.get(`${scope}:${name}`);
+    return tagset ? { name, tagset } : { name };
+  };
+  // Project config this app owns, stored verbatim: defaults are the app's
+  // business, not the archive's, so unset stays null.
+  const igtConfig = (key) => project?.config?.[IGT_NAMESPACE]?.[key] ?? null;
   return {
     format: NATIVE_FORMAT_NAME,
     formatVersion: NATIVE_FORMAT_VERSION,
@@ -74,15 +93,18 @@ export function buildProjectFile({ project, documents, vocabularies, asOf = null
     schema: {
       orthographies: readOrthographies(wordLayer?.config) ?? [],
       fields: {
-        sentence: fields.sentFields.map((name) => ({ name })),
-        word: fields.wordFields.map((name) => ({ name })),
-        morpheme: fields.morphFields.map((name) => ({ name })),
+        sentence: fields.sentFields.map(fieldRow('Sentence')),
+        word: fields.wordFields.map(fieldRow('Word')),
+        morpheme: fields.morphFields.map(fieldRow('Morpheme')),
       },
       ignoredTokens: readIgnoredTokens(wordLayer?.config) ?? null,
       documentMetadata: readDocumentMetadata(project?.config) ?? [],
-      // Stored config verbatim — defaults are the app's business, not the
-      // archive's, so unset stays null.
-      autoAnalysis: project?.config?.[IGT_NAMESPACE]?.autoAnalysis ?? null,
+      autoAnalysis: igtConfig('autoAnalysis'),
+      tagsets: igtConfig('tagsets'),
+      languages: igtConfig('languages'),
+      speakers: igtConfig('speakers'),
+      serviceDefaults: igtConfig('serviceDefaults'),
+      exportPresets: igtConfig('export'),
     },
     layers: {
       baselineText: textLayer?.id ?? null,

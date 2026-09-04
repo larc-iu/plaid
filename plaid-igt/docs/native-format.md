@@ -62,10 +62,15 @@ the upload's media type is validated from its filename.
 | `asOf` | ISO timestamp when this is a historical (time-travel) export, else `null` |
 | `project` | `{id, name}` of the source project |
 | `schema.orthographies` | `[{name}]` — non-baseline orthographies on the word layer |
-| `schema.fields` | `{sentence, word, morpheme}` → `[{name}]` annotation fields by scope |
+| `schema.fields` | `{sentence, word, morpheme}` → `[{name, tagset?}]` annotation fields by scope. `tagset` names the tagset governing the field, and is absent when none does |
 | `schema.ignoredTokens` | the word layer's ignored-token config (`{type: 'unicodePunctuation', whitelist?}` or `{type: 'blacklist', blacklist}`), or `null` |
-| `schema.documentMetadata` | `[{name}]` enabled document metadata fields, or `[]` |
-| `schema.autoAnalysis` | the project's stored auto-analysis config, `null` when unset (defaults are the app's business, not the archive's) |
+| `schema.documentMetadata` | `[{name, tagset?}]` enabled document metadata fields, or `[]` |
+| `schema.autoAnalysis` | the project's stored auto-analysis config, `null` when unset |
+| `schema.tagsets` | the project's tagsets, `{name: {delimiters, mode, values}}`, `null` when unset |
+| `schema.languages` | the project's `{object, meta}` language identity, `null` when unset |
+| `schema.speakers` | the project's known speaker labels, `null` when unset |
+| `schema.serviceDefaults` | the project's stored service defaults, `null` when unset |
+| `schema.exportPresets` | the project's saved export presets (stored under config key `export`), `null` when unset |
 | `layers` | substrate layer ids (`baselineText`, `sentence`, `word`, `morpheme`, `timeAlignment`, `spanLayers: [{id, name, scope}]`) — **informative only**, for debugging and correlation |
 | `documents` | manifest: `[{id, name, file, mediaFile}]` (`mediaFile` null when no media was embedded) |
 | `vocabularies` | manifest: `[{id, name, file}]` |
@@ -229,7 +234,12 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
 "Import a Plaid IGT archive"); mirrors the FLEx importer's operation inventory:
 
 1. Project setup from `schema` (orthographies, fields by scope, ignored tokens,
-   document metadata; one vocabulary per `vocabularies/*.json`).
+   document metadata; one vocabulary per `vocabularies/*.json`), then the stored
+   project config the wizard does not cover, written verbatim: `autoAnalysis`,
+   `tagsets`, `languages`, `speakers`, `serviceDefaults`, `export`, and
+   `documentMetadata` again (the wizard creates it as bare `{name}` rows, so the
+   archive's version is written over it to restore each field's `tagset`).
+   Each governed field's `tagset` is then set on its own span layer.
 2. Per vocabulary: create items **in array order**, mapping old item ids to new.
    The importer stamps each created item's metadata with `nativeImportId` (the
    archive item id) for resume dedupe and provenance.

@@ -366,8 +366,47 @@ try {
     `${commentsA.length} vs ${seededComments.length}`,
   );
 
+  // Project config the FLEx importer never sets, and one governed field. All
+  // of this used to be dropped by the archive, so without seeding it here the
+  // schema comparison below compares two sets of nulls and proves nothing.
+  const projectABefore = await client.projects.get(setupA.projectId);
+  // Gloss exists at BOTH Word and Morpheme scope, so pick by scope, not name.
+  const glossLayer = (projectABefore.textLayers || [])
+    .flatMap((tl) => tl.tokenLayers || [])
+    .flatMap((tl) => tl.spanLayers || [])
+    .find((sl) => sl.name === 'Gloss' && sl.config?.igt?.scope === 'Morpheme');
+  check(!!glossLayer, 'project A has a morpheme-scope Gloss field to govern');
+  await client.projects.setConfig(setupA.projectId, 'igt', 'tagsets', {
+    Leipzig: { delimiters: '.:', mode: 'mixed', values: [{ value: 'PL' }, { value: 'NOM' }] },
+  });
+  await client.projects.setConfig(setupA.projectId, 'igt', 'languages', {
+    object: { name: 'Lezgi', glottocode: 'lezg1247', iso639P3: 'lez' },
+    meta: { name: 'English', glottocode: 'stan1293', iso639P3: 'eng' },
+  });
+  await client.projects.setConfig(setupA.projectId, 'igt', 'speakers', ['Speaker 1', 'Speaker 2']);
+  await client.projects.setConfig(setupA.projectId, 'igt', 'serviceDefaults', {
+    analyze: { impl: 'polygloss' },
+  });
+  await client.projects.setConfig(setupA.projectId, 'igt', 'export', {
+    presets: [{ name: 'For the paper', format: 'latex' }],
+  });
+  await client.spanLayers.setConfig(glossLayer.id, 'igt', 'tagset', 'Leipzig');
+
   // ---- 2. export A ----
   const archiveA = await exportNative(setupA.projectId);
+  check(
+    archiveA.manifest.schema.tagsets?.Leipzig != null,
+    'archive A carries the tagsets',
+    JSON.stringify(archiveA.manifest.schema.tagsets),
+  );
+  const governedIn = Object.entries(archiveA.manifest.schema.fields)
+    .flatMap(([scope, fs]) => fs.filter((f) => f.tagset).map((f) => `${scope}:${f.name}`))
+    .sort();
+  check(
+    governedIn.join() === 'morpheme:Gloss',
+    "archive A carries the Gloss field's tagset reference, on that field alone",
+    `governed: [${governedIn.join(', ')}]`,
+  );
   const archivedComments = archiveA.documents.flatMap((d) => d.data.comments || []);
   check(
     archivedComments.length === seededComments.length,

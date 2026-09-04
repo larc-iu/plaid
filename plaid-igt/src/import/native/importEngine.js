@@ -591,10 +591,41 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   const targets = resolveNativeTargets(project, archive.manifest);
   const warnings = [];
 
-  // Stored app config the setup wizard doesn't cover.
-  const autoAnalysis = archive.manifest.schema?.autoAnalysis;
-  if (autoAnalysis != null) {
-    await client.projects.setConfig(projectId, IGT_NAMESPACE, 'autoAnalysis', autoAnalysis);
+  // Stored app config the setup wizard doesn't cover, written verbatim. The
+  // wizard does create documentMetadata, but only as `{name}` rows, so the
+  // archive's version is written over it to bring each field's tagset back.
+  const schema = archive.manifest.schema || {};
+  for (const [key, value] of [
+    ['autoAnalysis', schema.autoAnalysis],
+    ['tagsets', schema.tagsets],
+    ['languages', schema.languages],
+    ['speakers', schema.speakers],
+    ['serviceDefaults', schema.serviceDefaults],
+    ['export', schema.exportPresets],
+    ['documentMetadata', schema.documentMetadata],
+  ]) {
+    if (value != null) await client.projects.setConfig(projectId, IGT_NAMESPACE, key, value);
+  }
+
+  // Point each field back at its tagset. Setup created the fields; the
+  // reference lives on the span layer, which the wizard knows nothing about.
+  const spanLayerByScopeName = new Map();
+  for (const tl of findBaselineTextLayer(project.textLayers || [])?.tokenLayers || []) {
+    for (const sl of tl.spanLayers || []) {
+      spanLayerByScopeName.set(`${readScope(sl.config)}:${sl.name}`, sl);
+    }
+  }
+  for (const [scopeKey, scope] of [
+    ['sentence', 'Sentence'],
+    ['word', 'Word'],
+    ['morpheme', 'Morpheme'],
+  ]) {
+    for (const field of schema.fields?.[scopeKey] || []) {
+      if (!field.tagset) continue;
+      const layer = spanLayerByScopeName.get(`${scope}:${field.name}`);
+      if (!layer) continue;
+      await client.spanLayers.setConfig(layer.id, IGT_NAMESPACE, 'tagset', field.tagset);
+    }
   }
 
   // Vocabularies: archive vocab → the same-named project vocab created by

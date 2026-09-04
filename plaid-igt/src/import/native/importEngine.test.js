@@ -113,6 +113,9 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
       get: async (id) => record('vocabLayers.get', [id], { id, items: existingItems }),
       setConfig: async (...a) => record('vocabLayers.setConfig', a),
     },
+    spanLayers: {
+      setConfig: async (...a) => record('spanLayers.setConfig', a),
+    },
     vocabItems: {
       bulkCreate: async (body) =>
         record('vocabItems.bulkCreate', [body], { ids: body.map(() => fresh('item')) }),
@@ -444,6 +447,46 @@ describe('runNativeImport (full archive)', () => {
       'autoAnalysis',
       { enabled: false },
     ]);
+  });
+
+  it('writes back the project config the setup wizard cannot rebuild', async () => {
+    // The archive used to drop all of these, so a round trip returned a
+    // project with no tagsets, no languages and no speakers.
+    const archive = buildArchive();
+    Object.assign(archive.manifest.schema, {
+      tagsets: { Leipzig: { delimiters: '.', mode: 'closed', values: [{ value: 'PL' }] } },
+      languages: { object: { name: 'Lamkang' }, meta: { name: 'English' } },
+      speakers: ['Speaker 1'],
+      serviceDefaults: { analyze: { impl: 'polygloss' } },
+      exportPresets: { presets: [{ name: 'For the paper' }] },
+    });
+    const client = stubClient();
+    await runNativeImport({ client, projectId: 'newp', archive });
+    const written = Object.fromEntries(
+      callsOf(client, 'projects.setConfig').map((c) => [c[3], c[4]]),
+    );
+    expect(written.tagsets).toEqual(archive.manifest.schema.tagsets);
+    expect(written.languages).toEqual({ object: { name: 'Lamkang' }, meta: { name: 'English' } });
+    expect(written.speakers).toEqual(['Speaker 1']);
+    expect(written.serviceDefaults).toEqual({ analyze: { impl: 'polygloss' } });
+    // Stored under its own key, which is `export`, not `exportPresets`.
+    expect(written.export).toEqual({ presets: [{ name: 'For the paper' }] });
+    // documentMetadata is rewritten so a metadata field's tagset comes back.
+    expect(written.documentMetadata).toEqual([{ name: 'Source' }]);
+  });
+
+  it("points each field back at its tagset, on the field's own span layer", async () => {
+    const archive = buildArchive();
+    archive.manifest.schema.fields.morpheme = [{ name: 'Gloss', tagset: 'Leipzig' }];
+    const client = stubClient();
+    await runNativeImport({ client, projectId: 'newp', archive });
+    const calls = callsOf(client, 'spanLayers.setConfig').map((c) => c.slice(1));
+    expect(calls).toEqual([['new-slGloss', 'igt', 'tagset', 'Leipzig']]);
+  });
+
+  it('writes no span-layer config when no field is governed', async () => {
+    const { client } = await run();
+    expect(callsOf(client, 'spanLayers.setConfig')).toEqual([]);
   });
 
   it('skips done documents and redoes half-imported ones on resume', async () => {
