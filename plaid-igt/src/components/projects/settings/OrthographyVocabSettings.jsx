@@ -8,12 +8,12 @@ import { ComposeSettings } from './ComposeSettings.jsx';
 export const OrthographyVocabSettings = ({ project, projectId, client, onProjectUpdate }) => (
   <div className="tw flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
     <OrthographiesSettings projectId={projectId} client={client} />
+    <VocabularySettings projectId={projectId} client={client} />
     <ComposeSettings
       project={project}
       projectId={projectId}
       client={client}
       onProjectUpdate={onProjectUpdate}
     />
-    <VocabularySettings projectId={projectId} client={client} />
   </div>
 );
