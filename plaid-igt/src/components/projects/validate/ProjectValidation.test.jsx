@@ -97,8 +97,9 @@ describe('the scan', () => {
     const { container, unmount } = await render(client);
     expect(container.textContent).toContain('Ballad');
     expect(container.textContent).toContain('document');
-    // Two governed fields, so two aggregate queries: one span, one metadata.
-    expect(client.query).toHaveBeenCalledTimes(2);
+    // Two governed fields, so two aggregate queries (one span, one metadata),
+    // plus the morpheme-form sweep the zero-morph check runs.
+    expect(client.query).toHaveBeenCalledTimes(3);
     await unmount();
   });
 
@@ -106,6 +107,40 @@ describe('the scan', () => {
     const client = clientWith([[['1SG.PL', 7]], [['Song', 4]]]);
     const { container, unmount } = await render(client);
     expect(container.textContent).toContain('is in its tagset');
+    await unmount();
+  });
+
+  it('flags a morpheme form that looks like a zero written another way', async () => {
+    // Third call is the morpheme-form sweep: two governed fields come first.
+    const client = clientWith([
+      [],
+      [],
+      [
+        ['dog', 12],
+        ['\u00d8', 4],
+        ['0', 1],
+        ['\u2205', 30],
+      ],
+    ]);
+    const { container, unmount } = await render(client);
+    expect(container.textContent).toContain('looks like a zero morph');
+    expect(container.textContent).toContain('2 forms to check');
+    // The real zero and an ordinary form are both left alone.
+    expect(container.textContent).not.toContain('dog');
+    await unmount();
+  });
+
+  it('says nothing about zero morphs when every form is fine', async () => {
+    const client = clientWith([
+      [],
+      [],
+      [
+        ['dog', 12],
+        ['\u2205', 30],
+      ],
+    ]);
+    const { container, unmount } = await render(client);
+    expect(container.textContent).not.toContain('looks like a zero morph');
     await unmount();
   });
 

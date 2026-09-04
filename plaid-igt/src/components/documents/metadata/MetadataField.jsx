@@ -84,6 +84,7 @@ export const MetadataField = ({ field, value, tagset, onChange }) => {
   return (
     <>
       <Input
+        compose
         value={v}
         list={listId}
         // A governed field can carry our squiggle, so the browser's must not

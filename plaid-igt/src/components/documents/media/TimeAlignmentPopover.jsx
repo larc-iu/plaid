@@ -168,6 +168,7 @@ export const TimeAlignmentPopover = ({
                 </Label>
                 <Textarea
                   id="alignment-text"
+                  compose
                   ref={textareaRef}
                   placeholder={
                     mode === 'align'
@@ -190,6 +191,7 @@ export const TimeAlignmentPopover = ({
                 <Label htmlFor="alignment-speaker">Speaker</Label>
                 <Input
                   id="alignment-speaker"
+                  compose
                   list="alignment-speaker-options"
                   placeholder="e.g. Speaker 1 (optional)"
                   value={speaker}

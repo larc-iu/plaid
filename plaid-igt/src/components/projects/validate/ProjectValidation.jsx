@@ -8,6 +8,7 @@ import { notifyError, notifySuccess, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
+import { ZERO_MORPH, looksLikeZeroMorph } from '@/domain/zeroMorph';
 import {
   freqQueries,
   metadataFreqQuery,
@@ -66,6 +67,68 @@ const reasonText = (violations) => {
   return 'a delimiter with nothing beside it';
 };
 
+// The occurrences panel for one flagged value, shared by both checks below.
+const Occurrences = ({ res, projectId }) => (
+  <div className="border-t bg-muted/20 px-3 py-2">
+    {!res && <p className="text-sm text-muted-foreground">Finding occurrences…</p>}
+    {res?.failed && (
+      <p className="text-sm text-destructive">Could not search for this value. Try again.</p>
+    )}
+    {res && !res.failed && res.groups.length === 0 && (
+      <p className="text-sm text-muted-foreground">
+        No occurrences found. The value may have been changed since the last check.
+      </p>
+    )}
+    {res &&
+      !res.failed &&
+      res.groups.map((grp) => (
+        <div key={grp.docId} className="mb-3 last:mb-0">
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-medium">
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+            {grp.rows.length ? (
+              grp.docName
+            ) : (
+              // Metadata is the document's default tab, and
+              // tabTo writes the bare path for a default.
+              <Link
+                to={`/projects/${projectId}/documents/${grp.docId}`}
+                className="text-foreground hover:underline"
+              >
+                {grp.docName}
+              </Link>
+            )}
+            {grp.rows.length > 0 && (
+              <span className="font-normal text-muted-foreground">({grp.docHits})</span>
+            )}
+          </p>
+          {grp.rows.map((r) => (
+            <Link
+              key={r.sentenceId}
+              to={hitTo(projectId, grp.docId, r.sentenceId)}
+              onClick={() => rememberCaret(grp.docId, r.sentenceId, r.hitBegin)}
+              className={cn(
+                'block rounded px-2 py-1 text-sm hover:bg-background',
+                'text-foreground no-underline',
+              )}
+            >
+              <span className="mr-2 text-xs text-muted-foreground">{r.sentenceIndex + 1}</span>
+              <MarkedText text={r.text} marks={r.marks} />
+              {r.translation && (
+                <span className="ml-2 text-xs italic text-muted-foreground">{r.translation}</span>
+              )}
+            </Link>
+          ))}
+        </div>
+      ))}
+    {res && !res.failed && res.remainingDocs > 0 && (
+      <p className="text-xs text-muted-foreground">
+        {res.remainingHits} more in {res.remainingDocs} document
+        {res.remainingDocs === 1 ? '' : 's'} not shown.
+      </p>
+    )}
+  </div>
+);
+
 export const ProjectValidation = ({ project, projectId, client, onProjectUpdate }) => {
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
   const domains = useMemo(() => searchDomains(layerInfo, []), [layerInfo]);
@@ -73,6 +136,14 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   const [fields, setFields] = useState(null);
   const [expanded, setExpanded] = useState(null); // `${layerId}:${value}`
   const [hits, setHits] = useState({});
+  const [zeros, setZeros] = useState(null);
+
+  // Morpheme forms that look like a zero someone spelled another way. A
+  // pseudo-field so it can share `locate` and the row markup below.
+  const morphemes = useMemo(() => {
+    const domain = domains.find((d) => d.kind === 'morpheme') ?? null;
+    return domain ? { key: 'zero-morph', kind: 'morpheme', domain } : null;
+  }, [domains]);
 
   // The fields under a tagset, from the one place that answers that, plus the
   // search domain a span field's hit lookup needs.
@@ -89,14 +160,10 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   );
 
   const scan = useCallback(async () => {
-    if (!governed.length) {
-      setFields([]);
-      return;
-    }
     setBusy(true);
     try {
       const rows = await Promise.all(
-        governed.map(async (g) => {
+        (governed || []).map(async (g) => {
           const results = await Promise.all(
             g.kind === 'metadata'
               ? [client.query(metadataFreqQuery(projectId, g.field))]
@@ -114,14 +181,31 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
         }),
       );
       setFields(rows);
+      // Same two-phase trick as the tagset scan: one aggregate query brings
+      // back every morpheme form in the project with its count, and the
+      // comparison happens here. No document loads until a row is opened.
+      if (!morphemes) {
+        setZeros([]);
+        return;
+      }
+      const res = await Promise.all(
+        freqQueries(morphemes.domain, ANY_VALUE).map((q) => client.query(q)),
+      );
+      setZeros(
+        res
+          .flatMap((r) => r?.results || [])
+          .filter(([v]) => typeof v === 'string' && looksLikeZeroMorph(v))
+          .map(([value, n]) => ({ value, count: n || 0 })),
+      );
     } catch (err) {
       console.error('Validation scan failed:', err);
       notifyError(humanizeError(err), 'Could not check values');
       setFields([]);
+      setZeros([]);
     } finally {
       setBusy(false);
     }
-  }, [client, governed, projectId]);
+  }, [client, governed, morphemes, projectId]);
 
   useEffect(() => {
     scan();
@@ -184,35 +268,90 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     return <p className="py-6 text-sm text-muted-foreground">Checking values…</p>;
   }
 
-  if (!governed.length) {
-    return (
-      <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-        No field uses a tagset yet. Assign one under Settings → Annotation, and this tab will list
-        any values outside it.
-      </div>
-    );
-  }
-
   const totalBad = fields.reduce((a, f) => a + f.bad.length, 0);
+  const zeroRows = zeros || [];
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <p className="text-sm text-muted-foreground">
-          Checks every value in the project against its field's tagset. Closed lists apply to what
-          you type and bulk edit, not to imports, services or the assistant, so their values show up
-          here.
+          Checks every value in the project against its field's tagset, and looks for zero morphs
+          written the wrong way. Closed lists apply to what you type and bulk edit, not to imports,
+          services or the assistant, so their values show up here.
         </p>
         <Button variant="outline" className="ml-auto shrink-0" onClick={scan} disabled={busy}>
           {busy ? 'Checking…' : 'Re-check'}
         </Button>
       </div>
 
-      {totalBad === 0 && (
+      {totalBad === 0 && governed.length > 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-green-600/40 bg-green-50 px-4 py-3 text-sm text-green-800">
           <Check className="h-4 w-4 shrink-0" />
           Every value in {fields.length} governed field{fields.length === 1 ? '' : 's'} is in its
           tagset.
+        </div>
+      )}
+
+      {governed.length === 0 && (
+        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+          No field uses a tagset yet. Assign one under Settings → Annotation, and this tab will list
+          any values outside it.
+        </div>
+      )}
+
+      {zeroRows.length > 0 && (
+        <div className="overflow-hidden rounded-md border">
+          <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
+            <Badge variant="secondary" className={SCOPE_CLS.morpheme}>
+              morpheme
+            </Badge>
+            <span className="font-medium">Form</span>
+            <span className="text-xs text-muted-foreground">
+              looks like a zero morph written another way
+            </span>
+            <span className="ml-auto flex items-center gap-1.5 text-sm font-medium text-destructive">
+              <AlertTriangle className="h-4 w-4" />
+              {zeroRows.length} form{zeroRows.length === 1 ? '' : 's'} to check
+            </span>
+          </div>
+          {zeroRows.map((row) => {
+            const key = `${morphemes.key}:${row.value}`;
+            const open = expanded === key;
+            const res = hits[key];
+            return (
+              <div key={row.value} className="border-b last:border-b-0">
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 shrink-0"
+                    onClick={() => locate(morphemes, row.value)}
+                    title={open ? 'Hide occurrences' : 'Show occurrences'}
+                  >
+                    {open ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <code className="rounded bg-destructive/10 px-1.5 py-0.5 text-sm text-destructive">
+                    {row.value}
+                  </code>
+                  <span className="text-xs text-muted-foreground">
+                    {row.count} occurrence{row.count === 1 ? '' : 's'} · did you mean{' '}
+                    <code className="text-foreground">{ZERO_MORPH}</code>? Only {ZERO_MORPH} is read
+                    as a zero on export.
+                  </span>
+                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                    <Button size="sm" variant="ghost" asChild>
+                      <Link to={`/projects/${projectId}?tab=bulk`}>Fix in Bulk Edit</Link>
+                    </Button>
+                  </div>
+                </div>
+                {open && <Occurrences res={res} projectId={projectId} />}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -293,74 +432,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                   </div>
                 </div>
 
-                {open && (
-                  <div className="border-t bg-muted/20 px-3 py-2">
-                    {!res && <p className="text-sm text-muted-foreground">Finding occurrences…</p>}
-                    {res?.failed && (
-                      <p className="text-sm text-destructive">
-                        Could not search for this value. Try again.
-                      </p>
-                    )}
-                    {res && !res.failed && res.groups.length === 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        No occurrences found. The value may have been changed since the last check.
-                      </p>
-                    )}
-                    {res &&
-                      !res.failed &&
-                      res.groups.map((grp) => (
-                        <div key={grp.docId} className="mb-3 last:mb-0">
-                          <p className="mb-1 flex items-center gap-1.5 text-xs font-medium">
-                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                            {grp.rows.length ? (
-                              grp.docName
-                            ) : (
-                              // Metadata is the document's default tab, and
-                              // tabTo writes the bare path for a default.
-                              <Link
-                                to={`/projects/${projectId}/documents/${grp.docId}`}
-                                className="text-foreground hover:underline"
-                              >
-                                {grp.docName}
-                              </Link>
-                            )}
-                            {grp.rows.length > 0 && (
-                              <span className="font-normal text-muted-foreground">
-                                ({grp.docHits})
-                              </span>
-                            )}
-                          </p>
-                          {grp.rows.map((r) => (
-                            <Link
-                              key={r.sentenceId}
-                              to={hitTo(projectId, grp.docId, r.sentenceId)}
-                              onClick={() => rememberCaret(grp.docId, r.sentenceId, r.hitBegin)}
-                              className={cn(
-                                'block rounded px-2 py-1 text-sm hover:bg-background',
-                                'text-foreground no-underline',
-                              )}
-                            >
-                              <span className="mr-2 text-xs text-muted-foreground">
-                                {r.sentenceIndex + 1}
-                              </span>
-                              <MarkedText text={r.text} marks={r.marks} />
-                              {r.translation && (
-                                <span className="ml-2 text-xs italic text-muted-foreground">
-                                  {r.translation}
-                                </span>
-                              )}
-                            </Link>
-                          ))}
-                        </div>
-                      ))}
-                    {res && !res.failed && res.remainingDocs > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {res.remainingHits} more in {res.remainingDocs} document
-                        {res.remainingDocs === 1 ? '' : 's'} not shown.
-                      </p>
-                    )}
-                  </div>
-                )}
+                {open && <Occurrences res={res} projectId={projectId} />}
               </div>
             );
           })}

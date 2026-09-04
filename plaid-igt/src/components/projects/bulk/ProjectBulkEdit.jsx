@@ -279,6 +279,7 @@ const SubstitutionFields = ({ find, setFind, matchType, setMatchType, repl, setR
       <Label htmlFor="bulk-find">Find</Label>
       <Input
         id="bulk-find"
+        compose={matchType !== 'regex'}
         value={find}
         onChange={(e) => setFind(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onEnter()}
@@ -305,6 +306,7 @@ const SubstitutionFields = ({ find, setFind, matchType, setMatchType, repl, setR
       <Label htmlFor="bulk-repl">Replace with</Label>
       <Input
         id="bulk-repl"
+        compose={matchType !== 'regex'}
         value={repl}
         onChange={(e) => setRepl(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onEnter()}
@@ -795,6 +797,7 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
             <Label htmlFor="bulk-form">Word form</Label>
             <Input
               id="bulk-form"
+              compose
               value={form}
               onChange={(e) => setForm(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && preview()}
@@ -1125,6 +1128,7 @@ const MergePanel = ({ project, client }) => {
             <Label htmlFor="bulk-merge-filter">Find entries</Label>
             <Input
               id="bulk-merge-filter"
+              compose
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="filter by form"

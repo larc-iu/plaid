@@ -3284,58 +3284,17 @@ export class IgtEditor {
               <span
                 >type <kbd>-</kbd> to split, <kbd>=</kbd> to split at a clitic (pasting
                 <em>a-b=c</em> splits too) · <kbd>⌫</kbd> at start merges with previous ·
-                <kbd>Alt</kbd>+<kbd>-</kbd> / <kbd>Alt</kbd>+<kbd>=</kbd> literal character</span
+                <kbd>Alt</kbd>+<kbd>-</kbd> / <kbd>Alt</kbd>+<kbd>=</kbd> literal character ·
+                <kbd>Alt</kbd>+<kbd>0</kbd> types a zero morph <em>∅</em></span
               >
             </div>`
           : nothing}
         <div class="igt-legend__row">
-          <strong>Guesses</strong>
+          <strong>Special characters</strong>
           <span
-            >gray italic placeholders are guesses from the linked entry or from matching forms, not
-            yet in the document. <kbd>↵</kbd> takes this cell's, <kbd>Ctrl</kbd>+<kbd>↵</kbd>
-            takes the whole word's, typing replaces, leaving the cell drops it ·
-            <kbd>Alt</kbd>+<kbd>↓</kbd> lists every value seen for the form, with counts</span
-          >
-        </div>
-        <div class="igt-legend__row">
-          <strong>Provenance</strong>
-          <span
-            ><span class="igt-legend__prov igt-legend__prov--machine">violet italic</span> = a
-            machine wrote it into the document, unverified ·
-            <span class="igt-legend__prov igt-legend__prov--verified">violet underline</span> =
-            machine-made, confirmed by a person · plain = made by a person · editing a value
-            confirms it · <kbd>Ctrl</kbd>+<kbd>↵</kbd> accepts everything proposed on a word
-            (machine values and guesses alike) and jumps to the next · <kbd>Ctrl</kbd>+<kbd>⌫</kbd>
-            discards an unverified proposal, on a word or a translation ·
-            <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between words and
-            translations with unverified proposals</span
-          >
-        </div>
-        <div class="igt-legend__row">
-          <strong>Lexicon</strong>
-          <span
-            >hover a word or morpheme and click <em>+ link</em> to link it to a lexicon entry ·
-            <em>Auto-analyze</em> copies previous analyses, lets a service propose segmentation and
-            glosses, and links what follows project precedent or matches one entry. Violet links are
-            auto-made; open one and click it (or <em>confirm</em>) to approve</span
-          >
-        </div>
-        <div class="igt-legend__row">
-          <strong>Multi-word expressions</strong>
-          <span
-            ><kbd>Shift</kbd>+click words, or <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> from one of
-            a word's cells (<kbd>Ctrl</kbd> too skips a word), gathers them into one multi-word
-            expression · <kbd>↵</kbd> links them to an entry · <kbd>Esc</kbd> drops them · click a
-            bracket's label to change or unlink it, and add or remove words while it is open</span
-          >
-        </div>
-        <div class="igt-legend__row">
-          <strong>Review links</strong>
-          <span
-            ><kbd>Ctrl</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jump between suggested (violet) links · on
-            one: <kbd>↵</kbd> confirm · <kbd>⌫</kbd> remove · <kbd>Space</kbd> change. Each jumps to
-            the next</span
-          >
+            >type <kbd></kbd> and a two-letter code in any text field: <em>sw</em> → ə,
+            <em> g</em> → ŋ, <em>?g</em> → ʔ, <em></em
+          ></span>
         </div>
       </div>
     `;

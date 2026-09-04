@@ -242,6 +242,7 @@ const SegmentRow = memo(function SegmentRow({
           value={speaker}
           list={SPEAKER_LIST_ID}
           placeholder="Speaker"
+          compose
           aria-label={`Segment ${index + 1} speaker`}
           autoComplete="off"
           className="h-8 text-xs"
@@ -266,6 +267,7 @@ const SegmentRow = memo(function SegmentRow({
           value={draft}
           rows={1}
           spellCheck={false}
+          compose
           aria-label={`Segment ${index + 1} text`}
           className="min-h-8 resize-none py-1.5 text-sm"
           onChange={(e) => {
@@ -370,6 +372,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
         value={speaker}
         list={SPEAKER_LIST_ID}
         placeholder="Speaker"
+        compose
         aria-label="New segment speaker"
         autoComplete="off"
         className="h-8 text-xs"
@@ -387,6 +390,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
           rows={1}
           spellCheck={false}
           placeholder="New segment"
+          compose
           aria-label="New segment text"
           className="min-h-8 resize-none py-1.5 text-sm"
           onChange={(e) => setDraft(e.target.value)}

@@ -144,7 +144,7 @@ The **Analyze** tab is the workspace where interlinearization happens.
 It shows each sentence with its words, the morphemes under each word, and a row for every annotation field.
 What you can do here:
 
-* **Segment morphemes**: break each word into morphemes and edit their forms.
+* **Segment morphemes**: break each word into morphemes and edit their forms. A morpheme with a grammatical job and no sound is written ∅, which **Alt+0** types (see <<_typing_special_characters>>).
 * **Gloss and annotate**: fill the gloss and any other word-scope or morpheme-scope fields your project defines. The editor offers faint guesses, for example a gloss it has seen before for the same form, that you can accept or override.
 * **Pick from what the project already uses**: on a cell, **Alt+↓** lists every value the project has given that form, with counts. When a field is held to a tagset, the list opens on its own as you enter the cell and narrows as you type, one part at a time for a composite gloss like `1SG.NOM`.
 * **Link vocabulary**: connect a word or morpheme to a shared lexicon entry for consistency, by hand or in bulk (see <<_vocabularies>>).
@@ -372,6 +372,24 @@ An administrator can also mint a password-reset link for someone who is locked o
 Scripts and services should not borrow your login.
 Mint a named **API token** on your profile page instead: it can be revoked on its own, and its name appears in the history, so machine-made changes are told apart from yours.
 
+= Typing Special Characters
+
+Most language data needs characters a keyboard does not have.
+Type a backslash followed by a two-letter code in any field that holds language data, and the code turns into the character as you finish it: `\sw` gives ə, `\ng` gives ŋ, `\?g` gives ʔ, `\ae` gives æ, `\:f` gives the length mark ː, and `\'1` gives the stress mark ˈ.
+
+The codes are Praat's, so if you already use Praat they are the ones you know, and the full list is in its manual under Phonetic symbols.
+For anything not in the list, `\u0250` and the like give any character by its Unicode number.
+Type two backslashes for a plain backslash.
+
+Nothing happens until you type the backslash, so ordinary words are never changed: `blue` stays `blue`.
+This works in the Analyze grid, the baseline, the transcript, lexicon entries, and document metadata.
+It does not apply where a backslash has to mean itself, such as a regular expression in Search or Bulk Edit.
+
+The empty set ∅, for a morpheme with a grammatical job and no sound, has a code of its own (`\0/`) and a shortcut in the Analyze grid: **Alt+0** in a morpheme form types it.
+Write it as ∅ rather than a capital O with a stroke or a zero, so it exports as a zero morph and the Validation tab does not flag it.
+
+TIP: If you type a lot of one language, a system keyboard such as SIL Keyman is worth setting up, and it works everywhere on your computer rather than only here.
+
 = Keyboard Shortcuts
 
 [cols="1,3"]
@@ -385,6 +403,8 @@ Mint a named **API token** on your profile page instead: it can be revoked on it
 | **=** | In a morpheme form, split at the cursor as a clitic boundary. The outer piece is typed as a proclitic or enclitic, so the boundary renders as `=`.
 | **Backspace** | At the start of a morpheme form, merge it into the previous one.
 | **Alt** + **-** / **Alt** + **=** | Enter a literal hyphen or equals sign in a morpheme form.
+| **Alt+0** | In a morpheme form, type the zero morph ∅.
+| **\** + a two-letter code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
 | **Ctrl/Cmd+Enter** | Confirm the current word's whole analysis and jump to the next.
 | **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays.
 | **Ctrl/Cmd+Shift** + arrow | Jump to the next or previous word that still has unverified proposals.

@@ -74,6 +74,7 @@ export function DocumentBaseline() {
                 <Textarea
                   ref={textareaRef}
                   id="baseline-text"
+                  compose
                   value={localText}
                   onChange={handleTextChange}
                   placeholder="Type or paste the text"

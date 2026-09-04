@@ -527,6 +527,7 @@ export const BulkAddDialog = ({
             <span className="h-px flex-1 bg-border" />
           </div>
           <Textarea
+            compose
             rows={8}
             value={pasted}
             onChange={(e) => setPasted(e.target.value)}

@@ -590,6 +590,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
             </select>
           ) : (
             <Input
+              compose
               id={fieldId}
               placeholder={`Enter ${humanizeFieldName(field.name).toLowerCase()}`}
               spellCheck={false}
@@ -790,6 +791,7 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                   </Label>
                   <Input
                     id={`${uid}-form`}
+                    compose
                     value={editForm}
                     autoFocus={isNew}
                     placeholder="Enter item form"

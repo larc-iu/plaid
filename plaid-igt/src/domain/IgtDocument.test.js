@@ -465,6 +465,36 @@ describe('morpheme structural ops', () => {
     expect(ms.map((m) => m.precedence)).toEqual([1, 2]);
   });
 
+  it('mergeMorphemes drops a zero morph instead of gluing it on', async () => {
+    // Backspace at the start of a cell after `dog` + `\u2205` is how a person
+    // takes a zero back out. It must leave `dog`, never `dog\u2205`.
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'dog' } },
+        { id: 'm-2', begin: 0, end: 3, precedence: 2, metadata: { form: '\u2205' } },
+      ],
+      body: 'dog',
+    });
+    const doc = makeDoc({ raw });
+    await doc.mergeMorphemes('m-2');
+    expect(doc.sentences[0].tokens[0].morphemes.map((m) => m.metadata.form)).toEqual(['dog']);
+  });
+
+  it('mergeMorphemes keeps the real form when the zero comes first', async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 3 }],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: '\u2205' } },
+        { id: 'm-2', begin: 0, end: 3, precedence: 2, metadata: { form: 'dog' } },
+      ],
+      body: 'dog',
+    });
+    const doc = makeDoc({ raw });
+    await doc.mergeMorphemes('m-2');
+    expect(doc.sentences[0].tokens[0].morphemes.map((m) => m.metadata.form)).toEqual(['dog']);
+  });
+
   it('mergeMorphemes is a silent no-op on the first morpheme', async () => {
     const doc = makeDoc();
     const ok = await doc.mergeMorphemes('m-1');
