@@ -187,10 +187,22 @@ test('a code added in Settings works in the grid', async ({ page }) => {
   await page.locator('h2', { hasText: 'Special characters' }).waitFor({ state: 'visible' });
 
   await page.getByRole('button', { name: 'Add a code' }).click();
-  // The row is keyed by its code, so it moves out from under this locator the
-  // moment the code is typed.
-  await page.locator('[data-code-row=""]').getByLabel('Code', { exact: true }).fill("b'");
-  await page.locator(`[data-code-row="b'"]`).locator('input').nth(1).fill('ɓ');
+  // Typed, never filled: `.fill()` sets the value in one shot and would not
+  // notice the row losing focus after the first character.
+  await page.locator('[data-code-row=""]').getByLabel('Code', { exact: true }).click();
+  await page.keyboard.type("b'");
+  // Both characters landed, which they only can if the row kept focus through
+  // the first one. The row's data attribute moves as the code is typed, so it
+  // is re-located here rather than held from before.
+  const row = page.locator(`[data-code-row="b'"]`);
+  const codeField = row.getByLabel('Code', { exact: true });
+  await expect(codeField).toHaveValue("b'");
+  await expect(codeField).toBeFocused();
+
+  const charField = row.locator('input').nth(1);
+  await charField.click();
+  await page.keyboard.type('ɓ');
+  await expect(charField).toBeFocused();
   await page.getByRole('button', { name: 'Save codes' }).click();
   await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
 
@@ -223,7 +235,14 @@ test('a built-in code can be changed and reset', async ({ page }) => {
   await page.getByLabel('Search codes').fill('sw');
   const row = page.locator('[data-code-row="sw"]');
   await row.waitFor({ state: 'visible' });
-  await row.locator('input').first().fill('Ə');
+  // Editing a built-in flips its origin to "changed", which used to remount the
+  // row and drop focus on the first keystroke.
+  const charField = row.locator('input').first();
+  await charField.click();
+  await charField.press('Control+a');
+  await page.keyboard.type('Ə');
+  await expect(charField).toBeFocused();
+  await expect(charField).toHaveValue('Ə');
   await expect(row.getByText('Changed')).toBeVisible();
   await page.getByRole('button', { name: 'Save codes' }).click();
   await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();

@@ -26,6 +26,13 @@ const ORIGIN_LABEL = {
 
 const byCode = (a, b) => a.code.toLowerCase().localeCompare(b.code.toLowerCase());
 
+// A row's identity for React, fixed when the row appears and never derived from
+// what is being typed into it. Deriving the key from the code (or from whether
+// the row counts as changed) remounts the row on the FIRST keystroke, which
+// takes focus out of the field the person is typing in.
+let nextUid = 0;
+const withUid = (row) => ({ ...row, uid: `row-${nextUid++}` });
+
 /**
  * Settings → Text and Vocab → Special characters. Every code is an entry here:
  * the built-in ones can be pointed somewhere else or taken out, and a project
@@ -33,7 +40,10 @@ const byCode = (a, b) => a.code.toLowerCase().localeCompare(b.code.toLowerCase()
  * nobody touched still picks up a correction later.
  */
 export const ComposeSettings = ({ project, projectId, client, onProjectUpdate }) => {
-  const saved = useMemo(() => composeRows(project?.config).sort(byCode), [project?.config]);
+  const saved = useMemo(
+    () => composeRows(project?.config).sort(byCode).map(withUid),
+    [project?.config],
+  );
   const [draft, setDraft] = useState(saved);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState('');
@@ -63,7 +73,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     );
   }, [draft, q]);
 
-  const paged = usePagedList(matches, { resetKey: q });
+  const paged = usePagedList(matches, { pageSize: 25, resetKey: q });
 
   const patch = (row, next) =>
     setDraft((rows) => rows.map((r) => (r === row ? { ...r, ...next } : r)));
@@ -91,7 +101,10 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
   const addRow = () => {
     setQ('');
-    setDraft((rows) => [{ code: '', char: '', description: '', origin: 'added' }, ...rows]);
+    setDraft((rows) => [
+      withUid({ code: '', char: '', description: '', origin: 'added' }),
+      ...rows,
+    ]);
     paged.setPage(0);
   };
 
@@ -157,9 +170,8 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
           {paged.pageItems.map((row) => {
             const problems = problemsByCode.get(row) || [];
             const gone = row.origin === 'removed';
-            const key = `${row.code}:${row.origin}:${draft.indexOf(row)}`;
             return (
-              <div key={key} className="border-b last:border-b-0" data-code-row={row.code}>
+              <div key={row.uid} className="border-b last:border-b-0" data-code-row={row.code}>
                 <div className="grid grid-cols-[7rem_6rem_1fr_5.5rem] items-center gap-2 px-3 py-1.5">
                   {isBuiltInCode(row.code) ? (
                     <code
