@@ -2190,15 +2190,27 @@ class PlaidClient {
     this.comments = {
       /**
        * Post a comment on an entity. Requires write access to the entity's
-       * project; the author is the authenticated caller. Comments are not
-       * audited and do not bump the document version.
-       * @param {'document'|'text'|'token'|'span'|'relation'} entityType - What kind of thing is being commented on
+       * project, or to the vocabulary for a vocab-item; the author is the
+       * authenticated caller. Comments are not audited and do not bump the
+       * document version.
+       *
+       * A comment outlives its anchor: deleting the entity does not delete
+       * the comment. `anchorLabel` is the caption shown once that happens
+       * ("Gloss of ktab, sentence 4"), so pass what the comment is about.
+       * @param {'document'|'text'|'token'|'span'|'relation'|'vocab-item'} entityType - What kind of thing is being commented on
        * @param {string} entityId - The commented entity's id
        * @param {string} body - The comment text (1..10000 characters)
+       * @param {object} [opts]
+       * @param {string} [opts.anchorLabel] - What the comment is about, in words (at most 200 characters)
        */
-      create: (entityType, entityId, body) =>
+      create: (entityType, entityId, body, { anchorLabel } = {}) =>
         this._request("POST", "/api/v1/comments", {
-          body: bodyOf({ "entity-type": entityType, "entity-id": entityId, body }),
+          body: bodyOf({
+            "entity-type": entityType,
+            "entity-id": entityId,
+            body,
+            "anchor-label": anchorLabel,
+          }),
         }),
       /**
        * Read one comment.
@@ -2297,6 +2309,47 @@ class PlaidClient {
             "entity-type": entityType,
             "entity-id": entityId,
           },
+          skipResponseTransform: true,
+        }),
+      /**
+       * List the comments on a vocabulary's entries, oldest first. Requires
+       * read access to the vocabulary. Transparently follows pagination
+       * cursors and returns the full flat array.
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching - use listInVocabPage() for a single page in a batch.
+       * @param {string} vocabId - The vocab layer to read
+       * @param {object} [filters]
+       * @param {string} [filters.entityId] - One entry's thread
+       */
+      listInVocab: (vocabId, { entityId } = {}) =>
+        listAll(this, `/api/v1/vocab-layers/${vocabId}/comments`, {
+          query: { "entity-id": entityId },
+        }),
+      /**
+       * Fetch a single page of a vocabulary's comments.
+       * @param {string} vocabId - The vocab layer to read
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {string} [opts.entityId] - One entry's thread
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listInVocabPage: (vocabId, { limit, cursor, entityId } = {}) =>
+        listPage(this, `/api/v1/vocab-layers/${vocabId}/comments`, {
+          limit,
+          cursor,
+          query: { "entity-id": entityId },
+        }),
+      /**
+       * Comment counts per entry of a vocabulary, as an `{entityId: n}` map.
+       * The response is NOT key-transformed: its keys are entry ids.
+       * @param {string} vocabId - The vocab layer to read
+       * @param {object} [filters]
+       * @param {string} [filters.entityId] - One entry only
+       * @returns {Promise<Object<string, number>>}
+       */
+      countsInVocab: (vocabId, { entityId } = {}) =>
+        this._request("GET", `/api/v1/vocab-layers/${vocabId}/comments/counts`, {
+          queryParams: { "entity-id": entityId },
           skipResponseTransform: true,
         }),
     };

@@ -543,3 +543,68 @@ describe('CommentStore subscription', () => {
     expect(listener.mock.calls.length).toBe(afterUnsub);
   });
 });
+
+describe('captions', () => {
+  it('posts the caption with the comment and shows it optimistically', async () => {
+    const client = fakeClient([]);
+    const store = makeStore(client);
+    await store.load();
+    const posting = store.post('token', 't1', 'hi', '  cat, sentence 1  ');
+    expect(store.threadFor('t1')[0].anchorLabel).toBe('cat, sentence 1');
+    await posting;
+    expect(client.comments.create).toHaveBeenCalledWith('token', 't1', 'hi', {
+      anchorLabel: 'cat, sentence 1',
+    });
+    await store.post('token', 't1', 'bare');
+    expect(client.comments.create).toHaveBeenLastCalledWith('token', 't1', 'bare', {});
+  });
+});
+
+describe('vocabulary scope', () => {
+  const vocabClient = (rows) => {
+    const client = fakeClient(rows);
+    client.comments.listInVocab = vi.fn(async (vocabId) =>
+      client.state.rows.filter((r) => r.vocabLayerId === vocabId),
+    );
+    return client;
+  };
+
+  it('loads a vocabulary s comments and posts with the vocabulary as owner', async () => {
+    const client = vocabClient([
+      comment({
+        entityType: 'vocab-item',
+        entityId: 'i1',
+        vocabLayerId: 'v1',
+        projectId: null,
+        documentId: null,
+      }),
+    ]);
+    const store = new CommentStore({ client, vocabId: 'v1', currentUserId: ME });
+    await store.load();
+    expect(client.comments.listInVocab).toHaveBeenCalledWith('v1');
+    expect(client.comments.list).not.toHaveBeenCalled();
+    expect(store.vocabId).toBe('v1');
+    expect(store.countFor('i1')).toBe(1);
+
+    const posting = store.post('vocab-item', 'i1', 'is this a noun?', 'gam, house');
+    expect(store.threadFor('i1')[1]).toMatchObject({
+      vocabLayerId: 'v1',
+      projectId: null,
+      documentId: null,
+    });
+    await posting;
+    expect(client.comments.create).toHaveBeenCalledWith('vocab-item', 'i1', 'is this a noun?', {
+      anchorLabel: 'gam, house',
+    });
+  });
+
+  it('has no live stream to watch: a vocabulary belongs to no project', () => {
+    const client = vocabClient([]);
+    client.messages = { listen: vi.fn() };
+    const store = new CommentStore({ client, vocabId: 'v1', currentUserId: ME });
+    const release = store.watchLive();
+    expect(client.messages.listen).not.toHaveBeenCalled();
+    expect(store.isLive).toBe(false);
+    release();
+  });
+});

@@ -1,6 +1,14 @@
 import { useState, useEffect, useId, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Trash2, AlertTriangle, Upload, Download, FileText } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  AlertTriangle,
+  Upload,
+  Download,
+  FileText,
+  MessageSquare,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -25,6 +33,9 @@ import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
 import { BulkAddDialog } from './BulkAddDialog';
+import { EntryComments } from './EntryComments';
+import { useCommentStore } from '@/domain/useCommentStore';
+import { anchorCaption } from '@/domain/commentAnchors';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
 
 const NEW_ID = '__new__';
@@ -110,10 +121,20 @@ const ImportedExtras = ({ metadata }) => {
   );
 };
 
-export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canManage = true }) => {
+export const VocabularyItems = ({
+  vocabularyId,
+  vocabulary,
+  client,
+  fields,
+  canManage = true,
+  comments = null,
+  canComment = false,
+}) => {
   // Prefix for the detail editor's input ids, so every label addresses its own
   // field (clicking the label focuses it) even with another copy on the page.
   const uid = useId();
+  // Re-render on comment changes, so the per-entry counts stay in step.
+  useCommentStore(comments);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -765,11 +786,22 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                       selectedId === item.id && 'bg-accent/60',
                     )}
                   >
-                    <FormLabel
-                      form={item.form}
-                      index={homonyms.get(item.id)}
-                      className="truncate font-medium"
-                    />
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <FormLabel
+                        form={item.form}
+                        index={homonyms.get(item.id)}
+                        className="truncate font-medium"
+                      />
+                      {(comments?.countFor(item.id) ?? 0) > 0 && (
+                        <span
+                          className="inline-flex shrink-0 items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground"
+                          title={`${comments.countFor(item.id)} comment${comments.countFor(item.id) === 1 ? '' : 's'}`}
+                        >
+                          <MessageSquare className="h-3 w-3" />
+                          {comments.countFor(item.id)}
+                        </span>
+                      )}
+                    </span>
                     {hasGloss && (
                       <span className="truncate text-xs text-muted-foreground">
                         {item.metadata?.gloss || ''}
@@ -913,6 +945,33 @@ export const VocabularyItems = ({ vocabularyId, vocabulary, client, fields, canM
                 </div>
               )}
             </div>
+
+            {/* comments on this entry */}
+            {!isNew && selectedItem && comments && (
+              <div className="rounded-lg border bg-card">
+                <div className="flex items-center justify-between border-b px-4 py-2">
+                  <span className="text-sm font-medium">Comments</span>
+                  {comments.countFor(selectedItem.id) > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {comments.countFor(selectedItem.id)}
+                    </span>
+                  )}
+                </div>
+                <div className="px-4 py-3">
+                  <EntryComments
+                    store={comments}
+                    itemId={selectedItem.id}
+                    caption={anchorCaption({
+                      kind: 'entry',
+                      label: selectedItem.form,
+                      detail: hasGloss ? selectedItem.metadata?.gloss || '' : '',
+                    })}
+                    canWrite={canComment}
+                    canDeleteAny={canManage}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* concordance */}
             {!isNew && (

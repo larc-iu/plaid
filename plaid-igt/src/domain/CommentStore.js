@@ -1,4 +1,5 @@
-// Single source of truth for one document's comments.
+// Single source of truth for one document's comments, or for one
+// vocabulary's (comments on its entries).
 //
 // Framework-agnostic — no React imports here, mirroring IgtDocument. The React
 // bridge lives in useCommentStore.js, and the lit-html island reads this
@@ -48,10 +49,23 @@ export function normalizeCommentEvent(data) {
 }
 
 export class CommentStore {
-  constructor({ client, projectId, documentId, currentUserId = null }) {
+  /**
+   * One of two scopes: a document (`projectId` + `documentId`) or a
+   * vocabulary (`vocabId`). A vocabulary is shared across projects and its
+   * comments are owned by the vocab layer, so that scope has no project and
+   * no live stream.
+   */
+  constructor({
+    client,
+    projectId = null,
+    documentId = null,
+    vocabId = null,
+    currentUserId = null,
+  }) {
     this._client = client;
     this._projectId = projectId;
     this._documentId = documentId;
+    this._vocabId = vocabId;
     this._currentUserId = currentUserId;
 
     this._byEntity = new Map(); // entityId -> Comment[] (oldest first)
@@ -105,6 +119,10 @@ export class CommentStore {
 
   get documentId() {
     return this._documentId;
+  }
+
+  get vocabId() {
+    return this._vocabId;
   }
 
   get currentUserId() {
@@ -196,15 +214,17 @@ export class CommentStore {
   // ============================================================
 
   /**
-   * Fetch every comment in the document. ONE request paints every badge —
-   * `client.comments.list` auto-paginates, and the server indexes this read on
-   * (document_id, created_at, id).
+   * Fetch every comment in the document (or on the vocabulary's entries). ONE
+   * request paints every badge — the list calls auto-paginate, and the server
+   * indexes this read on (document_id, created_at, id) or its vocab twin.
    */
   async load() {
     try {
-      const all = await this._client.comments.list(this._projectId, {
-        documentId: this._documentId,
-      });
+      const all = this._vocabId
+        ? await this._client.comments.listInVocab(this._vocabId)
+        : await this._client.comments.list(this._projectId, {
+            documentId: this._documentId,
+          });
       this._index(all);
       this._loaded = true;
       this._error = '';
@@ -271,17 +291,28 @@ export class CommentStore {
   // your own words is the thing that makes a comment box feel slow.
   // ============================================================
 
-  /** Post a comment. Returns the created comment, or null if the write failed. */
-  async post(entityType, entityId, body) {
+  /**
+   * Post a comment. `anchorLabel` is what the comment is about, in words
+   * (see commentAnchors.anchorCaption): a comment outlives its anchor, and
+   * the caption is what it shows once the anchor has been edited away.
+   * Returns the created comment, or null if the write failed.
+   */
+  async post(entityType, entityId, body, anchorLabel = null) {
     const text = String(body ?? '').trim();
     if (!text) return null;
+    const caption =
+      String(anchorLabel ?? '')
+        .trim()
+        .slice(0, 200) || null;
 
     const optimistic = {
       id: tempId(),
       projectId: this._projectId,
       documentId: this._documentId,
+      vocabLayerId: this._vocabId,
       entityType,
       entityId,
+      anchorLabel: caption,
       authorId: this._currentUserId,
       body: text,
       createdAt: new Date().toISOString(),
@@ -293,7 +324,12 @@ export class CommentStore {
     this._emit();
 
     try {
-      const created = await this._client.comments.create(entityType, entityId, text);
+      const created = await this._client.comments.create(
+        entityType,
+        entityId,
+        text,
+        caption ? { anchorLabel: caption } : {},
+      );
       // Swap the placeholder for the server's row rather than re-fetching: the
       // response is the authoritative comment, ids and timestamps included.
       this._forget(optimistic.id);
@@ -376,8 +412,12 @@ export class CommentStore {
    * The cost of the trade: a badge count can be stale until the document is
    * reloaded or someone opens a thread. A count is a hint, and it is a cheap
    * one to be slightly behind on.
+   *
+   * A vocabulary has no stream at all (streams are per project, and a
+   * vocabulary belongs to none), so in that scope this is a no-op.
    */
   watchLive() {
+    if (!this._projectId) return () => {};
     this._liveRefs = (this._liveRefs || 0) + 1;
     if (this._liveRefs === 1) this._openLive();
     let released = false;

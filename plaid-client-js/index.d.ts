@@ -312,14 +312,30 @@ interface CommentFilters {
 }
 
 /** Entities that can carry a comment. */
-type CommentableType = "document" | "text" | "token" | "span" | "relation";
+type CommentableType =
+  | "document"
+  | "text"
+  | "token"
+  | "span"
+  | "relation"
+  | "vocab-item";
 
 interface Comment {
   id: string;
-  projectId: string;
-  documentId: string;
+  /** The owning project, or null for a comment on a vocabulary entry. */
+  projectId: string | null;
+  /** The owning document, or null for a comment on a vocabulary entry. */
+  documentId: string | null;
+  /** The owning vocab layer, set only for a comment on a vocabulary entry. */
+  vocabLayerId: string | null;
   entityType: CommentableType;
   entityId: string;
+  /**
+   * What the comment is about, in words, captured when it was posted. A
+   * comment outlives its anchor, and this is what is left to show once the
+   * anchor has been deleted.
+   */
+  anchorLabel: string | null;
   authorId: string;
   body: string;
   createdAt: string;
@@ -333,6 +349,7 @@ interface CommentsBundle {
     entityType: CommentableType,
     entityId: string,
     body: string,
+    opts?: { anchorLabel?: string },
   ): Promise<Comment>;
   get(id: string): Promise<Comment>;
   update(id: string, body: string): Promise<Comment>;
@@ -350,6 +367,20 @@ interface CommentsBundle {
   counts(
     projectId: string,
     filters?: CommentFilters,
+  ): Promise<Record<string, number>>;
+  /** Comments on a vocabulary's entries, oldest first. */
+  listInVocab(
+    vocabId: string,
+    filters?: { entityId?: string },
+  ): Promise<Comment[]>;
+  listInVocabPage(
+    vocabId: string,
+    opts?: { entityId?: string; limit?: number; cursor?: string },
+  ): Promise<Page<Comment>>;
+  /** `{entryId: count}` over a vocabulary; keys are raw entry ids. */
+  countsInVocab(
+    vocabId: string,
+    filters?: { entityId?: string },
   ): Promise<Record<string, number>>;
 }
 

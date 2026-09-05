@@ -40,6 +40,7 @@ import {
   validateValue,
 } from '@/domain/tagsets';
 import { commentThread } from '@/components/documents/comments/island/CommentThread.js';
+import { buildAnchorIndex, describeAnchor, anchorCaption } from '@/domain/commentAnchors';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import {
   morphemeJoiner,
@@ -469,6 +470,18 @@ export class IgtEditor {
     `;
   }
 
+  // The caption a comment is posted with: the same words the Comments tab
+  // heads its thread with, so an outdated comment later reads the way its
+  // heading did. The index is memoized on dataVersion, as the tab's is.
+  _commentCaption(entityType, entityId) {
+    const version = this.doc?.dataVersion ?? 0;
+    if (this._cmtAnchorVersion !== version) {
+      this._cmtAnchorIndex = buildAnchorIndex(this.doc);
+      this._cmtAnchorVersion = version;
+    }
+    return anchorCaption(describeAnchor(this._cmtAnchorIndex, entityType, entityId));
+  }
+
   _openCommentPopover(entityType, entityId, anchorEl) {
     this._closePopover();
     // Live updates for as long as a thread is on screen — see
@@ -570,7 +583,12 @@ export class IgtEditor {
               if (!draft) return;
               this._cmtDraft = '';
               this._render(true);
-              await store.post(entityType, entityId, draft);
+              await store.post(
+                entityType,
+                entityId,
+                draft,
+                this._commentCaption(entityType, entityId),
+              );
               // A new row makes the popover taller; keep it anchored.
               this._fitPopover();
             },

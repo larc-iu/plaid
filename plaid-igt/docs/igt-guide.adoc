@@ -171,7 +171,9 @@ Any sentence, word, morpheme, or annotation value can carry comments: a conversa
 In the Analyze tab, hover a sentence's label, a word, or a morpheme and click its comment badge to read the thread or add to it; a badge with a number marks one that already has comments.
 The **Comments** tab lists every thread in the document, each with a link that jumps to its sentence.
 Comments take Markdown. You can edit your own, and a maintainer can remove any.
+A comment stays even when what it was about is edited away, say a word that is merged or retyped: the Comments tab lists it under **Outdated**, headed by what it was about, until someone deletes it.
 Comments are notes about the text rather than part of it: they are not versioned with the document and do not appear in exports, except in the native archive, which carries them along.
+An entry in a vocabulary takes comments too: open the entry to read or add to its thread, and the vocabulary's own **Comments** tab lists every thread. Anyone who can edit the vocabulary's entries can comment on them.
 
 = Vocabularies
 
@@ -194,6 +196,7 @@ Two entries may share a form, for homonyms; the table tells them apart with subs
 **Bulk Add** takes rows pasted from a spreadsheet or read from a file, lets you map its columns onto the entry fields, and reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
 The table can be downloaded as CSV.
 A vocabulary's maintainers edit its entries and fields; a project's members link to them.
+Each entry carries a comment thread (see <<_comments>>).
 
 == Multi-word expressions
 

@@ -6,6 +6,11 @@
 // document once and builds `entityId -> descriptor` so every thread can say
 // "Gloss of ktab, sentence 4".
 //
+// The same words are the CAPTION a comment is posted with (`anchorCaption`),
+// because a comment outlives its anchor: when the word it was about is
+// merged, re-segmented, or retyped away, the comment stays and the caption is
+// what it has left to show. `describeAnchor` marks such a comment outdated.
+//
 // Framework-agnostic, like everything else under domain/.
 
 // Longest form we will inline into a label before trimming. Long enough for a
@@ -20,11 +25,12 @@ const quote = (s) => {
 };
 
 /**
- * Build `entityId -> { kind, label, detail, sentenceIndex, sentenceId }` for
- * every commentable entity in the document.
+ * Build `entityId -> { kind, label, detail, sentenceIndex, sentenceId, jumpId }`
+ * for every commentable entity in the document.
  *
  * `kind` is one of document | text | sentence | word | morpheme | annotation.
  * `label` is the short heading; `detail` is the sentence context, or ''.
+ * `jumpId` is what a "show me" link navigates to (the sentence), or null.
  *
  * Annotations (spans) are indexed at all three scopes, so a comment on a
  * sentence translation and a comment on a morpheme gloss both resolve.
@@ -39,6 +45,7 @@ export function buildAnchorIndex(doc) {
     detail: '',
     sentenceIndex: null,
     sentenceId: null,
+    jumpId: null,
   });
 
   // The baseline text. Commentable server-side; nothing in the UI offers it
@@ -51,13 +58,14 @@ export function buildAnchorIndex(doc) {
       detail: '',
       sentenceIndex: null,
       sentenceId: null,
+      jumpId: null,
     });
   }
 
   const sentences = doc.sentences || [];
   sentences.forEach((sentence, sIdx) => {
     const where = `sentence ${sIdx + 1}`;
-    const at = { sentenceIndex: sIdx, sentenceId: sentence.id };
+    const at = { sentenceIndex: sIdx, sentenceId: sentence.id, jumpId: sentence.id };
 
     index.set(sentence.id, {
       kind: 'sentence',
@@ -131,19 +139,67 @@ function sentenceText(sentence) {
 }
 
 /**
- * Describe one anchor, falling back to something honest when the entity is
- * gone. A comment outliving its anchor should not happen — the server sweeps
- * them — but a stale client between a delete and a reload can see one, and
- * "Deleted" beats a raw uuid.
+ * Build `entryId -> descriptor` for a vocabulary's entries, the counterpart of
+ * `buildAnchorIndex` for the vocabulary page. `jumpId` is the entry, since
+ * "show me" there opens the entry.
  */
-export function describeAnchor(index, entityType, entityId) {
-  return (
-    index.get(entityId) ?? {
-      kind: 'unknown',
-      label: entityType === 'document' ? 'This document' : 'Deleted',
-      detail: '',
+export function buildEntryAnchorIndex(items, { glossField = 'gloss' } = {}) {
+  const index = new Map();
+  for (const item of items || []) {
+    if (!item?.id) continue;
+    index.set(item.id, {
+      kind: 'entry',
+      label: quote(item.form) || 'Entry',
+      detail: quote(item.metadata?.[glossField]),
       sentenceIndex: null,
       sentenceId: null,
-    }
-  );
+      jumpId: item.id,
+    });
+  }
+  return index;
+}
+
+// What an anchor that no longer exists is called, by what it was.
+const GONE = {
+  document: 'This document',
+  text: 'Baseline text',
+  token: 'A word that was edited away',
+  span: 'An annotation that was edited away',
+  relation: 'A relation that was edited away',
+  'vocab-item': 'An entry that was deleted',
+};
+
+/**
+ * Describe one anchor. When the entity is gone the descriptor is OUTDATED:
+ * the comment outlived what it was about (a merge, a re-segmentation, a typo
+ * fix that recreated the word, a deleted entry), and `anchorLabel`, the
+ * caption it was posted with, is the honest heading. Nothing is offered to
+ * jump to.
+ */
+export function describeAnchor(index, entityType, entityId, anchorLabel = null) {
+  const found = index.get(entityId);
+  if (found) return found;
+  const caption = String(anchorLabel ?? '').trim();
+  return {
+    kind: 'outdated',
+    outdated: true,
+    label: caption || GONE[entityType] || 'Something that was edited away',
+    detail: '',
+    sentenceIndex: null,
+    sentenceId: null,
+    jumpId: null,
+  };
+}
+
+/**
+ * The caption to post a comment with: the descriptor's words, so an outdated
+ * comment later reads the way its thread heading did. A sentence, the
+ * document, and the text are their own label; anything inside a sentence
+ * says where it sat.
+ */
+export function anchorCaption(descriptor) {
+  if (!descriptor) return null;
+  const { kind, label, detail } = descriptor;
+  const place = ['word', 'morpheme', 'annotation', 'entry'].includes(kind) && detail;
+  return place ? `${label}, ${detail}` : label || null;
 }

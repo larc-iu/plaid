@@ -10,6 +10,7 @@ import {
   ChevronUp,
   ChevronDown,
   AlertTriangle,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,9 +41,13 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
+import { VocabularyCommentsTab } from './VocabularyCommentsTab';
+import { CommentStore } from '@/domain/CommentStore';
+import { useCommentStore } from '@/domain/useCommentStore';
+import { canEditProject } from '@/utils/permissions';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 
@@ -134,6 +139,53 @@ export const VocabularyDetail = () => {
     return user.isAdmin || vocab.maintainers?.includes(user.id);
   };
 
+  // Comments on this vocabulary's entries live in their own store, shared by
+  // the entry panel and the Comments tab, so a comment posted on an entry
+  // shows in the tab without a refetch. Owned by the vocabulary, not by any
+  // project that links it.
+  const comments = useMemo(
+    () =>
+      client && user && vocabularyId && !isNewVocabulary
+        ? new CommentStore({ client, vocabId: vocabularyId, currentUserId: user.id })
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [client, user?.id, vocabularyId, isNewVocabulary],
+  );
+  useCommentStore(comments);
+  useEffect(() => {
+    if (!comments) return undefined;
+    comments.onError = (msg, err, label) =>
+      notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
+    comments.load();
+  }, [comments]);
+
+  // Who may comment on an entry is who may edit one: a maintainer or admin,
+  // or a writer of a project that links this vocabulary. The server decides;
+  // this only keeps the composer from being offered to someone it would
+  // refuse.
+  const [writerThroughProject, setWriterThroughProject] = useState(false);
+  useEffect(() => {
+    if (!client || !user || !vocabularyId || isNewVocabulary) return undefined;
+    let alive = true;
+    client.projects
+      .list()
+      .then((projects) => {
+        if (!alive) return;
+        setWriterThroughProject(
+          projects.some(
+            (p) =>
+              (p.vocabs || []).some((v) => (v?.id ?? v) === vocabularyId) &&
+              canEditProject(p, user),
+          ),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [client, user, vocabularyId, isNewVocabulary]);
+  const canComment = canManageVocabulary() || writerThroughProject;
+
   // The tab rides in `?tab=`, so a reload or a shared link reopens the same one.
   // Only the tabs this user actually gets are legal values, so a maintainer's
   // link opened by a reader falls back to the item list instead of selecting a
@@ -142,7 +194,9 @@ export const VocabularyDetail = () => {
   // Base path for the tab links (the item list is the bare vocabulary URL).
   const vocabPath = `/vocabularies/${vocabularyId}`;
   const [activeTab, setActiveTab] = useTabParam(
-    canManageVocabulary() ? ['items', 'maintainers', 'settings'] : ['items'],
+    canManageVocabulary()
+      ? ['items', 'comments', 'maintainers', 'settings']
+      : ['items', 'comments'],
     isNewVocabulary ? 'settings' : 'items',
   );
 
@@ -533,6 +587,14 @@ export const VocabularyDetail = () => {
               <TabsTrigger value="items" to={tabTo(vocabPath, 'items', 'items')}>
                 <BookText className="h-4 w-4" /> Vocabulary Items
               </TabsTrigger>
+              <TabsTrigger value="comments" to={tabTo(vocabPath, 'comments', 'items')}>
+                <MessageSquare className="h-4 w-4" /> Comments
+                {(comments?.count ?? 0) > 0 && (
+                  <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                    {comments.count}
+                  </span>
+                )}
+              </TabsTrigger>
               {canManageVocabulary() && (
                 <TabsTrigger value="maintainers" to={tabTo(vocabPath, 'maintainers', 'items')}>
                   <Users className="h-4 w-4" /> Maintainers
@@ -552,6 +614,19 @@ export const VocabularyDetail = () => {
                 client={client}
                 fields={fields}
                 canManage={canManageVocabulary()}
+                comments={comments}
+                canComment={canComment}
+              />
+            </TabsContent>
+
+            <TabsContent value="comments">
+              <VocabularyCommentsTab
+                vocabularyId={vocabularyId}
+                client={client}
+                store={comments}
+                fields={fields}
+                canWrite={canComment}
+                canDeleteAny={canManageVocabulary()}
               />
             </TabsContent>
 

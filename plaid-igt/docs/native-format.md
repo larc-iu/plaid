@@ -183,8 +183,9 @@ lossless even for unusual data:
 - `orphanTokens` — `[{layer, id, begin, end, precedence?, metadata}]`: tokens
   outside every sentence extent, or morphemes matching no word extent. Metadata is
   raw here (no orthography/form lifting).
-- `comments` — `[{id, anchor: {type, id}, author: {id, name}, body, createdAt,
-  updatedAt}]`, **omitted entirely when the document has none**. See Comments below.
+- `comments` — `[{id, anchor: {type, id}, anchorLabel, author: {id, name}, body,
+  createdAt, updatedAt}]`, **omitted entirely when the document has none**. See
+  Comments below.
 
 ## Comments
 
@@ -202,6 +203,11 @@ they behave unlike everything else here.
   even when the linguistic content is public.
 - `createdAt` / `updatedAt` are the server's own timestamps. A comment is
   "edited" iff they differ.
+- `anchorLabel` is the caption the comment was posted with (what it is about,
+  in words: "Gloss of ktab, sentence 4"), or `null`. A comment outlives its
+  anchor on the server, so an archive can carry a comment whose `anchor.id`
+  names nothing else in the archive; the importer skips such a comment with a
+  warning, since there is nothing to hang it on in the copy.
 - **A historical (`asOf`) export omits comments entirely.** They are unaudited
   (`plaid.sql.comment`), so there is no state at `asOf` to read; today's comments
   in a time-travelled archive would carry today's dates and could anchor to

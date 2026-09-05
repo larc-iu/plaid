@@ -377,7 +377,9 @@ const ARCHIVABLE_ANCHORS = new Set(['document', 'text', 'token', 'span']);
  *
  * `anchor.id` and `id` are correlation keys like every other id in the
  * archive. `author.name` is the display name AT EXPORT TIME — a label, since
- * display names change and the id is the identity.
+ * display names change and the id is the identity. `anchorLabel` is the
+ * caption the comment was posted with (what it is about, in words); a comment
+ * outlives its anchor, and this is what it shows once the anchor is gone.
  */
 export function commentNodes(comments) {
   return (comments || [])
@@ -385,6 +387,7 @@ export function commentNodes(comments) {
     .map((c) => ({
       id: c.id,
       anchor: { type: c.entityType, id: c.entityId },
+      anchorLabel: c.anchorLabel ?? null,
       author: { id: c.author?.id ?? null, name: c.author?.name ?? null },
       body: c.body ?? '',
       createdAt: c.createdAt ?? null,

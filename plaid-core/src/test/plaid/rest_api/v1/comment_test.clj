@@ -2,13 +2,15 @@
   "Tests for comments — the social layer that sits beside the annotation
   record without becoming part of it.
 
-  Three properties carry the design and each gets its own coverage here:
+  Four properties carry the design and each gets its own coverage here:
 
     1. ANCHORING works for every commentable type, and only those.
     2. Comments are INERT with respect to annotation data: no document
        version bump, no audit rows, nothing on the document read path.
     3. AUTHORSHIP is enforced server-side. This is the property that could
-       not have been had from `entity_metadata`, so it gets the most tests."
+       not have been had from `entity_metadata`, so it gets the most tests.
+    4. A comment OUTLIVES its anchor and dies only with its owner; a comment
+       on a vocabulary entry is owned by the vocab layer and takes its gates."
   (:require [clojure.set]
             [clojure.string]
             [clojure.test :refer [deftest is testing use-fixtures]]
@@ -22,7 +24,9 @@
                                         create-text-layer create-text create-token-layer
                                         create-token create-span-layer create-span
                                         create-relation-layer create-relation
-                                        add-project-reader add-project-writer]]))
+                                        add-project-reader add-project-writer
+                                        create-vocab-layer create-vocab-item
+                                        add-vocab-maintainer link-vocab-to-project]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -53,10 +57,11 @@
 
 (defn- post-comment
   ([req entity-type entity-id body] (post-comment req entity-type entity-id body nil))
-  ([req entity-type entity-id body _]
+  ([req entity-type entity-id body anchor-label]
    (api-call req {:method :post
                   :path "/api/v1/comments"
-                  :body {:entity-type entity-type :entity-id entity-id :body body}})))
+                  :body (cond-> {:entity-type entity-type :entity-id entity-id :body body}
+                          anchor-label (assoc :anchor-label anchor-label))})))
 
 (defn- status-of
   "Run a request and return ONLY its status. `api-call` slurps the response
@@ -71,11 +76,27 @@
   (status-of req-fn :post "/api/v1/comments"
              {:entity-type entity-type :entity-id entity-id :body body}))
 
+(defn- query-string [query]
+  (when (seq query)
+    (str "?" (clojure.string/join "&" (map (fn [[k v]] (str (name k) "=" v)) query)))))
+
 (defn- list-comments
   [req project-id & {:as query}]
-  (let [qs (when (seq query)
-             (str "?" (clojure.string/join "&" (map (fn [[k v]] (str (name k) "=" v)) query))))]
-    (api-call req {:method :get :path (str "/api/v1/projects/" project-id "/comments" qs)})))
+  (api-call req {:method :get :path (str "/api/v1/projects/" project-id "/comments" (query-string query))}))
+
+(defn- list-vocab-comments
+  [req vocab-id & {:as query}]
+  (api-call req {:method :get :path (str "/api/v1/vocab-layers/" vocab-id "/comments" (query-string query))}))
+
+(defn- setup-vocab
+  "A vocabulary with one entry, linked to a fresh project. The admin creates
+  it and so maintains it."
+  [name]
+  (let [vocab (-> (create-vocab-layer admin-request name) :body :id)
+        item (-> (create-vocab-item admin-request vocab "gam") :body :id)
+        proj (create-test-project admin-request (str name " Proj"))]
+    (link-vocab-to-project admin-request proj vocab)
+    {:vocab vocab :item item :project proj}))
 
 (defn- comment-count-rows
   "Raw row count straight from SQL. Used where the REST surface can't answer
@@ -110,8 +131,19 @@
   (testing "a type outside the commentable set is rejected as a bad request"
     (let [{:keys [project document]} (setup-corpus "BadTypeProj")]
       (add-project-writer admin-request project "user1@example.com")
-      (is (= 400 (post-comment-status user1-request "vocab-item" document "nope")))
+      (is (= 400 (post-comment-status user1-request "vocab_item" document "nope")))
       (is (= 400 (post-comment-status user1-request "banana" document "nope"))))))
+
+(deftest anchor-label-is-stored-trimmed-and-bounded
+  (testing "the caption a client posts comes back on the comment"
+    (let [{:keys [span]} (setup-corpus "LabelProj")
+          created (-> (post-comment admin-request "span" span "hi" "  Gloss of ktab, sentence 4 ") :body)]
+      (is (= "Gloss of ktab, sentence 4" (:comment/anchor-label created)) "trimmed")
+      (is (nil? (-> (post-comment admin-request "span" span "no label") :body :comment/anchor-label)))
+      (is (nil? (-> (post-comment admin-request "span" span "blank label" "   ") :body :comment/anchor-label))
+          "a blank caption is stored as none")
+      (assert-status 400 (post-comment admin-request "span" span "too long" (apply str (repeat 201 \x))))
+      (assert-status 201 (post-comment admin-request "span" span "at the ceiling" (apply str (repeat 200 \x)))))))
 
 (deftest comment-on-missing-anchor-does-not-create
   (testing "an anchor id that resolves to no project fails closed"
@@ -315,37 +347,55 @@
               "pages do not overlap"))))))
 
 ;; ============================================================
-;; 5. Cascade — comments never outlive what they were about
+;; 5. A comment outlives its anchor, and dies only with its owner
 ;; ============================================================
 
-(deftest deleting-an-entity-sweeps-its-comments
-  (testing "span, token and relation deletes each take their comments with them"
-    (let [{:keys [span token relation]} (setup-corpus "SweepProj")]
-      (post-comment admin-request "span" span "about the span")
-      (post-comment admin-request "token" token "about the token")
+(deftest deleting-an-entity-leaves-its-comments-in-place
+  ;; The rule that replaced the sweep: an edit that removes the word a remark
+  ;; was about must not silently un-say the remark. The app shows such a
+  ;; comment as outdated, captioned by anchor-label.
+  (testing "span, token and relation deletes each leave their comments listed"
+    (let [{:keys [project document span token relation]} (setup-corpus "OutliveProj")]
+      (post-comment admin-request "span" span "about the span" "s1 of hello, sentence 1")
+      (post-comment admin-request "token" token "about the token" "hello, sentence 1")
       (post-comment admin-request "relation" relation "about the relation")
-      (is (= 3 (comment-count-rows)))
       (api-call admin-request {:method :delete :path (str "/api/v1/relations/" relation)})
-      (is (= 0 (comment-count-rows [:= :entity_type "relation"])) "relation delete swept")
       (api-call admin-request {:method :delete :path (str "/api/v1/spans/" span)})
-      (is (= 0 (comment-count-rows [:= :entity_type "span"])) "span delete swept")
       (api-call admin-request {:method :delete :path (str "/api/v1/tokens/" token)})
-      (is (= 0 (comment-count-rows [:= :entity_type "token"])) "token delete swept")
-      (is (= 0 (comment-count-rows)) "nothing left behind"))))
+      (is (= 3 (comment-count-rows)) "nothing swept")
+      (let [listed (-> (list-comments admin-request project :document-id document) :body :entries)]
+        (is (= 3 (count listed)) "still listed under the document")
+        (is (= "hello, sentence 1"
+               (->> listed (filter #(= "token" (:comment/entity-type %))) first :comment/anchor-label))
+            "the caption is what is left to show")))))
 
-(deftest deleting-a-token-sweeps-comments-on-its-cascaded-spans
-  ;; The interesting cascade: the span dies because its token died, via
-  ;; `delete-where!` inside token/multi-delete! rather than a direct request.
-  (testing "comments on entities removed by a cascade are swept too"
-    (let [{:keys [token span]} (setup-corpus "CascadeProj")]
-      (post-comment admin-request "span" span "about a span that will cascade away")
-      (is (= 1 (comment-count-rows)))
-      (api-call admin-request {:method :delete :path (str "/api/v1/tokens/" token)})
-      (is (= 0 (comment-count-rows))
-          "the span went with its token, and the comment with the span"))))
+(deftest a-comment-on-a-deleted-anchor-can-still-be-read-edited-and-deleted
+  ;; Ownership is read off the comment row, never off the anchor, so the
+  ;; usual rules keep working once the anchor is gone.
+  (testing "the owner comes from the comment row, not the (now missing) anchor"
+    (let [{:keys [project span]} (setup-corpus "OrphanAuthProj")]
+      (add-project-writer admin-request project "user1@example.com")
+      (add-project-reader admin-request project "user2@example.com")
+      (let [cid (-> (post-comment user1-request "span" span "mine") :body :comment/id)]
+        (api-call admin-request {:method :delete :path (str "/api/v1/spans/" span)})
+        (assert-status 200 (api-call user2-request {:method :get :path (str "/api/v1/comments/" cid)}))
+        (assert-status 200 (api-call user1-request {:method :patch
+                                                    :path (str "/api/v1/comments/" cid)
+                                                    :body {:body "edited after the span went"}}))
+        (assert-status 403 (api-call user2-request {:method :delete :path (str "/api/v1/comments/" cid)}))
+        (assert-status 204 (api-call user1-request {:method :delete :path (str "/api/v1/comments/" cid)}))))
+    (testing "but nothing can be POSTED to an anchor that no longer exists"
+      (let [{:keys [project span]} (setup-corpus "OrphanPostProj")]
+        (add-project-writer admin-request project "user1@example.com")
+        (api-call admin-request {:method :delete :path (str "/api/v1/spans/" span)})
+        ;; A member gets the fail-closed 403 every unresolvable anchor gets; an
+        ;; admin passes the gate and is told the anchor is gone. Neither posts.
+        (assert-status 403 (post-comment user1-request "span" span "too late"))
+        (assert-status 404 (post-comment admin-request "span" span "too late"))
+        (is (= 0 (comment-count-rows)))))))
 
-(deftest deleting-a-document-sweeps-every-comment-in-it
-  (testing "a document delete clears comments at every depth beneath it"
+(deftest deleting-a-document-takes-every-comment-in-it
+  (testing "a document delete clears comments at every depth beneath it (FK cascade)"
     (let [{:keys [document text token span relation]} (setup-corpus "DocSweepProj")]
       (doseq [[t id] [["document" document] ["text" text] ["token" token]
                       ["span" span] ["relation" relation]]]
@@ -354,10 +404,7 @@
       (api-call admin-request {:method :delete :path (str "/api/v1/documents/" document)})
       (is (= 0 (comment-count-rows))))))
 
-(deftest deleting-a-project-sweeps-every-comment-in-it
-  ;; Project delete leans on FK ON DELETE CASCADE for the whole subtree and
-  ;; never calls the audited delete helpers, so this path is covered by the
-  ;; project_id/document_id FKs rather than by `sweep-comments!`.
+(deftest deleting-a-project-takes-every-comment-in-it
   (testing "a project delete clears its comments via FK cascade"
     (let [{:keys [project document span]} (setup-corpus "ProjSweepProj")
           keeper (setup-corpus "ProjKeeper")]
@@ -368,3 +415,81 @@
       (api-call admin-request {:method :delete :path (str "/api/v1/projects/" project)})
       (is (= 1 (comment-count-rows)) "only the other project's comment remains")
       (is (= 1 (comment-count-rows [:= :project_id (:project keeper)]))))))
+
+;; ============================================================
+;; 6. Comments on vocabulary entries
+;; ============================================================
+
+(deftest vocab-item-comments-are-owned-by-the-vocab-layer
+  (testing "a comment on an entry carries the vocab layer and no project"
+    (let [{:keys [vocab item]} (setup-vocab "VocabOwn")
+          created (-> (post-comment admin-request "vocab-item" item "is this really a noun?" "gam") :body)]
+      (assert-status 201 {:status 201})
+      (is (= "vocab-item" (:comment/entity-type created)))
+      (is (= vocab (:comment/vocab-layer-id created)))
+      (is (nil? (:comment/project-id created)))
+      (is (nil? (:comment/document-id created)))
+      (is (= "gam" (:comment/anchor-label created))))))
+
+(deftest vocab-item-comments-take-the-vocab-gates
+  (testing "who may post: a vocab maintainer, a writer through a linking project; not a reader, not a stranger"
+    (let [{:keys [vocab item project]} (setup-vocab "VocabGates")]
+      (add-project-reader admin-request project "user1@example.com")
+      (add-project-writer admin-request project "user2@example.com")
+      (assert-status 403 (post-comment user1-request "vocab-item" item "reader through project"))
+      (assert-status 201 (post-comment user2-request "vocab-item" item "writer through project"))
+      (testing "a reader through a project can still read the thread"
+        (assert-status 200 (list-vocab-comments user1-request vocab)))
+      (testing "a user with no route to the vocabulary is refused on every surface"
+        ;; user1 loses the project role that gave them a route.
+        (api-call admin-request {:method :delete
+                                 :path (str "/api/v1/projects/" project "/readers/user1@example.com")})
+        (assert-status 403 (post-comment user1-request "vocab-item" item "stranger"))
+        (assert-status 403 (list-vocab-comments user1-request vocab)))
+      (testing "a vocab maintainer with no project at all may post"
+        (add-vocab-maintainer admin-request vocab "user1@example.com")
+        (assert-status 201 (post-comment user1-request "vocab-item" item "maintainer posts"))))))
+
+(deftest vocab-item-comment-delete-is-author-or-vocab-maintainer
+  (testing "another writer cannot delete; the vocabulary's maintainer can; a project maintainer cannot"
+    (let [{:keys [vocab item project]} (setup-vocab "VocabDel")]
+      (add-project-writer admin-request project "user1@example.com")
+      (add-project-writer admin-request project "user2@example.com")
+      (let [cid (-> (post-comment user1-request "vocab-item" item "mine") :body :comment/id)
+            del (fn [req] (api-call req {:method :delete :path (str "/api/v1/comments/" cid)}))]
+        (assert-status 403 (del user2-request))
+        (testing "maintaining the PROJECT is not enough: the vocabulary is the owner"
+          (api-call admin-request {:method :post
+                                   :path (str "/api/v1/projects/" project "/maintainers/user2@example.com")})
+          (assert-status 403 (del user2-request)))
+        (testing "maintaining the vocabulary is"
+          (add-vocab-maintainer admin-request vocab "user2@example.com")
+          (assert-status 204 (del user2-request)))))))
+
+(deftest vocab-comments-are-listed-and-counted-per-vocabulary-not-per-project
+  (testing "the vocabulary list and counts see them; the linking project's list does not"
+    (let [{:keys [vocab item project]} (setup-vocab "VocabList")
+          item2 (-> (create-vocab-item admin-request vocab "ar") :body :id)]
+      (post-comment admin-request "vocab-item" item "one")
+      (post-comment admin-request "vocab-item" item "two")
+      (post-comment admin-request "vocab-item" item2 "three")
+      (is (= 3 (count (-> (list-vocab-comments admin-request vocab) :body :entries))))
+      (is (= ["three"] (map :comment/body (-> (list-vocab-comments admin-request vocab :entity-id item2)
+                                              :body :entries))))
+      (is (empty? (-> (list-comments admin-request project) :body :entries))
+          "a project that links the vocabulary does not list its comments")
+      (let [counts (-> (api-call admin-request {:method :get
+                                                :path (str "/api/v1/vocab-layers/" vocab "/comments/counts")})
+                       :body)]
+        (is (= {(str item) 2 (str item2) 1}
+               (into {} (map (fn [[k v]] [(str k) v])) counts)))))))
+
+(deftest vocab-item-delete-leaves-the-comment-and-vocab-layer-delete-takes-it
+  (testing "an entry delete leaves its comment (outdated); deleting the vocabulary cascades"
+    (let [{:keys [vocab item]} (setup-vocab "VocabCascade")]
+      (post-comment admin-request "vocab-item" item "on an entry" "gam")
+      (api-call admin-request {:method :delete :path (str "/api/v1/vocab-items/" item)})
+      (is (= 1 (comment-count-rows)) "entry delete does not sweep")
+      (is (= "gam" (-> (list-vocab-comments admin-request vocab) :body :entries first :comment/anchor-label)))
+      (api-call admin-request {:method :delete :path (str "/api/v1/vocab-layers/" vocab)})
+      (is (= 0 (comment-count-rows)) "the owner's deletion takes it"))))

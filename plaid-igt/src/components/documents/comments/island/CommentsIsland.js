@@ -1,35 +1,59 @@
-// The Comments tab body: every thread in the document, in one place.
+// The Comments tab body: every thread in a document, or on a vocabulary's
+// entries, in one place.
 //
 // A vanilla lit-html island for the same reason the grid is one — it renders
 // the SAME `commentThread` view the Analyze popover renders, so the thread
 // exists once. The React side is a mount wrapper and nothing else.
 //
-// Owns only transient UI state: which comment is being edited, and what is
-// typed in each composer. The comments themselves live in the CommentStore,
-// and the anchor labels come from the shared IgtDocument.
+// Threads are labeled by an ANCHOR INDEX (entity id -> words). For a document
+// it is derived from the shared IgtDocument; the vocabulary page hands one in.
+// A thread whose anchor is no longer in the index is OUTDATED: the comment
+// outlived what it was about (a merge, a re-segmentation, a typo fix that
+// recreated the word, a deleted entry). It is listed apart, headed by the
+// caption it was posted with, and takes no new comments.
 
-import { render, html, nothing } from 'lit-html';
+import { html, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
-import { commentThread } from './CommentThread.js';
-import { buildAnchorIndex, describeAnchor } from '@/domain/commentAnchors';
+import { ThreadIslandBase } from './ThreadIslandBase.js';
+import { buildAnchorIndex, describeAnchor, anchorCaption } from '@/domain/commentAnchors';
 // comments.css rides along with CommentThread.js, which needs it wherever
 // it is mounted.
 import './comments-island.css';
 
-export class CommentsIsland {
-  constructor(host, { store, doc, canWrite = false, canDeleteAny = false, onJumpTo = null } = {}) {
-    this.host = host;
-    this.store = store;
-    this.doc = doc;
-    this.canWrite = canWrite;
-    this.canDeleteAny = canDeleteAny;
-    // Optional: called with a sentence id when a thread heading is activated,
-    // so the shell can deep-link into the Analyze grid.
-    this.onJumpTo = onJumpTo;
+const DOC_EMPTY =
+  'Nothing else in this document has comments yet. Add one from the Analyze tab by hovering a word or a sentence.';
 
-    this._editingId = null;
-    this._editDraft = '';
-    this._drafts = new Map(); // entityId -> composer draft
+export class CommentsIsland extends ThreadIslandBase {
+  /**
+   * @param {HTMLElement} host
+   * @param {object} opts
+   * @param {import('@/domain/CommentStore').CommentStore} opts.store
+   * @param {object} [opts.doc]  the IgtDocument: anchors are derived from it and
+   *   its own thread is pinned first. Omit on the vocabulary page.
+   * @param {() => Map} [opts.anchorIndex]  instead of `doc`: the caller's index
+   *   (see commentAnchors.buildEntryAnchorIndex). Called on every render, so
+   *   the caller memoizes.
+   * @param {Function} [opts.onJumpTo]  called with a descriptor's `jumpId` when
+   *   a thread heading is activated (a sentence, or an entry).
+   * @param {string} [opts.emptyText]  what to say when nothing has comments.
+   */
+  constructor(
+    host,
+    {
+      store,
+      doc = null,
+      anchorIndex = null,
+      canWrite = false,
+      canDeleteAny = false,
+      onJumpTo = null,
+      emptyText = null,
+    } = {},
+  ) {
+    super(host, { store, canWrite, canDeleteAny });
+    this.doc = doc;
+    this._anchorIndexFn = anchorIndex;
+    this.onJumpTo = onJumpTo;
+    this.emptyText = emptyText ?? DOC_EMPTY;
 
     // Anchor labels are derived from the document and only change when its
     // DATA changes, so they are memoized on dataVersion — the same gate the
@@ -37,11 +61,9 @@ export class CommentsIsland {
     this._anchorIndex = null;
     this._anchorVersion = -1;
 
-    this._onStoreChange = () => this._render();
-    this._unsubStore = store.subscribe(this._onStoreChange);
     this._unsubDoc = doc?.subscribe ? doc.subscribe(this._onStoreChange) : null;
-    // Someone is looking at every thread in the document, so this is exactly
-    // when live updates earn their connection.
+    // Someone is looking at every thread, so this is exactly when live updates
+    // earn their connection (a no-op for a vocabulary, which has no stream).
     this._releaseLive = store.watchLive();
 
     this._render();
@@ -50,18 +72,19 @@ export class CommentsIsland {
   destroy() {
     this._releaseLive?.();
     this._releaseLive = null;
-    this._unsubStore?.();
     this._unsubDoc?.();
-    render(nothing, this.host);
+    this._unsubDoc = null;
+    super.destroy();
   }
 
-  setPermissions({ canWrite, canDeleteAny }) {
-    this.canWrite = canWrite;
-    this.canDeleteAny = canDeleteAny;
+  /** The vocabulary page hands in a fresh index when its entries change. */
+  setAnchorIndex(fn) {
+    this._anchorIndexFn = fn;
     this._render();
   }
 
   _anchors() {
+    if (this._anchorIndexFn) return this._anchorIndexFn() ?? new Map();
     const version = this.doc?.dataVersion ?? 0;
     if (this._anchorVersion !== version) {
       this._anchorIndex = buildAnchorIndex(this.doc);
@@ -70,90 +93,46 @@ export class CommentsIsland {
     return this._anchorIndex;
   }
 
-  // ---- state transitions ---------------------------------------------------
-
-  _startEdit(comment) {
-    this._editingId = comment.id;
-    this._editDraft = comment.body;
-    this._render();
-  }
-
-  _cancelEdit() {
-    this._editingId = null;
-    this._editDraft = '';
-    this._render();
-  }
-
-  async _saveEdit() {
-    const id = this._editingId;
-    const draft = this._editDraft;
-    if (!id || !draft.trim()) return;
-    // Close the editor first: the store's update is optimistic, so leaving it
-    // open would show a textarea over an already-updated body.
-    this._cancelEdit();
-    await this.store.edit(id, draft);
-  }
-
-  async _submit(entityType, entityId) {
-    const draft = (this._drafts.get(entityId) || '').trim();
-    if (!draft) return;
-    this._drafts.set(entityId, '');
-    this._render();
-    await this.store.post(entityType, entityId, draft);
-  }
-
-  async _remove(comment) {
-    if (this._editingId === comment.id) this._cancelEdit();
-    await this.store.remove(comment.id);
-  }
-
-  _handlers(entityType, entityId) {
-    return {
-      startEdit: (c) => this._startEdit(c),
-      cancelEdit: () => this._cancelEdit(),
-      changeEdit: (v) => {
-        this._editDraft = v;
-      },
-      saveEdit: () => this._saveEdit(),
-      remove: (c) => this._remove(c),
-      changeComposer: (v) => {
-        this._drafts.set(entityId, v);
-      },
-      submit: () => this._submit(entityType, entityId),
-    };
-  }
-
   // ---- render --------------------------------------------------------------
 
   _thread({ entityType, entityId, comments }) {
-    const anchor = describeAnchor(this._anchors(), entityType, entityId);
-    const jumpable = this.onJumpTo && anchor.sentenceId;
+    const anchor = describeAnchor(
+      this._anchors(),
+      entityType,
+      entityId,
+      comments[0]?.anchorLabel ?? null,
+    );
+    const outdated = !!anchor.outdated;
+    const jumpable = !outdated && this.onJumpTo && anchor.jumpId;
 
     return html`
-      <section class="igt-cmts__thread" data-entity-id=${entityId}>
+      <section
+        class=${`igt-cmts__thread${outdated ? ' igt-cmts__thread--outdated' : ''}`}
+        data-entity-id=${entityId}
+      >
         <header class="igt-cmts__head">
           ${jumpable
             ? html`<button
                 class="igt-cmts__anchor igt-cmts__anchor--link"
                 type="button"
-                title="Show in the interlinear editor"
-                @click=${() => this.onJumpTo(anchor.sentenceId)}
+                title="Show it"
+                @click=${() => this.onJumpTo(anchor.jumpId)}
               >
                 ${anchor.label}
               </button>`
             : html`<span class="igt-cmts__anchor">${anchor.label}</span>`}
-          <span class="igt-cmts__kind">${anchor.kind}</span>
+          <span class=${`igt-cmts__kind${outdated ? ' igt-cmts__kind--outdated' : ''}`}
+            >${outdated ? 'outdated' : anchor.kind}</span
+          >
           ${anchor.detail ? html`<span class="igt-cmts__detail">${anchor.detail}</span>` : nothing}
         </header>
-        ${commentThread({
-          store: this.store,
+        ${this._threadView({
+          entityType,
+          entityId,
           comments,
-          canWrite: this.canWrite,
-          canDeleteAny: this.canDeleteAny,
-          editingId: this._editingId,
-          editDraft: this._editDraft,
-          composerDraft: this._drafts.get(entityId) || '',
-          on: this._handlers(entityType, entityId),
+          caption: anchorCaption(anchor),
+          // Nothing can be posted to an anchor that no longer exists.
+          canWrite: this.canWrite && !outdated,
         })}
       </section>
     `;
@@ -161,45 +140,61 @@ export class CommentsIsland {
 
   _template() {
     const store = this.store;
-    const docId = this.doc?.id;
-    const threads = store.threads();
-
-    // The document's own thread is pinned first and always present, even when
-    // empty: it is the one place to say something about the text as a whole,
-    // and it would otherwise have no way in.
-    const docThread = threads.find((t) => t.entityId === docId) ?? {
-      entityType: 'document',
-      entityId: docId,
-      comments: [],
-    };
-    const rest = threads.filter((t) => t.entityId !== docId);
-
     if (!store.isLoaded) {
       return html`<p class="igt-cmts__status">Loading comments…</p>`;
     }
 
+    const threads = store.threads();
+    const anchors = this._anchors();
+    const docId = this.doc?.id ?? null;
+
+    // The document's own thread is pinned first and always present, even when
+    // empty: it is the one place to say something about the text as a whole,
+    // and it would otherwise have no way in.
+    const pinned = docId
+      ? (threads.find((t) => t.entityId === docId) ?? {
+          entityType: 'document',
+          entityId: docId,
+          comments: [],
+        })
+      : null;
+    const rest = threads.filter((t) => t.entityId !== docId);
+    const current = rest.filter((t) => anchors.has(t.entityId));
+    const outdated = rest.filter((t) => !anchors.has(t.entityId));
+
     return html`
       <div class="igt-cmts">
         ${store.error ? html`<p class="igt-cmts__error" role="alert">${store.error}</p>` : nothing}
-        ${docId ? this._thread(docThread) : nothing}
-        ${rest.length
+        ${pinned ? this._thread(pinned) : nothing}
+        ${current.length
           ? html`<div class="igt-cmts__list">
               ${repeat(
-                rest,
+                current,
                 (t) => t.entityId,
                 (t) => this._thread(t),
               )}
             </div>`
-          : html`<p class="igt-cmts__status igt-cmts__status--quiet">
-              Nothing else in this document has comments yet. Add one from the Analyze tab by
-              hovering a word or a sentence.
-            </p>`}
+          : outdated.length
+            ? nothing
+            : html`<p class="igt-cmts__status igt-cmts__status--quiet">${this.emptyText}</p>`}
+        ${outdated.length
+          ? html`<section class="igt-cmts__section" aria-label="Outdated comments">
+              <h4 class="igt-cmts__section-title">Outdated</h4>
+              <p class="igt-cmts__status igt-cmts__status--quiet">
+                What these were about has since been edited away or deleted. They stay so nothing
+                anyone said is lost. Delete one once it has served its purpose.
+              </p>
+              <div class="igt-cmts__list">
+                ${repeat(
+                  outdated,
+                  (t) => t.entityId,
+                  (t) => this._thread(t),
+                )}
+              </div>
+            </section>`
+          : nothing}
       </div>
     `;
-  }
-
-  _render() {
-    render(this._template(), this.host);
   }
 }
 

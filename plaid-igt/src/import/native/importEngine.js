@@ -547,7 +547,12 @@ export async function importNativeDocument({
       }
       const { body: text, attributed } = attributedBody(c);
       if (!attributed) unattributed += 1;
-      posts.push({ entityType: c.anchor.type, entityId, body: text });
+      posts.push({
+        entityType: c.anchor.type,
+        entityId,
+        body: text,
+        anchorLabel: c.anchorLabel ?? null,
+      });
     }
     if (unattributed > 0) {
       warnings.push(
@@ -558,7 +563,12 @@ export async function importNativeDocument({
       check();
       await client.batched(async () => {
         for (const post of posts.slice(i, i + CHUNK)) {
-          client.comments.create(post.entityType, post.entityId, post.body);
+          client.comments.create(
+            post.entityType,
+            post.entityId,
+            post.body,
+            post.anchorLabel ? { anchorLabel: post.anchorLabel } : {},
+          );
         }
       });
     }

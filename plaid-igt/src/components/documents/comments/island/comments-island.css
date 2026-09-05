@@ -107,3 +107,39 @@
   color: #b91c1c;
   font-size: 12px;
 }
+
+/* ---- outdated threads ---------------------------------------------------- */
+
+.igt-cmts__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.igt-cmts__section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.igt-cmts__thread--outdated {
+  border-style: dashed;
+  background: #fafafa;
+}
+
+.igt-cmts__kind--outdated {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+/* The entry panel hosts one thread inside its own card: no outer padding. */
+.igt-cmts--entry {
+  padding: 0;
+  gap: 0;
+  max-width: none;
+}

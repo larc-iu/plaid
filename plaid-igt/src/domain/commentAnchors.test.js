@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
-import { buildAnchorIndex, describeAnchor } from './commentAnchors.js';
+import {
+  buildAnchorIndex,
+  buildEntryAnchorIndex,
+  describeAnchor,
+  anchorCaption,
+} from './commentAnchors.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
 
 const makeDoc = (opts = {}) =>
@@ -101,14 +106,62 @@ describe('buildAnchorIndex', () => {
   });
 });
 
-describe('describeAnchor', () => {
-  it('falls back honestly when the anchor is gone', () => {
-    const index = buildAnchorIndex(makeDoc());
-    // A stale client between a delete and a reload: better than a raw uuid.
-    expect(describeAnchor(index, 'span', 'no-such-id')).toMatchObject({
-      kind: 'unknown',
-      label: 'Deleted',
+describe('describeAnchor for an anchor that is gone', () => {
+  it('marks the thread outdated, headed by the caption the comment was posted with', () => {
+    const index = buildAnchorIndex(makeDoc({ body: 'the cat' }));
+    expect(describeAnchor(index, 'token', 'gone', 'cat, sentence 1')).toMatchObject({
+      kind: 'outdated',
+      outdated: true,
+      label: 'cat, sentence 1',
+      jumpId: null,
     });
-    expect(describeAnchor(index, 'document', 'no-such-id').label).toBe('This document');
+  });
+
+  it('says what kind of thing it was when there is no caption', () => {
+    const index = new Map();
+    expect(describeAnchor(index, 'span', 'gone').label).toBe('An annotation that was edited away');
+    expect(describeAnchor(index, 'vocab-item', 'gone', '   ').label).toBe(
+      'An entry that was deleted',
+    );
+    expect(describeAnchor(index, 'document', 'gone').label).toBe('This document');
+  });
+
+  it('never marks a live anchor outdated', () => {
+    const doc = makeDoc({ body: 'the cat' });
+    const index = buildAnchorIndex(doc);
+    const word = doc.sentences[0].tokens[0];
+    expect(describeAnchor(index, 'token', word.id, 'stale caption').outdated).toBeUndefined();
+    expect(describeAnchor(index, 'token', word.id).jumpId).toBe(doc.sentences[0].id);
+  });
+});
+
+describe('anchorCaption', () => {
+  it('says where a thing inside a sentence sat, and leaves a sentence as its own label', () => {
+    const doc = makeDoc({ body: 'the cat' });
+    const index = buildAnchorIndex(doc);
+    const sentence = doc.sentences[0];
+    expect(anchorCaption(index.get(sentence.tokens[0].id))).toBe('the, sentence 1');
+    expect(anchorCaption(index.get(sentence.id))).toBe('Sentence 1');
+    expect(anchorCaption(index.get(doc.id))).toBe(index.get(doc.id).label);
+    expect(anchorCaption(null)).toBeNull();
+  });
+});
+
+describe('buildEntryAnchorIndex', () => {
+  it('labels an entry by its form with its gloss beside it, and jumps to the entry', () => {
+    const index = buildEntryAnchorIndex([
+      { id: 'i1', form: 'gam', metadata: { gloss: 'house' } },
+      { id: 'i2', form: 'ar' },
+      { form: 'no id' },
+    ]);
+    expect(index.size).toBe(2);
+    expect(index.get('i1')).toMatchObject({
+      kind: 'entry',
+      label: 'gam',
+      detail: 'house',
+      jumpId: 'i1',
+    });
+    expect(anchorCaption(index.get('i1'))).toBe('gam, house');
+    expect(anchorCaption(index.get('i2'))).toBe('ar');
   });
 });

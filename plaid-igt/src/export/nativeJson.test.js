@@ -207,6 +207,7 @@ describe('serializeDocumentNative — comments', () => {
       {
         id: 'c1',
         anchor: { type: 'token', id: 't1' },
+        anchorLabel: null,
         author: { id: 'ada@x.com', name: 'Ada Lovelace' },
         body: 'Dative?',
         createdAt: '2026-08-14T09:31:07Z',

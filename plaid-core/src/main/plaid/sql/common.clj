@@ -1099,41 +1099,6 @@
 ;; Comment sweep (unaudited side-table cleanup)
 ;; ============================================================
 
-(def ^:private table->comment-entity-type
-  "Tables whose rows can carry comments, mapped to the `comments.entity_type`
-  discriminator they are stored under. A table absent from this map can have
-  no comments, so its deletes skip the sweep entirely."
-  {:documents "document"
-   :texts     "text"
-   :tokens    "token"
-   :spans     "span"
-   :relations "relation"})
-
-(defn sweep-comments!
-  "Delete every comment anchored to `ids` in `table`. No-op for a table that
-  cannot carry comments, or for an empty id list.
-
-  Called from the two audited delete helpers rather than from each of the
-  ~20 individual cascade sites. `comments.(entity_type, entity_id)` is
-  polymorphic so no FK can reach it, but EVERY commentable row deletion in
-  the codebase funnels through `delete-by-id!` or `delete-where!` — sweeping
-  here is therefore correct by construction instead of by remembering to add
-  a line at each new cascade. (Project deletion is the one path that bypasses
-  both, leaning on FK ON DELETE CASCADE for the whole subtree, which is why
-  `comments` also carries project_id and document_id FKs.)
-
-  Deliberately UNAUDITED, like the `entity_metadata` cascade sweeps: comments
-  are social data rather than part of the annotation record, so their removal
-  is not a fact the audit log tracks or the ETL replayer needs."
-  [tx table ids]
-  (when-let [entity-type (table->comment-entity-type table)]
-    (let [ids (distinct (remove nil? ids))]
-      (doseq [chunk (partition-all bulk-chunk-size ids)]
-        (execute! tx {:delete-from :comments
-                      :where [:and
-                              [:= :entity_type entity-type]
-                              [:in :entity_id (vec chunk)]]})))))
-
 (defn delete-by-id!
   "Delete a row by id. Returns the pre-image row (handy for cascade callers),
   or nil if no row matched. No-ops (does not audit) if the row doesn't exist.
@@ -1148,10 +1113,6 @@
                                          :returning [:*]})]
      (when (some? pre)
        (record-audit-write! tx table id :delete pre nil)
-       ;; Anchor on the pre-image's own `:id`, not on `id`/`id-col` — a caller
-       ;; deleting by some other unique column still anchors comments on the
-       ;; primary key.
-       (sweep-comments! tx table [(:id pre)])
        pre))))
 
 (defn merge*
@@ -1339,7 +1300,6 @@
                                       :returning [:*]})]
      (record-audit-writes! tx table :delete
                            (map (fn [pre] [(get pre id-col) pre nil]) pres))
-     (sweep-comments! tx table (map :id pres))
      pres)))
 
 ;; ============================================================
