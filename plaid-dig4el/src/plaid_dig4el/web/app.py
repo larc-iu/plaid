@@ -16,13 +16,14 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 from plaid_client import PlaidClient
 from plaid_client.http import PlaidAPIError
 
-from .. import auth, db, jobs, plaid_gateway as gw, sentences
+from .. import auth, db, documents, docx_export, generation, jobs, plaid_gateway as gw, sentences
 from ..inference import kg as kgmod, legacy_labels, pipeline, runner
 from ..reference import catalog
 
@@ -43,6 +44,20 @@ def asset(path: str) -> str:
 
 
 templates.env.globals.update(label=legacy_labels.label, catalog=catalog, asset=asset)
+
+
+def emph(text: Any) -> Markup:
+    """The models mark target-language words with ``**...**`` (and italics with ``*...*``),
+    as dig4el's Streamlit pages rendered through Markdown. Escape, then render those."""
+    import re
+
+    escaped = str(escape(str(text or "")))
+    escaped = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    escaped = re.sub(r"(?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?![*\w])", r"<em>\1</em>", escaped)
+    return Markup(escaped)
+
+
+templates.env.filters["emph"] = emph
 
 
 @app.on_event("startup")
@@ -336,9 +351,18 @@ def language_page(request: Request, language_id: str, imported: int | None = Non
                         for x in d["doc"].slots if x.filled and x.fields.get("prompt", (None, ""))[1].strip())
         augmented = s.query(db.SentenceAugmentation).filter_by(language_id=lang.id).count()
         augment_job = _latest_job(s, "augment", lang.id)
+        outputs = list(lang.outputs)
+        generate_job = _latest_job(s, "generate", lang.id)
+        has_approved = any(r.approved for r in lang.runs)
+        files = [{"doc": d, "chunks": len(d.chunks)} for d in lang.reference_documents]
+        index_job = _latest_job(s, "index_documents", lang.id)
     return render(request, "language.html", lang=lang, access=access, docs=docs, available=available,
                   runs=runs, imported=imported, published=published, corpora=corpora,
-                  pool_size=pool_size, augmented=augmented, augment_job=augment_job)
+                  pool_size=pool_size, augmented=augmented, augment_job=augment_job,
+                  outputs=outputs, generate_job=generate_job, has_approved=has_approved,
+                  files=files, index_job=index_job,
+                  lesson_topics=list(generation.lesson_seeds()), sketch_topics=generation.SKETCH_TOPICS,
+                  readers_languages=generation.READERS_LANGUAGES, readers_types=generation.READERS_TYPES)
 
 
 def _latest_job(s, kind: str, language_id: str) -> db.Job | None:
@@ -456,8 +480,193 @@ def job_status(request: Request, language_id: str, job_id: str):
         if job is None:
             raise HTTPException(404)
         if job.status in ("done", "failed"):
-            return Response(status_code=200, headers={"HX-Redirect": f"/languages/{language_id}"})
+            target = f"/languages/{language_id}"
+            if job.kind == "generate" and job.status == "done" and job.payload.get("output_id"):
+                target = f"/languages/{language_id}/outputs/{job.payload['output_id']}"
+            return Response(status_code=200, headers={"HX-Redirect": target})
     return render(request, "_job_status.html", job=job, language_id=language_id)
+
+
+# --------------------------------------------------------- reference documents
+
+
+def _start_indexing(s, lang: db.Language, user: auth.User) -> str | None:
+    running = _latest_job(s, "index_documents", lang.id)
+    if running is not None and running.status in ("queued", "running"):
+        return None
+    job = jobs.enqueue(s, "index_documents", {"language_id": lang.id}, user.id, user.token)
+    s.commit()
+    return job.id
+
+
+@app.post("/languages/{language_id}/files")
+async def file_add(request: Request, language_id: str, title: str = Form(""), description: str = Form(""),
+                   file: UploadFile = File(...)):
+    user = current_user(request)
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "The file is empty.")
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_edit(access)
+    documents.add_document(lang.id, Path(file.filename or "document").name, raw, title.strip(),
+                           description.strip(), user.id)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        job_id = _start_indexing(s, lang, user)
+    if job_id:
+        jobs.submit(job_id)
+    return redirect(f"/languages/{language_id}", request)
+
+
+@app.post("/languages/{language_id}/files/index")
+def files_index(request: Request, language_id: str):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_edit(access)
+        for d in lang.reference_documents:
+            if d.status == "failed" and d.text:
+                d.status = "uploaded"
+        job_id = _start_indexing(s, lang, user)
+    if job_id:
+        jobs.submit(job_id)
+    return redirect(f"/languages/{language_id}", request)
+
+
+@app.get("/languages/{language_id}/files/{file_id}/download")
+def file_download(request: Request, language_id: str, file_id: str):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        Access(user, lang)
+        doc = s.get(db.ReferenceDocument, file_id)
+        if doc is None or doc.language_id != lang.id:
+            raise HTTPException(404)
+        path = documents.stored_path(doc)
+        filename = doc.filename
+    if not path.exists():
+        raise HTTPException(404, "The file is no longer on the server.")
+    return StreamingResponse(open(path, "rb"), media_type="application/octet-stream",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.post("/languages/{language_id}/files/{file_id}/delete")
+def file_delete(request: Request, language_id: str, file_id: str):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_edit(access)
+        doc = s.get(db.ReferenceDocument, file_id)
+        if doc is None or doc.language_id != lang.id:
+            raise HTTPException(404)
+    documents.remove_document(file_id)
+    return redirect(f"/languages/{language_id}", request)
+
+
+@app.post("/languages/{language_id}/files/search", response_class=HTMLResponse)
+def files_search(request: Request, language_id: str, query: str = Form("")):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        Access(user, lang)
+    hits = documents.retrieve(lang.id, query.strip(), k=6) if query.strip() else []
+    return render(request, "_file_search.html", lang=lang, query=query.strip(), hits=hits)
+
+
+# ------------------------------------------------------------ grammar outputs
+
+
+@app.post("/languages/{language_id}/generate")
+def generate_start(request: Request, language_id: str, format: str = Form("lesson"),
+                   readers_language: str = Form("English"), readers_type: str = Form("Adults"),
+                   topic_standard: str = Form(""), topic_custom: str = Form(""), model: str = Form(""),
+                   polish: str = Form(""), use_cq: str = Form("1"), use_pairs: str = Form("1"),
+                   use_documents: str = Form("1")):
+    user = current_user(request)
+    topic = topic_custom.strip() or topic_standard.strip()
+    if not topic:
+        raise HTTPException(400, "Choose a topic or type one.")
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_edit(access)
+        running = _latest_job(s, "generate", lang.id)
+        if running is not None and running.status in ("queued", "running"):
+            return redirect(f"/languages/{language_id}", request)
+        payload = {"language_id": lang.id, "format": "sketch" if format == "sketch" else "lesson",
+                   "readers_language": readers_language, "readers_type": "Linguists" if format == "sketch" else readers_type,
+                   "topic": topic, "model": model.strip(), "polish": bool(polish),
+                   "use_cq": bool(use_cq), "use_pairs": bool(use_pairs), "use_documents": bool(use_documents)}
+        job = jobs.enqueue(s, "generate", payload, user.id, user.token)
+        s.commit()
+        job_id = job.id
+    jobs.submit(job_id)
+    return redirect(f"/languages/{language_id}", request)
+
+
+def _output(s, language_id: str, output_id: str) -> db.GrammarOutput:
+    out = s.get(db.GrammarOutput, output_id)
+    if out is None or out.language_id != language_id:
+        raise HTTPException(404, "Unknown output")
+    return out
+
+
+@app.get("/languages/{language_id}/outputs/{output_id}", response_class=HTMLResponse)
+def output_page(request: Request, language_id: str, output_id: str):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        out = _output(s, language_id, output_id)
+        feedback = list(out.feedback)
+    return render(request, "output.html", lang=lang, access=access, out=out, feedback=feedback)
+
+
+@app.get("/languages/{language_id}/outputs/{output_id}/json")
+def output_json(request: Request, language_id: str, output_id: str):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        Access(user, lang)
+        out = _output(s, language_id, output_id)
+    return JSONResponse(out.output, headers={"Content-Disposition": f'attachment; filename="{_output_filename(out)}.json"'})
+
+
+@app.get("/languages/{language_id}/outputs/{output_id}/docx")
+def output_docx(request: Request, language_id: str, output_id: str):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        Access(user, lang)
+        out = _output(s, language_id, output_id)
+    buf = docx_export.lesson_docx(out.output, lang.name, out.readers_language)
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                             headers={"Content-Disposition": f'attachment; filename="{_output_filename(out)}.docx"'})
+
+
+def _output_filename(out: db.GrammarOutput) -> str:
+    stem = "".join(ch if ch.isalnum() else "_" for ch in out.topic)[:50].strip("_")
+    return f"dig4el_{out.format}_{stem}_{out.readers_language}_{out.created_at.strftime('%Y%m%d_%H%M')}"
+
+
+@app.post("/languages/{language_id}/outputs/{output_id}/feedback")
+def output_feedback(request: Request, language_id: str, output_id: str, errors: int = Form(0),
+                    completeness: int = Form(0), clarity: int = Form(0), usefulness: int = Form(0),
+                    confidence: int = Form(0), comments: str = Form("")):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        Access(user, lang)
+        out = _output(s, language_id, output_id)
+        s.add(db.OutputFeedback(output_id=out.id, user_id=user.id, errors=errors, completeness=completeness,
+                                clarity=clarity, usefulness=usefulness, confidence=confidence,
+                                comments=comments.strip()))
+        s.commit()
+    return redirect(f"/languages/{language_id}/outputs/{output_id}", request)
 
 
 @app.post("/languages/{language_id}/search", response_class=HTMLResponse)

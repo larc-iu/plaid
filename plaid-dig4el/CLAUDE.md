@@ -49,6 +49,24 @@ validates with pydantic. On the IU endpoint gpt-oss-120b honours the schema (3 t
 per sentence); gemma-4-31B-it does not (it emits whitespace until the token limit under
 guided decoding), so it is not used for structured stages; glm-5.2 works but is slow.
 
+## Grammar descriptions and reference documents
+
+`generation.py` is dig4el's generate_grammar page as the `generate` job: the five agents'
+schemas and instructions verbatim (parameter selector, alterlingua informant, lesson
+creator, lesson reviewer, sketcher), the page's data strings, the seeded query from
+`data/grammar_seeds.json`, and the aggregation order. Inputs: the approved run's retained
+parameters (`grammar_priors`), the pseudo-gloss of every questionnaire sentence
+(`build_alterlingua`, dig4el's `build_alterlingua_kg` at ancestor level 0), the Sentence
+Selector's pick of augmented pairs with their word connections from Plaid, and the
+documents contribution. Outputs live in `grammar_outputs` with a trace; feedback in
+`output_feedback`; DOCX from `docx_export.py` (dig4el's localized headings verbatim).
+Rendering: the models mark target words with `**...**`; the `emph` filter renders that.
+
+`documents.py` replaces the OpenAI vector store: the file is kept under
+`data/documents/<language>/`, its text extracted (pypdf, python-docx, plain), chunked and
+embedded by the `index_documents` job into `document_chunks`; `contribute` answers
+dig4el's file-search prompt over the nearest chunks and reports the file names as sources.
+
 ## Plaid-side changes degrade, they never crash
 
 Anything igt or another app does to the shared project is legitimate. The gateway

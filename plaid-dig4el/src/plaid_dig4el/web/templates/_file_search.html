@@ -1,0 +1,9 @@
+<div id="file-search-results">
+{% if query %}
+  {% if not hits %}<div class="text-secondary small">Nothing matched.</div>{% endif %}
+  {% for chunk, name, score in hits %}
+  <div class="border-top py-1 small"><span class="fw-semibold">{{ name }}</span> <span class="text-secondary">part {{ chunk.index + 1 }}</span> <span class="badge text-bg-light fw-normal">{{ '%.2f'|format(score) }}</span>
+    <div class="text-secondary">{{ chunk.text[:400] }}{% if chunk.text|length > 400 %}…{% endif %}</div></div>
+  {% endfor %}
+{% endif %}
+</div>

@@ -123,7 +123,54 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card mb-3">
+  <div class="card-header bg-white fw-semibold">Reference documents</div>
+  {% if files %}
+  <table class="table table-sm mb-0 align-middle">
+    <thead class="table-light"><tr><th>Document</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for f in files %}
+      <tr>
+        <td><a href="/languages/{{ lang.id }}/files/{{ f.doc.id }}/download" class="text-decoration-none">{{ f.doc.title or f.doc.filename }}</a>
+            <div class="small text-secondary">{{ f.doc.filename }} · {{ (f.doc.size / 1024)|round|int }} KB{% if f.doc.description %} · {{ f.doc.description }}{% endif %}</div></td>
+        <td class="small">{% if f.doc.status == 'indexed' %}indexed, {{ f.chunks }} passages{% elif f.doc.status == 'failed' %}<span class="text-danger">{{ f.doc.error or 'failed' }}</span>{% else %}waiting to be indexed{% endif %}</td>
+        <td class="text-end">{% if access.can_edit %}<form method="post" action="/languages/{{ lang.id }}/files/{{ f.doc.id }}/delete" class="m-0"><button type="submit" class="btn btn-sm btn-outline-danger">Delete</button></form>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <div class="card-body py-2 small">
+    {% if index_job and index_job.status in ('queued', 'running') %}
+      {% with job = index_job, language_id = lang.id %}{% include "_job_status.html" %}{% endwith %}
+    {% elif index_job and index_job.status == 'failed' %}
+      <div class="alert alert-danger py-1 mb-2">{{ 'Indexing failed.' if '\n' in index_job.error else index_job.error }}</div>
+    {% endif %}
+    {% if access.can_edit %}
+    <div class="d-flex flex-wrap gap-3 align-items-center">
+      <form method="post" action="/languages/{{ lang.id }}/files" enctype="multipart/form-data" class="d-flex flex-wrap gap-1 align-items-center m-0">
+        <input type="text" class="form-control form-control-sm w-auto" name="title" placeholder="Title">
+        <input type="text" class="form-control form-control-sm w-auto" name="description" placeholder="What it is (optional)">
+        <input type="file" class="form-control form-control-sm w-auto" name="file" accept=".pdf,.docx,.txt,.md" required>
+        <button type="submit" class="btn btn-sm btn-outline-primary">Add document</button>
+        <span class="text-secondary">PDF, Word or text. Grammars, articles, notes about {{ lang.name }}.</span>
+      </form>
+      {% if files|selectattr('doc.status', 'ne', 'indexed')|list %}
+      <form method="post" action="/languages/{{ lang.id }}/files/index" class="m-0"><button type="submit" class="btn btn-sm btn-outline-secondary" {% if index_job and index_job.status in ('queued', 'running') %}disabled{% endif %}>Index documents</button></form>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if files|selectattr('doc.status', 'eq', 'indexed')|list %}
+    <form hx-post="/languages/{{ lang.id }}/files/search" hx-target="#file-search-results" hx-swap="outerHTML" class="d-flex flex-wrap gap-1 align-items-center mt-2 m-0">
+      <input type="text" class="form-control form-control-sm w-auto" name="query" placeholder="Find passages about…" style="min-width: 18rem">
+      <button type="submit" class="btn btn-sm btn-outline-secondary">Search</button>
+    </form>
+    <div id="file-search-results"></div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mb-3">
   <div class="card-header bg-white fw-semibold">Grammar inferences</div>
   {% if runs %}
   <table class="table table-sm mb-0 align-middle">
@@ -146,6 +193,54 @@
     {% if access.can_edit %}
     <form method="post" action="/languages/{{ lang.id }}/inference" class="m-0 ms-auto">
       <button type="submit" class="btn btn-sm btn-primary" {% if not published %}disabled{% endif %}>Run inference</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white fw-semibold">Grammar descriptions</div>
+  {% if outputs %}
+  <table class="table table-sm mb-0 align-middle">
+    <thead class="table-light"><tr><th>Topic</th><th>Format</th><th>Readers</th><th>Generated</th><th>By</th></tr></thead>
+    <tbody>
+    {% for o in outputs %}
+      <tr>
+        <td><a href="/languages/{{ lang.id }}/outputs/{{ o.id }}" class="text-decoration-none">{{ o.output.title or o.topic }}</a></td>
+        <td>{{ 'lesson' if o.format == 'lesson' else 'sketch' }}</td>
+        <td class="small text-secondary">{{ o.readers_type }}, {{ o.readers_language }}</td>
+        <td class="small">{{ o.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="small">{{ o.created_by }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <div class="card-body py-2 small">
+    {% if generate_job and generate_job.status in ('queued', 'running') %}
+      {% with job = generate_job, language_id = lang.id %}{% include "_job_status.html" %}{% endwith %}
+    {% elif generate_job and generate_job.status == 'failed' %}
+      <div class="alert alert-danger py-1 mb-2">{{ 'The last generation failed.' if '\n' in generate_job.error else generate_job.error }}</div>
+    {% endif %}
+    {% if not has_approved %}<div class="text-secondary mb-2">No approved grammar inference yet: a description will draw on the sentences only.</div>{% endif %}
+    {% if access.can_edit %}
+    <form method="post" action="/languages/{{ lang.id }}/generate" class="row g-2 align-items-end m-0">
+      <div class="col-auto"><label class="form-label mb-0">Format</label>
+        <select name="format" class="form-select form-select-sm"><option value="lesson">Grammar lesson</option><option value="sketch">Grammar sketch</option></select></div>
+      <div class="col-auto"><label class="form-label mb-0">Readers' language</label>
+        <select name="readers_language" class="form-select form-select-sm">{% for l in readers_languages %}<option>{{ l }}</option>{% endfor %}</select></div>
+      <div class="col-auto"><label class="form-label mb-0">Readers</label>
+        <select name="readers_type" class="form-select form-select-sm">{% for t in readers_types %}<option {{ 'selected' if t == 'Adults' }}>{{ t }}</option>{% endfor %}</select></div>
+      <div class="col-auto"><label class="form-label mb-0">Standard topic</label>
+        <select name="topic_standard" class="form-select form-select-sm"><option value="">no selection</option>
+          <optgroup label="Lesson topics">{% for t in lesson_topics %}<option>{{ t }}</option>{% endfor %}</optgroup>
+          <optgroup label="Sketch topics">{% for t in sketch_topics %}<option>{{ t }}</option>{% endfor %}</optgroup></select></div>
+      <div class="col-auto"><label class="form-label mb-0">Or your own topic</label>
+        <input type="text" class="form-control form-control-sm" name="topic_custom" placeholder="e.g. How are questions formed?"></div>
+      <div class="col-auto"><label class="form-label mb-0">Model</label>
+        <select name="model" class="form-select form-select-sm"><option value="">fast</option><option value="glm-5.2">strong (slow)</option></select></div>
+      <div class="col-auto form-check ms-2"><input class="form-check-input" type="checkbox" name="polish" value="1" id="polish"><label class="form-check-label" for="polish">Post-process for the readers</label></div>
+      <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary" {% if generate_job and generate_job.status in ('queued', 'running') %}disabled{% endif %}>Generate</button></div>
     </form>
     {% endif %}
   </div>

@@ -64,6 +64,9 @@ class Language(Base):
     outputs: Mapped[list["GrammarOutput"]] = relationship(back_populates="language",
                                                           cascade="all, delete-orphan",
                                                           order_by="GrammarOutput.created_at.desc()")
+    reference_documents: Mapped[list["ReferenceDocument"]] = relationship(back_populates="language",
+                                                                          cascade="all, delete-orphan",
+                                                                          order_by="ReferenceDocument.created_at")
 
     @property
     def typology_name(self) -> str:
@@ -126,6 +129,43 @@ class SentenceAugmentation(Base):
     edited_by: Mapped[str] = mapped_column(String, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class ReferenceDocument(Base):
+    """A document about the language (a grammar, an article, notes) that the generation
+    stage can draw on: the file on disk under the data directory, its extracted text,
+    and chunks with embeddings in ``document_chunks``. dig4el kept these in an OpenAI
+    vector store; here they are indexed locally."""
+
+    __tablename__ = "reference_documents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    language_id: Mapped[str] = mapped_column(ForeignKey("languages.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False, default="")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String, nullable=False, default="uploaded")  # uploaded/indexed/failed
+    error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    uploaded_by: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+    language: Mapped[Language] = relationship(back_populates="reference_documents")
+    chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document", cascade="all, delete-orphan",
+                                                          order_by="DocumentChunk.index")
+
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    document_id: Mapped[str] = mapped_column(ForeignKey("reference_documents.id"), nullable=False)
+    index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, default=b"")  # float32, normalized
+
+    document: Mapped[ReferenceDocument] = relationship(back_populates="chunks")
 
 
 class GrammarOutput(Base):
