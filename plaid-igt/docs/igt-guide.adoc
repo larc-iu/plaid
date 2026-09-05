@@ -29,24 +29,22 @@
 
 = Introduction
 
-**Plaid IGT** is an editor for interlinear glossed text (IGT), made for documentary and field linguists.
-It opens in your web browser, and it brings transcription, glossing, and the lexicon together in one place.
+**Plaid IGT** is an editor for interlinear glossed text (IGT), for documentary and field linguists.
+It runs in a web browser and covers transcription, interlinear analysis, and the lexicon in one program.
 
-What you can do with it:
+* **Transcription.** Attach audio or video to a document and transcribe it by ear, one time-aligned segment at a time, with playback speed control and a speaker label on each segment. The transcript is the text that is then analyzed.
+* **Interlinear analysis.** Divide the text into sentences, words, and morphemes, and annotate them with the fields your project defines: glosses, parts of speech, free translations, and others.
+* **A lexicon.** Link words and morphemes to entries in a shared vocabulary. A linked entry supplies its gloss wherever the form occurs, so an item is analyzed consistently across the corpus. Homonyms, affixes and clitics, and multi-word expressions are supported.
+* **Import and export.** Import a FieldWorks (FLEx) backup, ELAN files, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), CLDF, or plain text, or copy a sentence as LaTeX.
+* **Collaboration.** A project is shared with its members, each as a reader, writer, or maintainer. Several people can edit at once. Every change is recorded with its author, and any document can be viewed as it was at an earlier time.
+* **Machine assistance.** A connected service can transcribe a recording, draft translations, or propose a segmentation and glosses. Machine output is marked until a person confirms it, and human work is never overwritten.
+* **Special characters.** Praat's backslash codes work in every field: `\sw` for ə, `\ng` for ŋ, `\?g` for ʔ.
+* **Comments.** Any sentence, word, morpheme, or annotation can carry a comment thread.
+* **Corpus maintenance.** Search every document by form or annotation, respell a word across the corpus, and hold a field to a controlled list of tags.
 
-* **Transcribe a recording by ear.** Attach audio or video to a text, slow it down or speed it up, and type what you hear one segment at a time while the recording follows you from row to row. Label the speakers, and record cross-talk where it happens.
-* **Gloss the same text, right there.** The transcript is the text you go on to analyze. Divide it into sentences, words, and morphemes, and fill in glosses, parts of speech, free translations, or whatever fields your project needs. No export between programs, ever.
-* **Build a lexicon as you go.** Link words and morphemes to entries in a shared vocabulary. A linked entry offers its gloss wherever the word turns up, so the same form is analyzed the same way everywhere. Homonyms, affixes and clitics, and multi-word expressions are all handled.
-* **Bring your data with you.** Start from a FieldWorks (FLEx) backup, a set of ELAN files, or a CLDF dataset. Export back to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), CLDF, or plain text, or copy a single sentence as LaTeX for a paper.
-* **Work together.** Share a project with whoever you invite, each as a reader, writer, or maintainer. Several people can work in it at once, every change is recorded with the name of the person who made it, and any document can be viewed as it was at any earlier moment.
-* **Let a machine take the first pass.** A connected service can transcribe a recording, draft translations, or propose a segmentation and glosses. Everything a machine writes is marked until you confirm it, and nothing you wrote by hand is ever touched.
-* **Type any character.** `\sw` gives ə, `\ng` gives ŋ, `\?g` gives ʔ. The codes are Praat's, there are over four hundred of them, and they work in every field.
-* **Ask questions in the margin.** Any sentence, word, morpheme, or gloss can carry a comment thread: a question for the speaker, a doubt about a gloss, a note to a classmate.
-* **Keep a corpus consistent.** Search every document for a form or a gloss and see every value a suffix has ever been given. Respell a word everywhere at once. Hold a field to a list of allowed tags and find every value that strays from it.
-
-There is nothing to install.
-Open the address your project administrator gives you, sign in, and start.
-It works the same on Windows, macOS, and Linux, on any computer with a browser.
+Nothing is installed on your computer.
+Open the address your project administrator gives you and sign in.
+It works the same in any current browser on Windows, macOS, or Linux.
 
 = Getting Started
 
