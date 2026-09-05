@@ -20,6 +20,11 @@ import {
 //   if (!(await confirm({ title, description, confirmLabel, destructive }))) return;
 //
 // The promise resolves true on confirm, false on cancel / dismiss / Escape.
+//
+// An optional `checkbox: { label, description, defaultChecked, confirmLabel }`
+// adds an opt-in under the description. Confirm then resolves `{ checked }`
+// instead of `true` (still `false` on cancel), and `checkbox.confirmLabel`
+// names the button while the box is ticked.
 
 const ConfirmContext = createContext(null);
 
@@ -29,11 +34,13 @@ const EMPTY = {
   confirmLabel: 'Confirm',
   cancelLabel: 'Cancel',
   destructive: false,
+  checkbox: null,
 };
 
 export function ConfirmProvider({ children }) {
   const [open, setOpen] = useState(false);
   const [opts, setOpts] = useState(EMPTY);
+  const [checked, setChecked] = useState(false);
   const resolverRef = useRef(null);
 
   const settle = useCallback((result) => {
@@ -48,6 +55,7 @@ export function ConfirmProvider({ children }) {
     // so we never strand a promise.
     if (resolverRef.current) resolverRef.current(false);
     setOpts({ ...EMPTY, ...options });
+    setChecked(!!options.checkbox?.defaultChecked);
     setOpen(true);
     return new Promise((resolve) => {
       resolverRef.current = resolve;
@@ -77,6 +85,24 @@ export function ConfirmProvider({ children }) {
               </AlertDialogDescription>
             )}
           </AlertDialogHeader>
+          {opts.checkbox && (
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 cursor-pointer accent-primary"
+                checked={checked}
+                onChange={(e) => setChecked(e.target.checked)}
+              />
+              <span className="min-w-0">
+                <span>{opts.checkbox.label}</span>
+                {opts.checkbox.description && (
+                  <span className="block text-xs text-muted-foreground">
+                    {opts.checkbox.description}
+                  </span>
+                )}
+              </span>
+            </label>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => settle(false)}>{opts.cancelLabel}</AlertDialogCancel>
             <AlertDialogAction
@@ -85,9 +111,9 @@ export function ConfirmProvider({ children }) {
                   ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
                   : undefined
               }
-              onClick={() => settle(true)}
+              onClick={() => settle(opts.checkbox ? { checked } : true)}
             >
-              {opts.confirmLabel}
+              {(checked && opts.checkbox?.confirmLabel) || opts.confirmLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

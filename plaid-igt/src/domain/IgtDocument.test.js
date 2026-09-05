@@ -1067,16 +1067,117 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     });
   });
 
-  it('deleteAlignment removes the alignment text range', async () => {
+  // Deleting a segment leaves its text in the baseline unless asked not to,
+  // and patches the document before the request goes out.
+  it('deleteAlignment by default removes only the token; the text and words stay', async () => {
+    const raw = buildRawDoc({
+      alignmentTokens: [
+        { id: 'a-1', text: 'text-1', begin: 0, end: 3, metadata: { timeBegin: 0, timeEnd: 1 } },
+      ],
+    });
+    // A span pinned to the segment goes with it, as on the server.
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-1'], value: 'DET' },
+      { id: 'sp-2', tokens: ['a-1'], value: 'on the segment' },
+    ];
+    const doc = makeDoc({ raw });
+    let seenWhenSent = null;
+    doc.client.tokens.delete = async (...args) => {
+      doc.client.calls.push({ kind: 'tokens.delete', args });
+      seenWhenSent = doc.alignmentTokens.length;
+      return {};
+    };
+    const ok = await doc.deleteAlignment('a-1');
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).toContain('tokens.delete');
+    expect(kinds(doc.client)).not.toContain('texts.update');
+    expect(seenWhenSent).toBe(0); // already gone locally when the request left
+    expect(doc.body).toBe('the cat');
+    expect(doc.alignmentTokens).toEqual([]);
+    expect(doc.layerInfo.primaryTokenLayer.tokens.map((t) => t.id)).toEqual(['w-1', 'w-2']);
+    expect(raw.textLayers[0].tokenLayers[1].spanLayers[0].spans.map((s) => s.id)).toEqual([
+      'sp-1',
+      'sp-2',
+    ]); // the fixture is untouched: the patch works on a clone
+    expect(doc.layerInfo.spanLayers.word[0].spans.map((s) => s.id)).toEqual(['sp-1']);
+  });
+
+  it('deleteAlignment with deleteText removes the text range', async () => {
     const raw = buildRawDoc({
       alignmentTokens: [
         { id: 'a-1', text: 'text-1', begin: 0, end: 3, metadata: { timeBegin: 0, timeEnd: 1 } },
       ],
     });
     const doc = makeDoc({ raw });
-    const ok = await doc.deleteAlignment('a-1');
+    const ok = await doc.deleteAlignment('a-1', { deleteText: true });
     expect(ok).toBe(true);
     expect(kinds(doc.client)).toContain('texts.update'); // delete op on the body
+    expect(doc.body).toBe('cat');
+  });
+
+  it('deleteAlignment refuses an unknown segment', async () => {
+    const doc = makeDoc();
+    expect(await doc.deleteAlignment('nope')).toBe(false);
+    expect(kinds(doc.client)).toEqual([]);
+  });
+
+  // alignBaseline makes a segment over text that is already there, by
+  // offsets: the second "the" is the second one, never the first match.
+  it('alignBaseline pins a token to the given code-point range without touching the body', async () => {
+    const raw = buildRawDoc({
+      body: 'the cat saw the dog',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+        { id: 'w-4', begin: 12, end: 15 },
+        { id: 'w-5', begin: 16, end: 19 },
+      ],
+      alignmentTokens: [
+        { id: 'a-1', text: 'text-1', begin: 0, end: 7, metadata: { timeBegin: 0, timeEnd: 1 } },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    const ok = await doc.alignBaseline({
+      begin: 12,
+      end: 19,
+      timeBegin: 2,
+      timeEnd: 3,
+      speaker: 'Ana',
+    });
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('texts.update');
+    const create = doc.client.calls.find((c) => c.kind === 'tokens.create').args;
+    expect(create.slice(0, 4)).toEqual(['alignL', 'text-1', 12, 19]);
+    expect(create[5]).toEqual({ timeBegin: 2, timeEnd: 3, speaker: 'Ana' });
+    expect(doc.body).toBe('the cat saw the dog');
+    expect(doc.alignmentTokens.map((t) => [t.begin, t.end])).toEqual([
+      [0, 7],
+      [12, 19],
+    ]);
+  });
+
+  it('alignBaseline refuses a range a neighbouring segment puts out of time order, an overlap, or nothing', async () => {
+    const raw = buildRawDoc({
+      body: 'the cat saw the dog',
+      alignmentTokens: [
+        { id: 'a-1', text: 'text-1', begin: 8, end: 11, metadata: { timeBegin: 2, timeEnd: 3 } },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    // "the dog" lies after a segment that is later in time than [0, 1).
+    expect(await doc.alignBaseline({ begin: 12, end: 19, timeBegin: 0, timeEnd: 1 })).toBe(false);
+    expect(doc.error).toMatch(/out of time order/);
+    // "cat saw" overlaps the existing segment.
+    expect(await doc.alignBaseline({ begin: 4, end: 11, timeBegin: 1, timeEnd: 4 })).toBe(false);
+    expect(doc.error).toMatch(/overlaps/);
+    // A caret, a blank, and a range past the end are not selections.
+    expect(await doc.alignBaseline({ begin: 4, end: 4, timeBegin: 0, timeEnd: 1 })).toBe(false);
+    expect(await doc.alignBaseline({ begin: 3, end: 4, timeBegin: 0, timeEnd: 1 })).toBe(false);
+    expect(await doc.alignBaseline({ begin: 12, end: 40, timeBegin: 3, timeEnd: 4 })).toBe(false);
+    expect(kinds(doc.client)).toEqual([]);
+    // The free stretch before the segment is fine.
+    expect(await doc.alignBaseline({ begin: 0, end: 7, timeBegin: 0, timeEnd: 1 })).toBe(true);
   });
 
   // The three text-editing alignment mutations patch the document in place from
@@ -1159,7 +1260,7 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
       ],
     });
     const doc = makeDoc({ raw });
-    const ok = await doc.deleteAlignment('a-1');
+    const ok = await doc.deleteAlignment('a-1', { deleteText: true });
     expect(ok).toBe(true);
     expect(kinds(doc.client)).not.toContain('documents.get');
     expect(doc.body).toBe('the sat');

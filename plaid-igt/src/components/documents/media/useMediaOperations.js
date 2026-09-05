@@ -5,6 +5,7 @@ import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
 import { useServiceParams } from '../../documents/hooks/useServiceParams.js';
+import { whenIdle } from '../../../domain/whenIdle.js';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
 import {
   encodeServiceSelection,
@@ -544,23 +545,26 @@ export const useMediaOperations = () => {
     setCurrentOperation('');
   }, [alignmentTokens, doc, updateProgress, confirm]);
 
-  // Deleting a segment deletes its text from the baseline (the cascade then
-  // removes the token), so it is confirmed with what actually goes.
+  // Deleting a segment takes its times and speaker; its text stays in the
+  // baseline unless the dialog's box is ticked, which deletes the text and
+  // everything annotated on it as well.
   const handleDeleteAlignment = useCallback(
     async (alignmentId) => {
-      if (
-        !(await confirm({
-          title: 'Delete segment?',
+      const answer = await confirm({
+        title: 'Delete segment?',
+        description: 'The segment is removed. Its text stays in the baseline.',
+        checkbox: {
+          label: 'Also delete its text from the baseline',
           description:
-            "This removes the segment's text from the baseline, including any words, glosses, " +
-            'and annotations on it. This cannot be undone.',
-          confirmLabel: 'Delete segment',
-          destructive: true,
-        }))
-      ) {
-        return false;
-      }
-      return doc.deleteAlignment(alignmentId);
+            'The words, glosses, and annotations on that text go with it. This cannot be undone.',
+          confirmLabel: 'Delete segment and text',
+        },
+        confirmLabel: 'Delete segment',
+        destructive: true,
+      });
+      if (!answer) return false;
+      await whenIdle(doc);
+      return doc.deleteAlignment(alignmentId, { deleteText: answer.checked });
     },
     [doc, confirm],
   );
@@ -595,13 +599,16 @@ export const useMediaOperations = () => {
       // for the same reason as Shift+Space: Ctrl+Arrow is Mission Control on a
       // Mac and Cmd+Arrow is line start/end in every text box, while Shift is
       // the one modifier every platform leaves alone. Inside a row this costs
-      // extending a selection by one character, and nothing else.
+      // extending a selection by one character, and nothing else. A box that
+      // exists to be selected in (the popover's existing-text box, marked
+      // aria-readonly) is the exception: the keys keep their meaning there.
       if (
         e.shiftKey &&
         !e.ctrlKey &&
         !e.metaKey &&
         !e.altKey &&
-        (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+        (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+        e.target?.getAttribute?.('aria-readonly') !== 'true'
       ) {
         e.preventDefault();
         seekBy(e.key === 'ArrowLeft' ? -1 : 1);

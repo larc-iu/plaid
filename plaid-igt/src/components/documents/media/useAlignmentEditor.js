@@ -2,43 +2,30 @@ import { useCallback } from 'react';
 import { cpSlice, cpLength } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { alignableRange } from '../../../domain/mutations/alignment.js';
 
 // The timeline popover's operations, backed by the shared IgtDocument: make a
-// segment from new text, or from the baseline text still free between the
-// neighbouring segments. The two mutations delegate straight to the domain
-// methods (which patch in place, reload on error, and toast). `isProcessing`
-// mirrors `doc.isSaving`. Editing and deleting an existing segment happen in
-// its transcript row, not here.
+// segment from new text, or over a stretch of the baseline text still free
+// between the neighbouring segments. The two mutations delegate straight to
+// the domain methods (which patch in place, reload on error, and toast).
+// `isProcessing` mirrors `doc.isSaving`. Editing and deleting an existing
+// segment happen in its transcript row, not here.
 export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   const { doc } = useDocumentCtx();
   useIgtDocument(doc);
 
   // The stretch of baseline text a segment at `selection` may take: whatever
-  // lies between the segment before it in time and the one after.
-  const getAvailableTextBoundaries = useCallback(() => {
-    const alignmentTokens = doc.alignmentTokens || [];
-    const sortedTokens = [...alignmentTokens].sort(
-      (a, b) => (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0),
-    );
-
-    const textLength = cpLength(doc.body || '');
-    let leftBoundary = 0;
-    let rightBoundary = textLength;
-
-    for (const token of sortedTokens) {
-      const tokenTimeBegin = token.metadata?.timeBegin || 0;
-      const tokenTimeEnd = token.metadata?.timeEnd || 0;
-
-      if (tokenTimeEnd <= selection.start && token.end > leftBoundary) {
-        leftBoundary = token.end;
-      }
-      if (tokenTimeBegin >= selection.end && token.begin < rightBoundary) {
-        rightBoundary = token.begin;
-      }
-    }
-
-    return { leftBoundary, rightBoundary };
-  }, [doc, selection]);
+  // lies between the segment before it in time and the one after. Code points.
+  const getAvailableTextBoundaries = useCallback(
+    () =>
+      alignableRange(
+        doc.alignmentTokens || [],
+        cpLength(doc.body || ''),
+        selection.start,
+        selection.end,
+      ),
+    [doc, selection],
+  );
 
   const getAvailableText = useCallback(() => {
     const { leftBoundary, rightBoundary } = getAvailableTextBoundaries();
@@ -61,10 +48,12 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
     [doc, selection, onAlignmentCreated],
   );
 
+  // `begin` and `end` are code-point offsets into the body.
   const alignBaseline = useCallback(
-    async (text, speaker) => {
+    async (begin, end, speaker) => {
       const ok = await doc.alignBaseline({
-        text,
+        begin,
+        end,
         timeBegin: selection.start,
         timeEnd: selection.end,
         speaker,

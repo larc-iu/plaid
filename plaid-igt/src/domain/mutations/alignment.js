@@ -13,11 +13,11 @@
 // needs, and `_withSaving` reloads on any failure.
 //
 // Offsets (token begin/end, text-edit op index/value) are Unicode CODE POINTS,
-// so measurement/slicing/search uses cpLength/cpSlice/cpIndexOf, not the UTF-16
+// so measurement and slicing use cpLength/cpSlice, not the UTF-16
 // `.length`/`.substring`/`.indexOf` (which mis-place tokens around astral text).
 
-import { cpLength, cpSlice, cpIndexOf, verifyOnEdit } from '@larc-iu/plaid-client';
-import { applyTextEditsLocally } from '../textEdits.js';
+import { cpLength, cpSlice, verifyOnEdit } from '@larc-iu/plaid-client';
+import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { rangeProblem } from '../alignmentTimes.js';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
@@ -42,6 +42,22 @@ const alignmentMeta = (timeBegin, timeEnd, speaker) => {
   const s = (speaker || '').trim();
   if (s) meta.speaker = s;
   return meta;
+};
+
+// The stretch of baseline text a segment at [timeBegin, timeEnd) may take
+// without breaking the rule that time order follows text order: from the end
+// of the last segment that finishes before it to the start of the first one
+// that begins after it. Offsets are code points.
+export const alignableRange = (tokens, bodyLength, timeBegin, timeEnd) => {
+  let leftBoundary = 0;
+  let rightBoundary = bodyLength;
+  for (const token of tokens || []) {
+    const tokenTimeBegin = token.metadata?.timeBegin || 0;
+    const tokenTimeEnd = token.metadata?.timeEnd || 0;
+    if (tokenTimeEnd <= timeBegin && token.end > leftBoundary) leftBoundary = token.end;
+    if (tokenTimeBegin >= timeEnd && token.begin < rightBoundary) rightBoundary = token.begin;
+  }
+  return { leftBoundary, rightBoundary };
 };
 
 // A token at text position `posBegin` with the given `timeBegin` inverts
@@ -374,15 +390,12 @@ export const alignmentMutations = {
     });
   },
 
-  // Create an alignment over EXISTING body text without inserting any
-  // characters. Locates `text` inside the available substring between
-  // neighbor alignments and pins the new token to those absolute offsets.
-  async alignBaseline({ text, timeBegin, timeEnd, speaker }) {
-    const trimmed = (text || '').trim();
-    if (!trimmed) {
-      this.setError('Segment text is required');
-      return false;
-    }
+  // Make a segment over text already in the baseline: no character changes,
+  // one token is created over `[begin, end)` (code points into the body). The
+  // range has to lie in the stretch a segment at this time may take (between
+  // the segment before it in time and the one after, see `alignableRange`)
+  // and may not overlap another segment.
+  async alignBaseline({ begin, end, timeBegin, timeEnd, speaker }) {
     if (timeEnd < timeBegin) {
       this.setError('Invalid time range: end must be at or after start');
       return false;
@@ -401,80 +414,62 @@ export const alignmentMutations = {
       return false;
     }
 
-    const alignmentTokens = alignmentTokenLayer.tokens || [];
     const fullText = this.body;
-    const sortedTokens = [...alignmentTokens].sort(
-      (a, b) => (a.metadata?.timeBegin || 0) - (b.metadata?.timeBegin || 0),
-    );
-    let leftBoundary = 0;
-    let rightBoundary = cpLength(fullText);
-    for (const token of sortedTokens) {
-      const tokenTimeBegin = token.metadata?.timeBegin || 0;
-      const tokenTimeEnd = token.metadata?.timeEnd || 0;
-      if (tokenTimeEnd <= timeBegin && token.end > leftBoundary) {
-        leftBoundary = token.end;
-      }
-      if (tokenTimeBegin >= timeEnd && token.begin < rightBoundary) {
-        rightBoundary = token.begin;
-      }
+    const bodyLength = cpLength(fullText);
+    const inRange =
+      Number.isInteger(begin) &&
+      Number.isInteger(end) &&
+      begin >= 0 &&
+      begin < end &&
+      end <= bodyLength;
+    if (!inRange || !cpSlice(fullText, begin, end).trim()) {
+      this.setError('Select the text this segment covers.');
+      return false;
     }
 
-    const availableText = cpSlice(fullText, leftBoundary, rightBoundary);
-    const startInAvailable = cpIndexOf(availableText, trimmed);
-    if (startInAvailable === -1) {
-      // Distinguish "text isn't in the body at all" from "text is present but
-      // lies outside the time-ordered window between neighboring alignments"
-      // (the latter would otherwise misleadingly read as 'not found').
-      const existsAnywhere = cpIndexOf(fullText, trimmed) !== -1;
+    const alignmentTokens = alignmentTokenLayer.tokens || [];
+    const { leftBoundary, rightBoundary } = alignableRange(
+      alignmentTokens,
+      bodyLength,
+      timeBegin,
+      timeEnd,
+    );
+    if (begin < leftBoundary || end > rightBoundary) {
       this.setError(
-        existsAnywhere
-          ? 'The selected text lies outside what this time range can cover: a neighboring segment would fall out of time order. Adjust the time range or the neighboring segments.'
-          : 'Selected text not found in the baseline.',
+        'The selected text lies outside what this time range can cover: a neighboring segment would fall out of time order. Adjust the time range or the neighboring segments.',
       );
       return false;
     }
-    const actualBegin = leftBoundary + startInAvailable;
-    const actualEnd = actualBegin + cpLength(trimmed);
-
-    const overlap = findOverlappingAlignment(alignmentTokens, actualBegin, actualEnd);
-    if (overlap) {
+    if (findOverlappingAlignment(alignmentTokens, begin, end)) {
       this.setError('The selected text overlaps an existing segment.');
       return false;
     }
 
+    const meta = alignmentMeta(timeBegin, timeEnd, speaker);
     return this._withSaving('Failed to align baseline text', async () => {
       const result = await this._client.tokens.create(
         alignmentTokenLayer.id,
         textId,
-        actualBegin,
-        actualEnd,
+        begin,
+        end,
         undefined,
-        alignmentMeta(timeBegin, timeEnd, speaker),
+        meta,
       );
       const newId = result?.id || result;
       this._applyRawPatch((next, infoNext) => {
-        if (!infoNext.alignmentTokenLayer) return;
-        if (!Array.isArray(infoNext.alignmentTokenLayer.tokens)) {
-          infoNext.alignmentTokenLayer.tokens = [];
-        }
-        infoNext.alignmentTokenLayer.tokens.push({
-          id: newId,
-          text: textId,
-          begin: actualBegin,
-          end: actualEnd,
-          metadata: alignmentMeta(timeBegin, timeEnd, speaker),
-        });
-        infoNext.alignmentTokenLayer.tokens.sort(sortByBegin);
+        pushAlignmentToken(infoNext, { id: newId, text: textId, begin, end, metadata: meta });
       });
       await this._rememberSpeaker(speaker);
     });
   },
 
-  // Delete an alignment by deleting its body text (the cascade then deletes
-  // the alignment token). Swallows the surrounding inter-token whitespace so
-  // we don't leave a double space, keeping ONE separator when text survives on
-  // both sides so the neighbours do not run together.
-  async deleteAlignment(alignmentId) {
+  // Delete a segment. By default only the segment goes and its text stays in
+  // the baseline, words and annotations included. With `deleteText` its text
+  // is deleted too and the cascade takes the token; the surrounding whitespace
+  // is swallowed, keeping ONE separator when text survives on both sides so
+  // the neighbours do not run together. Either way the document is patched
+  // before the request goes out, so the row leaves at once; a failure reloads.
+  async deleteAlignment(alignmentId, { deleteText = false } = {}) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
     const alignmentTokenLayer = info.alignmentTokenLayer;
@@ -493,6 +488,15 @@ export const alignmentMutations = {
       return false;
     }
 
+    if (!deleteText) {
+      return this._withSaving('Failed to delete segment', async () => {
+        this._applyRawPatch((next, infoNext, vocabs) => {
+          removeTokensLocally(next, textId, [alignmentId], vocabs);
+        });
+        await this._client.tokens.delete(alignmentId);
+      });
+    }
+
     const currentText = this.body;
     const tokenBegin = existingAlignment.begin;
     const tokenEnd = existingAlignment.end;
@@ -505,11 +509,11 @@ export const alignmentMutations = {
     const numDeleted = cpLength(currentText) - cpLength(afterText) - index;
     const textOps = [{ type: 'delete', index, value: numDeleted }];
 
-    return this._withSaving('Failed to delete alignment', async () => {
-      await this._client.texts.update(textId, textOps);
+    return this._withSaving('Failed to delete segment', async () => {
       this._applyRawPatch((next, infoNext, vocabs) => {
         applyTextEditsLocally(next, textId, textOps, vocabs);
       });
+      await this._client.texts.update(textId, textOps);
     });
   },
 

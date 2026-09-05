@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { notifyError } from '@/utils/feedback';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { whenIdle } from '../../../domain/whenIdle.js';
 import { formatTime } from './formatTime.js';
 import { rangeProblem } from '../../../domain/alignmentTimes.js';
 import { TimecodeField } from './TimecodeField.jsx';
@@ -57,18 +58,6 @@ const TIME_COLUMN =
 
 const isPlayChord = (e) =>
   e.code === 'Space' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
-
-// Resolves once the document has no write in flight.
-const whenIdle = (doc) =>
-  new Promise((resolve) => {
-    if (!doc.isSaving) return resolve();
-    const unsubscribe = doc.subscribe(() => {
-      if (!doc.isSaving) {
-        unsubscribe();
-        resolve();
-      }
-    });
-  });
 
 // A textarea that grows with its content, so a long utterance is never a
 // one-line slot you scroll inside.

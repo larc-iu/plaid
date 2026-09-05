@@ -124,8 +124,11 @@ A segment's start and end times are boxes of digits in its row: type into the bo
 The speed slider runs from 0.25× to 5×, and the loop button repeats the segment you are on until you pause.
 Shift+Left and Shift+Right move playback one second, in a transcript row or out of one.
 
+Deleting a segment from its row removes its times and speaker and leaves its text in the baseline; tick the box in the confirmation to delete the text too, with every word and annotation on it.
+
 The timeline shows the same segments against the waveform.
 Drag across an empty stretch to add a segment anywhere in the recording, drag a segment's edge to trim it, and click one to hear it and edit its row.
+A dragged stretch takes either new text or text already in the baseline: under **Existing text** the popover shows what is still free between the neighbouring segments, and the segment is the words you select there.
 Times are shown to the millisecond everywhere.
 Speakers are labeled per segment, and the timeline colors each speaker's segments alike.
 Two segments may overlap in time only when they carry different speaker labels, which is how cross-talk is recorded; a dragged edge stops at any segment it may not overlap.

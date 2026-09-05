@@ -55,7 +55,8 @@ export function MediaHelp() {
         one row per segment, in time order · moving into a row plays it (switch it off above the
         rows) · <Kbd>Enter</Kbd> save the row and move to the next · <Kbd>Esc</Kbd> put the row back
         · <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the previous one
-        to playback at <Kbd>Enter</Kbd>
+        to playback at <Kbd>Enter</Kbd> · the bin removes a segment and leaves its text in the
+        baseline unless you tick the box
       </Row>
       <Row label="Times">
         a segment's start and end are boxes of digits · type into the box under the caret ·{' '}
@@ -64,8 +65,9 @@ export function MediaHelp() {
         <Kbd>Esc</Kbd> puts it back · a segment cannot run into its neighbours
       </Row>
       <Row label="Timeline">
-        drag an empty stretch to add a segment · drag an edge to trim · click a segment to hear it
-        and edit its row · in the new-segment popover <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+
+        drag an empty stretch to add a segment, typed fresh or by selecting words already in the
+        baseline (<Kbd>⇧</Kbd>+arrows select there) · drag an edge to trim · click a segment to hear
+        it and edit its row · in the new-segment popover <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+
         <Kbd>Enter</Kbd> saves, <Kbd>Esc</Kbd> cancels · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+wheel zooms,
         wheel pans
       </Row>

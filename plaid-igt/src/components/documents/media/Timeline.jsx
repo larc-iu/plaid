@@ -166,6 +166,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
           >
             <div
               ref={timelineRef}
+              data-timeline="track"
               style={{
                 position: 'relative',
                 height: `${TIMELINE_HEIGHT}px`,

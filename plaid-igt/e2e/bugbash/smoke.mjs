@@ -41,7 +41,11 @@ async function main() {
     await step('createAlignment t=[1,2] "quick" (between)', doc, () => doc.createAlignment({ text: 'quick', timeBegin: 1, timeEnd: 2 }));
 
     // alignBaseline: align existing text WITHOUT inserting (optimistic, no reload).
-    const r = await step('alignBaseline t=[3,4] "fox"', doc, () => doc.alignBaseline({ text: 'fox', timeBegin: 3, timeEnd: 4 }));
+    // Takes code-point offsets into the body; the fixture text is ASCII.
+    const r = await step('alignBaseline t=[3,4] "fox"', doc, () => {
+      const begin = doc.body.indexOf('fox');
+      return doc.alignBaseline({ begin, end: begin + 3, timeBegin: 3, timeEnd: 4 });
+    });
     const divergence = optimisticMatchesServer(doc, r.fresh);
     log(`   optimistic-vs-server: ${divergence.length ? 'DIVERGED' : 'match'}`);
     for (const d of divergence) log(`     ! ${d}`);
@@ -51,9 +55,13 @@ async function main() {
       return doc.editAlignment(id, { text: 'THE', timeBegin: 0, timeEnd: 1 });
     });
 
-    await step('deleteAlignment last', doc, () => {
+    await step('deleteAlignment last (text stays)', doc, () => {
       const toks = doc.layerInfo.alignmentTokenLayer.tokens.sort((a, b) => a.begin - b.begin);
       return doc.deleteAlignment(toks[toks.length - 1].id);
+    });
+    await step('deleteAlignment last (text too)', doc, () => {
+      const toks = doc.layerInfo.alignmentTokenLayer.tokens.sort((a, b) => a.begin - b.begin);
+      return doc.deleteAlignment(toks[toks.length - 1].id, { deleteText: true });
     });
 
     await step('saveBaselineText "hello world again"', doc, () => doc.saveBaselineText('hello world again'));

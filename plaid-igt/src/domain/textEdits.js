@@ -115,19 +115,42 @@ export function applyTextEditsLocally(raw, textId, ops, vocabs = null) {
     }
   }
 
-  if (deletedIds.length > 0) {
-    const dead = new Set(deletedIds);
-    const touchesDead = (ids) => Array.isArray(ids) && ids.some((id) => dead.has(id));
-    for (const layer of tokenLayers) {
-      for (const sl of layer.spanLayers || []) {
-        if (Array.isArray(sl.spans)) sl.spans = sl.spans.filter((s) => !touchesDead(s.tokens));
-      }
-    }
-    for (const vocab of Object.values(vocabs || {})) {
-      if (Array.isArray(vocab?.vocabLinks)) {
-        vocab.vocabLinks = vocab.vocabLinks.filter((l) => !touchesDead(l.tokens));
-      }
+  sweepDeadTokens(tokenLayers, deletedIds, vocabs);
+  return deletedIds;
+}
+
+/**
+ * Drop every span and vocab link pinned to a token in `deletedIds`, as the
+ * server does when a token goes.
+ */
+export function sweepDeadTokens(tokenLayers, deletedIds, vocabs = null) {
+  if (deletedIds.length === 0) return;
+  const dead = new Set(deletedIds);
+  const touchesDead = (ids) => Array.isArray(ids) && ids.some((id) => dead.has(id));
+  for (const layer of tokenLayers) {
+    for (const sl of layer.spanLayers || []) {
+      if (Array.isArray(sl.spans)) sl.spans = sl.spans.filter((s) => !touchesDead(s.tokens));
     }
   }
-  return deletedIds;
+  for (const vocab of Object.values(vocabs || {})) {
+    if (Array.isArray(vocab?.vocabLinks)) {
+      vocab.vocabLinks = vocab.vocabLinks.filter((l) => !touchesDead(l.tokens));
+    }
+  }
+}
+
+/**
+ * Mirror a plain token delete (`tokens.delete`, no text edit): take the tokens
+ * with these ids out of every token layer of the text, with the spans and
+ * vocab links on them. The body and every other token stay as they are.
+ */
+export function removeTokensLocally(raw, textId, ids, vocabs = null) {
+  const textLayer = (raw?.textLayers || []).find((tl) => tl.text?.id === textId);
+  if (!textLayer?.text) return;
+  const tokenLayers = textLayer.tokenLayers || [];
+  const dead = new Set(ids);
+  for (const layer of tokenLayers) {
+    if (Array.isArray(layer.tokens)) layer.tokens = layer.tokens.filter((t) => !dead.has(t.id));
+  }
+  sweepDeadTokens(tokenLayers, ids, vocabs);
 }
