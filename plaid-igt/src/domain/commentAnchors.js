@@ -159,14 +159,14 @@ export function buildEntryAnchorIndex(items, { glossField = 'gloss' } = {}) {
   return index;
 }
 
-// What an anchor that no longer exists is called, by what it was.
+// The heading for an anchor that no longer exists, by what it was.
 const GONE = {
   document: 'This document',
   text: 'Baseline text',
-  token: 'A word that was edited away',
-  span: 'An annotation that was edited away',
-  relation: 'A relation that was edited away',
-  'vocab-item': 'An entry that was deleted',
+  token: 'Deleted word',
+  span: 'Deleted annotation',
+  relation: 'Deleted relation',
+  'vocab-item': 'Deleted entry',
 };
 
 /**
@@ -183,7 +183,7 @@ export function describeAnchor(index, entityType, entityId, anchorLabel = null) 
   return {
     kind: 'outdated',
     outdated: true,
-    label: caption || GONE[entityType] || 'Something that was edited away',
+    label: caption || GONE[entityType] || 'Deleted',
     detail: '',
     sentenceIndex: null,
     sentenceId: null,

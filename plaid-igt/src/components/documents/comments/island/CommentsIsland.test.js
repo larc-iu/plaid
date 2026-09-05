@@ -95,7 +95,7 @@ describe('CommentsIsland', () => {
   it('falls back to what kind of thing it was when an outdated thread has no caption', () => {
     const store = storeWith([row({ entityId: 'gone', entityType: 'span' })]);
     new CommentsIsland(host, { store, anchorIndex: () => new Map() });
-    expect(heading(threads()[0])).toBe('An annotation that was edited away');
+    expect(heading(threads()[0])).toBe('Deleted annotation');
     expect(host.querySelector('.igt-cmts__status--quiet')).not.toBeNull();
   });
 

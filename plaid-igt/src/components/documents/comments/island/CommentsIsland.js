@@ -36,6 +36,7 @@ export class CommentsIsland extends ThreadIslandBase {
    * @param {Function} [opts.onJumpTo]  called with a descriptor's `jumpId` when
    *   a thread heading is activated (a sentence, or an entry).
    * @param {string} [opts.emptyText]  what to say when nothing has comments.
+   * @param {string} [opts.jumpTitle]  the tooltip on a thread heading that navigates.
    */
   constructor(
     host,
@@ -47,6 +48,7 @@ export class CommentsIsland extends ThreadIslandBase {
       canDeleteAny = false,
       onJumpTo = null,
       emptyText = null,
+      jumpTitle = 'Show in the interlinear editor',
     } = {},
   ) {
     super(host, { store, canWrite, canDeleteAny });
@@ -54,6 +56,7 @@ export class CommentsIsland extends ThreadIslandBase {
     this._anchorIndexFn = anchorIndex;
     this.onJumpTo = onJumpTo;
     this.emptyText = emptyText ?? DOC_EMPTY;
+    this.jumpTitle = jumpTitle;
 
     // Anchor labels are derived from the document and only change when its
     // DATA changes, so they are memoized on dataVersion — the same gate the
@@ -115,7 +118,7 @@ export class CommentsIsland extends ThreadIslandBase {
             ? html`<button
                 class="igt-cmts__anchor igt-cmts__anchor--link"
                 type="button"
-                title="Show it"
+                title=${this.jumpTitle}
                 @click=${() => this.onJumpTo(anchor.jumpId)}
               >
                 ${anchor.label}
@@ -181,8 +184,7 @@ export class CommentsIsland extends ThreadIslandBase {
           ? html`<section class="igt-cmts__section" aria-label="Outdated comments">
               <h4 class="igt-cmts__section-title">Outdated</h4>
               <p class="igt-cmts__status igt-cmts__status--quiet">
-                What these were about has since been edited away or deleted. They stay so nothing
-                anyone said is lost. Delete one once it has served its purpose.
+                On words, values, or entries that no longer exist.
               </p>
               <div class="igt-cmts__list">
                 ${repeat(

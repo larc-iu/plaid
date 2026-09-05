@@ -119,10 +119,8 @@ describe('describeAnchor for an anchor that is gone', () => {
 
   it('says what kind of thing it was when there is no caption', () => {
     const index = new Map();
-    expect(describeAnchor(index, 'span', 'gone').label).toBe('An annotation that was edited away');
-    expect(describeAnchor(index, 'vocab-item', 'gone', '   ').label).toBe(
-      'An entry that was deleted',
-    );
+    expect(describeAnchor(index, 'span', 'gone').label).toBe('Deleted annotation');
+    expect(describeAnchor(index, 'vocab-item', 'gone', '   ').label).toBe('Deleted entry');
     expect(describeAnchor(index, 'document', 'gone').label).toBe('This document');
   });
 

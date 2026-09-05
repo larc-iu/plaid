@@ -59,6 +59,7 @@ export const VocabularyCommentsTab = ({
       canDeleteAny,
       onJumpTo: (itemId) => navigate(`/vocabularies/${vocabularyId}?item=${itemId}`),
       emptyText: 'No entry has comments yet. Open an entry to add one.',
+      jumpTitle: 'Open the entry',
     });
     return () => {
       islandRef.current?.destroy();
