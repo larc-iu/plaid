@@ -30,16 +30,17 @@
 = Introduction
 
 **Plaid IGT** is a web-based editor for building interlinear glossed text (IGT).
-All documents are grounded in a single baseline text.
-This text is segmented into words and morphemes, which then receive customized annotations, such as glosses or parts of speech.
+Every document is grounded in a single **baseline** text.
+You divide that text into sentences, words, and morphemes, and then annotate those units with whatever fields your project calls for: a gloss, a part of speech, a free translation.
+The result is the familiar interlinear display, with the original text on one line and its analysis lined up beneath it.
 
-Plaid IGT is one of many apps built on the Plaid platform.
+Plaid IGT is one of the apps built on the Plaid platform.
 You don't need to know anything about Plaid itself to use the editor, but if you're curious about the underlying platform, or you want to script against your data, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
 
 [NOTE]
 ====
 Plaid IGT is a *demonstration app*.
-It covers the core interlinear-glossing workflow, and summarizes the heavier surfaces (audio media, FieldWorks import) in their own sections below.
+It covers the core interlinear-glossing workflow in full, and the heavier surfaces (audio transcription, FieldWorks import and export, the assistant) each get a section of their own below.
 ====
 
 = Getting Started
@@ -57,166 +58,245 @@ Your session stays signed in until the token expires or you log out.
 
 The editor has a few levels you move between:
 
-* **Projects**: the list of all projects you can access (your home screen after login).
+* **Projects**: the list of all projects you can access. This is your home screen after login.
 * **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, and **Settings** for maintainers.
-* **A document's editing tabs**: `Metadata`, `Baseline`, `Media`, `Tokenize`, `Analyze`, `Comments`, and `Export`, switched with the tabs at the top of an open document.
+* **A document's tabs**: **Metadata**, **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, and **Export**, switched at the top of an open document.
 
-The Analyze and Media tabs each have a **?** button that opens a legend of their gestures and keys, and this guide is one click away under **Guide** in the header.
+The **Vocabularies** link in the header leads to the shared lexicons (see <<_vocabularies>>), and **Guide** opens this document.
+Your name in the header opens your profile, where you set a display name and a profile picture, change your password, and mint API tokens.
+
+TIP: The Tokenize, Analyze, and Media tabs each have a **?** button that opens a legend of the gestures and keys that tab answers to. If you forget a shortcut, that is the quickest place to look.
 
 = Projects
 
-A project holds a collection of documents along with the settings they share: the metadata and annotation fields, the orthographies, the tagsets, the vocabularies it draws on, and its members.
-Create a project from the Projects screen, starting blank (a short wizard walks you through those settings) or from imported data (see <<_import_and_export>>).
-Click any project to open its documents.
+A **project** holds a collection of documents along with everything they share: the annotation fields, the orthographies, the tagsets, the vocabularies it draws on, and its members.
+Create a project from the Projects screen, either blank (a short wizard asks for those settings) or from imported data (see <<_import_and_export>>).
+Click a project to open its documents.
 
-Each document is built up through a handful of activities, one per tab in the document editor: **Metadata**, **Baseline**, **Media**, **Tokenize**, **Analyze**, and **Comments**.
-Much of what these activities offer is configured per project, so two projects can present very different fields and orthographies on the same underlying editor.
-The rest of this section walks through each activity.
+Because so much is configured per project, two projects can present very different fields and orthographies on the same underlying editor.
+A project for a field methods course might have a single Gloss field and a free translation, while a documentation project adds a part of speech, a phonetic orthography, and a lexicon.
 
-Interlinear glossed text is organized at three scopes, which the annotation fields and the Analyze grid are built around:
+== Sentences, words, and morphemes
+
+Interlinear glossed text is organized at three **scopes**, and the annotation fields and the Analyze grid are built around them:
 
 [cols="1,3"]
 |===
 | Scope | What it is
 
-| **Sentences**
-| Spans of the baseline text. They carry sentence fields such as the free translation, the speaker, and notes.
+| **Sentence**
+| A stretch of the baseline text. Sentence fields hold things like the free translation, the speaker, and notes.
 
-| **Words**
-| The tokens within each sentence.
+| **Word**
+| A token within a sentence. Word fields hold things like a part of speech or a word-level gloss.
 
-| **Morphemes**
-| The sub-word pieces of each word. Glosses and the other morpheme fields live here.
+| **Morpheme**
+| A piece of a word. The morpheme gloss and any other morpheme fields live here.
 |===
 
 A word is divided into one or more morphemes.
-A simple word is a single morpheme. A word like English _cats_ is two, _cat_ and _-s_.
+A simple word is a single morpheme, while a word like English _cats_ is two, _cat_ and _-s_.
+Every field in a project belongs to exactly one scope, which decides which row of the grid it appears on.
 
 == Documents
 
-The **Documents** tab lists a project's texts with their word counts, searchable and paged once there are many.
-**New Document** creates an empty one and opens it on its Baseline tab; click any document to open it.
+The **Documents** tab lists a project's texts with their word counts.
+Once there are many, the list can be searched and paged.
+**New Document** creates an empty document and opens it on its Baseline tab.
 A document is renamed and deleted from its own Metadata tab.
+
+Each document is built up through a handful of activities, one per tab.
+The rest of this chapter walks through them in the order you would normally use them.
 
 == Metadata
 
 The **Metadata** tab holds document-level fields such as the title, speaker, date, and notes.
-Which fields appear is configured per project, so a project records exactly the information its corpus needs, and a field can be held to a tagset (see <<_tagsets>>).
+Which fields appear is configured per project (see <<_annotation>>), so a project records exactly the information its corpus needs.
+A metadata field can be held to a tagset, for example so that a genre is always one of a fixed set (see <<_tagsets>>).
 
 == Baseline
 
 The **Baseline** tab holds the raw text you are analyzing, in whatever orthography you work in.
-Paste or type it and save, one sentence per line: each line becomes a sentence, and the Tokenize tab lets you move sentence breaks afterwards.
-Editing the baseline later reconciles the change with any segmentation you have already done, keeping annotations where it can.
-A project can also define additional **orthographies**, alternate representations of each word such as a phonetic transcription, which appear alongside the baseline form.
+Paste or type it, one sentence per line, and save.
+On the first save each line becomes a sentence.
+You can move sentence breaks afterwards on the Tokenize tab.
+
+You can edit the baseline later too.
+Existing sentences, words, and annotations are kept and adjusted to fit the new text.
+Words inside text you delete go with it, along with their annotations.
+
+A project may define additional **orthographies**, alternate representations of each word such as a phonetic transcription or a practical spelling.
+These appear as their own rows in the Analyze grid (see <<_text_and_vocab>>).
 
 == Media
 
-The **Media** tab attaches an audio or video file to the document and holds its transcript as time-aligned segments.
+The **Media** tab attaches an audio or video recording to the document and holds its transcript as time-aligned **segments**.
 Each segment is a stretch of the recording with its text, which becomes part of the baseline, and an optional speaker label.
 Media is optional, and a document with none is simply a text.
+Common audio and video formats are accepted (MP3, WAV, M4A, MP4, WebM, and others), and an upload shows its progress.
 
-To transcribe by ear, play the recording, then type the utterance you just heard into the **New segment** row and press Enter.
-The segment runs from the end of the previous one to wherever playback is when you save.
-Every segment is a row in the transcript, and the recording follows you: moving into a row plays that segment, Enter saves the row and moves to the next, Escape puts a row back the way it was, and Shift+Space pauses and resumes without leaving the row, starting the segment over only when playback is somewhere else.
-Turn off "Play segment on entry" to play by hand.
-A segment's start and end times are boxes of digits in its row: type into the box under the caret, Left and Right move between boxes, Up and Down step a box by one unit (milliseconds by 10, 100 with Shift), Enter or leaving the time saves, and a segment can never run into its neighbours.
-The speed slider runs from 0.25× to 5×, and the loop button repeats the segment you are on until you pause.
-Shift+Left and Shift+Right move playback one second, in a transcript row or out of one.
+=== Transcribing by ear
 
-Deleting a segment from its row removes its times and speaker and leaves its text in the baseline; tick the box in the confirmation to delete the text too, with every word and annotation on it.
+The transcript is a list of segments in time order, and it is built for typing what you hear.
+Play the recording, then type the utterance you just heard into the **New segment** row and press Enter.
+The new segment runs from the end of the previous one to wherever playback is when you save.
+A new segment takes the speaker of the previous one, so a run of turns by the same speaker is saved with nothing more than Enter.
+
+Every segment is a row you can edit:
+
+* Moving into a row plays its segment. Turn off **Play segment on entry** to play by hand instead.
+* **Enter** saves the row and moves to the next. **Tab** moves to the next field within a row.
+* **Esc** puts a row back the way it was.
+* **Shift+Space** pauses and resumes the segment you are in without leaving the row. If playback is somewhere else, the segment starts over.
+* **Shift+←** and **Shift+→** move playback one second, in a row or out of one.
+* **Space** plays and pauses the whole recording when you are not typing in a box.
+
+A segment's start and end times are boxes of digits in its row.
+Type into the box under the caret, or step it with **↑** and **↓**: milliseconds by 10, or by 100 with Shift.
+**←** and **→** move between boxes, and Enter or leaving the time saves it.
+A segment can never run into its neighbours.
+Times are shown to the millisecond everywhere.
+
+The speed slider runs from 0.25× to 5×, and clicking the value returns to 1×.
+The loop button repeats the segment you are on until you pause.
+
+Deleting a segment from its row removes its times and speaker but leaves its text in the baseline.
+Tick the box in the confirmation to delete the text too, together with every word and annotation on it.
+
+=== The timeline
 
 The timeline shows the same segments against the waveform.
-Drag across an empty stretch to add a segment anywhere in the recording, drag a segment's edge to trim it, and click one to hear it and edit its row.
-A dragged stretch takes either new text or text already in the baseline: under **Existing text** the popover shows what is still free between the neighbouring segments, and the segment is the words you select there.
-Times are shown to the millisecond everywhere.
+Drag across an empty stretch to add a segment anywhere in the recording, drag a segment's edge to trim it, and click a segment to hear it and edit its row.
+Ctrl/Cmd+wheel zooms the timeline, and the wheel alone pans it.
+
+A dragged stretch takes either new text or text already in the baseline.
+Under **Existing text**, the popover shows what is still free between the neighbouring segments, and the segment becomes the words you select there, with a click or Shift+arrows.
+This is how you align a text that was typed before the recording was attached.
+
 Speakers are labeled per segment, and the timeline colors each speaker's segments alike.
-Two segments may overlap in time only when they carry different speaker labels, which is how cross-talk is recorded; a dragged edge stops at any segment it may not overlap.
-With a transcription service connected, a model can take the first pass, and its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
+Two segments may overlap in time only when they carry different speaker labels, which is how cross-talk is recorded.
+A dragged edge stops at any segment it may not overlap.
+
+With a transcription service connected, a model can take the first pass.
+Its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
 
 == Tokenize
 
-The **Tokenize** tab segments the baseline into sentences and words.
-You can segment by hand, clicking between characters to split and dragging across words to merge, or run a tokenizer, either the built-in rule-based splitter or a tokenization service (see <<_services>>).
-Sentences are adjusted by hand too: Ctrl+click (Cmd+click on a Mac) a word to start a new sentence at it, and the ↑ button on a sentence merges it with the previous one.
-A project can mark certain tokens as **ignored**, usually punctuation, so they carry no word-level annotation and do not host morphemes.
+The **Tokenize** tab divides the baseline into sentences and words.
+Words are highlighted, and text that is not yet part of any word is plain.
+Nothing is annotated here: that happens on the Analyze tab.
+
+You can tokenize by hand:
+
+* **Drag** across plain text to make a word of it, or across several words to merge them.
+* **Click** a word to split it at a character.
+* **Right-click** a word to delete it.
+* **Ctrl/Cmd+click** a word to start a new sentence at it.
+* The **↑** button on a sentence merges it with the previous one.
+
+Or run a tokenizer over the whole document with **Tokenize**.
+The built-in **Rule-based Punctuation** splitter finds words and leaves sentence breaks as they are.
+A tokenization service can replace it with smarter segmentation of both sentences and words (see <<_services>>).
+**Clear Tokens** and **Reset Sentences** start over.
+
+A project can mark certain tokens as **ignored**, usually punctuation.
+Ignored tokens carry no word-level annotation and host no morphemes, so they stay out of your way in the grid (see <<_annotation>>).
 
 == Analyze
 
-The **Analyze** tab is the workspace where interlinearization happens.
+The **Analyze** tab is where interlinearization happens.
 It shows each sentence with its words, the morphemes under each word, and a row for every annotation field.
-What you can do here:
+Long documents are shown twenty-five sentences at a time, with a pager above and below the grid.
 
-* **Segment morphemes**: break each word into morphemes and edit their forms. A morpheme with a grammatical job and no sound is written ∅, which **Alt+0** types (see <<_typing_special_characters>>).
-* **Gloss and annotate**: fill the gloss and any other word-scope or morpheme-scope fields your project defines. The editor offers faint guesses, for example a gloss it has seen before for the same form, that you can accept or override.
-* **Pick from what the project already uses**: on a cell, **Alt+↓** lists every value the project has given that form, with counts. When a field is held to a tagset, the list opens on its own as you enter the cell and narrows as you type, one part at a time for a composite gloss like `1SG.NOM`.
-* **Link vocabulary**: connect a word or morpheme to a shared lexicon entry for consistency, by hand or in bulk (see <<_vocabularies>>).
-* **Auto-analyze**: run up to four steps over the whole document in one go: have a service translate each sentence, copy previous analyses of the same words from elsewhere in the project, have a connected service propose a segmentation and glosses for the rest, and link words and morphemes to the lexicon (see <<_services>>). Everything it produces shows in violet until you confirm it, and words you analyzed yourself are never touched.
-* **Review machine work**: **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next, **Ctrl/Cmd+Backspace** discards a word's or a translation's unverified proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
-* **Fill sentence fields**: record the free translation, the speaker, and other sentence-scope values on each sentence's row.
-* **Show only the rows you need**: click a row's label to choose which rows show. A minimized row stays as a thin stripe you can click back open.
-* **Copy as IGT**: copy a formatted version of a sentence to the clipboard for pasting into a paper or a message, as aligned plain text, tab-separated text, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX formats carry characters like ə and ∅ as they are, so typeset them with XeLaTeX or LuaLaTeX and a font that has the glyphs. They keep the characters searchable and copyable in the finished PDF, which a `tipa` transcription does not.
+What you do here:
 
-Plaid IGT also tracks where each value came from.
-A machine-made value, such as a gloss a service proposed or an auto-made vocabulary link, shows in **violet italic** to mark it unverified: it is in the document, and waits for a person to confirm or discard it.
-A guess is different: a faint gray placeholder in an empty cell that is not in the document at all until you take it with Enter.
-Anything you type shows plain, and editing a machine value confirms it.
-Hover over an annotation to reveal text indicating its provenance.
+* **Segment morphemes**. Break each word into morphemes and edit their forms. Type `-` in a morpheme to split it at the cursor, or `=` to split at a clitic boundary. Backspace at the start of a morpheme merges it into the previous one. A morpheme with a grammatical job and no sound is written ∅, which **Alt+0** types (see <<_typing_special_characters>>).
+* **Gloss and annotate**. Fill the gloss and any other word- or morpheme-scope fields your project defines. The editor offers faint **guesses**, for example a gloss it has seen before for the same form, which you accept with Enter or type over.
+* **Pick from what the project already uses**. On a cell, **Alt+↓** lists every value the project has given that form, with counts. When a field is held to a tagset, the list opens on its own as you enter the cell and narrows as you type, one part at a time for a composite gloss like `1SG.NOM`.
+* **Link vocabulary**. Connect a word or morpheme to an entry in a shared lexicon, by hand or in bulk (see <<_vocabularies>>).
+* **Auto-analyze**. Run up to four steps over the whole document in one go: have a service propose a translation for each sentence, copy previous analyses of the same words from elsewhere in the project, have a service propose a segmentation and glosses for the rest, and link words and morphemes to the lexicon (see <<_services>>). Everything it produces shows in violet until you confirm it, and words you analyzed yourself are never touched.
+* **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
+* **Fill sentence fields**. Record the free translation, the speaker, and other sentence-scope values on each sentence's row.
+* **Show only the rows you need**. Click a row's label to choose which rows show. A minimized row stays as a thin stripe you can click back open.
+* **Copy as IGT**. Copy one sentence to the clipboard for a paper or a message, as aligned plain text, tab-separated text for a spreadsheet, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX formats carry characters like ə and ∅ as they are, so typeset them with XeLaTeX or LuaLaTeX and a font that has the glyphs. This keeps the characters searchable and copyable in the finished PDF, which a `tipa` transcription does not.
+
+Move around the grid with **Enter** or **Tab** (next cell, Shift for the previous one), **↑** and **↓** (rows), and **←** and **→** from the ends of a value.
+The full set of gestures is collected under <<_keyboard_shortcuts>>.
+
+=== Where a value came from
+
+Plaid IGT tracks who, or what, produced every value.
+Three states are distinguished in the grid:
+
+* A value **you typed** shows plain. So does a machine value once you have edited or confirmed it.
+* A **machine-made** value, such as a gloss a service proposed or a vocabulary link Auto-analyze made, shows in **violet italic**. It is in the document, and it waits for a person to confirm or discard it.
+* A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter.
+
+Hover over an annotation to see where it came from.
+Editing a machine value confirms it, so the violet dissolves naturally as you work through a document.
+
 A value that a field's tagset refuses is underlined in red, and a closed tagset will not let it be entered at all (see <<_tagsets>>).
-The exact editing gestures are collected under <<_keyboard_shortcuts>>.
 
 == Comments
 
-Any sentence, word, morpheme, or annotation value can carry comments: a conversation in the margin of the text, for a question to the speaker, a doubt about a gloss, or a note to a classmate.
-In the Analyze tab, hover a sentence's label, a word, or a morpheme and click its comment badge to read the thread or add to it; a badge with a number marks one that already has comments.
+Any sentence, word, morpheme, or annotation value can carry **comments**: a conversation in the margin of the text, for a question to the speaker, a doubt about a gloss, or a note to a classmate.
+In the Analyze tab, hover a sentence's label, a word, or a morpheme and click its comment badge to read the thread or add to it.
+A badge with a number marks a thread that already has comments.
+
 The **Comments** tab lists every thread in the document, each with a link that jumps to its sentence.
-Comments take Markdown. You can edit your own, and a maintainer can remove any.
-A comment stays even when what it was about is edited away, say a word that is merged or retyped: the Comments tab lists it under **Outdated**, headed by what it was about, until someone deletes it.
-Comments are notes about the text rather than part of it: they are not versioned with the document and do not appear in exports, except in the native archive, which carries them along.
-An entry in a vocabulary takes comments too: open the entry to read or add to its thread, and the vocabulary's own **Comments** tab lists every thread. Anyone who can edit the vocabulary's entries can comment on them.
+Comments take Markdown.
+You can edit your own, and a maintainer can remove any.
+
+A comment stays even when what it was about is edited away, for example a word that is merged or retyped.
+The Comments tab lists such a comment under **Outdated**, headed by what it was about, until someone deletes it.
+
+Comments are notes about the text rather than part of it.
+They are not versioned with the document (see <<_history>>) and do not appear in exports, except in the native archive, which carries them along.
+
+An entry in a vocabulary takes comments too.
+Open the entry to read or add to its thread, and the vocabulary's own **Comments** tab lists every thread.
+Anyone who can edit the vocabulary's entries can comment on them.
 
 = Vocabularies
 
-A **vocabulary** is a shared lexicon, a list of entries (words or morphemes) that carry their own fields, such as a gloss or a part of speech.
-A vocabulary lives outside any single project.
-A project links to one or more of them, and while you analyze you connect a word or morpheme to an entry, by hand with **+ link** or in bulk with **Auto-analyze**.
-In the link popover, the linked entry's form is a link: click it to open the entry in its vocabulary.
-An entry can carry a morpheme **type** (stem, suffix, enclitic, and so on, the FieldWorks inventory). A linked morpheme takes its type from the entry, which decides how it attaches to its neighbors (`=` for clitics, `-` otherwise) in the grid and in exports; an unlinked morpheme keeps a type of its own. Only a vocabulary's maintainers can change an entry's type.
+A **vocabulary** is a shared lexicon: a list of **entries** (words or morphemes) that carry their own fields, such as a gloss or a part of speech.
+A vocabulary lives outside any single project, and a project links to one or more of them.
+While you analyze, you connect a word or morpheme to an entry, by hand with the link button on the word or morpheme, or in bulk with **Auto-analyze**.
 
-Linking keeps the same item analyzed the same way everywhere it appears, and a linked entry offers its gloss (and any other field that shares a name with one of your annotation fields) as a guess in the grid, which you accept with Enter.
+Linking does two things for you.
+It keeps the same item analyzed the same way everywhere it appears, and a linked entry offers its gloss (and any other field that shares a name with one of your annotation fields) as a guess in the grid, which you accept with Enter.
 Because a vocabulary is shared, editing an entry updates every document linked to it.
-Vocabularies have their own area in the app, where you browse and edit entries, define the fields an entry carries, and manage who maintains them.
-Which vocabularies a project draws on is part of the project's settings.
+In the link popover, the linked entry's form is itself a link: click it to open the entry in its vocabulary.
+
+An entry can carry a morpheme **type**: stem, prefix, suffix, enclitic, and so on, following the FieldWorks inventory.
+A linked morpheme takes its type from the entry, and the type decides how it attaches to its neighbours in the grid and in exports (`=` for clitics, `-` otherwise).
+An unlinked morpheme keeps a type of its own.
+Only a vocabulary's maintainers can change an entry's type.
+
+Vocabularies have their own area in the app, under **Vocabularies** in the header.
+There you browse and edit entries, define the fields an entry carries, and manage who maintains the vocabulary.
+Which vocabularies a project draws on is part of the project's settings (see <<_text_and_vocab>>).
 
 == Managing entries
 
 The **Vocabularies** area lists every vocabulary you can see.
-A vocabulary's entries are a table you can search and sort, with a **Uses** column counting the words and morphemes linked to each entry, and a **Concordance** on any entry showing every place it is linked.
-Two entries may share a form, for homonyms; the table tells them apart with subscripts, in the order they were created.
-**Bulk Add** takes rows pasted from a spreadsheet or read from a file, lets you map its columns onto the entry fields, and reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
-The table can be downloaded as CSV.
-A vocabulary's maintainers edit its entries and fields; a project's members link to them.
+A vocabulary's entries are shown on its **Vocabulary Items** tab as a table you can search and sort.
+A **Uses** column counts the words and morphemes linked to each entry, and a **Concordance** on any entry shows every place it is linked, with a link to each.
+Two entries may share a form, for homonyms.
+The table tells them apart with subscripts, in the order they were created.
+
+**Bulk Add** takes rows pasted from a spreadsheet or read from a file.
+It lets you map the columns onto the entry fields, then reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
+**Export** downloads the table as a tab-separated file that opens in any spreadsheet.
+
+A vocabulary's maintainers edit its entries and fields, while a project's members link to them.
 Each entry carries a comment thread (see <<_comments>>).
 
-== Multi-word expressions
+== Entry fields
 
-Some lexical units are longer than a word: an idiom, a phrasal verb, a compound name.
-Link one to a single entry by gathering its words: **Shift+click** each word, or from one of a word's cells press **Shift+→** (and **Shift+←**) to take in its neighbours, with **Ctrl** held to skip a word that does not belong.
-A dashed line shows the words gathered so far. Press **Enter** to link them to an entry, or **Esc** to give up.
-The popover works as it does for one word: pick an entry, or create one. A new entry gets the words' surface forms joined by spaces, which you can edit to the citation form before creating, and the type multi-word expression, which is what FieldWorks calls a phrase, and exports as one.
-
-A linked multi-word expression draws as a line under its words, inside the gray word band, labelled with the entry's form.
-The line runs on across a line break, and a skipped word (or punctuation in between) shows as a dotted stretch.
-A word can belong to several multi-word expressions at once; overlapping ones stack, and the band grows a line for each.
-Each word keeps its own entry link and its own morphemes regardless.
-Click a line's label to change the entry, unlink it, or confirm one that **Auto-analyze** made (it links a run of words when their joined form matches a multi-word expression entry, or one this document already has).
-While that popover is open, Shift+click a word to add it to the multi-word expression or take it out.
-The popover for a single word lists the multi-word expressions it is part of, and offers **Part of a multi-word expression…** to start gathering from there.
-
-== Entry Fields
-
-Every entry has a **Form**, its reference form (the headword), which is required.
-Beyond the form, an entry carries a set of fields, and a new vocabulary starts with a few built in:
+Every entry has a **Form**, its reference form or headword, which is required.
+Beyond the form, an entry carries a set of fields.
+A new vocabulary starts with a few built in:
 
 * **Morph Type**: whether the entry is a stem, a prefix, a suffix, and so on. The editor uses it to render affixes, such as the joining hyphens on the form and gloss lines. Required.
 * **Gloss**: the entry's gloss, offered as a guess for the Gloss field of anything linked to it. Required.
@@ -224,146 +304,210 @@ Beyond the form, an entry carries a set of fields, and a new vocabulary starts w
 * **Definition**: a fuller definition or note.
 
 You can add your own fields, reorder them, and remove any except Form, Morph Type, and Gloss.
-Each field can be marked **inline**, which shows it both as a column in the vocabulary table and on each entry's row in the link popover.
-Other fields stay available on the entry's own edit form.
+A field marked **inline** shows both as a column in the vocabulary table and on each entry's row in the link popover.
+Other fields stay on the entry's own edit form.
 
 A field can be held to a **tagset** (see <<_tagsets>>), so a part of speech is always `n` and never sometimes `noun`.
-A vocabulary keeps its own tagsets, under its Settings, because it is shared across projects; define one there, then pick it on the field.
-A closed tagset becomes a dropdown on the entry form, refuses a value outside the list in Bulk Add, and marks the entries already outside it: the item list counts them, and a click shows only those, so a lexicon imported before the tagset existed is brought into line one entry at a time or by adding the value to the list.
+A vocabulary keeps its own tagsets, under its Settings, because it is shared across projects.
+Define one there, then pick it on the field.
+A closed tagset becomes a dropdown on the entry form and refuses a value outside the list in Bulk Add.
+It also marks the entries already outside it: the table counts them, and a click shows only those.
+A lexicon imported before the tagset existed can thus be brought into line one entry at a time, or by adding the value to the list.
+
+== Multi-word expressions
+
+Some lexical units are longer than a word: an idiom, a phrasal verb, a compound name.
+You can link such a **multi-word expression** to a single entry by gathering its words:
+
+1. **Shift+click** each word. Or, from one of a word's cells, press **Shift+→** (or **Shift+←**) to take in its neighbours, holding **Ctrl** as well to skip a word that does not belong.
+2. A dashed line shows the words gathered so far. Press **Enter** to link them, or **Esc** to give up.
+3. The popover works as it does for one word: pick an entry, or create one. A new entry gets the words' surface forms joined by spaces, which you can edit to the citation form before creating, and the type _multi-word expression_. (FieldWorks calls this a phrase, and it exports as one.)
+
+A linked multi-word expression draws as a line under its words, inside the gray word band, labelled with the entry's form.
+The line runs on across a line break, and a skipped word (or punctuation in between) shows as a dotted stretch.
+A word can belong to several multi-word expressions at once.
+Overlapping ones stack, and the band grows a line for each.
+Each word keeps its own entry link and its own morphemes regardless.
+
+Click a line's label to change the entry, unlink it, or confirm one that **Auto-analyze** made.
+(Auto-analyze links a run of words when their joined form matches a multi-word expression entry, or one this document already has.)
+While that popover is open, Shift+click a word to add it to the expression or take it out.
+The popover for a single word lists the multi-word expressions it is part of, and offers **Part of a multi-word expression…** to start gathering from there.
 
 = Project Settings
 
-A maintainer opens a project's **Settings** tab. It has five sections.
+A maintainer opens a project's **Settings** tab.
+It has five sections, listed down the left side.
 
 == General
 
-The project's name, and the language it documents: its name, its ISO 639-3 code, and its Glottocode.
-The language identity travels with the project into exports such as CLDF; a code that looks wrong is pointed out but still saved, since a project may document something the catalogues have no entry for.
+The project's name, its languages, and the option to delete the project.
+
+Two languages are recorded: the **object language**, which the baseline text is in, and the **meta language**, which glosses and translations are written in.
+Each has a name, an ISO 639-3 code, and a Glottocode, and the object language can carry coordinates.
+The language identity travels with the project into exports such as CLDF, where a dataset without a Glottocode cannot be linked to any other.
+A code that looks wrong is pointed out but still saved, since a project may document something the catalogues have no entry for.
 
 == Text and Vocab
 
-The extra **orthographies** each word can carry beside the baseline form, such as a phonetic transcription or a practical spelling, and which **vocabularies** the project draws on.
-Deleting an orthography first tells you how many words carry it.
+Three things live here:
+
+* The extra **orthographies** each word can carry beside the baseline form, such as a phonetic transcription or a practical spelling. Deleting an orthography first tells you how many words carry it.
+* Which **vocabularies** the project draws on (see <<_vocabularies>>).
+* The project's **special characters**: the backslash codes that type characters your keyboard lacks (see <<_typing_special_characters>>).
 
 == Annotation
 
-The annotation **fields** at each scope, sentence, word, and morpheme, which you can add, rename, reorder, and remove; the **ignored tokens** rule, usually punctuation, so those tokens carry no word-level annotation and host no morphemes; the project's **tagsets**; and the **document metadata** fields shown on every document's Metadata tab.
-Removing a field first tells you how many values it holds.
+The annotation **fields** at each scope, sentence, word, and morpheme.
+You can add, rename, reorder, and remove them, and removing a field first tells you how many values it holds.
+Alongside the fields sits the **ignored tokens** rule, usually punctuation, so those tokens carry no word-level annotation and host no morphemes.
 
-== Tagsets
+This section also holds the project's **tagsets** (see <<_tagsets>>) and the **document metadata** fields shown on every document's Metadata tab.
+
+== Access
+
+The project's members and their roles, invitation links, and API access.
+See <<_sharing_and_permissions>>.
+
+[[_settings_services]]
+== Services
+
+Which service, or built-in method, each task uses by default: tokenization, transcription, translation, analysis, and auto-linking (see <<_services>>).
+A default can carry default options too, and people can still switch per use.
+This is also where you say what Auto-analyze's copy step copies from a word's previous analyses: its segmentation, its links, its field values, or any combination.
+
+= Tagsets
 
 A **tagset** is a controlled list of values for a field: the parts of speech your project uses, the Leipzig abbreviations you gloss with, the genres a document can be.
-Define tagsets under Annotation, then point any field at one. Several fields can share a tagset, so Gloss at the word scope and Gloss at the morpheme scope agree.
+Tagsets are defined under **Settings → Annotation**, and any field can then point at one.
+Several fields can share a tagset, so Gloss at the word scope and Gloss at the morpheme scope agree.
 A vocabulary's entry fields take tagsets too, kept with the vocabulary (see <<_entry_fields>>).
 
 Each tagset has a mode:
 
 * **Open**: the whole list is offered while you annotate, but anything can be typed.
 * **Closed**: only values on the list can be entered. For a fixed inventory such as part of speech.
-* **Mixed**: a value is allowed if it has a lowercase letter or is in a script without capitals; anything else must be on the list. Made for glosses, where a stem's gloss is a word like `dog` and a grammatical gloss like `1SG.NOM` is built from tags.
+* **Closed, plus lexical glosses**: a value is allowed if it has a lowercase letter or is in a script without capitals, and anything else must be on the list. This is made for glosses, where a stem's gloss is a word like `dog` and a grammatical gloss like `1SG.NOM` is built from tags.
 
 A gloss is composite, so a tagset lists the parts and names the **delimiters** that join them (for Leipzig, `.`, `:`, and `>`).
-In a governed cell the list opens on its own, offers the part under the caret, and a value the tagset refuses is underlined in red.
+In a governed cell the list opens on its own and offers the part under the caret, and a value the tagset refuses is underlined in red.
 A value can carry a description, shown beside it in the list.
-**Seed from the project** fills a new tagset with the values a field already uses, so an existing corpus comes under a tagset without retyping anything.
+**Add values used in this project** fills a new tagset with the values a field already uses, so an existing corpus comes under a tagset without retyping anything.
 
-A tagset is enforced as you type and in Bulk Edit.
-An import, a service, the Assistant, or a script writes past it, so the project's **Validation** tab (maintainers) lists, for each governed field, every value in the project that its tagset refuses, with a count, and offers the two remedies: add the value to the tagset, or open the documents that use it and fix them.
-The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings, but nothing they write is refused.
+A tagset is enforced as you type and in Bulk Edit, and nowhere else.
+An import, a service, the Assistant, or a script writes past it.
+The project's **Validation** tab (maintainers) closes that gap.
+It lists, for each governed field, every value in the project that its tagset refuses, with a count, and offers the remedies: **Add to tagset**, **Fix in Bulk Edit**, or open each occurrence and correct it by hand.
+It also looks for zero morphs spelled some other way than ∅ (see <<_typing_special_characters>>).
 
-== Access
-
-The project's members and their roles, invitation links, and API access. See <<_sharing_and_permissions>>.
-
-== Service defaults
-
-Which service, or built-in, each task uses by default: tokenization, transcription, translation, analysis, and auto-linking (see <<_services>>).
-Also what Auto-analyze's copy step copies from a word's previous analyses: its segmentation, its links, its field values, or any combination.
+NOTE: The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings. Nothing they write is refused, though. A model's off-list output can be a useful signal that the tagset is missing something, and the Validation tab is where you will see it.
 
 = Bulk Edit
 
-The **Bulk Edit** tab (maintainers) changes many places at once, the way FieldWorks' Change Spelling does: describe the change, preview every place it would touch, tick the ones you mean, and apply them as one action in the history.
-Four operations:
+The **Bulk Edit** tab (maintainers) changes many places at once, the way FieldWorks' Change Spelling does.
+You describe the change, preview every place it would touch, tick the ones you mean, and apply them as one action in the history.
+There are four operations:
 
 * **Respell words**: change the spelling of a word everywhere it occurs, keeping its morphemes, glosses, links, and other annotations. Optionally respell the same string inside morpheme forms and lexicon entry forms too.
 * **Replace in a field**: find and replace across one field's values, as plain text or a regular expression, or across morpheme forms.
 * **Re-analyze a word**: give every occurrence of a word the same analysis, chosen from the analyses it already has in the project.
 * **Merge lexicon entries**: fold duplicate entries into one, moving every link to the survivor.
 
-Bulk Edit respects tagsets: a replacement a closed tagset refuses is skipped, and the preview says so.
+Bulk Edit respects tagsets.
+A replacement a closed tagset refuses is skipped, and the preview says so.
 
 = Assistant
 
 The **Assistant** tab is a chat with a language model that knows your project.
 Ask it what is still unglossed, whether a suffix is glossed consistently, or to summarize the morphology it can see.
-It reads the documents, the lexicon, the search results, and the history to answer, and shows what it read.
+It reads the documents, the lexicon, the search results, and the history to answer, and it shows what it read.
 
-When you ask it to change something, it does not touch the data. It proposes a **plan**, listed step by step, which you **Approve** or **Discard**.
+When you ask it to change something, it does not touch the data.
+It proposes a **plan**, listed step by step, which you **Approve** or **Discard**.
 Approved changes are written under your own account and marked as machine-made, in violet, until you confirm them like any other proposal.
-Reading needs Reader access; applying a plan needs Writer.
-Conversations are private to you, kept per project, and can be copied out as Markdown.
+Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
+Reading needs Reader access, and applying a plan needs Writer.
+Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 
-The assistant is a service your server's operator runs and picks the model for (`plaid-igt-agent`, installed from PyPI); the tab says so when none is connected.
+The assistant is a service that your server's operator runs and picks the model for (`plaid-igt-agent`, installed from PyPI).
+The tab says so when none is connected.
 
 = Services
 
 Plaid IGT can call external **services** for certain tasks.
-A service is a small program, often a Python script, that registers itself with your project and advertises which task it handles.
-Maintainers connect services under the project's **Settings**, and some tasks ship with a built-in option that needs no service at all.
+A service is a small program, often a Python script, that connects to your project when it starts and advertises which task it handles.
+Once connected, it appears wherever its task is offered, and a maintainer can make it the default for that task under **Settings → Services**.
+Some tasks ship with a built-in method that needs no service at all.
+
 There are five integration points:
 
-* **Tokenization**: splits the baseline into words, on the **Tokenize** tab. A built-in rule-based splitter is always available and leaves sentence breaks as they are; a service can replace it with smarter segmentation of sentences and words (the bundled example uses Punkt).
-* **Transcription (ASR)**: transcribes and time-aligns audio, on the **Media** tab. There is no built-in, so this needs a connected service (the bundled example uses Whisper).
-* **Translation**: proposes a free translation for each sentence, as step 1 of the **Auto-analyze** dialog on the Analyze tab, so the analyzers that follow can read it. The bundled example uses a language model.
-* **Analysis**: proposes a morpheme segmentation and glosses for every word, as step 3 of the same dialog. There is no built-in, so this needs a connected service (the bundled examples use PolyGloss, a multilingual glossing model, and a language model given the project's own analyses as examples). Words a person has analyzed are left alone.
-* **Auto-link vocabulary**: proposes vocabulary links for unlinked words and morphemes, as step 4 of the same dialog. A built-in rule follows your project's own precedent and unique matches, and a service can propose links its own way.
+* **Tokenization**: splits the baseline into words, on the **Tokenize** tab. The built-in rule-based splitter is always available and leaves sentence breaks as they are. A service can replace it with smarter segmentation of sentences and words (the bundled example uses Punkt).
+* **Transcription (ASR)**: transcribes and time-aligns a recording, on the **Media** tab. There is no built-in, so this needs a connected service (the bundled example uses Whisper).
+* **Translation**: proposes a free translation for each sentence, as step 1 of **Auto-analyze** on the Analyze tab, so the analyzers that follow can read it. The bundled example uses a language model.
+* **Analysis**: proposes a morpheme segmentation and glosses for every word, as step 3 of Auto-analyze. There is no built-in, so this needs a connected service. Two examples are bundled: PolyGloss, a multilingual glossing model, and a language model given the project's own analyses as examples. Words a person has analyzed are left alone.
+* **Auto-link vocabulary**: proposes vocabulary links for unlinked words and morphemes, as step 4 of Auto-analyze. The built-in rule follows your project's own precedent and unique matches, and a service can propose links its own way.
 
 The Assistant is a service too (see <<_assistant>>).
-Whatever a service produces is stamped unverified, the same violet-italic state as any other machine value, so you stay in control of what gets confirmed.
+Whatever a service produces is stamped unverified, in the same violet-italic state as any other machine value, so you stay in control of what gets confirmed.
+
+Writing a service of your own is not hard.
+The link:manual.html#_services[Services chapter of the Plaid manual] explains how.
 
 = Import and Export
 
 == Importing
 
 Start a project from existing data on the **New Project** screen.
-Currently supported formats include:
+Four formats are supported:
 
-* **FieldWorks (FLEx)**: a project backup (`.fwbackup`), bringing in its texts, words, morphemes, glosses, translations, and the full lexicon. Every lexicon field that carries values comes along as an entry field unless you untick it. Some FLEx detail that Plaid does not model is dropped on import.
+* **FieldWorks (FLEx)**: a project backup (`.fwbackup`), bringing in its texts, words, morphemes, glosses, translations, and the full lexicon. Every lexicon field that carries values comes along as an entry field unless you untick it. Words that cannot be aligned to their baseline are listed before the import and skipped, and some FLEx detail that Plaid does not model is dropped.
 * **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity.
 * **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, and time alignment.
-* **Native Plaid IGT archive** (`.zip`): restores a project exactly, including its vocabularies, media, and comments.
+* **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, and comments.
 
 == Exporting
 
-The **Export** tab, on a document and on the project, opens a wizard where you choose a preset and a scope (a single document, several documents, or the whole project), then save the result.
-Currently supported formats include:
+Exports are driven by **presets**.
+A preset fixes a format and which orthographies, fields, and options it includes, so the same export can be run again later, or by someone else, without choosing everything afresh.
+Maintainers create presets on the project's **Export** tab.
+Anyone can run one from there or from a document's Export tab, choosing a scope: this document, selected documents, or the whole project.
+
+Five formats are supported:
 
 * **Plain text**: an aligned, human-readable interlinear rendering.
 * **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped with a note on the order to import them in. Leave the lexicon out to get the `.flextext` on its own.
 * **CLDF TextCorpus** (`.zip`): a Cross-Linguistic Data Formats dataset, one CSV per component table with a `cldf-metadata.json` describing them.
 * **ELAN** (`.eaf`): one annotation file per document, bundled into a `.zip` with its recording when it has one.
-* **Native Plaid IGT archive** (`.zip`): a lossless export you can import again later.
+* **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
 
-Maintainers can save reusable export presets on the project.
 To grab a single sentence instead, use **Copy as IGT** in the Analyze tab.
 
 = Search
 
 A project's **Search** tab looks across every document.
 Pick where to look: word forms, morpheme forms, any annotation field at any scope, or the lexicon's entries.
-Type what to find, and choose whether a match must contain it, equal it exactly, or fit a regular expression.
+Type what to find, and choose whether a match **contains** it, **is exactly** it, or **matches** a regular expression.
 
-**Hits** lists every match grouped by document, each in its sentence with the translation; click one to open that sentence in the Analyze tab.
-**Frequencies** counts the distinct matching values instead, which is how you see every gloss a suffix has been given, or every spelling a word has had.
+Results come in two views:
+
+* **Hits** lists every match grouped by document, each in its sentence with the translation. Click one to open that sentence in the Analyze tab.
+* **Frequencies** counts the distinct matching values instead. This is how you see every gloss a suffix has been given, or every spelling a word has had.
 
 = History
 
-In Plaid IGT, all changes are recorded with a meaningful message and the identity of the user that performed the change.
-Additionally, past states of any document are viewable on a read-only basis.
-Open a document's **history** from the rail at the left edge and pick an earlier point to view the document as it was then.
-Each entry is one action as you performed it (for example "Merge morphemes" or "Tokenize"), even when it was made up of several underlying changes.
-Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change.
-Actions performed by a service (transcription, tokenization) show up the same way, under the service's name, or under your own action when you triggered it.
+Every change in Plaid IGT is recorded with a meaningful message and the identity of the person who made it.
+Past states of any document can be viewed, read-only.
+
+Open a document's **history** from the rail at the left edge of the editor.
+Each entry is one action as you performed it, such as "Merge morphemes" or "Tokenize", even when it was made up of several underlying changes.
+Selecting an entry shows the document as it was right after that action.
+An entry made of several changes has an arrow you can expand to see, and select, each individual change.
+
+Actions performed by a service, such as a transcription, show up the same way, under the service's name, or under your own name when you triggered it.
+A change made through an API token names the token too, so a script's work is told apart from yours.
+
+NOTE: Viewing history changes nothing, and there is no undo button.
+To recover an earlier state, export the document while you are viewing it as it was (the Export tab works in that view) and import the archive as a new project.
 
 = Sharing and Permissions
 
@@ -373,66 +517,115 @@ Projects are shared by adding members, each with a role:
 * **Writer**: can edit documents and link vocabulary.
 * **Maintainer**: can also change project settings, manage members, and delete the project.
 
-Add and manage members under the project's **Settings**, in **Access**; members are found by their email address.
-When you only have Reader access, the editor shows everything but its controls are inert.
+Add and manage members under the project's **Settings**, in **Access**.
+Members are found by their email address.
+When you only have Reader access, the editor shows everything, but a banner says so and its controls are inert.
 
 **Invitation links** let people join without an administrator creating each account.
-A maintainer mints a link that grants a role on the project, good for a set number of uses and a set number of days; whoever opens it chooses their own password and lands in the project.
+A maintainer mints a link that grants a role on the project, good for a set number of uses and a set number of days.
+Whoever opens it chooses their own password and lands in the project.
 A link can be revoked at any time, and it stops working on its own if the person who made it loses the authority it grants.
-An administrator can also mint a password-reset link for someone who is locked out.
+
+An **administrator** can also create accounts directly from the same Access section, and can mint a password-reset link for someone who is locked out.
 
 Scripts and services should not borrow your login.
-Mint a named **API token** on your profile page instead: it can be revoked on its own, and its name appears in the history, so machine-made changes are told apart from yours.
+Mint a named **API token** on your profile page instead.
+It can be revoked on its own, and its name appears in the history, so machine-made changes are told apart from yours.
 
 = Typing Special Characters
 
 Most language data needs characters a keyboard does not have.
-Type a backslash followed by a two-letter code in any field that holds language data, and the code turns into the character as you finish it: `\sw` gives ə, `\ng` gives ŋ, `\?g` gives ʔ, `\ae` gives æ, `\:f` gives the length mark ː, and `\'1` gives the stress mark ˈ.
+In any field that holds language data, type a backslash followed by a two-letter code, and the code turns into the character as you finish it:
 
-The codes are Praat's, so if you already use Praat they are the ones you know, and the full list is under Settings → Text and Vocab → Special characters.
+[cols="1,1,2"]
+|===
+| Code | Character | Name
+
+| `\sw` | ə | schwa
+| `\ng` | ŋ | eng
+| `\?g` | ʔ | glottal stop
+| `\ae` | æ | ash
+| `\:f` | ː | length mark
+| `\'1` | ˈ | primary stress
+| `\00` | ∅ | zero morph (see below)
+|===
+
+The codes are Praat's, so if you already use Praat they are the ones you know.
+There are over four hundred of them, and the full list is under **Settings → Text and Vocab → Special characters**.
 For anything not in the list, `\u0250` and the like give any character by its Unicode number.
 Type two backslashes for a plain backslash.
 
-Nothing happens until you type the backslash, so ordinary words are never changed: `blue` stays `blue`.
-This works in the Analyze grid, the baseline, the transcript, lexicon entries, and document metadata.
-It does not apply where a backslash has to mean itself, such as a regular expression in Search or Bulk Edit.
+Nothing happens until you type the backslash, so ordinary words are never changed.
+Codes work in the Analyze grid, the baseline, the transcript, lexicon entries, and document metadata.
+They do not apply where a backslash has to mean itself, such as a regular expression in Search or Bulk Edit.
 
-**Settings → Text and Vocab → Special characters** lists every code, and each one is yours to change.
-Search for a code to see what it types, point it at a different character, take it out of the project, or add a code of your own for a character none of the built-in ones cover.
+Every code is the project's to change.
+Under **Special characters**, search for a code to see what it types, point it at a different character, take it out of the project, or add a code of your own for a character none of the built-in ones cover.
 A code is always two characters, and whatever you set applies to everyone working on the project.
 A code you change is marked as such and can be put back with the reset button beside it, so nothing is lost by experimenting.
 
-The empty set ∅, for a morpheme with a grammatical job and no sound, has a code of its own (`\00`) and a shortcut in the Analyze grid: **Alt+0** in a morpheme form types it.
-Write it as ∅ rather than a capital O with a stroke or a zero, so it exports as a zero morph and the Validation tab does not flag it.
+== The zero morph
 
-TIP: If you type a lot of one language, a system keyboard such as SIL Keyman is worth setting up, and it works everywhere on your computer rather than only here.
+A morpheme with a grammatical job and no sound is written with the empty set sign, ∅.
+It has a code of its own (`\00`) and a shortcut in the Analyze grid: **Alt+0** in a morpheme form types it.
+Write it as ∅ rather than a capital O with a stroke or a zero, so it exports as a zero morph.
+The Validation tab lists any morpheme that looks like a zero written another way.
+
+TIP: If you type a lot of one language, a system keyboard such as SIL Keyman is worth setting up. It works everywhere on your computer rather than only here.
 
 = Keyboard Shortcuts
+
+Every shortcut that takes Ctrl also takes Cmd on a Mac.
+
+== Analyze grid
 
 [cols="1,3"]
 |===
 | Shortcut | Action
 
-| **Tab** / **Shift+Tab** | Move to the next or previous cell in the Analyze grid.
-| **Enter** / **Tab** | Accept the faint guess shown in an empty cell.
+| **Enter** / **Tab** | Move to the next cell in the row, accepting the faint guess if the cell shows one. **Shift+Enter** / **Shift+Tab** go back.
+| **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value.
+| **Esc** | Cancel the edit, or close an open popover or menu.
 | **Alt+↓** | List every value the project has given this form, with counts, and pick one.
 | **-** | In a morpheme form, split the morpheme at the cursor.
 | **=** | In a morpheme form, split at the cursor as a clitic boundary. The outer piece is typed as a proclitic or enclitic, so the boundary renders as `=`.
 | **Backspace** | At the start of a morpheme form, merge it into the previous one.
-| **Alt** + **-** / **Alt** + **=** | Enter a literal hyphen or equals sign in a morpheme form.
+| **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
 | **\** + a two-letter code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
 | **Ctrl/Cmd+Enter** | Confirm the current word's whole analysis and jump to the next.
 | **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays.
-| **Ctrl/Cmd+Shift** + arrow | Jump to the next or previous word that still has unverified proposals.
-| **Ctrl/Cmd** + arrow | Move between auto-made vocabulary-link suggestions.
-| **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence; add **Ctrl** to skip a word.
-| **Enter** (while gathering) | Link the gathered words to one entry. **Escape** drops them.
-| **Escape** | Close an open popover or menu.
-| **Space** (Media tab) | Play or pause the recording, when you are not typing in a box.
-| **Shift+Space** (Media tab) | Play or pause the segment you are in, or the selected stretch of the timeline.
-| **Shift+Left** / **Shift+Right** (Media tab) | Move playback one second back or forward.
-| **Enter** / **Escape** (transcript row) | Save the row and move to the next, or put the row back the way it was.
-| **Up** / **Down** (segment time) | Step the digit box under the caret: milliseconds by 10, 100 with Shift; seconds and minutes by 1, 10 with Shift. **Left** / **Right** move between boxes.
+| **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word that still has unverified proposals.
+| **Ctrl/Cmd+↑** / **↓** | Move between machine-made vocabulary links. On one, **Enter** confirms it and **Backspace** removes it.
+| **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence, and **Ctrl** as well skips a word.
+| **Enter** (while gathering) | Link the gathered words to one entry. **Esc** drops them.
 |===
 
+== Tokenize tab
+
+[cols="1,3"]
+|===
+| Gesture | Action
+
+| **Drag** | Make a word of plain text, or merge the words dragged across.
+| **Click** a word | Split it at a character.
+| **Right-click** a word | Delete it.
+| **Ctrl/Cmd+click** a word | Start a new sentence at it.
+| **↑** on a sentence | Merge it with the previous sentence.
+|===
+
+== Media tab
+
+[cols="1,3"]
+|===
+| Shortcut | Action
+
+| **Space** | Play or pause the recording, when you are not typing in a box.
+| **Shift+Space** | Play or pause the segment you are in, or the selected stretch of the timeline.
+| **Shift+←** / **Shift+→** | Move playback one second back or forward.
+| **Enter** / **Esc** (transcript row) | Save the row and move to the next, or put the row back the way it was.
+| **Tab** (transcript row) | Move to the next field in the row.
+| **↑** / **↓** (segment time) | Step the digit box under the caret: milliseconds by 10, or 100 with Shift. **←** / **→** move between boxes.
+| **Ctrl/Cmd+Enter** / **Esc** (new-segment popover) | Save the segment, or cancel it.
+| **Ctrl/Cmd+wheel** / **wheel** (timeline) | Zoom, or pan.
+|===
