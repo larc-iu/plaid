@@ -557,6 +557,62 @@ def knowledge_graph_from_docs(docs: list[QuestionnaireDoc], language_name: str,
 # ----------------------------------------------------- legacy import (recordings)
 
 
+def fill_slot_from_recording(client: PlaidClient, doc: QuestionnaireDoc, layers: Layers, segment_index: str,
+                             rd: dict, delimiters: list[str], description: str) -> QuestionnaireDoc:
+    """Fill one slot from dig4el recording data (translation, concept words joined by
+    "...", alternate pivot, literal back-translation, comment). Returns the document
+    re-read, since the slot's offsets moved."""
+    translation = rd.get("translation", "")
+    slot = doc.slot(segment_index)
+    if not translation or slot is None:
+        return doc
+    words = tokenize_with_offsets(translation, delimiters)
+    kg_words = kg_word_forms([w[2] for w in words])
+    index_of = {w: i for i, w in enumerate(kg_words) if w}
+    concept_words: dict[str, list[int]] = {}
+    for concept, expr in (rd.get("concept_words") or {}).items():
+        idxs = [index_of[w] for w in expr.split("...") if w in index_of] if expr else []
+        if idxs:
+            concept_words[concept] = idxs
+    fields = {"alternate_pivot": rd.get("alternate_pivot", ""), "back_translation": rd.get("lebt", ""),
+              "note": rd.get("comment", "")}
+    fill_slot(client, doc, slot, translation, delimiters, fields=fields, concept_words=concept_words,
+              description=description)
+    doc = read_questionnaire_document(client, doc.id, layers)
+    doc._layers = layers  # type: ignore[attr-defined]
+    return doc
+
+
+def fill_from_recording(client: PlaidClient, doc: QuestionnaireDoc, layers: Layers, recording: dict,
+                        delimiters: list[str]) -> int:
+    """Fill a questionnaire document from a dig4el recording (a filled workbook): a
+    segment is taken only when the recording's prompt matches the catalog's, as
+    ``consolidate_cq_transcriptions`` did. Returns the number of segments filled."""
+    q = catalog.questionnaires().get(doc.questionnaire)
+    if q is None:
+        return 0
+    n = 0
+    for seg in q.segments:
+        data = (recording.get("data") or {}).get(seg.index)
+        if not data or data.get("cq") != seg.text or not data.get("translation"):
+            continue
+        # The workbook names intents "Intent: ASK+ASSERT"; the recorder (and the
+        # editor's meaning list) name them plainly, one link per intent.
+        cw = {}
+        for key, words in (data.get("concept_words") or {}).items():
+            if key.startswith("Intent: "):
+                for intent in key[len("Intent: "):].split("+"):
+                    if intent.strip():
+                        cw[intent.strip()] = words
+            elif not key.startswith("Type of predicate: "):
+                cw[key] = words
+        data = {**data, "concept_words": cw}
+        doc = fill_slot_from_recording(client, doc, layers, seg.index, data, delimiters,
+                                       f"Import segment {seg.index} of {q.short_title} from a workbook")
+        n += 1
+    return n
+
+
 def resolve_segments_for_kg(kg: dict) -> dict[Any, Segment | None]:
     """Match legacy knowledge-graph entries to catalog segments by prompt text,
     disambiguating repeated prompts by the questionnaire of the previous entry."""
@@ -592,32 +648,8 @@ def import_legacy_kg(client: PlaidClient, project_id: str, layers: Layers, kg: d
         doc = read_questionnaire_document(client, doc_meta["id"], layers)
         doc._layers = layers  # type: ignore[attr-defined]
         for key, seg in entries:
-            rd = kg[key]["recording_data"]
-            translation = rd.get("translation", "")
-            if not translation:
-                continue
-            slot = doc.slot(seg.index)
-            if slot is None:
-                continue
-            words = tokenize_with_offsets(translation, delimiters)
-            kg_words = kg_word_forms([w[2] for w in words])
-            index_of = {w: i for i, w in enumerate(kg_words) if w}
-            concept_words: dict[str, list[int]] = {}
-            for concept, expr in (rd.get("concept_words") or {}).items():
-                idxs = [index_of[w] for w in expr.split("...") if w in index_of] if expr else []
-                if idxs:
-                    concept_words[concept] = idxs
-            fields = {
-                "alternate_pivot": rd.get("alternate_pivot", ""),
-                "back_translation": rd.get("lebt", ""),
-                "note": rd.get("comment", ""),
-            }
-            fill_slot(client, doc, slot, translation, delimiters, fields=fields,
-                      concept_words=concept_words,
-                      description=f"Import segment {seg.index} of {q.short_title}")
-            # offsets moved: re-read the document before the next slot
-            doc = read_questionnaire_document(client, doc.id, layers)
-            doc._layers = layers  # type: ignore[attr-defined]
+            doc = fill_slot_from_recording(client, doc, layers, seg.index, kg[key]["recording_data"], delimiters,
+                                           f"Import segment {seg.index} of {q.short_title}")
         if publish:
             set_published(client, doc.id, True)
         created.append({"uid": uid, "id": doc.id})

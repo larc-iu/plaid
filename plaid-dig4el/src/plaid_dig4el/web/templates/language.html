@@ -38,7 +38,7 @@
               </form>
               {% else %}{{ 'yes' if d.doc.published else 'no' }}{% endif %}
             {% endif %}</td>
-        <td class="text-end">{% if not d.missing %}<a href="/languages/{{ lang.id }}/documents/{{ d.doc.id }}" class="btn btn-sm btn-link">Translate</a>
+        <td class="text-end text-nowrap">{% if not d.missing %}<a href="/languages/{{ lang.id }}/questionnaires/{{ d.ref.questionnaire_uid }}/template.xlsx" class="btn btn-sm btn-link" title="Excel workbook for transcribing in the field">Excel</a><a href="/languages/{{ lang.id }}/questionnaires/{{ d.ref.questionnaire_uid }}/template.docx" class="btn btn-sm btn-link" title="Word document for transcribing in the field">Word</a><a href="/languages/{{ lang.id }}/documents/{{ d.doc.id }}" class="btn btn-sm btn-link">Translate</a>
             {% elif access.can_manage %}
             <form method="post" action="/languages/{{ lang.id }}/documents/{{ d.ref.plaid_document_id }}/forget" class="m-0">
               <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
@@ -51,13 +51,20 @@
   {% else %}
   <div class="card-body text-secondary">No questionnaires yet.</div>
   {% endif %}
-  {% if access.can_edit and available %}
-  <div class="card-footer bg-white">
+  {% if access.can_edit %}
+  <div class="card-footer bg-white d-flex flex-wrap gap-3 align-items-center">
+    {% if available %}
     <form method="post" action="/languages/{{ lang.id }}/questionnaires" class="d-flex gap-2 align-items-center m-0">
       <select name="uid" class="form-select form-select-sm w-auto">
         {% for q in available %}<option value="{{ q.uid }}">{{ q.short_title }} ({{ q.segments|length }} segments)</option>{% endfor %}
       </select>
       <button type="submit" class="btn btn-sm btn-outline-primary">Add questionnaire</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/languages/{{ lang.id }}/transcriptions" enctype="multipart/form-data" class="d-flex gap-1 align-items-center m-0">
+      <input type="file" class="form-control form-control-sm w-auto" name="file" accept=".xlsx" required>
+      <button type="submit" class="btn btn-sm btn-outline-primary">Import a filled workbook</button>
+      <span class="small text-secondary">An Excel workbook made from the templates above and filled in the field.</span>
     </form>
   </div>
   {% endif %}

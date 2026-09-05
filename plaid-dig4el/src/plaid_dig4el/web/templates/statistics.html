@@ -24,7 +24,7 @@
       {% if word_detail %}
         <div class="mt-2"><strong>{{ word }}</strong> is, or is part of, the expression of:
           {% for c in word_detail.concepts %}<span class="badge text-bg-light fw-normal">{{ c.concept }} × {{ c.count }}</span> {% else %}<span class="text-secondary">nothing connected yet</span>{% endfor %}</div>
-        <div class="mt-1 text-secondary">{{ word_detail.entries|length }} sentence{{ 's' if word_detail.entries|length != 1 }}:</div>
+        <div class="mt-1 text-secondary">{{ word_detail.entries|length }} sentence{{ 's' if word_detail.entries|length != 1 }} · <a href="/languages/{{ lang.id }}/corpus.docx?entries={{ word_detail.entries|map(attribute=0)|join(',') }}">download them glossed, as Word</a></div>
         <div style="max-height: 14rem; overflow: auto">{% for i, src, tgt in word_detail.entries %}<div class="border-top py-1"><div>{{ tgt }}</div><div class="text-secondary">{{ src }}</div></div>{% endfor %}</div>
       {% endif %}
     </div></div>
@@ -38,7 +38,7 @@
       {% if value_detail %}
         <div class="mt-2"><strong>Words that set {{ value }} apart</strong> (frequency per thousand words, minus their frequency with the other values):</div>
         <div class="d-flex flex-wrap gap-1 mt-1">{% for w, d in value_detail.diff %}<span class="badge {{ 'text-bg-success' if d > 0 else 'text-bg-light' }} fw-normal">{{ w }} {{ '%+.1f'|format(d) }}</span>{% endfor %}</div>
-        <div class="mt-1 text-secondary">{{ value_detail.entries|length }} sentence{{ 's' if value_detail.entries|length != 1 }} with {{ value }}:</div>
+        <div class="mt-1 text-secondary">{{ value_detail.entries|length }} sentence{{ 's' if value_detail.entries|length != 1 }} with {{ value }} · <a href="/languages/{{ lang.id }}/corpus.docx?entries={{ value_detail.entries|map(attribute=0)|join(',') }}">download them glossed, as Word</a></div>
         <div style="max-height: 14rem; overflow: auto">{% for i, src, tgt in value_detail.entries %}<div class="border-top py-1"><div>{{ tgt }}</div><div class="text-secondary">{{ src }}</div></div>{% endfor %}</div>
       {% endif %}
     </div></div>

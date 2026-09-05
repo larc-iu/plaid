@@ -12,6 +12,7 @@
     {% if not access.can_edit %} · you can read but not edit{% endif %}
   </div>
 </div>
+{% if request.query_params.get('imported') %}<div class="alert alert-success small py-2">{{ request.query_params.get('imported') }} segment{{ 's' if request.query_params.get('imported') != '1' }} filled from the workbook.</div>{% endif %}
 {% for p in doc.problems %}<div class="alert alert-warning small py-2">{{ p }}</div>{% endfor %}
 <div class="alert alert-light border small py-2">For each prompt, type how a speaker would say it. Then choose each meaning listed and click the word or words that express it. A meaning may have no word, and a word may carry several meanings.</div>
 {% for kind, item in rows %}

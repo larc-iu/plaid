@@ -23,7 +23,7 @@ from markupsafe import Markup, escape
 from plaid_client import PlaidClient
 from plaid_client.http import PlaidAPIError
 
-from .. import auth, catalog_store, db, documents, docx_export, explore, generation, jobs, plaid_gateway as gw, sentences
+from .. import auth, catalog_store, db, documents, docx_export, explore, generation, jobs, plaid_gateway as gw, sentences, transcription_io
 from ..inference import kg as kgmod, legacy_labels, pipeline, runner
 from ..legacy import graphs_utils as graphs
 from ..reference import catalog
@@ -1427,4 +1427,90 @@ def language_statistics(request: Request, language_id: str, word: str = "", feat
                   value_counts=sorted(((v, len(e)) for v, e in value_loc.items()), key=lambda t: -t[1]),
                   value=value, value_detail=explore.value_detail(kg, value_loc, value, ws["total"], delimiters)
                   if value and value in value_loc else None)
+
+
+# ---------------------------------------------- transcription workbooks and documents
+
+
+def _template_names(lang: db.Language, uid: str, suffix: str) -> str:
+    q = catalog.raw_questionnaires().get(uid, {})
+    stem = "".join(ch if ch.isalnum() else "_" for ch in q.get("title", uid))[:40].strip("_")
+    return f"dig4el_{stem}_{uid}_{lang.name.replace(' ', '_')}.{suffix}"
+
+
+@app.get("/languages/{language_id}/questionnaires/{uid}/template.xlsx")
+def questionnaire_template_xlsx(request: Request, language_id: str, uid: str):
+    """dig4el's Excel workbook for transcribing a questionnaire in the field."""
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        Access(user, lang)
+    raw = catalog.raw_questionnaires().get(uid)
+    if raw is None:
+        raise HTTPException(404)
+    buf = transcription_io.generate_transcription_xlsx(raw, lang.name, lang.pivot_language)
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f'attachment; filename="{_template_names(lang, uid, "xlsx")}"'})
+
+
+@app.get("/languages/{language_id}/questionnaires/{uid}/template.docx")
+def questionnaire_template_docx(request: Request, language_id: str, uid: str):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        Access(user, lang)
+    raw = catalog.raw_questionnaires().get(uid)
+    if raw is None:
+        raise HTTPException(404)
+    buf = transcription_io.generate_transcription_doc(raw, lang.name, lang.pivot_language)
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                             headers={"Content-Disposition": f'attachment; filename="{_template_names(lang, uid, "docx")}"'})
+
+
+@app.post("/languages/{language_id}/transcriptions")
+async def transcription_upload(request: Request, language_id: str, file: UploadFile = File(...)):
+    """Import a filled transcription workbook: the questionnaire it names gets a
+    document if the language lacks one, and every translated segment fills its slot."""
+    user = current_user(request)
+    raw = await file.read()
+    try:
+        recording = transcription_io.cq_translation_from_transcription_xlsx(raw)
+    except Exception as e:
+        raise HTTPException(400, f"This is not a transcription workbook: {e}")
+    uid = str(recording.get("cq_uid") or "")
+    q = catalog.questionnaires().get(uid)
+    if q is None:
+        raise HTTPException(400, f"The workbook names questionnaire {uid or '(none)'}, which the catalog does not have.")
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_edit(access)
+        ref = next((r for r in lang.documents if r.questionnaire_uid == uid), None)
+        if ref is None:
+            created = gw.create_questionnaire_document(access.client, lang.plaid_project_id, access.layers, q)
+            ref = db.QuestionnaireDocument(language_id=lang.id, questionnaire_uid=uid, plaid_document_id=created["id"])
+            s.add(ref)
+            s.commit()
+        doc_id = ref.plaid_document_id
+        delimiters = lang.delimiters or catalog.DEFAULT_DELIMITERS
+    doc = access.load_doc(doc_id)
+    filled = gw.fill_from_recording(access.client, doc, access.layers, recording, delimiters)
+    return redirect(f"/languages/{language_id}/documents/{doc_id}?imported={filled}", request)
+
+
+@app.get("/languages/{language_id}/corpus.docx")
+def corpus_docx(request: Request, language_id: str, entries: str = ""):
+    """dig4el's partial-corpus Word export: the chosen knowledge-graph entries with
+    their glosses."""
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        _ = lang.documents
+    kg, _inputs = runner.gather_inputs(access.client, lang)
+    wanted = [int(x) for x in entries.split(",") if x.strip().isdigit()]
+    indices = [i for i in wanted if i in kg] or list(kg)
+    buf = transcription_io.generate_docx_from_kg_index_list(kg, gw.KG_DELIMITERS, indices)
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                             headers={"Content-Disposition": f'attachment; filename="dig4el_{lang.name.replace(" ", "_")}_corpus.docx"'})
 

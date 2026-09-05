@@ -67,6 +67,22 @@ Rendering: the models mark target words with `**...**`; the `emph` filter render
 embedded by the `index_documents` job into `document_chunks`; `contribute` answers
 dig4el's file-search prompt over the nearest chunks and reports the file names as sources.
 
+## Catalog editors, explorers, field-work documents
+
+The catalog is editable (dig4el's expert features): `catalog_store.py` seeds
+`catalog_entries` from the bundled files and installs a database source into
+`reference/catalog.py`; every edit calls `catalog.invalidate()`. Editing is admin-only.
+`legacy/graphs_utils.py` is dig4el's requirement-graph code verbatim; `value_options` in
+web/app.py reproduces the CQ editor's walk of the concept tree. Renaming a prompt does
+not touch existing translations, and the inference observers match some prompts by
+their exact text.
+
+`explore.py` serves the WALS/Grambank/probability pages from the reference tables and
+the per-language statistics with `legacy/stats.py` and `legacy/kg_explore.py` (verbatim).
+`transcription_io.py` is dig4el's Excel/Word field-work template, the workbook parser
+(its template leaves row 2 empty; data starts at row 3) and the glossed-corpus Word
+export; a filled workbook fills slots through `plaid_gateway.fill_from_recording`.
+
 ## Plaid-side changes degrade, they never crash
 
 Anything igt or another app does to the shared project is legitimate. The gateway
