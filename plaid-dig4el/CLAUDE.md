@@ -79,6 +79,7 @@ their exact text.
 
 `explore.py` serves the WALS/Grambank/probability pages from the reference tables and
 the per-language statistics with `legacy/stats.py` and `legacy/kg_explore.py` (verbatim).
+`/compare` is dig4el's compare page (one pivot sentence across languages, with glosses).
 `transcription_io.py` is dig4el's Excel/Word field-work template, the workbook parser
 (its template leaves row 2 empty; data starts at row 3) and the glossed-corpus Word
 export; a filled workbook fills slots through `plaid_gateway.fill_from_recording`.
