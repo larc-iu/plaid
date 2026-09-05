@@ -34,13 +34,13 @@ It runs in a web browser and covers transcription, interlinear analysis, and the
 
 Key features include:
 
-* **Transcription.** Attach audio or video to a document and transcribe it by ear, one time-aligned segment at a time, with playback speed control and a speaker label on each segment. The transcript is the text that is then analyzed.
+* **Transcription.** Attach audio or video to a document and transcribe it one time-aligned segment at a time, with playback speed control and a speaker label on each segment. The transcript is the text that is then analyzed.
 * **Interlinear analysis.** Divide the text into sentences, words, and morphemes, and annotate them with the fields your project defines: glosses, parts of speech, free translations, and others.
 * **Vocabulary linking.** Words and morphemes may be linked to entries in a shared vocabulary. A linked entry supplies its gloss wherever the form occurs, so an item is analyzed consistently across the corpus. Homonyms, affixes and clitics, and multi-word expressions are supported.
 * **Import and export.** Import a FieldWorks (FLEx) backup, ELAN files, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), CLDF, or plain text, or copy a sentence as LaTeX.
 * **Collaboration.** A project is shared with its members, each of which may have reader, writer, or maintainer privileges. A central database lets all users see the latest state of the data, with no import/export required.
-* **Audit log and time travel.** Every change is recorded in an audit log with its author, and any document can be viewed as it was at an earlier time.
-* **AI assistance.** A connected AI model can transcribe a recording, draft translations, or propose segmentations and glosses. Machine output is marked until a person confirms it, and human work is never overwritten.
+* **Audited edits.** Every change is recorded in an audit log with its author, and any document can be viewed as it was at an earlier time.
+* **Pluggable AI assistance.** A connected AI model can transcribe a recording, draft translations, or propose segmentations and glosses. Machine output is marked until a person confirms it, and human work is never overwritten.
 * **Special character entry support.** Praat's backslash codes work in every field: `\sw` for ə, `\ng` for ŋ, `\?g` for ʔ. Additional codes may also be defined.
 * **Comments.** Any sentence, word, morpheme, or annotation can carry a comment thread to allow in-context discussion of analyses.
 * **Bulk edit and query tools.** Search every document by form or annotation, respell a word across the corpus, and hold a field to a controlled list of tags.
@@ -137,7 +137,7 @@ Each segment is a stretch of the recording with its text, which becomes part of 
 Media is optional, and a document with none is simply a text.
 Common audio and video formats are accepted (MP3, WAV, M4A, MP4, WebM, and others), and an upload shows its progress.
 
-=== Transcribing by ear
+=== The transcript
 
 The transcript is a list of segments in time order, and it is built for typing what you hear.
 Play the recording, then type the utterance you just heard into the **New segment** row and press Enter.
