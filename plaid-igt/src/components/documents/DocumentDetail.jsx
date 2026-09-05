@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
 import { HistoryDrawer } from './HistoryDrawer.jsx';
+import { RestoreDialog } from './RestoreDialog.jsx';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { DocumentMedia } from './media/DocumentMedia.jsx';
@@ -132,6 +133,8 @@ const DocumentEditor = () => {
   // selecting a history entry reloads this doc at that snapshot.
   const [doc, setDoc] = useState(null);
   const [asOf, setAsOf] = useState(null);
+  // The history entry a restore is being confirmed for (RestoreDialog).
+  const [restoreEntry, setRestoreEntry] = useState(null);
   // The active tab lives in ?tab=, so a reload, a bookmark, and the back button
   // all keep the tab the user was on, and a search/concordance click-through
   // can open the document straight onto Analyze.
@@ -445,6 +448,23 @@ const DocumentEditor = () => {
         error={history.error}
         onSelectEntry={handleSelectHistoryEntry}
         selectedEntry={history.selectedEntry}
+        canRestore={permissions.canManage}
+        onRestore={setRestoreEntry}
+      />
+      <RestoreDialog
+        open={!!restoreEntry}
+        onOpenChange={(o) => {
+          if (!o) setRestoreEntry(null);
+        }}
+        client={client}
+        documentId={documentId}
+        entry={restoreEntry}
+        onRestored={async () => {
+          // Back to the live state, which the snapshot effect re-reads, and
+          // the history rail shows the restore as its newest entry.
+          handleSelectHistoryEntry(null);
+          await history.fetchAuditLog();
+        }}
       />
 
       {/* History rail trigger (left edge) */}

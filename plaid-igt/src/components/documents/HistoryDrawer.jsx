@@ -31,6 +31,8 @@ export const HistoryDrawer = ({
   error,
   onSelectEntry,
   selectedEntry,
+  canRestore = false,
+  onRestore,
 }) => {
   const [expanded, setExpanded] = useState(() => new Set());
 
@@ -193,9 +195,16 @@ export const HistoryDrawer = ({
               <p className="line-clamp-2 text-xs font-medium">{selectedEntry.label}</p>
             )}
             <p className="text-xs text-muted-foreground">{formatTime(selectedEntry.time)}</p>
-            <Button size="sm" onClick={() => onSelectEntry(null)}>
-              Return to Current State
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => onSelectEntry(null)}>
+                Return to Current State
+              </Button>
+              {canRestore && (
+                <Button size="sm" variant="outline" onClick={() => onRestore?.(selectedEntry)}>
+                  Restore to this state
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       )}

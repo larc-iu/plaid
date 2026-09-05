@@ -516,8 +516,12 @@ An entry made of several changes has an arrow you can expand to see, and select,
 Actions performed by a service, such as a transcription, show up the same way, under the service's name, or under your own name when you triggered it.
 A change made through an API token names the token too, so a script's work is told apart from yours.
 
-NOTE: Viewing history changes nothing, and there is no undo button.
-To recover an earlier state, export the document while you are viewing it as it was (the Export tab works in that view) and import the archive as a new project.
+Viewing history changes nothing.
+To bring a document back to an earlier state, select that entry and click **Restore to this state**.
+The document is edited in place until it matches: the text, the sentences, words and morphemes, the annotations, the vocabulary links, and the metadata.
+Before anything is written, a dialog lists what will change, and the restore lands in the history as one more entry, so the state just before it can be restored in turn.
+Comments stay where they are: a comment on something the restore brought back keeps its place, and one on something the restore removed moves to the Comments tab's Outdated section.
+Restoring is for a project's maintainers.
 
 = Sharing and Permissions
 
