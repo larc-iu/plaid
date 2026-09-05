@@ -376,6 +376,7 @@ def language_page(request: Request, language_id: str, imported: int | None = Non
                         for x in d["doc"].slots if x.filled and x.fields.get("prompt", (None, ""))[1].strip())
         augmented = s.query(db.SentenceAugmentation).filter_by(language_id=lang.id).count()
         augment_job = _latest_job(s, "augment", lang.id)
+        layer_status = gw.check_layers(access.project, access.layers)
         outputs = list(lang.outputs)
         generate_job = _latest_job(s, "generate", lang.id)
         has_approved = any(r.approved for r in lang.runs)
@@ -385,7 +386,8 @@ def language_page(request: Request, language_id: str, imported: int | None = Non
                   runs=runs, imported=imported, published=published, corpora=corpora,
                   pool_size=pool_size, augmented=augmented, augment_job=augment_job,
                   outputs=outputs, generate_job=generate_job, has_approved=has_approved,
-                  files=files, index_job=index_job,
+                  files=files, index_job=index_job, layer_status=layer_status,
+                  repaired=request.query_params.get("repaired", ""),
                   lesson_topics=list(generation.lesson_seeds()), sketch_topics=generation.SKETCH_TOPICS,
                   readers_languages=generation.READERS_LANGUAGES, readers_types=generation.READERS_TYPES)
 
@@ -1667,4 +1669,23 @@ def guests_revoke(request: Request):
             pass
     auth.clear_guest_config()
     return redirect("/admin/guests", request)
+
+
+@app.post("/languages/{language_id}/repair")
+def language_repair(request: Request, language_id: str):
+    """Recreate the layers another app deleted and rebuild what the surviving data allows."""
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_manage(access)
+        docs = [{"id": r.plaid_document_id, "kind": "questionnaire", "questionnaire": r.questionnaire_uid}
+                for r in lang.documents]
+        docs += [{"id": c.plaid_document_id, "kind": "corpus", "questionnaire": ""} for c in lang.corpora]
+        new_layers, report = gw.repair_layers(access.client, lang.plaid_project_id, access.layers, docs,
+                                              lang.delimiters or catalog.DEFAULT_DELIMITERS)
+        lang.layers = new_layers.to_config()
+        s.commit()
+    from urllib.parse import quote
+    return redirect(f"/languages/{language_id}?repaired={quote(' '.join(report))}", request)
 

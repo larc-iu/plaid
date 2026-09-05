@@ -21,6 +21,16 @@
   {% endif %}
 </div>
 {% if imported %}<div class="alert alert-success py-2 small">Imported {{ imported }} questionnaire translation{{ 's' if imported != 1 }}.</div>{% endif %}
+{% if repaired %}<div class="alert alert-success py-2 small">{{ repaired }}</div>{% endif %}
+{% if not layer_status.ok %}
+<div class="alert alert-danger py-2 small d-flex flex-wrap align-items-center gap-2">
+  <span>Layers of this language were deleted in Plaid: {{ layer_status.missing|join(', ')|replace('field:', 'field ') }}.</span>
+  {% if access.can_manage %}
+  <form method="post" action="/languages/{{ lang.id }}/repair" class="m-0"><button type="submit" class="btn btn-sm btn-danger">Repair layers</button></form>
+  <span>Repair recreates them and rebuilds what the remaining data allows: slots from the text's lines, words by tokenizing again, prompts from the catalog. Links and fields on a deleted layer are lost.</span>
+  {% else %}<span>A caretaker can repair them.</span>{% endif %}
+</div>
+{% endif %}
 
 <div class="card mb-3">
   <div class="card-header bg-white fw-semibold">Questionnaires</div>

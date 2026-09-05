@@ -97,6 +97,146 @@ def read_layers(project: dict[str, Any]) -> Layers:
     return Layers.from_config(project["config"][NS]["layers"])
 
 
+# ------------------------------------------------------------- layer repair
+
+
+def check_layers(project: dict[str, Any], layers: Layers) -> dict[str, Any]:
+    """Which of the language's layers still exist in the project. Deleting a token
+    layer takes its span layers with it, so a missing sentence layer means the fields
+    are gone too, and a missing word layer takes the Concept layer."""
+    text_layer = _find(project.get("text_layers", []), "id", layers.text)
+    token_layers = (text_layer or {}).get("token_layers", [])
+    sentence = _find(token_layers, "id", layers.sentence)
+    word = _find(token_layers, "id", layers.word)
+    concept = _find((word or {}).get("span_layers", []), "id", layers.concept)
+    fields = {key: _find((sentence or {}).get("span_layers", []), "id", lid) is not None
+              for key, lid in layers.fields.items()}
+    missing = []
+    if text_layer is None:
+        missing.append("text")
+    if sentence is None:
+        missing.append("sentence")
+    if word is None:
+        missing.append("word")
+    if concept is None:
+        missing.append("concept")
+    missing += [f"field:{k}" for k, ok in fields.items() if not ok]
+    return {"missing": missing, "ok": not missing}
+
+
+def repair_layers(client: PlaidClient, project_id: str, layers: Layers, documents: list[dict[str, str]],
+                  delimiters: list[str]) -> tuple[Layers, list[str]]:
+    """Recreate whatever layers are gone and rebuild what the surviving data allows:
+    slots from a text's newlines, words by retokenizing, prompts from the catalog.
+    ``documents`` are ``{"id", "kind", "questionnaire"}``. Returns the new layer ids
+    and a plain-words report of what came back and what was lost."""
+    project = client.projects.get(project_id)
+    status = check_layers(project, layers)
+    if status["ok"]:
+        return layers, ["Nothing to repair."]
+    missing = set(status["missing"])
+    report: list[str] = []
+    new = Layers(**layers.to_config())
+    with client.operation("Repair the language's layers"):
+        if "text" in missing:
+            text = client.text_layers.create(project_id, "Text")
+            client.text_layers.set_config(text["id"], PLAID_NS, "role", "baseline")
+            new.text = text["id"]
+            missing |= {"sentence", "word", "concept"} | {f"field:{k}" for k in SENTENCE_FIELDS}
+            report.append("The text layer was gone: every translation and corpus sentence is lost. "
+                          "The questionnaires get empty slots again; corpora are empty and can be deleted or re-added.")
+        if "sentence" in missing:
+            sentence = client.token_layers.create(new.text, "Sentence", overlap_mode="partitioning")
+            client.token_layers.set_config(sentence["id"], PLAID_NS, "role", "sentence")
+            new.sentence = sentence["id"]
+            missing |= {"word", "concept"} | {f"field:{k}" for k in SENTENCE_FIELDS}
+            report.append("The sentence layer was gone (with the prompt, alternate pivot, back-translation and note "
+                          "fields): slots were rebuilt from the text's lines; prompts come back from the catalog; "
+                          "alternate pivots, back-translations and notes are lost.")
+        if "word" in missing:
+            word = client.token_layers.create(new.text, "Word", overlap_mode="non-overlapping",
+                                              parent_token_layer_id=new.sentence)
+            client.token_layers.set_config(word["id"], PLAID_NS, "role", "word")
+            new.word = word["id"]
+            missing.add("concept")
+            report.append("The word layer was gone: words were tokenized again; the meaning links are lost.")
+        if "concept" in missing:
+            concept = client.span_layers.create(new.word, CONCEPT_LAYER)
+            client.span_layers.set_config(concept["id"], NS, "kind", "concept")
+            new.concept = concept["id"]
+            if "word" not in missing:
+                report.append("The Concept layer was gone: it is back, empty; the meaning links are lost.")
+        for key, label in SENTENCE_FIELDS.items():
+            if f"field:{key}" in missing:
+                layer = client.span_layers.create(new.sentence, label)
+                client.span_layers.set_config(layer["id"], IGT_NS, "scope", "Sentence")
+                client.span_layers.set_config(layer["id"], NS, "field", key)
+                new.fields[key] = layer["id"]
+                if "sentence" not in missing:
+                    report.append(f"The {label} field was gone: it is back, empty"
+                                  + (", with the prompts from the catalog." if key == "prompt" else "."))
+        client.projects.set_config(project_id, NS, "layers", new.to_config())
+        # ---- rebuild per document
+        for d in documents:
+            q = catalog.questionnaires().get(d.get("questionnaire") or "") if d["kind"] == "questionnaire" else None
+            doc = client.documents.get(d["id"], include_body=True)
+            tl = _find(doc["text_layers"], "id", new.text)
+            text = (tl or {}).get("text") or {}
+            if not text.get("id"):
+                if q is None:
+                    continue  # a corpus with no text left: nothing to rebuild from
+                text = client.texts.create(new.text, d["id"], "\n" * len(q.segments))
+                body = text["body"] if "body" in text else "\n" * len(q.segments)
+            else:
+                body = text.get("body", "")
+            lines = body.split("\n")
+            if body.endswith("\n"):
+                lines = lines[:-1]
+            sentence_layer = _find((tl or {}).get("token_layers", []), "id", new.sentence) or {}
+            sentence_tokens = sorted(sentence_layer.get("tokens", []), key=lambda t: t["begin"])
+            if "sentence" in missing or not sentence_tokens:
+                # one slot per line, in questionnaire order when the line count matches
+                specs, pos = [], 0
+                for i, line in enumerate(lines):
+                    meta = {}
+                    if q is not None and len(lines) == len(q.segments):
+                        seg = q.segments[i]
+                        meta = {"questionnaire": q.uid, "segment": seg.index, "legacyIndex": seg.legacy_index,
+                                "speaker": seg.speaker}
+                    else:
+                        meta = {"segment": str(i + 1)}
+                    specs.append({"token_layer_id": new.sentence, "text": text["id"], "begin": pos,
+                                  "end": pos + len(line) + 1, "metadata": {NS: meta}})
+                    pos += len(line) + 1
+                if specs:
+                    ids = client.tokens.bulk_create(specs)["ids"]
+                    sentence_tokens = [{"id": tid, "begin": sp["begin"], "end": sp["end"], "metadata": sp["metadata"]}
+                                       for tid, sp in zip(ids, specs)]
+                if q is not None and len(lines) != len(q.segments):
+                    report.append(f"{q.short_title}: {len(lines)} lines for {len(q.segments)} segments, so the slots "
+                                  "are numbered by position and their prompts could not be restored.")
+            if f"field:prompt" in missing and q is not None:
+                spans = []
+                for tok in sentence_tokens:
+                    idx = str(((tok.get("metadata") or {}).get(NS) or {}).get("segment", ""))
+                    seg = q.segment(idx)
+                    if seg is not None and ((tok.get("metadata") or {}).get(NS) or {}).get("questionnaire") == q.uid:
+                        spans.append({"span_layer_id": new.fields["prompt"], "tokens": [tok["id"]], "value": seg.text})
+                if spans:
+                    client.spans.bulk_create(spans)
+            if "word" in missing:
+                words = []
+                for tok in sentence_tokens:
+                    content = body[tok["begin"]:tok["end"]]
+                    if content.endswith("\n"):
+                        content = content[:-1]
+                    words += [{"token_layer_id": new.word, "text": text["id"], "begin": tok["begin"] + b,
+                               "end": tok["begin"] + e} for b, e, _ in tokenize_with_offsets(content, delimiters)]
+                if words:
+                    client.tokens.bulk_create(words)
+    return new, report
+
+
 # ------------------------------------------------------- questionnaire documents
 
 
