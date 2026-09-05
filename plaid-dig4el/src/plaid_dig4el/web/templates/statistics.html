@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Statistics · {{ lang.name }} · dig4el{% endblock %}
+{% block crumbs %}<li class="breadcrumb-item"><a href="/languages/{{ lang.id }}">{{ lang.name }}</a></li><li class="breadcrumb-item active">Statistics</li>{% endblock %}
+{% block content %}
+{% set base = "/languages/" ~ lang.id ~ "/statistics" %}
+<h4>Statistics and exploration of the translations</h4>
+<div class="text-secondary small mb-2">{{ sentences }} published questionnaire sentences · {{ stats.words|length }} distinct words · {{ stats.total }} words in all · average transition entropy {{ '%.3f'|format(stats.entropy) }} bits</div>
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header bg-white fw-semibold">Most frequent words</div>
+      <div style="max-height: 30rem; overflow: auto"><table class="table table-sm table-striped mb-0 small">
+        <thead class="table-light"><tr><th>Word</th><th class="text-end">Count</th><th>Often preceded by</th><th>Often followed by</th></tr></thead>
+        <tbody>{% for w in top %}<tr>
+          <td><a href="{{ base }}?word={{ w.word|urlencode }}&feature={{ feature|urlencode }}&value={{ value|urlencode }}">{{ w.word }}</a></td><td class="text-end">{{ w.frequency }}</td>
+          <td class="text-secondary">{% for p, pr in (w.preceding_prob.items()|list)[:3] %}{{ p or '(start)' }} {{ '%.0f'|format(100 * pr) }}%{{ ', ' if not loop.last }}{% endfor %}</td>
+          <td class="text-secondary">{% for f, pr in (w.following_prob.items()|list)[:3] %}{{ f or '(end)' }} {{ '%.0f'|format(100 * pr) }}%{{ ', ' if not loop.last }}{% endfor %}</td>
+        </tr>{% endfor %}</tbody></table></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-3"><div class="card-header bg-white fw-semibold">One word</div><div class="card-body small">
+      <form method="get" action="{{ base }}" class="d-flex gap-1 m-0"><input type="hidden" name="feature" value="{{ feature }}"><input type="hidden" name="value" value="{{ value }}">
+        <input type="text" class="form-control form-control-sm w-auto" name="word" value="{{ word }}" placeholder="A word of {{ lang.name }}"><button type="submit" class="btn btn-sm btn-outline-secondary">Look up</button></form>
+      {% if word_detail %}
+        <div class="mt-2"><strong>{{ word }}</strong> is, or is part of, the expression of:
+          {% for c in word_detail.concepts %}<span class="badge text-bg-light fw-normal">{{ c.concept }} × {{ c.count }}</span> {% else %}<span class="text-secondary">nothing connected yet</span>{% endfor %}</div>
+        <div class="mt-1 text-secondary">{{ word_detail.entries|length }} sentence{{ 's' if word_detail.entries|length != 1 }}:</div>
+        <div style="max-height: 14rem; overflow: auto">{% for i, src, tgt in word_detail.entries %}<div class="border-top py-1"><div>{{ tgt }}</div><div class="text-secondary">{{ src }}</div></div>{% endfor %}</div>
+      {% endif %}
+    </div></div>
+    <div class="card"><div class="card-header bg-white fw-semibold">One feature, value by value</div><div class="card-body small">
+      <form method="get" action="{{ base }}" class="d-flex gap-1 m-0"><input type="hidden" name="word" value="{{ word }}">
+        <select name="feature" class="form-select form-select-sm"><option value="">Choose a feature</option>{% for f in features %}<option {{ 'selected' if f == feature }}>{{ f }}</option>{% endfor %}</select>
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Explore</button></form>
+      {% if value_counts %}
+        <div class="mt-2 d-flex flex-wrap gap-1">{% for v, n in value_counts %}<a class="btn btn-sm {{ 'btn-primary' if v == value else 'btn-outline-secondary' }}" href="{{ base }}?word={{ word|urlencode }}&feature={{ feature|urlencode }}&value={{ v|urlencode }}">{{ v }} <span class="badge text-bg-light">{{ n }}</span></a>{% endfor %}</div>
+      {% endif %}
+      {% if value_detail %}
+        <div class="mt-2"><strong>Words that set {{ value }} apart</strong> (frequency per thousand words, minus their frequency with the other values):</div>
+        <div class="d-flex flex-wrap gap-1 mt-1">{% for w, d in value_detail.diff %}<span class="badge {{ 'text-bg-success' if d > 0 else 'text-bg-light' }} fw-normal">{{ w }} {{ '%+.1f'|format(d) }}</span>{% endfor %}</div>
+        <div class="mt-1 text-secondary">{{ value_detail.entries|length }} sentence{{ 's' if value_detail.entries|length != 1 }} with {{ value }}:</div>
+        <div style="max-height: 14rem; overflow: auto">{% for i, src, tgt in value_detail.entries %}<div class="border-top py-1"><div>{{ tgt }}</div><div class="text-secondary">{{ src }}</div></div>{% endfor %}</div>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Conditional probabilities · dig4el{% endblock %}
+{% block crumbs %}<li class="breadcrumb-item active">Conditional probabilities</li>{% endblock %}
+{% block content %}
+<h4>Conditional probabilities between parameters</h4>
+<div class="card"><div class="card-body small">
+  <form method="get" action="/explore/probabilities" class="d-flex flex-wrap gap-1 align-items-center m-0">
+    <span>Show the probability of</span>
+    <select name="p1" class="form-select form-select-sm" style="max-width: 28rem">{% for group, names in parameters %}<optgroup label="{{ group }}">{% for p in names %}<option {{ 'selected' if p == p1 }}>{{ p }}</option>{% endfor %}</optgroup>{% endfor %}</select>
+    <span>given</span>
+    <select name="p2" class="form-select form-select-sm" style="max-width: 28rem">{% for group, names in parameters %}<optgroup label="{{ group }}">{% for p in names %}<option {{ 'selected' if p == p2 }}>{{ p }}</option>{% endfor %}</optgroup>{% endfor %}</select>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Show</button>
+  </form>
+  {% if p1 and p2 %}
+    {% if table %}
+    {% set rows, cols, m = table %}
+    <div class="mt-2">P( <strong>{{ p1 }}</strong> | <strong>{{ p2 }}</strong> ): each column sums to 1.</div>
+    <div style="overflow: auto"><table class="table table-sm table-bordered mt-1 mb-0">
+      <thead class="table-light"><tr><th></th>{% for c in cols %}<th class="small">{{ c }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for r in rows %}{% set i = loop.index0 %}<tr><th class="small fw-normal">{{ r }}</th>{% for v in m[i] %}<td class="text-end" style="background: rgba(13, 110, 253, {{ (v * 0.6)|round(2) }})">{{ '%.2f'|format(v) }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="text-danger mt-2">No table for these two parameters.</div>{% endif %}
+  {% endif %}
+</div></div>
+{% endblock %}

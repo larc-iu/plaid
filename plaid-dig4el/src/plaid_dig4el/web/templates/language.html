@@ -9,7 +9,7 @@
     {% if lang.glottocode %}{{ lang.glottocode }} · {% endif %}
     {% if lang.wals_name %}WALS: {{ lang.wals_name }} · {% endif %}
     {% if lang.grambank_name %}Grambank: {{ lang.grambank_name }} · {% endif %}
-    prompts in {{ lang.pivot_language }}
+    prompts in {{ lang.pivot_language }} · <a href="/languages/{{ lang.id }}/statistics">statistics</a>
   </div>
 </div>
 {% if imported %}<div class="alert alert-success py-2 small">Imported {{ imported }} questionnaire translation{{ 's' if imported != 1 }}.</div>{% endif %}

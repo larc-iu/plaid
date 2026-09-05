@@ -23,7 +23,7 @@ from markupsafe import Markup, escape
 from plaid_client import PlaidClient
 from plaid_client.http import PlaidAPIError
 
-from .. import auth, catalog_store, db, documents, docx_export, generation, jobs, plaid_gateway as gw, sentences
+from .. import auth, catalog_store, db, documents, docx_export, explore, generation, jobs, plaid_gateway as gw, sentences
 from ..inference import kg as kgmod, legacy_labels, pipeline, runner
 from ..legacy import graphs_utils as graphs
 from ..reference import catalog
@@ -1360,4 +1360,71 @@ async def segment_save(request: Request, uid: str, index: str):
         seg["trimmed_graph"] = graphs.arrange_requirement_graph_for_display(graph) if graph else {}
     catalog_store.save_questionnaire(uid, raw, user.id)
     return redirect(f"/catalog/questionnaires/{uid}/segments/{index}", request)
+
+
+# ------------------------------------------------------------------ explorers
+
+
+@app.get("/explore/wals", response_class=HTMLResponse)
+def explore_wals(request: Request, language: str = "", compare: str = "", parameter: str = "",
+                 macroarea: str = "", family: str = ""):
+    user = current_user(request)
+    names = [n.strip() for n in compare.split(";") if n.strip()]
+    columns, rows = explore.wals_compare(names) if names else ([], [])
+    macroareas, families = explore.wals_filters()
+    return render(request, "explore_wals.html", user=user, database="wals", title="WALS",
+                  language=explore.wals_language(language.strip()) if language.strip() else None,
+                  language_query=language, compare=compare, columns=columns, rows=rows,
+                  parameters=explore.wals_parameters(), parameter=parameter,
+                  counts=explore.wals_parameter_counts(parameter, macroarea, family) if parameter else [],
+                  macroareas=macroareas, families=families, macroarea=macroarea, family=family)
+
+
+@app.get("/explore/grambank", response_class=HTMLResponse)
+def explore_grambank(request: Request, language: str = "", compare: str = "", parameter: str = "",
+                     macroarea: str = "", family: str = ""):
+    user = current_user(request)
+    names = [n.strip() for n in compare.split(";") if n.strip()]
+    columns, rows = explore.grambank_compare(names) if names else ([], [])
+    macroareas, families = explore.grambank_filters()
+    return render(request, "explore_wals.html", user=user, database="grambank", title="Grambank",
+                  language=explore.grambank_language(language.strip()) if language.strip() else None,
+                  language_query=language, compare=compare, columns=columns, rows=rows,
+                  parameters=explore.grambank_parameters(), parameter=parameter,
+                  counts=explore.grambank_parameter_counts(parameter, macroarea, family) if parameter else [],
+                  macroareas=macroareas, families=families, macroarea=macroarea, family=family)
+
+
+@app.get("/explore/probabilities", response_class=HTMLResponse)
+def explore_probabilities(request: Request, p1: str = "", p2: str = ""):
+    user = current_user(request)
+    table = explore.conditional_table(p1, p2) if p1 and p2 else None
+    parameters = [("WALS", explore.wals_parameters()), ("Grambank", explore.grambank_parameters())]
+    return render(request, "explore_probabilities.html", user=user, p1=p1, p2=p2, parameters=parameters, table=table)
+
+
+@app.get("/languages/{language_id}/statistics", response_class=HTMLResponse)
+def language_statistics(request: Request, language_id: str, word: str = "", feature: str = "", value: str = ""):
+    """dig4el's statistics and exploration of the transcriptions: word frequencies and
+    neighbours, a word's sentences and connected meanings, and for a feature the words
+    that set one value apart."""
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        _ = lang.documents
+    kg, _inputs = runner.gather_inputs(access.client, lang)
+    delimiters = gw.KG_DELIMITERS
+    ws = explore.word_statistics(kg, delimiters)
+    top = sorted(ws["words"].values(), key=lambda w: (-w["frequency"], w["word"]))[:60]
+    cg = catalog.concepts()
+    features = ["INTENT", "PREDICATE", "PERSONAL DEICTIC"] + sorted(
+        (c for c in cg if c not in ("INTENT", "PREDICATE", "PERSONAL DEICTIC") and graphs.get_children(cg, c)), key=str.lower)
+    value_loc = explore.feature_values(kg, cg, feature, delimiters) if feature in cg else {}
+    return render(request, "statistics.html", lang=lang, access=access, sentences=len(kg), stats=ws, top=top,
+                  word=word.strip(), word_detail=explore.word_detail(kg, word.strip(), delimiters) if word.strip() else None,
+                  features=features, feature=feature,
+                  value_counts=sorted(((v, len(e)) for v, e in value_loc.items()), key=lambda t: -t[1]),
+                  value=value, value_detail=explore.value_detail(kg, value_loc, value, ws["total"], delimiters)
+                  if value and value in value_loc else None)
 

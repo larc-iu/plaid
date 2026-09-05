@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · dig4el{% endblock %}
+{% block crumbs %}<li class="breadcrumb-item active">{{ title }}</li>{% endblock %}
+{% block content %}
+<h4>Exploration of {{ title }} data</h4>
+<div class="card mb-3"><div class="card-header bg-white fw-semibold">One language</div><div class="card-body small">
+  <form method="get" action="/explore/{{ database }}" class="d-flex gap-1 align-items-center m-0">
+    <div class="typeahead position-relative" style="min-width: 20rem">
+      <input type="text" class="form-control form-control-sm" name="language" value="{{ language_query }}" autocomplete="off" placeholder="Language name in {{ title }}"
+             hx-get="/reference/names?database={{ database }}" hx-trigger="input changed delay:150ms, focus" hx-target="next .typeahead-menu" hx-swap="innerHTML">
+      <div class="typeahead-menu list-group position-absolute w-100 shadow-sm"></div>
+    </div>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Show</button>
+  </form>
+  {% if language %}
+    <div class="mt-2">{% for k in ['id', 'glottocode', 'macroarea', 'family', 'subfamily', 'genus'] %}{% if language.get(k) %}<span class="me-3"><span class="text-secondary">{{ k }}:</span> {{ language[k] }}</span>{% endif %}{% endfor %}</div>
+    <div class="text-secondary mt-1">{{ language['values']|length }} parameters with a value for {{ language.name }}.</div>
+    <div style="max-height: 24rem; overflow: auto"><table class="table table-sm table-striped mb-0"><tbody>
+      {% for p, v in language['values'] %}<tr><td>{{ p }}</td><td>{{ v }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  {% elif language_query %}<div class="text-danger mt-2">{{ title }} has no language named "{{ language_query }}".</div>{% endif %}
+</div></div>
+<div class="card mb-3"><div class="card-header bg-white fw-semibold">Compare languages</div><div class="card-body small">
+  <form method="get" action="/explore/{{ database }}" class="d-flex gap-1 align-items-center m-0">
+    <input type="text" class="form-control form-control-sm" name="compare" value="{{ compare }}" placeholder="Language names separated by semicolons, e.g. Tahitian; Maori; Hawaiian" style="min-width: 28rem">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Compare</button>
+  </form>
+  {% if columns %}
+  <div class="mt-2" style="max-height: 28rem; overflow: auto"><table class="table table-sm table-striped mb-0">
+    <thead class="table-light"><tr><th>Parameter</th>{% for c in columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for p, vals in rows %}<tr><td>{{ p }}</td>{% for v in vals %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</div></div>
+<div class="card"><div class="card-header bg-white fw-semibold">One parameter across languages</div><div class="card-body small">
+  <form method="get" action="/explore/{{ database }}" class="d-flex flex-wrap gap-1 align-items-center m-0">
+    <select name="parameter" class="form-select form-select-sm" style="max-width: 32rem"><option value="">Choose a parameter</option>{% for p in parameters %}<option {{ 'selected' if p == parameter }}>{{ p }}</option>{% endfor %}</select>
+    <select name="macroarea" class="form-select form-select-sm w-auto"><option value="">every macroarea</option>{% for m in macroareas %}<option {{ 'selected' if m == macroarea }}>{{ m }}</option>{% endfor %}</select>
+    <select name="family" class="form-select form-select-sm w-auto"><option value="">every family</option>{% for f in families %}<option {{ 'selected' if f == family }}>{{ f }}</option>{% endfor %}</select>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Count</button>
+  </form>
+  {% if counts %}
+  {% set total = counts|map(attribute=1)|sum %}
+  <div class="text-secondary mt-2">{{ total }} languages with a value.</div>
+  <table class="table table-sm mb-0" style="max-width: 48rem"><tbody>
+    {% for name, n in counts %}<tr><td>{{ name }}</td><td class="text-end" style="width: 5rem">{{ n }}</td>
+      <td style="width: 40%"><div class="bg-primary" style="height: 0.8rem; width: {{ (100 * n / total) if total else 0 }}%"></div></td></tr>{% endfor %}
+  </tbody></table>
+  {% endif %}
+</div></div>
+{% endblock %}
