@@ -42,6 +42,31 @@
         (assert-status 409 conflict-res)
         (is (some? (-> conflict-res :body :error)))))))
 
+(deftest document-version-on-bulk-span-create
+  ;; The bulk span route resolves its document from the first span's tokens.
+  ;; It read them under the wrong key, so a client that stamped the current
+  ;; document-version on a bulk create was refused as "no document was found
+  ;; with the provided version" (found by the igt restore, 2026-09-05).
+  (let [proj (create-test-project admin-request "VersionBulkSpanProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        text-id (-> (create-text admin-request tl doc "one two") :body :id)
+        tok-layer (-> (create-token-layer admin-request tl "Tokens") :body :id)
+        tok (-> (create-token admin-request tok-layer text-id 0 3) :body :id)
+        span-layer (-> (create-span-layer admin-request tok-layer "POS") :body :id)
+        version (-> (get-document admin-request doc) :body :document/version)]
+    (testing "a bulk span create with the current document-version succeeds"
+      (let [res (api-call admin-request {:method :post
+                                         :path (str "/api/v1/spans/bulk?document-version=" version)
+                                         :body [{:span-layer-id span-layer :tokens [tok] :value "NOUN"}]})]
+        (assert-created res)
+        (is (= 1 (count (-> res :body :ids))))))
+    (testing "and with a stale one it is refused as a conflict, not as a missing document"
+      (let [res (api-call admin-request {:method :post
+                                         :path (str "/api/v1/spans/bulk?document-version=" version)
+                                         :body [{:span-layer-id span-layer :tokens [tok] :value "VERB"}]})]
+        (assert-status 409 res)))))
+
 (deftest document-version-header-on-get
   (let [proj (create-test-project admin-request "VersionHeaderProj")
         doc (create-test-document admin-request proj "Doc")]

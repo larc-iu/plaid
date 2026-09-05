@@ -43,9 +43,12 @@
   [{db :db params :parameters}]
   (when-let [span-or-id (first (:body params))]
     (cond
-      ;; For bulk create
+      ;; For bulk create. The parsed body carries `:tokens` (the wire key),
+      ;; never `:span/tokens`; reading the wrong key here left the document
+      ;; unresolved, so a bulk create under document-version OCC was refused
+      ;; as "no document was found with the provided version".
       (:tokens span-or-id)
-      (s/get-doc-id-of-token db (first (:span/tokens span-or-id)))
+      (s/get-doc-id-of-token db (first (:tokens span-or-id)))
 
       ;; For bulk delete (array of IDs)
       (uuid? span-or-id)

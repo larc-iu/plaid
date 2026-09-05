@@ -130,8 +130,14 @@ def build_api_error(response, url, method):
     )
 
 
-def extract_document_versions(client, response_headers, response_body=None):
-    """Extract and update document versions from response headers and body."""
+def extract_document_versions(client, response_headers, response_body=None, historical=False):
+    """Extract and update document versions from response headers and body.
+
+    ``historical`` marks a read made with ``as-of``: its body carries the
+    version the document HAD then, which is not what a strict-mode write must
+    claim next, so the body is ignored and only the header (always the live
+    version) is learned from.
+    """
     header = response_headers.get('X-Document-Versions')
     if header:
         try:
@@ -141,7 +147,7 @@ def extract_document_versions(client, response_headers, response_body=None):
         except (json.JSONDecodeError, TypeError):
             logger.warning('Failed to parse document versions header')
 
-    if isinstance(response_body, dict):
+    if not historical and isinstance(response_body, dict):
         doc_id = response_body.get('document/id')
         doc_version = response_body.get('document/version')
         if doc_id and doc_version:
@@ -477,7 +483,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     content_type = response.headers.get('content-type', '')
     if 'application/json' in content_type:
         data = response.json()
-        extract_document_versions(client, response.headers, data)
+        extract_document_versions(client, response.headers, data,
+                                  historical=bool(query_params and query_params.get('as-of')))
         if skip_response_transform:
             return data
         return transform_response(data)

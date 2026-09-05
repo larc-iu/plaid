@@ -1,4 +1,4 @@
-import { transformRequest, transformResponse } from './transforms.js';
+import { transformRequest, transformResponse } from "./transforms.js";
 
 // Default per-request timeout (ms). Applied to every request unless the client
 // is constructed with a different `timeout` (0 / null disables it). Note: this
@@ -13,25 +13,40 @@ export const DEFAULT_BATCH_TIMEOUT_MS = 180000;
 
 /**
  * Extract and update document versions from response headers and body.
+ *
+ * `historical` marks a read made with `as-of`: its body carries the version
+ * the document HAD then, which is not what a strict-mode write must claim
+ * next, so the body is ignored and only the header (always the live
+ * version) is learned from. Without this, viewing an old state and then
+ * writing 409s on a version that stopped being current long ago.
  */
-export function extractDocumentVersions(client, responseHeaders, responseBody = null) {
-  const docVersionsHeader = responseHeaders.get('X-Document-Versions');
+export function extractDocumentVersions(
+  client,
+  responseHeaders,
+  responseBody = null,
+  { historical = false } = {},
+) {
+  const docVersionsHeader = responseHeaders.get("X-Document-Versions");
   if (docVersionsHeader) {
     try {
       const versionsMap = JSON.parse(docVersionsHeader);
-      if (typeof versionsMap === 'object' && versionsMap !== null) {
+      if (typeof versionsMap === "object" && versionsMap !== null) {
         // Clone once, then assign — cloning inside the loop is O(n²) and pointless.
-        client.documentVersions = { ...client.documentVersions, ...versionsMap };
+        client.documentVersions = {
+          ...client.documentVersions,
+          ...versionsMap,
+        };
       }
     } catch (e) {
-      console.warn('Failed to parse document versions header:', e);
+      console.warn("Failed to parse document versions header:", e);
     }
   }
 
-  if (responseBody && typeof responseBody === 'object') {
-    if (responseBody['document/id'] && responseBody['document/version']) {
+  if (!historical && responseBody && typeof responseBody === "object") {
+    if (responseBody["document/id"] && responseBody["document/version"]) {
       client.documentVersions = { ...client.documentVersions };
-      client.documentVersions[responseBody['document/id']] = responseBody['document/version'];
+      client.documentVersions[responseBody["document/id"]] =
+        responseBody["document/version"];
     }
   }
 }
@@ -43,7 +58,11 @@ export async function parseErrorBody(response) {
   try {
     return await response.json();
   } catch (_) {
-    return { message: await response.text().catch(() => 'Unable to read error response') };
+    return {
+      message: await response
+        .text()
+        .catch(() => "Unable to read error response"),
+    };
   }
 }
 
@@ -51,7 +70,11 @@ export async function parseErrorBody(response) {
  * Create an enriched error from a failed HTTP response.
  */
 export function makeHttpError(response, errorData, url, method) {
-  const serverMessage = errorData?.error || errorData?.message || response.statusText || 'Unknown error';
+  const serverMessage =
+    errorData?.error ||
+    errorData?.message ||
+    response.statusText ||
+    "Unknown error";
   const error = new Error(`HTTP ${response.status} ${serverMessage} at ${url}`);
   error.status = response.status;
   error.statusText = response.statusText;
@@ -65,7 +88,9 @@ export function makeHttpError(response, errorData, url, method) {
  * Create a network error (status 0). Timeout aborts get a clearer message.
  */
 export function makeNetworkError(originalError, url, method) {
-  const timedOut = originalError?.name === 'TimeoutError' || originalError?.name === 'AbortError';
+  const timedOut =
+    originalError?.name === "TimeoutError" ||
+    originalError?.name === "AbortError";
   const message = timedOut
     ? `Request timed out at ${url}`
     : `Network error: ${originalError.message} at ${url}`;
@@ -95,11 +120,10 @@ export const BUSY_BACKOFF_MS = 250;
  * `attempt` must perform the whole request, not just await a prepared one:
  * a fetch body and an AbortSignal.timeout are both single-use.
  */
-export async function retryWhileBusy(attempt, {
-  retries = BUSY_RETRIES,
-  baseDelayMs = BUSY_BACKOFF_MS,
-  onRetry,
-} = {}) {
+export async function retryWhileBusy(
+  attempt,
+  { retries = BUSY_RETRIES, baseDelayMs = BUSY_BACKOFF_MS, onRetry } = {},
+) {
   for (let i = 0; ; i += 1) {
     try {
       return await attempt();
@@ -117,7 +141,12 @@ export async function retryWhileBusy(attempt, {
  * timeouts are disabled / unsupported.
  */
 export function timeoutSignal(timeout) {
-  if (timeout && timeout > 0 && typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
+  if (
+    timeout &&
+    timeout > 0 &&
+    typeof AbortSignal !== "undefined" &&
+    AbortSignal.timeout
+  ) {
     return AbortSignal.timeout(timeout);
   }
   return undefined;
@@ -132,12 +161,17 @@ export function timeoutSignal(timeout) {
  * ms. Rejects the way fetch does: a TypeError for a network failure, an error
  * named TimeoutError for a stall.
  */
-export function xhrSend(url, { method, headers, body }, { onUploadProgress, timeout } = {}) {
+export function xhrSend(
+  url,
+  { method, headers, body },
+  { onUploadProgress, timeout } = {},
+) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open(method, url);
-    xhr.responseType = 'arraybuffer';
-    for (const [name, value] of Object.entries(headers || {})) xhr.setRequestHeader(name, value);
+    xhr.responseType = "arraybuffer";
+    for (const [name, value] of Object.entries(headers || {}))
+      xhr.setRequestHeader(name, value);
 
     let timer = null;
     const disarm = () => clearTimeout(timer);
@@ -146,14 +180,21 @@ export function xhrSend(url, { method, headers, body }, { onUploadProgress, time
       disarm();
       timer = setTimeout(() => {
         xhr.abort();
-        reject(Object.assign(new Error(`Request timed out at ${url}`), { name: 'TimeoutError' }));
+        reject(
+          Object.assign(new Error(`Request timed out at ${url}`), {
+            name: "TimeoutError",
+          }),
+        );
       }, timeout);
     };
 
     xhr.upload.onprogress = (e) => {
       arm();
       if (onUploadProgress) {
-        onUploadProgress({ loaded: e.loaded, total: e.lengthComputable ? e.total : null });
+        onUploadProgress({
+          loaded: e.loaded,
+          total: e.lengthComputable ? e.total : null,
+        });
       }
     };
     xhr.onprogress = arm;
@@ -164,17 +205,27 @@ export function xhrSend(url, { method, headers, body }, { onUploadProgress, time
         return;
       }
       const responseHeaders = new Headers();
-      for (const line of (xhr.getAllResponseHeaders() || '').trim().split(/\r?\n/)) {
-        const i = line.indexOf(':');
-        if (i > 0) responseHeaders.append(line.slice(0, i).trim(), line.slice(i + 1).trim());
+      for (const line of (xhr.getAllResponseHeaders() || "")
+        .trim()
+        .split(/\r?\n/)) {
+        const i = line.indexOf(":");
+        if (i > 0)
+          responseHeaders.append(
+            line.slice(0, i).trim(),
+            line.slice(i + 1).trim(),
+          );
       }
       // A Response refuses a body for these statuses.
-      const responseBody = [204, 205, 304].includes(xhr.status) ? null : xhr.response;
-      resolve(new Response(responseBody, {
-        status: xhr.status,
-        statusText: xhr.statusText,
-        headers: responseHeaders,
-      }));
+      const responseBody = [204, 205, 304].includes(xhr.status)
+        ? null
+        : xhr.response;
+      resolve(
+        new Response(responseBody, {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          headers: responseHeaders,
+        }),
+      );
     };
     xhr.onerror = () => {
       disarm();
@@ -182,7 +233,11 @@ export function xhrSend(url, { method, headers, body }, { onUploadProgress, time
     };
     xhr.onabort = () => {
       disarm();
-      reject(Object.assign(new Error(`Request aborted at ${url}`), { name: 'AbortError' }));
+      reject(
+        Object.assign(new Error(`Request aborted at ${url}`), {
+          name: "AbortError",
+        }),
+      );
     };
 
     arm();
@@ -268,12 +323,15 @@ export async function makeRequest(client, method, path, options = {}) {
   // semantics, while stamping every op would 409 the second op against the
   // version bump the first op itself caused (every queued op captures the
   // same pre-batch version).
-  if (client.strictModeDocumentId && method !== 'GET'
-      && !(client.isBatching && client.batchVersionStamped)) {
+  if (
+    client.strictModeDocumentId &&
+    method !== "GET" &&
+    !(client.isBatching && client.batchVersionStamped)
+  ) {
     const docId = client.strictModeDocumentId;
     if (client.documentVersions[docId]) {
       const docVersion = client.documentVersions[docId];
-      const separator = url.includes('?') ? '&' : '?';
+      const separator = url.includes("?") ? "&" : "?";
       url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       if (client.isBatching) client.batchVersionStamped = true;
     }
@@ -284,19 +342,20 @@ export async function makeRequest(client, method, path, options = {}) {
   // self-conflict, so it is stamped on every queued batch op, not just the
   // first. The server templates `{param}` placeholders against the endpoint's
   // own path/query/body params.
-  if (auditMessage && method !== 'GET') {
-    const separator = url.includes('?') ? '&' : '?';
+  if (auditMessage && method !== "GET") {
+    const separator = url.includes("?") ? "&" : "?";
     url += `${separator}audit-message=${encodeURIComponent(auditMessage)}`;
   }
 
   // Logical-operation group (see client.beginOperation): stamp every write
   // with the group id; the message rides along too so the server can label
   // the group lazily on whichever tagged write lands first.
-  if (client.operationGroup && method !== 'GET') {
+  if (client.operationGroup && method !== "GET") {
     const group = client.operationGroup;
-    const separator = url.includes('?') ? '&' : '?';
+    const separator = url.includes("?") ? "&" : "?";
     url += `${separator}group-id=${encodeURIComponent(group.id)}`;
-    if (group.message) url += `&group-message=${encodeURIComponent(group.message)}`;
+    if (group.message)
+      url += `&group-message=${encodeURIComponent(group.message)}`;
     group.written = true;
   }
 
@@ -309,7 +368,7 @@ export async function makeRequest(client, method, path, options = {}) {
       throw new Error(`This endpoint cannot be used in batch mode: ${path}`);
     }
     const operation = {
-      path: url.replace(client.baseUrl, ''),
+      path: url.replace(client.baseUrl, ""),
       method: method.toUpperCase(),
     };
     if (requestBody !== undefined) {
@@ -322,10 +381,10 @@ export async function makeRequest(client, method, path, options = {}) {
   // Build fetch options
   const headers = {};
   if (!noAuth) {
-    headers['Authorization'] = `Bearer ${client.token}`;
+    headers["Authorization"] = `Bearer ${client.token}`;
   }
   if (!formData) {
-    headers['Content-Type'] = 'application/json';
+    headers["Content-Type"] = "application/json";
   }
 
   const fetchOptions = { method, headers };
@@ -337,8 +396,11 @@ export async function makeRequest(client, method, path, options = {}) {
   // aborted, so reusing it would make every retry fail instantly.
   const timeoutMs = timeout !== undefined ? timeout : client.timeout;
   const send = () => {
-    if (onUploadProgress && typeof XMLHttpRequest !== 'undefined') {
-      return xhrSend(url, fetchOptions, { onUploadProgress, timeout: timeoutMs });
+    if (onUploadProgress && typeof XMLHttpRequest !== "undefined") {
+      return xhrSend(url, fetchOptions, {
+        onUploadProgress,
+        timeout: timeoutMs,
+      });
     }
     const signal = timeoutSignal(timeoutMs);
     return fetch(url, signal ? { ...fetchOptions, signal } : fetchOptions);
@@ -356,13 +418,26 @@ export async function makeRequest(client, method, path, options = {}) {
     });
 
     if (!response.ok) {
-      const error = makeHttpError(response, await parseErrorBody(response), url, method);
+      const error = makeHttpError(
+        response,
+        await parseErrorBody(response),
+        url,
+        method,
+      );
       // 401 means the token is missing/expired/invalid. Fire the app's auth-error
       // handler once (it discards the token and routes back to login). 403
       // (forbidden — authenticated but not permitted) deliberately does NOT.
-      if (response.status === 401 && typeof client.onAuthError === 'function' && !client._authErrorFired) {
+      if (
+        response.status === 401 &&
+        typeof client.onAuthError === "function" &&
+        !client._authErrorFired
+      ) {
         client._authErrorFired = true;
-        try { client.onAuthError(error); } catch (_) { /* handler must not mask the original error */ }
+        try {
+          client.onAuthError(error);
+        } catch (_) {
+          /* handler must not mask the original error */
+        }
       }
       throw error;
     }
@@ -374,10 +449,12 @@ export async function makeRequest(client, method, path, options = {}) {
     }
 
     // JSON or text response
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
       const data = await response.json();
-      extractDocumentVersions(client, response.headers, data);
+      extractDocumentVersions(client, response.headers, data, {
+        historical: /[?&]as-of=/.test(url),
+      });
       if (skipResponseTransform) {
         return data;
       }
