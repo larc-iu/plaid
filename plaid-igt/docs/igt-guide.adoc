@@ -285,12 +285,17 @@ Which vocabularies a project draws on is part of the project's settings (see <<_
 
 The **Vocabularies** area lists every vocabulary you can see.
 A vocabulary's entries are shown on its **Vocabulary Items** tab as a table you can search and sort.
+The search box reads every column, or one field chosen beside it: pick **Gloss** and type `go` to see the entries glossed with it.
+With a field chosen, a count of the entries that have nothing in that field appears under the box, and clicking it shows just those, which is how a lexicon's gaps are filled.
 A **Uses** column counts the words and morphemes linked to each entry, and a **Concordance** on any entry shows every place it is linked, with a link to each.
 Two entries may share a form, for homonyms.
 The table tells them apart with subscripts, in the order they were created.
 
 **Bulk Add** takes rows pasted from a spreadsheet or read from a file.
 It lets you map the columns onto the entry fields, then reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
+**Replace** finds text in one field of every entry, the form included, and replaces it: as plain text, as a whole value, or as a regular expression.
+Each entry it would change is listed with its old and new value, and only the ticked ones are written.
+A value the field's tagset refuses is listed but never written.
 **Export** downloads the table as a tab-separated file that opens in any spreadsheet.
 
 A vocabulary's maintainers edit its entries and fields, while a project's members link to them.

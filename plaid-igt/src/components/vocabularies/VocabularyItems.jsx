@@ -8,11 +8,19 @@ import {
   Download,
   FileText,
   MessageSquare,
+  Replace,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { pageSlice, LIST_PAGE_SIZE } from '@/hooks/usePagedList';
 import {
   AlertDialog,
@@ -33,6 +41,8 @@ import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
 import { BulkAddDialog } from './BulkAddDialog';
+import { ReplaceDialog } from './ReplaceDialog';
+import { filterVocabItems, fieldEmpty, ANY_FIELD } from '@/domain/vocabItemFilter';
 import { EntryComments } from './EntryComments';
 import { useCommentStore } from '@/domain/useCommentStore';
 import { anchorCaption } from '@/domain/commentAnchors';
@@ -165,6 +175,10 @@ export const VocabularyItems = ({
 
   // Left-list search, pagination, usage counts, bulk add, delete confirm.
   const [search, setSearch] = useState('');
+  // Which column the search box reads: every one, or a single field. Scoped
+  // to a field, the box can instead show the entries with nothing in it.
+  const [searchField, setSearchField] = useState(ANY_FIELD);
+  const [emptyOnly, setEmptyOnly] = useState(false);
   const [page, setPage] = useState(0);
   const listRef = useRef(null);
   // Size the sticky left pane to fit from its own top to the viewport bottom, so
@@ -175,6 +189,7 @@ export const VocabularyItems = ({
   const [usageCounts, setUsageCounts] = useState(null); // {itemId: n} | null
   const [usageKinds, setUsageKinds] = useState(null); // {itemId: {word: n, morpheme: n}} | null
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   // Concordance for the selected item: a cheap plan (queries) + lazily-loaded,
@@ -219,6 +234,17 @@ export const VocabularyItems = ({
     return out;
   }, [items, tagsetByField]);
   const [offTagsetOnly, setOffTagsetOnly] = useState(false);
+  // How many entries have nothing in the scoped field. The form is never
+  // empty, so the count (and its chip) only exist for a real field.
+  const emptyField =
+    searchField && searchField !== ANY_FIELD && searchField !== 'form' ? searchField : null;
+  const emptyCount = useMemo(
+    () => (emptyField ? items.filter((it) => fieldEmpty(it, emptyField)).length : 0),
+    [items, emptyField],
+  );
+  useEffect(() => {
+    if (!emptyField || emptyCount === 0) setEmptyOnly(false);
+  }, [emptyField, emptyCount]);
 
   const selectedItem = useMemo(
     () =>
@@ -554,19 +580,10 @@ export const VocabularyItems = ({
 
   // ---- left list (search + sort by form) ----
   const filteredItems = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    let list = offTagsetOnly ? items.filter((it) => offTagsetIds.has(it.id)) : items;
-    if (q) {
-      list = list.filter(
-        (it) =>
-          it.form.toLowerCase().includes(q) ||
-          fieldNames.some((f) =>
-            String((f === 'morphType' ? morphTypeLabel(it.metadata?.[f]) : it.metadata?.[f]) ?? '')
-              .toLowerCase()
-              .includes(q),
-          ),
-      );
-    }
+    const list = filterVocabItems(
+      offTagsetOnly ? items.filter((it) => offTagsetIds.has(it.id)) : items,
+      { query: search, field: searchField, emptyOnly, fieldNames },
+    );
     return [...list].sort((a, b) => {
       const af = a.form.toLowerCase();
       const bf = b.form.toLowerCase();
@@ -576,7 +593,7 @@ export const VocabularyItems = ({
       // ids do not sort into creation order within a bulk write.
       return (homonyms.get(a.id) ?? 0) - (homonyms.get(b.id) ?? 0);
     });
-  }, [items, search, fieldNames, homonyms, offTagsetOnly, offTagsetIds]);
+  }, [items, search, searchField, emptyOnly, fieldNames, homonyms, offTagsetOnly, offTagsetIds]);
 
   // Paged with the shared helper rather than the hook: the selection effect
   // below needs to drive the page itself, so the state stays local.
@@ -587,7 +604,7 @@ export const VocabularyItems = ({
   // when the page changes.
   useEffect(() => {
     setPage(0);
-  }, [search, offTagsetOnly]);
+  }, [search, searchField, emptyOnly, offTagsetOnly]);
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = 0;
   }, [currentPage]);
@@ -723,10 +740,37 @@ export const VocabularyItems = ({
               value={search}
               onChange={setSearch}
             />
+            <Select value={searchField} onValueChange={setSearchField}>
+              <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label="Search in">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY_FIELD}>All fields</SelectItem>
+                <SelectItem value="form">Form</SelectItem>
+                {fieldNames.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {humanizeFieldName(name)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {items.length > 0 && (
               <ListCount shown={filteredItems.length} total={items.length} noun="item" />
             )}
           </div>
+          {emptyField && emptyCount > 0 && (
+            <button
+              type="button"
+              aria-pressed={emptyOnly}
+              onClick={() => setEmptyOnly((v) => !v)}
+              className={cn(
+                'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:underline',
+                emptyOnly ? 'bg-accent' : 'bg-muted',
+              )}
+            >
+              {emptyCount.toLocaleString()} without {humanizeFieldName(emptyField)}
+            </button>
+          )}
           {offTagsetIds.size > 0 && (
             <button
               type="button"
@@ -770,7 +814,7 @@ export const VocabularyItems = ({
             </p>
           ) : filteredItems.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              No items match “{search.trim()}”.
+              {search.trim() ? `No items match “${search.trim()}”.` : 'No items match.'}
             </p>
           ) : (
             <ul className="divide-y">
@@ -833,6 +877,17 @@ export const VocabularyItems = ({
               onClick={() => setBulkOpen(true)}
             >
               <Upload className="h-3.5 w-3.5" /> Bulk Add
+            </Button>
+          )}
+          {canManage && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 flex-1"
+              onClick={() => setReplaceOpen(true)}
+              disabled={!items.length}
+            >
+              <Replace className="h-3.5 w-3.5" /> Replace
             </Button>
           )}
           <Button
@@ -1099,6 +1154,18 @@ export const VocabularyItems = ({
         existingItems={items}
         client={client}
         onImported={handleImported}
+      />
+
+      <ReplaceDialog
+        open={replaceOpen}
+        onOpenChange={setReplaceOpen}
+        vocabularyName={vocabulary?.name}
+        fields={fields}
+        tagsetFor={tagsetFor}
+        items={items}
+        homonyms={homonyms}
+        client={client}
+        onApplied={handleImported}
       />
 
       {/* Delete confirmation */}
