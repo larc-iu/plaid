@@ -18,6 +18,7 @@
       </div>
       {% if user %}
       <div class="d-flex align-items-center gap-2 small">
+        {% if user.is_admin %}<a class="text-decoration-none text-secondary" href="/admin/guests">Guest access</a>{% endif %}
         <a class="text-decoration-none text-secondary" href="/catalog/questionnaires">Questionnaires</a>
         <a class="text-decoration-none text-secondary" href="/catalog/concepts">Concept graph</a>
         <a class="text-decoration-none text-secondary" href="/explore/wals">WALS</a>
@@ -25,10 +26,15 @@
         <a class="text-decoration-none text-secondary" href="/explore/probabilities">Probabilities</a>
         <a class="text-decoration-none text-secondary" href="/compare">Compare</a>
         <span class="text-secondary">·</span>
+        {% if user.is_guest %}
+        <span class="text-secondary">Guest</span>
+        <a class="btn btn-outline-secondary btn-sm" href="/login">Log in</a>
+        {% else %}
         <span class="text-secondary">{{ user.display_name }}</span>
         <form method="post" action="/logout" class="m-0">
           <button class="btn btn-outline-secondary btn-sm" type="submit">Log out</button>
         </form>
+        {% endif %}
       </div>
       {% endif %}
     </div>

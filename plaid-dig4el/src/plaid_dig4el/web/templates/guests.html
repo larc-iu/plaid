@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Guest access · dig4el{% endblock %}
+{% block crumbs %}<li class="breadcrumb-item active">Guest access</li>{% endblock %}
+{% block content %}
+<h4>Guest access</h4>
+<p class="small text-secondary">Visitors who are not logged in browse as one shared read-only Plaid account. A caretaker opens a language to guests from its page, which makes that account a reader of the language's project.</p>
+{% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+<div class="card mb-3"><div class="card-body small">
+  {% if cfg %}
+    <div>Guest account: <strong>{{ cfg.user_id }}</strong> · token "{{ cfg.name }}" made {{ cfg.created_at[:16] }} by {{ cfg.created_by }}.</div>
+    <div class="mt-1">Open languages: {% for l in opened %}<a href="/languages/{{ l.id }}">{{ l.name }}</a>{{ ', ' if not loop.last }}{% else %}none yet{% endfor %}</div>
+    <form method="post" action="/admin/guests/revoke" class="m-0 mt-2"><button type="submit" class="btn btn-sm btn-outline-danger">Revoke the guest token</button>
+      <span class="text-secondary">Guests lose access at once; the account and its project memberships stay.</span></form>
+  {% else %}
+    <div class="mb-2">No guest account yet. Name one: it is created in Plaid if it does not exist, and a named token is minted and kept on this server.</div>
+    <form method="post" action="/admin/guests" class="row g-2 align-items-end m-0">
+      <div class="col-md-4"><label class="form-label mb-0">Email (the account id)</label><input type="text" class="form-control form-control-sm" name="email" value="guest@dig4el.local" required></div>
+      <div class="col-md-3"><label class="form-label mb-0">Password</label><input type="password" class="form-control form-control-sm" name="password" required></div>
+      <div class="col-md-3"><label class="form-label mb-0">Display name</label><input type="text" class="form-control form-control-sm" name="display_name" value="dig4el guests"></div>
+      <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary">Set up</button></div>
+    </form>
+  {% endif %}
+</div></div>
+{% endblock %}

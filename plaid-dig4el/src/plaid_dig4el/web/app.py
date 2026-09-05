@@ -23,6 +23,7 @@ from markupsafe import Markup, escape
 from plaid_client import PlaidClient
 from plaid_client.http import PlaidAPIError
 
+from ..config import settings
 from .. import auth, catalog_store, db, documents, docx_export, explore, generation, jobs, plaid_gateway as gw, sentences, transcription_io
 from ..inference import kg as kgmod, legacy_labels, pipeline, runner
 from ..legacy import graphs_utils as graphs
@@ -90,8 +91,17 @@ def current_user(request: Request) -> auth.User:
     return user
 
 
+def viewer(request: Request) -> auth.User:
+    """The logged-in user, or the guest account for a visitor who is not logged in
+    (when an administrator has set one up). Read-only routes take this."""
+    user = auth.user_from_request(request) or auth.guest_user()
+    if user is None:
+        raise NeedsLogin()
+    return user
+
+
 def render(request: Request, name: str, status_code: int = 200, **ctx: Any) -> HTMLResponse:
-    ctx.setdefault("user", auth.user_from_request(request))
+    ctx.setdefault("user", auth.user_from_request(request) or auth.guest_user())
     ctx["request"] = request
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
@@ -109,12 +119,21 @@ class Access:
         self.user = user
         self.language = language
         self.client: PlaidClient = user.client()
+        self.as_guest = user.is_guest
         try:
             self.project = self.client.projects.get(language.plaid_project_id)
         except PlaidAPIError as e:
-            if e.status in (403, 404):
+            if e.status not in (403, 404):
+                raise
+            guest = auth.guest_user() if language.open_to_guests and not user.is_guest else None
+            if guest is None:
                 raise HTTPException(404, "This language is not available to you.")
-            raise
+            try:  # a logged-in reader of an opened language browses it as the guest does
+                self.client = guest.client()
+                self.project = self.client.projects.get(language.plaid_project_id)
+                self.as_guest = True
+            except PlaidAPIError:
+                raise HTTPException(404, "This language is not available to you.")
         self.layers = gw.Layers.from_config(language.layers)
 
     def _in(self, key: str) -> bool:
@@ -122,14 +141,16 @@ class Access:
 
     @property
     def can_manage(self) -> bool:
-        return self.user.is_admin or self._in("maintainers")
+        return not self.as_guest and (self.user.is_admin or self._in("maintainers"))
 
     @property
     def can_edit(self) -> bool:
-        return self.can_manage or self._in("writers")
+        return not self.as_guest and (self.can_manage or self._in("writers"))
 
     @property
     def role(self) -> str:
+        if self.as_guest:
+            return "guest"
         if self.user.is_admin:
             return "admin"
         if self._in("maintainers"):
@@ -196,7 +217,7 @@ def logout(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 def languages_page(request: Request):
-    user = current_user(request)
+    user = viewer(request)
     client = user.client()
     try:
         projects = client.projects.list()
@@ -207,9 +228,11 @@ def languages_page(request: Request):
     if isinstance(projects, dict):
         projects = projects.get("entries", [])
     visible = {p["id"] for p in projects}
+    guest_open = auth.guest_user() is not None
     with db.session() as s:
         languages = [l for l in s.query(db.Language).order_by(db.Language.name).all()
-                     if l.plaid_project_id in visible]
+                     if (l.plaid_project_id in visible and (not user.is_guest or l.open_to_guests))
+                     or (guest_open and not user.is_guest and l.open_to_guests)]
         rows = []
         for l in languages:
             latest = l.runs[0] if l.runs else None
@@ -242,7 +265,7 @@ def match_names(names: list[str], q: str, limit: int = 15) -> list[str]:
 def reference_name_matches(request: Request, database: str = "", wals_name: str = "", grambank_name: str = "",
                            q: str = ""):
     """Typeahead matches for the WALS or Grambank name fields (an htmx fragment)."""
-    current_user(request)
+    viewer(request)
     q = q or wals_name or grambank_name
     return render(request, "_names.html", q=q.strip(), names=match_names(reference_names(database), q))
 
@@ -322,7 +345,7 @@ async def language_create(
 
 @app.get("/languages/{language_id}", response_class=HTMLResponse)
 def language_page(request: Request, language_id: str, imported: int | None = None):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
@@ -540,7 +563,7 @@ def files_index(request: Request, language_id: str):
 
 @app.get("/languages/{language_id}/files/{file_id}/download")
 def file_download(request: Request, language_id: str, file_id: str):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         Access(user, lang)
@@ -571,7 +594,7 @@ def file_delete(request: Request, language_id: str, file_id: str):
 
 @app.post("/languages/{language_id}/files/search", response_class=HTMLResponse)
 def files_search(request: Request, language_id: str, query: str = Form("")):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         Access(user, lang)
@@ -619,7 +642,7 @@ def _output(s, language_id: str, output_id: str) -> db.GrammarOutput:
 
 @app.get("/languages/{language_id}/outputs/{output_id}", response_class=HTMLResponse)
 def output_page(request: Request, language_id: str, output_id: str):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
@@ -630,7 +653,7 @@ def output_page(request: Request, language_id: str, output_id: str):
 
 @app.get("/languages/{language_id}/outputs/{output_id}/json")
 def output_json(request: Request, language_id: str, output_id: str):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         Access(user, lang)
@@ -640,7 +663,7 @@ def output_json(request: Request, language_id: str, output_id: str):
 
 @app.get("/languages/{language_id}/outputs/{output_id}/docx")
 def output_docx(request: Request, language_id: str, output_id: str):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         Access(user, lang)
@@ -660,6 +683,8 @@ def output_feedback(request: Request, language_id: str, output_id: str, errors: 
                     completeness: int = Form(0), clarity: int = Form(0), usefulness: int = Form(0),
                     confidence: int = Form(0), comments: str = Form("")):
     user = current_user(request)
+    if user.is_guest:
+        raise HTTPException(403, "Log in to give feedback.")
     with db.session() as s:
         lang = get_language(s, language_id)
         Access(user, lang)
@@ -673,13 +698,15 @@ def output_feedback(request: Request, language_id: str, output_id: str, errors: 
 
 @app.post("/languages/{language_id}/search", response_class=HTMLResponse)
 def sentence_search(request: Request, language_id: str, query: str = Form(""), how: str = Form("keyword")):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         Access(user, lang)
         rows = s.query(db.SentenceAugmentation).filter_by(language_id=lang.id).all()
     query = query.strip()
     hits: list[sentences.Hit] = []
+    if user.is_guest and how == "model":
+        how = "keyword"
     if query:
         if how == "embedding":
             hits = sentences.embedding_hits(rows, query)
@@ -813,7 +840,7 @@ def _attach_views(doc: gw.QuestionnaireDoc, active: str | None = None, segment: 
 
 @app.get("/languages/{language_id}/documents/{document_id}", response_class=HTMLResponse)
 def editor_page(request: Request, language_id: str, document_id: str):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
@@ -836,7 +863,7 @@ def _slot_response(request: Request, access: Access, lang: db.Language, document
 
 @app.get("/languages/{language_id}/documents/{document_id}/slots/{segment}", response_class=HTMLResponse)
 def slot_get(request: Request, language_id: str, document_id: str, segment: str, active: str | None = None):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
@@ -1014,7 +1041,7 @@ def _run_view(run: db.InferenceRun, show_all: bool) -> dict:
 
 @app.get("/languages/{language_id}/runs/{run_id}", response_class=HTMLResponse)
 def run_page(request: Request, language_id: str, run_id: str, all: int = 0):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
@@ -1027,7 +1054,7 @@ def run_page(request: Request, language_id: str, run_id: str, all: int = 0):
 
 @app.get("/languages/{language_id}/runs/{run_id}/status", response_class=HTMLResponse)
 def run_status(request: Request, language_id: str, run_id: str):
-    current_user(request)
+    viewer(request)
     with db.session() as s:
         run = s.get(db.InferenceRun, run_id)
         if run is None:
@@ -1096,7 +1123,7 @@ def _concept_names(cg: dict) -> list[str]:
 
 @app.get("/catalog/concepts", response_class=HTMLResponse)
 def concepts_page(request: Request, focus: str = "INTELLECT"):
-    user = current_user(request)
+    user = viewer(request)
     cg = catalog.concepts()
     if focus not in cg:
         focus = next(iter(cg)) if cg else ""
@@ -1169,7 +1196,7 @@ def concept_delete(request: Request, name: str):
 
 @app.get("/catalog/questionnaires", response_class=HTMLResponse)
 def questionnaires_page(request: Request):
-    user = current_user(request)
+    user = viewer(request)
     rows = []
     for uid, raw in catalog.raw_questionnaires().items():
         dialog = raw.get("dialog", {})
@@ -1201,7 +1228,7 @@ def _segment_keys(raw: dict) -> list[str]:
 
 @app.get("/catalog/questionnaires/{uid}", response_class=HTMLResponse)
 def questionnaire_page(request: Request, uid: str):
-    user = current_user(request)
+    user = viewer(request)
     raw = _raw_questionnaire(uid)
     segments = [(k, raw["dialog"][k]) for k in _segment_keys(raw)]
     return render(request, "questionnaire_edit.html", user=user, uid=uid, raw=raw, segments=segments,
@@ -1210,7 +1237,7 @@ def questionnaire_page(request: Request, uid: str):
 
 @app.get("/catalog/questionnaires/{uid}/json")
 def questionnaire_json(request: Request, uid: str):
-    current_user(request)
+    viewer(request)
     raw = _raw_questionnaire(uid)
     return JSONResponse(raw, headers={"Content-Disposition": f'attachment; filename="cq_{raw.get("title", uid)}_{uid}.json"'})
 
@@ -1299,7 +1326,7 @@ def value_options(cg: dict, node: str, sentence_concepts: list[str]) -> list[tup
 
 @app.get("/catalog/questionnaires/{uid}/segments/{index}", response_class=HTMLResponse)
 def segment_page(request: Request, uid: str, index: str):
-    user = current_user(request)
+    user = viewer(request)
     raw = _raw_questionnaire(uid)
     seg = raw.get("dialog", {}).get(index)
     if seg is None:
@@ -1368,7 +1395,7 @@ async def segment_save(request: Request, uid: str, index: str):
 @app.get("/explore/wals", response_class=HTMLResponse)
 def explore_wals(request: Request, language: str = "", compare: str = "", parameter: str = "",
                  macroarea: str = "", family: str = ""):
-    user = current_user(request)
+    user = viewer(request)
     names = [n.strip() for n in compare.split(";") if n.strip()]
     columns, rows = explore.wals_compare(names) if names else ([], [])
     macroareas, families = explore.wals_filters()
@@ -1383,7 +1410,7 @@ def explore_wals(request: Request, language: str = "", compare: str = "", parame
 @app.get("/explore/grambank", response_class=HTMLResponse)
 def explore_grambank(request: Request, language: str = "", compare: str = "", parameter: str = "",
                      macroarea: str = "", family: str = ""):
-    user = current_user(request)
+    user = viewer(request)
     names = [n.strip() for n in compare.split(";") if n.strip()]
     columns, rows = explore.grambank_compare(names) if names else ([], [])
     macroareas, families = explore.grambank_filters()
@@ -1397,7 +1424,7 @@ def explore_grambank(request: Request, language: str = "", compare: str = "", pa
 
 @app.get("/explore/probabilities", response_class=HTMLResponse)
 def explore_probabilities(request: Request, p1: str = "", p2: str = ""):
-    user = current_user(request)
+    user = viewer(request)
     table = explore.conditional_table(p1, p2) if p1 and p2 else None
     parameters = [("WALS", explore.wals_parameters()), ("Grambank", explore.grambank_parameters())]
     return render(request, "explore_probabilities.html", user=user, p1=p1, p2=p2, parameters=parameters, table=table)
@@ -1409,7 +1436,7 @@ def language_statistics(request: Request, language_id: str, word: str = "", feat
     """dig4el's statistics and exploration of the transcriptions: word frequencies and
     neighbours, a word's sentences and connected meanings, and for a feature the words
     that set one value apart."""
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
@@ -1446,7 +1473,7 @@ def _template_names(lang: db.Language, uid: str, suffix: str) -> str:
 @app.get("/languages/{language_id}/questionnaires/{uid}/template.xlsx")
 def questionnaire_template_xlsx(request: Request, language_id: str, uid: str):
     """dig4el's Excel workbook for transcribing a questionnaire in the field."""
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         Access(user, lang)
@@ -1460,7 +1487,7 @@ def questionnaire_template_xlsx(request: Request, language_id: str, uid: str):
 
 @app.get("/languages/{language_id}/questionnaires/{uid}/template.docx")
 def questionnaire_template_docx(request: Request, language_id: str, uid: str):
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         Access(user, lang)
@@ -1507,7 +1534,7 @@ async def transcription_upload(request: Request, language_id: str, file: UploadF
 def corpus_docx(request: Request, language_id: str, entries: str = ""):
     """dig4el's partial-corpus Word export: the chosen knowledge-graph entries with
     their glosses."""
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
@@ -1524,7 +1551,7 @@ def corpus_docx(request: Request, language_id: str, entries: str = ""):
 def compare_page(request: Request, languages: str = "", intent: str = "", concept: str = "", sentence: str = ""):
     """dig4el's compare page: the same prompt across languages, with each language's
     translation and gloss, filtered by intent or concept."""
-    user = current_user(request)
+    user = viewer(request)
     with db.session() as s:
         mine = []
         for lang in s.query(db.Language).order_by(db.Language.name).all():
@@ -1560,4 +1587,84 @@ def compare_page(request: Request, languages: str = "", intent: str = "", concep
                          "gloss": kgmod.build_super_gloss(kgs[tl], entry["kg_index"], gw.KG_DELIMITERS)})
     return render(request, "compare.html", user=user, mine=mine, chosen=chosen, intents=intents, concepts=concepts,
                   intent=intent, concept=concept, keys=keys, sentence=sentence, rows=rows, loaded=len(kgs))
+
+
+# ---------------------------------------------------------------- guest access
+
+
+@app.post("/languages/{language_id}/guests")
+def language_guests(request: Request, language_id: str, open: str = Form("0")):
+    """Open a language to guests (the guest account becomes a reader of its project)
+    or close it again. Done with the caretaker's own client, so it is audited."""
+    user = current_user(request)
+    guest = auth.guest_user()
+    if guest is None:
+        raise HTTPException(400, "No guest account is set up yet. An administrator does that under Guest access.")
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_manage(access)
+        if open == "1":
+            access.client.projects.add_reader(lang.plaid_project_id, guest.id)
+            lang.open_to_guests = True
+        else:
+            try:
+                access.client.projects.remove_reader(lang.plaid_project_id, guest.id)
+            except PlaidAPIError as e:
+                if e.status not in (400, 404):
+                    raise
+            lang.open_to_guests = False
+        s.commit()
+    return redirect(f"/languages/{language_id}", request)
+
+
+@app.get("/admin/guests", response_class=HTMLResponse)
+def guests_page(request: Request, error: str = ""):
+    user = current_user(request)
+    require_admin(user)
+    return render(request, "guests.html", user=user, cfg=auth.guest_config(), error=error,
+                  opened=_opened_languages())
+
+
+def _opened_languages() -> list[db.Language]:
+    with db.session() as s:
+        return s.query(db.Language).filter_by(open_to_guests=True).order_by(db.Language.name).all()
+
+
+@app.post("/admin/guests")
+def guests_setup(request: Request, email: str = Form(...), password: str = Form(...),
+                 display_name: str = Form("dig4el guests")):
+    """Create the guest account if Plaid lacks it, mint it a named token, keep the token."""
+    user = current_user(request)
+    require_admin(user)
+    email = email.strip()
+    admin = user.client()
+    try:
+        admin.users.get(email)
+    except PlaidAPIError as e:
+        if e.status != 404:
+            raise
+        admin.users.create(email, password, False, display_name=display_name.strip() or "dig4el guests")
+    try:
+        as_guest = PlaidClient.login(settings().plaid_url, email, password)
+    except PlaidAPIError as e:
+        return redirect(f"/admin/guests?error=Plaid+refused+that+password+for+{email}", request)
+    minted = as_guest.api_tokens.create(email, "dig4el guest access")
+    auth.save_guest_config({"user_id": email, "token": minted["token"], "token_id": minted.get("id", ""),
+                            "name": minted.get("name", ""), "created_by": user.id, "created_at": db.now().isoformat()})
+    return redirect("/admin/guests", request)
+
+
+@app.post("/admin/guests/revoke")
+def guests_revoke(request: Request):
+    user = current_user(request)
+    require_admin(user)
+    cfg = auth.guest_config() or {}
+    if cfg.get("token_id"):
+        try:
+            PlaidClient(settings().plaid_url, cfg["token"]).api_tokens.revoke(cfg["user_id"], cfg["token_id"])
+        except PlaidAPIError:
+            pass
+    auth.clear_guest_config()
+    return redirect("/admin/guests", request)
 

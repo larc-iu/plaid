@@ -3,9 +3,9 @@
 {% block content %}
 <div class="d-flex align-items-baseline justify-content-between mb-2">
   <h4 class="mb-0">Languages</h4>
-  <a class="btn btn-primary btn-sm" href="/languages/new">Add a language</a>
+  {% if not user.is_guest %}<a class="btn btn-primary btn-sm" href="/languages/new">Add a language</a>{% endif %}
 </div>
-<p class="text-secondary small">Each language keeps its questionnaire translations in Plaid and its grammar inferences here.</p>
+<p class="text-secondary small">Each language keeps its questionnaire translations in Plaid and its grammar inferences here.{% if user.is_guest %} You are browsing as a guest: the languages their caretakers opened, read-only.{% endif %}</p>
 <div class="card">
   {% if rows %}
   <table class="table table-sm table-hover mb-0 align-middle">

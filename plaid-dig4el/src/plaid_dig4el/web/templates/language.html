@@ -10,7 +10,15 @@
     {% if lang.wals_name %}WALS: {{ lang.wals_name }} · {% endif %}
     {% if lang.grambank_name %}Grambank: {{ lang.grambank_name }} · {% endif %}
     prompts in {{ lang.pivot_language }} · <a href="/languages/{{ lang.id }}/statistics">statistics</a>
+    {% if lang.open_to_guests %} · <span class="badge text-bg-light fw-normal">open to guests</span>{% endif %}
   </div>
+  {% if access.can_manage %}
+  <form method="post" action="/languages/{{ lang.id }}/guests" class="m-0 mt-1 small">
+    <input type="hidden" name="open" value="{{ '0' if lang.open_to_guests else '1' }}">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">{{ 'Close to guests' if lang.open_to_guests else 'Open to guests' }}</button>
+    <span class="text-secondary">Guests read the translations, corpora, outputs and statistics without logging in.</span>
+  </form>
+  {% endif %}
 </div>
 {% if imported %}<div class="alert alert-success py-2 small">Imported {{ imported }} questionnaire translation{{ 's' if imported != 1 }}.</div>{% endif %}
 

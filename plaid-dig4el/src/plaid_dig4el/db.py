@@ -49,7 +49,7 @@ class Language(Base):
     delimiters: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     plaid_project_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     layers: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    open_to_members: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    open_to_guests: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # readable by the guest account
     created_by: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -297,6 +297,10 @@ MIGRATIONS: list[list[str]] = [
     ],
     [  # 2: jobs report progress
         "ALTER TABLE jobs ADD COLUMN progress JSON NOT NULL DEFAULT '{}'",
+    ],
+    [  # 3: the unused members flag becomes the guest flag, off by default
+        "ALTER TABLE languages RENAME COLUMN open_to_members TO open_to_guests",
+        "UPDATE languages SET open_to_guests = 0",
     ],
 ]
 

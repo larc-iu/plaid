@@ -28,9 +28,46 @@ class User:
     display_name: str
     token: str
     is_admin: bool = False
+    is_guest: bool = False  # the shared read-only account, used for visitors who are not logged in
 
     def client(self) -> PlaidClient:
         return PlaidClient(settings().plaid_url, self.token)
+
+
+# ------------------------------------------------------------ the guest account
+# One Plaid account, a reader on every project a caretaker opened to guests. Its named
+# API token is kept in the data directory; visitors who are not logged in browse as it.
+
+GUEST_FILE = "guest_account.json"
+
+
+def guest_config() -> dict | None:
+    path = settings().data_dir / GUEST_FILE
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except ValueError:
+        return None
+
+
+def save_guest_config(cfg: dict) -> None:
+    path = settings().data_dir / GUEST_FILE
+    path.write_text(json.dumps(cfg))
+    path.chmod(0o600)
+
+
+def clear_guest_config() -> None:
+    path = settings().data_dir / GUEST_FILE
+    if path.exists():
+        path.unlink()
+
+
+def guest_user() -> User | None:
+    cfg = guest_config()
+    if not cfg or not cfg.get("token"):
+        return None
+    return User(id=cfg["user_id"], display_name="Guest", token=cfg["token"], is_guest=True)
 
 
 def _serializer() -> URLSafeSerializer:
