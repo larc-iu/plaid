@@ -13,14 +13,14 @@
   {% include "_run_status.html" with context %}
 {% elif run.status == 'failed' %}
   <div class="alert alert-danger d-flex align-items-center gap-3">
-    <span>{{ run.error if run.error == runner.RESTART_ERROR else 'The run failed.' }}</span>
+    <span>{{ 'The run failed.' if '\n' in run.error else run.error }}</span>
     {% if access.can_edit %}
     <form method="post" action="/languages/{{ lang.id }}/inference" class="m-0 ms-auto">
       <button type="submit" class="btn btn-sm btn-danger">Run again</button>
     </form>
     {% endif %}
   </div>
-  {% if run.error != runner.RESTART_ERROR %}<pre class="small bg-white border rounded p-2">{{ run.error }}</pre>{% endif %}
+  {% if '\n' in run.error %}<pre class="small bg-white border rounded p-2">{{ run.error }}</pre>{% endif %}
 {% else %}
   <div class="card mb-3">
     <div class="card-body py-2 small">

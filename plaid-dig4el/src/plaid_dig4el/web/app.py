@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 from plaid_client import PlaidClient
 from plaid_client.http import PlaidAPIError
 
-from .. import auth, db, plaid_gateway as gw
+from .. import auth, db, jobs, plaid_gateway as gw
 from ..inference import kg as kgmod, legacy_labels, pipeline, runner
 from ..reference import catalog
 
@@ -40,13 +40,13 @@ def asset(path: str) -> str:
     return f"/static/{path}?v={stamp}"
 
 
-templates.env.globals.update(label=legacy_labels.label, catalog=catalog, asset=asset, runner=runner)
+templates.env.globals.update(label=legacy_labels.label, catalog=catalog, asset=asset)
 
 
 @app.on_event("startup")
 def _startup() -> None:
     db.engine()
-    runner.fail_orphaned_runs()
+    jobs.start_worker()
     runner.preload_in_background()
 
 
@@ -313,16 +313,56 @@ def language_page(request: Request, language_id: str, imported: int | None = Non
             try:
                 d = access.load_doc(ref.plaid_document_id)
                 docs.append({"ref": ref, "q": q, "doc": d, "filled": sum(1 for x in d.slots if x.filled),
-                             "total": len(d.slots), "missing": False})
-            except PlaidAPIError:
-                docs.append({"ref": ref, "q": q, "doc": None, "filled": 0, "total": 0, "missing": True})
+                             "total": len(d.slots), "missing": False, "reason": ""})
+            except gw.DocumentUnavailable as e:
+                docs.append({"ref": ref, "q": q, "doc": None, "filled": 0, "total": 0, "missing": True,
+                             "reason": str(e)})
         present = {ref.questionnaire_uid for ref in lang.documents}
         available = [q for uid, q in catalog.questionnaires().items() if uid not in present]
         available.sort(key=lambda q: q.short_title)
-        runs = list(lang.runs)
+        runs = [{"run": r, "stale": r.status == "done" and _run_is_stale(r, docs)} for r in lang.runs]
         published = sum(1 for d in docs if d["doc"] and d["doc"].published and d["filled"])
     return render(request, "language.html", lang=lang, access=access, docs=docs, available=available,
                   runs=runs, imported=imported, published=published)
+
+
+def _run_is_stale(run: db.InferenceRun, docs: list[dict]) -> bool:
+    """True when the published translations differ from what the run read: a document
+    changed version (Plaid bumps it on any edit inside), was published or unpublished,
+    went missing, or was added since."""
+    seen = {d["id"]: d for d in (run.inputs or {}).get("documents", [])}
+    for d in docs:
+        if d["missing"]:
+            was = seen.get(d["ref"].plaid_document_id)
+            if was and was.get("published") and not was.get("missing"):
+                return True
+            continue
+        doc = d["doc"]
+        was = seen.get(doc.id)
+        if was is None:
+            if doc.published and d["filled"]:
+                return True
+            continue
+        if was.get("missing") or bool(was.get("published")) != doc.published:
+            return True
+        if doc.published and was.get("version") != doc.version:
+            return True
+    return False
+
+
+@app.post("/languages/{language_id}/documents/{document_id}/forget")
+def questionnaire_forget(request: Request, language_id: str, document_id: str):
+    """Drop the reference to a questionnaire document that no longer exists in Plaid."""
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_manage(access)
+        for ref in lang.documents:
+            if ref.plaid_document_id == document_id:
+                s.delete(ref)
+        s.commit()
+    return redirect(f"/languages/{language_id}", request)
 
 
 @app.post("/languages/{language_id}/questionnaires")
@@ -358,8 +398,18 @@ def document_publish(request: Request, language_id: str, document_id: str, publi
 
 
 def _editor_context(access: Access, lang: db.Language, doc: gw.QuestionnaireDoc) -> dict:
+    """The editor's rows in questionnaire order: a slot, or the segment whose slot is
+    gone; sentence tokens that are not segments come last."""
     q = catalog.questionnaires().get(doc.questionnaire)
-    return {"lang": lang, "access": access, "doc": doc, "q": q}
+    rows: list[tuple[str, Any]] = []
+    if q:
+        for seg in q.segments:
+            slot = doc.slot(seg.index)
+            rows.append(("slot", slot) if slot else ("missing", seg))
+    else:
+        rows = [("slot", s) for s in doc.slots]
+    rows.extend(("slot", s) for s in doc.extra_slots)
+    return {"lang": lang, "access": access, "doc": doc, "q": q, "rows": rows}
 
 
 # Twenty hues a golden angle apart, dark enough for white text.
@@ -465,6 +515,22 @@ def slot_translation(request: Request, language_id: str, document_id: str, segme
     return _slot_response(request, access, lang, document_id, segment)
 
 
+@app.post("/languages/{language_id}/documents/{document_id}/slots/{segment}/restore")
+def slot_restore(request: Request, language_id: str, document_id: str, segment: str):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_edit(access)
+    doc = access.load_doc(document_id)
+    q = catalog.questionnaires().get(doc.questionnaire)
+    seg = q.segment(segment) if q else None
+    if seg is None or doc.slot(segment) is not None:
+        raise HTTPException(400, "Nothing to restore")
+    gw.restore_slot(access.client, doc, seg)
+    return redirect(f"/languages/{language_id}/documents/{document_id}#slot-{segment}", request)
+
+
 @app.post("/languages/{language_id}/documents/{document_id}/slots/{segment}/link",
           response_class=HTMLResponse)
 def slot_link(request: Request, language_id: str, document_id: str, segment: str,
@@ -479,6 +545,8 @@ def slot_link(request: Request, language_id: str, document_id: str, segment: str
         slot = doc.slot(segment)
         if slot is None or slot.segment is None:
             raise HTTPException(404, "No such segment")
+        if not doc.can_link:
+            raise HTTPException(409, "The Concept layer was removed in Plaid, so meanings cannot be linked.")
         if concept not in slot.segment.expected_concepts():
             return _slot_response(request, access, lang, document_id, segment)
         current = next((sp for sp in slot.concepts if sp["value"] == concept), None)
@@ -499,12 +567,10 @@ def inference_start(request: Request, language_id: str):
         lang = get_language(s, language_id)
         access = Access(user, lang)
         require_edit(access)
-        run = db.InferenceRun(language_id=lang.id, created_by=user.id, status="queued",
-                              settings_json={"seed": None})
-        s.add(run)
+        run = runner.start_run(s, lang, user.id, user.token)
         s.commit()
-        run_id = run.id
-    runner.start_run(run_id, user.token)
+        run_id, job_id = run.id, run.job_id
+    jobs.submit(job_id)
     return redirect(f"/languages/{language_id}/runs/{run_id}", request)
 
 

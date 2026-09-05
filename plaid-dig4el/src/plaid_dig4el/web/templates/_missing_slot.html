@@ -1,0 +1,13 @@
+<div class="card slot mb-2 border-danger-subtle" id="slot-{{ seg.index }}">
+  <div class="card-body py-2 px-3 d-flex align-items-baseline gap-2">
+    <span class="text-secondary small">{{ seg.index }}</span>
+    <span class="text-secondary small">{{ seg.speaker }}</span>
+    <span class="prompt text-secondary">{{ seg.text }}</span>
+    <span class="small text-danger">This segment's sentence was deleted in Plaid.</span>
+    {% if access.can_edit %}
+    <form method="post" action="/languages/{{ lang.id }}/documents/{{ doc.id }}/slots/{{ seg.index }}/restore" class="m-0 ms-auto">
+      <button type="submit" class="btn btn-sm btn-outline-danger">Restore</button>
+    </form>
+    {% endif %}
+  </div>
+</div>

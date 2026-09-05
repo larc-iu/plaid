@@ -19,6 +19,32 @@ Dev server: `plaid-dig4el --plaid-url http://localhost:8085 --data-dir <dir> --p
   WALS/Grambank tables (~100 MB) live in `reference_data/` (gitignored), fetched by
   `scripts/fetch_reference_data.py`.
 
+## Background jobs
+
+Long work (an inference run, later every LLM stage) is a row in `jobs` executed by the
+single worker thread in `jobs.py`. A handler is `@jobs.handler("kind")` taking
+`(job, client)`, where the client carries the token of the person who started the job
+(stored on the row until the job finishes). Create the job and the rows it refers to in
+one session, commit, then `jobs.submit(id)`. A restart requeues interrupted jobs
+(`attempts`, given up after `MAX_ATTEMPTS`). Do not start threads for work; add a kind.
+
+## Plaid-side changes degrade, they never crash
+
+Anything igt or another app does to the shared project is legitimate. The gateway
+reports it: `DocumentUnavailable` when a document or its text/sentence/word layer is
+gone (the language page shows why and a caretaker can remove the reference),
+`doc.problems` and `doc.can_link` for a lost Concept layer or field, `doc.missing_segments`
+for deleted sentence tokens (the editor offers Restore, an audited insert), `extra_slots`
+for foreign sentence tokens. A run records the document versions it read; the language
+page marks a run stale when a published document's version moved (Plaid bumps it on any
+edit inside the document).
+
+## Schema changes
+
+`db.MIGRATIONS` is a numbered list of SQL statement lists applied by `engine()` via
+`PRAGMA user_version`; a fresh database comes straight from `create_all`. Append a list
+for every model change; never edit an applied one.
+
 ## The slot document
 
 A questionnaire document is created with one `\n` per segment and one partitioning

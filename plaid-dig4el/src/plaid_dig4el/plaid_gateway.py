@@ -16,10 +16,11 @@ namespace, which other apps ignore.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from plaid_client import PlaidClient
+from plaid_client.http import PlaidAPIError
 
 from .inference import tokenizer
 from .reference import catalog
@@ -162,12 +163,31 @@ class QuestionnaireDoc:
     questionnaire: str
     published: bool
     slots: list[Slot]
+    can_link: bool = True  # the Concept layer still exists
+    problems: list[str] = field(default_factory=list)  # layers changed in Plaid, in plain words
 
     def slot(self, segment_index: str) -> Slot | None:
         for s in self.slots:
             if s.segment_index == segment_index:
                 return s
         return None
+
+    @property
+    def missing_segments(self) -> list[Segment]:
+        """Questionnaire segments whose sentence token no longer exists in Plaid."""
+        q = catalog.questionnaires().get(self.questionnaire)
+        present = {s.segment_index for s in self.slots}
+        return [seg for seg in q.segments if seg.index not in present] if q else []
+
+    @property
+    def extra_slots(self) -> list[Slot]:
+        """Sentence tokens that are not questionnaire segments (made in another app)."""
+        return [s for s in self.slots if s.segment is None]
+
+
+class DocumentUnavailable(Exception):
+    """The document cannot serve as a questionnaire any more: it is gone, unreadable,
+    or its text or token layers were removed in Plaid."""
 
 
 def _find(items: Iterable[dict], key: str, value: str) -> dict | None:
@@ -178,15 +198,37 @@ def _find(items: Iterable[dict], key: str, value: str) -> dict | None:
 
 
 def read_questionnaire_document(client: PlaidClient, document_id: str, layers: Layers) -> QuestionnaireDoc:
-    d = client.documents.get(document_id, include_body=True)
+    """Read a questionnaire document as it stands. Raises ``DocumentUnavailable`` when
+    the document or its substrate layers are gone; lesser losses (the Concept layer, a
+    field) are reported in ``problems`` and the document stays usable."""
+    try:
+        d = client.documents.get(document_id, include_body=True)
+    except PlaidAPIError as e:
+        if e.status in (403, 404):
+            raise DocumentUnavailable("This questionnaire's document no longer exists in Plaid, "
+                                      "or you can no longer read it.") from e
+        raise
     tl = _find(d["text_layers"], "id", layers.text)
+    if tl is None:
+        raise DocumentUnavailable("The language's text layer was removed in Plaid.")
     text = tl.get("text") or {}
     body = text.get("body", "")
-    sentence_layer = _find(tl.get("token_layers", []), "id", layers.sentence) or {}
-    word_layer = _find(tl.get("token_layers", []), "id", layers.word) or {}
-    concept_layer = _find(word_layer.get("span_layers", []), "id", layers.concept) or {}
-    field_layers = {key: _find(sentence_layer.get("span_layers", []), "id", lid) or {}
-                    for key, lid in layers.fields.items()}
+    sentence_layer = _find(tl.get("token_layers", []), "id", layers.sentence)
+    word_layer = _find(tl.get("token_layers", []), "id", layers.word)
+    if sentence_layer is None or word_layer is None:
+        raise DocumentUnavailable("The language's sentence or word layer was removed in Plaid.")
+    problems: list[str] = []
+    concept_layer = _find(word_layer.get("span_layers", []), "id", layers.concept)
+    if concept_layer is None:
+        problems.append("The Concept layer was removed in Plaid, so meanings cannot be linked to words.")
+        concept_layer = {}
+    field_layers = {}
+    for key, lid in layers.fields.items():
+        fl = _find(sentence_layer.get("span_layers", []), "id", lid)
+        if fl is None:
+            problems.append(f"The {SENTENCE_FIELDS[key]} field was removed in Plaid.")
+            continue
+        field_layers[key] = fl
 
     words = sorted(word_layer.get("tokens", []), key=lambda t: (t["begin"], t.get("precedence") or 0, t["end"]))
     concept_spans = concept_layer.get("spans", [])
@@ -230,7 +272,54 @@ def read_questionnaire_document(client: PlaidClient, document_id: str, layers: L
         id=d["id"], name=d["name"], version=d["version"], text_id=text.get("id"), body=body,
         questionnaire=str(dmeta.get("questionnaire", slots[0].questionnaire if slots else "")),
         published=bool(dmeta.get("published", False)), slots=slots,
+        can_link=bool(concept_layer), problems=problems,
     )
+
+
+def restore_slot(client: PlaidClient, doc: QuestionnaireDoc, seg: Segment) -> str:
+    """Put back an empty slot for a segment whose sentence token is gone: a newline
+    inserted where the segment belongs, carved out of the neighbouring sentence that
+    absorbs it (a partitioning layer allows no single-token create or delete), tagged
+    as the segment, with its prompt. Returns the token id."""
+    q = catalog.questionnaires()[doc.questionnaire]
+    order = [x.index for x in q.segments]
+    before = [doc.slot(i) for i in order[:order.index(seg.index)]]
+    prev = next((x for x in reversed(before) if x is not None), None)
+    pos = prev.end if prev else 0
+    layers = _layers_of(client, doc)
+    meta = {NS: {"questionnaire": q.uid, "segment": seg.index, "legacyIndex": seg.legacy_index,
+                 "speaker": seg.speaker}}
+    with client.operation(f"Restore segment {seg.index}"):
+        client.texts.update(doc.text_id, [{"type": "insert", "index": pos, "value": "\n"}])
+        fresh = read_questionnaire_document(client, doc.id, layers)
+        host = next(x for x in fresh.slots if x.begin <= pos < x.end)
+        if host.begin < pos:
+            # the previous sentence grew by one character: cut the newline off its end
+            tid = _token_id(client.tokens.split(host.token_id, pos))
+            client.tokens.set_metadata(tid, meta)
+        else:
+            # the following sentence grew backwards: cut the newline off its front. The
+            # left half keeps the token's identity, so the following sentence's tags and
+            # fields move to the right half and the left half becomes the restored slot.
+            right = _token_id(client.tokens.split(host.token_id, pos + 1))
+            client.tokens.set_metadata(right, host_metadata(client, host.token_id))
+            for span_id, _ in host.fields.values():
+                if span_id:
+                    client.spans.set_tokens(span_id, [right])
+            tid = host.token_id
+            client.tokens.set_metadata(tid, meta)
+        if "prompt" in layers.fields:
+            client.spans.create(layers.fields["prompt"], [tid], seg.text)
+    return tid
+
+
+def host_metadata(client: PlaidClient, token_id: str) -> dict:
+    return client.tokens.get(token_id).get("metadata") or {}
+
+
+def _token_id(result: Any) -> str:
+    return result["id"] if isinstance(result, dict) else str(result)
+
 
 
 # --------------------------------------------------------------- writing a slot

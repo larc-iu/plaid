@@ -1,14 +1,13 @@
-"""Running the pipeline for a language in the background and recording the run."""
+"""Running the pipeline for a language as a background job and recording the run."""
 
 from __future__ import annotations
 
 import threading
-import traceback
 from dataclasses import asdict
 
 from plaid_client import PlaidClient
 
-from .. import db, plaid_gateway as gw
+from .. import db, jobs, plaid_gateway as gw
 from ..config import settings
 from . import pipeline
 
@@ -49,56 +48,38 @@ def gather_inputs(client: PlaidClient, language: db.Language) -> tuple[dict, dic
     return kg, inputs
 
 
-def execute_run(run_id: str, token: str) -> None:
+@jobs.handler("inference")
+def execute_run(job: db.Job, client: PlaidClient) -> None:
+    """Job handler: read the translations as the person who started the run, run the
+    pipeline, store the report on the run. An exception fails the job."""
+    run_id = job.payload["run_id"]
     with db.session() as s:
         run = s.get(db.InferenceRun, run_id)
         if run is None:
             return
-        run.status = "running"
-        s.commit()
         language = s.get(db.Language, run.language_id)
         _ = language.documents  # load while the session is open
-    try:
-        client = PlaidClient(settings().plaid_url, token)
-        kg, inputs = gather_inputs(client, language)
-        cfg = pipeline.Settings(**{k: v for k, v in (run.settings_json or {}).items()
-                                   if k in pipeline.Settings.__dataclass_fields__})
-        report = pipeline.run_inference(kg, language.typology_name, gw.KG_DELIMITERS, cfg,
-                                        grambank_name=language.grambank_name or None)
-        report["sentences"] = len(kg)
-        with db.session() as s:
-            run = s.get(db.InferenceRun, run_id)
-            run.report = report
-            run.inputs = inputs
-            run.settings_json = asdict(cfg)
-            run.status = "done"
-            run.finished_at = db.now()
-            s.commit()
-    except Exception:
-        with db.session() as s:
-            run = s.get(db.InferenceRun, run_id)
-            run.status = "failed"
-            run.error = traceback.format_exc()[-4000:]
-            run.finished_at = db.now()
-            s.commit()
-
-
-RESTART_ERROR = "The server restarted before this run finished. Run it again."
-
-
-def fail_orphaned_runs() -> int:
-    """Runs execute in threads of the server process, so a restart loses them. Called at
-    startup: every run still marked queued or running belongs to a dead process."""
+        settings_json = run.settings_json or {}
+    kg, inputs = gather_inputs(client, language)
+    cfg = pipeline.Settings(**{k: v for k, v in settings_json.items()
+                               if k in pipeline.Settings.__dataclass_fields__})
+    report = pipeline.run_inference(kg, language.typology_name, gw.KG_DELIMITERS, cfg,
+                                    grambank_name=language.grambank_name or None)
+    report["sentences"] = len(kg)
     with db.session() as s:
-        orphans = s.query(db.InferenceRun).filter(db.InferenceRun.status.in_(("queued", "running"))).all()
-        for run in orphans:
-            run.status = "failed"
-            run.error = RESTART_ERROR
-            run.finished_at = db.now()
+        run = s.get(db.InferenceRun, run_id)
+        run.report = report
+        run.inputs = inputs
+        run.settings_json = asdict(cfg)
+        run.finished_at = db.now()
         s.commit()
-        return len(orphans)
 
 
-def start_run(run_id: str, token: str) -> None:
-    threading.Thread(target=execute_run, args=(run_id, token), name=f"dig4el-run-{run_id[:8]}",
-                     daemon=True).start()
+def start_run(s: db.Session, language: db.Language, user_id: str, token: str) -> db.InferenceRun:
+    """Create a run and its job in the given session. Submit the job after commit."""
+    run_id = db.new_id()
+    job = jobs.enqueue(s, "inference", {"run_id": run_id}, user_id, token)
+    run = db.InferenceRun(id=run_id, language_id=language.id, created_by=user_id,
+                          settings_json={"seed": None}, job=job)
+    s.add(run)
+    return run

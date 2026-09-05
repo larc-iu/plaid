@@ -5,8 +5,9 @@
     <div class="d-flex align-items-baseline gap-2 mb-1">
       <span class="text-secondary small">{{ slot.segment_index }}</span>
       <span class="text-secondary small">{{ slot.speaker }}</span>
-      <span class="prompt">{{ slot.fields.prompt[1] or (seg.text if seg else '') }}</span>
+      <span class="prompt">{{ slot.fields.get('prompt', (None, ''))[1] or (seg.text if seg else '') }}</span>
       {% if seg and seg.idiomaticity %}<span class="text-secondary small">· likely idiomatic</span>{% endif %}
+      {% if not seg %}<span class="text-secondary small">· not part of the questionnaire</span>{% endif %}
     </div>
     <form hx-post="{{ base }}/translation" hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML" data-advance="1" class="m-0">
       <div class="input-group input-group-sm">
@@ -17,16 +18,16 @@
       <details class="small mt-1">
         <summary class="text-secondary">Alternate prompt, literal back-translation, note</summary>
         <div class="d-grid gap-1 mt-1">
-          <input type="text" class="form-control form-control-sm" name="alternate_pivot" value="{{ slot.fields.alternate_pivot[1] }}"
+          <input type="text" class="form-control form-control-sm" name="alternate_pivot" value="{{ slot.fields.get('alternate_pivot', (None, ''))[1] }}"
                  placeholder="The prompt as actually used, if it differed" {% if not access.can_edit %}readonly{% endif %}>
-          <input type="text" class="form-control form-control-sm" name="back_translation" value="{{ slot.fields.back_translation[1] }}"
+          <input type="text" class="form-control form-control-sm" name="back_translation" value="{{ slot.fields.get('back_translation', (None, ''))[1] }}"
                  placeholder="Literal back-translation into {{ lang.pivot_language }}" {% if not access.can_edit %}readonly{% endif %}>
-          <input type="text" class="form-control form-control-sm" name="note" value="{{ slot.fields.note[1] }}" placeholder="Notes"
+          <input type="text" class="form-control form-control-sm" name="note" value="{{ slot.fields.get('note', (None, ''))[1] }}" placeholder="Notes"
                  {% if not access.can_edit %}readonly{% endif %}>
         </div>
       </details>
     </form>
-    {% if slot.filled and seg and sv %}
+    {% if slot.filled and seg and sv and doc.can_link %}
     <div class="linker mt-2 pt-2 border-top" data-active="{{ sv.active }}" style="--active-color: {{ sv.colors.get(sv.active, '') }}">
       <input type="hidden" name="concept" value="{{ sv.active }}">
       <div class="words d-flex flex-wrap gap-1 mb-2">

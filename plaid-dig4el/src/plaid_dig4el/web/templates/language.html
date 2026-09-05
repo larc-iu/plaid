@@ -22,7 +22,8 @@
     <tbody>
     {% for d in docs %}
       <tr>
-        <td>{% if d.missing %}<span class="text-secondary">{{ d.q.short_title if d.q else d.ref.questionnaire_uid }} (no longer in Plaid)</span>
+        <td>{% if d.missing %}<span class="text-secondary">{{ d.q.short_title if d.q else d.ref.questionnaire_uid }}</span>
+              <div class="small text-danger">{{ d.reason }}</div>
             {% else %}<a href="/languages/{{ lang.id }}/documents/{{ d.doc.id }}" class="text-decoration-none">{{ d.doc.name }}</a>{% endif %}</td>
         <td>{% if not d.missing %}{{ d.filled }} / {{ d.total }}{% endif %}</td>
         <td>{% if not d.missing %}
@@ -37,7 +38,12 @@
               </form>
               {% else %}{{ 'yes' if d.doc.published else 'no' }}{% endif %}
             {% endif %}</td>
-        <td class="text-end">{% if not d.missing %}<a href="/languages/{{ lang.id }}/documents/{{ d.doc.id }}" class="btn btn-sm btn-link">Translate</a>{% endif %}</td>
+        <td class="text-end">{% if not d.missing %}<a href="/languages/{{ lang.id }}/documents/{{ d.doc.id }}" class="btn btn-sm btn-link">Translate</a>
+            {% elif access.can_manage %}
+            <form method="post" action="/languages/{{ lang.id }}/documents/{{ d.ref.plaid_document_id }}/forget" class="m-0">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+            </form>
+            {% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
@@ -63,11 +69,11 @@
   <table class="table table-sm mb-0 align-middle">
     <thead class="table-light"><tr><th>Started</th><th>By</th><th>Status</th><th>Review</th></tr></thead>
     <tbody>
-    {% for r in runs %}
+    {% for row in runs %}{% set r = row.run %}
       <tr>
         <td><a href="/languages/{{ lang.id }}/runs/{{ r.id }}" class="text-decoration-none">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</a></td>
         <td>{{ r.created_by }}</td>
-        <td>{{ r.status }}</td>
+        <td>{{ r.status }}{% if row.stale %} <span class="badge text-bg-secondary fw-normal">translations changed since</span>{% endif %}</td>
         <td>{% if r.approved %}<span class="badge text-bg-primary fw-normal">approved by {{ r.approved_by }}</span>
             {% elif r.status == 'done' %}<span class="text-secondary">awaiting review</span>{% endif %}</td>
       </tr>

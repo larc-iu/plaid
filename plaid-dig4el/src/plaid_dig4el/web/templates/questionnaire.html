@@ -12,10 +12,17 @@
     {% if not access.can_edit %} · you can read but not edit{% endif %}
   </div>
 </div>
+{% for p in doc.problems %}<div class="alert alert-warning small py-2">{{ p }}</div>{% endfor %}
 <div class="alert alert-light border small py-2">For each prompt, type how a speaker would say it. Then choose each meaning listed and click the word or words that express it. A meaning may have no word, and a word may carry several meanings.</div>
-{% for slot in doc.slots %}
-  {% with seg = slot.segment %}
-    {% include "_slot.html" %}
-  {% endwith %}
+{% for kind, item in rows %}
+  {% if kind == 'slot' %}
+    {% with slot = item, seg = item.segment %}
+      {% include "_slot.html" %}
+    {% endwith %}
+  {% else %}
+    {% with seg = item %}
+      {% include "_missing_slot.html" %}
+    {% endwith %}
+  {% endif %}
 {% endfor %}
 {% endblock %}
