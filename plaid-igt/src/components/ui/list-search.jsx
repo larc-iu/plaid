@@ -1,5 +1,7 @@
 import * as React from 'react';
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronFirst,
   ChevronLast,
   ChevronLeft,
@@ -63,6 +65,29 @@ export const ListCount = ({ shown, total, noun = 'item', className }) => (
 export const ListHint = ({ children, className }) => (
   <p className={cn('text-xs text-muted-foreground', className)}>{children}</p>
 );
+
+// A column heading that sorts the list: click to sort by it, click again to
+// flip. `sort` is `{key, dir}`; the active column wears an arrow. The state
+// update behind `onSort` is the caller's (same key flips `dir`, a new key
+// starts ascending), since a hook file may not export plain functions.
+export const SortHeader = ({ field, label, sort, onSort, className }) => {
+  const active = sort.key === field;
+  const Arrow = sort.dir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      className={cn(
+        'inline-flex items-center gap-1 font-medium text-muted-foreground transition-colors hover:text-foreground',
+        active && 'text-foreground',
+        className,
+      )}
+    >
+      {label}
+      {active && <Arrow className="h-3 w-3" />}
+    </button>
+  );
+};
 
 const PagerButton = ({ icon, label, ...props }) => {
   // Uppercase local, the way SortHeader does it: this config drops

@@ -1,34 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Plus, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { SortHeader } from '@/components/ui/list-search';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
-import { cn } from '@/lib/utils';
 import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-
-// Sortable column header button (renders an arrow for the active column).
-const SortHeader = ({ field, label, sort, onSort, className }) => {
-  const active = sort.key === field;
-  const Arrow = sort.dir === 'asc' ? ArrowUp : ArrowDown;
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(field)}
-      className={cn(
-        'inline-flex items-center gap-1 font-medium text-muted-foreground transition-colors hover:text-foreground',
-        active && 'text-foreground',
-        className,
-      )}
-    >
-      {label}
-      {active && <Arrow className="h-3 w-3" />}
-    </button>
-  );
-};
 
 export const VocabularyList = () => {
   useDocumentTitle('Vocabularies');

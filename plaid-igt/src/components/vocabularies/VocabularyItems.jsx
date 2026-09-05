@@ -13,7 +13,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
+import { SearchInput, ListCount, ListPager, SortHeader } from '@/components/ui/list-search';
 import {
   Select,
   SelectContent,
@@ -42,7 +42,7 @@ import { planItemConcordance, loadConcordanceGroups } from './vocabConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
 import { BulkAddDialog } from './BulkAddDialog';
 import { ReplaceDialog } from './ReplaceDialog';
-import { filterVocabItems, fieldEmpty, ANY_FIELD } from '@/domain/vocabItemFilter';
+import { filterVocabItems, sortVocabItems, fieldEmpty, ANY_FIELD } from '@/domain/vocabItemFilter';
 import { EntryComments } from './EntryComments';
 import { useCommentStore } from '@/domain/useCommentStore';
 import { anchorCaption } from '@/domain/commentAnchors';
@@ -179,6 +179,12 @@ export const VocabularyItems = ({
   // to a field, the box can instead show the entries with nothing in it.
   const [searchField, setSearchField] = useState(ANY_FIELD);
   const [emptyOnly, setEmptyOnly] = useState(false);
+  // The column the list is ordered by; a heading click sorts by it or flips it.
+  const [sort, setSort] = useState({ key: 'form', dir: 'asc' });
+  const onSort = (key) =>
+    setSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
+    );
   const [page, setPage] = useState(0);
   const listRef = useRef(null);
   // Size the sticky left pane to fit from its own top to the viewport bottom, so
@@ -578,22 +584,32 @@ export const VocabularyItems = ({
     );
   };
 
-  // ---- left list (search + sort by form) ----
-  const filteredItems = useMemo(() => {
-    const list = filterVocabItems(
-      offTagsetOnly ? items.filter((it) => offTagsetIds.has(it.id)) : items,
-      { query: search, field: searchField, emptyOnly, fieldNames },
-    );
-    return [...list].sort((a, b) => {
-      const af = a.form.toLowerCase();
-      const bf = b.form.toLowerCase();
-      if (af < bf) return -1;
-      if (af > bf) return 1;
-      // Homonyms in subscript order, so the list reads ₁, ₂, ₃. Not by id:
-      // ids do not sort into creation order within a bulk write.
-      return (homonyms.get(a.id) ?? 0) - (homonyms.get(b.id) ?? 0);
-    });
-  }, [items, search, searchField, emptyOnly, fieldNames, homonyms, offTagsetOnly, offTagsetIds]);
+  // ---- left list (search + column sort) ----
+  const filteredItems = useMemo(
+    () =>
+      sortVocabItems(
+        filterVocabItems(offTagsetOnly ? items.filter((it) => offTagsetIds.has(it.id)) : items, {
+          query: search,
+          field: searchField,
+          emptyOnly,
+          fieldNames,
+        }),
+        sort,
+        { homonyms, usageCounts },
+      ),
+    [
+      items,
+      search,
+      searchField,
+      emptyOnly,
+      fieldNames,
+      homonyms,
+      usageCounts,
+      sort,
+      offTagsetOnly,
+      offTagsetIds,
+    ],
+  );
 
   // Paged with the shared helper rather than the hook: the selection effect
   // below needs to drive the page itself, so the state stays local.
@@ -604,7 +620,7 @@ export const VocabularyItems = ({
   // when the page changes.
   useEffect(() => {
     setPage(0);
-  }, [search, searchField, emptyOnly, offTagsetOnly]);
+  }, [search, searchField, emptyOnly, offTagsetOnly, sort]);
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = 0;
   }, [currentPage]);
@@ -801,9 +817,15 @@ export const VocabularyItems = ({
               listCols,
             )}
           >
-            <span>Form</span>
-            {hasGloss && <span>Gloss</span>}
-            <span className="text-right">Uses</span>
+            <SortHeader field="form" label="Form" sort={sort} onSort={onSort} />
+            {hasGloss && <SortHeader field="gloss" label="Gloss" sort={sort} onSort={onSort} />}
+            <SortHeader
+              field="uses"
+              label="Uses"
+              sort={sort}
+              onSort={onSort}
+              className="justify-self-end"
+            />
           </div>
         )}
 
