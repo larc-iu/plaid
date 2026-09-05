@@ -84,6 +84,16 @@ the per-language statistics with `legacy/stats.py` and `legacy/kg_explore.py` (v
 (its template leaves row 2 empty; data starts at row 3) and the glossed-corpus Word
 export; a filled workbook fills slots through `plaid_gateway.fill_from_recording`.
 
+## Guest access
+
+One shared read-only Plaid account (`auth.guest_user`, token in `data/guest_account.json`,
+minted from `/admin/guests`). `viewer(request)` resolves the session user or the guest;
+read routes take it, write routes keep `current_user`. A caretaker's "Open to guests"
+adds the account as a reader of the project (`POST /languages/{id}/guests`), which is
+the only access control; `Access` marks `as_guest` (also for a logged-in non-member
+reading an opened language) and then `can_edit`/`can_manage` are false. Guests never
+start jobs, edit, give feedback, or use model-selection search.
+
 ## Plaid-side changes degrade, they never crash
 
 Anything igt or another app does to the shared project is legitimate. The gateway
