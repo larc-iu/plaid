@@ -1495,7 +1495,11 @@
 /* The badge's anchor. NOT `.igt-vocab`, which is a column that also holds the
    lexicon opener: on a short form the opener is the wider child, so a badge
    pinned to that box drifts away from the text. This hugs the form itself. */
-.igt-vocab__face {
+.igt-vocab__face,
+/* The same anchor for an annotation cell's value: the cell is as wide as its
+   column and centers the value, so a badge pinned to the cell's edge sat on
+   the neighbor's corner (a gloss badge read as the next morpheme's). */
+.igt-cell__face {
   position: relative;
   display: inline-flex;
   align-items: center;

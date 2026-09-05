@@ -248,12 +248,14 @@ Any sentence, word, morpheme, or annotation value can carry **comments**: a conv
 In the Analyze tab, hover a sentence's label, a word, or a morpheme and click its comment badge to read the thread or add to it.
 A badge with a number marks a thread that already has comments.
 
-The **Comments** tab lists every thread in the document, each with a link that jumps to its sentence.
+The **Comments** tab lists every thread in the document, newest activity first, each collapsed to its latest comment.
+Click a thread to open it, and click its heading to jump to its sentence.
+Search finds a word, an author, or a phrase from any comment, and the list can be sorted in text order instead.
 Comments take Markdown.
 You can edit your own, and a maintainer can remove any.
 
 A comment stays even when what it was about is edited away, for example a word that is merged or retyped.
-The Comments tab lists such a comment under **Outdated**, headed by what it was about, until someone deletes it.
+Such a comment sits behind the tab's **Outdated** filter, headed by what it was about, until someone deletes it.
 
 Comments are notes about the text rather than part of it.
 They are not versioned with the document (see <<_history>>) and do not appear in exports, except in the native archive, which carries them along.

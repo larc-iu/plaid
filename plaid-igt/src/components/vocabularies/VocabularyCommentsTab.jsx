@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CommentsIsland } from '@/components/documents/comments/island/CommentsIsland.js';
+import { CommentsBrowser } from '@/components/documents/comments/CommentsBrowser.jsx';
 import { buildEntryAnchorIndex } from '@/domain/commentAnchors';
 import { notifyError } from '@/utils/feedback';
 
-// Every thread on a vocabulary's entries, in one place: the vocabulary's
-// counterpart of the document Comments tab, mounting the same island. The
-// entries are what threads are labeled by (and what tells an outdated thread
-// from a live one), so they are loaded here before the island mounts.
+// Every thread on a vocabulary's entries: the vocabulary's counterpart of the
+// document Comments tab. The entries are what threads are labeled by (and what
+// tells an outdated thread from a current one), so they are loaded here first.
 export const VocabularyCommentsTab = ({
   vocabularyId,
   client,
@@ -17,8 +16,6 @@ export const VocabularyCommentsTab = ({
   canDeleteAny,
 }) => {
   const navigate = useNavigate();
-  const hostRef = useRef(null);
-  const islandRef = useRef(null);
   const [items, setItems] = useState(null);
 
   useEffect(() => {
@@ -40,45 +37,24 @@ export const VocabularyCommentsTab = ({
   }, [client, vocabularyId]);
 
   const hasGloss = useMemo(() => (fields || []).some((f) => f.name === 'gloss'), [fields]);
-  const index = useMemo(
+  const anchors = useMemo(
     () => (items ? buildEntryAnchorIndex(items, { glossField: hasGloss ? 'gloss' : null }) : null),
     [items, hasGloss],
   );
-  // The island asks for the index on every render; a ref keeps the newest one
-  // in reach without remounting.
-  const indexRef = useRef(index);
-  indexRef.current = index;
-  const ready = index !== null;
 
-  useEffect(() => {
-    if (!store || !ready || !hostRef.current) return undefined;
-    islandRef.current = new CommentsIsland(hostRef.current, {
-      store,
-      anchorIndex: () => indexRef.current,
-      canWrite,
-      canDeleteAny,
-      onJumpTo: (itemId) => navigate(`/vocabularies/${vocabularyId}?item=${itemId}`),
-      emptyText: 'No entry has comments yet. Open an entry to add one.',
-      jumpTitle: 'Open the entry',
-    });
-    return () => {
-      islandRef.current?.destroy();
-      islandRef.current = null;
-    };
-    // Entries and permissions are synced below without tearing down the island.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, ready]);
-
-  useEffect(() => {
-    islandRef.current?.setAnchorIndex(() => indexRef.current);
-  }, [index]);
-
-  useEffect(() => {
-    islandRef.current?.setPermissions({ canWrite, canDeleteAny });
-  }, [canWrite, canDeleteAny]);
-
-  if (!ready) {
+  if (!anchors) {
     return <p className="py-6 text-sm text-muted-foreground">Loading comments…</p>;
   }
-  return <div ref={hostRef} className="igt-comments-mount" />;
+  return (
+    <CommentsBrowser
+      store={store}
+      anchors={anchors}
+      canWrite={canWrite}
+      canDeleteAny={canDeleteAny}
+      onJumpTo={(itemId) => navigate(`/vocabularies/${vocabularyId}?item=${itemId}`)}
+      jumpTitle="Open the entry"
+      emptyText="No entry has comments yet. Open an entry to add one."
+      positionLabel="By entry"
+    />
+  );
 };

@@ -31,6 +31,8 @@ const quote = (s) => {
  * `kind` is one of document | text | sentence | word | morpheme | annotation.
  * `label` is the short heading; `detail` is the sentence context, or ''.
  * `jumpId` is what a "show me" link navigates to (the sentence), or null.
+ * `order` is the anchor's place in the text as an array compared entry by
+ * entry: sentence, word, morpheme, then the thing itself before its values.
  *
  * Annotations (spans) are indexed at all three scopes, so a comment on a
  * sentence translation and a comment on a morpheme gloss both resolve.
@@ -46,6 +48,7 @@ export function buildAnchorIndex(doc) {
     sentenceIndex: null,
     sentenceId: null,
     jumpId: null,
+    order: [-1],
   });
 
   // The baseline text. Commentable server-side; nothing in the UI offers it
@@ -59,6 +62,7 @@ export function buildAnchorIndex(doc) {
       sentenceIndex: null,
       sentenceId: null,
       jumpId: null,
+      order: [-1, 1],
     });
   }
 
@@ -72,6 +76,7 @@ export function buildAnchorIndex(doc) {
       label: `Sentence ${sIdx + 1}`,
       detail: quote(sentenceText(sentence)),
       ...at,
+      order: [sIdx, -1, -1, 0],
     });
 
     for (const [field, span] of Object.entries(sentence.annotations || {})) {
@@ -81,16 +86,18 @@ export function buildAnchorIndex(doc) {
           label: `${field} of sentence ${sIdx + 1}`,
           detail: quote(span.value),
           ...at,
+          order: [sIdx, -1, -1, 1],
         });
       }
     }
 
-    for (const token of sentence.tokens || []) {
+    (sentence.tokens || []).forEach((token, wIdx) => {
       index.set(token.id, {
         kind: 'word',
         label: quote(token.content) || 'Word',
         detail: where,
         ...at,
+        order: [sIdx, wIdx, -1, 0],
       });
 
       for (const [field, span] of Object.entries(token.annotations || {})) {
@@ -100,17 +107,19 @@ export function buildAnchorIndex(doc) {
             label: `${field} of ${quote(token.content)}`,
             detail: where,
             ...at,
+            order: [sIdx, wIdx, -1, 1],
           });
         }
       }
 
-      for (const morph of token.morphemes || []) {
+      (token.morphemes || []).forEach((morph, mIdx) => {
         const form = quote(morph.metadata?.form || morph.content);
         index.set(morph.id, {
           kind: 'morpheme',
           label: form || 'Morpheme',
           detail: `in ${quote(token.content)}, ${where}`,
           ...at,
+          order: [sIdx, wIdx, mIdx, 0],
         });
 
         for (const [field, span] of Object.entries(morph.annotations || {})) {
@@ -120,11 +129,12 @@ export function buildAnchorIndex(doc) {
               label: `${field} of ${form}`,
               detail: `in ${quote(token.content)}, ${where}`,
               ...at,
+              order: [sIdx, wIdx, mIdx, 1],
             });
           }
         }
-      }
-    }
+      });
+    });
   });
 
   return index;

@@ -2431,6 +2431,7 @@ export class IgtEditor {
     confirmSentence = null,
     fieldName = null,
     tagset = null,
+    badge = null,
   }) {
     const v = value ?? '';
     const filled = v !== '';
@@ -2510,7 +2511,7 @@ export class IgtEditor {
       : nAlts > 1
         ? `${baseTitle ? `${baseTitle}. ` : ''}Alt+↓ lists ${nAlts} values seen for this form`
         : (baseTitle ?? nothing);
-    return html`<input
+    const input = html`<input
       class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g
         ? 'igt-field--guess'
         : ''} ${nAlts > 1 ? 'igt-field--alts' : ''} ${violations.length
@@ -2537,6 +2538,11 @@ export class IgtEditor {
       @keydown=${this._basicKeydown}
       @blur=${(e) => this._commitField(e, apply, tagset)}
     />`;
+    // The comment badge hugs the VALUE, not the cell: a cell is as wide as its
+    // column and centers its value, so a badge tangent to the cell's edge
+    // lands on the neighbor's corner. The wrapper is the badge's positioning
+    // context, exactly as .igt-vocab__face is for a word form.
+    return badge ? html`<span class="igt-cell__face">${badge}${input}</span>` : input;
   }
 
   /**
@@ -3846,15 +3852,15 @@ export class IgtEditor {
         ${ctx.wordFields.map(
           (name) =>
             html`<div class="igt-cell${this._rowCls(`word:${name}`)}" data-row=${`word:${name}`}>
-              ${token.annotations?.[name]?.id
-                ? this._commentBadge(
-                    'span',
-                    token.annotations[name].id,
-                    `${name} of ${token.content}`,
-                  )
-                : nothing}
               ${this._field({
                 key: `wa:${token.id}:${name}`,
+                badge: token.annotations?.[name]?.id
+                  ? this._commentBadge(
+                      'span',
+                      token.annotations[name].id,
+                      `${name} of ${token.content}`,
+                    )
+                  : null,
                 value: token.annotations?.[name]?.value ?? '',
                 apply: (v, meta) => this.doc.updateTokenSpan(token.id, name, v, meta),
                 ariaLabel: `${name} for ${token.content}`,
@@ -4000,15 +4006,15 @@ export class IgtEditor {
         ${ctx.morphFields.map(
           (name) => html`
             <div class="igt-morph-cell${this._rowCls(`morph:${name}`)}" data-row=${`morph:${name}`}>
-              ${morph.annotations?.[name]?.id
-                ? this._commentBadge(
-                    'span',
-                    morph.annotations[name].id,
-                    `${name} of ${value || 'morpheme'}`,
-                  )
-                : nothing}
               ${this._field({
                 key: `ma:${morph.id}:${name}`,
+                badge: morph.annotations?.[name]?.id
+                  ? this._commentBadge(
+                      'span',
+                      morph.annotations[name].id,
+                      `${name} of ${value || 'morpheme'}`,
+                    )
+                  : null,
                 value: morph.annotations?.[name]?.value ?? '',
                 apply: (v, meta) => this.doc.updateMorphemeSpan(morph.id, name, v, meta),
                 extraClass: 'igt-morph-field',
