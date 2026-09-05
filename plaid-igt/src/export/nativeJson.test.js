@@ -188,7 +188,7 @@ describe('serializeDocumentNative — comments', () => {
   const comment = (over = {}) => ({
     id: 'c1',
     entityType: 'token',
-    entityId: 't1',
+    entityId: 'w1',
     author: { id: 'ada@x.com', name: 'Ada Lovelace' },
     body: 'Dative?',
     createdAt: '2026-08-14T09:31:07Z',
@@ -206,7 +206,7 @@ describe('serializeDocumentNative — comments', () => {
     expect(comments).toEqual([
       {
         id: 'c1',
-        anchor: { type: 'token', id: 't1' },
+        anchor: { type: 'token', id: 'w1' },
         anchorLabel: null,
         author: { id: 'ada@x.com', name: 'Ada Lovelace' },
         body: 'Dative?',
@@ -217,19 +217,64 @@ describe('serializeDocumentNative — comments', () => {
   });
 
   it('carries every anchor type the archive can represent', () => {
-    const types = ['document', 'text', 'token', 'span'];
+    const anchors = [
+      ['document', 'doc1'],
+      ['text', 'text1'],
+      ['token', 'w1'],
+      ['span', 'sp1'],
+    ];
     const { comments } = serializeDocumentNative(makeDoc(), {
-      comments: types.map((t, i) => comment({ id: `c${i}`, entityType: t })),
+      comments: anchors.map(([t, id], i) => comment({ id: `c${i}`, entityType: t, entityId: id })),
     });
-    expect(comments.map((c) => c.anchor.type)).toEqual(types);
+    expect(comments.map((c) => [c.anchor.type, c.anchor.id])).toEqual(anchors);
   });
 
-  it('drops a comment on a relation, which this archive has no anchor for', () => {
-    // Relation layers belong to whichever app owns them (UD), never to IGT.
+  it('keeps a comment on what only the completeness sweep carries', () => {
+    // w3 sits outside every sentence (an orphan token), sp5 is the duplicate
+    // the tree skips (an extra span), a1 is an alignment token.
     const { comments } = serializeDocumentNative(makeDoc(), {
-      comments: [comment(), comment({ id: 'c2', entityType: 'relation', entityId: 'r1' })],
+      comments: [
+        comment({ id: 'c1', entityId: 'w3' }),
+        comment({ id: 'c2', entityId: 'mOrphan' }),
+        comment({ id: 'c3', entityType: 'span', entityId: 'sp5' }),
+        comment({ id: 'c4', entityId: 'a1' }),
+      ],
+    });
+    expect(comments.map((c) => c.id)).toEqual(['c1', 'c2', 'c3', 'c4']);
+  });
+
+  it('drops a comment whose anchor is not in the file, and says how many', () => {
+    // A comment outlives its anchor on the server, and a relation belongs to
+    // whichever app owns its layer (UD), never to IGT. Neither has a node here
+    // for a re-importer to hang the comment on.
+    const warnings = [];
+    const { comments } = serializeDocumentNative(makeDoc(), {
+      comments: [
+        comment(),
+        comment({ id: 'c2', entityType: 'relation', entityId: 'r1' }),
+        comment({ id: 'c3', entityId: 'deleted-token' }),
+        comment({ id: 'c4', entityType: 'span', entityId: 'deleted-span' }),
+        comment({ id: 'c5', entityType: 'document', entityId: 'other-doc' }),
+        comment({ id: 'c6', entityType: 'text', entityId: 'other-text' }),
+        comment({ id: 'c7', entityType: 'vocab-item', entityId: 'item1' }),
+      ],
+      onWarning: (msg) => warnings.push(msg),
     });
     expect(comments.map((c) => c.id)).toEqual(['c1']);
+    expect(warnings).toEqual([
+      '6 comments not exported (what they are about is deleted, or belongs to another app)',
+    ]);
+  });
+
+  it('counts one dropped comment in the singular', () => {
+    const warnings = [];
+    serializeDocumentNative(makeDoc(), {
+      comments: [comment({ entityId: 'deleted-token' })],
+      onWarning: (msg) => warnings.push(msg),
+    });
+    expect(warnings).toEqual([
+      '1 comment not exported (what they are about is deleted, or belongs to another app)',
+    ]);
   });
 
   it('keeps a missing display name as null rather than inventing one', () => {
@@ -286,6 +331,56 @@ describe('serializeVocabularyNative', () => {
       { name: 'Plural', inline: false, lang: 'ru' },
     ]);
     expect(out.tagsets).toEqual(tagsets);
+  });
+});
+
+describe('serializeVocabularyNative — comments', () => {
+  const vocab = {
+    id: 'v1',
+    name: 'Lex',
+    config: { igt: { fields: { gloss: { inline: true } } } },
+    items: [{ id: 'i1', form: 'perro', metadata: { gloss: 'dog' } }],
+  };
+  const comment = (over = {}) => ({
+    id: 'c1',
+    entityType: 'vocab-item',
+    entityId: 'i1',
+    anchorLabel: 'perro · dog',
+    author: { id: 'ada@x.com', name: 'Ada Lovelace' },
+    body: 'Also a verb?',
+    createdAt: '2026-08-14T09:31:07Z',
+    updatedAt: '2026-08-14T09:31:07Z',
+    ...over,
+  });
+
+  it('omits the key entirely when the vocabulary has no comments', () => {
+    expect(serializeVocabularyNative(vocab)).not.toHaveProperty('comments');
+    expect(serializeVocabularyNative(vocab, { comments: [] })).not.toHaveProperty('comments');
+  });
+
+  it('records an entry comment the way a document file records its own', () => {
+    const { comments } = serializeVocabularyNative(vocab, { comments: [comment()] });
+    expect(comments).toEqual([
+      {
+        id: 'c1',
+        anchor: { type: 'vocab-item', id: 'i1' },
+        anchorLabel: 'perro · dog',
+        author: { id: 'ada@x.com', name: 'Ada Lovelace' },
+        body: 'Also a verb?',
+        createdAt: '2026-08-14T09:31:07Z',
+        updatedAt: '2026-08-14T09:31:07Z',
+      },
+    ]);
+  });
+
+  it('drops a comment on a deleted entry, and says how many', () => {
+    const warnings = [];
+    const { comments } = serializeVocabularyNative(vocab, {
+      comments: [comment(), comment({ id: 'c2', entityId: 'gone' })],
+      onWarning: (msg) => warnings.push(msg),
+    });
+    expect(comments.map((c) => c.id)).toEqual(['c1']);
+    expect(warnings).toEqual(['1 comment on deleted entries not exported']);
   });
 });
 

@@ -147,7 +147,14 @@ export function resolveNativeTargets(project, manifest) {
  * contract). Returns Map<archiveItemId, newItemId>. Resume-safe: items
  * already stamped with a matching nativeImportId are reused.
  */
-export async function importVocabulary({ client, vocabId, vocabData, onProgress, shouldStop }) {
+export async function importVocabulary({
+  client,
+  vocabId,
+  vocabData,
+  onProgress,
+  shouldStop,
+  warnings = [],
+}) {
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
   };
@@ -206,8 +213,92 @@ export async function importVocabulary({ client, vocabId, vocabData, onProgress,
     done += chunk.length;
     onProgress?.({ phase: 'vocabulary', name: vocabData.name, done, total: pending.length });
   }
+
+  // Entry comments. Items are reused on resume, so the comments on them may
+  // already have been posted by the run that made them: a comment already on
+  // the vocabulary with the same anchor and body is not posted again.
+  const comments = vocabData.comments || [];
+  if (comments.length > 0) {
+    check();
+    const posted = new Set();
+    for (const c of await client.comments.listInVocab(vocabId)) {
+      posted.add(commentKey(c.entityId, c.body));
+    }
+    await postArchivedComments({
+      client,
+      name: vocabData.name,
+      comments,
+      anchorFor: (anchor) => (anchor?.type === 'vocab-item' ? itemIdMap.get(anchor.id) : null),
+      alreadyPosted: (entityId, body) => posted.has(commentKey(entityId, body)),
+      warnings,
+      check,
+    });
+  }
   return itemIdMap;
 }
+
+const commentKey = (entityId, body) => `${entityId}\u0000${body}`;
+
+/**
+ * Post an archive's comments against the entities this import created.
+ * Posted one at a time (there is no bulk comment endpoint) inside a batch.
+ *
+ * Anchors resolve through the same old→new maps the annotations used. What
+ * cannot be preserved is authorship: the server stamps author and timestamps
+ * from the caller and the clock, so every imported comment belongs to whoever
+ * ran the import, and the original attribution survives only as the note
+ * `attributedBody` puts at the top of the body.
+ */
+async function postArchivedComments({
+  client,
+  name,
+  comments,
+  anchorFor,
+  alreadyPosted = () => false,
+  warnings,
+  check,
+}) {
+  let unattributed = 0;
+  const posts = [];
+  for (const c of comments) {
+    const entityId = anchorFor(c.anchor);
+    if (!entityId) {
+      warnings.push(
+        `"${name}": comment ${c.id} skipped (its ${anchorNoun(c.anchor?.type)} did not survive the import)`,
+      );
+      continue;
+    }
+    const { body: text, attributed } = attributedBody(c);
+    if (!attributed) unattributed += 1;
+    if (alreadyPosted(entityId, text)) continue;
+    posts.push({
+      entityType: c.anchor.type,
+      entityId,
+      body: text,
+      anchorLabel: c.anchorLabel ?? null,
+    });
+  }
+  if (unattributed > 0) {
+    warnings.push(
+      `"${name}": ${unattributed} comment(s) were too long to carry their original attribution, so they were imported unchanged.`,
+    );
+  }
+  for (let i = 0; i < posts.length; i += CHUNK) {
+    check();
+    await client.batched(async () => {
+      for (const post of posts.slice(i, i + CHUNK)) {
+        client.comments.create(
+          post.entityType,
+          post.entityId,
+          post.body,
+          post.anchorLabel ? { anchorLabel: post.anchorLabel } : {},
+        );
+      }
+    });
+  }
+}
+
+const anchorNoun = (type) => (type === 'vocab-item' ? 'entry' : (type ?? 'anchor'));
 
 // Reconstitute token metadata from a word node: stored metadata ∪ the lifted
 // orthography values (unset orthographies stay unset).
@@ -508,70 +599,33 @@ export async function importNativeDocument({
     }
   }
 
-  // Comments. Posted one at a time (there is no bulk comment endpoint) inside
-  // a batch, and BEFORE the done marker so an interrupted import redoes them
+  // Comments, BEFORE the done marker so an interrupted import redoes them
   // along with everything else rather than leaving a document half-commented.
-  //
-  // Anchors resolve through the same old→new maps the annotations used. What
-  // cannot be preserved is authorship: the server stamps author and timestamps
-  // from the caller and the clock, so every imported comment belongs to whoever
-  // ran the import, and the original attribution survives only as the note
-  // `attributedBody` puts at the top of the body.
   const comments = docData.comments || [];
   if (comments.length > 0) {
     check();
     progress('Restoring comments');
-    const anchorFor = (anchor) => {
-      switch (anchor?.type) {
-        case 'document':
-          return docId;
-        case 'text':
-          return baselineTextId;
-        case 'token':
-          return tokenIdMap.get(anchor.id);
-        case 'span':
-          return spanIdMap.get(anchor.id);
-        default:
-          return null;
-      }
-    };
-    let unattributed = 0;
-    const posts = [];
-    for (const c of comments) {
-      const entityId = anchorFor(c.anchor);
-      if (!entityId) {
-        warnings.push(
-          `"${docData.name}": comment ${c.id} skipped (its ${c.anchor?.type ?? 'anchor'} did not survive the import)`,
-        );
-        continue;
-      }
-      const { body: text, attributed } = attributedBody(c);
-      if (!attributed) unattributed += 1;
-      posts.push({
-        entityType: c.anchor.type,
-        entityId,
-        body: text,
-        anchorLabel: c.anchorLabel ?? null,
-      });
-    }
-    if (unattributed > 0) {
-      warnings.push(
-        `"${docData.name}": ${unattributed} comment(s) were too long to carry their original attribution, so they were imported unchanged.`,
-      );
-    }
-    for (let i = 0; i < posts.length; i += CHUNK) {
-      check();
-      await client.batched(async () => {
-        for (const post of posts.slice(i, i + CHUNK)) {
-          client.comments.create(
-            post.entityType,
-            post.entityId,
-            post.body,
-            post.anchorLabel ? { anchorLabel: post.anchorLabel } : {},
-          );
+    await postArchivedComments({
+      client,
+      name: docData.name,
+      comments,
+      anchorFor: (anchor) => {
+        switch (anchor?.type) {
+          case 'document':
+            return docId;
+          case 'text':
+            return baselineTextId;
+          case 'token':
+            return tokenIdMap.get(anchor.id);
+          case 'span':
+            return spanIdMap.get(anchor.id);
+          default:
+            return null;
         }
-      });
-    }
+      },
+      warnings,
+      check,
+    });
   }
 
   // Media, from the archive bytes.
@@ -673,6 +727,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       vocabData: vocab.data,
       onProgress,
       shouldStop,
+      warnings,
     });
     for (const [oldId, newId] of map) itemIdMap.set(oldId, newId);
   }

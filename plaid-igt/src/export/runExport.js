@@ -145,19 +145,17 @@ export async function fetchDocumentMedia(client, mediaUrl) {
 }
 
 /**
- * A document's comments, shaped for the native serializer, with each author's
- * display name resolved once per export and cached across documents.
+ * Comments shaped for the native serializer, with each author's display name
+ * resolved once per export and cached across documents and vocabularies.
  *
  * Only the native archive carries comments; see the export panels for why no
- * interchange format does. A comment whose anchor the archive cannot represent
- * (a relation, owned by another app's layer) is dropped by `commentNodes` and
- * reported here, so the count in the warning is the honest one.
+ * interchange format does. A comment whose anchor the file cannot represent
+ * is dropped by the serializer, which reports the count through `onWarning`.
  *
  * A display name that cannot be fetched falls back to null rather than failing
  * the export: the id is the identity, the name is only a label.
  */
-export async function loadDocumentComments(client, projectId, documentId, nameCache) {
-  const raw = await client.comments.list(projectId, { documentId });
+async function shapeComments(client, raw, nameCache) {
   const names = nameCache ?? new Map();
   for (const c of raw) {
     if (c.authorId && !names.has(c.authorId)) {
@@ -174,11 +172,22 @@ export async function loadDocumentComments(client, projectId, documentId, nameCa
     id: c.id,
     entityType: c.entityType,
     entityId: c.entityId,
+    anchorLabel: c.anchorLabel ?? null,
     author: { id: c.authorId ?? null, name: names.get(c.authorId) ?? null },
     body: c.body,
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   }));
+}
+
+/** A document's comments, shaped for `serializeDocumentNative`. */
+export async function loadDocumentComments(client, projectId, documentId, nameCache) {
+  return shapeComments(client, await client.comments.list(projectId, { documentId }), nameCache);
+}
+
+/** A vocabulary's entry comments, shaped for `serializeVocabularyNative`. */
+export async function loadVocabComments(client, vocabId, nameCache) {
+  return shapeComments(client, await client.comments.listInVocab(vocabId), nameCache);
 }
 
 /**
@@ -301,13 +310,6 @@ export async function runExport({
     if (isNative && !asOf) {
       try {
         docComments = await loadDocumentComments(client, project.id, docIds[i], authorNames);
-        const archivable = docComments.filter((c) => c.entityType !== 'relation').length;
-        if (archivable < docComments.length) {
-          warnings.push(
-            `"${name}": ${docComments.length - archivable} comment(s) on relations were not exported. ` +
-              `Relations belong to another app's layers, which this archive does not carry.`,
-          );
-        }
       } catch (err) {
         warnings.push(`"${name}": comments could not be fetched: ${err?.message ?? err}`);
       }
@@ -321,7 +323,13 @@ export async function runExport({
         data: isCldf
           ? null
           : isNative
-            ? toJson(serializeDocumentNative(igtDoc, { mediaFile, comments: docComments }))
+            ? toJson(
+                serializeDocumentNative(igtDoc, {
+                  mediaFile,
+                  comments: docComments,
+                  onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
+                }),
+              )
             : serializeDoc(igtDoc, preset, layers, {
                 exportedAt,
                 onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
@@ -445,12 +453,29 @@ export async function runExport({
     const vocabNames = dedupeFilenames(
       vocabs.map((v) => `${sanitizeFilename(v.name || v.id)}.json`),
     );
-    vocabs.forEach((vocab, i) => {
+    for (const [i, vocab] of vocabs.entries()) {
+      checkStop();
+      const vocabName = vocab.name || vocab.id;
+      // Entry comments ride the vocabulary file the way a document's ride its
+      // own, and stay out of a historical archive for the same reason.
+      let vocabComments = [];
+      if (!asOf) {
+        try {
+          vocabComments = await loadVocabComments(client, vocab.id, authorNames);
+        } catch (err) {
+          warnings.push(`"${vocabName}": comments could not be fetched: ${err?.message ?? err}`);
+        }
+      }
       entries.push({
         path: `vocabularies/${vocabNames[i]}`,
-        data: toJson(serializeVocabularyNative(vocab)),
+        data: toJson(
+          serializeVocabularyNative(vocab, {
+            comments: vocabComments,
+            onWarning: (msg) => warnings.push(`"${vocabName}": ${msg}`),
+          }),
+        ),
       });
-    });
+    }
     entries.push(...mediaEntries);
     entries.unshift({
       path: 'project.json',

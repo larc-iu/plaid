@@ -83,7 +83,8 @@ the upload's media type is validated from its filename.
   "fields": [{ "name": "morphType", "inline": false }, { "name": "gloss", "inline": true },
              { "name": "pos", "inline": true, "tagset": "POS" }, …],
   "tagsets": { "POS": { "delimiters": "", "mode": "closed", "values": [{ "value": "n" }, …] } },
-  "items":  [{ "id": "…", "form": "perro", "metadata": { "gloss": "dog", … } }, …] }
+  "items":  [{ "id": "…", "form": "perro", "metadata": { "gloss": "dog", … } }, …],
+  "comments": [{ "id": "…", "anchor": { "type": "vocab-item", "id": "…" }, … }] }
 ```
 
 - `fields` is the normalized, ordered field inventory (`form` is never a field — it
@@ -104,6 +105,9 @@ the upload's media type is validated from its filename.
   of the id is random. Sorting by id was measured shuffling a 4,591-item lexicon
   down to 9 items still in place, so every export/import cycle permuted the
   whole vocabulary (fixed 2026-08-31).
+- `comments` — the comments on the vocabulary's entries, the same node shape as a
+  document's (see Comments) with `anchor.type` always `vocab-item`; **omitted
+  entirely when there are none**.
 
 ## documents/*.json
 
@@ -193,10 +197,18 @@ Comments (discussion anchored to an entity, not annotation of it) are the one
 part of the archive that records a PERSON rather than a piece of language, and
 they behave unlike everything else here.
 
-- `anchor.type` is one of `document`, `text`, `token`, `span` — the anchor types
-  this archive can represent. A comment on a **relation** is dropped at export
-  with a warning: relation layers belong to whichever app owns them (UD's
-  dependency arcs), and this archive carries the IGT substrate only.
+- `anchor.type` is one of `document`, `text`, `token`, `span` in a document file
+  and `vocab-item` in a vocabulary file — the anchor types this archive can
+  represent. `anchor.id` always names a node in the same file.
+- **A comment whose anchor is not in the file is dropped at export**, counted in
+  one warning per file. A comment outlives its anchor on the server, so a
+  project holds comments on deleted words, annotations and entries; a project
+  also holds entities this archive does not carry (a **relation** belongs to
+  whichever app owns its layer, UD's dependency arcs say). A re-importer would
+  have nothing to hang either on, and the server refuses a comment on a missing
+  anchor, so the archive does not pretend to carry them. The importer still
+  skips, with a warning, any comment whose anchor it cannot resolve (an archive
+  edited by hand).
 - `author.id` is the user's id, which **is their email address**. `author.name`
   is their display name at export time, or `null` — a label, since display names
   change and the id is the identity. An archive therefore contains personal data
@@ -204,10 +216,8 @@ they behave unlike everything else here.
 - `createdAt` / `updatedAt` are the server's own timestamps. A comment is
   "edited" iff they differ.
 - `anchorLabel` is the caption the comment was posted with (what it is about,
-  in words: "Gloss of ktab, sentence 4"), or `null`. A comment outlives its
-  anchor on the server, so an archive can carry a comment whose `anchor.id`
-  names nothing else in the archive; the importer skips such a comment with a
-  warning, since there is nothing to hang it on in the copy.
+  in words: "Gloss of ktab, sentence 4"), or `null`. It is what the comment
+  shows once its anchor is gone, so it is carried and re-posted verbatim.
 - **A historical (`asOf`) export omits comments entirely.** They are unaudited
   (`plaid.sql.comment`), so there is no state at `asOf` to read; today's comments
   in a time-travelled archive would carry today's dates and could anchor to
@@ -257,7 +267,10 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
 2. Per vocabulary: write `fields` (with each `tagset`/`lang`) and `tagsets`, then create
    items **in array order**, mapping old item ids to new.
    The importer stamps each created item's metadata with `nativeImportId` (the
-   archive item id) for resume dedupe and provenance.
+   archive item id) for resume dedupe and provenance. Then `comments.create`
+   per archived entry comment, against the mapped item id (see Comments). Items
+   are reused on resume rather than redone, so a comment already on the
+   vocabulary with the same anchor and body is not posted again.
 3. Per document: `documents.create(name, metadata)` → `texts.create(body)` →
    `tokens.bulkCreate` for sentences, words (metadata ∪ reconstituted `orthog:*`),
    morphemes (`form`/`morphType` folded back into metadata, `precedence` as

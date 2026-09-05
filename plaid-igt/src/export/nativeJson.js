@@ -133,7 +133,7 @@ export function buildProjectFile({ project, documents, vocabularies, asOf = null
  * measured scrambling a 4,591-item lexicon down to 9 items still in place, so
  * each export/import cycle permuted the whole vocabulary.
  */
-export function serializeVocabularyNative(vocab) {
+export function serializeVocabularyNative(vocab, { comments = [], onWarning = null } = {}) {
   // A field's `tagset` names one of the vocabulary's own tagsets (below) and
   // `lang` is a FLEx custom field's writing system; both are carried only
   // when set, so a plain field stays `{name, inline}`.
@@ -150,7 +150,21 @@ export function serializeVocabularyNative(vocab) {
   );
   // The vocabulary's tagsets, verbatim like the project's: null when unset.
   const tagsets = vocab?.config?.[IGT_NAMESPACE]?.tagsets ?? null;
-  return { id: vocab?.id ?? null, name: vocab?.name ?? null, fields, tagsets, items };
+  // Comments on the vocabulary's entries. An entry is the only thing in a
+  // vocabulary a comment can be about, so a comment whose entry is not in
+  // `items` is one whose entry has been deleted.
+  const itemIds = new Set(items.map((it) => it.id));
+  const nodes = commentNodes(comments, (type, id) => type === 'vocab-item' && itemIds.has(id));
+  const dropped = (comments || []).length - nodes.length;
+  if (dropped > 0) onWarning?.(`${plural(dropped, 'comment')} on deleted entries not exported`);
+  return {
+    id: vocab?.id ?? null,
+    name: vocab?.name ?? null,
+    fields,
+    tagsets,
+    items,
+    ...(nodes.length ? { comments: nodes } : {}),
+  };
 }
 
 // ---- documents/*.json -------------------------------------------------------
@@ -357,33 +371,28 @@ const alignmentNodes = (alignmentTokens) =>
   });
 
 /**
- * One document. `mediaFile` is the archive path of the embedded media (or
- * null). Offsets are code points into baseline.body; times are seconds.
- */
-/**
- * Anchor types a document file can represent. Comments hang off any
- * project-scoped entity, but this archive is the IGT slice of a project, not
- * the whole of it: relation layers belong to whichever app owns them (UD's
- * dependency arcs), and nothing here would give a re-importer a relation to
- * hang a comment on. Those are dropped by the caller, with a warning.
- */
-const ARCHIVABLE_ANCHORS = new Set(['document', 'text', 'token', 'span']);
-
-/**
- * Comment nodes for a document file. Comments are SOCIAL data and behave
+ * Comment nodes for an archive file. Comments are SOCIAL data and behave
  * unlike everything else archived here: they carry an identity (the author id
  * IS an email) and wall-clock times that are not the export's own, and they
  * are not versioned, so `asOf` exports omit them entirely (see runExport).
  *
+ * `archived(type, id)` says whether the anchor is in the file being written.
+ * A comment outlives its anchor on the server, and a project holds entities
+ * this archive does not carry (relations belong to whichever app owns them,
+ * UD's dependency arcs say), so a comment can be about something the file has
+ * no node for. Such a comment is dropped here: a re-importer would have
+ * nothing to hang it on, and the server refuses a comment on a missing anchor.
+ * The caller counts what was dropped and warns once per file.
+ *
  * `anchor.id` and `id` are correlation keys like every other id in the
  * archive. `author.name` is the display name AT EXPORT TIME — a label, since
  * display names change and the id is the identity. `anchorLabel` is the
- * caption the comment was posted with (what it is about, in words); a comment
- * outlives its anchor, and this is what it shows once the anchor is gone.
+ * caption the comment was posted with (what it is about, in words); it is
+ * what a comment shows once its anchor is gone.
  */
-export function commentNodes(comments) {
+export function commentNodes(comments, archived = () => true) {
   return (comments || [])
-    .filter((c) => c && ARCHIVABLE_ANCHORS.has(c.entityType))
+    .filter((c) => c && archived(c.entityType, c.entityId))
     .map((c) => ({
       id: c.id,
       anchor: { type: c.entityType, id: c.entityId },
@@ -395,7 +404,18 @@ export function commentNodes(comments) {
     }));
 }
 
-export function serializeDocumentNative(igtDoc, { mediaFile = null, comments = [] } = {}) {
+const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+/**
+ * One document. `mediaFile` is the archive path of the embedded media (or
+ * null). Offsets are code points into baseline.body; times are seconds.
+ * `comments` are the document's, shaped by runExport's loader; `onWarning`
+ * hears how many of them the file could not carry.
+ */
+export function serializeDocumentNative(
+  igtDoc,
+  { mediaFile = null, comments = [], onWarning = null } = {},
+) {
   const raw = igtDoc.raw || {};
   const layerInfo = igtDoc.layerInfo || {};
   const orthographyNames = (readOrthographies(layerInfo.primaryTokenLayer?.config) || [])
@@ -421,7 +441,34 @@ export function serializeDocumentNative(igtDoc, { mediaFile = null, comments = [
 
   const { orphanTokens, extraSpans } = completenessSweep(layerInfo, ctx);
   const text = layerInfo.primaryTextLayer?.text;
-  const nodes = commentNodes(comments);
+
+  // What this file has a node for: the tree, the alignment, and the sweep's
+  // leftovers. A comment anchored anywhere else is dropped (see commentNodes).
+  const tokenIds = new Set(ctx.emittedTokenIds);
+  for (const t of orphanTokens) tokenIds.add(t.id);
+  const spanIds = new Set(ctx.emittedSpanIds);
+  for (const sp of extraSpans) spanIds.add(sp.id);
+  const archived = (type, id) => {
+    switch (type) {
+      case 'document':
+        return id != null && id === raw.id;
+      case 'text':
+        return id != null && id === text?.id;
+      case 'token':
+        return tokenIds.has(id);
+      case 'span':
+        return spanIds.has(id);
+      default:
+        return false;
+    }
+  };
+  const nodes = commentNodes(comments, archived);
+  const dropped = (comments || []).length - nodes.length;
+  if (dropped > 0) {
+    onWarning?.(
+      `${plural(dropped, 'comment')} not exported (what they are about is deleted, or belongs to another app)`,
+    );
+  }
 
   return {
     id: raw.id ?? null,

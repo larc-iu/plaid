@@ -99,13 +99,15 @@ const createdProjects = [];
 
 // ---- helpers ----------------------------------------------------------------
 
-async function exportNative(projectId) {
+async function exportNative(projectId, expectedWarnings = []) {
   const project = await client.projects.get(projectId);
   const preset = newPreset('plaid-igt-json', discoverExportLayers(project), 'rt');
   const result = await runExport({ client, project, preset, scope: { type: 'project' } });
   check(
-    result.warnings.length === 0,
-    `export of ${project.name} has no warnings`,
+    stableStringify(result.warnings) === stableStringify(expectedWarnings),
+    expectedWarnings.length
+      ? `export of ${project.name} warns exactly as expected`
+      : `export of ${project.name} has no warnings`,
     result.warnings.join('; '),
   );
   return readNativeArchive(new Uint8Array(await result.blob.arrayBuffer()));
@@ -132,6 +134,15 @@ function normalize(archive) {
         form: it.form,
         metadata: omit(it.metadata, ['nativeImportId']),
       })),
+      // The entry a comment hangs off, by form, plus the words a person typed
+      // (see the document comments below for why author and dates are not here).
+      comments: (v.data.comments || [])
+        .map((c) => ({
+          entry: itemFormById.get(c.anchor?.id) ?? `unknown:${c.anchor?.id}`,
+          anchorLabel: c.anchorLabel,
+          body: stripAttribution(c.body),
+        }))
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -252,7 +263,11 @@ function normalize(archive) {
         // the whole reason the importer writes an attribution note instead.
         // That the note is present is checked separately.
         comments: (data.comments || [])
-          .map((c) => ({ anchor: anchorDesc(c.anchor), body: stripAttribution(c.body) }))
+          .map((c) => ({
+            anchor: anchorDesc(c.anchor),
+            anchorLabel: c.anchorLabel,
+            body: stripAttribution(c.body),
+          }))
           .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
       };
     })
@@ -366,6 +381,36 @@ try {
     `${commentsA.length} vs ${seededComments.length}`,
   );
 
+  // A comment on a lexicon entry rides the vocabulary file, with the caption
+  // it was posted under.
+  const vocabIdA = setupA.resources.vocabularies[0].id;
+  const entryA = (await client.vocabLayers.get(vocabIdA, true)).items[0];
+  check(!!entryA, 'project A has a lexicon entry to comment on');
+  const entryComment = { body: 'Is this a loan?', anchorLabel: `Entry ${entryA?.form}` };
+  if (entryA) {
+    await client.comments.create('vocab-item', entryA.id, entryComment.body, {
+      anchorLabel: entryComment.anchorLabel,
+    });
+  }
+
+  // A comment outlives its anchor. One on an annotation that is then deleted
+  // must be dropped at export, counted in a warning, rather than carried where
+  // a re-importer could not hang it.
+  const spanGone = baselineA.tokenLayers
+    .flatMap((tl) => tl.spanLayers || [])
+    .flatMap((sl) => sl.spans || [])
+    .find((sp) => sp.id !== spanA?.id);
+  check(!!spanGone, 'project A has a second span to comment on and delete');
+  if (spanGone) {
+    await client.comments.create('span', spanGone.id, 'This will outlive its annotation.');
+    await client.spans.delete(spanGone.id);
+  }
+  const expectedExportWarnings = spanGone
+    ? [
+        `"${docsA[0].name}": 1 comment not exported (what they are about is deleted, or belongs to another app)`,
+      ]
+    : [];
+
   // Project config the FLEx importer never sets, and one governed field. All
   // of this used to be dropped by the archive, so without seeding it here the
   // schema comparison below compares two sets of nulls and proves nothing.
@@ -393,7 +438,7 @@ try {
   await client.spanLayers.setConfig(glossLayer.id, 'igt', 'tagset', 'Leipzig');
 
   // ---- 2. export A ----
-  const archiveA = await exportNative(setupA.projectId);
+  const archiveA = await exportNative(setupA.projectId, expectedExportWarnings);
   check(
     archiveA.manifest.schema.tagsets?.Leipzig != null,
     'archive A carries the tagsets',
@@ -416,6 +461,16 @@ try {
   check(
     archivedComments.every((c) => c.author?.id && c.createdAt && c.updatedAt),
     'archived comments record author and both timestamps',
+  );
+  const archivedEntryComments = archiveA.vocabularies.flatMap((v) => v.data.comments || []);
+  check(
+    archivedEntryComments.length === 1 &&
+      archivedEntryComments[0].anchor.type === 'vocab-item' &&
+      archivedEntryComments[0].anchor.id === entryA?.id &&
+      archivedEntryComments[0].anchorLabel === entryComment.anchorLabel &&
+      archivedEntryComments[0].body === entryComment.body,
+    'the vocabulary file carries the entry comment, with its caption',
+    JSON.stringify(archivedEntryComments).slice(0, 200),
   );
   check(
     archiveA.documents.some((d) => d.mediaBytes),
@@ -477,6 +532,21 @@ try {
       new Set(seededComments.map((c) => c[0])).size,
     'every anchor type resolved on import',
     [...new Set(commentsB.map((c) => c.entityType))].join(','),
+  );
+  const vocabIdB = setupB.resources.vocabularies[0].id;
+  const entryCommentsB = await client.comments.listInVocab(vocabIdB);
+  const entryB = entryCommentsB[0]
+    ? await client.vocabItems.get(entryCommentsB[0].entityId).catch(() => null)
+    : null;
+  check(
+    entryCommentsB.length === 1 &&
+      entryCommentsB[0].entityType === 'vocab-item' &&
+      entryCommentsB[0].anchorLabel === entryComment.anchorLabel &&
+      stripAttribution(entryCommentsB[0].body) === entryComment.body &&
+      entryCommentsB[0].body.startsWith('> Imported from an archive. Originally posted by ') &&
+      entryB?.form === entryA?.form,
+    'project B has the entry comment back, on the same entry, with its caption and attribution',
+    JSON.stringify(entryCommentsB).slice(0, 200),
   );
 
   // ---- 4 + 5. export B and compare ----

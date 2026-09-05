@@ -65,8 +65,10 @@ function stubClient({
   failIds = [],
   vocabFails = false,
   comments = {},
+  vocabComments = {},
   users = {},
   commentsFail = false,
+  vocabCommentsFail = false,
 }) {
   const calls = [];
   return {
@@ -76,6 +78,11 @@ function stubClient({
         calls.push(['comments.list', projectId, documentId]);
         if (commentsFail) throw new Error('comment boom');
         return comments[documentId] || [];
+      },
+      listInVocab: async (vocabId) => {
+        calls.push(['comments.listInVocab', vocabId]);
+        if (vocabCommentsFail) throw new Error('vocab comment boom');
+        return vocabComments[vocabId] || [];
       },
     },
     users: {
@@ -443,7 +450,7 @@ describe('runExport — native plaid-igt-json', () => {
     const entries = await unzipBlob(result.blob);
     const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
     expect(doc).not.toHaveProperty('comments');
-    expect(client.calls.some((c) => c[0] === 'comments.list')).toBe(false);
+    expect(client.calls.some((c) => c[0].startsWith('comments.'))).toBe(false);
   });
 
   it("carries a document's comments, with author display names resolved", async () => {
@@ -456,7 +463,8 @@ describe('runExport — native plaid-igt-json', () => {
           {
             id: 'c1',
             entityType: 'token',
-            entityId: 't1',
+            entityId: 'd1-w0',
+            anchorLabel: 'Word hi, sentence 1',
             authorId: 'ada@x.com',
             body: 'Dative?',
             createdAt: '2026-08-14T09:31:07Z',
@@ -476,7 +484,8 @@ describe('runExport — native plaid-igt-json', () => {
     expect(doc.comments).toHaveLength(1);
     expect(doc.comments[0]).toMatchObject({
       id: 'c1',
-      anchor: { type: 'token', id: 't1' },
+      anchor: { type: 'token', id: 'd1-w0' },
+      anchorLabel: 'Word hi, sentence 1',
       author: { id: 'ada@x.com', name: 'Ada Lovelace' },
       body: 'Dative?',
     });
@@ -497,7 +506,7 @@ describe('runExport — native plaid-igt-json', () => {
     const client = stubClient({
       docs,
       users: { 'ada@x.com': 'Ada Lovelace' },
-      comments: { d1: [one('c1', 't1'), one('c2', 't2')], d2: [one('c3', 't3')] },
+      comments: { d1: [one('c1', 'd1-w0'), one('c2', 'd1-s')], d2: [one('c3', 'd2-w0')] },
     });
     await runExport({
       client,
@@ -539,22 +548,27 @@ describe('runExport — native plaid-igt-json', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('warns about comments on relations, which the archive cannot anchor', async () => {
+  it('drops comments the archive has no anchor for, counted once per document', async () => {
+    // A relation belongs to another app's layer; a token that has since been
+    // deleted is nowhere at all. Both are outlived by their comments.
     const docs = [rawDoc('d1', 'A', 'hi')];
+    const one = (id, entityType, entityId) => ({
+      id,
+      entityType,
+      entityId,
+      authorId: 'ada@x.com',
+      body: 'x',
+      createdAt: '2026-08-14T00:00:00Z',
+      updatedAt: '2026-08-14T00:00:00Z',
+    });
     const client = stubClient({
       docs,
       users: { 'ada@x.com': 'Ada' },
       comments: {
         d1: [
-          {
-            id: 'c1',
-            entityType: 'relation',
-            entityId: 'r1',
-            authorId: 'ada@x.com',
-            body: 'nsubj is wrong',
-            createdAt: '2026-08-14T00:00:00Z',
-            updatedAt: '2026-08-14T00:00:00Z',
-          },
+          one('c1', 'relation', 'r1'),
+          one('c2', 'token', 'deleted'),
+          one('c3', 'token', 'd1-w0'),
         ],
       },
     });
@@ -566,11 +580,68 @@ describe('runExport — native plaid-igt-json', () => {
     });
     const entries = await unzipBlob(result.blob);
     const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
-    expect(doc).not.toHaveProperty('comments');
+    expect(doc.comments.map((c) => c.id)).toEqual(['c3']);
     expect(result.warnings).toEqual([
-      '"A": 1 comment(s) on relations were not exported. ' +
-        "Relations belong to another app's layers, which this archive does not carry.",
+      '"A": 2 comments not exported (what they are about is deleted, or belongs to another app)',
     ]);
+  });
+
+  it("carries a vocabulary's entry comments in its own file, dropping those on deleted entries", async () => {
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const one = (id, entityId) => ({
+      id,
+      entityType: 'vocab-item',
+      entityId,
+      anchorLabel: 'perro · dog',
+      authorId: 'ada@x.com',
+      body: 'Also a verb?',
+      createdAt: '2026-08-14T00:00:00Z',
+      updatedAt: '2026-08-14T00:00:00Z',
+    });
+    const client = stubClient({
+      docs,
+      users: { 'ada@x.com': 'Ada Lovelace' },
+      vocabComments: { v1: [one('c1', 'i1'), one('c2', 'gone')] },
+    });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'project' },
+    });
+    const entries = await unzipBlob(result.blob);
+    const vocab = JSON.parse(new TextDecoder().decode(entries['vocabularies/Lexicon.json']));
+    expect(vocab.comments).toEqual([
+      {
+        id: 'c1',
+        anchor: { type: 'vocab-item', id: 'i1' },
+        anchorLabel: 'perro · dog',
+        author: { id: 'ada@x.com', name: 'Ada Lovelace' },
+        body: 'Also a verb?',
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+    ]);
+    expect(result.warnings).toEqual(['"Lexicon": 1 comment on deleted entries not exported']);
+    // One name lookup for the whole export, shared with the documents.
+    expect(client.calls.filter((c) => c[0] === 'users.get')).toHaveLength(1);
+  });
+
+  it('degrades a failed vocabulary comment fetch to a warning, vocabulary still exported', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const client = stubClient({ docs, vocabCommentsFail: true });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'project' },
+    });
+    expect(result.warnings).toEqual([
+      '"Lexicon": comments could not be fetched: vocab comment boom',
+    ]);
+    const entries = await unzipBlob(result.blob);
+    const vocab = JSON.parse(new TextDecoder().decode(entries['vocabularies/Lexicon.json']));
+    expect(vocab).not.toHaveProperty('comments');
   });
 
   it('degrades a failed comment fetch to a warning, doc still exported', async () => {

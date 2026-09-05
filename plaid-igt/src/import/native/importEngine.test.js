@@ -93,7 +93,7 @@ function targetProject() {
   return p;
 }
 
-function stubClient({ existingDocs = [], existingItems = [] } = {}) {
+function stubClient({ existingDocs = [], existingItems = [], existingVocabComments = [] } = {}) {
   const calls = [];
   let batch = null;
   let nextId = 0;
@@ -177,6 +177,8 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
         if (batch) batch.push(result);
         return result;
       },
+      listInVocab: async (vocabId) =>
+        record('comments.listInVocab', [vocabId], existingVocabComments),
     },
   };
 }
@@ -310,6 +312,92 @@ describe('importVocabulary', () => {
   });
 });
 
+describe('importVocabulary — entry comments', () => {
+  const comment = (over = {}) => ({
+    id: 'c1',
+    entityType: 'vocab-item',
+    entityId: 'item1',
+    anchorLabel: 'perro · dog',
+    author: { id: 'honestlyada@aol.com', name: 'Ada Lovelace' },
+    body: 'Also a verb?',
+    createdAt: '2026-08-14T09:31:07Z',
+    updatedAt: '2026-08-14T09:31:07Z',
+    ...over,
+  });
+  const NOTE =
+    '> Imported from an archive. Originally posted by Ada Lovelace <honestlyada@aol.com> on 2026-08-14.\n\n';
+
+  async function runWith(comments, overrides = {}) {
+    const client = stubClient(overrides);
+    const warnings = [];
+    const map = await importVocabulary({
+      client,
+      vocabId: 'newvocab',
+      vocabData: serializeVocabularyNative(VOCAB, { comments }),
+      warnings,
+    });
+    return { client, map, warnings, posted: callsOf(client, 'comments.create') };
+  }
+
+  it('reads nothing back and posts nothing when the vocabulary carries no comments', async () => {
+    const { client, posted } = await runWith([]);
+    expect(posted).toEqual([]);
+    expect(callsOf(client, 'comments.listInVocab')).toEqual([]);
+  });
+
+  it('posts each comment against the entry the import created, with its attribution', async () => {
+    const { map, posted, warnings } = await runWith([
+      comment(),
+      comment({ id: 'c2', entityId: 'item3', body: 'Phrase?' }),
+    ]);
+    expect(posted).toEqual([
+      ['comments.create', 'vocab-item', map.get('item1'), `${NOTE}Also a verb?`],
+      ['comments.create', 'vocab-item', map.get('item3'), `${NOTE}Phrase?`],
+    ]);
+    expect(map.get('item1')).toMatch(/^item-/);
+    expect(warnings).toEqual([]);
+  });
+
+  it('does not post again a comment already on the vocabulary from an earlier run', async () => {
+    const { posted, warnings } = await runWith([comment()], {
+      existingItems: [{ id: 'kept', form: 'perro', metadata: { nativeImportId: 'item1' } }],
+      existingVocabComments: [{ id: 'x', entityId: 'kept', body: `${NOTE}Also a verb?` }],
+    });
+    expect(posted).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('warns and skips when the entry did not survive', async () => {
+    // The exporter drops such a comment, so this is an archive edited by hand.
+    const client = stubClient();
+    const warnings = [];
+    await importVocabulary({
+      client,
+      vocabId: 'newvocab',
+      vocabData: {
+        ...serializeVocabularyNative(VOCAB),
+        comments: [
+          { id: 'c9', anchor: { type: 'vocab-item', id: 'nosuch' }, body: 'x', author: {} },
+        ],
+      },
+      warnings,
+    });
+    expect(callsOf(client, 'comments.create')).toEqual([]);
+    expect(warnings).toEqual(['"Lex": comment c9 skipped (its entry did not survive the import)']);
+  });
+
+  it('runs as part of a full archive import, before the documents', async () => {
+    const archive = buildArchive();
+    archive.vocabularies[0].data = serializeVocabularyNative(VOCAB, { comments: [comment()] });
+    const client = stubClient();
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    const names = client.calls.map(([n]) => n);
+    expect(names.indexOf('comments.create')).toBeLessThan(names.indexOf('documents.create'));
+    expect(callsOf(client, 'comments.create')).toHaveLength(1);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
 describe('runNativeImport — comments', () => {
   const comment = (over = {}) => ({
     id: 'c1',
@@ -367,8 +455,15 @@ describe('runNativeImport — comments', () => {
   });
 
   it('warns and skips rather than guessing when an anchor did not survive', async () => {
-    const { result, posted } = await runWith([comment({ entityId: 'nosuchtoken' })]);
-    expect(posted).toEqual([]);
+    // The exporter drops a comment whose anchor is not in the file, so this
+    // is an archive edited by hand.
+    const archive = buildArchive();
+    archive.documents[0].data.comments = [
+      { id: 'c1', anchor: { type: 'token', id: 'nosuchtoken' }, body: 'x', author: {} },
+    ];
+    const client = stubClient();
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    expect(callsOf(client, 'comments.create')).toEqual([]);
     expect(result.warnings).toContain(
       '"Doc One": comment c1 skipped (its token did not survive the import)',
     );
