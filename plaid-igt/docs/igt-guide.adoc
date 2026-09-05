@@ -30,28 +30,28 @@
 = Introduction
 
 **Plaid IGT** is an editor for interlinear glossed text (IGT), made for documentary and field linguists.
-You bring a text, or a recording of one, and take it through the familiar workflow: transcribe it, divide it into sentences, words, and morphemes, gloss and annotate them, link them to a lexicon, and export the result to wherever it needs to go next.
+It opens in your web browser, and it brings transcription, glossing, and the lexicon together in one place.
 
-If you know FieldWorks (FLEx) and ELAN, you will find the core of each here, in one program.
-From FLEx comes interlinear analysis with a lexicon behind it: morpheme segmentation, glossing, parts of speech, free translations, and entries that keep the same word analyzed the same way everywhere.
-From ELAN comes time-aligned transcription of audio and video: you play a recording, type what you hear segment by segment, and label who is speaking.
-Transcription and glossing usually mean two programs and an export between them.
-Here they are one workflow, and the transcript you type against the recording is the very text you go on to gloss.
-Data you already have in FLEx or ELAN can be brought in, and your work can be taken back out to either (see <<_import_and_export>>).
+What you can do with it:
 
-Plaid IGT runs in your web browser.
-There is nothing to install, it works the same on Windows, macOS, and Linux, and your data lives on a server rather than on one laptop.
-That server is also what makes a project a shared thing.
-Several people can work in the same project at the same time, each with a role, and every change is recorded with the name of the person who made it (see <<_sharing_and_permissions>> and <<_history>>).
-A field methods class, a documentation team, or a linguist and a speaker on two continents can all work in one project without passing files around.
+* **Transcribe a recording by ear.** Attach audio or video to a text, slow it down or speed it up, and type what you hear one segment at a time while the recording follows you from row to row. Label the speakers, and record cross-talk where it happens.
+* **Gloss the same text, right there.** The transcript is the text you go on to analyze. Divide it into sentences, words, and morphemes, and fill in glosses, parts of speech, free translations, or whatever fields your project needs. No export between programs, ever.
+* **Build a lexicon as you go.** Link words and morphemes to entries in a shared vocabulary. A linked entry offers its gloss wherever the word turns up, so the same form is analyzed the same way everywhere. Homonyms, affixes and clitics, and multi-word expressions are all handled.
+* **Bring your data with you.** Start from a FieldWorks (FLEx) backup, a set of ELAN files, or a CLDF dataset. Export back to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), CLDF, or plain text, or copy a single sentence as LaTeX for a paper.
+* **Work together.** Share a project with whoever you invite, each as a reader, writer, or maintainer. Several people can work in it at once, every change is recorded with the name of the person who made it, and any document can be viewed as it was at any earlier moment.
+* **Let a machine take the first pass.** A connected service can transcribe a recording, draft translations, or propose a segmentation and glosses. Everything a machine writes is marked until you confirm it, and nothing you wrote by hand is ever touched.
+* **Type any character.** `\sw` gives ə, `\ng` gives ŋ, `\?g` gives ʔ. The codes are Praat's, there are over four hundred of them, and they work in every field.
+* **Ask questions in the margin.** Any sentence, word, morpheme, or gloss can carry a comment thread: a question for the speaker, a doubt about a gloss, a note to a classmate.
+* **Keep a corpus consistent.** Search every document for a form or a gloss and see every value a suffix has ever been given. Respell a word everywhere at once. Hold a field to a list of allowed tags and find every value that strays from it.
 
-Plaid IGT is one of the apps built on the Plaid platform.
-You don't need to know anything about Plaid itself to use the editor, but if you're curious about the underlying platform, or you want to script against your data, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
+There is nothing to install.
+Open the address your project administrator gives you, sign in, and start.
+It works the same on Windows, macOS, and Linux, on any computer with a browser.
 
 = Getting Started
 
-Plaid IGT is served by your Plaid server. There is nothing to install.
-Open the editor in your browser at the `/igt/` path on that server.
+Plaid IGT is served by your Plaid server, so you open it in your browser rather than installing anything.
+It lives at the `/igt/` path on that server.
 If you are running Plaid locally with the default settings, that is:
 
 ----
@@ -636,3 +636,9 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 | **Ctrl/Cmd+Enter** / **Esc** (new-segment popover) | Save the segment, or cancel it.
 | **Ctrl/Cmd+wheel** / **wheel** (timeline) | Zoom, or pan.
 |===
+
+= Going Further
+
+Plaid IGT is one of the apps built on the Plaid platform, and everything you see in the editor is also reachable from a script.
+If you want to work with your data from Python or JavaScript, or you are curious about what is underneath, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
+The manual also covers running a Plaid server for a class or a team.
