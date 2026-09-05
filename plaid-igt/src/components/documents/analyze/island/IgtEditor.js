@@ -2542,7 +2542,15 @@ export class IgtEditor {
     // column and centers its value, so a badge tangent to the cell's edge
     // lands on the neighbor's corner. The wrapper is the badge's positioning
     // context, exactly as .igt-vocab__face is for a word form.
-    return badge ? html`<span class="igt-cell__face">${badge}${input}</span>` : input;
+    //
+    // The wrapper is ALWAYS rendered, and only its class says whether it has
+    // a box. A cell gains its badge on its first write (the span it now has
+    // can be commented on), and a wrapper that appeared only then swapped
+    // lit templates and recreated the input under the person's cursor: a
+    // pick or an accept left the cell unfocused.
+    return html`<span class="igt-cell__face${badge ? ' igt-cell__face--badged' : ''}"
+      >${badge ?? nothing}${input}</span
+    >`;
   }
 
   /**
