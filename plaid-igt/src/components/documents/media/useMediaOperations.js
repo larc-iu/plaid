@@ -102,6 +102,9 @@ export const useMediaOperations = () => {
   const [transcriptionProgress, setTranscriptionProgress] = useState(0);
   const [currentOperation, setCurrentOperation] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  // `{ name, loaded, total }` while a file is going up, else null. `total`
+  // is the request body (the file plus a few bytes of multipart framing).
+  const [uploadProgress, setUploadProgress] = useState(null);
 
   // Listening preferences (see the *_KEY constants). `playbackRateRef` mirrors
   // the state for the deps-`[]` element registration, like `volumeRef`.
@@ -375,10 +378,18 @@ export const useMediaOperations = () => {
       if (!file) return;
 
       setIsUploading(true);
-      const ok = await doc.uploadMedia(file);
-      setIsUploading(false);
-      if (ok) {
-        notifySuccess('Media file uploaded successfully', 'Success');
+      setUploadProgress({ name: file.name, loaded: 0, total: file.size });
+      try {
+        const ok = await doc.uploadMedia(file, {
+          onProgress: ({ loaded, total }) =>
+            setUploadProgress((p) => (p ? { ...p, loaded, total: total ?? p.total } : p)),
+        });
+        if (ok) {
+          notifySuccess('Media file uploaded successfully', 'Success');
+        }
+      } finally {
+        setIsUploading(false);
+        setUploadProgress(null);
       }
     },
     [doc],
@@ -791,6 +802,7 @@ export const useMediaOperations = () => {
 
     // Upload state
     isUploading,
+    uploadProgress,
 
     // Media operations
     setMediaElement,

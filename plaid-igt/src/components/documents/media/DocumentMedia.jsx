@@ -2,6 +2,7 @@ import React from 'react';
 import { Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectTrigger,
@@ -37,6 +38,7 @@ export function DocumentMedia() {
         <MediaUpload
           onUpload={mediaOps.handleMediaUpload}
           isUploading={mediaOps.isUploading}
+          progress={mediaOps.uploadProgress}
           readOnly={readOnly}
         />
       </div>
@@ -138,14 +140,10 @@ export function DocumentMedia() {
                 <Mic className="h-4 w-4" />
                 <span className="font-medium">{mediaOps.progressMessage || 'Processing...'}</span>
               </div>
-              <div className="h-2 w-full rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{
-                    width: `${mediaOps.progressPercent || mediaOps.transcriptionProgress}%`,
-                  }}
-                />
-              </div>
+              <Progress
+                value={mediaOps.progressPercent || mediaOps.transcriptionProgress}
+                label="Transcription progress"
+              />
               <span className="text-sm text-muted-foreground">{mediaOps.currentOperation}</span>
             </div>
           ) : (

@@ -1267,8 +1267,10 @@ class PlaidClient {
        * Upload a media file for a document. Uses Apache Tika for content validation.
        * @param {string} documentId - The document ID
        * @param {File} file - The file to upload
+       * @param {string} [auditMessage] - Custom audit-log message for this write
+       * @param {object} [options] - `{ onProgress }`: called with `{ loaded, total }` (bytes) as the file goes up. In a browser the upload then travels by XMLHttpRequest, and the request timeout only fires when the upload stalls, not on total time.
        */
-      uploadMedia: (documentId, file, auditMessage) => {
+      uploadMedia: (documentId, file, auditMessage, { onProgress } = {}) => {
         const fd = new FormData();
         fd.append("file", file);
         return this._request("PUT", `/api/v1/documents/${documentId}/media`, {
@@ -1276,6 +1278,7 @@ class PlaidClient {
           body: fd,
           formData: true,
           noBatch: true,
+          onUploadProgress: onProgress,
         });
       },
       /**

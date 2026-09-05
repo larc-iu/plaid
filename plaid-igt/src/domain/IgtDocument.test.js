@@ -1067,6 +1067,16 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     });
   });
 
+  it('uploadMedia hands the progress callback to the client', async () => {
+    const doc = makeDoc();
+    const onProgress = () => {};
+    const ok = await doc.uploadMedia(new Blob(['x']), { onProgress });
+    expect(ok).toBe(true);
+    const call = doc.client.calls.find((c) => c.kind === 'documents.uploadMedia');
+    expect(call.args[0]).toBe('doc-1');
+    expect(call.args[3]).toEqual({ onProgress });
+  });
+
   // Deleting a segment leaves its text in the baseline unless asked not to,
   // and patches the document before the request goes out.
   it('deleteAlignment by default removes only the token; the text and words stay', async () => {

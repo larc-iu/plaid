@@ -124,6 +124,73 @@ export function timeoutSignal(timeout) {
 }
 
 /**
+ * Send a request through XMLHttpRequest so the caller can watch the bytes go
+ * up: fetch cannot report upload progress. Resolves to a Response, so the rest
+ * of the pipeline is the same either way. The timeout is a STALL timeout,
+ * re-armed by every progress event, so a large file on a slow link is never
+ * cut off while it is still moving, only once nothing has moved for `timeout`
+ * ms. Rejects the way fetch does: a TypeError for a network failure, an error
+ * named TimeoutError for a stall.
+ */
+export function xhrSend(url, { method, headers, body }, { onUploadProgress, timeout } = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    xhr.responseType = 'arraybuffer';
+    for (const [name, value] of Object.entries(headers || {})) xhr.setRequestHeader(name, value);
+
+    let timer = null;
+    const disarm = () => clearTimeout(timer);
+    const arm = () => {
+      if (!timeout || timeout <= 0) return;
+      disarm();
+      timer = setTimeout(() => {
+        xhr.abort();
+        reject(Object.assign(new Error(`Request timed out at ${url}`), { name: 'TimeoutError' }));
+      }, timeout);
+    };
+
+    xhr.upload.onprogress = (e) => {
+      arm();
+      if (onUploadProgress) {
+        onUploadProgress({ loaded: e.loaded, total: e.lengthComputable ? e.total : null });
+      }
+    };
+    xhr.onprogress = arm;
+    xhr.onload = () => {
+      disarm();
+      if (xhr.status === 0) {
+        reject(new TypeError(`Failed to fetch ${url}`));
+        return;
+      }
+      const responseHeaders = new Headers();
+      for (const line of (xhr.getAllResponseHeaders() || '').trim().split(/\r?\n/)) {
+        const i = line.indexOf(':');
+        if (i > 0) responseHeaders.append(line.slice(0, i).trim(), line.slice(i + 1).trim());
+      }
+      // A Response refuses a body for these statuses.
+      const responseBody = [204, 205, 304].includes(xhr.status) ? null : xhr.response;
+      resolve(new Response(responseBody, {
+        status: xhr.status,
+        statusText: xhr.statusText,
+        headers: responseHeaders,
+      }));
+    };
+    xhr.onerror = () => {
+      disarm();
+      reject(new TypeError(`Failed to fetch ${url}`));
+    };
+    xhr.onabort = () => {
+      disarm();
+      reject(Object.assign(new Error(`Request aborted at ${url}`), { name: 'AbortError' }));
+    };
+
+    arm();
+    xhr.send(body);
+  });
+}
+
+/**
  * Generic request method handling all fetch logic.
  *
  * Options:
@@ -145,6 +212,11 @@ export function timeoutSignal(timeout) {
  *   timeout         - Per-request timeout in ms overriding client.timeout
  *                     for this call (0/null disables). Used for known-long
  *                     ops like project delete.
+ *   onUploadProgress - Called with `{ loaded, total }` (bytes; total null when
+ *                     unknown) as the request body goes up. In a browser the
+ *                     request then travels by XMLHttpRequest (see xhrSend),
+ *                     where the timeout only fires when the upload stalls;
+ *                     elsewhere the callback is ignored and fetch is used.
  */
 export async function makeRequest(client, method, path, options = {}) {
   const {
@@ -159,6 +231,7 @@ export async function makeRequest(client, method, path, options = {}) {
     binaryResponse,
     auditMessage,
     timeout,
+    onUploadProgress,
   } = options;
 
   // Build URL
@@ -262,14 +335,18 @@ export async function makeRequest(client, method, path, options = {}) {
 
   // A fresh AbortSignal.timeout per attempt: the signal fires once and stays
   // aborted, so reusing it would make every retry fail instantly.
-  const attemptOptions = () => {
-    const signal = timeoutSignal(timeout !== undefined ? timeout : client.timeout);
-    return signal ? { ...fetchOptions, signal } : fetchOptions;
+  const timeoutMs = timeout !== undefined ? timeout : client.timeout;
+  const send = () => {
+    if (onUploadProgress && typeof XMLHttpRequest !== 'undefined') {
+      return xhrSend(url, fetchOptions, { onUploadProgress, timeout: timeoutMs });
+    }
+    const signal = timeoutSignal(timeoutMs);
+    return fetch(url, signal ? { ...fetchOptions, signal } : fetchOptions);
   };
 
   try {
     const response = await retryWhileBusy(async () => {
-      const res = await fetch(url, attemptOptions());
+      const res = await send();
       // Surface a 503 as a throw so retryWhileBusy can see it; other failures
       // are re-thrown from here and handled by the caller below.
       if (res.status === 503) {

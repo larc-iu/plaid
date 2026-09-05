@@ -478,6 +478,10 @@ interface DocumentsBundle {
     documentId: string,
     file: File,
     auditMessage?: string,
+    options?: {
+      /** Called with the bytes sent so far as the file goes up (`total` is null when unknown). */
+      onProgress?: (progress: { loaded: number; total: number | null }) => void;
+    },
   ): Promise<any>;
   deleteMedia(documentId: string, auditMessage?: string): Promise<any>;
   setMetadata(

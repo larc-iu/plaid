@@ -133,10 +133,12 @@ export const documentMutations = {
     });
   },
 
-  async uploadMedia(file) {
+  // `onProgress` gets `{ loaded, total }` in bytes as the file goes up; the
+  // reload that follows (the document now carries its media) is not counted.
+  async uploadMedia(file, { onProgress } = {}) {
     if (!file) return false;
     return this._withSaving('Failed to upload media', async () => {
-      await this._client.documents.uploadMedia(this.id, file);
+      await this._client.documents.uploadMedia(this.id, file, undefined, { onProgress });
       await this._reload();
     });
   },
