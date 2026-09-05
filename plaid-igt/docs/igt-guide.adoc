@@ -137,7 +137,7 @@ Each segment is a stretch of the recording with its text, which becomes part of 
 Media is optional, and a document with none is simply a text.
 Common audio and video formats are accepted (MP3, WAV, M4A, MP4, WebM, and others), and an upload shows its progress.
 
-=== The transcript
+=== Transcript
 
 The transcript is a list of segments in time order, and it is built for typing what you hear.
 Play the recording, then type the utterance you just heard into the **New segment** row and press Enter.
@@ -165,7 +165,7 @@ The loop button repeats the segment you are on until you pause.
 Deleting a segment from its row removes its times and speaker but leaves its text in the baseline.
 Tick the box in the confirmation to delete the text too, together with every word and annotation on it.
 
-=== The timeline
+=== Timeline
 
 The timeline shows the same segments against the waveform.
 Drag across an empty stretch to add a segment anywhere in the recording, drag a segment's edge to trim it, and click a segment to hear it and edit its row.
@@ -216,7 +216,7 @@ What you do here:
 * **Gloss and annotate**. Fill the gloss and any other word- or morpheme-scope fields your project defines. The editor offers faint **guesses**, for example a gloss it has seen before for the same form, which you accept with Enter or type over.
 * **Pick from what the project already uses**. On a cell, **Alt+↓** lists every value the project has given that form, with counts. When a field is held to a tagset, the list opens on its own as you enter the cell and narrows as you type, one part at a time for a composite gloss like `1SG.NOM`.
 * **Link vocabulary**. Connect a word or morpheme to an entry in a shared lexicon, by hand or in bulk (see <<_vocabularies>>).
-* **Auto-analyze**. Run up to four steps over the whole document in one go: have a service propose a translation for each sentence, copy previous analyses of the same words from elsewhere in the project, have a service propose a segmentation and glosses for the rest, and link words and morphemes to the lexicon (see <<_services>>). Everything it produces shows in violet until you confirm it, and words you analyzed yourself are never touched.
+* **Auto-analyze**. Let the machine make a first pass over the whole document: translations, analyses copied onto words you have analyzed before, a model's segmentation and glosses, and lexicon links. Everything it produces shows in violet until you confirm it, and words you analyzed yourself are never touched (see <<_auto_analyze>>).
 * **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
 * **Fill sentence fields**. Record the free translation, the speaker, and other sentence-scope values on each sentence's row.
 * **Show only the rows you need**. Click a row's label to choose which rows show. A minimized row stays as a thin stripe you can click back open.
@@ -225,7 +225,7 @@ What you do here:
 Move around the grid with **Enter** or **Tab** (next cell, Shift for the previous one), **↑** and **↓** (rows), and **←** and **→** from the ends of a value.
 The full set of gestures is collected under <<_keyboard_shortcuts>>.
 
-=== Where a value came from
+=== Provenance
 
 Plaid IGT tracks who, or what, produced every value.
 Three states are distinguished in the grid:
@@ -343,6 +343,58 @@ Click a line's label to change the entry, unlink it, or confirm one that **Auto-
 While that popover is open, Shift+click a word to add it to the expression or take it out.
 The popover for a single word lists the multi-word expressions it is part of, and offers **Part of a multi-word expression…** to start gathering from there.
 
+= Auto-analyze
+
+Most of the words in a running text are repeats, and much of the rest can be guessed at.
+**Auto-analyze**, a button on the Analyze tab's toolbar, makes that first pass over a whole document so that your time goes into checking rather than typing.
+It runs up to four steps in order, each of which you can switch on or off.
+Everything it produces is marked as machine-made and shows in violet until you confirm or discard it (see <<_where_a_value_came_from>>), and nothing a person has written is ever changed.
+
+== The four steps
+
+1. **Propose translations.** A translation service drafts a free translation for every sentence from its words and any glosses already present. This runs first because the analyzers in the later steps read the translation. Translations a person wrote are left alone, and earlier machine drafts are replaced. Needs a connected translation service.
+2. **Copy previous analyses.** Every word that has not been analyzed at all is looked up elsewhere in the project, and if the same word form has been analyzed before, that analysis is copied onto it. This is built in and needs no service. The details are below.
+3. **Propose segmentation and glosses.** An analysis service, such as PolyGloss or a language model, proposes morphemes and glosses for every word that still has none. Words a person analyzed are left alone, and earlier machine proposals are replaced. Needs a connected analysis service.
+4. **Link to the lexicon.** Words and morphemes that have no link yet are linked to lexicon entries, by the built-in rule described below or by a service. This runs last so that it can link the stems step 3 just produced. Needs the project to have a vocabulary.
+
+Each step remembers whether you left it on, and a service step is unavailable when no service for it is online.
+When the run finishes, a message says what was done: how many translations were proposed, how many words received a copied analysis, and so on.
+Then review the result with the gestures under <<_analyze>>: **Ctrl/Cmd+Enter** confirms a whole word, **Ctrl/Cmd+Backspace** discards its proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have unconfirmed material.
+
+== Copying previous analyses
+
+Step 2 reuses your own work, in the manner of FieldWorks' guesses from previous analyses.
+
+A word receives a copy only when it is **unanalyzed**: it is still a single morpheme identical to the word itself, it carries no annotation values, and neither it nor its morpheme is linked to the lexicon.
+A word you have segmented, glossed, or linked, even partly, is never touched.
+Ignored tokens such as punctuation are skipped.
+
+For each such word, Plaid IGT gathers every other occurrence of the same word form across the project, in this document and in the others, and looks at how each was analyzed.
+An **analysis** here means the whole package: the morpheme segmentation with each morpheme's form and type, the lexicon links, and the annotation values on the word and its morphemes.
+The analysis given most often is copied.
+If two different analyses are tied for most frequent, the form is **contested** and the word is left alone for you to decide.
+A form is first matched exactly and then ignoring case, so a sentence-initial capital still finds its precedent.
+
+Only analyses a person made or confirmed count.
+A machine analysis that is still violet does not, so one machine pass can never feed the next.
+
+What a copy carries is set per project under **Settings → Services**, in the Auto-link section: the morpheme segmentation (forms and types), the lexicon links, and the annotation values, in any combination.
+The same setting says whether this step is ticked when the Auto-analyze dialog opens.
+
+== Linking to the lexicon
+
+The built-in linking rule of step 4 works word by word and morpheme by morpheme.
+For a form that has been linked before anywhere in the project, it follows **precedent**: the entry that form has most often been linked to, preferring what tokens of the same kind did, so a word follows words and a morpheme follows morphemes.
+For a form never linked before, it links to a lexicon entry with the same form, if there is one.
+A whole word is never linked to an affix or clitic entry.
+As with copying, an exact match is tried before a case-insensitive one.
+
+Only unlinked words and morphemes, and links that are still machine-made and unverified, are touched.
+A link a person made or confirmed is never changed.
+Runs of words whose joined form matches a multi-word expression entry, or a multi-word expression already linked in this document, are linked as one (see <<_multi_word_expressions>>).
+
+TIP: Confirm links as you go. An entry a form has been linked to becomes the precedent for every later occurrence of that form.
+
 = Project Settings
 
 A maintainer opens a project's **Settings** tab.
@@ -383,7 +435,7 @@ See <<_sharing_and_permissions>>.
 
 Which service, or built-in method, each task uses by default: tokenization, transcription, translation, analysis, and auto-linking (see <<_services>>).
 A default can carry default options too, and people can still switch per use.
-This is also where you say what Auto-analyze's copy step copies from a word's previous analyses: its segmentation, its links, its field values, or any combination.
+This is also where you say what Auto-analyze's copy step copies from a word's previous analyses: its segmentation, its links, its field values, or any combination (see <<_copying_previous_analyses>>).
 
 = Tagsets
 
@@ -453,7 +505,7 @@ There are five integration points:
 
 * **Tokenization**: splits the baseline into words, on the **Tokenize** tab. The built-in rule-based splitter is always available and leaves sentence breaks as they are. A service can replace it with smarter segmentation of sentences and words (the bundled example uses Punkt).
 * **Transcription (ASR)**: transcribes and time-aligns a recording, on the **Media** tab. There is no built-in, so this needs a connected service (the bundled example uses Whisper).
-* **Translation**: proposes a free translation for each sentence, as step 1 of **Auto-analyze** on the Analyze tab, so the analyzers that follow can read it. The bundled example uses a language model.
+* **Translation**: proposes a free translation for each sentence, as step 1 of **Auto-analyze** (see <<_auto_analyze>>), so the analyzers that follow can read it. The bundled example uses a language model.
 * **Analysis**: proposes a morpheme segmentation and glosses for every word, as step 3 of Auto-analyze. There is no built-in, so this needs a connected service. Two examples are bundled: PolyGloss, a multilingual glossing model, and a language model given the project's own analyses as examples. Words a person has analyzed are left alone.
 * **Auto-link vocabulary**: proposes vocabulary links for unlinked words and morphemes, as step 4 of Auto-analyze. The built-in rule follows your project's own precedent and unique matches, and a service can propose links its own way.
 
